@@ -329,7 +329,7 @@ def _pearson3cdf(value,
     if abs(skew) <= 1e-6:
     
         z = (value - pearson3_parameters[0]) / pearson3_parameters[1]
-        return 0.5 + (0.5 * error_function(z * sqrt(0.5)))
+        return 0.5 + (0.5 * _error_function(z * sqrt(0.5)))
     
     alpha = 4.0 / (skew * skew)
     x = ((2.0 * (value - pearson3_parameters[0])) / (pearson3_parameters[1] * skew)) + alpha
@@ -355,8 +355,8 @@ def _pearson3cdf(value,
     return result
 
 #----------------------------------------------------------------------------------------------------------------------
-#@jit(float64(float64))
-def error_function(value):
+@jit(float64(float64))
+def _error_function(value):
     '''
     TODO
     

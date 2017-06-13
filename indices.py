@@ -146,6 +146,9 @@ def spei_gamma(months_scale,
             logger.error(message)
             raise ValueError(message)
 
+        # compute PET
+        pet_mm = pet(temps_celsius, latitude_degrees, data_start_year)
+
     elif pet_mm != None:
         
         # since we have PET as input we shouldn't have temperature as an input
@@ -167,11 +170,6 @@ def spei_gamma(months_scale,
             logger.error(message)
             raise ValueError(message)
 
-    # compute PET, if required
-    if temps_celsius != None:
-
-        pet_mm = pet(temps_celsius, latitude_degrees, data_start_year)
-    
     # subtract the PET from precipitation, adding an offset to ensure that all values are positive
     p_minus_pet = (precips_mm - pet_mm) + 1000.0
         
@@ -256,6 +254,9 @@ def spei_pearson(months_scale,
             logger.error(message)
             raise ValueError(message)
 
+        # compute PET
+        pet_mm = pet(temps_celsius, latitude_degrees, data_start_year)
+
     elif pet_mm != None:
         
         # since we have PET as input we shouldn't have temperature as an input
@@ -276,11 +277,6 @@ def spei_pearson(months_scale,
             message = 'Incompatible precipitation and PET arrays'
             logger.error(message)
             raise ValueError(message)
-
-    # compute PET, if required
-    if temps_celsius != None:
-
-        pet_mm = pet(temps_celsius, latitude_degrees, data_start_year)
     
     # subtract the PET from precipitation, adding an offset to ensure that all values are positive
     p_minus_pet = (precips_mm - pet_mm) + 1000.0
