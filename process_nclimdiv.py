@@ -300,6 +300,7 @@ def process_division(division_index,
     
     logger.info('Computing indices for division index {0}'.format(division_index))
     
+    # use a different name alias for the data_start_year in order to avoid conflicts with function argument that use the same name
     initial_data_year = data_start_year
     
     # open the NetCDF files 
@@ -415,7 +416,8 @@ def process_division(division_index,
                 # SPI and SPEI have a valid/useful range of [-3.09, 3.09]
                 valid_min = -3.09
                 valid_max = 3.09
-                                                    
+                                   
+                                 
                 # process the SPI and SPEI at the specified month scales
                 for months in scale_months:
                     
@@ -424,39 +426,26 @@ def process_division(division_index,
                     #TODO ensure that the precipitation and PET values are using the same units
                     
                     # compute SPEI/Gamma
-                    spei_gamma = indices.spei_gamma(precip_time_series,
-                                                    pet_time_series,
-                                                    months,
-                                                    valid_min,
-                                                    valid_max,
-                                                    data_start_year,
-                                                    None)
-                   
+                    spei_gamma = indices.spei_gamma(months,
+                                                    precip_time_series,
+                                                    pet_mm=pet_time_series)
+
                     # compute SPEI/Pearson
-                    spei_pearson = indices.spei_pearson(precip_time_series,
-                                                        pet_time_series,
-                                                        months,
-                                                        valid_min, 
-                                                        valid_max,
+                    spei_pearson = indices.spei_pearson(months,
                                                         data_start_year,
-                                                        data_end_year,
-                                                        calibration_start_year,
-                                                        calibration_end_year,
-                                                        None)
+                                                        precip_time_series,
+                                                        pet_mm=pet_time_series,
+                                                        calibration_year_initial=calibration_start_year,
+                                                        calibration_year_final=calibration_end_year)
                      
                     # compute SPI/Gamma
                     spi_gamma = indices.spi_gamma(precip_time_series, 
-                                                  months,
-                                                  valid_min,
-                                                  valid_max)
+                                                  months)
              
                     # compute SPI/Pearson
                     spi_pearson = indices.spi_pearson(precip_time_series, 
                                                       months,
-                                                      valid_min,
-                                                      valid_max,
                                                       data_start_year,
-                                                      data_end_year,
                                                       calibration_start_year, 
                                                       calibration_end_year)        
         
