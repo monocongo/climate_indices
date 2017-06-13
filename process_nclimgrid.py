@@ -105,19 +105,14 @@ def process_latitude_spi_spei_pnp(lat_index):
         spi_gamma_lat_slice = np.apply_along_axis(indices.spi_gamma, 
                                                   0, 
                                                   precip_lat_slice, 
-                                                  scale_months,
-                                                  valid_min,
-                                                  valid_max)
+                                                  scale_months)
  
         # compute SPI/Pearson across all longitudes of the latitude slice
         spi_pearson_lat_slice = np.apply_along_axis(indices.spi_pearson, 
                                                     0, 
                                                     precip_lat_slice, 
                                                     scale_months,
-                                                    valid_min,
-                                                    valid_max,
                                                     data_start_year,
-                                                    data_end_year,
                                                     calibration_start_year, 
                                                     calibration_end_year)        
          
