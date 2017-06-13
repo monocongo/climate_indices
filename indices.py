@@ -265,9 +265,9 @@ def spei_pearson(months_scale,
             raise ValueError(message)
         
         # make sure there's no confusion by not allowing a user to specify unnecessary parameters 
-        elif (latitude_degrees != None) or (data_start_year != None):
-            message = 'Extraneous arguments: since PET is provided as an input then both latitude ' + \
-                      'and the data start year must not also be specified, and one or both is.'
+        elif latitude_degrees != None:
+            message = 'Extraneous arguments: since PET is provided as an input then latitude ' + \
+                      'must not also be specified.'
             logger.error(message)
             raise ValueError(message)
             
