@@ -1,0 +1,26 @@
+name: indices_reference
+channels:
+- defaults
+dependencies:
+- curl=7.49.0=1
+- hdf4=4.2.12=0
+- hdf5=1.8.17=1
+- jpeg=8d=2
+- libgfortran=3.0.0=1
+- libnetcdf=4.4.1=0
+- llvmlite=0.17.0=py36_0
+- mkl=2017.0.1=0
+- netcdf4=1.2.4=np111py36_0
+- numba=0.32.0=np111py36_0
+- numpy=1.11.3=py36_0
+- openssl=1.0.2k=1
+- pip=9.0.1=py36_1
+- python=3.6.1=0
+- readline=6.2=2
+- scipy=0.19.0=np111py36_0
+- setuptools=27.2.0=py36_0
+- sqlite=3.13.0=0
+- tk=8.5.18=0
+- wheel=0.29.0=py36_0
+- xz=5.2.2=1
+- zlib=1.2.8=3
