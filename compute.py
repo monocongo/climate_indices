@@ -354,6 +354,64 @@ def _pearson3cdf(value,
 
     return result
 
+#----------------------------------------------------------------------------------------------------------------------
+#@jit(float64(float64))
+def error_function(value):
+    '''
+    TODO
+    
+    :param value:
+    :return:  
+    '''
+    
+    result = 0.0
+    if value != 0.0:
+
+        absValue = abs(value)
+
+        if absValue > 6.25:
+            if value < 0:
+                result = -1.0
+            else:
+                result = 1.0
+        else:
+            exponential = exp(value * value * (-1))
+            sqrtOfTwo = sqrt(2.0)
+            zz = abs(value * sqrtOfTwo)
+            if absValue > 5.0:
+                # alternative error function calculation for when the input value is in the critical range
+                result = exponential * (sqrtOfTwo / pi) / \
+                                         (absValue + 1 / (zz + 2 / (zz + 3 / (zz + 4 / (zz + 0.65)))))
+
+            else:
+                # coefficients of rational-function approximation
+                P0 = 220.2068679123761
+                P1 = 221.2135961699311
+                P2 = 112.0792914978709
+                P3 = 33.91286607838300
+                P4 = 6.373962203531650
+                P5 = 0.7003830644436881
+                P6 = 0.03526249659989109
+                Q0 = 440.4137358247522
+                Q1 = 793.8265125199484
+                Q2 = 637.3336333788311
+                Q3 = 296.5642487796737
+                Q4 = 86.78073220294608
+                Q5 = 16.06417757920695
+                Q6 = 1.755667163182642
+                Q7 = 0.08838834764831844
+
+                # calculate the error function from the input value and constant values
+                result = exponential * ((((((P6 * zz + P5) * zz + P4) * zz + P3) * zz + P2) * zz + P1) * zz + P0) /  \
+                         (((((((Q7 * zz + Q6) * zz + Q5) * zz + Q4) * zz + Q3) * zz + Q2) * zz + Q1) * zz + Q0)
+
+            if value > 0.0:
+                result = 1 - result
+            elif value < 0:
+                result = result - 1.0
+
+    return result
+
 #-----------------------------------------------------------------------------------------------------------------------
 @jit
 def transform_fitted_pearson(monthly_values,
