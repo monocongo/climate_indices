@@ -306,7 +306,7 @@ def process_latitude_palmer(lat_index):
         temperature_lat_slice = temp_dataset[temp_var_name][:, lat_index, :]    # assuming (time, lat, lon) orientation
         
         # get the actual latitude value (assumed to be in degrees north) for the latitude slice specified by the index
-        latitude_degrees = temp_dataset['lat'][lat_index]
+        latitude_degrees_north = temp_dataset['lat'][lat_index]
         
         # use the numpyapply_along_axis() function for computing indices such as PET that take a single time series 
         # array as input (i.e. each longitude's time series is the initial 1-D array argument to the function we'll apply)
@@ -316,7 +316,7 @@ def process_latitude_palmer(lat_index):
         pet_lat_slice = np.apply_along_axis(indices.pet, 
                                             0, 
                                             temperature_lat_slice, 
-                                            latitude=latitude_degrees, 
+                                            latitude_degrees=latitude_degrees_north, 
                                             data_start_year=initial_data_year)
     
         # open the existing PET NetCDF file for writing, copy the latitude slice into the PET variable at the indexed latitude position 
