@@ -129,6 +129,10 @@ def process_latitude_spi_spei_pnp(lat_index):
         spei_gamma_lat_slice = np.full(lat_slice_shape, np.NaN)
         spei_pearson_lat_slice = np.full(lat_slice_shape, np.NaN)
 
+        # use a separate name for the data_start_year in order to avoid name  
+        # conflicts with the argument of the same name in the PSEI functions
+        start_year = data_start_year
+        
         # compute SPEI for each longitude from the latitude slice where we have valid inputs
         for lon_index in range(lon_size):
             
@@ -141,14 +145,11 @@ def process_latitude_spi_spei_pnp(lat_index):
                (not pet_time_series.mask.all()):
                 
                 # compute SPEI/Gamma
-                spei_gamma_lat_slice[:, 0, lon_index] = indices.spei_gamma(precip_time_series,
-                                                                           pet_time_series,
-                                                                           scale_months,
-                                                                           valid_min,
-                                                                           valid_max,
-                                                                           data_start_year,
-                                                                           None)
-               
+                spei_gamma_lat_slice[:, 0, lon_index] = indices.spei_gamma(scale_months,
+                                                                           precip_time_series,
+                                                                           pet_mm=pet_time_series,
+                                                                           data_start_year=start_year)
+                
                 # compute SPEI/Pearson
                 spei_pearson_lat_slice[:, 0, lon_index] = indices.spei_pearson(precip_time_series,
                                                                                pet_time_series,
