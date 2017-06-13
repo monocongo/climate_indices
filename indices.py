@@ -28,8 +28,6 @@ def spi_gamma(precips,
     
     :param precips: monthly precipitation values, in any units, first value assumed to correspond to January of the initial year
     :param months_scale: number of months over which the values should be scaled before the index is computed
-    :param valid_min: lower limit of the resulting index
-    :param valid_max: upper limit of the resulting index
     :return monthly SPI values fitted to the gamma distribution at the specified time scale, unitless
     :rtype: 1-D numpy.ndarray of floats corresponding in length to the input array of monthly precipitation values
     '''
