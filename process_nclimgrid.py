@@ -45,7 +45,6 @@ def init_process_spi_spei_pnp(worker_precip_netcdf,
                               worker_pnp_netcdf,
                               worker_scale_months,
                               worker_data_start_year,
-                              worker_data_end_year,
                               worker_calibration_start_year, 
                               worker_calibration_end_year):
     
@@ -60,7 +59,6 @@ def init_process_spi_spei_pnp(worker_precip_netcdf,
            pnp_netcdf, \
            scale_months, \
            data_start_year, \
-           data_end_year, \
            calibration_start_year, \
            calibration_end_year
            
@@ -74,7 +72,6 @@ def init_process_spi_spei_pnp(worker_precip_netcdf,
     pnp_netcdf = worker_pnp_netcdf
     scale_months = worker_scale_months
     data_start_year = worker_data_start_year
-    data_end_year = worker_data_end_year
     calibration_start_year = worker_calibration_start_year
     calibration_end_year = worker_calibration_end_year
     
@@ -129,10 +126,6 @@ def process_latitude_spi_spei_pnp(lat_index):
         spei_gamma_lat_slice = np.full(lat_slice_shape, np.NaN)
         spei_pearson_lat_slice = np.full(lat_slice_shape, np.NaN)
 
-        # use a separate name for the data_start_year in order to avoid name  
-        # conflicts with the argument of the same name in the PSEI functions
-        start_year = data_start_year
-        
         # compute SPEI for each longitude from the latitude slice where we have valid inputs
         for lon_index in range(lon_size):
             
@@ -147,20 +140,15 @@ def process_latitude_spi_spei_pnp(lat_index):
                 # compute SPEI/Gamma
                 spei_gamma_lat_slice[:, 0, lon_index] = indices.spei_gamma(scale_months,
                                                                            precip_time_series,
-                                                                           pet_mm=pet_time_series,
-                                                                           data_start_year=start_year)
-                
+                                                                           pet_mm=pet_time_series)
+
                 # compute SPEI/Pearson
-                spei_pearson_lat_slice[:, 0, lon_index] = indices.spei_pearson(precip_time_series,
-                                                                               pet_time_series,
-                                                                               scale_months,
-                                                                               valid_min, 
-                                                                               valid_max,
+                spei_pearson_lat_slice[:, 0, lon_index] = indices.spei_pearson(scale_months,
                                                                                data_start_year,
-                                                                               data_end_year,
-                                                                               calibration_start_year,
-                                                                               calibration_end_year,
-                                                                               None)
+                                                                               precip_time_series,
+                                                                               pet_mm=pet_time_series,
+                                                                               calibration_year_initial=calibration_start_year,
+                                                                               calibration_year_final=calibration_end_year)
                  
         # use the same variable name within both Gamma and Pearson NetCDFs
         #TODO update this for separate 'spi_gamma_<months>' and 'spi_pearson_<months>' instead
@@ -226,7 +214,6 @@ def init_palmer_process(worker_temp_netcdf,
                         worker_scpdsi_netcdf, 
                         worker_pmdi_netcdf, 
                         worker_initial_data_year,
-                        worker_final_data_year,
                         worker_calibration_start_year,
                         worker_calibration_end_year):
     '''
@@ -246,7 +233,6 @@ def init_palmer_process(worker_temp_netcdf,
     :param worker_scpdsi_netcdf: 
     :param worker_pmdi_netcdf: 
     :param worker_initial_data_year: 
-    :param worker_final_data_year: 
     :param worker_calibration_start_year: 
     :param worker_calibration_end_year: 
     '''
@@ -265,7 +251,6 @@ def init_palmer_process(worker_temp_netcdf,
            scpdsi_netcdf, \
            pmdi_netcdf, \
            initial_data_year, \
-           final_data_year, \
            calibration_start_year, \
            calibration_end_year
            
@@ -282,7 +267,6 @@ def init_palmer_process(worker_temp_netcdf,
     scpdsi_netcdf = worker_scpdsi_netcdf
     pmdi_netcdf = worker_pmdi_netcdf
     initial_data_year = worker_initial_data_year
-    final_data_year = worker_final_data_year
     calibration_start_year = worker_calibration_start_year
     calibration_end_year = worker_calibration_end_year
 
@@ -763,10 +747,9 @@ if __name__ == '__main__':
                                    temp_dataset, 
                                    awc_dataset)
               
-            # get the initial and final year of the input datasets
+            # get the initial year of the input dataset(s)
             time_variable = precip_dataset.variables['time']
             data_start_year = num2date(time_variable[0], time_variable.units).year
-            data_end_year = num2date(time_variable[-1], time_variable.units).year
   
             # get the number of latitudes in the input dataset(s)
             lat_size = precip_dataset.variables['lat'].size
@@ -787,7 +770,6 @@ if __name__ == '__main__':
                                               unscaled_netcdfs['scpdsi'],
                                               unscaled_netcdfs['pmdi'],
                                               data_start_year,
-                                              data_end_year,
                                               args.calibration_start_year,
                                               args.calibration_end_year))
         
@@ -842,7 +824,6 @@ if __name__ == '__main__':
                                                   scaled_netcdfs['pnp'],
                                                   scale_months,
                                                   data_start_year,
-                                                  data_end_year,
                                                   args.calibration_start_year,
                                                   args.calibration_end_year))
  
