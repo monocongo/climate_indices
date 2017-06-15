@@ -90,7 +90,8 @@ if __name__ == '__main__':
             dataset_OUT = netcdf_utils.add_variable_climdivs(dataset_OUT, var_name, dataset_NIDIS.variables[var_NIDIS].__dict__)
             expected_shape = dataset_OUT.variables[var_name][:].shape
 #             dataset_OUT.variables[var_name][:] = compute.reshape_to_divs_months(diffs, dataset_NIDIS.variables[divisions_dim_name][:].size)
-            dataset_OUT.variables[var_name][:] = np.swapaxes(diffs,0,1)
+#             dataset_OUT.variables[var_name][:] = np.swapaxes(diffs,0,1)
+            dataset_OUT.variables[var_name][:] = diffs
             
             # get just the unmasked values, as a 1-D (flattened) array
             diffs = diffs[~diffs.mask]

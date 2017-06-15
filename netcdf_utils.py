@@ -187,7 +187,7 @@ def add_variable_climdivs(netcdf,
     # create the variable
     data_variable = netcdf.createVariable(data_variable_name, 
                                           data_dtype, 
-                                          ('time', divisions_dim_name,), 
+                                          (divisions_dim_name, 'time',), 
                                           fill_value=data_fill_value)
     
     # set the variable's attributes
