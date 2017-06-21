@@ -1,9 +1,7 @@
 import compute
-import indices
 import logging
 import numpy as np
 import unittest
-import scipy
 
 # disable logging messages
 logging.disable(logging.CRITICAL)
@@ -453,28 +451,6 @@ class ComputeTestCase(unittest.TestCase):
                                    err_msg='Sliding sums not computed as expected when missing values appended to end of input array')            
     
     #----------------------------------------------------------------------------------------
-    def test_reshape_to_years_months(self):
-        '''
-        Test for the compute._reshape_to_years_months() function
-        '''
-        
-        # an array of monthly values 
-        values_1d = np.array([3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2, 1, 3, 5, 8, 5, 6])
-        
-        # the expected rearrangement of the above values from 1-D to 2-D
-        values_2d_expected = np.array([[3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4], 
-                                       [6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2], 
-                                       [1, 3, 5, 8, 5, 6, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN]])
-        
-        # exercise the function
-        values_2d_computed = compute._reshape_to_years_months(values_1d)
-        
-        # verify that the function performed as expected
-        np.testing.assert_equal(values_2d_computed, 
-                                values_2d_expected, 
-                                'Not rearranging the 1-D array months into 2-D year increments as expected')
-        
-    #----------------------------------------------------------------------------------------
     def test_count_zeros_and_non_missings(self):
         '''
         Test for the compute._count_zeros_and_non_missings() function
@@ -483,6 +459,17 @@ class ComputeTestCase(unittest.TestCase):
         zeros, non_missings = compute._count_zeros_and_non_missings(values)
         self.assertEqual(zeros, 2, 'Failed to correctly count zero values')
         self.assertEqual(non_missings, 12, 'Failed to correctly count non-missing values')
+        
+#     #----------------------------------------------------------------------------------------
+#     def test_error_function(self):
+#         '''
+#         Test for the compute._error_function() function
+#         '''
+#         value = 0.24
+#         erf_compute = compute._error_function(value)
+#         erf_scipy = scipy.special.erf(value)
+#         erf_math = math.erf(value)
+#         self.assertEqual(erf_compute, erf_scipy, 'Failed to match error function values')
         
 #--------------------------------------------------------------------------------------------
 if __name__ == '__main__':
