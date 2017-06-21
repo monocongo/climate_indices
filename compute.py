@@ -3,7 +3,9 @@ import math
 from math import exp, lgamma, log, pi, sqrt
 from numba import float64, int32, jit
 import numpy as np
-import scipy
+import scipy.special
+import scipy.stats
+import utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global logger
@@ -12,34 +14,6 @@ logging.basicConfig(level=logging.INFO,
                     datefmt='%Y-%m-%d  %H:%M:%S')
 logger = logging.getLogger(__name__)
 
-#-----------------------------------------------------------------------------------------------------------------------
-@jit
-def _reshape_to_years_months(monthly_values):
-    '''
-    :param monthly_values: 1-D array of monthly values, assumed to start at January
-    :return: the original monthly values reshaped to 2-D, with each row representing a full year, with shape (years, 12)
-    :rtype: 2-D numpy.ndarray of floats
-    '''
-    
-    # make sure that we've been passed in a flat (1-D) array of values    
-    if len(monthly_values.shape) != 1:
-        message = 'Values array has an invalid shape: {}'.format(monthly_values.shape)
-        logger.error(message)
-        raise ValueError(message)
-
-    # pad the final months of the final year, if necessary
-    final_year_months = monthly_values.shape[0] % 12
-    if final_year_months > 0:
-        pad_months = 12 - final_year_months
-        pad_values = np.full((pad_months,), np.NaN)
-        monthly_values = np.append(monthly_values, pad_values)
-        
-    # we should have an ordinal number of years now (ordinally divisible by 12)
-    total_years = int(monthly_values.shape[0] / 12)
-    
-    # reshape from (months) to (years, 12) in order to have one year of months per row
-    return np.reshape(monthly_values, (total_years, 12))
-            
 #-----------------------------------------------------------------------------------------------------------------------
 @jit
 def sum_to_scale(values,
@@ -438,7 +412,7 @@ def transform_fitted_pearson(monthly_values,
     if len(monthly_values.shape) == 1:
         
         # we've been passed a 1-D array with shape (months), reshape it to 2-D with shape (years, 12)
-        monthly_values = _reshape_to_years_months(monthly_values)
+        monthly_values = utils.reshape_to_years_months(monthly_values)
     
     elif (len(monthly_values.shape) != 2) or monthly_values.shape[1] != 12:
      
@@ -526,7 +500,7 @@ def transform_fitted_gamma(monthly_values):
     if len(monthly_values.shape) == 1:
         
         # we've been passed a 1-D array with shape (months), reshape it to 2-D with shape (years, 12)
-        monthly_values = _reshape_to_years_months(monthly_values)
+        monthly_values = utils.reshape_to_years_months(monthly_values)
     
     elif (len(monthly_values.shape) != 2) or monthly_values.shape[1] != 12:
      
