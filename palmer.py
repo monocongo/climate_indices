@@ -1,3 +1,4 @@
+import calendar
 from collections import deque
 import logging
 import math
@@ -298,6 +299,246 @@ def thornthwaite(T_F,
 #     PET = [PET; PET_in];
 #     #}     
 
+#-----------------------------------------------------------------------------------------------------------------------
+def wb(T,
+       P,
+       AWC,
+       TLA,
+       B,
+       initial_year,
+       calibration_start_year,
+       calibration_end_year):
+    '''
+    A translation of the Fortran code for water balance accounting within NCEI's pdinew.f, 
+    from eddy:/raid3/climdiv/programs/pdinew.f
+    
+    :param T: either 1-D or 2-D numpy.ndarray of monthly average temperature values, in degrees Fahrenheit 
+    :param P: either 1-D or 2-D numpy.ndarray of monthly total precipitation values, in inches 
+    :param AWC: bottom/under layer available water capacity, in inches (top/upper layer assumed to be 1 inch)
+    :param TLA: tangent of the latitude, read from the soil constants file (pdinew.soilconst) on line 335 in pdinew.f:
+     15   read(14,1002,END=16)IST,IDV,wcbot,b,h,tla
+     [the above reads the soil constants file, with each line as state, division, bottom layer AWC, B?, H?, and tangent of the latitude] 
+    :param B: ?, read from the soil constants file (pdinew.soilconst) on line 335 in pdinew.f:
+     15   read(14,1002,END=16)IST,IDV,wcbot,b,h,tla
+     [the above reads the soil constants file, with each line as state, division, bottom layer AWC, B?, H?, and tangent of the latitude] 
+    :param initial_year: the first year of the data arrays (T and P) which are assumed to start at January of the initial year, 
+                          used within to determine leap year 
+    
+    '''
+    
+    # if the input data is an 1-D array then make sure the have full years, otherwise pad the missing months 
+    # of the final year, and then convert to a 2-D array with shape (years, 12)
+    T = utils.reshape_to_years_months(T)
+    P = utils.reshape_to_years_months(P)
+    
+    WCTOP = 1.0
+    WCBOT = AWC  # in the soil constants file the AWC value is the water capacity for the under/bottom layer
+    SS  = WCTOP
+    SU = WCBOT
+    WCTOT = WCBOT + WCTOP
+
+    # allocate arrays for 12 (calendar) monthly sums
+    TSUM = np.zeros((12,))
+    PSUM = np.zeros((12,))
+    SPSUM = np.zeros((12,))
+    PESUM = np.zeros((12,))
+    PLSUM = np.zeros((12,))
+    PRSUM = np.zeros((12,))
+    RSUM = np.zeros((12,))
+    TLSUM = np.zeros((12,))
+    ETSUM = np.zeros((12,))
+    ROSUM = np.zeros((12,))
+
+    # allocate arrays for monthly (period of record) water balance values, with each element initialized to the missing value (NaN)
+    pdat = np.full((years, 12), np.NaN)
+    spdat = np.full((years, 12), np.NaN)
+    pedat = np.full((years, 12), np.NaN)
+    pldat = np.full((years, 12), np.NaN)
+    prdat = np.full((years, 12), np.NaN)
+    rdat = np.full((years, 12), np.NaN)
+    tldat = np.full((years, 12), np.NaN)
+    etdat = np.full((years, 12), np.NaN)
+    rodat = np.full((years, 12), np.NaN)
+    tdat = np.full((years, 12), np.NaN)
+    sssdat = np.full((years, 12), np.NaN)
+    ssudat = np.full((years, 12), np.NaN)
+    
+    # array of (calendar) monthly phi values used for the PET calculation      
+    PHI = np.array([-0.3865982, -0.2316132, -0.0378180, 0.1715539, 0.3458803, 0.4308320, \
+                    0.3916645, 0.2452467, 0.0535511, -0.15583436,- 0.3340551, -0.4310691])
+    
+    #-----------------------------------------------------------------------
+    #     HERE START THE WATER BALANCE CALCULATIONS
+    #-----------------------------------------------------------------------
+    for year_index in range(years):
+        
+        year = initial_year + year_index
+              
+        for month_index in range(12):
+            
+            M = month_index
+            
+            SP = SS + SU
+            PR = WCBOT + WCTOP - SP
+            
+            #-----------------------------------------------------------------------
+            #     1 - CALCULATE PE (POTENTIAL EVAPOTRANSPIRATION)   
+            #-----------------------------------------------------------------------
+
+            # make sure the temperature is above freezing, otherwise evapotranspiration doesn't occur
+            if (T[year_index, month_index] <= 32.0):
+               
+                PE = 0.0
+            
+            else:  
+                DUM = PHI[M] * TLA 
+                DK = math.atan(math.sqrt(1.0 - DUM*DUM)/DUM)   
+                if (DK < 0.0):
+                    DK = 3.141593 + DK  
+                DK = (DK + .0157) / 1.57  
+                
+                # compute one PE value for temperatures above 80F, another for temperatures below 80F
+                if (T[year_index, month_index] >= 80.0):
+
+                    # compute an average daily value of PE for this calendar month                    
+                    PE = (math.sin(T[year_index, month_index] / 57.3 - 0.166) - 0.76) * DK
+                
+                else:  
+                
+                    # compute an average daily value of PE for this calendar month                    
+                    DUM = math.log(T[year_index, month_index] - 32.0)
+                    PE = (math.exp(-3.863233 + (B * 1.715598) - (B * math.log(h)) + (B * DUM))) * DK 
+        
+            #-----------------------------------------------------------------------
+            #     CONVERT DAILY TO MONTHLY  
+            #-----------------------------------------------------------------------
+            days_in_month = calendar.monthrange(year, month_index + 1)[1]
+            PE = PE * days_in_month
+#             if M == 2 and calendar.isleap(year):   
+#                 PE = PE * 29.0 
+#             else:  
+#                 PE = PE * DAYS[M] 
+        
+            #-----------------------------------------------------------------------
+            #     2 - PL  POTENTIAL LOSS
+            #-----------------------------------------------------------------------
+            if SS >= PE:
+                PL  = PE  
+            else:  
+                PL   = ((PE - SS) * SU) / (WCBOT + WCTOP) + SS   
+                PL   = min(PL, SP)
+        
+            #-----------------------------------------------------------------------
+            #     3 - CALCULATE RECHARGE, RUNOFF, RESIDUAL MOISTURE, LOSS TO BOTH   
+            #         SURFACE AND UNDER LAYERS, DEPENDING ON STARTING MOISTURE  
+            #         CONTENT AND VALUES OF PRECIPITATION AND EVAPORATION.  
+            #-----------------------------------------------------------------------
+            if (P >= PE): 
+                #     ----------------- PRECIP EXCEEDS POTENTIAL EVAPORATION
+                ET = PE   
+                TL = 0.0  
+                if (P - PE) > (WCTOP - SS):   
+                    #         ------------------------------ EXCESS PRECIP RECHARGES
+                    #                                        UNDER LAYER AS WELL AS UPPER   
+                    RS = WCTOP - SS  
+                    SSS = WCTOP  
+                    if ((P - PE -RS) < (WCBOT - SU)):
+                        #             ---------------------------------- BOTH LAYERS CAN TAKE   
+                        #                                                THE ENTIRE EXCESS  
+                        RU = P - PE - RS  
+                        RO = 0.0  
+                    else:  
+                        #             ---------------------------------- SOME RUNOFF OCCURS 
+                        RU = WCBOT - SU   
+                        RO = P - PE - RS - RU 
+        
+                    SSU = SU + RU 
+                    R   = RS + RU
+                    
+                else:  
+                    #         ------------------------------ ONLY TOP LAYER RECHARGED   
+                    R = P - PE  
+                    SSS = SS + P - PE 
+                    SSU = SU  
+                    RO = 0.0 
+        
+            else:
+                #     ----------------- EVAPORATION EXCEEDS PRECIPITATION   
+                R = 0.0  
+                if SS >= (PE - P):  
+                    #         ----------------------- EVAP FROM SURFACE LAYER ONLY  
+                    SL = PE - P  
+                    SSS = SS - SL 
+                    UL = 0.0 
+                    SSU = SU  
+                else:
+                    #         ----------------------- EVAP FROM BOTH LAYERS 
+                    SL  = SS  
+                    SSS = 0.0 
+                    UL = (PE - P - SL) * SU / (WCTOT)  
+                    UL = min(UL, SU)
+                    SSU = SU - UL
+        
+                TL = SL + UL
+                RO = 0.0 
+                ET = P  + SL + UL
+        
+        #     --------------------------------------------------------------
+        #     FOR CALIBRATION YEARS, SUM VALUES NEEDED TO CALCULATE THE 
+        #     NORMAL CLIMATE COEFFICIENTS (ALPHA, BETA, ETC.)   
+        #     --------------------------------------------------------------
+        if(year >= calibration_start_year and year <= calibration_end_year):
+            
+            TSUM[M] = TSUM[M] + T   
+            PSUM[M] = PSUM[M] + P   
+            SPSUM[M] = SPSUM[M] + SP  
+            PESUM[M] = PESUM[M] + PE  
+            PLSUM[M] = PLSUM[M] + PL  
+            PRSUM[M] = PRSUM[M] + PR  
+            RSUM[M] = RSUM[M] + R   
+            TLSUM[M] = TLSUM[M] + TL  
+            ETSUM[M] = ETSUM[M] + ET  
+            ROSUM[M] = ROSUM[M] + RO  
+
+        pdat[year_index, month_index] = P
+        spdat[year_index, month_index] = SP
+        pedat[year_index, month_index] = PE
+        pldat[year_index, month_index] = PL
+        prdat[year_index, month_index] = PR
+        rdat[year_index, month_index] = R
+        tldat[year_index, month_index] = TL
+        etdat[year_index, month_index] = ET
+        rodat[year_index, month_index] = RO
+        tdat[year_index, month_index] = T
+        sssdat[year_index, month_index] = SSS
+        ssudat[year_index, month_index] = SSU
+      
+        SS = SSS
+        SU = SSU
+
+    return_dict = { 'TSUM': TSUM,
+                    'PSUM': PSUM,
+                    'SPSUM': SPSUM,
+                    'PESUM': PESUM,
+                    'PLSUM': PLSUM,
+                    'PRSUM': PRSUM,
+                    'RSUM': RSUM,
+                    'TLSUM': TLSUM,
+                    'ETSUM': ETSUM,
+                    'ROSUM': ROSUM,
+                    'pdat': pdat,
+                    'spdat': spdat,
+                    'pedat': pedat,
+                    'pldat': pldat,
+                    'prdat': prdat,
+                    'rdat': rdat,
+                    'tldat': tldat,
+                    'etdat': etdat,
+                    'rodat': rodat,
+                    'tdat': tdat,
+                    'sssdat': sssdat,
+                    'ssudat': ssudat }
+    
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def water_balance(AWC,
