@@ -418,25 +418,26 @@ def percentage_of_normal(monthly_values,
     return percentages_of_normal
     
 #-------------------------------------------------------------------------------------------------------------------------------------------
-def pet(temp_monthly_values,
+def pet(temperature_monthly_celsius,
         latitude_degrees,
         data_start_year):
 
     '''
     This function computes potential evapotranspiration (PET) using Thornthwaite's equation.
     
-    :param temp_monthly_values: an array of monthly average temperature values, in degrees Celsius
-    :param latitude_degrees: the latitude of the location, in degrees north
+    :param temperature_monthly_celsius: an array of monthly average temperature values, in degrees Celsius
+    :param latitude_degrees: the latitude of the location, in degrees north, must be within range [-90.0 ... 90.0] (inclusive), otherwise 
+                             a ValueError is raised
     :param data_start_year: the initial year of the input dataset
     :return: an array of PET values, of the same size and shape as the input temperature values array, in millimeters/month
     :rtype: 1-D numpy.ndarray of floats
     '''
-    if not np.all(np.isnan(temp_monthly_values)):
+    if not np.all(np.isnan(temperature_monthly_celsius)):
         
-        if not np.isnan(latitude_degrees) and latitude_degrees < 90.0 and latitude_degrees > -90.0:
+        if not np.isnan(latitude_degrees) and (latitude_degrees < 90.0) and (latitude_degrees > -90.0):
         
             # compute and return the PET values using Thornthwaite's equation
-            return thornthwaite.potential_evapotranspiration(temp_monthly_values, latitude_degrees, data_start_year)
+            return thornthwaite.potential_evapotranspiration(temperature_monthly_celsius, latitude_degrees, data_start_year)
         
         else:
             message = 'Invalid latitude value: {0} (must be in degrees north, between -90.0 and 90.0 inclusive)'.format(latitude_degrees)
@@ -445,6 +446,6 @@ def pet(temp_monthly_values,
         
     else:
         
-        # we started with all NaNs, so just return the same
-        return temp_monthly_values
+        # we started with all NaNs for the temperature, so just return the same
+        return temperature_monthly_celsius
         
