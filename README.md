@@ -47,20 +47,19 @@ The environment created by the above command can be activated using the followin
 
 For users who'd prefer to not utilize the above approach using the provided `environment.yml` file, the required module dependencies can instead be installed into an Anaconda environment piecemeal via multiple `conda install` commands:
 
-`$ conda install scipy`
-
+`$ conda create --name <env_name> python=3`
+`$ source activate <env_name>`
 `$ conda install numba`
-
+`$ conda install scipy`
 `$ conda install netCDF4`
+`$ conda install hdf4=4.2.12` (this ***may*** be required in order to get around a broken HDF dependency [issue](https://github.com/ContinuumIO/anaconda-issues/issues/1360) with the netCDF4 module)
 
-`$ conda install hdf4=4.2.12` (this is required in order to get around a broken HDF dependency [issue](https://github.com/ContinuumIO/anaconda-issues/issues/1360) with the netCDF4 module)
+## Example indices processing scripts
 
-## Example indicator processing scripts
-
-There are example climate indicator processing scripts provided which compute the full suite of indicators for various input dataset types. These process input files in the NetCDF format, and produce output NetCDF files in a corresponding format.
+There are example climate indices processing scripts provided which compute the full suite of indices for various input dataset types. These process input files in the NetCDF format, and produce output NetCDF files in a corresponding format.
 
 #### nClimGrid 
-The script `process_nclimgrid.py` is used to compute climate indicators from [nClimGrid](https://www.ngdc.noaa.gov/docucomp/page?xml=NOAA/NESDIS/NCDC/Geoportal/iso/xml/C00332.xml&view=getDataView&header=none) input datasets. Usage of this script requires specifying the input file names and corresponding variable names for prcipitation, temperature, and soil constant datasets, as well as the month scales over which the scaled indicators (SPI, SPEI, and PAP) are to be computed, plus the base output file name and the initial and final years of the calibration period. 
+The script `process_nclimgrid.py` is used to compute climate indices from [nClimGrid](https://www.ngdc.noaa.gov/docucomp/page?xml=NOAA/NESDIS/NCDC/Geoportal/iso/xml/C00332.xml&view=getDataView&header=none) input datasets. Usage of this script requires specifying the input file names and corresponding variable names for prcipitation, temperature, and soil constant datasets, as well as the month scales over which the scaled indices (SPI, SPEI, and PAP) are to be computed, plus the base output file name and the initial and final years of the calibration period. 
 
 This script has the following required command line arguments:
 
@@ -72,7 +71,7 @@ This script has the following required command line arguments:
 | temp_var_name <name> | name of the temperature variable within the input nClimGrid temperature dataset NetCDF |
 | awc_file <file> | input NetCDF file containing a soil constant (available water capacity of the soil) dataset NetCDF, should correspond dimensionally with the input nClimGrid temperature and precipitation datasets |
 | awc_var_name <name> | name of the soil constant (available water capacity of the soil) variable within the input soil constant dataset NetCDF |
-| output_file_base <path> | base file name for all output files, each indicator computed will have an output file whose name will begin with this base plus the indicator's abbreviation plus a month scale (if applicable), plus ".nc" as the extension (i.e. for SPI/Gamma at 3-month scale the resulting output file will be named <output_file_base>_spi_gamma_03.nc) |
+| output_file_base <path> | base file name for all output files, each computed index will have an output file whose name will begin with this base plus the index's abbreviation plus a month scale (if applicable), plus ".nc" as the extension (i.e. for SPI/Gamma at 3-month scale the resulting output file will be named <output_file_base>_spi_gamma_03.nc) |
 | month_scales <space separated list of ints> | month scales over which the PAP, SPI, and SPEI values are to be computed, valid range is 1-72 months|
 | calibration_start_year <year> | initial year of calibration period |
 | calibration_end_year <year> | final year of calibration period |
@@ -94,7 +93,7 @@ This script has the following required command line arguments:
       --destination_dir /indices`
 
 #### nClimDiv 
-The script `process_nclimdiv.py` is used to compute climate indicators from [nClimDiv](https://www.ncdc.noaa.gov/monitoring-references/maps/us-climate-divisions.php) input datasets. Usage of this script requires specifying the input file name and corresponding variable names for precipitation, temperature, and soil constant datasets, as well as the month scales over which the scaled indicators (SPI, SPEI, and PAP) are to be computed, plus the base output file name and the initial and final years of the calibration period. 
+The script `process_nclimdiv.py` is used to compute climate indices from [nClimDiv](https://www.ncdc.noaa.gov/monitoring-references/maps/us-climate-divisions.php) input datasets. Usage of this script requires specifying the input file name and corresponding variable names for precipitation, temperature, and soil constant datasets, as well as the month scales over which the scaled indices (SPI, SPEI, and PAP) are to be computed, plus the base output file name and the initial and final years of the calibration period. 
 
 This script has the following required command line arguments:
 
@@ -104,7 +103,7 @@ This script has the following required command line arguments:
 | precip_var_name <name> | name of the precipitation variable within the input nClimGrid dataset NetCDF |
 | temp_var_name <name> | name of the temperature variable within the input dataset NetCDF |
 | awc_var_name <name> | name of the soil constant (available water capacity of the soil) variable within the input dataset NetCDF |
-| output_file <path> | output file, each indicator computed will be included as a variable within this output file |
+| output_file <path> | output file, each computed index will be included as a variable within this output file |
 | month_scales <space separated list of ints> | month scales over which the PAP, SPI, and SPEI values are to be computed, valid range is 1-72 months|
 | calibration_start_year <year> | initial year of calibration period |
 | calibration_end_year <year> | final year of calibration period |
@@ -120,10 +119,6 @@ This script has the following required command line arguments:
       --calibration_start_year 1931 
       --calibration_end_year 1990 
       --output_file nclimdiv_20170404_indices.nc`
-
-## Tests
-
-`python -m unittest test_*`
 
 ## Copyright and licensing
 This project is in the public domain within the United States, and we waive worldwide copyright and related rights 
