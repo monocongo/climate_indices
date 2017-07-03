@@ -1,3 +1,4 @@
+import calendar
 from collections import deque
 import logging
 import math
@@ -299,6 +300,200 @@ def thornthwaite(T_F,
 #     PET = [PET; PET_in];
 #     #}     
 
+#-----------------------------------------------------------------------------------------------------------------------
+@numba.jit
+def new_water_balance(P,
+                      T,
+                      AWC,
+                      TLA):
+
+    '''
+    Computes a water balance accounting for monthly time series.
+    
+    :param T: monthly average temperature values, starting in January of the initial year 
+    :param P: monthly total precipitation values, starting in January of the initial year 
+    :param AWC: available water capacity, below (not including) the top inch
+    :param TLA: negative tangent of the latitude
+    '''
+    
+    # find the number of years from the input array, assume shape (months)
+    
+    # reshape the precipitation array from 1-D (assumed to be total months) to (years, 12) with the second  
+    # dimension being calendar months, and the final/missing monthly values of the final year padded with NaNs
+    P = utils.reshape_to_years_months(P)
+    total_years = P.shape()[0]
+    
+    WCTOP = 1.0
+    SS  = WCTOP
+    SU = AWC
+    WCTOT = AWC + WCTOP
+
+    PHI = np.array([-0.3865982, -0.2316132, -0.0378180, 0.1715539, 0.3458803, 0.4308320, \
+                     0.3916645, 0.2452467, 0.0535511, -0.15583436, -0.3340551, -0.4310691])
+    
+#     # initialize the (calendar) monthly sum arrays with zeros
+#     TSUM = np.zeros((12,))
+#     PSUM = np.zeros((12,))
+#     SPSUM = np.zeros((12,))
+#     PESUM = np.zeros((12,))
+#     PLSUM = np.zeros((12,))
+#     PRSUM = np.zeros((12,))
+#     RSUM = np.zeros((12,))
+#     TLSUM = np.zeros((12,))
+#     ETSUM = np.zeros((12,))
+#     ROSUM = np.zeros((12,))
+
+    # initialize the data arrays with NaNs    
+    pdsi = np.full((), np.NaN)
+    phdi = np.full((), np.NaN)
+    z = np.full((), np.NaN)
+    wplm = np.full((), np.NaN)
+    cp = np.full((), np.NaN)
+    pdat = np.full((), np.NaN)
+    spdat = np.full((), np.NaN)
+    pedat = np.full((), np.NaN)
+    pldat = np.full((), np.NaN)
+    prdat = np.full((), np.NaN)
+    rdat = np.full((), np.NaN)
+    tldat = np.full((), np.NaN)
+    etdat = np.full((), np.NaN)
+    rodat = np.full((), np.NaN)
+    tdat = np.full((), np.NaN)
+    sssdat = np.full((), np.NaN)
+    ssudat = np.full((), np.NaN)
+
+    #       loop on years and months
+    for year_index, year in enumerate(range(begin_year, end_year + 1)):
+    
+        for month_index in range(12):
+    
+            #-----------------------------------------------------------------------
+            #     HERE START THE WATER BALANCE CALCULATIONS
+            #-----------------------------------------------------------------------
+            SP = SS + SU
+            PR = AWC + WCTOP - SP
+
+            #-----------------------------------------------------------------------
+            #     1 - CALCULATE PE (POTENTIAL EVAPOTRANSPIRATION)   
+            #-----------------------------------------------------------------------
+            if (T <= 32.0):
+                PE   = 0.0
+            else:  
+                DUM = PHI[month_index] * TLA 
+                DK = math.atan(math.sqrt(1.0 - (DUM * DUM)) / DUM)   
+                if DK < 0.0:
+                    DK = 3.141593 + DK  
+                DK   = (DK + 0.0157) / 1.57  
+                if T >= 80.0:
+                    PE = (math.sin((T / 57.3) - 0.166) - 0.76) * DK
+                else:  
+                    DUM = math.log(t - 32.0)
+                    PE = EXP(-3.863233 + (B * 1.715598) - (B * log(h)) + (B * DUM)) * DK 
+        
+            #-----------------------------------------------------------------------
+            #     CONVERT DAILY TO MONTHLY  
+            #-----------------------------------------------------------------------
+            PE = PE * calendar.monthrange(year, month_index + 1)[1]
+
+            #-----------------------------------------------------------------------
+            #     2 - PL  POTENTIAL LOSS
+            #-----------------------------------------------------------------------
+            if SS >= PE:
+                PL  = PE  
+            else:  
+                PL = ((PE - SS) * SU) / (AWC + WCTOP) + SS   
+                PL = min(PL, SP)   
+        
+            #-----------------------------------------------------------------------
+            #     3 - CALCULATE RECHARGE, RUNOFF, RESIDUAL MOISTURE, LOSS TO BOTH   
+            #         SURFACE AND UNDER LAYERS, DEPENDING ON STARTING MOISTURE  
+            #         CONTENT AND VALUES OF PRECIPITATION AND EVAPORATION.  
+            #-----------------------------------------------------------------------
+            if (P >= PE):
+                #     ----------------- PRECIP EXCEEDS POTENTIAL EVAPORATION
+                ET = PE   
+                TL = 0.0  
+                if (P - PE) > (WCTOP - SS):
+                    #         ------------------------------ EXCESS PRECIP RECHARGES
+                    #                                        UNDER LAYER AS WELL AS UPPER   
+                    RS = WCTOP - SS  
+                    SSS = WCTOP  
+                    if (P - PE -RS) < (AWC - SU):
+                    #             ---------------------------------- BOTH LAYERS CAN TAKE   
+                    #                                                THE ENTIRE EXCESS  
+                        RU = P - PE - RS  
+                        RO = 0.0  
+                    else:  
+                        #             ---------------------------------- SOME RUNOFF OCCURS 
+                        RU = AWC - SU   
+                        RO = P - PE - RS - RU 
+
+                    SSU = SU + RU 
+                    R   = RS + RU 
+                else:  
+                    #         ------------------------------ ONLY TOP LAYER RECHARGED   
+                    R  = P - PE  
+                    SSS = SS + P - PE 
+                    SSU = SU  
+                    RO  = 0.0 
+
+            else:
+                #     ----------------- EVAPORATION EXCEEDS PRECIPITATION   
+                R  = 0.0  
+                if SS >= (PE - P):
+                #         ----------------------- EVAP FROM SURFACE LAYER ONLY  
+                    SL  = PE - P  
+                    SSS = SS - SL 
+                    UL  = 0.0 
+                    SSU = SU  
+                else:
+                    #         ----------------------- EVAP FROM BOTH LAYERS 
+                    SL  = SS  
+                    SSS = 0.0 
+                    UL  = (PE - P - SL) * SU / (WCTOT)  
+                    UL  = min(UL, SU)
+                    SSU = SU - UL 
+
+                TL  = SL + UL 
+                RO  = 0.0 
+                ET  = P  + SL + UL
+
+#             #     --------------------------------------------------------------
+#             #     FOR CALIBRATION YEARS, SUM VALUES NEEDED TO CALCULATE THE 
+#             #     NORMAL CLIMATE COEFFICIENTS (ALPHA, BETA, ETC.)   
+#             #     --------------------------------------------------------------
+#             if (year >= calibration_start_year and year <= calibration_end_year):
+#                 TSUM[month_index] = TSUM[month_index] + T   
+#                 PSUM[month_index] = PSUM[month_index] + P   
+#                 SPSUM[month_index] = SPSUM[month_index] + SP  
+#                 PESUM[month_index] = PESUM[month_index] + PE  
+#                 PLSUM[month_index] = PLSUM[month_index] + PL  
+#                 PRSUM[month_index] = PRSUM[month_index] + PR  
+#                 RSUM[month_index] = RSUM[month_index] + R   
+#                 TLSUM[month_index] = TLSUM[month_index] + TL  
+#                 ETSUM[month_index] = ETSUM[month_index] + ET  
+#                 ROSUM[month_index] = ROSUM[month_index] + RO  
+                
+            # set the climatology and water balance data array values for this year/month time step
+            pdat[year_index, month_index] = P
+            spdat[year_index, month_index] = SP
+            pedat[year_index, month_index] = PE
+            pldat[year_index, month_index] = PL
+            prdat[year_index, month_index] = PR
+            rdat[year_index, month_index] = R
+            tldat[year_index, month_index] = TL
+            etdat[year_index, month_index] = ET
+            rodat[year_index, month_index] = RO
+            tdat[year_index, month_index] = T
+            sssdat[year_index, month_index] = SSS
+            ssudat[year_index, month_index] = SSU
+      
+            # reset the upper and lower soil moisture values
+            SS = SSS
+            SU = SSU
+
+    return pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, tdat, sssdat, ssudat
+    
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def water_balance(AWC,
