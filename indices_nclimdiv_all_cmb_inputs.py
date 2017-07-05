@@ -519,7 +519,7 @@ if __name__ == '__main__':
 
         # FIXME hard-coded for development/debugging only -- REMOVE!
         args.input_file = 'C:/home/climdivs/20170505/nclimdiv_cmbmonthly_20170505.nc'
-        args.output_file = 'C:/home/climdivs/20170505/nclimdiv_nidis_petfromcmb_20170505_debug.nc'
+        args.output_file = 'C:/home/climdivs/20170505/nclimdiv_nidis_petfromcmb_20170505_debug_01.nc'
         args.temp_var_name = 'tavg'
         args.precip_var_name = 'prcp'
         args.pet_var_name = 'pe60'  # PET variable name used by CMB
