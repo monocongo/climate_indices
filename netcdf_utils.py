@@ -253,10 +253,22 @@ def create_variable_grid(netcdf,
     return netcdf
 
 #-----------------------------------------------------------------------------------------------------------------------
-def add_variable_climdivs_divstime(file_path,
-                                   variable_name,
-                                   variable_attributes,
-                                   divisions_to_arrays):
+def add_variable_climdivs(file_path,
+                          variable_name,
+                          variable_attributes,
+                          divisions_to_arrays):
+    '''
+    Adds a two-dimensional (division, time) variable to an existing climate divisions NetCDF. The variable is created 
+    and populated with the provided data values. 
+    
+    :param file_path: existing NetCDF to which the variable will be added. This NetCDF is assumed to contain 
+                      the dimensions "division" and "time" as well as corresponding coordinate variables.
+    :param variable_name: name of the new variable to be added, a variable with this name should not already exist
+    :param variable_attributes: the attributes that should be assigned to the new variable
+    :param divisions_to_arrays: a dictionary with division IDs as keys and corresponding 1-D Numpy arrays as values.
+                               The number of elements within the arrays should match with the number of time steps 
+                               of the existing NetCDF being added to (as specified by the time coordinate variable).
+    '''
     
     # get the NetCDF datatype applicable to the data array we'll store in the variable
     random_array = random.choice(list(divisions_to_arrays.values()))
@@ -265,29 +277,95 @@ def add_variable_climdivs_divstime(file_path,
     # open the output file in append mode for writing, set its dimensions and coordinate variables
     with netCDF4.Dataset(file_path, 'a') as dataset:
 
-        # create the variable
+        # make sure that the variable name isn't already in use
+        if variable_name in dataset.variables.keys():
+            
+            message = 'Variable name \'{0}\' is already being used within the NetCDF file \'{1}\''.format(variable_name, file_path)
+            logger.error(message)
+            raise ValueError(message)
+            
+        # create the variable, set the attributes
         variable = dataset.createVariable(variable_name, 
                                           netcdf_data_type, 
                                           ('division', 'time',), 
                                           fill_value=np.NaN)
-        
-        # set the variable's attributes
         variable.setncatts(variable_attributes)
     
         # get the total number of time steps
         times_size = dataset.variables['time'][:].size
         
-        # loop over each existing division, add the corresponding data array, if one was provided
-        input_divisions = list(divisions_to_arrays.keys())
+        # loop over each existing division and add the corresponding data array, if one was provided
         for division_index, division_id in enumerate(list(dataset.variables['division'][:])):
             
-            if division_id in input_divisions:
-                
+            # make sure we have a data array of monthly values for this division
+            if division_id in divisions_to_arrays.keys():
+
+                # make sure the array has the expected number of time steps 
                 data_array = divisions_to_arrays[division_id]
                 if data_array.size == times_size:
                 
-                    # assign the array into the variable at the current division's slot in the variable
-                    variable[division_index, :][:] = data_array
+                    # assign the array into the current division's slot in the variable
+                    variable[division_index, :] = np.reshape(data_array, (1, times_size))
+
+                else:
+
+                    logger.info('Unexpected size of data array for division ID {0} -- '.format(division_id) + 
+                                'expected {0} time steps but the array contains {1}'.format(times_size, data_array.size))
+            
+#-----------------------------------------------------------------------------------------------------------------------
+def add_variable_climdivs_divstime(file_path,
+                                   variable_name,
+                                   variable_attributes,
+                                   divisions_to_arrays):
+    '''
+    Adds a two-dimensional (division, time) variable to an existing climate divisions NetCDF. The variable is created 
+    and populated with the provided data values. 
+    
+    :param file_path: existing NetCDF to which the variable will be added. This NetCDF is assumed to contain 
+                      the dimensions "division" and "time" as well as corresponding coordinate variables.
+    :param variable_name: name of the new variable to be added, a variable with this name should not already exist
+    :param variable_attributes: the attributes that should be assigned to the new variable
+    :param divisions_to_arrays: a dictionary with division IDs as keys and corresponding 1-D Numpy arrays as values.
+                               The number of elements within the arrays should match with the number of time steps 
+                               of the existing NetCDF being added to (as specified by the time coordinate variable).
+    '''
+    
+    # get the NetCDF datatype applicable to the data array we'll store in the variable
+    random_array = random.choice(list(divisions_to_arrays.values()))
+    netcdf_data_type = find_netcdf_datatype(random_array[0])
+    
+    # open the output file in append mode for writing, set its dimensions and coordinate variables
+    with netCDF4.Dataset(file_path, 'a') as dataset:
+
+        # make sure that the variable name isn't already in use
+        if variable_name in dataset.variables.keys():
+            
+            message = 'Variable name \'{0}\' is already being used within the NetCDF file \'{1}\''.format(variable_name, file_path)
+            logger.error(message)
+            raise ValueError(message)
+            
+        # create the variable, set the attributes
+        variable = dataset.createVariable(variable_name, 
+                                          netcdf_data_type, 
+                                          ('division', 'time',), 
+                                          fill_value=np.NaN)
+        variable.setncatts(variable_attributes)
+    
+        # get the total number of time steps
+        times_size = dataset.variables['time'][:].size
+        
+        # loop over each existing division and add the corresponding data array, if one was provided
+        for division_index, division_id in enumerate(list(dataset.variables['division'][:])):
+            
+            # make sure we have a data array of monthly values for this division
+            if division_id in divisions_to_arrays.keys():
+
+                # make sure the array has the expected number of time steps 
+                data_array = divisions_to_arrays[division_id]
+                if data_array.size == times_size:
+                
+                    # assign the array into the current division's slot in the variable
+                    variable[division_index, :] = np.reshape(data_array, (1, times_size))
 
                 else:
 
@@ -300,6 +378,17 @@ def add_variable_climdivs_divs(file_path,
                                variable_attributes,
                                divisions_to_values):
     
+    '''
+    Adds a one-dimensional (division) variable to an existing climate divisions NetCDF. The variable is created 
+    and populated with the provided data values. 
+    
+    :param file_path: existing NetCDF to which the variable will be added. This NetCDF is assumed to contain 
+                      the dimensions "division" and "time" as well as corresponding coordinate variables.
+    :param variable_name: name of the new variable to be added, a variable with this name should not already exist
+    :param variable_attributes: the attributes that should be assigned to the new variable
+    :param divisions_to_values: a dictionary with division IDs as keys and corresponding scalars as values.
+    '''
+
     # get the NetCDF datatype applicable to the data array we'll store in the variable
     random_value = random.choice(list(divisions_to_values.values()))
     netcdf_data_type = find_netcdf_datatype(random_value)
@@ -307,22 +396,28 @@ def add_variable_climdivs_divs(file_path,
     # open the output file in append mode for writing, set its dimensions and coordinate variables
     with netCDF4.Dataset(file_path, 'a') as dataset:
 
-        # create the variable
+        # make sure that the variable name isn't already in use
+        if variable_name in dataset.variables.keys():
+            
+            message = 'Variable name \'{0}\' is already being used within the NetCDF file \'{1}\''.format(variable_name, file_path)
+            logger.error(message)
+            raise ValueError(message)
+            
+        # create the variable, set the attributes
         variable = dataset.createVariable(variable_name, 
                                           netcdf_data_type, 
                                           ('division',), 
                                           fill_value=np.NaN)
-        
-        # set the variable's attributes
         variable.setncatts(variable_attributes)
     
         # loop over each existing division, add the corresponding data array, if one was provided
-        input_divisions = list(divisions_to_values.keys())
+#         input_divisions = list(divisions_to_values.keys())
         for division_index, division_id in enumerate(list(dataset.variables['division'][:])):
             
-            if division_id in input_divisions:
+            # make sure we have a value for this division
+            if division_id in divisions_to_values.keys():
                 
-                # assign the array into the variable at the current division's slot in the variable
+                # assign the value into the current division's slot in the variable
                 variable[division_index] = divisions_to_values[division_id]
             
 #-----------------------------------------------------------------------------------------------------------------------
