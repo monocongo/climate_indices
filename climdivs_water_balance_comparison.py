@@ -25,13 +25,6 @@ import warnings
 warnings.simplefilter('ignore', Warning)
 
 #-----------------------------------------------------------------------------------------------------------------------
-def f2c(t):
-    '''
-    Converts a temperature value from Fahrenheit to Celsius
-    '''
-    return (t-32)*5.0/9
-
-#-----------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
 
     '''
@@ -69,7 +62,7 @@ if __name__ == '__main__':
                 H = input_dataset.variables['H'][division_index]
 
                 neg_tan_lat = -1 * math.tan(latitude)
-                pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, tdat, sssdat, ssudat = palmer.new_water_balance(temp_timeseries, precip_timeseries, awc, neg_tan_lat)
+                pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, tdat, sssdat, ssudat = palmer.new_water_balance(temp_timeseries, precip_timeseries, awc, neg_tan_lat, B, H)
                     
                 pdinew_spdat = input_dataset.variables['spdat'][division_index, :]
                 pdinew_pedat = input_dataset.variables['pedat'][division_index, :]
