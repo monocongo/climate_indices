@@ -302,8 +302,8 @@ def thornthwaite(T_F,
 
 #-----------------------------------------------------------------------------------------------------------------------
 #@numba.jit
-def new_water_balance(P,
-                      T,
+def new_water_balance(T,
+                      P,
                       AWC,
                       TLA,
                       B, 
@@ -380,7 +380,7 @@ def new_water_balance(P,
             #-----------------------------------------------------------------------
             #     1 - CALCULATE PE (POTENTIAL EVAPOTRANSPIRATION)   
             #-----------------------------------------------------------------------
-            if (temperature <= 32.0):
+            if temperature <= 32.0:
                 PE   = 0.0
             else:  
                 DUM = PHI[month_index] * TLA 
@@ -413,7 +413,7 @@ def new_water_balance(P,
             #         SURFACE AND UNDER LAYERS, DEPENDING ON STARTING MOISTURE  
             #         CONTENT AND VALUES OF PRECIPITATION AND EVAPORATION.  
             #-----------------------------------------------------------------------
-            if (precipitation >= PE):
+            if precipitation >= PE:
                 #     ----------------- PRECIP EXCEEDS POTENTIAL EVAPORATION
                 ET = PE   
                 TL = 0.0  
@@ -422,7 +422,7 @@ def new_water_balance(P,
                     #                                        UNDER LAYER AS WELL AS UPPER   
                     RS = WCTOP - SS  
                     SSS = WCTOP  
-                    if (precipitation - PE -RS) < (AWC - SU):
+                    if (precipitation - PE - RS) < (AWC - SU):
                     #             ---------------------------------- BOTH LAYERS CAN TAKE   
                     #                                                THE ENTIRE EXCESS  
                         RU = precipitation - PE - RS  
