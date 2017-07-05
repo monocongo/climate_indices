@@ -301,11 +301,14 @@ def thornthwaite(T_F,
 #     #}     
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit
+#@numba.jit
 def new_water_balance(P,
                       T,
                       AWC,
-                      TLA):
+                      TLA,
+                      B, 
+                      H,
+                      begin_year=1895):
 
     '''
     Computes a water balance accounting for monthly time series.
@@ -320,8 +323,9 @@ def new_water_balance(P,
     
     # reshape the precipitation array from 1-D (assumed to be total months) to (years, 12) with the second  
     # dimension being calendar months, and the final/missing monthly values of the final year padded with NaNs
+    T = utils.reshape_to_years_months(T)
     P = utils.reshape_to_years_months(P)
-    total_years = P.shape()[0]
+    total_years = P.shape[0]
     
     WCTOP = 1.0
     SS  = WCTOP
@@ -344,29 +348,29 @@ def new_water_balance(P,
 #     ROSUM = np.zeros((12,))
 
     # initialize the data arrays with NaNs    
-    pdsi = np.full((), np.NaN)
-    phdi = np.full((), np.NaN)
-    z = np.full((), np.NaN)
-    wplm = np.full((), np.NaN)
-    cp = np.full((), np.NaN)
-    pdat = np.full((), np.NaN)
-    spdat = np.full((), np.NaN)
-    pedat = np.full((), np.NaN)
-    pldat = np.full((), np.NaN)
-    prdat = np.full((), np.NaN)
-    rdat = np.full((), np.NaN)
-    tldat = np.full((), np.NaN)
-    etdat = np.full((), np.NaN)
-    rodat = np.full((), np.NaN)
-    tdat = np.full((), np.NaN)
-    sssdat = np.full((), np.NaN)
-    ssudat = np.full((), np.NaN)
+    pdat = np.full((total_years, 12), np.NaN)
+    spdat = np.full((total_years, 12), np.NaN)
+    pedat = np.full((total_years, 12), np.NaN)
+    pldat = np.full((total_years, 12), np.NaN)
+    prdat = np.full((total_years, 12), np.NaN)
+    rdat = np.full((total_years, 12), np.NaN)
+    tldat = np.full((total_years, 12), np.NaN)
+    etdat = np.full((total_years, 12), np.NaN)
+    rodat = np.full((total_years, 12), np.NaN)
+    tdat = np.full((total_years, 12), np.NaN)
+    sssdat = np.full((total_years, 12), np.NaN)
+    ssudat = np.full((total_years, 12), np.NaN)
 
     #       loop on years and months
-    for year_index, year in enumerate(range(begin_year, end_year + 1)):
+    end_year = begin_year + total_years
+    years_range = range(begin_year, end_year)
+    for year_index, year in enumerate(years_range):
     
         for month_index in range(12):
     
+            temperature = T[year_index, month_index]
+            precipitation = P[year_index, month_index]
+            
             #-----------------------------------------------------------------------
             #     HERE START THE WATER BALANCE CALCULATIONS
             #-----------------------------------------------------------------------
@@ -376,7 +380,7 @@ def new_water_balance(P,
             #-----------------------------------------------------------------------
             #     1 - CALCULATE PE (POTENTIAL EVAPOTRANSPIRATION)   
             #-----------------------------------------------------------------------
-            if (T <= 32.0):
+            if (temperature <= 32.0):
                 PE   = 0.0
             else:  
                 DUM = PHI[month_index] * TLA 
@@ -384,11 +388,11 @@ def new_water_balance(P,
                 if DK < 0.0:
                     DK = 3.141593 + DK  
                 DK   = (DK + 0.0157) / 1.57  
-                if T >= 80.0:
-                    PE = (math.sin((T / 57.3) - 0.166) - 0.76) * DK
+                if temperature >= 80.0:
+                    PE = (math.sin((temperature / 57.3) - 0.166) - 0.76) * DK
                 else:  
-                    DUM = math.log(t - 32.0)
-                    PE = EXP(-3.863233 + (B * 1.715598) - (B * log(h)) + (B * DUM)) * DK 
+                    DUM = math.log(temperature - 32.0)
+                    PE = math.exp(-3.863233 + (B * 1.715598) - (B * math.log(H)) + (B * DUM)) * DK 
         
             #-----------------------------------------------------------------------
             #     CONVERT DAILY TO MONTHLY  
@@ -409,40 +413,40 @@ def new_water_balance(P,
             #         SURFACE AND UNDER LAYERS, DEPENDING ON STARTING MOISTURE  
             #         CONTENT AND VALUES OF PRECIPITATION AND EVAPORATION.  
             #-----------------------------------------------------------------------
-            if (P >= PE):
+            if (precipitation >= PE):
                 #     ----------------- PRECIP EXCEEDS POTENTIAL EVAPORATION
                 ET = PE   
                 TL = 0.0  
-                if (P - PE) > (WCTOP - SS):
+                if (precipitation - PE) > (WCTOP - SS):
                     #         ------------------------------ EXCESS PRECIP RECHARGES
                     #                                        UNDER LAYER AS WELL AS UPPER   
                     RS = WCTOP - SS  
                     SSS = WCTOP  
-                    if (P - PE -RS) < (AWC - SU):
+                    if (precipitation - PE -RS) < (AWC - SU):
                     #             ---------------------------------- BOTH LAYERS CAN TAKE   
                     #                                                THE ENTIRE EXCESS  
-                        RU = P - PE - RS  
+                        RU = precipitation - PE - RS  
                         RO = 0.0  
                     else:  
                         #             ---------------------------------- SOME RUNOFF OCCURS 
                         RU = AWC - SU   
-                        RO = P - PE - RS - RU 
+                        RO = precipitation - PE - RS - RU 
 
                     SSU = SU + RU 
                     R   = RS + RU 
                 else:  
                     #         ------------------------------ ONLY TOP LAYER RECHARGED   
-                    R  = P - PE  
-                    SSS = SS + P - PE 
+                    R  = precipitation - PE  
+                    SSS = SS + precipitation - PE 
                     SSU = SU  
                     RO  = 0.0 
 
             else:
                 #     ----------------- EVAPORATION EXCEEDS PRECIPITATION   
                 R  = 0.0  
-                if SS >= (PE - P):
+                if SS >= (PE - precipitation):
                 #         ----------------------- EVAP FROM SURFACE LAYER ONLY  
-                    SL  = PE - P  
+                    SL  = PE - precipitation  
                     SSS = SS - SL 
                     UL  = 0.0 
                     SSU = SU  
@@ -450,13 +454,13 @@ def new_water_balance(P,
                     #         ----------------------- EVAP FROM BOTH LAYERS 
                     SL  = SS  
                     SSS = 0.0 
-                    UL  = (PE - P - SL) * SU / (WCTOT)  
+                    UL  = (PE - precipitation - SL) * SU / (WCTOT)  
                     UL  = min(UL, SU)
                     SSU = SU - UL 
 
                 TL  = SL + UL 
                 RO  = 0.0 
-                ET  = P  + SL + UL
+                ET  = precipitation  + SL + UL
 
 #             #     --------------------------------------------------------------
 #             #     FOR CALIBRATION YEARS, SUM VALUES NEEDED TO CALCULATE THE 
@@ -475,7 +479,7 @@ def new_water_balance(P,
 #                 ROSUM[month_index] = ROSUM[month_index] + RO  
                 
             # set the climatology and water balance data array values for this year/month time step
-            pdat[year_index, month_index] = P
+            pdat[year_index, month_index] = precipitation
             spdat[year_index, month_index] = SP
             pedat[year_index, month_index] = PE
             pldat[year_index, month_index] = PL
@@ -484,7 +488,7 @@ def new_water_balance(P,
             tldat[year_index, month_index] = TL
             etdat[year_index, month_index] = ET
             rodat[year_index, month_index] = RO
-            tdat[year_index, month_index] = T
+            tdat[year_index, month_index] = temperature
             sssdat[year_index, month_index] = SSS
             ssudat[year_index, month_index] = SSU
       
