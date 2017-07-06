@@ -1,16 +1,10 @@
 import argparse
-from datetime import datetime
-import indices
 import logging
 import math
-import multiprocessing
 import netCDF4
-import netcdf_utils
 import numpy as np
 import palmer
-import os
-import subprocess
-import sys
+import utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global logger which will write to the console as standard error
@@ -54,6 +48,7 @@ if __name__ == '__main__':
             # read the temperature, precipitation, latitude and AWC for each division
             for division_index, division_id in enumerate(list(input_dataset.variables['division'][:])):
                 
+                # get the data for this division
                 precip_timeseries = input_dataset.variables[args.precip_var_name][division_index, :]
                 temp_timeseries = input_dataset.variables[args.temp_var_name][division_index, :]
                 awc = input_dataset.variables[args.awc_var_name][division_index]
@@ -61,21 +56,58 @@ if __name__ == '__main__':
                 B = input_dataset.variables['B'][division_index]
                 H = input_dataset.variables['H'][division_index]
 
-                neg_tan_lat = -1 * math.tan(latitude)
-                pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, tdat, sssdat, ssudat = palmer.new_water_balance(temp_timeseries, precip_timeseries, awc, neg_tan_lat, B, H)
+                # compute water balance values using the function translated from the Fortran pdinew.f
+                neg_tan_lat = -1 * math.tan(math.radians(latitude))
+                pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, tdat, sssdat, ssudat = palmer.water_balance_pdinew(temp_timeseries, precip_timeseries, awc, neg_tan_lat, B, H)
                     
-                pdinew_spdat = input_dataset.variables['spdat'][division_index, :]
-                pdinew_pedat = input_dataset.variables['pedat'][division_index, :]
-                pdinew_pldat = input_dataset.variables['pldat'][division_index, :]
-                pdinew_prdat = input_dataset.variables['prdat'][division_index, :]
-                pdinew_rdat = input_dataset.variables['rdat'][division_index, :]
-                pdinew_tldat = input_dataset.variables['tldat'][division_index, :]
-                pdinew_etdat = input_dataset.variables['etdat'][division_index, :]
-                pdinew_rodat = input_dataset.variables['rodat'][division_index, :]
-                pdinew_tdat = input_dataset.variables['tdat'][division_index, :]
-                pdinew_sssdat = input_dataset.variables['sssdat'][division_index, :]
-                pdinew_ssudat = input_dataset.variables['ssudat'][division_index, :]
+                # compare the values against the operational values produced monthly by pdinew.f
+                spdat_diffs = input_dataset.variables['spdat'][division_index, :] - spdat.flatten()
+                pedat_diffs = input_dataset.variables['pedat'][division_index, :] - pedat.flatten()
+                pldat_diffs = input_dataset.variables['pldat'][division_index, :] - pldat.flatten()
+                prdat_diffs = input_dataset.variables['prdat'][division_index, :] - prdat.flatten()
+                rdat_diffs = input_dataset.variables['rdat'][division_index, :] - rdat.flatten()
+                tldat_diffs = input_dataset.variables['tldat'][division_index, :] - tldat.flatten()
+                etdat_diffs = input_dataset.variables['etdat'][division_index, :] - etdat.flatten()
+                rodat_diffs = input_dataset.variables['rodat'][division_index, :] - rodat.flatten()
+                tdat_diffs = input_dataset.variables['tdat'][division_index, :] - tdat.flatten()
+                sssdat_diffs = input_dataset.variables['sssdat'][division_index, :] - sssdat.flatten()
+                ssudat_diffs = input_dataset.variables['ssudat'][division_index, :] - ssudat.flatten()
                 
+                # compute the water balance values using the new Python version derived from Jacobi et al Matlab PDSI                                                                             
+                ET, PR, R, RO, PRO, L, PL = palmer.water_balance(awc + 1.0, pedat, pdat)
+                
+                # compare the values against the operational values produced monthly by pdinew.f
+                etdat_wb_diffs = input_dataset.variables['etdat'][division_index, :] - ET
+                prdat_wb_diffs = input_dataset.variables['prdat'][division_index, :] - PR
+                rdat_wb_diffs = input_dataset.variables['rdat'][division_index, :] - R
+                rodat_wb_diffs = input_dataset.variables['rodat'][division_index, :] - RO
+                ldat_wb_diffs = input_dataset.variables['tldat'][division_index, :] - L
+                pldat_wb_diffs = input_dataset.variables['pldat'][division_index, :] - PL
+                
+                # compare the differences of the two, these difference arrays should come out to all zeros
+                et_diffs = etdat_wb_diffs - etdat_diffs
+                pr_diffs = prdat_wb_diffs - prdat_diffs
+                r_diffs = rdat_wb_diffs - rdat_diffs
+                ro_diffs = rodat_wb_diffs - rodat_diffs
+                l_diffs = ldat_wb_diffs - tldat_diffs
+                pl_diffs = pldat_wb_diffs - pldat_diffs
+                
+#                 zeros = np.zeros(et_diffs.shape)
+#                 if np.allclose(et_diffs, zeros, atol=0.0005):
+#                     logger.warn('Division {0}: Water balance differences for ET'.format(division_id))
+#                 if np.allclose(pr_diffs, zeros, atol=0.0005):
+#                     logger.warn('Division {0}: Water balance differences for PR'.format(division_id))
+#                 if np.allclose(r_diffs, zeros, atol=0.0005):
+#                     logger.warn('Division {0}: Water balance differences for R'.format(division_id))
+#                 if np.allclose(ro_diffs, zeros, atol=0.0005):
+#                     logger.warn('Division {0}: Water balance differences for RO'.format(division_id))
+#                 if np.allclose(l_diffs, zeros, atol=0.0005):
+#                     logger.warn('Division {0}: Water balance differences for L'.format(division_id))
+#                 if np.allclose(pl_diffs, zeros, atol=0.0005):
+#                     logger.warn('Division {0}: Water balance differences for PL'.format(division_id))
+                
+                pass
+            
     except Exception as ex:
         logger.exception('Failed to complete', exc_info=True)
         raise

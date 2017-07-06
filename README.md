@@ -19,7 +19,7 @@ This project contains Python implementations of various climate indices, which p
 * [PMDI](): Palmer Modified Drought Index 
 
 ## Get involved
-We welcome you to use, make suggestions, and contribute to our code. 
+We welcome you to use, make suggestions, and contribute to this code. 
 
 * Read our [contributing guidelines](https://github.com/nidis/climate_indices/CONTRIBUTING.md)
 * File an [issue](https://github.com/nidis/climate_indices/issues), or submit a pull request
