@@ -301,21 +301,24 @@ def thornthwaite(T_F,
 #     #}     
 
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit
-def new_water_balance(T,
-                      P,
-                      AWC,
-                      TLA,
-                      B, 
-                      H,
-                      begin_year=1895):
+@numba.jit
+def water_balance_pdinew(T,
+                         P,
+                         AWC,
+                         TLA,
+                         B, 
+                         H,
+                         begin_year=1895):
 
     '''
-    Computes a water balance accounting for monthly time series.
+    Computes a water balance accounting for monthly time series. Translated from the Fortran code pdinew.f
     
     :param T: monthly average temperature values, starting in January of the initial year 
     :param P: monthly total precipitation values, starting in January of the initial year 
     :param AWC: available water capacity, below (not including) the top inch
+    :param B: read from soil constants file 
+    :param H: read from soil constants file
+    :param begin_year: initial year of the dataset  
     :param TLA: negative tangent of the latitude
     '''
     
@@ -335,18 +338,6 @@ def new_water_balance(T,
     PHI = np.array([-0.3865982, -0.2316132, -0.0378180, 0.1715539, 0.3458803, 0.4308320, \
                      0.3916645, 0.2452467, 0.0535511, -0.15583436, -0.3340551, -0.4310691])
     
-#     # initialize the (calendar) monthly sum arrays with zeros
-#     TSUM = np.zeros((12,))
-#     PSUM = np.zeros((12,))
-#     SPSUM = np.zeros((12,))
-#     PESUM = np.zeros((12,))
-#     PLSUM = np.zeros((12,))
-#     PRSUM = np.zeros((12,))
-#     RSUM = np.zeros((12,))
-#     TLSUM = np.zeros((12,))
-#     ETSUM = np.zeros((12,))
-#     ROSUM = np.zeros((12,))
-
     # initialize the data arrays with NaNs    
     pdat = np.full((total_years, 12), np.NaN)
     spdat = np.full((total_years, 12), np.NaN)
@@ -462,22 +453,6 @@ def new_water_balance(T,
                 RO  = 0.0 
                 ET  = precipitation  + SL + UL
 
-#             #     --------------------------------------------------------------
-#             #     FOR CALIBRATION YEARS, SUM VALUES NEEDED TO CALCULATE THE 
-#             #     NORMAL CLIMATE COEFFICIENTS (ALPHA, BETA, ETC.)   
-#             #     --------------------------------------------------------------
-#             if (year >= calibration_start_year and year <= calibration_end_year):
-#                 TSUM[month_index] = TSUM[month_index] + T   
-#                 PSUM[month_index] = PSUM[month_index] + P   
-#                 SPSUM[month_index] = SPSUM[month_index] + SP  
-#                 PESUM[month_index] = PESUM[month_index] + PE  
-#                 PLSUM[month_index] = PLSUM[month_index] + PL  
-#                 PRSUM[month_index] = PRSUM[month_index] + PR  
-#                 RSUM[month_index] = RSUM[month_index] + R   
-#                 TLSUM[month_index] = TLSUM[month_index] + TL  
-#                 ETSUM[month_index] = ETSUM[month_index] + ET  
-#                 ROSUM[month_index] = ROSUM[month_index] + RO  
-                
             # set the climatology and water balance data array values for this year/month time step
             pdat[year_index, month_index] = precipitation
             spdat[year_index, month_index] = SP
@@ -510,10 +485,11 @@ def water_balance(AWC,
     # NOTE: PET AND P SHOULD BE READ IN AS A MATRIX IN INCHES. AWC IS A
     # CONSTANT AND SHOULD BE READ IN INCHES AS WELL.
     
-    # PET_col is the PET in inches, arranged in a 1-D array
-    PET_col = PET.flatten() 
-        
-    total_months = PET_col.shape[0]
+    # P and PET should be in inches, flatten to a 1-D array
+    PET = PET.flatten() 
+    P = P.flatten()
+    
+    total_months = PET.shape[0]
 
     ET = np.zeros((total_months,))
     PR = np.zeros((total_months,))
@@ -659,18 +635,18 @@ def water_balance(AWC,
         PRO[k] = AWC - PR[k]
         
         # A is the difference between the soil moisture in the surface soil layer and the potential evapotranspiration.
-        A[k] = Ss0 - PET_col[k]
+        A[k] = Ss0 - PET[k]
         
         # B is the difference between the precipitation and potential
         # evapotranspiration - it is the excess precipitation.
-        B[k] = P[k] - PET_col[k]
+        B[k] = P[k] - PET[k]
         
         ## INTERNAL CALCULATIONS
         
         # A >= 0 indicates that there is sufficient moisture in the surface soil layer to satisfy the PET 
         # requirement for month k. Therefore, there is potential moisture loss from only the surface soil layer.
         if A[k] >= 0: 
-            PLs[k] = PET_col[k]         
+            PLs[k] = PET[k]         
             PLu[k] = 0
             
         else: 
@@ -678,13 +654,13 @@ def water_balance(AWC,
             # Therefore, there is potential moisture loss from both the surface and underlying soil layers. The equation for PLu is
             # given in Alley (1984).
             PLs[k] = Ss0
-            PLu[k] = ((PET_col[k] - PLs[k]) * Su0) / AWC
+            PLu[k] = ((PET[k] - PLs[k]) * Su0) / AWC
             
             # Su0 >= PLu indicates that there is sufficient moisture in the underlying soil layer to (along with the moisture in
             # the surface soil layer) satisfy the PET requirement for month k; therefore, PLu is as calculated according to the equation 
             # given in Alley (1984).
             if Su0 >= PLu[k]: 
-                PLu[k] = ((PET_col[k] - PLs[k]) * Su0) / AWC
+                PLu[k] = ((PET[k] - PLs[k]) * Su0) / AWC
             
             else:
                 # Su0 < PLu indicates that there is not sufficient moisture in the underlying soil layer to (along with the 
@@ -756,7 +732,7 @@ def water_balance(AWC,
 
             # Since there is sufficient precipitation during month k to satisfy the PET
             # requirement for month k, the actual evapotranspiration is equal to PET.
-            ET[k] = PET_col[k] 
+            ET[k] = PET[k] 
             
         else: 
             # B < 0 indicates that there is not sufficient precipitation
@@ -820,6 +796,337 @@ def water_balance(AWC,
         
     return ET, PR, R, RO, PRO, L, PL 
           
+#-----------------------------------------------------------------------------------------------------------------------
+#@numba.jit
+def _cafec_coefficients(P,
+                        PET,
+                        ET,
+                        PR,
+                        R,
+                        RO,
+                        PRO,
+                        L,
+                        PL,
+                        data_start_year,
+                        calibration_start_year,
+                        calibration_end_year):
+    '''
+    This function calculates CAFEC coefficients used for computing Palmer's Z index using inputs from 
+    the water balance function.
+    
+    :param P: 1-D numpy.ndarray of monthly precipitation observations, in inches, the number of array elements 
+              (array size) should be a multiple of 12 (representing an ordinal number of full years)
+    :param PET: 1-D numpy.ndarray of monthly potential evapotranspiration values, in inches, the number of array elements 
+                (array size) should be a multiple of 12 (representing an ordinal number of full years)
+    :param ET: 1-D numpy.ndarray of monthly evapotranspiration values, in inches, the number of array elements 
+               (array size) should be a multiple of 12 (representing an ordinal number of full years)
+    :param PR: 1-D numpy.ndarray of monthly potential recharge values, in inches, the number of array elements 
+               (array size) should be a multiple of 12 (representing an ordinal number of full years)
+    :param R: 1-D numpy.ndarray of monthly recharge values, in inches, the number of array elements 
+              (array size) should be a multiple of 12 (representing an ordinal number of full years)
+    :param RO: 1-D numpy.ndarray of monthly runoff values, in inches, the number of array elements 
+               (array size) should be a multiple of 12 (representing an ordinal number of full years)
+    :param PRO: 1-D numpy.ndarray of monthly potential runoff values, in inches, the number of array elements 
+                (array size) should be a multiple of 12 (representing an ordinal number of full years)
+    :param L: 1-D numpy.ndarray of monthly loss values, in inches, the number of array elements 
+              (array size) should be a multiple of 12 (representing an ordinal number of full years)
+    :param PL: 1-D numpy.ndarray of monthly potential loss values, in inches, the number of array elements 
+               (array size) should be a multiple of 12 (representing an ordinal number of full years)
+    :param data_start_year: initial year of the input arrays, i.e. the first element of each of the input arrays 
+                            is assumed to correspond to January of this initial year
+    :param calibration_start_year: initial year of the calibration period, should be greater than or equal to the data_start_year
+    :param calibration_end_year: final year of the calibration period
+    :return 1-D numpy.ndarray of Z-Index values, with shape corresponding to the input arrays
+    :rtype: numpy.ndarray of floats
+    '''
+    
+    # the potential (PET, ET, PR, PL) and actual (R, RO, S, L, P) water balance arrays are reshaped as 2-D arrays  
+    # (matrices) such that the rows of each matrix represent years and the columns represent calendar months
+    PET = utils.reshape_to_years_months(PET)
+    ET = utils.reshape_to_years_months(ET)
+    PR = utils.reshape_to_years_months(PR)
+    PL = utils.reshape_to_years_months(PL)
+    R = utils.reshape_to_years_months(R)
+    RO = utils.reshape_to_years_months(RO)
+    PRO = utils.reshape_to_years_months(PRO)
+    L = utils.reshape_to_years_months(L)
+    P = utils.reshape_to_years_months(P)
+        
+    # ALPHA, BETA, GAMMA, DELTA CALCULATIONS
+    # A calibration period is used to calculate alpha, beta, gamma, and 
+    # and delta, four coefficients dependent on the climate of the area being
+    # examined. The NCDC and CPC use the calibration period January 1931
+    # through December 1990 (cf. Karl, 1986; Journal of Climate and Applied 
+    # Meteorology, Vol. 25, No. 1, January 1986).
+    
+    #!!!!!!!!!!!!!
+    # TODO make sure calibration years range is valid, i.e. within actual data years range 
+    
+    # determine the array (year axis) indices for the calibration period
+    total_data_years = int(P.shape[0] / 12)
+    data_end_year = data_start_year + total_data_years - 1
+    total_calibration_years = calibration_end_year - calibration_start_year + 1
+    calibration_start_year_index = calibration_start_year - data_start_year
+    calibration_end_year_index = calibration_end_year - data_start_year 
+    
+    # get calibration period arrays
+    if (calibration_start_year > data_start_year) or (calibration_end_year < data_end_year):
+        P_calibration = P[calibration_start_year_index:calibration_end_year_index + 1]
+        ET_calibration = ET[calibration_start_year_index:calibration_end_year_index + 1]
+        PET_calibration = PET[calibration_start_year_index:calibration_end_year_index + 1]
+        R_calibration = R[calibration_start_year_index:calibration_end_year_index + 1]
+        PR_calibration = PR[calibration_start_year_index:calibration_end_year_index + 1]
+        L_calibration = L[calibration_start_year_index:calibration_end_year_index + 1]
+        PL_calibration = PL[calibration_start_year_index:calibration_end_year_index + 1]
+        RO_calibration = RO[calibration_start_year_index:calibration_end_year_index + 1]
+        PRO_calibration = PRO[calibration_start_year_index:calibration_end_year_index + 1]
+    else:
+        P_calibration = P
+        ET_calibration = ET
+        PET_calibration = PET
+        R_calibration = R
+        PR_calibration = PR
+        L_calibration = L
+        PL_calibration = PL
+        RO_calibration = RO
+        PRO_calibration = PRO
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        
+        # get averages for each calendar month (compute means over the year axis, giving an average for each calendar month over all years)
+        P_bar = np.nanmean(P_calibration, axis=0)
+        ET_bar = np.nanmean(ET_calibration, axis=0)
+        PET_bar = np.nanmean(PET_calibration, axis=0)
+        R_bar = np.nanmean(R_calibration, axis=0)
+        PR_bar = np.nanmean(PR_calibration, axis=0)
+        L_bar = np.nanmean(L_calibration, axis=0)
+        PL_bar = np.nanmean(PL_calibration, axis=0)
+        RO_bar = np.nanmean(RO_calibration, axis=0)
+        PRO_bar = np.nanmean(PRO_calibration, axis=0)
+            
+        # (calendar) monthly CAFEC coefficients
+        alpha = np.empty((12,))
+        beta = np.empty((12,))
+        gamma = np.empty((12,))
+        delta = np.empty((12,))
+    
+        # compute the alpha, beta, gamma, and delta coefficients for each calendar month
+        for i in range(12):
+            
+            # calculate alpha
+            if PET_bar[i] == 0:
+                if ET_bar[i] == 0:
+                    alpha[i] = 1
+                else:
+                    alpha[i] = 0
+                    #logger.warn('CHECK DATA: PET is less than ET.')
+            else:
+                alpha[i] = ET_bar[i] / PET_bar[i]
+    
+            # calculate beta
+            if PR_bar[i] == 0:
+                if R_bar[i] == 0:
+                    beta[i] = 1
+                else:
+                    beta[i] = 0
+                    #logger.warn('CHECK DATA: PR is less than R.')
+            else:
+                beta[i] = R_bar[i] / PR_bar[i]
+    
+            # calculate gamma
+            if PRO_bar[i] == 0:
+                if RO_bar[i] == 0:
+                    gamma[i] = 1
+                else:
+                    gamma[i] = 0
+                    #logger.warn('CHECK DATA: PRO is less than RO.')
+            else:
+                gamma[i] = RO_bar[i] / PRO_bar[i]
+    
+            # calculate delta
+            if PL_bar[i] == 0:
+                if L_bar[i] == 0:
+                    delta[i] = 1
+                else:
+                    delta[i] = 0
+                    #logger.warn('CHECK DATA: PL is less than L.')
+            else:
+                delta[i] = L_bar[i] / PL_bar[i]
+
+    return alpha, beta, delta, gamma
+
+#-----------------------------------------------------------------------------------------------------------------------
+#@numba.jit
+def cafec_coefficients_pdinew(P,
+                              PET,
+                              ET,
+                              PR,
+                              R,
+                              RO,
+                              PRO,
+                              L,
+                              PL,
+                              data_start_year,
+                              calibration_start_year,
+                              calibration_end_year):
+    '''
+    This function calculates CAFEC coefficients used for computing Palmer's Z index using inputs from 
+    the water balance function. Translated from Fortran pdinew.f
+    
+    :param P: 1-D numpy.ndarray of monthly precipitation observations, in inches, the number of array elements 
+              (array size) should be a multiple of 12 (representing an ordinal number of full years)
+    :param PET: 1-D numpy.ndarray of monthly potential evapotranspiration values, in inches, the number of array elements 
+                (array size) should be a multiple of 12 (representing an ordinal number of full years)
+    :param ET: 1-D numpy.ndarray of monthly evapotranspiration values, in inches, the number of array elements 
+               (array size) should be a multiple of 12 (representing an ordinal number of full years)
+    :param PR: 1-D numpy.ndarray of monthly potential recharge values, in inches, the number of array elements 
+               (array size) should be a multiple of 12 (representing an ordinal number of full years)
+    :param R: 1-D numpy.ndarray of monthly recharge values, in inches, the number of array elements 
+              (array size) should be a multiple of 12 (representing an ordinal number of full years)
+    :param RO: 1-D numpy.ndarray of monthly runoff values, in inches, the number of array elements 
+               (array size) should be a multiple of 12 (representing an ordinal number of full years)
+    :param PRO: 1-D numpy.ndarray of monthly potential runoff values, in inches, the number of array elements 
+                (array size) should be a multiple of 12 (representing an ordinal number of full years)
+    :param L: 1-D numpy.ndarray of monthly loss values, in inches, the number of array elements 
+              (array size) should be a multiple of 12 (representing an ordinal number of full years)
+    :param PL: 1-D numpy.ndarray of monthly potential loss values, in inches, the number of array elements 
+               (array size) should be a multiple of 12 (representing an ordinal number of full years)
+    :param data_start_year: initial year of the input arrays, i.e. the first element of each of the input arrays 
+                            is assumed to correspond to January of this initial year
+    :param calibration_start_year: initial year of the calibration period, should be greater than or equal to the data_start_year
+    :param calibration_end_year: final year of the calibration period
+    :return 1-D numpy.ndarray of Z-Index values, with shape corresponding to the input arrays
+    :rtype: numpy.ndarray of floats
+    '''
+    
+    # the potential (PET, ET, PR, PL) and actual (R, RO, S, L, P) water balance arrays are reshaped as 2-D arrays  
+    # (matrices) such that the rows of each matrix represent years and the columns represent calendar months
+    PET = utils.reshape_to_years_months(PET)
+    ET = utils.reshape_to_years_months(ET)
+    PR = utils.reshape_to_years_months(PR)
+    PL = utils.reshape_to_years_months(PL)
+    R = utils.reshape_to_years_months(R)
+    RO = utils.reshape_to_years_months(RO)
+    PRO = utils.reshape_to_years_months(PRO)
+    L = utils.reshape_to_years_months(L)
+    P = utils.reshape_to_years_months(P)
+        
+    # ALPHA, BETA, GAMMA, DELTA CALCULATIONS
+    # A calibration period is used to calculate alpha, beta, gamma, and 
+    # and delta, four coefficients dependent on the climate of the area being
+    # examined. The NCDC and CPC use the calibration period January 1931
+    # through December 1990 (cf. Karl, 1986; Journal of Climate and Applied 
+    # Meteorology, Vol. 25, No. 1, January 1986).
+    
+    #!!!!!!!!!!!!!
+    # TODO make sure calibration years range is valid, i.e. within actual data years range 
+    
+    # determine the array (year axis) indices for the calibration period
+    total_data_years = int(P.shape[0] / 12)
+    data_end_year = data_start_year + total_data_years - 1
+    total_calibration_years = calibration_end_year - calibration_start_year + 1
+    calibration_start_year_index = calibration_start_year - data_start_year
+    calibration_end_year_index = calibration_end_year - data_start_year 
+    
+    # get calibration period arrays
+    if (calibration_start_year > data_start_year) or (calibration_end_year < data_end_year):
+        P_calibration = P[calibration_start_year_index:calibration_end_year_index + 1]
+        ET_calibration = ET[calibration_start_year_index:calibration_end_year_index + 1]
+        PET_calibration = PET[calibration_start_year_index:calibration_end_year_index + 1]
+        R_calibration = R[calibration_start_year_index:calibration_end_year_index + 1]
+        PR_calibration = PR[calibration_start_year_index:calibration_end_year_index + 1]
+        L_calibration = L[calibration_start_year_index:calibration_end_year_index + 1]
+        PL_calibration = PL[calibration_start_year_index:calibration_end_year_index + 1]
+        RO_calibration = RO[calibration_start_year_index:calibration_end_year_index + 1]
+        PRO_calibration = PRO[calibration_start_year_index:calibration_end_year_index + 1]
+    else:
+        P_calibration = P
+        ET_calibration = ET
+        PET_calibration = PET
+        R_calibration = R
+        PR_calibration = PR
+        L_calibration = L
+        PL_calibration = PL
+        RO_calibration = RO
+        PRO_calibration = PRO
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        
+#         # get averages for each calendar month (compute means over the year axis, giving an average for each calendar month over all years)
+#         P_bar = np.nanmean(P_calibration, axis=0)
+#         ET_bar = np.nanmean(ET_calibration, axis=0)
+#         PET_bar = np.nanmean(PET_calibration, axis=0)
+#         R_bar = np.nanmean(R_calibration, axis=0)
+#         PR_bar = np.nanmean(PR_calibration, axis=0)
+#         L_bar = np.nanmean(L_calibration, axis=0)
+#         PL_bar = np.nanmean(PL_calibration, axis=0)
+#         RO_bar = np.nanmean(RO_calibration, axis=0)
+#         PRO_bar = np.nanmean(PRO_calibration, axis=0)
+            
+        # get sums for each calendar month (compute sums over the year axis, giving a sum for each calendar month over all years)
+        P_sum = np.nansum(P_calibration, axis=0)
+        ET_sum = np.nansum(ET_calibration, axis=0)
+        PET_sum = np.nansum(PET_calibration, axis=0)
+        R_sum = np.nansum(R_calibration, axis=0)
+        PR_sum = np.nansum(PR_calibration, axis=0)
+        L_sum = np.nansum(L_calibration, axis=0)
+        PL_sum = np.nansum(PL_calibration, axis=0)
+        RO_sum = np.nansum(RO_calibration, axis=0)
+        PRO_sum = np.nansum(PRO_calibration, axis=0)
+            
+        # (calendar) monthly CAFEC coefficients
+        alpha = np.empty((12,))
+        beta = np.empty((12,))
+        gamma = np.empty((12,))
+        delta = np.empty((12,))
+    
+        # compute the alpha, beta, gamma, and delta coefficients for each calendar month
+        for i in range(12):
+            
+            #     ALPHA CALCULATION 
+            #     ----------------- 
+            if (PET_sum[i] != 0.0):   
+                alpha[i] = ET_sum[i] / PET_sum[i]  
+            else:  
+                if (ET_sum[i] = 0.0:  
+                    alpha[i] = 1.0  
+                else:  
+                    alpha[i] = 0.0  
+            
+            #   
+            #     BETA CALCULATION  
+            #     ----------------  
+            if PR_sum[i] != 0.0:  
+                beta[i] = R_sum[i] / PR_sum[i] 
+            else:  
+                if R_sum[i] = 0.0:   
+                    beta[i] = 1.0  
+                else:  
+                    beta[i] = 0.0  
+
+            #   
+            #     GAMMA CALCULATION 
+            #     ----------------- 
+            if SP_sum[i] != 0.0:  
+                gamma[i] = RO_sum[i] / SP_sum[i]  
+            else:  
+                if RO_sum[i] = 0.0:  
+                    gamma[i] = 1.   
+                else:  
+                    gamma[i] = 0.0  
+
+            #   
+            #     DELTA CALCULATION 
+            #     ----------------- 
+            if PL_sum[i] != 0.0:  
+                delta[i] = TL_sum[i] / PL_sum[i]  
+            else:
+                delta[i] = 0.0  
+
+    return alpha, beta, delta, gamma
+
 #-----------------------------------------------------------------------------------------------------------------------
 #@numba.jit
 def z_index(P,
