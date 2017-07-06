@@ -58,7 +58,7 @@ if __name__ == '__main__':
 
                 # compute water balance values using the function translated from the Fortran pdinew.f
                 neg_tan_lat = -1 * math.tan(math.radians(latitude))
-                pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, tdat, sssdat, ssudat = palmer.water_balance_pdinew(temp_timeseries, precip_timeseries, awc, neg_tan_lat, B, H)
+                pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, tdat, sssdat, ssudat = palmer.pdinew_water_balance(temp_timeseries, precip_timeseries, awc, neg_tan_lat, B, H)
                     
                 # compare the values against the operational values produced monthly by pdinew.f
                 spdat_diffs = input_dataset.variables['spdat'][division_index, :] - spdat.flatten()
@@ -105,7 +105,39 @@ if __name__ == '__main__':
 #                     logger.warn('Division {0}: Water balance differences for L'.format(division_id))
 #                 if np.allclose(pl_diffs, zeros, atol=0.0005):
 #                     logger.warn('Division {0}: Water balance differences for PL'.format(division_id))
+
+                # compute using new PDSI from translated Jacobi et al MatLab code
+                PDSI, PHDI, zindex = pdsi_from_climatology(precip_timeseries,
+                                                           temp_timeseries,
+                                                           awc,
+                                                           latitude,
+                                                           1895,
+                                                           1931,
+                                                           1990)
                 
+                # compute PDSI etc. using translated pdinew.f Fortran code
+                alpha, beta, gamma, delta = palmer.cafec_coefficients_pdinew(precip_timeseries,
+                                                                             pedat,
+                                                                             etdat,
+                                                                             prdat,
+                                                                             rdat,
+                                                                             rodat,
+                                                                             prodat,
+                                                                             tldat,
+                                                                             pldat,
+                                                                             data_start_year,
+                                                                             calibration_start_year,
+                                                                             calibration_end_year)
+                pdinew_PDSI, pdinew_PHDI, pdinew_PMDI, pdinew_Z = palmer.pdinew_zindex_pdsi(precip_timeseries,
+                                                                                            pedat,
+                                                                                            prdat,
+                                                                                            spdat,
+                                                                                            pldat,
+                                                                                            PPR,
+                                                                                            alpha,
+                                                                                            beta,
+                                                                                            gamma,
+                                                                                            delta)
                 pass
             
     except Exception as ex:

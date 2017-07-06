@@ -302,7 +302,7 @@ def thornthwaite(T_F,
 
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def water_balance_pdinew(T,
+def pdinew_water_balance(T,
                          P,
                          AWC,
                          TLA,
@@ -1087,10 +1087,10 @@ def cafec_coefficients_pdinew(P,
             
             #     ALPHA CALCULATION 
             #     ----------------- 
-            if (PET_sum[i] != 0.0):   
+            if PET_sum[i] != 0.0:   
                 alpha[i] = ET_sum[i] / PET_sum[i]  
             else:  
-                if (ET_sum[i] = 0.0:  
+                if ET_sum[i] == 0.0:  
                     alpha[i] = 1.0  
                 else:  
                     alpha[i] = 0.0  
@@ -1101,7 +1101,7 @@ def cafec_coefficients_pdinew(P,
             if PR_sum[i] != 0.0:  
                 beta[i] = R_sum[i] / PR_sum[i] 
             else:  
-                if R_sum[i] = 0.0:   
+                if R_sum[i] == 0.0:   
                     beta[i] = 1.0  
                 else:  
                     beta[i] = 0.0  
@@ -1112,7 +1112,7 @@ def cafec_coefficients_pdinew(P,
             if SP_sum[i] != 0.0:  
                 gamma[i] = RO_sum[i] / SP_sum[i]  
             else:  
-                if RO_sum[i] = 0.0:  
+                if RO_sum[i] == 0.0:  
                     gamma[i] = 1.   
                 else:  
                     gamma[i] = 0.0  
@@ -1126,6 +1126,550 @@ def cafec_coefficients_pdinew(P,
                 delta[i] = 0.0  
 
     return alpha, beta, delta, gamma
+
+#-----------------------------------------------------------------------------------------------------------------------
+def pdinew_zindex_pdsi(P,
+                       PE,
+                       PR,
+                       SP,
+                       PL,
+                       PPR,
+                       alpha,
+                       beta,
+                       gamma,
+                       delta):
+
+    eff = np.full(P.shape, np.NaN)
+    CP = np.full(P.shape, np.NaN)
+    Z = np.full(P.shape, np.NaN)
+    
+    for j in range(nendyr - nbegyr + 1):    
+        
+        iy = j + nbegyr - 1
+        
+        for m in range(12):
+
+            indexj[k8] = j
+            indexm[k8] = m
+
+            V   = 0.0 
+            PRO = 0.0 
+            X1  = 0.0 
+            X2  = 0.0 
+            X3  = 0.0 
+            K8  = 1
+            k8max = 1
+
+            #-----------------------------------------------------------------------
+            #     LOOP FROM 160 TO 230 REREADS data FOR CALCULATION OF   
+            #     THE Z-INDEX (MOISTURE ANOMALY) AND PDSI (VARIABLE X). 
+            #     THE FINAL OUTPUTS ARE THE VARIABLES PX3, X, AND Z  WRITTEN
+            #     TO FILE 11.   
+            #-----------------------------------------------------------------------
+            ZE  = 0.0 
+            UD  = 0.0 
+            UW  = 0.0 
+            CET = alpha[m] * PE[j, m]
+            CR  = beta[m] * PR[j, m]
+            CRO = gamma[m] * SP[j, m]
+            CL  = delta[m] * PL[j, m]
+            CP[j, m]  = CET + CR + CRO - CL 
+            CD  = Pdat[j, m]- CP[j, m]  
+            Z[j, m]   = AK[m] * CD 
+            if PRO == 100.0 or PRO == 0.0:  
+            #     ------------------------------------ NO ABATEMENT UNDERWAY
+            #                                          WET OR DROUGHT WILL END IF   
+            #                                             -.5 =< X3 =< .5   
+                if X3 >= -0.5  and  X3 <= 0.5:
+                #         ---------------------------------- END OF DROUGHT OR WET  
+                    PV = 0.0 
+                    PPR[j, m] = 0.0 
+                    PX3[j, m] = 0.0 
+                    #             ------------ BUT CHECK FOR NEW WET OR DROUGHT START FIRST 
+                    X, X1, X2, X3, SX1, SX2, SX3, V, PRO, eff, K8 = pdinew_200(PX1,
+                                                                               PX2,
+                                                                               PX3,
+                                                                               X,
+                                                                               X1,
+                                                                               Z,
+                                                                               j,
+                                                                               m,
+                                                                               K8,
+                                                                               eff)
+                     
+                elif (X3 > 0.5):   
+                    #         ----------------------- WE ARE IN A WET SPELL 
+                    if (Z[j, m] >= 0.15):   
+                        #              ------------------ THE WET SPELL INTENSIFIES 
+                        #GO TO 210 
+                        X, X1, X2, X3, SX1, SX2, SX3, V, PRO, eff, K8 = pdinew_210(K8, 
+                                                                                  PPR, 
+                                                                                  PX1,
+                                                                                  PX2, 
+                                                                                  PX3, 
+                                                                                  X, 
+                                                                                  PDSI, 
+                                                                                  PHDI, 
+                                                                                  WPLM, 
+                                                                                  j, 
+                                                                                  m, 
+                                                                                  nendyr, 
+                                                                                  nbegyr, 
+                                                                                  SX1, 
+                                                                                  SX2, 
+                                                                                  SX3, 
+                                                                                  SX, 
+                                                                                  indexj, 
+                                                                                  indexm)
+                        
+                    else:
+                        #             ------------------ THE WET STARTS TO ABATE (AND MAY END)  
+                        #GO TO 170
+                        X, X1, X2, X3, SX1, SX2, SX3, V, PRO, eff, K8 = pdinew_170(Z, 
+                                                                                   V, 
+                                                                                   K8, 
+                                                                                   PPR, 
+                                                                                   PX1,
+                                                                                   PX2, 
+                                                                                   PX3, 
+                                                                                   X, 
+                                                                                   PDSI, 
+                                                                                   PHDI, 
+                                                                                   WPLM, 
+                                                                                   j, 
+                                                                                   m, 
+                                                                                   nendyr, 
+                                                                                   nbegyr, 
+                                                                                   SX1, 
+                                                                                   SX2, 
+                                                                                   SX3, 
+                                                                                   SX, 
+                                                                                   indexj, 
+                                                                                   indexm)
+
+                elif (X3 < -0.5):  
+                    #         ------------------------- WE ARE IN A DROUGHT 
+                    if (Z[j, m] <= -0.15):  
+                        #              -------------------- THE DROUGHT INTENSIFIES 
+                        #GO TO 210
+                        X, X1, X2, X3, SX1, SX2, SX3, V, PRO, eff, K8 = pdinew_210(K8, 
+                                                                                  PPR, 
+                                                                                  PX1,
+                                                                                  PX2, 
+                                                                                  PX3, 
+                                                                                  X, 
+                                                                                  PDSI, 
+                                                                                  PHDI, 
+                                                                                  WPLM, 
+                                                                                  j, 
+                                                                                  m, 
+                                                                                  nendyr, 
+                                                                                  nbegyr, 
+                                                                                  SX1, 
+                                                                                  SX2, 
+                                                                                  SX3, 
+                                                                                  SX, 
+                                                                                  indexj, 
+                                                                                  indexm) 
+                    else:
+                        #             ------------------ THE DROUGHT STARTS TO ABATE (AND MAY END)  
+                        #GO TO 180
+                        X, X1, X2, X3, SX1, SX2, SX3, V, PRO, eff, K8 = pdinew_180(K8, 
+                                                                                   PPR, 
+                                                                                   PX1,
+                                                                                   PX2, 
+                                                                                   PX3, 
+                                                                                   X, 
+                                                                                   PDSI, 
+                                                                                   PHDI, 
+                                                                                   WPLM, 
+                                                                                   j, 
+                                                                                   m, 
+                                                                                   nendyr, 
+                                                                                   nbegyr, 
+                                                                                   SX1, 
+                                                                                   SX2, 
+                                                                                   SX3, 
+                                                                                   SX, 
+                                                                                   indexj, 
+                                                                                   indexm,
+                                                                                   Z,
+                                                                                   PV,
+                                                                                   V)
+                         
+                else:
+                    #     ------------------------------------------ABATEMENT IS UNDERWAY   
+                    if X3 > 0.0:
+                        
+                        #         ----------------------- WE ARE IN A WET SPELL 
+                        #GO TO 170
+                        X, X1, X2, X3, SX1, SX2, SX3, V, PRO, eff, K8 = pdinew_170(Z, 
+                                                                                   V, 
+                                                                                   K8, 
+                                                                                   PPR, 
+                                                                                   PX1,
+                                                                                   PX2, 
+                                                                                   PX3, 
+                                                                                   X, 
+                                                                                   PDSI, 
+                                                                                   PHDI, 
+                                                                                   WPLM, 
+                                                                                   j, 
+                                                                                   m, 
+                                                                                   nendyr, 
+                                                                                   nbegyr, 
+                                                                                   SX1, 
+                                                                                   SX2, 
+                                                                                   SX3, 
+                                                                                   SX, 
+                                                                                   indexj, 
+                                                                                   indexm)   
+                    
+                    if X3 <= 0.0:
+                        
+                        #         ----------------------- WE ARE IN A DROUGHT   
+                        #GO TO 180
+                        X, X1, X2, X3, SX1, SX2, SX3, V, PRO, eff, K8 = pdinew_180(K8, 
+                                                                                   PPR, 
+                                                                                   PX1,
+                                                                                   PX2, 
+                                                                                   PX3, 
+                                                                                   X, 
+                                                                                   PDSI, 
+                                                                                   PHDI, 
+                                                                                   WPLM, 
+                                                                                   j, 
+                                                                                   m, 
+                                                                                   nendyr, 
+                                                                                   nbegyr, 
+                                                                                   SX1, 
+                                                                                   SX2, 
+                                                                                   SX3, 
+                                                                                   SX, 
+                                                                                   indexj, 
+                                                                                   indexm,
+                                                                                   Z,
+                                                                                   PV,
+                                                                                   V)
+
+    return X, X1, X2, X3, PDSI, PHDI, PMDI, Z
+
+#-----------------------------------------------------------------------------------------------------------------------
+def pdinew_170(Z, 
+               V, 
+               K8, 
+               PPR, 
+               PX1,
+               PX2, 
+               PX3, 
+               X, 
+               PDSI, 
+               PHDI, 
+               WPLM, 
+               j, 
+               m, 
+               nendyr, 
+               nbegyr, 
+               SX1, 
+               SX2, 
+               SX3, 
+               SX, 
+               indexj, 
+               indexm):
+    #-----------------------------------------------------------------------
+    #      WET SPELL ABATEMENT IS POSSIBLE  
+    #-----------------------------------------------------------------------
+    UD = Z[j, m] - 0.15  
+    PV = UD + min(V, 0.0) 
+    if PV >= 0:
+        X, X1, X2, X3, SX1, SX2, SX3, V, PRO, eff, K8 = pdinew_210(K8, 
+                                                                   PPR, 
+                                                                   PX1,
+                                                                   PX2, 
+                                                                   PX3, 
+                                                                   X, 
+                                                                   PDSI, 
+                                                                   PHDI, 
+                                                                   WPLM, 
+                                                                   j, 
+                                                                   m, 
+                                                                   nendyr, 
+                                                                   nbegyr, 
+                                                                   SX1, 
+                                                                   SX2, 
+                                                                   SX3, 
+                                                                   SX, 
+                                                                   indexj, 
+                                                                   indexm)
+    else:
+        #     ---------------------- DURING A WET SPELL, PV => 0 IMPLIES
+        #                            PROB(END) HAS RETURNED TO 0
+        ZE = -2.691 * X3 + 1.5
+    
+        #-----------------------------------------------------------------------
+        #     PROB(END) = 100 * (V/Q)  WHERE:   
+        #                 V = SUM OF MOISTURE EXCESS OR DEFICIT (UD OR UW)  
+        #                 DURING CURRENT ABATEMENT PERIOD   
+        #             Q = TOTAL MOISTURE ANOMALY REQUIRED TO END THE
+        #                 CURRENT DROUGHT OR WET SPELL  
+        #-----------------------------------------------------------------------
+        if PRO == 100.0: 
+            #     --------------------- DROUGHT OR WET CONTINUES, CALCULATE 
+            #                           PROB(END) - VARIABLE ZE 
+            Q = ZE
+        else:  
+            Q = ZE + V
+    
+        PPR[j, m] = (PV / Q) * 100.0 
+        if PPR[j, m] >= 100.0:
+             
+              PPR[j, m] = 100.0
+              PX3[j, m] = 0.0  
+        else:
+              
+              PX3[j, m] = 0.897 * X3 + Z[j, m] / 3.0
+
+    return X, X1, X2, X3, SX1, SX2, SX3, V, PRO, eff, K8
+
+#-----------------------------------------------------------------------------------------------------------------------
+def pdinew_180(K8, 
+               PPR, 
+               PX1,
+               PX2, 
+               PX3, 
+               X, 
+               PDSI, 
+               PHDI, 
+               WPLM, 
+               j, 
+               m, 
+               nendyr, 
+               nbegyr, 
+               SX1, 
+               SX2, 
+               SX3, 
+               SX, 
+               indexj, 
+               indexm,
+               Z,
+               PV,
+               V):
+
+        #-----------------------------------------------------------------------
+        #      DROUGHT ABATEMENT IS POSSIBLE
+        #-----------------------------------------------------------------------
+        UW = Z[j, m] + 0.15  
+        PV = UW + max(V, 0.0) 
+        if (PV <= 0):
+            X, X1, X2, X3, SX1, SX2, SX3, V, PRO, eff, K8 = pdinew_210(K8, 
+                                                                      PPR, 
+                                                                      PX1,
+                                                                      PX2, 
+                                                                      PX3, 
+                                                                      X, 
+                                                                      PDSI, 
+                                                                      PHDI, 
+                                                                      WPLM, 
+                                                                      j, 
+                                                                      m, 
+                                                                      nendyr, 
+                                                                      nbegyr, 
+                                                                      SX1, 
+                                                                      SX2, 
+                                                                      SX3, 
+                                                                      SX, 
+                                                                      indexj, 
+                                                                      indexm)
+                
+        else:
+            #     ---------------------- DURING A DROUGHT, PV =< 0 IMPLIES  
+            #                            PROB(END) HAS RETURNED TO 0
+            ZE = -2.691 * X3 - 1.5
+            #-----------------------------------------------------------------------
+            #     PROB(END) = 100 * (V/Q)  WHERE:   
+            #                 V = SUM OF MOISTURE EXCESS OR DEFICIT (UD OR UW)  
+            #                 DURING CURRENT ABATEMENT PERIOD   
+            #             Q = TOTAL MOISTURE ANOMALY REQUIRED TO END THE
+            #                 CURRENT DROUGHT OR WET SPELL  
+            #-----------------------------------------------------------------------
+            if PRO == 100.0: 
+                #     --------------------- DROUGHT OR WET CONTINUES, CALCULATE 
+                #                           PROB(END) - VARIABLE ZE 
+                Q = ZE
+                
+            else:  
+                
+                Q = ZE + V
+
+            PPR[j, m] = (PV / Q) * 100.0 
+            if PPR[j, m] >= 100.0: 
+                PPR[j, m] = 100.0
+                PX3[j, m] = 0.0  
+            else:
+                PX3[j, m] = 0.897 * X3 + Z[j, m] / 3.0
+              
+        return X, X1, X2, X3, SX1, SX2, SX3, V, PRO, eff, K8
+        
+#-----------------------------------------------------------------------------------------------------------------------
+def pdinew_200(PX1,
+              PX2,
+              PX3,
+              X,
+              X1,
+              Z,
+              j,
+              m,
+              K8,
+              eff):
+    
+    # whether or not an appropriate value for X has been found
+    found = False
+    
+    #-----------------------------------------------------------------------
+    #     CONTINUE X1 AND X2 CALCULATIONS.  
+    #     IF EITHER INDICATES THE START OF A NEW WET OR DROUGHT,
+    #     AND IF THE LAST WET OR DROUGHT HAS ENDED, USE X1 OR X2
+    #     AS THE NEW X3.
+    #-----------------------------------------------------------------------
+    PX1[j, m] = 0.897 * X1 + Z[j, m] / 3.0
+    PX1[j, m] = max(PX1[j, m], 0.0)   
+    if (PX1[j, m] >= 1.):   
+        
+        if (PX3[j, m] == 0.0):   
+            #         ------------------- IF NO EXISTING WET SPELL OR DROUGHT   
+            #                             X1 BECOMES THE NEW X3 
+            X[j, m]   = PX1[j, m] 
+            PX3[j, m] = PX1[j, m] 
+            PX1[j, m] = 0.0
+            iass = 1
+            ASSIGN(iass,k8,ppr,px1,px2,px3,x,pdsi,phdi,wplm,j,m,nendyr,nbegyr,sx1,sx2,sx3,sx,indexj,indexm)
+            
+            V   = PV 
+            eff[j, m] = PV 
+            PRO = PPR[j, m] 
+            X1  = PX1[j, m] 
+            X2  = PX2[j, m] 
+            X3  = PX3[j, m] 
+
+            found = True
+            
+    else:
+        PX2[j, m] = 0.897 * X2 + Z[j, m] / 3.0
+        PX2[j, m] = min(PX2[j, m], 0.0)   
+        if PX2[j, m] <= -1.0:  
+            
+            if (PX3[j, m] == 0.0):   
+                #         ------------------- IF NO EXISTING WET SPELL OR DROUGHT   
+                #                             X2 BECOMES THE NEW X3 
+                X[j, m]   = PX2[j, m] 
+                PX3[j, m] = PX2[j, m] 
+                PX2[j, m] = 0.0  
+                iass = 2            
+                ASSIGN(iass, K8, PPR, PX1, PX2, PX3, X, PDSI, PHDI, WPLM, j, m, nendyr, nbegyr, SX1, SX2, SX3, SX, indexj, indexm)
+    
+                found = True
+                
+        elif PX3[j, m] == 0.0:   
+            #    -------------------- NO ESTABLISHED DROUGHT (WET SPELL), BUT X3=0  
+            #                         SO EITHER (NONZERO) X1 OR X2 MUST BE USED AS X3   
+            if PX1[j, m] == 0.0:   
+            
+                X[j, m] = PX2[j, m]   
+                iass=2            
+                ASSIGN(iass,k8,ppr,px1,px2,px3,x,pdsi,phdi,wplm,j,m,nendyr,nbegyr,sx1,sx2,sx3,sx,indexj,indexm)
+
+                found = True
+
+            elif PX2[j, m] == 0:
+                
+                X[j, m] = PX1[j, m]   
+                iass=1   
+                ASSIGN(iass,k8,ppr,px1,px2,px3,x,pdsi,phdi,wplm,j,m,nendyr,nbegyr,sx1,sx2,sx3,sx,indexj,indexm)
+    
+                found = True
+
+        #-----------------------------------------------------------------------
+        #     AT THIS POINT THERE IS NO DETERMINED VALUE TO ASSIGN TO X,
+        #     ALL VALUES OF X1, X2, AND X3 ARE SAVED IN FILE 8. AT A LATER  
+        #     TIME X3 WILL REACH A VALUE WHERE IT IS THE VALUE OF X (PDSI). 
+        #     AT THAT TIME, THE ASSIGN SUBROUTINE BACKTRACKS THROUGH FILE   
+        #     8 CHOOSING THE APPROPRIATE X1 OR X2 TO BE THAT MONTHS X. 
+        #-----------------------------------------------------------------------
+        elif not found and (K8 > 40):  # STOP 'X STORE ARRAYS FULL'  
+            
+            SX1[K8] = PX1[j, m] 
+            SX2[K8] = PX2[j, m] 
+            SX3[K8] = PX3[j, m] 
+            X[j, m]  = PX3[j, m] 
+            K8 = K8 + 1
+            k8max = k8  
+
+    #-----------------------------------------------------------------------
+    #     SAVE THIS MONTHS CALCULATED VARIABLES (V,PRO,X1,X2,X3) FOR   
+    #     USE WITH NEXT MONTHS DATA 
+    #-----------------------------------------------------------------------
+    V = PV 
+    eff[j, m] = PV 
+    PRO = PPR[j, m] 
+    X1  = PX1[j, m] 
+    X2  = PX2[j, m] 
+    X3  = PX3[j, m] 
+
+    return X, X1, X2, X3, SX1, SX2, SX3, V, PRO, eff, K8
+ 
+#-----------------------------------------------------------------------------------------------------------------------
+def pdinew_210(K8, 
+              PPR, 
+              PX1,
+              PX2, 
+              PX3, 
+              X, 
+              PDSI, 
+              PHDI, 
+              WPLM, 
+              j, 
+              m, 
+              nendyr, 
+              nbegyr, 
+              SX1, 
+              SX2, 
+              SX3, 
+              SX, 
+              indexj, 
+              indexm):
+
+    #-----------------------------------------------------------------------
+    #     PROB(END) RETURNS TO 0.  A POSSIBLE ABATEMENT HAS FIZZLED OUT,
+    #     SO WE ACCEPT ALL STORED VALUES OF X3  
+    #-----------------------------------------------------------------------
+    PV = 0.0 
+    PX1[j, m] = 0.0 
+    PX2[j, m] = 0.0 
+    PPR[j, m] = 0.0 
+    PX3[j, m] = 0.897 * X3 + Z[j, m] / 3.0
+    X[j, m]   = PX3[j, m] 
+    if (K8 == 1): 
+        PDSI[j, m] = X[j, m]  
+        PHDI[j, m] = PX3[j, m] 
+        if PX3[j, m] ==  0.0:
+            PHDI[j, m] = X[j, m]
+        case(PPR[j, m], PX1[j, m], PX2[j, m], PX3[j, m], WPLM[j, m]) 
+    else:
+        iass = 3   
+        assign(iass, K8, PPR, PX1, PX2, PX3, X, PDSI, PHDI, WPLM, j, m, nendyr, nbegyr, SX1, SX2, SX3, SX, indexj, indexm)
+
+    #-----------------------------------------------------------------------
+    #     SAVE THIS MONTHS CALCULATED VARIABLES (V,PRO,X1,X2,X3) FOR   
+    #     USE WITH NEXT MONTHS DATA 
+    #-----------------------------------------------------------------------
+    V = PV 
+    eff[j, m] = PV 
+    PRO = PPR[j, m] 
+    X1  = PX1[j, m] 
+    X2  = PX2[j, m] 
+    X3  = PX3[j, m] 
+
+    return X, X1, X2, X3, SX1, SX2, SX3, V, PRO, eff, K8
 
 #-----------------------------------------------------------------------------------------------------------------------
 #@numba.jit
@@ -2593,8 +3137,8 @@ def pdsi(precip_time_series,
          pet_time_series,
          awc,
          data_start_year,
-         calibration_start_year,
-         calibration_end_year):
+         calibration_start_year=1931,
+         calibration_end_year=1990):
     '''
     This function computes the Palmer Drought Severity Index (PDSI), Palmer Hydrological Drought Index (PHDI), 
     and Palmer Z-Index.
