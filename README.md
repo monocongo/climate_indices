@@ -54,6 +54,12 @@ For users who'd prefer to not utilize the above approach using the provided `env
 `$ conda install netCDF4`
 `$ conda install hdf4=4.2.12` (this ***may*** be required in order to get around a broken HDF dependency [issue](https://github.com/ContinuumIO/anaconda-issues/issues/1360) with the netCDF4 module)
 
+## Testing
+
+Initially all tests should be run for validation:
+
+`$ python -m unittest test_*.py`
+
 ## Example indices processing scripts
 
 There are example climate indices processing scripts provided which compute the full suite of indices for various input dataset types. These process input files in the NetCDF format, and produce output NetCDF files in a corresponding format.

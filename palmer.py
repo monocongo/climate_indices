@@ -1477,7 +1477,7 @@ def pdinew_zindex_pdsi(P,
                                                                               PV,
                                                                               V)
 
-    return X, X1, X2, X3, PDSI, PHDI, PMDI, Z
+    return PDSI, PHDI, WPLM, Z
 
 #-----------------------------------------------------------------------------------------------------------------------
 # compare to Function_Ud()
@@ -1895,7 +1895,7 @@ def assign(iass,
 
     if iass == 3:  
         #     ---------------- USE ALL X3 VALUES
-        for Mm in xrange(k8):
+        for Mm in range(k8):
     
             SX[Mm] = SX3[Mm]
 
@@ -1904,7 +1904,6 @@ def assign(iass,
         #                    IN SX UNTIL IT IS ZERO, THEN SWITCHING TO THE OTHER
         #                    UNTIL IT IS ZERO, ETC. 
         for Mm in range(k8, 0, -1):
-            #       DO 60 Mm = K8-1, 1, -1 
             
             if SX1[Mm] == 0:
                 ISAVE = 2 
@@ -1925,6 +1924,7 @@ def assign(iass,
         
         if (PX3[indexj[n], indexm[n]] == 0.0):
             PHDI[indexj[n], indexm[n]] = SX[n]
+            
         case(PPR[indexj[n], indexm[n]],
              PX1[indexj[n], indexm[n]], 
              PX2[indexj[n], indexm[n]],
