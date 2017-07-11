@@ -106,39 +106,66 @@ if __name__ == '__main__':
 #                 if np.allclose(pl_diffs, zeros, atol=0.0005):
 #                     logger.warn('Division {0}: Water balance differences for PL'.format(division_id))
 
-                # compute using new PDSI from translated Jacobi et al MatLab code
-                PDSI, PHDI, zindex = pdsi_from_climatology(precip_timeseries,
-                                                           temp_timeseries,
-                                                           awc,
-                                                           latitude,
-                                                           1895,
-                                                           1931,
-                                                           1990)
+                # calibration period years
+                calibration_begin_year = 1931
+                calibration_end_year = 1990
+                data_begin_year = 1895
                 
-                # compute PDSI etc. using translated pdinew.f Fortran code
-                alpha, beta, gamma, delta = palmer.cafec_coefficients_pdinew(precip_timeseries,
+                # compute using new PDSI from translated Jacobi et al MatLab code
+                PDSI, PHDI, PMDI, zindex = palmer.pdsi_from_climatology(precip_timeseries,
+                                                                        temp_timeseries,
+                                                                        awc,
+                                                                        latitude,
+                                                                        data_begin_year,
+                                                                        calibration_begin_year,
+                                                                        calibration_end_year)
+                
+                # compute PDSI etc. using translated functions from pdinew.f Fortran code
+                alpha, beta, gamma, delta, t_ratio = palmer.pdinew_cafec_coefficients(precip_timeseries,
                                                                              pedat,
                                                                              etdat,
                                                                              prdat,
                                                                              rdat,
                                                                              rodat,
-                                                                             prodat,
+                                                                             PRO,
                                                                              tldat,
                                                                              pldat,
-                                                                             data_start_year,
-                                                                             calibration_start_year,
+                                                                             spdat,
+                                                                             data_begin_year,
+                                                                             calibration_begin_year,
                                                                              calibration_end_year)
+
+                AK = palmer.pdinew_compute_K(alpha,
+                                             beta,
+                                             gamma,
+                                             delta,
+                                             pdat,
+                                             pedat,
+                                             prdat,
+                                             spdat,
+                                             pldat,
+                                             t_ratio,
+                                             data_begin_year,
+                                             calibration_begin_year,
+                                             calibration_end_year)
+                
                 pdinew_PDSI, pdinew_PHDI, pdinew_PMDI, pdinew_Z = palmer.pdinew_zindex_pdsi(precip_timeseries,
                                                                                             pedat,
                                                                                             prdat,
                                                                                             spdat,
                                                                                             pldat,
-                                                                                            PPR,
+                                                                                            PRO,
                                                                                             alpha,
                                                                                             beta,
                                                                                             gamma,
-                                                                                            delta)
-                pass
+                                                                                            delta,
+                                                                                            AK)
+                
+                # find the differences between the new (Matlab-derived) and previous (Fortran-derived) versions
+                pdsi_diffs = PDSI - pdinew_PDSI.flatten()
+                phdi_diffs = PHDI - pdinew_PHDI.flatten()
+                pmdi_diffs = PMDI - pdinew_PMDI.flatten()
+                zindex_diffs = zindex - pdinew_Z.flatten()
             
     except Exception as ex:
         logger.exception('Failed to complete', exc_info=True)
