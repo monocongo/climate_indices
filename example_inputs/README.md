@@ -27,7 +27,7 @@ This script has the following required command line arguments:
       --soil_file C:/home/palmer/soilconstdiv.txt 
       --out_file C:/home/palmer/climdivs_all.nc`
 
-#### nClimDiv 
+#### Palmer water balance comparison 
 The script `climdivs_water_balance_comparison.py` is used to compute water balance accouting values from [nClimDiv](https://www.ncdc.noaa.gov/monitoring-references/maps/us-climate-divisions.php) input datasets, in NetCDF form after ingest using the process described above. Usage of this script requires specifying the input file name and corresponding variable names for precipitation, temperature, and soil constant datasets. 
 
 This script has the following required command line arguments:

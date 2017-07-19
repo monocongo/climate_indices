@@ -122,18 +122,18 @@ if __name__ == '__main__':
                 
                 # compute PDSI etc. using translated functions from pdinew.f Fortran code
                 alpha, beta, gamma, delta, t_ratio = palmer.pdinew_cafec_coefficients(precip_timeseries,
-                                                                             pedat,
-                                                                             etdat,
-                                                                             prdat,
-                                                                             rdat,
-                                                                             rodat,
-                                                                             PRO,
-                                                                             tldat,
-                                                                             pldat,
-                                                                             spdat,
-                                                                             data_begin_year,
-                                                                             calibration_begin_year,
-                                                                             calibration_end_year)
+                                                                                      pedat,
+                                                                                      etdat,
+                                                                                      prdat,
+                                                                                      rdat,
+                                                                                      rodat,
+                                                                                      PRO,
+                                                                                      tldat,
+                                                                                      pldat,
+                                                                                      spdat,
+                                                                                      data_begin_year,
+                                                                                      calibration_begin_year,
+                                                                                      calibration_end_year)
 
                 AK = palmer.pdinew_compute_K(alpha,
                                              beta,

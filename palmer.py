@@ -1761,7 +1761,7 @@ def pdinew_200(PX1,
             SX3[K8] = PX3[j, m] 
             X[j, m]  = PX3[j, m] 
             K8 = K8 + 1
-            k8max = k8  
+            k8max = K8  
 
     #-----------------------------------------------------------------------
     #     SAVE THIS MONTHS CALCULATED VARIABLES (V,PRO,X1,X2,X3) FOR   
@@ -1919,7 +1919,7 @@ def assign(iass,
 
     for n in range(k8):
         
-        PDSI[indexj[n], indexm[n]] = SX(N) 
+        PDSI[indexj[n], indexm[n]] = SX[n] 
         PHDI[indexj[n], indexm[n]] = PX3[indexj[n], indexm[n]]
         
         if (PX3[indexj[n], indexm[n]] == 0.0):
