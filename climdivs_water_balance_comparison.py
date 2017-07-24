@@ -134,6 +134,19 @@ if __name__ == '__main__':
                                                                                       data_begin_year,
                                                                                       calibration_begin_year,
                                                                                       calibration_end_year)
+                
+                K = palmer._weighting_factor(pdat,
+                                             pedat,
+                                             etdat,
+                                             prdat,
+                                             rdat,
+                                             rodat,
+                                             PRO,
+                                             tldat,
+                                             pldat,
+                                             data_begin_year,
+                                             calibration_begin_year,
+                                             calibration_end_year)
 
                 AK = palmer.pdinew_compute_K(alpha,
                                              beta,
