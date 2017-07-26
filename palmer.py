@@ -2623,20 +2623,20 @@ def pdsi_from_zindex(Z):
 
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def _compute_X(established_index_values,
-               sczindex_values,
-               scpdsi_values,
-               pdsi_values,
-               wet_index_values,
-               dry_index_values,
-               wet_index_deque,
-               dry_index_deque,
-               wetM,
-               wetB,
-               dryM,
-               dryB,
-               calibration_complete,
-               tolerance=0.0):
+def _compute_scpdsi(established_index_values,
+                    sczindex_values,
+                    scpdsi_values,
+                    pdsi_values,
+                    wet_index_values,
+                    dry_index_values,
+                    wet_index_deque,
+                    dry_index_deque,
+                    wetM,
+                    wetB,
+                    dryM,
+                    dryB,
+                    calibration_complete,
+                    tolerance=0.0):
     '''
     This function computes X values
     :param established_index_values
@@ -3452,11 +3452,11 @@ def _pdsi_at_percentile(pdsi_values,
     
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def _calibrate(pdsi_values,
-               sczindex_values,
-               calibration_start_year,
-               calibration_end_year,
-               input_start_year):
+def _self_calibrate(pdsi_values,
+                    sczindex_values,
+                    calibration_start_year,
+                    calibration_end_year,
+                    input_start_year):
     
     # remove periods before the end of the interval
     # calibrate using upper and lower 2% of values within the user-defined calibration interval
@@ -3504,19 +3504,19 @@ def _calibrate(pdsi_values,
 #     logger.debug('wet_m: {0}   wet_b: {1}   dry_m: {2}   dry_b: {3}'.format(wet_m, wet_b, dry_m, dry_b))
     
     pdsi_values, scpdsi_values, wet_index_values, dry_index_values, established_index_values = \
-        _compute_X(established_index_values,
-                   sczindex_values,
-                   scpdsi_values,
-                   pdsi_values,
-                   wet_index_values,
-                   dry_index_values,
-                   wet_index_deque,
-                   dry_index_deque,
-                   wet_m,
-                   wet_b,
-                   dry_m,
-                   dry_b,
-                   False);
+        _compute_scpdsi(established_index_values,
+                        sczindex_values,
+                        scpdsi_values,
+                        pdsi_values,
+                        wet_index_values,
+                        dry_index_values,
+                        wet_index_deque,
+                        dry_index_deque,
+                        wet_m,
+                        wet_b,
+                        dry_m,
+                        dry_b,
+                        False);
 
     return sczindex_values, pdsi_values, scpdsi_values
 
@@ -3596,11 +3596,11 @@ def scpdsi(precip_time_series,
         final_PDSI = np.array(PDSI)
         
         # perform self-calibration        
-        zindex, PDSI, SCPDSI = _calibrate(PDSI, 
-                                          zindex,
-                                          calibration_start_year,
-                                          calibration_end_year,
-                                          data_start_year)
+        zindex, PDSI, SCPDSI = _self_calibrate(PDSI, 
+                                               zindex,
+                                               calibration_start_year,
+                                               calibration_end_year,
+                                               data_start_year)
 
         # recompute PDSI and other associated variables
         SCPDSI, PHDI, PMDI = pdsi_from_zindex(zindex)
