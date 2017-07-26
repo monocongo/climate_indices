@@ -841,18 +841,10 @@ def _cafec_coefficients(P,
     '''
     
     # get only the data from within the calibration period
-    P, PET, ET, PR, R, PRO, RO, PL, L = _calibrate_data(P,
-                                                        PET,
-                                                        ET,
-                                                        PR,
-                                                        R,
-                                                        PRO,
-                                                        RO,
-                                                        PL,
-                                                        L,
-                                                        data_start_year,
-                                                        calibration_start_year,
-                                                        calibration_end_year)
+    [P, PET, ET, PR, R, PRO, RO, PL, L] = _calibrate_data([P, PET, ET, PR, R, PRO, RO, PL, L],
+                                                          data_start_year,
+                                                          calibration_start_year,
+                                                          calibration_end_year)
 
     # ALPHA, BETA, GAMMA, DELTA CALCULATIONS
     # A calibration period is used to calculate alpha, beta, gamma, and 
@@ -1950,16 +1942,8 @@ def case(PROB,
  
     return PALM
 
-#-----------------------------------------------------------------------------------------------------------------------
-def _calibrate_data(P,
-                    PET,
-                    ET,
-                    PR,
-                    R,
-                    PRO,
-                    RO,
-                    PL,
-                    L,
+#-----------------------------------------------------------------------------------------------------------------------    
+def _calibrate_data(arrays,
                     data_start_year,
                     calibration_start_year,
                     calibration_end_year):
@@ -1967,97 +1951,52 @@ def _calibrate_data(P,
     #!!!!!!!!!!!!!
     # TODO make sure calibration years range is valid, i.e. within actual data years range 
     
-    # the potential (PET, ET, PR, PL) and actual (R, RO, S, L, P) water balance arrays are reshaped as 2-D arrays  
-    # (matrices) such that the rows of each matrix represent years and the columns represent calendar months
-    PET = utils.reshape_to_years_months(PET)
-    ET = utils.reshape_to_years_months(ET)
-    PR = utils.reshape_to_years_months(PR)
-    PL = utils.reshape_to_years_months(PL)
-    R = utils.reshape_to_years_months(R)
-    RO = utils.reshape_to_years_months(RO)
-    PRO = utils.reshape_to_years_months(PRO)
-    L = utils.reshape_to_years_months(L)
-    P = utils.reshape_to_years_months(P)
-        
-    # ALPHA, BETA, GAMMA, DELTA CALCULATIONS
-    # A calibration period is used to calculate alpha, beta, gamma, and 
-    # and delta, four coefficients dependent on the climate of the area being
-    # examined. The NCDC and CPC use the calibration period January 1931
-    # through December 1990 (cf. Karl, 1986; Journal of Climate and Applied 
-    # Meteorology, Vol. 25, No. 1, January 1986).
-    
-    #!!!!!!!!!!!!!
-    # TODO make sure calibration years range is valid, i.e. within actual data years range 
-    
     # determine the array (year axis) indices for the calibration period
-    total_data_years = int(P.shape[0] / 12)
+    total_data_years = int(arrays[0].shape[0] / 12)
     data_end_year = data_start_year + total_data_years - 1
     total_calibration_years = calibration_end_year - calibration_start_year + 1
     calibration_start_year_index = calibration_start_year - data_start_year
     calibration_end_year_index = calibration_end_year - data_start_year 
+
+    # for each array pull out the calibration period
+    calibration_arrays = []
+    for data_array in arrays:
+        data_array = _reshape_to_years_months(data_array)
     
-    # get calibration period arrays
-    if (calibration_start_year > data_start_year) or (calibration_end_year < data_end_year):
-        P_calibration = P[calibration_start_year_index:calibration_end_year_index + 1]
-        ET_calibration = ET[calibration_start_year_index:calibration_end_year_index + 1]
-        PET_calibration = PET[calibration_start_year_index:calibration_end_year_index + 1]
-        R_calibration = R[calibration_start_year_index:calibration_end_year_index + 1]
-        PR_calibration = PR[calibration_start_year_index:calibration_end_year_index + 1]
-        L_calibration = L[calibration_start_year_index:calibration_end_year_index + 1]
-        PL_calibration = PL[calibration_start_year_index:calibration_end_year_index + 1]
-        RO_calibration = RO[calibration_start_year_index:calibration_end_year_index + 1]
-        PRO_calibration = PRO[calibration_start_year_index:calibration_end_year_index + 1]
-    else:
-        P_calibration = P
-        ET_calibration = ET
-        PET_calibration = PET
-        R_calibration = R
-        PR_calibration = PR
-        L_calibration = L
-        PL_calibration = PL
-        RO_calibration = RO
-        PRO_calibration = PRO
+        # get calibration period arrays
+        if (calibration_start_year > data_start_year) or (calibration_end_year < data_end_year):
+            data_array = data_array[calibration_start_year_index:calibration_end_year_index + 1, :]
+        
+        # add to the list of calibrated arrays we'll return
+        calibration_arrays.append(data_array)
+        
+    return calibration_arrays
 
-    return P_calibration, \
-           PET_calibration, \
-           ET_calibration, \
-           PR_calibration, \
-           R_calibration, \
-           PRO_calibration, \
-           RO_calibration, \
-           PL_calibration, \
-           L_calibration
-                    
 #-----------------------------------------------------------------------------------------------------------------------
-def _weighting_factor(alpha,
-                      beta,
-                      gamma,
-                      delta,
-                      P,
-                      ET,
-                      PET,
-                      R,
-                      PR,
-                      RO,
-                      PRO,
-                      L,
-                      PL,
-                      total_calibration_years,
-                      climatic_characteristic=17.67):
-
+def _climatic_characteristic(alpha,
+                             beta,
+                             gamma,
+                             delta,
+                             P,
+                             ET,
+                             PET,
+                             R,
+                             PR,
+                             RO,
+                             PRO,
+                             L,
+                             PL,
+                             data_start_year,
+                             calibration_start_year,
+                             calibration_end_year):
+    
+    total_calibration_years = calibration_end_year - calibration_start_year + 1
+    
     # get only the data from within the calibration period
-    P, PET, ET, PR, R, PRO, RO, PL, L = _calibrate_data(P,
-                                                        PET,
-                                                        ET,
-                                                        PR,
-                                                        R,
-                                                        PRO,
-                                                        RO,
-                                                        PL,
-                                                        L,
-                                                        data_start_year,
-                                                        calibration_start_year,
-                                                        calibration_end_year)
+    [P, PET, ET, PR, R, PRO, RO, PL, L] = _calibrate_data([P, PET, ET, PR, R, PRO, RO, PL, L],
+                                                          data_start_year,
+                                                          calibration_start_year,
+                                                          calibration_end_year)
     
     # CALIBRATED CAFEC, K, AND d CALCULATION
     # NOTE: 
@@ -2067,19 +2006,18 @@ def _weighting_factor(alpha,
     # CAFEC precipitation is calculated analogously to a simple water
     # balance, where precipitation is equal to evaporation plus runoff 
     # (and groundwater recharge) plus or minus any change in soil moisture storage. 
-    CAFEC_hat = np.empty((total_calibration_years, 12)) 
     d_hat = np.empty((total_calibration_years, 12)) 
     for k in range(total_calibration_years):
         for i in range(12):
             # CAFEC_hat is calculated for month i of year k of the calibration period.
-            CAFEC_hat[k, i] = (alpha[i] * PET[k, i]) + \
-                              (beta[i] * PR[k, i]) + \
-                              (gamma[i] * PRO[k, i]) - \
-                              (delta[i] * PL[k, i])
+            CAFEC_hat = (alpha[i] * PET[k, i]) + \
+                        (beta[i] * PR[k, i]) + \
+                        (gamma[i] * PRO[k, i]) - \
+                        (delta[i] * PL[k, i])
                               
             # Calculate d_hat, the difference between actual precipitation
             # and CAFEC precipitation for month i of year k of the calibration period.
-            d_hat[k, i] = P[k, i] - CAFEC_hat[k, i]
+            d_hat[k, i] = P[k, i] - CAFEC_hat
     
     # NOTE: D_hat, T_hat, K_hat, and z_hat are all calibrated
     # variables - i.e., they are calculated only for the calibration period.
@@ -2119,11 +2057,11 @@ def _weighting_factor(alpha,
     # Calculate the weighting factor, K, using the calibrated variables K_hat and z_hat. The purpose of
     # the weighting factors is to adjust the  departures from normal precipitation d (calculated below), 
     # such that they are comparable among different locations and for different months. The K tends to be
-    # large in arid regions and small in humid regions (cf. Alley, 1984; Journal of Climate and Applied Meteorology, 
-    # Vol. 23, No. 7, July 1984).
+    # large in arid regions and small in humid regions (cf. Alley, 1984; Journal of Climate and Applied 
+    # Meteorology, Vol. 23, No. 7, July 1984).
     K = np.empty((12,)) 
     for i in range(12):
-        K[i] = (climatic_characteristic * K_hat[i]) / z_hat
+        K[i] = (17.67 * K_hat[i]) / z_hat
 
     return K
 
@@ -2182,45 +2120,6 @@ def z_index(P,
     L = utils.reshape_to_years_months(L)
     P = utils.reshape_to_years_months(P)
         
-    # ALPHA, BETA, GAMMA, DELTA CALCULATIONS
-    # A calibration period is used to calculate alpha, beta, gamma, and 
-    # and delta, four coefficients dependent on the climate of the area being
-    # examined. The NCDC and CPC use the calibration period January 1931
-    # through December 1990 (cf. Karl, 1986; Journal of Climate and Applied 
-    # Meteorology, Vol. 25, No. 1, January 1986).
-    
-    #!!!!!!!!!!!!!
-    # TODO make sure calibration years range is valid, i.e. within actual data years range 
-    
-    # determine the array (year axis) indices for the calibration period
-    total_data_years = int(P.shape[0] / 12)
-    data_end_year = data_start_year + total_data_years - 1
-    total_calibration_years = calibration_end_year - calibration_start_year + 1
-    calibration_start_year_index = calibration_start_year - data_start_year
-    calibration_end_year_index = calibration_end_year - data_start_year 
-    
-    # get calibration period arrays
-    if (calibration_start_year > data_start_year) or (calibration_end_year < data_end_year):
-        P_calibration = P[calibration_start_year_index:calibration_end_year_index + 1]
-        ET_calibration = ET[calibration_start_year_index:calibration_end_year_index + 1]
-        PET_calibration = PET[calibration_start_year_index:calibration_end_year_index + 1]
-        R_calibration = R[calibration_start_year_index:calibration_end_year_index + 1]
-        PR_calibration = PR[calibration_start_year_index:calibration_end_year_index + 1]
-        L_calibration = L[calibration_start_year_index:calibration_end_year_index + 1]
-        PL_calibration = PL[calibration_start_year_index:calibration_end_year_index + 1]
-        RO_calibration = RO[calibration_start_year_index:calibration_end_year_index + 1]
-        PRO_calibration = PRO[calibration_start_year_index:calibration_end_year_index + 1]
-    else:
-        P_calibration = P
-        ET_calibration = ET
-        PET_calibration = PET
-        R_calibration = R
-        PR_calibration = PR
-        L_calibration = L
-        PL_calibration = PL
-        RO_calibration = RO
-        PRO_calibration = PRO
-
     # get the CAFEC coefficients
     alpha, beta, gamma, delta = _cafec_coefficients(P, 
                                                     PET, 
@@ -2234,166 +2133,50 @@ def z_index(P,
                                                     data_start_year, 
                                                     calibration_start_year, 
                                                     calibration_end_year)
+    # get the weighting factor K        
+    K = _climatic_characteristic(alpha, 
+                                 beta, 
+                                 gamma, 
+                                 delta, 
+                                 P, 
+                                 ET, 
+                                 PET, 
+                                 R, 
+                                 PR, 
+                                 RO, 
+                                 PRO, 
+                                 L, 
+                                 PL, 
+                                 data_start_year,
+                                 calibration_start_year,
+                                 calibration_end_year)
     
-#     with warnings.catch_warnings():
-#         warnings.simplefilter("ignore", category=RuntimeWarning)
-#         
-#         # get averages for each calendar month (compute means over the year axis, giving an average for each calendar month over all years)
-#         P_bar = np.nanmean(P_calibration, axis=0)
-#         ET_bar = np.nanmean(ET_calibration, axis=0)
-#         PET_bar = np.nanmean(PET_calibration, axis=0)
-#         R_bar = np.nanmean(R_calibration, axis=0)
-#         PR_bar = np.nanmean(PR_calibration, axis=0)
-#         L_bar = np.nanmean(L_calibration, axis=0)
-#         PL_bar = np.nanmean(PL_calibration, axis=0)
-#         RO_bar = np.nanmean(RO_calibration, axis=0)
-#         PRO_bar = np.nanmean(PRO_calibration, axis=0)
-#             
-#         # TODO document the significance of these arrays
-#         alpha = np.empty((12,))
-#         beta = np.empty((12,))
-#         gamma = np.empty((12,))
-#         delta = np.empty((12,))
-#     
-#         # compute the alpha, beta, gamma, and delta coefficients for each calendar month
-#         for i in range(12):
-#             
-#             # calculate alpha
-#             if PET_bar[i] == 0:
-#                 if ET_bar[i] == 0:
-#                     alpha[i] = 1
-#                 else:
-#                     alpha[i] = 0
-#                     #logger.warn('CHECK DATA: PET is less than ET.')
-#             else:
-#                 alpha[i] = ET_bar[i] / PET_bar[i]
-#     
-#             # calculate beta
-#             if PR_bar[i] == 0:
-#                 if R_bar[i] == 0:
-#                     beta[i] = 1
-#                 else:
-#                     beta[i] = 0
-#                     #logger.warn('CHECK DATA: PR is less than R.')
-#             else:
-#                 beta[i] = R_bar[i] / PR_bar[i]
-#     
-#             # calculate gamma
-#             if PRO_bar[i] == 0:
-#                 if RO_bar[i] == 0:
-#                     gamma[i] = 1
-#                 else:
-#                     gamma[i] = 0
-#                     #logger.warn('CHECK DATA: PRO is less than RO.')
-#             else:
-#                 gamma[i] = RO_bar[i] / PRO_bar[i]
-#     
-#             # calculate delta
-#             if PL_bar[i] == 0:
-#                 if L_bar[i] == 0:
-#                     delta[i] = 1
-#                 else:
-#                     delta[i] = 0
-#                     #logger.warn('CHECK DATA: PL is less than L.')
-#             else:
-#                 delta[i] = L_bar[i] / PL_bar[i]
-        
-    K = _weighting_factor(17.67,
-                          alpha, 
-                          beta, 
-                          gamma, 
-                          delta, 
-                          P, 
-                          ET, 
-                          PET, 
-                          R, 
-                          PR, 
-                          RO, 
-                          PRO, 
-                          L, 
-                          PL, 
-                          total_calibration_years)
-        
-#         # CALIBRATED CAFEC, K, AND d CALCULATION
-#         # NOTE: 
-#         # The Z index is calculated with a calibrated K (weighting factor) but
-#         # a full record d (difference between actual precipitation and CAFEC -
-#         # climatically appropriate for existing conditions - precipitation).
-#         # CAFEC precipitation is calculated analogously to a simple water
-#         # balance, where precipitation is equal to evaporation plus runoff 
-#         # (and groundwater recharge) plus or minus any change in soil moisture storage. 
-#         CAFEC_hat = np.empty((total_calibration_years, 12)) 
-#         d_hat = np.empty((total_calibration_years, 12)) 
-#         for k in range(total_calibration_years):
-#             for i in range(12):
-#                 # CAFEC_hat is calculated for month i of year k of the calibration period.
-#                 CAFEC_hat[k, i] = (alpha[i] * PET_calibration[k, i]) + \
-#                                   (beta[i] * PR_calibration[k, i]) + \
-#                                   (gamma[i] * PRO_calibration[k, i]) - \
-#                                   (delta[i] * PL_calibration[k, i])
-#                                   
-#                 # Calculate d_hat, the difference between actual precipitation
-#                 # and CAFEC precipitation for month i of year k of the calibration period.
-#                 d_hat[k, i] = P_calibration[k, i] - CAFEC_hat[k, i]
-#         
-#         # NOTE: D_hat, T_hat, K_hat, and z_hat are all calibrated
-#         # variables - i.e., they are calculated only for the calibration period.
-#         D_hat = np.empty((12,)) 
-#         T_hat = np.empty((12,)) 
-#         K_hat = np.empty((12,)) 
-#         z_hat_m = np.empty((12,)) 
-#         for i in range(12):
-#                         
-#             # Calculate D_hat, the average of the absolute values of d_hat for month i.
-#             D_hat[i] = np.nanmean(np.absolute(d_hat[:, i]))
-#     
-#             # Calculate T_hat, a measure of the ratio of "moisture demand" to "moisture supply" for month i
-#             #TODO if this value evaluates to a negative number less than -2.8 then the following equation for K_hat 
-#             # will result in a math domain error -- is it valid here to limit this value to -2.8 or greater? 
-#             T_hat[i] = (PET_bar[i] + R_bar[i] + RO_bar[i]) / (P_bar[i] + L_bar[i])
-#             
-#             # Calculate K_hat, the denominator of the K equation for month i.
-#             # from figure 3, Palmer 1965
-#             K_hat[i] = 1.5 * math.log10((T_hat[i] + 2.8) / D_hat[i]) + .50
-#             
-#             # Calculate z_hat, the numerator of the K equation for month i.
-#             z_hat_m[i] = D_hat[i] * K_hat[i]
-#         
-#         z_hat = sum(z_hat_m)
-#     
-#     # Calculate the weighting factor, K, using the calibrated variables K_hat and z_hat. The purpose of
-#     # the weighting factors is to adjust the departures from normal precipitation d (calculated below), 
-#     # such that they are comparable among different locations and for different months. The K tends to be
-#     # large in arid regions and small in humid regions (cf. Alley, 1984; Journal of Climate and Applied Meteorology, 
-#     # Vol. 23, No. 7, July 1984).
-#     K = np.empty((12,)) 
-#     for i in range(12):
-#         K[i] = (17.67 * K_hat[i]) / z_hat
-    
+    # loop over the full period of record and compute the CAFEC precipitation, and use this to determine the moisture departure
     # FULL RECORD CAFEC AND d CALCULATION
     CAFEC = np.empty((P.shape[0], 12))
     z = np.empty((P.shape[0], 12))
     for n in range(P.shape[0]):
         for i in range(12):
-            # Calculate the CAFEC precipitation for month i and year n of the full record.
+            
+            # calculate the CAFEC precipitation
             CAFEC[n, i] = (alpha[i] * PET[n, i]) + \
                           (beta[i] * PR[n, i]) + \
                           (gamma[i] * PRO[n, i]) - \
                           (delta[i] * PL[n, i])
             
-            # Calculate d_hat, difference between actual precipitation and
-            # CAFEC precipitation for month i and year n of the full record.
-            difference = P[n, i] - CAFEC[n, i]
+            # Calculate d_hat, difference between actual precipitation and CAFEC precipitation
+            departure = P[n, i] - CAFEC[n, i]
             
-            # Calculate the Z index or the "moisture anomaly index" for 
-            # month i and year n of the full record.
-            z[n, i] = K[i] * difference
+            # Calculate the Z-index (moisture anomaly index)
+            z[n, i] = K[i] * departure
 
+    # return the Z-Index values as a 1-D array
     return z.flatten()
 
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def Main(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT):
+# previously Main()
+def compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT):
 
     # This function calculates PX1 and PX2 and calls the backtracking loop.
     # If the absolute value of PX1 or PX2 goes over 1, that value becomes the new PX3. 
@@ -2555,7 +2338,8 @@ def Between0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X):
 
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def Function_Uw(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT):
+# previously Function_Uw
+def dry_spell_abatement(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT):
 
     # In the case of an established drought, Palmer (1965) notes that a value of Z = -0.15 will maintain an
     # index of -0.50 from month to month. An established drought or wet spell is considered definitely over
@@ -2585,13 +2369,14 @@ def Function_Uw(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT):
         else:
             PX3[k] = 0.897 * X3 + (Z[k] / 3)
 
-        PX1, PX2, PX3, X, BT = Main(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT)                                                                 
+        PX1, PX2, PX3, X, BT = compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT)                                                                 
 
     return Uw, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT
 
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def Function_Ud(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT):
+# previously Function_Ud
+def wet_spell_abatement(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT):
 
     # In the case of an established wet spell, Palmer (1965) notes that a value of Z = +0.15 will maintain an index of +0.50 
     # from month to month. An established drought or wet spell is considered definitely over when the index reaches the "near 
@@ -2619,26 +2404,239 @@ def Function_Ud(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT):
         else:
             PX3[k] = 0.897 * X3 + (Z[k] / 3)
 
-        PX1, PX2, PX3, X, BT = Main(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT)                                                                 
+        PX1, PX2, PX3, X, BT = compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT)                                                                 
 
     return Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT
 
 #-----------------------------------------------------------------------------------------------------------------------
+def pmdi(probability,
+         X1, 
+         X2, 
+         X3):
+    
+    # the index is near normal and either a dry or wet spell exists, choose the largest absolute value of X1 or X2
+    if X3 == 0:
+        
+        if abs(X2) > abs(X1):
+            pmdi = X2
+        else:
+            pmdi = X1   
+    
+    else:
+        if (probability > 0) and (probability < 100):
+    
+            PRO = probability / 100.0
+            if X3 <= 0:
+                # use the weighted sum of X3 and X1
+                pmdi = ((1.0 - PRO) * X3) + (PRO * X1)
+            
+            else:
+                # use the weighted sum of X3 and X2
+                pmdi = ((1.0 - PRO) * X3) + (PRO * X2)
+        else:
+            # a weather spell is established
+            pmdi = X3
+
+    return pmdi
+
+#------------------------------------------------------------------------------------------------------------------
+#@numba.jit
+def pdsi_from_zindex(Z):
+
+    ## INITIALIZE PDSI AND PHDI CALCULATIONS
+    
+    # V is the sum of the Uw (Ud) values for the current and previous months of an
+    # established dry (wet) spell and is used in calculating the Pe value for a month.
+    V = 0.0
+    Pe = 0.0 # Pe is the probability that the current wet or dry spell has ended in a month.
+    X1 = 0.0 # X1 is the severity index value for an incipient wet spell for a month.
+    X2 = 0.0 # X2 is the severity index value for an incipient dry spell for a month.
+    X3 = 0.0 # X3 is the severity index value of the current established wet or dry spell for a month.
+    Q = 0.0
+    
+    number_of_months = Z.shape[0]
+    
+    # BACTRACKING VARIABLES
+    
+    # BT is the backtracking variable, and is pre-allocated with zeros. Its value (1, 2, or 3) indicates which 
+    # intermediate index (X1, X2, or X3) to backtrack up, selecting the associated term (X1, X2, or X3) for the PDSI. NOTE: BT may
+    # be operationally left equal to 0, as it cannot be known in real time when an existing drought or wet spell may or may not be over.
+    BT = np.zeros((number_of_months,)) 
+    
+    ## CALCULATE PDSI AND PHDI
+    PX1 = np.zeros((number_of_months,))
+    PX2 = np.zeros((number_of_months,))
+    PX3 = np.zeros((number_of_months,))
+    PPe = np.zeros((number_of_months,))
+    X = np.zeros((number_of_months,))
+    PMDI = np.zeros((number_of_months,))
+    
+    # Ze is the soil moisture anomaly (Z) value that will end the current established dry or wet spell in that 
+    # month and is used in calculating the Q value and subsequently the Pe value for a month
+    Ze = np.zeros((number_of_months,))
+    
+    # Uw is the effective wetness required in a month to end the current established dry spell (drought)
+    Uw = np.zeros((number_of_months,))
+    
+    # Ud is the effective dryness required in a month to end the current wet spell
+    Ud = np.zeros((number_of_months,))
+    
+    # Palmer Hydrological Drought Index
+    PHDI = np.zeros((number_of_months,))
+
+    # loop over all months in the dataset, calculating PDSI and PHDI for each
+    for k in range(number_of_months):
+        
+        PMDI[k] = pmdi(Pe, X1, X2, X3)
+        
+        if (Pe == 100) or (Pe == 0):   # no abatement underway
+            
+            if abs(X3) <= 0.5:   # drought or wet spell ends
+                
+                # PV is the preliminary V value and is used in operational calculations.
+                PV = 0 
+                
+                # PPe is the preliminary Pe value and is used in operational calculations.
+                PPe[k] = 0 
+                
+                # PX3 is the preliminary X3 value and is used in operational calculations.
+                PX3[k] = 0 
+                                
+                PX1, PX2, PX3, X, BT = compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT)
+ 
+            elif X3 > 0.5: # Wet spell underway
+                
+                if Z[k] >= 0.15: # Wet spell intensifies
+                
+                    PV, PX1, PX2, PX3, PPe, X, BT = Between0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)                                                  
+                
+                else: # Wet spell starts to abate, and it may end.
+                
+                    Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = wet_spell_abatement(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
+                                                                                               
+            elif X3 < -0.5: # Drought underway
+                
+                if Z[k] <= -0.15: # Drought intensifies 
+                
+                    PV, PX1, PX2, PX3, PPe, X, BT = Between0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)                                                 
+                
+                else: # Drought starts to abate, and it may end.
+                
+                    Uw, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = dry_spell_abatement(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
+                                                                                          
+        else: # Abatement underway
+            
+            if X3 > 0: # Wet spell underway
+                
+                Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = wet_spell_abatement(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)                                                     
+            
+            else: # Drought underway
+                
+                Uw, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = dry_spell_abatement(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
+                                                                                                    
+        ## Assign V, Pe, X1, X2, and X3 for next month (k + 1)
+        V = PV
+        Pe = PPe[k]
+        X1 = PX1[k]
+        X2 = PX2[k]
+        X3 = PX3[k]
+        
+        ## ASSIGN X FOR CASES WHERE PX3 AND BT EQUAL ZERO
+        # NOTE: This is a conflicting case that arises where X cannot be
+        # assigned as X1, X2, or X3 in real time. Here 0 < PX1 < 1, 
+        # -1 < PX2 < 0, and PX3 = 0, and it is not obvious which
+        # intermediate index should be assigned to X. Therefore,
+        # backtracking is used here, where BT is set equal to the next
+        # month's BT value and X is assigned to the intermediate index
+        # associated with that BT value.
+        if k > 0:
+            if (PX3[k - 1] == 0) and (BT[k - 1] == 0):
+                r = 0
+                for c in range(k - 1, 0, -1):
+                    if BT[c] != 0:
+                        # Backtracking continues in a backstepping procedure up through the first month where BT is not equal to zero.
+                        r = c + 1    # r is the row number up through which backtracking continues.
+                        break
+
+                for count0 in range(k - 1, r - 1, -1):
+                    BT[count0] = BT[count0 + 1] # Assign BT to next month's BT value.
+                    if BT[count0] == 2:
+                        if PX2[count0] == 0: # If BT = 2, X = PX2 unless PX2 = 0, then X = PX1.
+                            X[count0] = PX1[count0]
+                            BT[count0] = 1
+                        else:
+                            X[count0] = PX2[count0]
+                            BT[count0] = 2
+                    elif BT[count0] == 1:
+                        if PX1[count0] == 0: # If BT = 1, X = PX1 unless PX1 = 0, then X = PX2.
+                            X[count0] = PX2[count0] 
+                            BT[count0] = 2
+                        else:
+                            X[count0] = PX1[count0]
+                            BT[count0] = 1
+
+        # In instances where there is no established spell for the last monthly observation, X is initially 
+        # assigned to 0. The code below sets X in the last month to greater of |PX1| or |PX2|. This prevents 
+        # the PHDI from being inappropriately set to 0. 
+        if k == (number_of_months - 1):
+            if (PX3[k] == 0) and (X[k] == 0):
+                if abs(PX1[k]) > abs(PX2[k]):
+                    X[k] = PX1[k]
+                else:
+                    X[k] = PX2[k]
+                
+        # round values to four decimal places
+        for values in [X1, X2, X3, Pe, V, Q, X, PX1, PX2, PX3, PPe, Ud, Uw, Ze]:
+            values = round(values, 4)
+        
+    ## ASSIGN PDSI VALUES
+    # NOTE: 
+    # In Palmer's effort to create a meteorological drought index (PDSI),
+    # Palmer expressed the beginning and ending of dry (or wet) periods in
+    # terms of the probability that the spell has started or ended (Pe). A
+    # drought (wet spell) is definitely over when the probability reaches
+    # or exceeds 100%, but the drought (wet spell) is considered to have
+    # ended the first month when the probability becomes greater than 0%
+    # and then continues to remain greater than 0% until it reaches 100% 
+    # (cf. Palmer, 1965; US Weather Bureau Research Paper 45).
+    PDSI = X
+    
+    ## ASSIGN PHDI VALUES
+    # NOTE:
+    # There is a lag between the time that the drought-inducing
+    # meteorological conditions end and the environment recovers from a
+    # drought. Palmer made this distinction by computing a meteorological
+    # drought index (described above) and a hydrological drought index. The
+    # X3 term changes more slowly than the values of the incipient (X1 and
+    # X2) terms. The X3 term is the index for the long-term hydrologic
+    # moisture condition and is the PHDI.
+    for s in range(len(PX3)):
+        if PX3[s] == 0:
+            # For calculation and program advancement purposes, the PX3 term is sometimes set equal to 0. 
+            # In such instances, the PHDI is set equal to X (the PDSI), which accurately reflects the X3 value.
+            PHDI[s] = X[s]
+        else:
+            PHDI[s] = PX3[s]
+    
+    # return the computed variables
+    return PDSI, PHDI, PMDI
+
+#-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def _compute_X(established_index_values,
-             sczindex_values,
-             scpdsi_values,
-             pdsi_values,
-             wet_index_values,
-             dry_index_values,
-             wet_index_deque,
-             dry_index_deque,
-             wetM,
-             wetB,
-             dryM,
-             dryB,
-             calibration_complete,
-             tolerance=0.0):
+               sczindex_values,
+               scpdsi_values,
+               pdsi_values,
+               wet_index_values,
+               dry_index_values,
+               wet_index_deque,
+               dry_index_deque,
+               wetM,
+               wetB,
+               dryM,
+               dryB,
+               calibration_complete,
+               tolerance=0.0):
     '''
     This function computes X values
     :param established_index_values
@@ -3173,186 +3171,186 @@ def _least_squares(x,
 
 #-----------------------------------------------------------------------------------------------------------------------
 #@numba.jit
-def pdsi_from_zindex(Z):
-
-    ## INITIALIZE PDSI AND PHDI CALCULATIONS
-    
-    # V is the sum of the Uw (Ud) values for the current and previous months of an
-    # established dry (wet) spell and is used in calculating the Pe value for a month.
-    V = 0.0
-    Pe = 0.0 # Pe is the probability that the current wet or dry spell has ended in a month.
-    X1 = 0.0 # X1 is the severity index value for an incipient wet spell for a month.
-    X2 = 0.0 # X2 is the severity index value for an incipient dry spell for a month.
-    X3 = 0.0 # X3 is the severity index value of the current established wet or dry spell for a month.
-    Q = 0.0
-    
-    number_of_months = Z.shape[0]
-    
-    # BACTRACKING VARIABLES
-    
-    # BT is the backtracking variable, and is pre-allocated with zeros. Its value (1, 2, or 3) indicates which 
-    # intermediate index (X1, X2, or X3) to backtrack up, selecting the associated term (X1, X2, or X3) for the PDSI. NOTE: BT may
-    # be operationally left equal to 0, as it cannot be known in real time when an existing drought or wet spell may or may not be over.
-    BT = np.zeros((number_of_months,)) 
-    
-    ## CALCULATE PDSI AND PHDI
-    PX1 = np.zeros((number_of_months,))
-    PX2 = np.zeros((number_of_months,))
-    PX3 = np.zeros((number_of_months,))
-    PPe = np.zeros((number_of_months,))
-    X = np.zeros((number_of_months,))
-    PMDI = np.zeros((number_of_months,))
-    
-    # Ze is the soil moisture anomaly (Z) value that will end the current established dry or wet spell in that 
-    # month and is used in calculating the Q value and subsequently the Pe value for a month
-    Ze = np.zeros((number_of_months,))
-    
-    # Uw is the effective wetness required in a month to end the current established dry spell (drought)
-    Uw = np.zeros((number_of_months,))
-    
-    # Ud is the effective dryness required in a month to end the current wet spell
-    Ud = np.zeros((number_of_months,))
-    
-    # Palmer Hydrological Drought Index
-    PHDI = np.zeros((number_of_months,))
-
-    # loop over all months in the dataset, calculating PDSI and PHDI for each
-    for k in range(number_of_months):
-        
-        PMDI[k] = pmdi(Pe, X1, X2, X3)
-        
-        if (Pe == 100) or (Pe == 0):   # no abatement underway
-            
-            if abs(X3) <= 0.5:   # drought or wet spell ends
-                
-                # PV is the preliminary V value and is used in operational calculations.
-                PV = 0 
-                
-                # PPe is the preliminary Pe value and is used in operational calculations.
-                PPe[k] = 0 
-                
-                # PX3 is the preliminary X3 value and is used in operational calculations.
-                PX3[k] = 0 
-                                
-                PX1, PX2, PX3, X, BT = Main(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT)
- 
-            elif X3 > 0.5: # Wet spell underway
-                if Z[k] >= 0.15: # Wet spell intensifies
-                    PV, PX1, PX2, PX3, PPe, X, BT = Between0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)                                                  
-                else: # Wet spell starts to abate, and it may end.
-                    Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Ud(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
-                                                                                               
-            elif X3 < -0.5: # Drought underway
-                if Z[k] <= -0.15: # Drought intensifies 
-                    PV, PX1, PX2, PX3, PPe, X, BT = Between0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)                                                 
-                else: # Drought starts to abate, and it may end.
-                    Uw, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Uw(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
-                                                                                          
-        else: # Abatement underway
-            if X3 > 0: # Wet spell underway
-                Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Ud(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)                                                     
-            else: # Drought underway
-                Uw, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Uw(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
-                                                                                                    
-        ## Assign V, Pe, X1, X2, and X3 for next month (k + 1)
-        V = PV
-        Pe = PPe[k]
-        X1 = PX1[k]
-        X2 = PX2[k]
-        X3 = PX3[k]
-        
-        ## ASSIGN X FOR CASES WHERE PX3 AND BT EQUAL ZERO
-        # NOTE: This is a conflicting case that arises where X cannot be
-        # assigned as X1, X2, or X3 in real time. Here 0 < PX1 < 1, 
-        # -1 < PX2 < 0, and PX3 = 0, and it is not obvious which
-        # intermediate index should be assigned to X. Therefore,
-        # backtracking is used here, where BT is set equal to the next
-        # month's BT value and X is assigned to the intermediate index
-        # associated with that BT value.
-        if k > 0:
-            if (PX3[k - 1] == 0) and (BT[k - 1] == 0):
-                r = 0
-                for c in range(k - 1, 0, -1):
-                    if BT[c] != 0:
-                        # Backtracking continues in a backstepping procedure up through the first month where BT is not equal to zero.
-                        r = c + 1    # r is the row number up through which backtracking continues.
-                        break
-
-                for count0 in range(k - 1, r - 1, -1):
-                    BT[count0] = BT[count0 + 1] # Assign BT to next month's BT value.
-                    if BT[count0] == 2:
-                        if PX2[count0] == 0: # If BT = 2, X = PX2 unless PX2 = 0, then X = PX1.
-                            X[count0] = PX1[count0]
-                            BT[count0] = 1
-                        else:
-                            X[count0] = PX2[count0]
-                            BT[count0] = 2
-                    elif BT[count0] == 1:
-                        if PX1[count0] == 0: # If BT = 1, X = PX1 unless PX1 = 0, then X = PX2.
-                            X[count0] = PX2[count0] 
-                            BT[count0] = 2
-                        else:
-                            X[count0] = PX1[count0]
-                            BT[count0] = 1
-
-        # In instances where there is no established spell for the last monthly observation, X is initially 
-        # assigned to 0. The code below sets X in the last month to greater of |PX1| or |PX2|. This prevents 
-        # the PHDI from being inappropriately set to 0. 
-        if k == (number_of_months - 1):
-            if (PX3[k] == 0) and (X[k] == 0):
-                if abs(PX1[k]) > abs(PX2[k]):
-                    X[k] = PX1[k]
-                else:
-                    X[k] = PX2[k]
-                
-        # round values to four decimal places
-        X1 = round(X1, 4)
-        X2 = round(X2, 4)
-        X3 = round(X3, 4)
-        Pe = round(Pe, 4)
-        V = round(V, 4)
-        PV = round(PV, 4)
-        Q = round(Q, 4)
-        X[k] = round(X[k], 4)
-        PX1[k] = round(PX1[k], 4)
-        PX2[k] = round(PX2[k], 4)
-        PX3[k] = round(PX3[k], 4)
-        PPe[k] = round(PPe[k], 4)
-        Ud[k] = round(Ud[k], 4)
-        Uw[k] = round(Uw[k], 4)
-        Ze[k] = round(Ze[k], 4)
-        
-    ## ASSIGN PDSI VALUES
-    # NOTE: 
-    # In Palmer's effort to create a meteorological drought index (PDSI),
-    # Palmer expressed the beginning and ending of dry (or wet) periods in
-    # terms of the probability that the spell has started or ended (Pe). A
-    # drought (wet spell) is definitely over when the probability reaches
-    # or exceeds 100%, but the drought (wet spell) is considered to have
-    # ended the first month when the probability becomes greater than 0%
-    # and then continues to remain greater than 0% until it reaches 100% 
-    # (cf. Palmer, 1965; US Weather Bureau Research Paper 45).
-    PDSI = X
-    
-    ## ASSIGN PHDI VALUES
-    # NOTE:
-    # There is a lag between the time that the drought-inducing
-    # meteorological conditions end and the environment recovers from a
-    # drought. Palmer made this distinction by computing a meteorological
-    # drought index (described above) and a hydrological drought index. The
-    # X3 term changes more slowly than the values of the incipient (X1 and
-    # X2) terms. The X3 term is the index for the long-term hydrologic
-    # moisture condition and is the PHDI.
-    for s in range(len(PX3)):
-        if PX3[s] == 0:
-            # For calculation and program advancement purposes, the PX3 term is sometimes set equal to 0. 
-            # In such instances, the PHDI is set equal to X (the PDSI), which accurately reflects the X3 value.
-            PHDI[s] = X[s]
-        else:
-            PHDI[s] = PX3[s]
-    
-    # return the computed variables
-    return PDSI, PHDI, PMDI
+# def pdsi_from_zindex(Z):
+# 
+#     ## INITIALIZE PDSI AND PHDI CALCULATIONS
+#     
+#     # V is the sum of the Uw (Ud) values for the current and previous months of an
+#     # established dry (wet) spell and is used in calculating the Pe value for a month.
+#     V = 0.0
+#     Pe = 0.0 # Pe is the probability that the current wet or dry spell has ended in a month.
+#     X1 = 0.0 # X1 is the severity index value for an incipient wet spell for a month.
+#     X2 = 0.0 # X2 is the severity index value for an incipient dry spell for a month.
+#     X3 = 0.0 # X3 is the severity index value of the current established wet or dry spell for a month.
+#     Q = 0.0
+#     
+#     number_of_months = Z.shape[0]
+#     
+#     # BACTRACKING VARIABLES
+#     
+#     # BT is the backtracking variable, and is pre-allocated with zeros. Its value (1, 2, or 3) indicates which 
+#     # intermediate index (X1, X2, or X3) to backtrack up, selecting the associated term (X1, X2, or X3) for the PDSI. NOTE: BT may
+#     # be operationally left equal to 0, as it cannot be known in real time when an existing drought or wet spell may or may not be over.
+#     BT = np.zeros((number_of_months,)) 
+#     
+#     ## CALCULATE PDSI AND PHDI
+#     PX1 = np.zeros((number_of_months,))
+#     PX2 = np.zeros((number_of_months,))
+#     PX3 = np.zeros((number_of_months,))
+#     PPe = np.zeros((number_of_months,))
+#     X = np.zeros((number_of_months,))
+#     PMDI = np.zeros((number_of_months,))
+#     
+#     # Ze is the soil moisture anomaly (Z) value that will end the current established dry or wet spell in that 
+#     # month and is used in calculating the Q value and subsequently the Pe value for a month
+#     Ze = np.zeros((number_of_months,))
+#     
+#     # Uw is the effective wetness required in a month to end the current established dry spell (drought)
+#     Uw = np.zeros((number_of_months,))
+#     
+#     # Ud is the effective dryness required in a month to end the current wet spell
+#     Ud = np.zeros((number_of_months,))
+#     
+#     # Palmer Hydrological Drought Index
+#     PHDI = np.zeros((number_of_months,))
+# 
+#     # loop over all months in the dataset, calculating PDSI and PHDI for each
+#     for k in range(number_of_months):
+#         
+#         PMDI[k] = pmdi(Pe, X1, X2, X3)
+#         
+#         if (Pe == 100) or (Pe == 0):   # no abatement underway
+#             
+#             if abs(X3) <= 0.5:   # drought or wet spell ends
+#                 
+#                 # PV is the preliminary V value and is used in operational calculations.
+#                 PV = 0 
+#                 
+#                 # PPe is the preliminary Pe value and is used in operational calculations.
+#                 PPe[k] = 0 
+#                 
+#                 # PX3 is the preliminary X3 value and is used in operational calculations.
+#                 PX3[k] = 0 
+#                                 
+#                 PX1, PX2, PX3, X, BT = Main(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT)
+#  
+#             elif X3 > 0.5: # Wet spell underway
+#                 if Z[k] >= 0.15: # Wet spell intensifies
+#                     PV, PX1, PX2, PX3, PPe, X, BT = Between0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)                                                  
+#                 else: # Wet spell starts to abate, and it may end.
+#                     Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Ud(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
+#                                                                                                
+#             elif X3 < -0.5: # Drought underway
+#                 if Z[k] <= -0.15: # Drought intensifies 
+#                     PV, PX1, PX2, PX3, PPe, X, BT = Between0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)                                                 
+#                 else: # Drought starts to abate, and it may end.
+#                     Uw, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Uw(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
+#                                                                                           
+#         else: # Abatement underway
+#             if X3 > 0: # Wet spell underway
+#                 Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Ud(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)                                                     
+#             else: # Drought underway
+#                 Uw, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Uw(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
+#                                                                                                     
+#         ## Assign V, Pe, X1, X2, and X3 for next month (k + 1)
+#         V = PV
+#         Pe = PPe[k]
+#         X1 = PX1[k]
+#         X2 = PX2[k]
+#         X3 = PX3[k]
+#         
+#         ## ASSIGN X FOR CASES WHERE PX3 AND BT EQUAL ZERO
+#         # NOTE: This is a conflicting case that arises where X cannot be
+#         # assigned as X1, X2, or X3 in real time. Here 0 < PX1 < 1, 
+#         # -1 < PX2 < 0, and PX3 = 0, and it is not obvious which
+#         # intermediate index should be assigned to X. Therefore,
+#         # backtracking is used here, where BT is set equal to the next
+#         # month's BT value and X is assigned to the intermediate index
+#         # associated with that BT value.
+#         if k > 0:
+#             if (PX3[k - 1] == 0) and (BT[k - 1] == 0):
+#                 r = 0
+#                 for c in range(k - 1, 0, -1):
+#                     if BT[c] != 0:
+#                         # Backtracking continues in a backstepping procedure up through the first month where BT is not equal to zero.
+#                         r = c + 1    # r is the row number up through which backtracking continues.
+#                         break
+# 
+#                 for count0 in range(k - 1, r - 1, -1):
+#                     BT[count0] = BT[count0 + 1] # Assign BT to next month's BT value.
+#                     if BT[count0] == 2:
+#                         if PX2[count0] == 0: # If BT = 2, X = PX2 unless PX2 = 0, then X = PX1.
+#                             X[count0] = PX1[count0]
+#                             BT[count0] = 1
+#                         else:
+#                             X[count0] = PX2[count0]
+#                             BT[count0] = 2
+#                     elif BT[count0] == 1:
+#                         if PX1[count0] == 0: # If BT = 1, X = PX1 unless PX1 = 0, then X = PX2.
+#                             X[count0] = PX2[count0] 
+#                             BT[count0] = 2
+#                         else:
+#                             X[count0] = PX1[count0]
+#                             BT[count0] = 1
+# 
+#         # In instances where there is no established spell for the last monthly observation, X is initially 
+#         # assigned to 0. The code below sets X in the last month to greater of |PX1| or |PX2|. This prevents 
+#         # the PHDI from being inappropriately set to 0. 
+#         if k == (number_of_months - 1):
+#             if (PX3[k] == 0) and (X[k] == 0):
+#                 if abs(PX1[k]) > abs(PX2[k]):
+#                     X[k] = PX1[k]
+#                 else:
+#                     X[k] = PX2[k]
+#                 
+#         # round values to four decimal places
+#         X1 = round(X1, 4)
+#         X2 = round(X2, 4)
+#         X3 = round(X3, 4)
+#         Pe = round(Pe, 4)
+#         V = round(V, 4)
+#         PV = round(PV, 4)
+#         Q = round(Q, 4)
+#         X[k] = round(X[k], 4)
+#         PX1[k] = round(PX1[k], 4)
+#         PX2[k] = round(PX2[k], 4)
+#         PX3[k] = round(PX3[k], 4)
+#         PPe[k] = round(PPe[k], 4)
+#         Ud[k] = round(Ud[k], 4)
+#         Uw[k] = round(Uw[k], 4)
+#         Ze[k] = round(Ze[k], 4)
+#         
+#     ## ASSIGN PDSI VALUES
+#     # NOTE: 
+#     # In Palmer's effort to create a meteorological drought index (PDSI),
+#     # Palmer expressed the beginning and ending of dry (or wet) periods in
+#     # terms of the probability that the spell has started or ended (Pe). A
+#     # drought (wet spell) is definitely over when the probability reaches
+#     # or exceeds 100%, but the drought (wet spell) is considered to have
+#     # ended the first month when the probability becomes greater than 0%
+#     # and then continues to remain greater than 0% until it reaches 100% 
+#     # (cf. Palmer, 1965; US Weather Bureau Research Paper 45).
+#     PDSI = X
+#     
+#     ## ASSIGN PHDI VALUES
+#     # NOTE:
+#     # There is a lag between the time that the drought-inducing
+#     # meteorological conditions end and the environment recovers from a
+#     # drought. Palmer made this distinction by computing a meteorological
+#     # drought index (described above) and a hydrological drought index. The
+#     # X3 term changes more slowly than the values of the incipient (X1 and
+#     # X2) terms. The X3 term is the index for the long-term hydrologic
+#     # moisture condition and is the PHDI.
+#     for s in range(len(PX3)):
+#         if PX3[s] == 0:
+#             # For calculation and program advancement purposes, the PX3 term is sometimes set equal to 0. 
+#             # In such instances, the PHDI is set equal to X (the PDSI), which accurately reflects the X3 value.
+#             PHDI[s] = X[s]
+#         else:
+#             PHDI[s] = PX3[s]
+#     
+#     # return the computed variables
+#     return PDSI, PHDI, PMDI
 
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
@@ -3627,7 +3625,7 @@ def pdsi(precip_time_series,
          calibration_end_year=1990):
     '''
     This function computes the Palmer Drought Severity Index (PDSI), Palmer Hydrological Drought Index (PHDI), 
-    and Palmer Z-Index.
+    Palmer Modified Drought Index (PMDI), and Palmer Z-Index.
     
     :param precip_time_series: time series of monthly precipitation values, in inches
     :param pet_time_series: time series of monthly PET values, in inches
