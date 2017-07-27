@@ -916,7 +916,7 @@ def _cafec_coefficients(P,
             else:
                 delta[i] = L_bar[i] / PL_bar[i]
 
-    return alpha, beta, delta, gamma
+    return alpha, beta, gamma, delta
 
 #-----------------------------------------------------------------------------------------------------------------------
 #@numba.jit
@@ -1961,7 +1961,7 @@ def _calibrate_data(arrays,
     # for each array pull out the calibration period
     calibration_arrays = []
     for data_array in arrays:
-        data_array = _reshape_to_years_months(data_array)
+        data_array = utils.reshape_to_years_months(data_array)
     
         # get calibration period arrays
         if (calibration_start_year > data_start_year) or (calibration_end_year < data_end_year):
@@ -2973,129 +2973,129 @@ def _z_sum(interval,
            calibration_end_year,
            input_start_year):
 
-        z = 0.0
-        z_temporary = deque()
-        values_to_sum = deque()
-        summed_values = deque()
+    z = 0.0
+    z_temporary = deque()
+    values_to_sum = deque()
+    summed_values = deque()
+    
+    # get only non-NaN Z-index values
+    for sczindex in sczindex_values:
+    
+        # we need to skip Z-index values from the list if they don't exist, this can result from empty months in the final year of the data set
+        if not np.isnan(sczindex):
         
-        # get only non-NaN Z-index values
-        for sczindex in sczindex_values:
-        
-            # we need to skip Z-index values from the list if they don't exist, this can result from empty months in the final year of the data set
-            if not np.isnan(sczindex):
+            z_temporary.append(sczindex)
             
-                z_temporary.append(sczindex)
-                
-        calibration_period_initial_index = (calibration_start_year - input_start_year) * periods_per_year
-        i = 0
-        while (i < calibration_period_initial_index) and (len(z_temporary) > 0):
-            
-            # remove periods before the start of the calibration interval
-            z_temporary.pop()
-            i += 1
-
-        remaining_calibration_periods = (calibration_end_year - calibration_start_year + 1) * periods_per_year
-
-        # get the first interval length of values from the end of the calibration period working backwards, creating the first sum of interval periods
-        sum_value = 0.0
-        for i in range(interval):
+    calibration_period_initial_index = (calibration_start_year - input_start_year) * periods_per_year
+    i = 0
+    while (i < calibration_period_initial_index) and (len(z_temporary) > 0):
         
-            if len(z_temporary) == 0:
-               
-                i = interval
+        # remove periods before the start of the calibration interval
+        z_temporary.pop()
+        i += 1
+
+    remaining_calibration_periods = (calibration_end_year - calibration_start_year + 1) * periods_per_year
+
+    # get the first interval length of values from the end of the calibration period working backwards, creating the first sum of interval periods
+    sum_value = 0.0
+    for i in range(interval):
+    
+        if len(z_temporary) == 0:
+           
+            i = interval
+            
+        else:
+
+            # pull a value off the end of the list
+            z = z_temporary.pop()
+            remaining_calibration_periods -= 1
+            
+            if not np.isnan(z):
+            
+                # add to the sum
+                sum_value += z
                 
+                # add to the array of values we've used for the initial sum
+                values_to_sum.appendleft(z)
+            
             else:
 
-                # pull a value off the end of the list
-                z = z_temporary.pop()
-                remaining_calibration_periods -= 1
+                # reduce the loop counter so we don't skip a calibration interval period
+                i -= 1
+    
+    # if we're dealing with wet conditions then we want to be using positive numbers, and if dry conditions  
+    # then we need to be using negative numbers, so we introduce a sign variable to help with this 
+    sign = 1
+    if 'DRY' == wet_or_dry:
+
+        sign = -1
+    
+    # for each remaining Z value, recalculate the sum of Z values
+    largest_sum = sum_value
+    summed_values.appendleft(sum_value)
+    while (len(z_temporary) > 0) and (remaining_calibration_periods > 0):
+    
+        # take the next Z-index value off the end of the list 
+        z = z_temporary.pop()
+
+        # reduce by one period for each removal
+        remaining_calibration_periods -= 1
+    
+        if not np.isnan(z):
+
+            # come up with a new Z sum for this new group of Z values to sum
+            
+            # remove the last value from both the sum_value and the values to sum array
+            sum_value -= values_to_sum.pop()
+            
+            # add to the Z sum, update the bookkeeping lists
+            sum_value += z
+            values_to_sum.append(z)
+            summed_values.append(sum_value)
+         
+        # update the largest sum value
+        if (sign * sum_value) > (sign * largest_sum):
+
+            largest_sum = sum_value
+
+    # Determine the highest or lowest reasonable value that isn't due to a freak anomaly in the data. 
+    # A "freak anomaly" is defined as a value that is either
+    #   1) 25% higher than the 98th percentile
+    #   2) 25% lower than the 2nd percentile
+    reasonable_percentile_index = 0
+    if 'WET' == wet_or_dry:
+
+        reasonable_percentile_index = int(len(summed_values) * 0.98)
+
+    else:  # DRY
+    
+        reasonable_percentile_index = int(len(summed_values) * 0.02)
+    
+    # sort the list of sums into ascending order and get the sum_value value referenced by the safe percentile index
+    summed_values = sorted(summed_values)
+    sum_at_reasonable_percentile = summed_values[reasonable_percentile_index]
+      
+    # find the highest reasonable value out of the summed values
+    highest_reasonable_value = 0.0
+    reasonable_tolerance_ratio = 1.25
+    while len(summed_values) > 0:
+
+        sum_value = summed_values.pop()
+        if (sign * sum_value) > 0:
+
+            if (sum_value / sum_at_reasonable_percentile) < reasonable_tolerance_ratio:
+            
+                if (sign * sum_value) > (sign * highest_reasonable_value):
                 
-                if not np.isnan(z):
-                
-                    # add to the sum
-                    sum_value += z
-                    
-                    # add to the array of values we've used for the initial sum
-                    values_to_sum.appendleft(z)
-                
-                else:
-
-                    # reduce the loop counter so we don't skip a calibration interval period
-                    i -= 1
-        
-        # if we're dealing with wet conditions then we want to be using positive numbers, and if dry conditions  
-        # then we need to be using negative numbers, so we introduce a sign variable to help with this 
-        sign = 1
-        if 'DRY' == wet_or_dry:
-
-            sign = -1
-        
-        # for each remaining Z value, recalculate the sum of Z values
-        largest_sum = sum_value
-        summed_values.appendleft(sum_value)
-        while (len(z_temporary) > 0) and (remaining_calibration_periods > 0):
-        
-            # take the next Z-index value off the end of the list 
-            z = z_temporary.pop()
-
-            # reduce by one period for each removal
-            remaining_calibration_periods -= 1
-        
-            if not np.isnan(z):
-
-                # come up with a new Z sum for this new group of Z values to sum
-                
-                # remove the last value from both the sum_value and the values to sum array
-                sum_value -= values_to_sum.pop()
-                
-                # add to the Z sum, update the bookkeeping lists
-                sum_value += z
-                values_to_sum.append(z)
-                summed_values.append(sum_value)
-             
-            # update the largest sum value
-            if (sign * sum_value) > (sign * largest_sum):
-
-                largest_sum = sum_value
-
-        # Determine the highest or lowest reasonable value that isn't due to a freak anomaly in the data. 
-        # A "freak anomaly" is defined as a value that is either
-        #   1) 25% higher than the 98th percentile
-        #   2) 25% lower than the 2nd percentile
-        reasonable_percentile_index = 0
-        if 'WET' == wet_or_dry:
-
-            reasonable_percentile_index = int(len(summed_values) * 0.98)
-
-        else:  # DRY
-        
-            reasonable_percentile_index = int(len(summed_values) * 0.02)
-        
-        # sort the list of sums into ascending order and get the sum_value value referenced by the safe percentile index
-        summed_values = sorted(summed_values)
-        sum_at_reasonable_percentile = summed_values[reasonable_percentile_index]
-          
-        # find the highest reasonable value out of the summed values
-        highest_reasonable_value = 0.0
-        reasonable_tolerance_ratio = 1.25
-        while len(summed_values) > 0:
-
-            sum_value = summed_values.pop()
-            if (sign * sum_value) > 0:
-
-                if (sum_value / sum_at_reasonable_percentile) < reasonable_tolerance_ratio:
-                
-                    if (sign * sum_value) > (sign * highest_reasonable_value):
-                    
-                        highest_reasonable_value = sum_value
-        
-        if 'WET' == wet_or_dry:
-        
-            return highest_reasonable_value
-        
-        else:  # DRY
-        
-            return largest_sum
+                    highest_reasonable_value = sum_value
+    
+    if 'WET' == wet_or_dry:
+    
+        return highest_reasonable_value
+    
+    else:  # DRY
+    
+        return largest_sum
 
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
@@ -3104,70 +3104,70 @@ def _least_squares(x,
                  n, 
                  wetOrDry):
     
-        correlation = 0.0
-        c_tol = 0.85
-        max_value = 0.0
-        max_diff = 0.0
-        max_i = 0
-        sumX = 0.0
-        sumY = 0.0
-        sumX2 = 0.0
-        sumY2 = 0.0
-        sumXY = 0.0
-        for i in range(n):
-        
-            this_x = x[i]
-            this_y = y[i]
-            sumX += this_x
-            sumY += this_y
-            sumX2 += this_x * this_x
-            sumY2 += this_y * this_y
-            sumXY += this_x * this_y
-        
-        SSX = sumX2 - (sumX * sumX) / n
-        SSY = sumY2 - (sumY * sumY) / n
-        SSXY = sumXY - (sumX * sumY) / n
+    correlation = 0.0
+    c_tol = 0.85
+    max_value = 0.0
+    max_diff = 0.0
+    max_i = 0
+    sumX = 0.0
+    sumY = 0.0
+    sumX2 = 0.0
+    sumY2 = 0.0
+    sumXY = 0.0
+    for i in range(n):
+    
+        this_x = x[i]
+        this_y = y[i]
+        sumX += this_x
+        sumY += this_y
+        sumX2 += this_x * this_x
+        sumY2 += this_y * this_y
+        sumXY += this_x * this_y
+    
+    SSX = sumX2 - (sumX * sumX) / n
+    SSY = sumY2 - (sumY * sumY) / n
+    SSXY = sumXY - (sumX * sumY) / n
+    if (SSX > 0) and (SSY > 0):  # perform this check to avoid square root of negative(s)
+        correlation = SSXY / (math.sqrt(SSX) * math.sqrt(SSY))
+    
+    i = n - 1
+    
+    # if we're dealing with wet conditions then we want to be using positive numbers, and for dry conditions  
+    # then we want to be using negative numbers, so we introduce a sign variable to facilitate this 
+    sign = 1
+    if 'DRY' == wetOrDry: 
+        sign = -1     
+    
+    while ((sign * correlation) < c_tol) and (i > 3):
+    
+        # when the correlation is off, it appears better to
+        # take the earlier sums rather than the later ones.
+        this_x = x[i]
+        this_y = y[i]
+        sumX -= this_x
+        sumY -= this_y
+        sumX2 -= this_x * this_x
+        sumY2 -= this_y * this_y
+        sumXY -= this_x * this_y
+        SSX = sumX2 - (sumX * sumX) / i
+        SSY = sumY2 - (sumY * sumY) / i
+        SSXY = sumXY - (sumX * sumY) / i
         if (SSX > 0) and (SSY > 0):  # perform this check to avoid square root of negative(s)
             correlation = SSXY / (math.sqrt(SSX) * math.sqrt(SSY))
+        i -= 1
+    
+    leastSquaresSlope = SSXY / SSX
+    for j in range(i + 1):
+    
+        if (sign * (y[j] - leastSquaresSlope * x[j])) > (sign * max_diff):
         
-        i = n - 1
-        
-        # if we're dealing with wet conditions then we want to be using positive numbers, and for dry conditions  
-        # then we want to be using negative numbers, so we introduce a sign variable to facilitate this 
-        sign = 1
-        if 'DRY' == wetOrDry: 
-            sign = -1     
-        
-        while ((sign * correlation) < c_tol) and (i > 3):
-        
-            # when the correlation is off, it appears better to
-            # take the earlier sums rather than the later ones.
-            this_x = x[i]
-            this_y = y[i]
-            sumX -= this_x
-            sumY -= this_y
-            sumX2 -= this_x * this_x
-            sumY2 -= this_y * this_y
-            sumXY -= this_x * this_y
-            SSX = sumX2 - (sumX * sumX) / i
-            SSY = sumY2 - (sumY * sumY) / i
-            SSXY = sumXY - (sumX * sumY) / i
-            if (SSX > 0) and (SSY > 0):  # perform this check to avoid square root of negative(s)
-                correlation = SSXY / (math.sqrt(SSX) * math.sqrt(SSY))
-            i -= 1
-        
-        leastSquaresSlope = SSXY / SSX
-        for j in range(i + 1):
-        
-            if (sign * (y[j] - leastSquaresSlope * x[j])) > (sign * max_diff):
-            
-                max_diff = y[j] - leastSquaresSlope * x[j]
-                max_i = j
-                max_value = y[j]
-             
-        leastSquaresIntercept = max_value - leastSquaresSlope * x[max_i]
-        
-        return leastSquaresSlope, leastSquaresIntercept
+            max_diff = y[j] - leastSquaresSlope * x[j]
+            max_i = j
+            max_value = y[j]
+         
+    leastSquaresIntercept = max_value - leastSquaresSlope * x[max_i]
+    
+    return leastSquaresSlope, leastSquaresIntercept
 
 #-----------------------------------------------------------------------------------------------------------------------
 #@numba.jit

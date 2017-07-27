@@ -135,6 +135,27 @@ if __name__ == '__main__':
                                                                                       calibration_begin_year,
                                                                                       calibration_end_year)
                 
+                # compute the coefficients using the new function
+                new_alpha, new_beta, new_gamma, new_delta = palmer._cafec_coefficients(precip_timeseries,
+                                                                                       pedat,
+                                                                                       etdat,
+                                                                                       prdat,
+                                                                                       rdat,
+                                                                                       rodat,
+                                                                                       PRO,
+                                                                                       tldat,
+                                                                                       pldat,
+                                                                                       data_begin_year,
+                                                                                       calibration_begin_year,
+                                                                                       calibration_end_year)
+
+                # look at the differences between the results of the old and new versions of the coefficients code                
+                alpha_diffs = alpha - new_alpha
+                beta_diffs = beta - new_beta
+                gamma_diffs = gamma - new_gamma
+                delta_diffs = delta - new_delta
+                
+                # compute the weighting factor (climatic characteristic) using the new version
                 K = palmer._weighting_factor(pdat,
                                              pedat,
                                              etdat,
@@ -148,6 +169,7 @@ if __name__ == '__main__':
                                              calibration_begin_year,
                                              calibration_end_year)
 
+                # compute the weighting factor (climatic characteristic) using the version translated from pdinew.f
                 AK = palmer.pdinew_compute_K(alpha,
                                              beta,
                                              gamma,
@@ -162,6 +184,7 @@ if __name__ == '__main__':
                                              calibration_begin_year,
                                              calibration_end_year)
                 
+                # compute the PDI values from the version translated from pdinew.f
                 pdinew_PDSI, pdinew_PHDI, pdinew_PMDI, pdinew_Z = palmer.pdinew_zindex_pdsi(precip_timeseries,
                                                                                             pedat,
                                                                                             prdat,
