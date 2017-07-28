@@ -156,33 +156,33 @@ if __name__ == '__main__':
                 delta_diffs = delta - new_delta
                 
                 # compute the weighting factor (climatic characteristic) using the new version
-                K = palmer._weighting_factor(pdat,
-                                             pedat,
-                                             etdat,
-                                             prdat,
-                                             rdat,
-                                             rodat,
-                                             PRO,
-                                             tldat,
-                                             pldat,
-                                             data_begin_year,
-                                             calibration_begin_year,
-                                             calibration_end_year)
+                K = palmer._climatic_characteristic(pdat,
+                                                    pedat,
+                                                    etdat,
+                                                    prdat,
+                                                    rdat,
+                                                    rodat,
+                                                    PRO,
+                                                    tldat,
+                                                    pldat,
+                                                    data_begin_year,
+                                                    calibration_begin_year,
+                                                    calibration_end_year)
 
                 # compute the weighting factor (climatic characteristic) using the version translated from pdinew.f
-                AK = palmer.pdinew_compute_K(alpha,
-                                             beta,
-                                             gamma,
-                                             delta,
-                                             pdat,
-                                             pedat,
-                                             prdat,
-                                             spdat,
-                                             pldat,
-                                             t_ratio,
-                                             data_begin_year,
-                                             calibration_begin_year,
-                                             calibration_end_year)
+                AK = pdinew._climatic_characteristic(alpha,
+                                                     beta,
+                                                     gamma,
+                                                     delta,
+                                                     pdat,
+                                                     pedat,
+                                                     prdat,
+                                                     spdat,
+                                                     pldat,
+                                                     t_ratio,
+                                                     data_begin_year,
+                                                     calibration_begin_year,
+                                                     calibration_end_year)
                 
                 # compute the PDI values from the version translated from pdinew.f
                 pdinew_PDSI, pdinew_PHDI, pdinew_PMDI, pdinew_Z = palmer.pdinew_zindex_pdsi(precip_timeseries,
