@@ -71,179 +71,6 @@ def _pmdi(probability,
 
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def pdinew_water_balance(T,
-                         P,
-                         AWC,
-                         TLA,
-                         B, 
-                         H,
-                         begin_year=1895):
-
-    '''
-    Computes a water balance accounting for monthly time series. Translated from the Fortran code pdinew.f
-    
-    :param T: monthly average temperature values, starting in January of the initial year 
-    :param P: monthly total precipitation values, starting in January of the initial year 
-    :param AWC: available water capacity, below (not including) the top inch
-    :param B: read from soil constants file 
-    :param H: read from soil constants file
-    :param begin_year: initial year of the dataset  
-    :param TLA: negative tangent of the latitude
-    '''
-    
-    # find the number of years from the input array, assume shape (months)
-    
-    # reshape the precipitation array from 1-D (assumed to be total months) to (years, 12) with the second  
-    # dimension being calendar months, and the final/missing monthly values of the final year padded with NaNs
-    T = utils.reshape_to_years_months(T)
-    P = utils.reshape_to_years_months(P)
-    total_years = P.shape[0]
-    
-    WCTOP = 1.0
-    SS  = WCTOP
-    SU = AWC
-    WCTOT = AWC + WCTOP
-
-    PHI = np.array([-0.3865982, -0.2316132, -0.0378180, 0.1715539, 0.3458803, 0.4308320, \
-                     0.3916645, 0.2452467, 0.0535511, -0.15583436, -0.3340551, -0.4310691])
-    
-    # initialize the data arrays with NaNs    
-    pdat = np.full((total_years, 12), np.NaN)
-    spdat = np.full((total_years, 12), np.NaN)
-    pedat = np.full((total_years, 12), np.NaN)
-    pldat = np.full((total_years, 12), np.NaN)
-    prdat = np.full((total_years, 12), np.NaN)
-    rdat = np.full((total_years, 12), np.NaN)
-    tldat = np.full((total_years, 12), np.NaN)
-    etdat = np.full((total_years, 12), np.NaN)
-    rodat = np.full((total_years, 12), np.NaN)
-    tdat = np.full((total_years, 12), np.NaN)
-    sssdat = np.full((total_years, 12), np.NaN)
-    ssudat = np.full((total_years, 12), np.NaN)
-
-    #       loop on years and months
-    end_year = begin_year + total_years
-    years_range = range(begin_year, end_year)
-    for year_index, year in enumerate(years_range):
-    
-        for month_index in range(12):
-    
-            temperature = T[year_index, month_index]
-            precipitation = P[year_index, month_index]
-            
-            #-----------------------------------------------------------------------
-            #     HERE START THE WATER BALANCE CALCULATIONS
-            #-----------------------------------------------------------------------
-            SP = SS + SU
-            PR = AWC + WCTOP - SP
-
-            #-----------------------------------------------------------------------
-            #     1 - CALCULATE PE (POTENTIAL EVAPOTRANSPIRATION)   
-            #-----------------------------------------------------------------------
-            if temperature <= 32.0:
-                PE   = 0.0
-            else:  
-                DUM = PHI[month_index] * TLA 
-                DK = math.atan(math.sqrt(1.0 - (DUM * DUM)) / DUM)   
-                if DK < 0.0:
-                    DK = 3.141593 + DK  
-                DK   = (DK + 0.0157) / 1.57  
-                if temperature >= 80.0:
-                    PE = (math.sin((temperature / 57.3) - 0.166) - 0.76) * DK
-                else:  
-                    DUM = math.log(temperature - 32.0)
-                    PE = math.exp(-3.863233 + (B * 1.715598) - (B * math.log(H)) + (B * DUM)) * DK 
-        
-            #-----------------------------------------------------------------------
-            #     CONVERT DAILY TO MONTHLY  
-            #-----------------------------------------------------------------------
-            PE = PE * calendar.monthrange(year, month_index + 1)[1]
-
-            #-----------------------------------------------------------------------
-            #     2 - PL  POTENTIAL LOSS
-            #-----------------------------------------------------------------------
-            if SS >= PE:
-                PL  = PE  
-            else:  
-                PL = ((PE - SS) * SU) / (AWC + WCTOP) + SS   
-                PL = min(PL, SP)   
-        
-            #-----------------------------------------------------------------------
-            #     3 - CALCULATE RECHARGE, RUNOFF, RESIDUAL MOISTURE, LOSS TO BOTH   
-            #         SURFACE AND UNDER LAYERS, DEPENDING ON STARTING MOISTURE  
-            #         CONTENT AND VALUES OF PRECIPITATION AND EVAPORATION.  
-            #-----------------------------------------------------------------------
-            if precipitation >= PE:
-                #     ----------------- PRECIP EXCEEDS POTENTIAL EVAPORATION
-                ET = PE   
-                TL = 0.0  
-                if (precipitation - PE) > (WCTOP - SS):
-                    #         ------------------------------ EXCESS PRECIP RECHARGES
-                    #                                        UNDER LAYER AS WELL AS UPPER   
-                    RS = WCTOP - SS  
-                    SSS = WCTOP  
-                    if (precipitation - PE - RS) < (AWC - SU):
-                    #             ---------------------------------- BOTH LAYERS CAN TAKE   
-                    #                                                THE ENTIRE EXCESS  
-                        RU = precipitation - PE - RS  
-                        RO = 0.0  
-                    else:  
-                        #             ---------------------------------- SOME RUNOFF OCCURS 
-                        RU = AWC - SU   
-                        RO = precipitation - PE - RS - RU 
-
-                    SSU = SU + RU 
-                    R   = RS + RU 
-                else:  
-                    #         ------------------------------ ONLY TOP LAYER RECHARGED   
-                    R  = precipitation - PE  
-                    SSS = SS + precipitation - PE 
-                    SSU = SU  
-                    RO  = 0.0 
-
-            else:
-                #     ----------------- EVAPORATION EXCEEDS PRECIPITATION   
-                R  = 0.0  
-                if SS >= (PE - precipitation):
-                #         ----------------------- EVAP FROM SURFACE LAYER ONLY  
-                    SL  = PE - precipitation  
-                    SSS = SS - SL 
-                    UL  = 0.0 
-                    SSU = SU  
-                else:
-                    #         ----------------------- EVAP FROM BOTH LAYERS 
-                    SL  = SS  
-                    SSS = 0.0 
-                    UL  = (PE - precipitation - SL) * SU / (WCTOT)  
-                    UL  = min(UL, SU)
-                    SSU = SU - UL 
-
-                TL  = SL + UL 
-                RO  = 0.0 
-                ET  = precipitation  + SL + UL
-
-            # set the climatology and water balance data array values for this year/month time step
-            pdat[year_index, month_index] = precipitation
-            spdat[year_index, month_index] = SP
-            pedat[year_index, month_index] = PE
-            pldat[year_index, month_index] = PL
-            prdat[year_index, month_index] = PR
-            rdat[year_index, month_index] = R
-            tldat[year_index, month_index] = TL
-            etdat[year_index, month_index] = ET
-            rodat[year_index, month_index] = RO
-            tdat[year_index, month_index] = temperature
-            sssdat[year_index, month_index] = SSS
-            ssudat[year_index, month_index] = SSU
-      
-            # reset the upper and lower soil moisture values
-            SS = SSS
-            SU = SSU
-
-    return pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, tdat, sssdat, ssudat
-    
-#-----------------------------------------------------------------------------------------------------------------------
-@numba.jit
 def _water_balance(AWC,
                    PET,
                    P):
@@ -1332,7 +1159,7 @@ def _pdsi_from_zindex(Z):
                 
         # round values to four decimal places
         for values in [X1, X2, X3, Pe, V, Q, X, PX1, PX2, PX3, PPe, Ud, Uw, Ze]:
-            values = round(values, 4)
+            values = np.around(values, decimals=4)
         
     ## ASSIGN PDSI VALUES
     # NOTE: 
@@ -1374,8 +1201,6 @@ def _compute_scpdsi(established_index_values,
                     pdsi_values,
                     wet_index_values,
                     dry_index_values,
-                    wet_index_deque,
-                    dry_index_deque,
                     wetM,
                     wetB,
                     dryM,
@@ -1390,8 +1215,6 @@ def _compute_scpdsi(established_index_values,
     :param pdsi_values
     :param wet_index_values
     :param dry_index_values
-    :param wet_index_deque
-    :param dry_index_deque
     :param wetM
     :param wetB
     :param dryM
@@ -1400,8 +1223,8 @@ def _compute_scpdsi(established_index_values,
     :param tolerance
      '''
     # empty all X lists
-    wet_index_deque.clear()
-    dry_index_deque.clear()
+    wet_index_deque = deque([])
+    dry_index_deque = deque([])
 
     # Initializes the book keeping indices used in finding the PDSI
     _dblV = 0.0
@@ -1601,12 +1424,12 @@ def _choose_X(pdsi_values,
     if (newX1 >= 0.5) and (newX3 == 0):
     
         _backtrack_self_calibrated(pdsi_values,
-                  wet_index_deque,
-                  dry_index_deque,
-                  tolerance,
-                  newX1, 
-                  newX2, 
-                  month_index)
+                                   wet_index_deque,
+                                   dry_index_deque,
+                                   tolerance,
+                                   newX1, 
+                                   newX2, 
+                                   month_index)
         newX = newX1
         newX3 = newX1
         newX1 = 0.0
@@ -1621,12 +1444,12 @@ def _choose_X(pdsi_values,
         if (newX2 <= -0.5) and (newX3 == 0):
         
             _backtrack_self_calibrated(pdsi_values,
-                      wet_index_deque,
-                      dry_index_deque,
-                      tolerance,
-                      newX2, 
-                      newX1, 
-                      month_index)
+                                       wet_index_deque,
+                                       dry_index_deque,
+                                       tolerance,
+                                       newX2, 
+                                       newX1, 
+                                       month_index)
             newX = newX2
             newX3 = newX2
             newX2 = 0.0
@@ -1636,23 +1459,23 @@ def _choose_X(pdsi_values,
             if newX1 == 0:
             
                 _backtrack_self_calibrated(pdsi_values,
-                          wet_index_deque,
-                          dry_index_deque,
-                          tolerance,
-                          newX2, 
-                          newX1, 
-                          month_index)
+                                           wet_index_deque,
+                                           dry_index_deque,
+                                           tolerance,
+                                           newX2, 
+                                           newX1, 
+                                           month_index)
                 newX = newX2
             
             elif newX2 == 0:
             
                 _backtrack_self_calibrated(pdsi_values,
-                          wet_index_deque,
-                          dry_index_deque,
-                          tolerance,
-                          newX1, 
-                          newX2, 
-                          month_index)
+                                           wet_index_deque,
+                                           dry_index_deque,
+                                           tolerance,
+                                           newX1, 
+                                           newX2, 
+                                           month_index)
                 newX = newX1
             
             else:
@@ -1940,13 +1763,12 @@ def pdsi_from_climatology(precip_time_series,
     :return: four numpy arrays containing PDSI, PHDI, PMDI, and Z-Index values respectively 
     '''
 
+    # convert monthly temperatures from Fahrenheit to Celsius
+    monthly_temps_celsius = (temp_time_series - 32) * 5.0 / 9.0
+
     # compute PET
-#     pet_time_series = thornthwaite(temp_time_series, 
-#                                    latitude, 
-#                                    int(temp_time_series.shape[0] / 12),
-#                                    np.NaN)
     pet_time_series = thornthwaite.potential_evapotranspiration(monthly_temps_celsius, 
-                                                                latitude_degrees, 
+                                                                latitude, 
                                                                 data_start_year)
     return pdsi(precip_time_series,
                 pet_time_series.flatten(),
@@ -1954,6 +1776,45 @@ def pdsi_from_climatology(precip_time_series,
                 data_start_year,
                 calibration_start_year,
                 calibration_end_year)
+
+#-----------------------------------------------------------------------------------------------------------------------
+@numba.jit
+def scpdsi_from_climatology(precip_time_series,
+                            temp_time_series,
+                            awc,
+                            latitude,
+                            data_start_year,
+                            calibration_start_year,
+                            calibration_end_year):
+
+    '''
+    This function computes the Self-calibrated Palmer Drought Severity Index (SCPDSI), Palmer Hydrological 
+    Drought Index (PHDI), and Palmer Z-Index.
+    
+    :param precip_time_series: time series of monthly precipitation values, in inches
+    :param temp_time_series: time series of monthly temperature values, in degrees Fahrenheit
+    :param awc: available water capacity (soil constant), in inches
+    :param latitude: latitude, in degrees north 
+    :param data_start_year: initial year of the input precipitation and temperature datasets, 
+                            both of which are assumed to start in January of this year
+    :param calibration_start_year: initial year of the calibration period 
+    :param calibration_end_year: final year of the calibration period 
+    :return: four numpy arrays containing PDSI, PHDI, PMDI, and Z-Index values respectively 
+    '''
+
+    # convert monthly temperatures from Fahrenheit to Celsius
+    monthly_temps_celsius = (temp_time_series - 32) * 5.0 / 9.0
+
+    # compute PET
+    pet_time_series = thornthwaite.potential_evapotranspiration(monthly_temps_celsius, 
+                                                                latitude, 
+                                                                data_start_year)
+    return scpdsi(precip_time_series,
+                  pet_time_series.flatten(),
+                  awc,
+                  data_start_year,
+                  calibration_start_year,
+                  calibration_end_year)
 
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
@@ -1975,9 +1836,17 @@ def _duration_factors(pdsi_values,
     same period.
     
     It appears that there needs to be a different weight given to
-    negative and positive Z values, so the variable 'sign' will
+    negative and positive Z values, so the variable 'wet_or_dry' will
     determine whether the driest or wettest periods are looked at.
 
+    :param pdsi_values:
+    :param zindex_values:  
+    :param calibration_start_year: 
+    :param calibration_end_year:
+    :param data_start_year:
+    :param wet_or_dry: compute duration factors for either dry or wet spells. should be either 'WET' or 'DRY'
+    :return: slope, intercept
+    :rtype: two float values 
     '''
     month_scales = [3, 6, 9, 12, 18, 24, 30, 36, 42, 48]
     
@@ -2050,8 +1919,6 @@ def _self_calibrate(pdsi_values,
     scpdsi_values = np.full(pdsi_values.shape, np.NaN)
     wet_index_values = np.full(pdsi_values.shape, np.NaN)
     dry_index_values = np.full(pdsi_values.shape, np.NaN)
-    wet_index_deque = deque([])
-    dry_index_deque = deque([])
     
     wet_m, wet_b = _duration_factors(pdsi_values,
                                      sczindex_values,
@@ -2075,8 +1942,6 @@ def _self_calibrate(pdsi_values,
                         pdsi_values,
                         wet_index_values,
                         dry_index_values,
-                        wet_index_deque,
-                        dry_index_deque,
                         wet_m,
                         wet_b,
                         dry_m,
@@ -2103,7 +1968,8 @@ def scpdsi(precip_time_series,
                             both of which are assumed to start in January of this year
     :param calibration_start_year: initial year of the calibration period 
     :param calibration_end_year: final year of the calibration period 
-    :return: three numpy arrays, respectively containing PDSI, PHDI, and Z-Index values  
+    :return: numpy arrays, respectively containing SCPDSI, PHDI, and Z-Index values  
+    SCPDSI, PDSI, PHDI, PMDI, Z-Index, ET, PR, R, RO, PRO, L, PL
     '''
     try:
         # make sure we have matching precipitation and PET time series

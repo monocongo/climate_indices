@@ -4,6 +4,7 @@ import math
 import netCDF4
 import numpy as np
 import palmer
+import pdinew
 import utils
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -58,7 +59,7 @@ if __name__ == '__main__':
 
                 # compute water balance values using the function translated from the Fortran pdinew.f
                 neg_tan_lat = -1 * math.tan(math.radians(latitude))
-                pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, tdat, sssdat, ssudat = palmer.pdinew_water_balance(temp_timeseries, precip_timeseries, awc, neg_tan_lat, B, H)
+                pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, tdat, sssdat, ssudat = pdinew._water_balance(temp_timeseries, precip_timeseries, awc, neg_tan_lat, B, H)
                     
                 # compare the values against the operational values produced monthly by pdinew.f
                 spdat_diffs = input_dataset.variables['spdat'][division_index, :] - spdat.flatten()
@@ -74,7 +75,7 @@ if __name__ == '__main__':
                 ssudat_diffs = input_dataset.variables['ssudat'][division_index, :] - ssudat.flatten()
                 
                 # compute the water balance values using the new Python version derived from Jacobi et al Matlab PDSI                                                                             
-                ET, PR, R, RO, PRO, L, PL = palmer.water_balance(awc + 1.0, pedat, pdat)
+                ET, PR, R, RO, PRO, L, PL = palmer._water_balance(awc + 1.0, pedat, pdat)
                 
                 # compare the values against the operational values produced monthly by pdinew.f
                 etdat_wb_diffs = input_dataset.variables['etdat'][division_index, :] - ET
@@ -121,7 +122,7 @@ if __name__ == '__main__':
                                                                         calibration_end_year)
                 
                 # compute PDSI etc. using translated functions from pdinew.f Fortran code
-                alpha, beta, gamma, delta, t_ratio = palmer.pdinew_cafec_coefficients(precip_timeseries,
+                alpha, beta, gamma, delta, t_ratio = pdinew._cafec_coefficients(precip_timeseries,
                                                                                       pedat,
                                                                                       etdat,
                                                                                       prdat,
@@ -156,11 +157,15 @@ if __name__ == '__main__':
                 delta_diffs = delta - new_delta
                 
                 # compute the weighting factor (climatic characteristic) using the new version
-                K = palmer._climatic_characteristic(pdat,
-                                                    pedat,
+                K = palmer._climatic_characteristic(alpha,
+                                                    beta,
+                                                    gamma,
+                                                    delta,
+                                                    pdat,
                                                     etdat,
-                                                    prdat,
+                                                    pedat,
                                                     rdat,
+                                                    prdat,
                                                     rodat,
                                                     PRO,
                                                     tldat,
@@ -184,18 +189,21 @@ if __name__ == '__main__':
                                                      calibration_begin_year,
                                                      calibration_end_year)
                 
+                K_diffs = K - AK
+                
                 # compute the PDI values from the version translated from pdinew.f
-                pdinew_PDSI, pdinew_PHDI, pdinew_PMDI, pdinew_Z = palmer.pdinew_zindex_pdsi(precip_timeseries,
-                                                                                            pedat,
-                                                                                            prdat,
-                                                                                            spdat,
-                                                                                            pldat,
-                                                                                            PRO,
-                                                                                            alpha,
-                                                                                            beta,
-                                                                                            gamma,
-                                                                                            delta,
-                                                                                            AK)
+                #? how does PRO relate to PPR in the signature for _zindex_pdsi(), are they really the same? 
+                pdinew_PDSI, pdinew_PHDI, pdinew_PMDI, pdinew_Z = pdinew._zindex_pdsi(precip_timeseries,
+                                                                                      pedat,
+                                                                                      prdat,
+                                                                                      spdat,
+                                                                                      pldat,
+                                                                                      PRO,
+                                                                                      alpha,
+                                                                                      beta,
+                                                                                      gamma,
+                                                                                      delta,
+                                                                                      AK)
                 
                 # find the differences between the new (Matlab-derived) and previous (Fortran-derived) versions
                 pdsi_diffs = PDSI - pdinew_PDSI.flatten()
