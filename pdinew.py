@@ -925,7 +925,7 @@ def _zindex_pdsi_pandas(P,
         
         my_df.PDSI[ix] = _case(PPR[ix], PX1[ix], PX2[ix], PX3[ix]) 
       
-    return my_df.PDSI.as_matrix, my_df.PHDI.as_matrix, my_df.WPLM.as_matrix, my_df.Z.as_matrix
+    return my_df.PDSI.values, my_df.PHDI.values, my_df.WPLM.values, my_df.Z.values
 
 #-----------------------------------------------------------------------------------------------------------------------
 # compare to Function_Ud()
