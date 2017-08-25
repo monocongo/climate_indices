@@ -850,7 +850,7 @@ def _zindex_pdsi_pandas(P,
                     # compare to 
                     # PX1, PX2, PX3, X, BT = Main(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT)
                     # in pdsi_from_zindex()
-                    my_df, X1, X2, X3, V, PRO, K8 = _compute_X_pandas(my_df, X1, X2, j, m, K8, nendyr, nbegyr, PV)
+                    my_df, X1, X2, X3, V, PRO, K8, k8max = _compute_X_pandas(my_df, X1, X2, j, m, K8, nendyr, nbegyr, PV)
                      
                 elif X3 > 0.5:   
                     #         ----------------------- WE ARE IN A WET SPELL 
@@ -868,7 +868,7 @@ def _zindex_pdsi_pandas(P,
                         # compare to
                         # Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Ud(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
                         # in pdsi_from_zindex()
-                        my_df, X1, X2, X3, V, PRO, K8 = _wet_spell_abatement_pandas(my_df, V, K8, PRO, j, m, nendyr, nbegyr)
+                        my_df, X1, X2, X3, V, PRO, K8 = _wet_spell_abatement_pandas(my_df, V, K8, PRO, j, m, nendyr, nbegyr, X1, X2, X3)
 
                 elif X3 < -0.5:  
                     #         ------------------------- WE ARE IN A DROUGHT 
@@ -897,7 +897,7 @@ def _zindex_pdsi_pandas(P,
                         # compare to
                         # Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Ud(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
                         # in pdsi_from_zindex()
-                        my_df, X1, X2, X3, V, PRO, K8 = _wet_spell_abatement_pandas(my_df, V, K8, PRO, j, m, nendyr, nbegyr)
+                        my_df, X1, X2, X3, V, PRO, K8 = _wet_spell_abatement_pandas(my_df, V, K8, PRO, j, m, nendyr, nbegyr, X1, X2, X3)
                     
                     else:  # if X3 <= 0.0:
                         
@@ -925,7 +925,7 @@ def _zindex_pdsi_pandas(P,
         
         my_df.PDSI[ix] = _case(PPR[ix], PX1[ix], PX2[ix], PX3[ix]) 
       
-    return my_df.PDSI.to_array(), my_df.PHDI.to_array(), my_df.WPLM.to_array(), my_df.Z.to_array()
+    return my_df.PDSI.as_matrix, my_df.PHDI.as_matrix, my_df.WPLM.as_matrix, my_df.Z.as_matrix
 
 #-----------------------------------------------------------------------------------------------------------------------
 # compare to Function_Ud()
@@ -1032,12 +1032,18 @@ def _wet_spell_abatement_pandas(df,
                                 j, 
                                 m, 
                                 nendyr, 
-                                nbegyr):
+                                nbegyr,
+                                X1, 
+                                X2, 
+                                X3):
     
+    # combine the years (j) and months (m) indices to series index ix
+    ix = (my_df.indexj[k8] * 12) + my_df.indexm[k8]
+        
     #-----------------------------------------------------------------------
     #      WET SPELL ABATEMENT IS POSSIBLE  
     #-----------------------------------------------------------------------
-    UD = Z[j, m] - 0.15  
+    UD = df.Z[ix] - 0.15  
     PV = UD + min(V, 0.0) 
     if PV >= 0:
 
@@ -1062,14 +1068,14 @@ def _wet_spell_abatement_pandas(df,
         else:  
             Q = ZE + V
     
-        PPR[j, m] = (PV / Q) * 100.0 
-        if PPR[j, m] >= 100.0:
+        df.PPR[ix] = (PV / Q) * 100.0 
+        if df.PPR[ix] >= 100.0:
              
-              PPR[j, m] = 100.0
-              PX3[j, m] = 0.0  
+              df.PPR[ix] = 100.0
+              df.PX3[ix] = 0.0  
         else:
               
-              PX3[j, m] = 0.897 * X3 + Z[j, m] / 3.0
+              df.PX3[ix] = 0.897 * X3 + df.Z[ix] / 3.0
 
 
         # in new version the X values and backtracking is again computed here, skipped in the NCEI Fortran
@@ -1189,10 +1195,13 @@ def _dry_spell_abatement_pandas(df,
                                 X3,
                                 PRO):
 
+    # combine the years (j) and months (m) indices to series index ix
+    ix = (df.indexj[K8] * 12) + df.indexm[K8]
+        
     #-----------------------------------------------------------------------
     #      DROUGHT ABATEMENT IS POSSIBLE
     #-----------------------------------------------------------------------
-    UW = Z[j, m] + 0.15  
+    UW = df.Z[ix] + 0.15  
     PV = UW + max(V, 0.0) 
     if PV <= 0:
         # GOTO 210 in pdinew.f
@@ -1233,7 +1242,6 @@ def _dry_spell_abatement_pandas(df,
           
 
         # in new version the X values and backtracking is again computed here, skipped in the NCEI Fortran
-
 
     return df, X1, X2, X3, V, PRO, K8
         
@@ -1474,7 +1482,7 @@ def _compute_X_pandas(df,
     X2  = df.PX2[i] 
     X3  = df.PX3[i] 
 
-    return df, X1, X2, X3, V, PRO, K8
+    return df, X1, X2, X3, V, PRO, K8, k8max
  
 #-----------------------------------------------------------------------------------------------------------------------
 # compare to Between0s()
