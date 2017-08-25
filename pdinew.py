@@ -850,7 +850,7 @@ def _zindex_pdsi_pandas(P,
                     # compare to 
                     # PX1, PX2, PX3, X, BT = Main(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT)
                     # in pdsi_from_zindex()
-                    my_df, X1, X2, X3, V, PRO, K8, k8max = _compute_X_pandas(my_df, X1, X2, j, m, K8, nendyr, nbegyr, PV)
+                    my_df, X1, X2, X3, V, PRO, K8, k8max = _compute_X_pandas(my_df, X1, X2, j, m, K8, k8max, nendyr, nbegyr, PV)
                      
                 elif X3 > 0.5:   
                     #         ----------------------- WE ARE IN A WET SPELL 
@@ -1380,6 +1380,7 @@ def _compute_X_pandas(df,
                       j,
                       m,
                       K8,
+                      k8max,
                       nendyr, 
                       nbegyr, 
                       PV):
