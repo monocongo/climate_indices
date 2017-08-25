@@ -122,19 +122,19 @@ if __name__ == '__main__':
                                                                         calibration_end_year)
                 
                 # compute PDSI etc. using translated functions from pdinew.f Fortran code
-                alpha, beta, gamma, delta, t_ratio = pdinew._cafec_coefficients(precip_timeseries,
-                                                                                      pedat,
-                                                                                      etdat,
-                                                                                      prdat,
-                                                                                      rdat,
-                                                                                      rodat,
-                                                                                      PRO,
-                                                                                      tldat,
-                                                                                      pldat,
-                                                                                      spdat,
-                                                                                      data_begin_year,
-                                                                                      calibration_begin_year,
-                                                                                      calibration_end_year)
+                alpha, beta, delta, gamma, t_ratio = pdinew._cafec_coefficients(precip_timeseries,
+                                                                                pedat,
+                                                                                etdat,
+                                                                                prdat,
+                                                                                rdat,
+                                                                                rodat,
+                                                                                PRO,
+                                                                                tldat,
+                                                                                pldat,
+                                                                                spdat,
+                                                                                data_begin_year,
+                                                                                calibration_begin_year,
+                                                                                calibration_end_year)
                 
                 # compute the coefficients using the new function
                 new_alpha, new_beta, new_gamma, new_delta = palmer._cafec_coefficients(precip_timeseries,
@@ -193,7 +193,7 @@ if __name__ == '__main__':
                 
                 # compute the PDI values from the version translated from pdinew.f
                 #? how does PRO relate to PPR in the signature for _zindex_pdsi(), are they really the same? 
-                pdinew_PDSI, pdinew_PHDI, pdinew_PMDI, pdinew_Z = pdinew._zindex_pdsi(precip_timeseries,
+                pdinew_PDSI, pdinew_PHDI, pdinew_PMDI, pdinew_Z = pdinew._zindex_pdsi_pandas(precip_timeseries,
                                                                                       pedat,
                                                                                       prdat,
                                                                                       spdat,
@@ -203,7 +203,7 @@ if __name__ == '__main__':
                                                                                       beta,
                                                                                       gamma,
                                                                                       delta,
-                                                                                      AK)
+                                                                                      AK, 1895, 2017)
                 
                 # find the differences between the new (Matlab-derived) and previous (Fortran-derived) versions
                 pdsi_diffs = PDSI - pdinew_PDSI.flatten()
