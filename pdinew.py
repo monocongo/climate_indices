@@ -2,6 +2,7 @@ import calendar
 import logging
 import math
 import numpy as np
+import pandas as pd
 import utils
 import warnings
 
@@ -54,7 +55,8 @@ def _cafec_coefficients(P,
                             is assumed to correspond to January of this initial year
     :param calibration_start_year: initial year of the calibration period, should be greater than or equal to the data_start_year
     :param calibration_end_year: final year of the calibration period
-    :return 1-D numpy.ndarray of Z-Index values, with shape corresponding to the input arrays
+    :return 1-D numpy.ndarray of CAFEC coefficient values, alpha, beta, delta, gamma, and the T ratio,
+            with shape of these arrays == (12,), corresponding to calendar months (12 elements)
     :rtype: numpy.ndarray of floats
     '''
     
@@ -640,7 +642,11 @@ def _zindex_pdsi(P,
                                                                                         indexm,
                                                                                         Z,
                                                                                         PV,
-                                                                                        V)
+                                                                                        V,
+                                                                                        X1, 
+                                                                                        X2,
+                                                                                        X3,
+                                                                                        PRO)
                          
                 else:
                     #     ------------------------------------------ABATEMENT IS UNDERWAY   
@@ -705,55 +711,251 @@ def _zindex_pdsi(P,
                                                                                         indexm,
                                                                                         Z,
                                                                                         PV,
-                                                                                        V)
+                                                                                        V,
+                                                                                        X1, 
+                                                                                        X2,
+                                                                                        X3,
+                                                                                        PRO)
 
     # assign X to the PDSI array?
     PDSI = X
     
     for k8 in range(1, k8max):
 #     do k8=1,k8max-1
-        PDSI[indexj[k8], indexm[k8]] = X(indexj(k8),indexm(k8)) 
-        PHDI[indexj[k8], indexm[k8]] = PX3(indexj(k8),indexm(k8)) 
-        if PX3[indexj[k8], indexm[k8]] ==  0.0:
-            PHDI[indexj[K8], indexm[k8]] = X[indexj[k8], indexm[k8]]
+        PDSI[df.indexj[k8], indexm[k8]] = X[df.indexj[k8], indexm[k8]] 
+        PHDI[df.indexj[k8], indexm[k8]] = PX3[df.indexj[k8], indexm[k8]] 
+        if PX3[df.indexj[k8], indexm[k8]] == 0.0:
+            PHDI[indexj[K8], indexm[k8]] = df.X[indexj[k8], indexm[k8]]
         
         # is PPR probability?
-        _case(PPR[indexj[k8], indexm[k8]], 
-              PX1[indexj[k8], indexm[k8]],
-              PX2[indexj[k8], indexm[k8]], 
-              PX3[indexj[k8], indexm[k8]]) 
+        PDSI[df.indexj[k8], indexm[k8]] = _case(PPR[indexj[k8], indexm[k8]], 
+                                                PX1[indexj[k8], indexm[k8]],
+                                                PX2[indexj[k8], indexm[k8]], 
+                                                PX3[indexj[k8], indexm[k8]]) 
       
     return PDSI, PHDI, WPLM, Z
+
+#-----------------------------------------------------------------------------------------------------------------------
+def _zindex_pdsi_pandas(P,
+                        PE,
+                        PR,
+                        SP,
+                        PL,
+                        PPR,
+                        alpha,
+                        beta,
+                        gamma,
+                        delta,
+                        AK,
+                        nbegyr,#=1895,
+                        nendyr):#=2017
+
+    # reshape the precipitation and PPR to (years, 12)
+    P = utils.reshape_to_years_months(P)
+    PPR = utils.reshape_to_years_months(PPR)
+    
+    # sanity check
+    if P.shape != PPR.shape:
+        raise ValueError('Incongruent shapes of precipitation and PPR arrays')
+    
+    # create empty/zero arrays for intermediate values
+    CP = np.full(P.shape, np.NaN)
+    Z = np.full(P.shape, np.NaN)    
+    PDSI = np.full(P.shape, np.NaN)
+    PHDI = np.full(P.shape, np.NaN)
+    WPLM = np.full(P.shape, np.NaN)
+    SX = np.full(P.shape, np.NaN)
+    X = np.full(P.shape, np.NaN)
+    indexj = np.empty(P.shape, dtype=int)
+    indexm = np.empty(P.shape, dtype=int)
+    PX1 = np.zeros(P.shape)
+    PX2 = np.zeros(P.shape)
+    PX3 = np.zeros(P.shape)
+    SX1 = np.zeros(P.shape)
+    SX2 = np.zeros(P.shape)
+    SX3 = np.zeros(P.shape)
+    
+    # intermediate values used in computations below 
+    PV  = 0.0
+    V   = 0.0 
+    PRO = 0.0 
+    X1  = 0.0 
+    X2  = 0.0 
+    X3  = 0.0 
+    K8  = 0
+    k8max = 0
+
+    # create container for the arrays and values we'll use throughout the computation loop below
+    array0 = np.reshape(P, (P.size, 1))
+    my_df = pd.DataFrame(data=array0, 
+                         index=range(0, array0.size), 
+                         columns=['P'])
+
+    # create a list of coluumn names that match to the intermediate work arrays
+    column_names = ['PPR', 'CP', 'Z', 'PDSI', 'PHDI', 'WPLM', 'SX', 'X', 'indexj', 'indexm', 'PX1', 'PX2', 'PX3', 'SX1', 'SX2', 'SX3']
+    for column_name in column_names:
+        
+        # get the array corresponding to the current column
+        column_array = eval(column_name).flatten()
+        
+        # add the column to the DataFrame (as a Series)
+        my_df[column_name] = pd.Series(column_array)
+
+    # loop over all years and months of the time series
+    for j in range(P.shape[0]):    
+                
+        for m in range(12):
+
+            i = (j * 12) + m
+            
+            my_df.indexj[K8] = j
+            my_df.indexm[K8] = m
+
+            #-----------------------------------------------------------------------
+            #     LOOP FROM 160 TO 230 REREADS data FOR CALCULATION OF   
+            #     THE Z-INDEX (MOISTURE ANOMALY) AND PDSI (VARIABLE X). 
+            #     THE FINAL OUTPUTS ARE THE VARIABLES PX3, X, AND Z  WRITTEN
+            #     TO FILE 11.   
+            #-----------------------------------------------------------------------
+            ZE = 0.0 
+            UD = 0.0 
+            UW = 0.0 
+            
+            # compute the CAFEC precipitation (df.CP)
+            CET = alpha[m] * PE[j, m]   # eq. 10, Palmer 1965
+            CR = beta[m] * PR[j, m]     # eq. 11, Palmer 1965
+            CRO = gamma[m] * SP[j, m]   # eq. 12, Palmer 1965
+            CL = delta[m] * PL[j, m]    # eq. 13, Palmer 1965
+            my_df.CP[i] = CET + CR + CRO - CL  # eq. 14, Palmer 1965
+            
+            # moisture departure, d
+            CD = my_df.P[i] - my_df.CP[i]  
+            
+            # Z-index = K * d
+            my_df.Z[i] = AK[m] * CD
+            
+            # now with the Z-Index value computed we compute X based on current values
+             
+            if PRO == 100.0 or PRO == 0.0:  
+            #     ------------------------------------ NO ABATEMENT UNDERWAY
+            #                                          WET OR DROUGHT WILL END IF   
+            #                                             -0.5 =< X3 =< 0.5   
+                if abs(X3) <= 0.5:
+                #         ---------------------------------- END OF DROUGHT OR WET  
+                    PV = 0.0 
+                    my_df.PPR[i] = 0.0 
+                    my_df.PX3[i] = 0.0 
+                    #             ------------ BUT CHECK FOR NEW WET OR DROUGHT START FIRST
+                    # GOTO 200 in pdinew.f
+                    # compare to 
+                    # PX1, PX2, PX3, X, BT = Main(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT)
+                    # in pdsi_from_zindex()
+                    my_df, X1, X2, X3, V, PRO, K8 = _compute_X_pandas(my_df, X1, X2, j, m, K8, nendyr, nbegyr, PV)
+                     
+                elif X3 > 0.5:   
+                    #         ----------------------- WE ARE IN A WET SPELL 
+                    if my_df.Z[i] >= 0.15:   
+                        #              ------------------ THE WET SPELL INTENSIFIES 
+                        #GO TO 210 in pdinew.f
+                        # compare to 
+                        # PV, PX1, PX2, PX3, PPe, X, BT = Between0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)
+                        # in pdsi_from_zindex()
+                        my_df, X1, X2, X3, V, PRO, K8 = _between_0s_pandas(my_df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
+                        
+                    else:
+                        #             ------------------ THE WET STARTS TO ABATE (AND MAY END)  
+                        #GO TO 170 in pdinew.f
+                        # compare to
+                        # Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Ud(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
+                        # in pdsi_from_zindex()
+                        my_df, X1, X2, X3, V, PRO, K8 = _wet_spell_abatement_pandas(my_df, V, K8, PRO, j, m, nendyr, nbegyr)
+
+                elif X3 < -0.5:  
+                    #         ------------------------- WE ARE IN A DROUGHT 
+                    if Z[j, m] <= -0.15:  
+                        #              -------------------- THE DROUGHT INTENSIFIES 
+                        #GO TO 210
+                        # compare to 
+                        # PV, PX1, PX2, PX3, PPe, X, BT = Between0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)
+                        # in pdsi_from_zindex()
+                        my_df, X1, X2, X3, V, PRO, K8 = _between_0s_pandas(my_df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
+
+                    else:
+                        #             ------------------ THE DROUGHT STARTS TO ABATE (AND MAY END)  
+                        #GO TO 180
+                        # compare to 
+                        # Uw, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Uw(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
+                        # in pdsi_from_zindex()
+                        my_df, X1, X2, X3, V, PRO, K8 = _dry_spell_abatement_pandas(my_df, K8, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, PRO)
+                         
+                else:
+                    #     ------------------------------------------ABATEMENT IS UNDERWAY   
+                    if X3 > 0.0:
+                        
+                        #         ----------------------- WE ARE IN A WET SPELL 
+                        #GO TO 170 in pdinew.f
+                        # compare to
+                        # Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Ud(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
+                        # in pdsi_from_zindex()
+                        my_df, X1, X2, X3, V, PRO, K8 = _wet_spell_abatement_pandas(my_df, V, K8, PRO, j, m, nendyr, nbegyr)
+                    
+                    else:  # if X3 <= 0.0:
+                        
+                        #         ----------------------- WE ARE IN A DROUGHT   
+                        #GO TO 180
+                        # compare to
+                        # Uw, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Uw(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
+                        # in pdsi_from_zindex()
+                        my_df, X1, X2, X3, V, PRO, K8 = _dry_spell_abatement_pandas(my_df, K8, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, PRO)
+
+#     # assign X to the PDSI array?
+#     my_df.PDSI = my_df.X
+    
+    for k8 in range(1, k8max):
+
+        # years(j) and months(m) to series index ix
+        ix = (my_df.indexj[k8] * 12) + my_df.indexm[k8]
+        
+        my_df.PDSI[ix] = my_df.X[ix] 
+        my_df.PHDI[ix] = my_dfPX3[ix]
+        
+        if PX3[ix] == 0.0:
+        
+            PHDI[indexj[K8], indexm[k8]] = X[ix]
+        
+        my_df.PDSI[ix] = _case(PPR[ix], PX1[ix], PX2[ix], PX3[ix]) 
+      
+    return my_df.PDSI.to_array(), my_df.PHDI.to_array(), my_df.WPLM.to_array(), my_df.Z.to_array()
 
 #-----------------------------------------------------------------------------------------------------------------------
 # compare to Function_Ud()
 # from line 170 in pdinew.f
 # NOTE careful not to confuse the PRO being returned (probability) with PRO array of potential run off values
 def _wet_spell_abatement(Z, 
-                        V, 
-                        K8, 
-                        PPR,
-                        PRO,
-                        PX1,
-                        PX2, 
-                        PX3, 
-                        X,
-                        X1,
-                        X2,
-                        X3, 
-                        PDSI, 
-                        PHDI, 
-                        WPLM, 
-                        j, 
-                        m, 
-                        nendyr, 
-                        nbegyr, 
-                        SX1, 
-                        SX2, 
-                        SX3, 
-                        SX, 
-                        indexj, 
-                        indexm):
+                         V, 
+                         K8, 
+                         PPR,
+                         PRO,
+                         PX1,
+                         PX2, 
+                         PX3, 
+                         X,
+                         X1,
+                         X2,
+                         X3, 
+                         PDSI, 
+                         PHDI, 
+                         WPLM, 
+                         j, 
+                         m, 
+                         nendyr, 
+                         nbegyr, 
+                         SX1, 
+                         SX2, 
+                         SX3, 
+                         SX, 
+                         indexj, 
+                         indexm):
     
     #-----------------------------------------------------------------------
     #      WET SPELL ABATEMENT IS POSSIBLE  
@@ -820,6 +1022,61 @@ def _wet_spell_abatement(Z,
     return X, X1, X2, X3, SX1, SX2, SX3, V, PRO, K8
 
 #-----------------------------------------------------------------------------------------------------------------------
+# compare to Function_Ud()
+# from line 170 in pdinew.f
+# NOTE careful not to confuse the PRO being returned (probability) with PRO array of potential run off values
+def _wet_spell_abatement_pandas(df,
+                                V, 
+                                K8, 
+                                PRO,
+                                j, 
+                                m, 
+                                nendyr, 
+                                nbegyr):
+    
+    #-----------------------------------------------------------------------
+    #      WET SPELL ABATEMENT IS POSSIBLE  
+    #-----------------------------------------------------------------------
+    UD = Z[j, m] - 0.15  
+    PV = UD + min(V, 0.0) 
+    if PV >= 0:
+
+        df, X1, X2, X3, V, PRO, K8 = _between_0s_pandas(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
+
+    else:
+        #     ---------------------- DURING A WET SPELL, PV => 0 IMPLIES
+        #                            PROB(END) HAS RETURNED TO 0
+        ZE = -2.691 * X3 + 1.5
+    
+        #-----------------------------------------------------------------------
+        #     PROB(END) = 100 * (V/Q)  WHERE:   
+        #                 V = SUM OF MOISTURE EXCESS OR DEFICIT (UD OR UW)  
+        #                 DURING CURRENT ABATEMENT PERIOD   
+        #             Q = TOTAL MOISTURE ANOMALY REQUIRED TO END THE
+        #                 CURRENT DROUGHT OR WET SPELL  
+        #-----------------------------------------------------------------------
+        if PRO == 100.0: 
+            #     --------------------- DROUGHT OR WET CONTINUES, CALCULATE 
+            #                           PROB(END) - VARIABLE ZE 
+            Q = ZE
+        else:  
+            Q = ZE + V
+    
+        PPR[j, m] = (PV / Q) * 100.0 
+        if PPR[j, m] >= 100.0:
+             
+              PPR[j, m] = 100.0
+              PX3[j, m] = 0.0  
+        else:
+              
+              PX3[j, m] = 0.897 * X3 + Z[j, m] / 3.0
+
+
+        # in new version the X values and backtracking is again computed here, skipped in the NCEI Fortran
+        
+    return df, X1, X2, X3, V, PRO, K8
+
+#-----------------------------------------------------------------------------------------------------------------------
 # compare to Function_Uw()
 # from line 180 in pdinew.f
 def _dry_spell_abatement(K8, 
@@ -843,14 +1100,18 @@ def _dry_spell_abatement(K8,
                          indexm,
                          Z,
                          PV,
-                         V):
+                         V,
+                         X1, 
+                         X2,
+                         X3,
+                         PRO):
 
         #-----------------------------------------------------------------------
         #      DROUGHT ABATEMENT IS POSSIBLE
         #-----------------------------------------------------------------------
         UW = Z[j, m] + 0.15  
         PV = UW + max(V, 0.0) 
-        if (PV <= 0):
+        if PV <= 0:
             # GOTO 210 in pdinew.f
             # compare to 
             # PV, PX1, PX2, PX3, PPe, X, BT = Between0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)
@@ -911,6 +1172,70 @@ def _dry_spell_abatement(K8,
 
 
         return X, X1, X2, X3, SX1, SX2, SX3, V, PRO, K8
+        
+#-----------------------------------------------------------------------------------------------------------------------
+# compare to Function_Uw()
+# from line 180 in pdinew.f
+def _dry_spell_abatement_pandas(df,
+                                K8, 
+                                j, 
+                                m, 
+                                nendyr, 
+                                nbegyr, 
+                                PV,
+                                V,
+                                X1, 
+                                X2,
+                                X3,
+                                PRO):
+
+    #-----------------------------------------------------------------------
+    #      DROUGHT ABATEMENT IS POSSIBLE
+    #-----------------------------------------------------------------------
+    UW = Z[j, m] + 0.15  
+    PV = UW + max(V, 0.0) 
+    if PV <= 0:
+        # GOTO 210 in pdinew.f
+        # compare to 
+        # PV, PX1, PX2, PX3, PPe, X, BT = Between0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)
+        # in pdsi_from_zindex()
+        df, X1, X2, X3, V, PRO, K8 = _between_0s_pandas(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
+            
+    else:
+        #     ---------------------- DURING A DROUGHT, PV =< 0 IMPLIES  
+        #                            PROB(END) HAS RETURNED TO 0
+        ZE = -2.691 * X3 - 1.5
+        #-----------------------------------------------------------------------
+        #     PROB(END) = 100 * (V/Q)  WHERE:   
+        #                 V = SUM OF MOISTURE EXCESS OR DEFICIT (UD OR UW)  
+        #                 DURING CURRENT ABATEMENT PERIOD   
+        #             Q = TOTAL MOISTURE ANOMALY REQUIRED TO END THE
+        #                 CURRENT DROUGHT OR WET SPELL  
+        #-----------------------------------------------------------------------
+        if PRO == 100.0: 
+            #     --------------------- DROUGHT OR WET CONTINUES, CALCULATE 
+            #                           PROB(END) - VARIABLE ZE 
+            Q = ZE
+            
+        else:  
+            
+            Q = ZE + V
+
+        # convert the 2-D index values j (years) and m (months) to a series index
+        i = (j * 12) + m
+        
+        df.PPR[i] = (PV / Q) * 100.0 
+        if df.PPR[i] >= 100.0: 
+            df.PPR[i] = 100.0
+            df.PX3[i] = 0.0  
+        else:
+            df.PX3[i] = 0.897 * X3 + df.Z[i] / 3.0
+          
+
+        # in new version the X values and backtracking is again computed here, skipped in the NCEI Fortran
+
+
+    return df, X1, X2, X3, V, PRO, K8
         
 #-----------------------------------------------------------------------------------------------------------------------
 # compare to 
@@ -1037,6 +1362,121 @@ def _compute_X(PX1,
     return X, X1, X2, X3, SX1, SX2, SX3, V, PRO, K8
  
 #-----------------------------------------------------------------------------------------------------------------------
+# compare to 
+# PX1, PX2, PX3, X, BT = Main(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT)
+# in pdsi_from_zindex()
+# from line 200 in pdinew.f
+def _compute_X_pandas(df,
+                      X1,
+                      X2,
+                      j,
+                      m,
+                      K8,
+                      nendyr, 
+                      nbegyr, 
+                      PV):
+    
+    # whether or not an appropriate value for X has been found
+    found = False
+    
+    # the values within the DataFrame are in a series, so get the single index value assuming j is years and m is months
+    i = (j * 12) + m
+
+    #-----------------------------------------------------------------------
+    #     CONTINUE X1 AND X2 CALCULATIONS.  
+    #     IF EITHER INDICATES THE START OF A NEW WET OR DROUGHT,
+    #     AND IF THE LAST WET OR DROUGHT HAS ENDED, USE X1 OR X2
+    #     AS THE NEW X3.
+    #-----------------------------------------------------------------------
+    df.PX1[i] = 0.897 * X1 + df.Z[i] / 3.0
+    df.PX1[i] = max(df.PX1[i], 0.0)   
+    if (df.PX1[i] >= 1.0):   
+        
+        if (df.PX3[i] == 0.0):   
+            #         ------------------- IF NO EXISTING WET SPELL OR DROUGHT   
+            #                             X1 BECOMES THE NEW X3 
+            df.X[i]   = df.PX1[i] 
+            df.PX3[i] = df.PX1[i] 
+            df.PX1[i] = 0.0
+            iass = 1
+            df = _assign_pandas(df, iass, K8, j, m, nendyr, nbegyr)
+            K8 = 1
+            
+            V = PV 
+            PRO = PPR[i] 
+            X1  = df.PX1[i] 
+            X2  = df.PX2[i] 
+            X3  = df.PX3[i] 
+
+            found = True
+            
+    else:
+        df.PX2[i] = 0.897 * X2 + df.Z[i] / 3.0
+        df.PX2[i] = min(df.PX2[i], 0.0)   
+        if df.PX2[i] <= -1.0:  
+            
+            if (df.PX3[i] == 0.0):   
+                #         ------------------- IF NO EXISTING WET SPELL OR DROUGHT   
+                #                             X2 BECOMES THE NEW X3 
+                df.X[i]   = df.PX2[i] 
+                df.PX3[i] = df.PX2[i] 
+                df.PX2[i] = 0.0  
+                iass = 2            
+                df = _assign_pandas(df, iass, K8, j, m, nendyr, nbegyr)
+                K8 = 1
+    
+                found = True
+                
+        elif df.PX3[i] == 0.0:   
+            #    -------------------- NO ESTABLISHED DROUGHT (WET SPELL), BUT X3=0  
+            #                         SO EITHER (NONZERO) X1 OR X2 MUST BE USED AS X3   
+            if df.PX1[i] == 0.0:   
+            
+                df.X[i] = df.PX2[i]   
+                iass = 2            
+                df = _assign_pandas(df, iass, K8, j, m, nendyr, nbegyr)
+                K8 = 1
+
+                found = True
+
+            elif df.PX2[i] == 0:
+                
+                df.X[i] = df.PX1[i]   
+                iass = 1   
+                df = _assign_pandas(df, iass, K8, j, m, nendyr, nbegyr)
+                K8 = 1
+    
+                found = True
+
+        #-----------------------------------------------------------------------
+        #     AT THIS POINT THERE IS NO DETERMINED VALUE TO ASSIGN TO X,
+        #     ALL VALUES OF X1, X2, AND X3 ARE SAVED IN FILE 8. AT A LATER  
+        #     TIME X3 WILL REACH A VALUE WHERE IT IS THE VALUE OF X (PDSI). 
+        #     AT THAT TIME, THE ASSIGN SUBROUTINE BACKTRACKS THROUGH FILE   
+        #     8 CHOOSING THE APPROPRIATE X1 OR X2 TO BE THAT MONTHS X. 
+        #-----------------------------------------------------------------------
+        elif not found and (K8 > 40):  # STOP 'X STORE ARRAYS FULL'  
+            
+            df.SX1[K8] = df.PX1[i] 
+            df.SX2[K8] = df.PX2[i] 
+            df.SX3[K8] = df.PX3[i] 
+            df.X[i]  = df.PX3[i] 
+            K8 = K8 + 1
+            k8max = K8  
+
+    #-----------------------------------------------------------------------
+    #     SAVE THIS MONTHS CALCULATED VARIABLES (V,PRO,X1,X2,X3) FOR   
+    #     USE WITH NEXT MONTHS DATA 
+    #-----------------------------------------------------------------------
+    V = PV 
+    PRO = df.PPR[i] 
+    X1  = df.PX1[i] 
+    X2  = df.PX2[i] 
+    X3  = df.PX3[i] 
+
+    return df, X1, X2, X3, V, PRO, K8
+ 
+#-----------------------------------------------------------------------------------------------------------------------
 # compare to Between0s()
 # 
 # typical usage:
@@ -1081,7 +1521,7 @@ def _between_0s(K8,
         PHDI[j, m] = PX3[j, m] 
         if PX3[j, m] ==  0.0:
             PHDI[j, m] = X[j, m]
-        _case(PPR[j, m], PX1[j, m], PX2[j, m], PX3[j, m], WPLM[j, m]) 
+        PDSI[j, m] = _case(PPR[j, m], PX1[j, m], PX2[j, m], PX3[j, m], WPLM[j, m]) 
     else:
         iass = 3   
         _assign(iass, K8, PPR, PX1, PX2, PX3, X, PDSI, PHDI, WPLM, j, m, nendyr, nbegyr, SX1, SX2, SX3, SX, indexj, indexm)
@@ -1097,6 +1537,63 @@ def _between_0s(K8,
     X3  = PX3[j, m] 
 
     return X, X1, X2, X3, SX1, SX2, SX3, V, PRO, K8
+
+#-----------------------------------------------------------------------------------------------------------------------
+# compare to Between0s()
+# 
+# typical usage:
+#
+# PV, PX1, PX2, PX3, PPe, X, BT = Between0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)
+def _between_0s_pandas(df,
+                       K8, 
+                       X1,
+                       X2, 
+                       X3, 
+                       j, 
+                       m, 
+                       nendyr, 
+                       nbegyr):
+
+    # convert years/months (j/m) indices to a series index
+    ix = (j * 12) + m
+    
+    #-----------------------------------------------------------------------
+    #     PROB(END) RETURNS TO 0.  A POSSIBLE ABATEMENT HAS FIZZLED OUT,
+    #     SO WE ACCEPT ALL STORED VALUES OF X3  
+    #-----------------------------------------------------------------------
+    PV = 0.0 
+    df.PPR[ix] = 0.0 
+    df.PX1[ix] = 0.0 
+    df.PX2[ix] = 0.0 
+    df.PX3[ix] = 0.897 * X3 + df.Z[ix] / 3.0
+    df.X[ix] = df.PX3[ix] 
+    
+    if (K8 == 1): 
+        
+        df.PDSI[ix] = df.X[ix]  
+        df.PHDI[ix] = df.PX3[ix] 
+        
+        if df.PX3[ix] == 0.0:
+            df.PHDI[ix] = df.X[ix]
+        
+        ix = (j * 12) + m
+        df.PDSI[ix] = _case(df.PPR[ix], df.PX1[ix], df.PX2[ix], df.PX3[ix]) 
+        
+    else:
+        iass = 3   
+        df = _assign_pandas(df, iass, K8, j, m, nendyr, nbegyr)
+        K8 = 1
+
+    #-----------------------------------------------------------------------------------------------
+    #     SAVE THIS MONTHS CALCULATED VARIABLES (V, PRO, X1, X2, X3) FOR USE WITH NEXT MONTHS DATA 
+    #-----------------------------------------------------------------------------------------------
+    V = PV 
+    PRO = df.PPR[ix] 
+    X1  = df.PX1[ix] 
+    X2  = df.PX2[ix] 
+    X3  = df.PX3[ix] 
+
+    return df, X1, X2, X3, V, PRO, K8
 
 #-----------------------------------------------------------------------------------------------------------------------
 def _assign(iass,
@@ -1189,15 +1686,92 @@ def _assign(iass,
         if PX3[indexj[n], indexm[n]] == 0.0:
             PHDI[indexj[n], indexm[n]] = SX[n]
             
-        _case(PPR[indexj[n], indexm[n]],
-              PX1[indexj[n], indexm[n]], 
-              PX2[indexj[n], indexm[n]],
-              PX3[indexj[n], indexm[n]])
+        PDSI[indexj[n], indexm[n]] = _case(PPR[indexj[n], indexm[n]],
+                                           PX1[indexj[n], indexm[n]], 
+                                           PX2[indexj[n], indexm[n]],
+                                           PX3[indexj[n], indexm[n]])
 
     k8 = 1
     k8max = k8
 
     return
+
+#-----------------------------------------------------------------------------------------------------------------------
+def _assign_pandas(df,
+                   iass,
+                   k8,
+                   j,
+                   m,
+                   nendyr,
+                   nbegyr):
+
+    '''
+    :df pandas DataFrame
+    :param iass:
+    :param k8:  
+    :param j:
+    :param m:
+    :param nendyr:
+    :param nbegyr:    
+     '''
+
+    # convert the 2-D time step indices (j, m) to a series index i
+    i = (j * 12) + m
+    
+    #   
+    #-----------------------------------------------------------------------
+    #     FIRST FINISH OFF FILE 8 WITH LATEST VALUES OF PX3, Z,X
+    #     X=PX1 FOR I=1, PX2 FOR I=2, PX3,  FOR I=3 
+    #-----------------------------------------------------------------------
+    df.SX[k8] = df.X[i] 
+    if k8 == 1:
+        
+        df.PDSI[i] = df.X[i]  
+        df.PHDI[i] = df.PX3[i] 
+        
+        if df.PX3[i] == 0.0:
+            df.PHDI[i] = df.X[i]
+        
+        df.PDSI[i] = _case(df.PPR[i], df.PX1[i], df.PX2[i], df.PX3[i]) 
+        
+    else:
+        
+        if iass == 3:  
+            #     ---------------- USE ALL X3 VALUES
+            for Mm in range(k8):
+        
+                df.SX[Mm] = df.SX3[Mm]
+    
+        else: 
+            #     -------------- BACKTRACK THRU ARRAYS, STORING ASSIGNED X1 (OR X2) 
+            #                    IN SX UNTIL IT IS ZERO, THEN SWITCHING TO THE OTHER
+            #                    UNTIL IT IS ZERO, ETC. 
+            for Mm in range(k8, 0, -1):
+                
+                if df.SX1[Mm] == 0:
+                    df.SX[Mm] = df.SX2[Mm]
+                else:
+                    df.SX[Mm] = df.SX1[Mm]
+    
+        #-----------------------------------------------------------------------
+        #     PROPER ASSIGNMENTS TO ARRAY SX HAVE BEEN MADE,
+        #     OUTPUT THE MESS   
+        #-----------------------------------------------------------------------
+    
+        for n in range(k8):
+            ix = (df.indexj[n] * 12) + df.indexm[n]
+            df.PDSI[ix] = df.SX[n] 
+            df.PHDI[ix] = df.PX3[ix]
+            
+            if df.PX3[ix] == 0.0:
+                df.PHDI[ix] = df.SX[n]
+                
+            df.PDSI[ix] = _case(df.PPR[ix],
+                                df.PX1[ix], 
+                                df.PX2[ix],
+                                df.PX3[ix])
+
+    return df
 
 #-----------------------------------------------------------------------------------------------------------------------
 def _case(PROB,
@@ -1213,7 +1787,7 @@ def _case(PROB,
     #     X1   - INDEX FOR INCIPIENT WET SPELLS (ALWAYS POSITIVE)   
     #     X2   - INDEX FOR INCIPIENT DRY SPELLS (ALWAYS NEGATIVE)   
     #     X3   - SEVERITY INDEX FOR AN ESTABLISHED WET SPELL (POSITIVE) OR DROUGHT (NEGATIVE)  
-    #     PALM - THE SELECTED PDSI (EITHER PRELIMINARY OR FINAL)
+    #     PDSI - THE SELECTED PDSI (EITHER PRELIMINARY OR FINAL)
     #   
     #   This subroutine written and provided by CPC (Tom Heddinghaus & Paul Sabol).
     #   
@@ -1221,9 +1795,9 @@ def _case(PROB,
     if X3 == 0.0: #) GO TO 10 in pdinew.f
         #     IF X3=0 THE INDEX IS NEAR NORMAL AND EITHER A DRY OR WET SPELL
         #     EXISTS.  CHOOSE THE LARGEST ABSOLUTE VALUE OF X1 OR X2.  
-        PALM = X1
+        PDSI = X1
         if abs(X2) > abs(X1): 
-            PALM = X2
+            PDSI = X2
 
     elif  PROB > 0.0 and PROB < 100.0: # GO TO 20 in pdinew.f
 
@@ -1231,13 +1805,13 @@ def _case(PROB,
         PRO = PROB / 100.0
         if X3 > 0.0: #) GO TO 30
             #     TAKE THE WEIGHTED SUM OF X3 AND X2
-            PALM = (1.0 - PRO) * X3 + PRO * X2   
+            PDSI = (1.0 - PRO) * X3 + PRO * X2   
         else:  
             #     TAKE THE WEIGHTED SUM OF X3 AND X1
-            PALM = (1.0 - PRO) * X3 + PRO * X1   
+            PDSI = (1.0 - PRO) * X3 + PRO * X1   
 
     else:
-        #     A WEATHER SPELL IS ESTABLISHED AND PALM=X3 AND IS FINAL
-        PALM = X3
+        #     A WEATHER SPELL IS ESTABLISHED AND PDSI=X3 AND IS FINAL
+        PDSI = X3
  
-    return PALM
+    return PDSI
