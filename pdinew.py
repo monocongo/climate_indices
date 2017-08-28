@@ -792,7 +792,7 @@ def _zindex_pdsi_pandas(P,
                          columns=['P'])
 
     # create a list of coluumn names that match to the intermediate work arrays
-    column_names = ['PPR', 'CP', 'Z', 'PDSI', 'PHDI', 'WPLM', 'SX', 'X', 'indexj', 'indexm', 'PX1', 'PX2', 'PX3', 'SX1', 'SX2', 'SX3']
+    column_names = ['PPR', 'CP', 'Z', 'PDSI', 'PHDI', 'WPLM', 'SX', 'SX1', 'SX2', 'SX3', 'X', 'indexj', 'indexm', 'PX1', 'PX2', 'PX3']
     for column_name in column_names:
         
         # get the array corresponding to the current column
@@ -849,7 +849,7 @@ def _zindex_pdsi_pandas(P,
                     # GOTO 200 in pdinew.f
                     # compare to 
                     # PX1, PX2, PX3, X, BT = Main(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT)
-                    # in pdsi_from_zindex()
+                    # in palmer.pdsi_from_zindex()
                     my_df, X1, X2, X3, V, PRO, K8, k8max = _compute_X_pandas(my_df, X1, X2, j, m, K8, k8max, nendyr, nbegyr, PV)
                      
                 elif X3 > 0.5:   
@@ -859,7 +859,7 @@ def _zindex_pdsi_pandas(P,
                         #GO TO 210 in pdinew.f
                         # compare to 
                         # PV, PX1, PX2, PX3, PPe, X, BT = Between0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)
-                        # in pdsi_from_zindex()
+                        # in palmer.pdsi_from_zindex()
                         my_df, X1, X2, X3, V, PRO, K8 = _between_0s_pandas(my_df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
                         
                     else:
@@ -867,17 +867,17 @@ def _zindex_pdsi_pandas(P,
                         #GO TO 170 in pdinew.f
                         # compare to
                         # Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Ud(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
-                        # in pdsi_from_zindex()
+                        # in palmer.pdsi_from_zindex()
                         my_df, X1, X2, X3, V, PRO, K8 = _wet_spell_abatement_pandas(my_df, V, K8, PRO, j, m, nendyr, nbegyr, X1, X2, X3)
 
                 elif X3 < -0.5:  
                     #         ------------------------- WE ARE IN A DROUGHT 
-                    if Z[j, m] <= -0.15:  
+                    if my_df.Z[i] <= -0.15:  
                         #              -------------------- THE DROUGHT INTENSIFIES 
                         #GO TO 210
                         # compare to 
                         # PV, PX1, PX2, PX3, PPe, X, BT = Between0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)
-                        # in pdsi_from_zindex()
+                        # in palmer.pdsi_from_zindex()
                         my_df, X1, X2, X3, V, PRO, K8 = _between_0s_pandas(my_df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
 
                     else:
@@ -885,7 +885,7 @@ def _zindex_pdsi_pandas(P,
                         #GO TO 180
                         # compare to 
                         # Uw, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Uw(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
-                        # in pdsi_from_zindex()
+                        # in palmer.pdsi_from_zindex()
                         my_df, X1, X2, X3, V, PRO, K8 = _dry_spell_abatement_pandas(my_df, K8, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, PRO)
                          
                 else:
@@ -896,7 +896,7 @@ def _zindex_pdsi_pandas(P,
                         #GO TO 170 in pdinew.f
                         # compare to
                         # Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Ud(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
-                        # in pdsi_from_zindex()
+                        # in palmer.pdsi_from_zindex()
                         my_df, X1, X2, X3, V, PRO, K8 = _wet_spell_abatement_pandas(my_df, V, K8, PRO, j, m, nendyr, nbegyr, X1, X2, X3)
                     
                     else:  # if X3 <= 0.0:
@@ -905,7 +905,7 @@ def _zindex_pdsi_pandas(P,
                         #GO TO 180
                         # compare to
                         # Uw, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Uw(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
-                        # in pdsi_from_zindex()
+                        # in palmer.pdsi_from_zindex()
                         my_df, X1, X2, X3, V, PRO, K8 = _dry_spell_abatement_pandas(my_df, K8, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, PRO)
 
 #     # assign X to the PDSI array?
