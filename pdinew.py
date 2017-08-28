@@ -33,18 +33,6 @@ def pdsi_from_climatology(precip_timeseries,
     pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, tdat, sssdat, ssudat = \
         _water_balance(temp_timeseries, precip_timeseries, awc, neg_tan_lat, B, H)
                  
-    # calibration period years
-    calibration_begin_year = 1931
-    calibration_end_year = 1990
-    data_begin_year = 1895
-    
-    # compare the results of the pdinew.f translated code (from pdinew.py) against the values  
-    # computed by the corresponding new Palmer implementation based on Jacobi 2013
-                      
-    #TODO get these values out of the NetCDF, compute from time values, etc.                        
-    data_begin_year = 1895
-    data_end_year = 2017
-    
     #NOTE we need to compute CAFEC coefficients for use later/below
     # compute PDSI etc. using translated functions from pdinew.f Fortran code
     alpha, beta, delta, gamma, t_ratio = _cafec_coefficients(precip_timeseries,
