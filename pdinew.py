@@ -12,6 +12,86 @@ logging.basicConfig(level=logging.INFO,
                     datefmt='%Y-%m-%d  %H:%M:%S')
 logger = logging.getLogger(__name__)
 
+#-----------------------------------------------------------------------------------------------------------------------
+def pdsi_from_climatology(precip_timeseries,
+                          temp_timeseries,
+                          awc,
+                          latitude,
+                          B,
+                          H,
+                          data_begin_year,
+                          data_end_year,
+                          calibration_begin_year,
+                          calibration_end_year):
+    
+    # calculate the negative tangent of the latitude which is used as an argument to the water balance function
+    neg_tan_lat = -1 * math.tan(math.radians(latitude))
+
+    # compute water balance values using the function translated from the Fortran pdinew.f
+    #NOTE keep this code in place in order to compute the PET used later, since the two have 
+    # different PET algorithms and we want to compare PDSI using the same PET inputs 
+    pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, tdat, sssdat, ssudat = \
+        _water_balance(temp_timeseries, precip_timeseries, awc, neg_tan_lat, B, H)
+                 
+    # calibration period years
+    calibration_begin_year = 1931
+    calibration_end_year = 1990
+    data_begin_year = 1895
+    
+    # compare the results of the pdinew.f translated code (from pdinew.py) against the values  
+    # computed by the corresponding new Palmer implementation based on Jacobi 2013
+                      
+    #TODO get these values out of the NetCDF, compute from time values, etc.                        
+    data_begin_year = 1895
+    data_end_year = 2017
+    
+    #NOTE we need to compute CAFEC coefficients for use later/below
+    # compute PDSI etc. using translated functions from pdinew.f Fortran code
+    alpha, beta, delta, gamma, t_ratio = _cafec_coefficients(precip_timeseries,
+                                                             pedat,
+                                                             etdat,
+                                                             prdat,
+                                                             rdat,
+                                                             rodat,
+                                                             PRO,
+                                                             tldat,
+                                                             pldat,
+                                                             spdat,
+                                                             data_begin_year,
+                                                             calibration_begin_year,
+                                                             calibration_end_year)
+     
+    # compute the weighting factor (climatic characteristic) using the version translated from pdinew.f
+    K = _climatic_characteristic(alpha,
+                                 beta,
+                                 gamma,
+                                 delta,
+                                 pdat,
+                                 pedat,
+                                 prdat,
+                                 spdat,
+                                 pldat,
+                                 t_ratio,
+                                 data_begin_year,
+                                 calibration_begin_year,
+                                 calibration_end_year)
+    
+    #? how does PRO relate to PPR in the signature for _zindex_pdsi(), are they really the same?
+    PDSI, PHDI, PMDI, Z = _zindex_pdsi_pandas(precip_timeseries,
+                                              pedat,
+                                              prdat,
+                                              spdat,
+                                              pldat,
+                                              PRO,
+                                              alpha,
+                                              beta,
+                                              gamma,
+                                              delta,
+                                              K, 
+                                              data_begin_year, 
+                                              data_end_year)
+                
+    return PDSI, PHDI, PMDI, Z
 
 #-----------------------------------------------------------------------------------------------------------------------
 def _cafec_coefficients(P,
@@ -787,9 +867,9 @@ def _zindex_pdsi_pandas(P,
 
     # create container for the arrays and values we'll use throughout the computation loop below
     array0 = np.reshape(P, (P.size, 1))
-    my_df = pd.DataFrame(data=array0, 
-                         index=range(0, array0.size), 
-                         columns=['P'])
+    df = pd.DataFrame(data=array0, 
+                      index=range(0, array0.size), 
+                      columns=['P'])
 
     # create a list of coluumn names that match to the intermediate work arrays
     column_names = ['PPR', 'CP', 'Z', 'PDSI', 'PHDI', 'WPLM', 'SX', 'SX1', 'SX2', 'SX3', 'X', 'indexj', 'indexm', 'PX1', 'PX2', 'PX3']
@@ -799,7 +879,7 @@ def _zindex_pdsi_pandas(P,
         column_array = eval(column_name).flatten()
         
         # add the column to the DataFrame (as a Series)
-        my_df[column_name] = pd.Series(column_array)
+        df[column_name] = pd.Series(column_array)
 
     # loop over all years and months of the time series
     for j in range(P.shape[0]):    
@@ -808,8 +888,8 @@ def _zindex_pdsi_pandas(P,
 
             i = (j * 12) + m
             
-            my_df.indexj[K8] = j
-            my_df.indexm[K8] = m
+            df.indexj[K8] = j
+            df.indexm[K8] = m
 
             #-----------------------------------------------------------------------
             #     LOOP FROM 160 TO 230 REREADS data FOR CALCULATION OF   
@@ -826,13 +906,13 @@ def _zindex_pdsi_pandas(P,
             CR = beta[m] * PR[j, m]     # eq. 11, Palmer 1965
             CRO = gamma[m] * SP[j, m]   # eq. 12, Palmer 1965
             CL = delta[m] * PL[j, m]    # eq. 13, Palmer 1965
-            my_df.CP[i] = CET + CR + CRO - CL  # eq. 14, Palmer 1965
+            df.CP[i] = CET + CR + CRO - CL  # eq. 14, Palmer 1965
             
             # moisture departure, d
-            CD = my_df.P[i] - my_df.CP[i]  
+            CD = df.P[i] - df.CP[i]  
             
             # Z-index = K * d
-            my_df.Z[i] = AK[m] * CD
+            df.Z[i] = AK[m] * CD
             
             # now with the Z-Index value computed we compute X based on current values
              
@@ -843,24 +923,24 @@ def _zindex_pdsi_pandas(P,
                 if abs(X3) <= 0.5:
                 #         ---------------------------------- END OF DROUGHT OR WET  
                     PV = 0.0 
-                    my_df.PPR[i] = 0.0 
-                    my_df.PX3[i] = 0.0 
+                    df.PPR[i] = 0.0 
+                    df.PX3[i] = 0.0 
                     #             ------------ BUT CHECK FOR NEW WET OR DROUGHT START FIRST
                     # GOTO 200 in pdinew.f
                     # compare to 
                     # PX1, PX2, PX3, X, BT = Main(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT)
                     # in palmer.pdsi_from_zindex()
-                    my_df, X1, X2, X3, V, PRO, K8, k8max = _compute_X_pandas(my_df, X1, X2, j, m, K8, k8max, nendyr, nbegyr, PV)
+                    df, X1, X2, X3, V, PRO, K8, k8max = _compute_X_pandas(df, X1, X2, j, m, K8, k8max, nendyr, nbegyr, PV)
                      
                 elif X3 > 0.5:   
                     #         ----------------------- WE ARE IN A WET SPELL 
-                    if my_df.Z[i] >= 0.15:   
+                    if df.Z[i] >= 0.15:   
                         #              ------------------ THE WET SPELL INTENSIFIES 
                         #GO TO 210 in pdinew.f
                         # compare to 
                         # PV, PX1, PX2, PX3, PPe, X, BT = Between0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)
                         # in palmer.pdsi_from_zindex()
-                        my_df, X1, X2, X3, V, PRO, K8 = _between_0s_pandas(my_df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
+                        df, X1, X2, X3, V, PRO, K8 = _between_0s_pandas(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
                         
                     else:
                         #             ------------------ THE WET STARTS TO ABATE (AND MAY END)  
@@ -868,17 +948,17 @@ def _zindex_pdsi_pandas(P,
                         # compare to
                         # Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Ud(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
                         # in palmer.pdsi_from_zindex()
-                        my_df, X1, X2, X3, V, PRO, K8 = _wet_spell_abatement_pandas(my_df, V, K8, PRO, j, m, nendyr, nbegyr, X1, X2, X3)
+                        df, X1, X2, X3, V, PRO, K8 = _wet_spell_abatement_pandas(df, V, K8, PRO, j, m, nendyr, nbegyr, X1, X2, X3)
 
                 elif X3 < -0.5:  
                     #         ------------------------- WE ARE IN A DROUGHT 
-                    if my_df.Z[i] <= -0.15:  
+                    if df.Z[i] <= -0.15:  
                         #              -------------------- THE DROUGHT INTENSIFIES 
                         #GO TO 210
                         # compare to 
                         # PV, PX1, PX2, PX3, PPe, X, BT = Between0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)
                         # in palmer.pdsi_from_zindex()
-                        my_df, X1, X2, X3, V, PRO, K8 = _between_0s_pandas(my_df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
+                        df, X1, X2, X3, V, PRO, K8 = _between_0s_pandas(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
 
                     else:
                         #             ------------------ THE DROUGHT STARTS TO ABATE (AND MAY END)  
@@ -886,7 +966,7 @@ def _zindex_pdsi_pandas(P,
                         # compare to 
                         # Uw, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Uw(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
                         # in palmer.pdsi_from_zindex()
-                        my_df, X1, X2, X3, V, PRO, K8 = _dry_spell_abatement_pandas(my_df, K8, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, PRO)
+                        df, X1, X2, X3, V, PRO, K8 = _dry_spell_abatement_pandas(df, K8, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, PRO)
                          
                 else:
                     #     ------------------------------------------ABATEMENT IS UNDERWAY   
@@ -897,7 +977,7 @@ def _zindex_pdsi_pandas(P,
                         # compare to
                         # Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Ud(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
                         # in palmer.pdsi_from_zindex()
-                        my_df, X1, X2, X3, V, PRO, K8 = _wet_spell_abatement_pandas(my_df, V, K8, PRO, j, m, nendyr, nbegyr, X1, X2, X3)
+                        df, X1, X2, X3, V, PRO, K8 = _wet_spell_abatement_pandas(df, V, K8, PRO, j, m, nendyr, nbegyr, X1, X2, X3)
                     
                     else:  # if X3 <= 0.0:
                         
@@ -906,26 +986,26 @@ def _zindex_pdsi_pandas(P,
                         # compare to
                         # Uw, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Uw(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
                         # in palmer.pdsi_from_zindex()
-                        my_df, X1, X2, X3, V, PRO, K8 = _dry_spell_abatement_pandas(my_df, K8, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, PRO)
+                        df, X1, X2, X3, V, PRO, K8 = _dry_spell_abatement_pandas(df, K8, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, PRO)
 
 #     # assign X to the PDSI array?
-#     my_df.PDSI = my_df.X
+#     df.PDSI = df.X
     
     for k8 in range(1, k8max):
 
         # years(j) and months(m) to series index ix
-        ix = (my_df.indexj[k8] * 12) + my_df.indexm[k8]
+        ix = (df.indexj[k8] * 12) + df.indexm[k8]
         
-        my_df.PDSI[ix] = my_df.X[ix] 
-        my_df.PHDI[ix] = my_dfPX3[ix]
+        df.PDSI[ix] = df.X[ix] 
+        df.PHDI[ix] = my_dfPX3[ix]
         
         if PX3[ix] == 0.0:
         
             PHDI[indexj[K8], indexm[k8]] = X[ix]
         
-        my_df.PDSI[ix] = _case(PPR[ix], PX1[ix], PX2[ix], PX3[ix]) 
+        df.PDSI[ix] = _case(PPR[ix], PX1[ix], PX2[ix], PX3[ix]) 
       
-    return my_df.PDSI.values, my_df.PHDI.values, my_df.WPLM.values, my_df.Z.values
+    return df.PDSI.values, df.PHDI.values, df.WPLM.values, df.Z.values
 
 #-----------------------------------------------------------------------------------------------------------------------
 # compare to Function_Ud()
