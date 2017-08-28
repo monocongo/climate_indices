@@ -73,7 +73,29 @@ if __name__ == '__main__':
                 tdat_diffs = input_dataset.variables['tdat'][division_index, :] - tdat.flatten()
                 sssdat_diffs = input_dataset.variables['sssdat'][division_index, :] - sssdat.flatten()
                 ssudat_diffs = input_dataset.variables['ssudat'][division_index, :] - ssudat.flatten()
-                
+
+                # dictionary of variable names to corresponding arrays of differences                
+                varnames_to_arrays = {'SP': spdat_diffs,
+                                      'PE': pedat_diffs,
+                                      'PL': pldat_diffs,
+                                      'PR': prdat_diffs,
+                                      'R': rdat_diffs,
+                                      'TL': tldat_diffs,
+                                      'ET': etdat_diffs,
+                                      'RO': rodat_diffs,
+                                      'T': tdat_diffs,
+                                      'SSS': sssdat_diffs,
+                                      'SSU': ssudat_diffs }
+
+                # we want to see all zero differences, if any non-zero differences exist then raise an alert
+                zeros = np.zeros(spdat_diffs.shape)
+                for varname, diffs_array in varnames_to_arrays.items():
+                    if not np.allclose(diffs_array, zeros, atol=0.01, equal_nan=True):
+                        logger.warn('Division {0}: Comparing pdinew.py against operational pdinew.f: ' + \
+                                    'Non-matching difference arrays for water balance variable: {1}'.format(division_id, varname))
+                        offending_indices = np.where(abs(diffs_array) > 0)
+                        logger.warn('Indices with significant differences: {0}'.format(offending_indices))
+                        
                 # compute the water balance values using the new Python version derived from Jacobi et al Matlab PDSI                                                                             
                 ET, PR, R, RO, PRO, L, PL = palmer._water_balance(awc + 1.0, pedat, pdat)
                 
@@ -93,34 +115,29 @@ if __name__ == '__main__':
                 l_diffs = ldat_wb_diffs - tldat_diffs
                 pl_diffs = pldat_wb_diffs - pldat_diffs
                 
-#                 zeros = np.zeros(et_diffs.shape)
-#                 if np.allclose(et_diffs, zeros, atol=0.0005):
-#                     logger.warn('Division {0}: Water balance differences for ET'.format(division_id))
-#                 if np.allclose(pr_diffs, zeros, atol=0.0005):
-#                     logger.warn('Division {0}: Water balance differences for PR'.format(division_id))
-#                 if np.allclose(r_diffs, zeros, atol=0.0005):
-#                     logger.warn('Division {0}: Water balance differences for R'.format(division_id))
-#                 if np.allclose(ro_diffs, zeros, atol=0.0005):
-#                     logger.warn('Division {0}: Water balance differences for RO'.format(division_id))
-#                 if np.allclose(l_diffs, zeros, atol=0.0005):
-#                     logger.warn('Division {0}: Water balance differences for L'.format(division_id))
-#                 if np.allclose(pl_diffs, zeros, atol=0.0005):
-#                     logger.warn('Division {0}: Water balance differences for PL'.format(division_id))
+                # dictionary of variable names to corresponding arrays of differences                
+                varnames_to_arrays = {'PL': pl_diffs,
+                                      'PR': pr_diffs,
+                                      'R': r_diffs,
+                                      'L': l_diffs,
+                                      'ET': et_diffs,
+                                      'RO': rodat_diffs }
+
+                # we want to see all zero differences, if any non-zero differences exist then raise an alert
+                zeros = np.zeros(pl_diffs.shape)
+                for varname, diffs_array in varnames_to_arrays.items():
+                    if not np.allclose(diffs_array, zeros, atol=0.001, equal_nan=True):
+                        logger.warn('Division {0}: Comparing new Palmer against operational pdinew.f: ' + \
+                                    'Non-matching difference arrays for water balance variable: {1}'.format(division_id, 
+                                                                                                            varname))
 
                 # calibration period years
                 calibration_begin_year = 1931
                 calibration_end_year = 1990
                 data_begin_year = 1895
-                
-                # compute using new PDSI from translated Jacobi et al MatLab code
-                PDSI, PHDI, PMDI, zindex = palmer.pdsi_from_climatology(precip_timeseries,
-                                                                        temp_timeseries,
-                                                                        awc,
-                                                                        latitude,
-                                                                        data_begin_year,
-                                                                        calibration_begin_year,
-                                                                        calibration_end_year)
-                
+
+                # compare the results of the pdinew.f translated code (from pdinew.py) against the new values computed by the new Palmer implementation based on Jacobi 2013
+                                 
                 # compute PDSI etc. using translated functions from pdinew.f Fortran code
                 alpha, beta, delta, gamma, t_ratio = pdinew._cafec_coefficients(precip_timeseries,
                                                                                 pedat,
@@ -156,6 +173,19 @@ if __name__ == '__main__':
                 gamma_diffs = gamma - new_gamma
                 delta_diffs = delta - new_delta
                 
+                # dictionary of variable names to corresponding arrays of differences                
+                varnames_to_arrays = {'Alpha': alpha_diffs,
+                                      'Beta': beta_diffs,
+                                      'Gamma': gamma_diffs,
+                                      'Delta': delta_diffs }
+
+                # we want to see all zero differences, if any non-zero differences exist then raise an alert
+                zeros = np.zeros(alpha_diffs.shape)
+                for varname, diffs_array in varnames_to_arrays.items():
+                    if not np.allclose(diffs_array, zeros, atol=0.001, equal_nan=True):
+                        logger.warn('Division {0}: Comparing new Palmer against operational pdinew.f: ' + \
+                                    'Non-matching difference arrays for CAFEC coefficient: {1}'.format(division_id, varname))
+
                 # compute the weighting factor (climatic characteristic) using the new version
                 K = palmer._climatic_characteristic(alpha,
                                                     beta,
@@ -189,8 +219,12 @@ if __name__ == '__main__':
                                                      calibration_begin_year,
                                                      calibration_end_year)
                 
-                K_diffs = K - AK
-                
+                # look at the differences of the climatic characteristic results of the two implementations
+                K_diffs = K - AK        
+                zeros = np.zeros(K_diffs.shape)
+                if not np.allclose(K_diffs, zeros, atol=0.001, equal_nan=True):
+                    logger.warn('Division {0}: Non-matching difference arrays for climatic characteristic: {1}'.format(division_id, varname))
+                        
                 # compute the PDI values from the version translated from pdinew.f
                 #? how does PRO relate to PPR in the signature for _zindex_pdsi(), are they really the same? 
                 pdinew_PDSI, pdinew_PHDI, pdinew_PMDI, pdinew_Z = pdinew._zindex_pdsi_pandas(precip_timeseries,
@@ -204,6 +238,15 @@ if __name__ == '__main__':
                                                                                       gamma,
                                                                                       delta,
                                                                                       AK, 1895, 2017)
+                
+                # compute using new PDSI code translated from Jacobi et al MatLab code
+                PDSI, PHDI, PMDI, zindex = palmer.pdsi_from_climatology(precip_timeseries,
+                                                                        temp_timeseries,
+                                                                        awc,
+                                                                        latitude,
+                                                                        data_begin_year,
+                                                                        calibration_begin_year,
+                                                                        calibration_end_year)
                 
                 # find the differences between the new (Matlab-derived) and previous (Fortran-derived) versions
                 pdsi_diffs = PDSI - pdinew_PDSI.flatten()
