@@ -30,7 +30,7 @@ def pdsi_from_climatology(precip_timeseries,
     # compute water balance values using the function translated from the Fortran pdinew.f
     #NOTE keep this code in place in order to compute the PET used later, since the two have 
     # different PET algorithms and we want to compare PDSI using the same PET inputs 
-    pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, tdat, sssdat, ssudat = \
+    pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, prodat, tdat, sssdat, ssudat = \
         _water_balance(temp_timeseries, precip_timeseries, awc, neg_tan_lat, B, H)
                  
     #NOTE we need to compute CAFEC coefficients for use later/below
@@ -41,7 +41,7 @@ def pdsi_from_climatology(precip_timeseries,
                                                              prdat,
                                                              rdat,
                                                              rodat,
-                                                             PRO,
+                                                             prodat,
                                                              tldat,
                                                              pldat,
                                                              spdat,
@@ -63,14 +63,13 @@ def pdsi_from_climatology(precip_timeseries,
                                  data_begin_year,
                                  calibration_begin_year,
                                  calibration_end_year)
-    
-    #? how does PRO relate to PPR in the signature for _zindex_pdsi(), are they really the same?
+
+    # compute the indices now that we have calculated all required intermediate values    
     PDSI, PHDI, PMDI, Z = _zindex_pdsi_pandas(precip_timeseries,
                                               pedat,
                                               prdat,
                                               spdat,
                                               pldat,
-                                              PRO,
                                               alpha,
                                               beta,
                                               gamma,
@@ -356,6 +355,7 @@ def _water_balance(T,
     tldat = np.full((total_years, 12), np.NaN)
     etdat = np.full((total_years, 12), np.NaN)
     rodat = np.full((total_years, 12), np.NaN)
+    prodat = np.full((total_years, 12), np.NaN)
     tdat = np.full((total_years, 12), np.NaN)
     sssdat = np.full((total_years, 12), np.NaN)
     ssudat = np.full((total_years, 12), np.NaN)
@@ -375,6 +375,11 @@ def _water_balance(T,
             #-----------------------------------------------------------------------
             SP = SS + SU
             PR = AWC + WCTOP - SP
+
+            # PRO is the potential runoff. According to Alley (1984),
+            # PRO = AWC - PR = Ss + Su; here Ss and Su refer to those values at
+            # the beginning of the month: Ss0 and Su0.
+            PRO = SP
 
             #-----------------------------------------------------------------------
             #     1 - CALCULATE PE (POTENTIAL EVAPOTRANSPIRATION)   
@@ -471,6 +476,7 @@ def _water_balance(T,
             tldat[year_index, month_index] = TL
             etdat[year_index, month_index] = ET
             rodat[year_index, month_index] = RO
+            prodat[year_index, month_index] = PRO
             tdat[year_index, month_index] = temperature
             sssdat[year_index, month_index] = SSS
             ssudat[year_index, month_index] = SSU
@@ -479,7 +485,7 @@ def _water_balance(T,
             SS = SSS
             SU = SSU
 
-    return pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, tdat, sssdat, ssudat
+    return pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, prodat, tdat, sssdat, ssudat
     
 #-----------------------------------------------------------------------------------------------------------------------
 def _zindex_pdsi(P,
@@ -809,7 +815,6 @@ def _zindex_pdsi_pandas(P,
                         PR,
                         SP,
                         PL,
-                        PPR,
                         alpha,
                         beta,
                         gamma,
@@ -820,13 +825,9 @@ def _zindex_pdsi_pandas(P,
 
     # reshape the precipitation and PPR to (years, 12)
     P = utils.reshape_to_years_months(P)
-    PPR = utils.reshape_to_years_months(PPR)
-    
-    # sanity check
-    if P.shape != PPR.shape:
-        raise ValueError('Incongruent shapes of precipitation and PPR arrays')
     
     # create empty/zero arrays for intermediate values
+    PPR = np.full(P.shape, np.NaN)
     CP = np.full(P.shape, np.NaN)
     Z = np.full(P.shape, np.NaN)    
     PDSI = np.full(P.shape, np.NaN)
@@ -985,13 +986,13 @@ def _zindex_pdsi_pandas(P,
         ix = (df.indexj[k8] * 12) + df.indexm[k8]
         
         df.PDSI[ix] = df.X[ix] 
-        df.PHDI[ix] = my_dfPX3[ix]
+        df.PHDI[ix] = df.PX3[ix]
         
         if PX3[ix] == 0.0:
         
             PHDI[indexj[K8], indexm[k8]] = X[ix]
         
-        df.PDSI[ix] = _case(PPR[ix], PX1[ix], PX2[ix], PX3[ix]) 
+        df.PDSI[ix] = _case(df.PPR[ix], df.PX1[ix], df.PX2[ix], df.PX3[ix]) 
       
     return df.PDSI.values, df.PHDI.values, df.WPLM.values, df.Z.values
 
@@ -1113,8 +1114,9 @@ def _wet_spell_abatement_pandas(df,
     #-----------------------------------------------------------------------
     UD = df.Z[ix] - 0.15  
     PV = UD + min(V, 0.0) 
-    if PV >= 0:
+    if PV >= 0.0:
 
+        # GOTO 210 
         df, X1, X2, X3, V, PRO, K8 = _between_0s_pandas(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
 
     else:
@@ -1124,7 +1126,7 @@ def _wet_spell_abatement_pandas(df,
     
         #-----------------------------------------------------------------------
         #     PROB(END) = 100 * (V/Q)  WHERE:   
-        #                 V = SUM OF MOISTURE EXCESS OR DEFICIT (UD OR UW)  
+        #             V = SUM OF MOISTURE EXCESS OR DEFICIT (UD OR UW)  
         #                 DURING CURRENT ABATEMENT PERIOD   
         #             Q = TOTAL MOISTURE ANOMALY REQUIRED TO END THE
         #                 CURRENT DROUGHT OR WET SPELL  
@@ -1136,18 +1138,139 @@ def _wet_spell_abatement_pandas(df,
         else:  
             Q = ZE + V
     
-        df.PPR[ix] = (PV / Q) * 100.0 
+        df.PPR[ix] = (PV / Q) * 100.0  # eq. 30 Palmer 1965, percentage probability that a drought or wet spell has ended
         if df.PPR[ix] >= 100.0:
              
               df.PPR[ix] = 100.0
               df.PX3[ix] = 0.0  
         else:
-              
-              df.PX3[ix] = 0.897 * X3 + df.Z[ix] / 3.0
+              # Wells et al (2003) eq. 4
+              df.PX3[ix] = (0.897 * X3) + (df.Z[ix] / 3.0)
 
 
         # in new version the X values and backtracking is again computed here, skipped in the NCEI Fortran
         
+    return _continue_X(df, X1, X2, X3, K8, ix, j, m, nendyr, nbegyr, PV)
+
+#-----------------------------------------------------------------------------------------------------------------------
+# 200 in pdinew.f
+def _continue_X(df,
+                X1,
+                X2,
+                X3,
+                K8, 
+                ix,
+                j, 
+                m, 
+                nendyr, 
+                nbegyr,
+                PV):
+    
+    #-----------------------------------------------------------------------
+    # CONTINUE X1 AND X2 CALCULATIONS.  
+    # IF EITHER INDICATES THE START OF A NEW WET OR DROUGHT,
+    # AND IF THE LAST WET OR DROUGHT HAS ENDED, USE X1 OR X2
+    # AS THE NEW X3.
+    #-----------------------------------------------------------------------
+#   200 PX1(j,m) = .897 * X1 + Z(j,m)/3.
+    df.PX1[ix] = (0.897 * X1) + (df.Z[ix] / 3.0)
+#       PX1(j,m) = AMAX1(PX1(j,m),0.)   
+    df.PX1[ix] = max(df.PX1[ix], 0.0)
+#       IF (PX1(j,m).GE.1.) THEN   
+    if df.PX1[ix] >= 1.0:
+#           IF (PX3(j,m).EQ.0.) THEN   
+        if df.PX3[ix] == 0.0:
+
+            #         ------------------- IF NO EXISTING WET SPELL OR DROUGHT   
+            #                             X1 BECOMES THE NEW X3 
+            df.X[ix]   = df.PX1[ix] 
+            df.PX3[ix] = df.PX1[ix] 
+            df.PX1[ix] = 0.0
+            iass = 1
+            _assign_pandas(df, iass, K8, j, m, nendyr, nbegyr)
+              
+            #GO TO 220
+            V = PV 
+            PRO = df.PPR[ix] 
+            X1  = df.PX1[ix] 
+            X2  = df.PX2[ix] 
+            X3  = df.PX3[ix]      
+            return df, X1, X2, X3, V, PRO, K8
+    
+    df.PX2[ix] = (0.897 * X2) + (df.Z[ix] / 3.0)
+    df.PX2[ix] = min(df.PX2[ix], 0.0)   
+    
+    if df.PX2[ix] <= -1.0:
+    
+        if df.PX3[ix] == 0.0:   
+            #------------------- IF NO EXISTING WET SPELL OR DROUGHT   
+            #                    X2 BECOMES THE NEW X3 
+            df.X[ix]   = df.PX2[ix] 
+            df.PX3[ix] = df.PX2[ix] 
+            df.PX2[ix] = 0.0
+            iass = 2
+            _assign_pandas(df, iass, K8, j, m, nendyr, nbegyr)
+
+            #GO TO 220
+            V = PV 
+            PRO = df.PPR[ix] 
+            X1  = df.PX1[ix] 
+            X2  = df.PX2[ix] 
+            X3  = df.PX3[ix]
+            return df, X1, X2, X3, V, PRO, K8
+            
+    if df.PX3[ix] == 0.0:   
+        #-------------------- NO ESTABLISHED DROUGHT (WET SPELL), BUT X3=0  
+        #                     SO EITHER (NONZERO) X1 OR X2 MUST BE USED AS X3   
+        if df.PX1[ix] == 0.0:
+            
+            df.X[ix] = df.PX2[ix]   
+            iass = 2            
+            _assign_pandas(df, iass, K8, j, m, nendyr, nbegyr)
+
+            #GO TO 220
+            V = PV 
+            PRO = df.PPR[ix] 
+            X1  = df.PX1[ix] 
+            X2  = df.PX2[ix] 
+            X3  = df.PX3[ix]
+            return df, X1, X2, X3, V, PRO, K8
+
+        elif df.PX2[ix] == 0.0:
+
+            df.X[ix] = df.PX1[ix]   
+            
+            iass = 1
+            _assign_pandas(df, iass, K8, j, m, nendyr, nbegyr)
+
+            #GO TO 220
+            V = PV 
+            PRO = df.PPR[ix] 
+            X1  = df.PX1[ix] 
+            X2  = df.PX2[ix] 
+            X3  = df.PX3[ix]
+            return df, X1, X2, X3, V, PRO, K8
+
+# !-----------------------------------------------------------------------
+# !     AT THIS POINT THERE IS NO DETERMINED VALUE TO ASSIGN TO X,
+# !     ALL VALUES OF X1, X2, AND X3 ARE SAVED IN FILE 8. AT A LATER  
+# !     TIME X3 WILL REACH A VALUE WHERE IT IS THE VALUE OF X (PDSI). 
+# !     AT THAT TIME, THE ASSIGN SUBROUTINE BACKTRACKS THROUGH FILE   
+# !     8 CHOOSING THE APPROPRIATE X1 OR X2 TO BE THAT MONTHS X. 
+# !-----------------------------------------------------------------------
+    df.SX1[K8] = df.PX1[ix] 
+    df.SX2[K8] = df.PX2[ix] 
+    df.SX3[K8] = df.PX3[ix] 
+    df.X[ix]  = df.PX3[ix] 
+    K8 = K8 + 1
+    k8max = K8  
+
+    #GO TO 220
+    V = PV 
+    PRO = df.PPR[ix] 
+    X1  = df.PX1[ix] 
+    X2  = df.PX2[ix] 
+    X3  = df.PX3[ix]
     return df, X1, X2, X3, V, PRO, K8
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -1301,18 +1424,22 @@ def _dry_spell_abatement_pandas(df,
         # convert the 2-D index values j (years) and m (months) to a series index
         i = (j * 12) + m
         
-        df.PPR[i] = (PV / Q) * 100.0 
+        df.PPR[i] = (PV / Q) * 100.0 # eq. 30 Palmer 1965, percentage probability that a drought or wet spell has ended
+        
         if df.PPR[i] >= 100.0: 
+        
             df.PPR[i] = 100.0
             df.PX3[i] = 0.0  
+        
         else:
-            df.PX3[i] = 0.897 * X3 + df.Z[i] / 3.0
+        
+            df.PX3[i] = (0.897 * X3) + (df.Z[i] / 3.0)
           
 
-        # in new version the X values and backtracking is again computed here, skipped in the NCEI Fortran
+        #NOTE in new version the X values and backtracking is again computed here, not done in the NCEI Fortran
 
-    return df, X1, X2, X3, V, PRO, K8
-        
+    return _continue_X(df, X1, X2, X3, K8, ix, j, m, nendyr, nbegyr, PV)
+
 #-----------------------------------------------------------------------------------------------------------------------
 # compare to 
 # PX1, PX2, PX3, X, BT = Main(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT)
@@ -1454,7 +1581,7 @@ def _compute_X_pandas(df,
                       PV):
     
     # whether or not an appropriate value for X has been found
-    found = False
+    store_X_values = False
     
     # the values within the DataFrame are in a series, so get the single index value assuming j is years and m is months
     i = (j * 12) + m
@@ -1477,69 +1604,89 @@ def _compute_X_pandas(df,
             df.PX1[i] = 0.0
             iass = 1
             df = _assign_pandas(df, iass, K8, j, m, nendyr, nbegyr)
-            K8 = 1
+            K8 = 0 # ?
             
+            #GOTO 220 in pdinew.f
             V = PV 
-            PRO = PPR[i] 
+            PRO = df.PPR[i] 
             X1  = df.PX1[i] 
             X2  = df.PX2[i] 
             X3  = df.PX3[i] 
 
-            found = True
+            return df, X1, X2, X3, V, PRO, K8, k8max
             
-    else:
-        df.PX2[i] = 0.897 * X2 + df.Z[i] / 3.0
-        df.PX2[i] = min(df.PX2[i], 0.0)   
-        if df.PX2[i] <= -1.0:  
+    df.PX2[i] = 0.897 * X2 + df.Z[i] / 3.0
+    df.PX2[i] = min(df.PX2[i], 0.0)   
+    if df.PX2[i] <= -1.0:  
+        
+        if (df.PX3[i] == 0.0):   
+            #         ------------------- IF NO EXISTING WET SPELL OR DROUGHT   
+            #                             X2 BECOMES THE NEW X3 
+            df.X[i]   = df.PX2[i] 
+            df.PX3[i] = df.PX2[i] 
+            df.PX2[i] = 0.0  
+            iass = 2            
+            df = _assign_pandas(df, iass, K8, j, m, nendyr, nbegyr)
+            K8 = 0 # ?
+
+            #GOTO 220 in pdinew.f
+            V = PV 
+            PRO = df.PPR[i] 
+            X1  = df.PX1[i] 
+            X2  = df.PX2[i] 
+            X3  = df.PX3[i] 
+
+            return df, X1, X2, X3, V, PRO, K8, k8max
             
-            if (df.PX3[i] == 0.0):   
-                #         ------------------- IF NO EXISTING WET SPELL OR DROUGHT   
-                #                             X2 BECOMES THE NEW X3 
-                df.X[i]   = df.PX2[i] 
-                df.PX3[i] = df.PX2[i] 
-                df.PX2[i] = 0.0  
-                iass = 2            
-                df = _assign_pandas(df, iass, K8, j, m, nendyr, nbegyr)
-                K8 = 1
+    if df.PX3[i] == 0.0:   
+        #    -------------------- NO ESTABLISHED DROUGHT (WET SPELL), BUT X3=0  
+        #                         SO EITHER (NONZERO) X1 OR X2 MUST BE USED AS X3   
+        if df.PX1[i] == 0.0:   
+        
+            df.X[i] = df.PX2[i]   
+            iass = 2            
+            df = _assign_pandas(df, iass, K8, j, m, nendyr, nbegyr)
+            K8 = 0
+
+            #GOTO 220 in pdinew.f
+            V = PV 
+            PRO = df.PPR[i] 
+            X1  = df.PX1[i] 
+            X2  = df.PX2[i] 
+            X3  = df.PX3[i] 
+
+            return df, X1, X2, X3, V, PRO, K8, k8max
+
+        elif df.PX2[i] == 0:
+            
+            df.X[i] = df.PX1[i]   
+            iass = 1   
+            df = _assign_pandas(df, iass, K8, j, m, nendyr, nbegyr)
+            K8 = 0
+
+            #GOTO 220 in pdinew.f
+            V = PV 
+            PRO = df.PPR[i] 
+            X1  = df.PX1[i] 
+            X2  = df.PX2[i] 
+            X3  = df.PX3[i] 
+
+            return df, X1, X2, X3, V, PRO, K8, k8max
+
+    #-----------------------------------------------------------------------
+    #     AT THIS POINT THERE IS NO DETERMINED VALUE TO ASSIGN TO X,
+    #     ALL VALUES OF X1, X2, AND X3 ARE SAVED IN SX* arrays. AT A LATER  
+    #     TIME X3 WILL REACH A VALUE WHERE IT IS THE VALUE OF X (PDSI). 
+    #     AT THAT TIME, THE ASSIGN SUBROUTINE BACKTRACKS THROUGH SX* arrays   
+    #     CHOOSING THE APPROPRIATE X1 OR X2 TO BE THAT MONTH'S X. 
+    #-----------------------------------------------------------------------
     
-                found = True
-                
-        elif df.PX3[i] == 0.0:   
-            #    -------------------- NO ESTABLISHED DROUGHT (WET SPELL), BUT X3=0  
-            #                         SO EITHER (NONZERO) X1 OR X2 MUST BE USED AS X3   
-            if df.PX1[i] == 0.0:   
-            
-                df.X[i] = df.PX2[i]   
-                iass = 2            
-                df = _assign_pandas(df, iass, K8, j, m, nendyr, nbegyr)
-                K8 = 1
-
-                found = True
-
-            elif df.PX2[i] == 0:
-                
-                df.X[i] = df.PX1[i]   
-                iass = 1   
-                df = _assign_pandas(df, iass, K8, j, m, nendyr, nbegyr)
-                K8 = 1
-    
-                found = True
-
-        #-----------------------------------------------------------------------
-        #     AT THIS POINT THERE IS NO DETERMINED VALUE TO ASSIGN TO X,
-        #     ALL VALUES OF X1, X2, AND X3 ARE SAVED IN FILE 8. AT A LATER  
-        #     TIME X3 WILL REACH A VALUE WHERE IT IS THE VALUE OF X (PDSI). 
-        #     AT THAT TIME, THE ASSIGN SUBROUTINE BACKTRACKS THROUGH FILE   
-        #     8 CHOOSING THE APPROPRIATE X1 OR X2 TO BE THAT MONTHS X. 
-        #-----------------------------------------------------------------------
-        elif not found and (K8 > 40):  # STOP 'X STORE ARRAYS FULL'  
-            
-            df.SX1[K8] = df.PX1[i] 
-            df.SX2[K8] = df.PX2[i] 
-            df.SX3[K8] = df.PX3[i] 
-            df.X[i]  = df.PX3[i] 
-            K8 = K8 + 1
-            k8max = K8  
+    df.SX1[K8] = df.PX1[i] 
+    df.SX2[K8] = df.PX2[i] 
+    df.SX3[K8] = df.PX3[i] 
+    df.X[i]  = df.PX3[i] 
+    K8 = K8 + 1
+    k8max = K8  
 
     #-----------------------------------------------------------------------
     #     SAVE THIS MONTHS CALCULATED VARIABLES (V,PRO,X1,X2,X3) FOR   
@@ -1642,24 +1789,28 @@ def _between_0s_pandas(df,
     df.PPR[ix] = 0.0 
     df.PX1[ix] = 0.0 
     df.PX2[ix] = 0.0 
-    df.PX3[ix] = 0.897 * X3 + df.Z[ix] / 3.0
+    df.PX3[ix] = (0.897 * X3) + (df.Z[ix] / 3.0)
     df.X[ix] = df.PX3[ix] 
     
-    if (K8 == 1): 
+    if K8 == 1: 
         
         df.PDSI[ix] = df.X[ix]  
         df.PHDI[ix] = df.PX3[ix] 
         
         if df.PX3[ix] == 0.0:
+            
             df.PHDI[ix] = df.X[ix]
         
+        # create 1-D index from the years (j) and months (m) indices
         ix = (j * 12) + m
+        
         df.PDSI[ix] = _case(df.PPR[ix], df.PX1[ix], df.PX2[ix], df.PX3[ix]) 
         
     else:
+
         iass = 3   
         df = _assign_pandas(df, iass, K8, j, m, nendyr, nbegyr)
-        K8 = 1
+        K8 = 0
 
     #-----------------------------------------------------------------------------------------------
     #     SAVE THIS MONTHS CALCULATED VARIABLES (V, PRO, X1, X2, X3) FOR USE WITH NEXT MONTHS DATA 
@@ -1768,7 +1919,7 @@ def _assign(iass,
                                            PX2[indexj[n], indexm[n]],
                                            PX3[indexj[n], indexm[n]])
 
-    k8 = 1
+    k8 = 0
     k8max = k8
 
     return
@@ -1801,7 +1952,7 @@ def _assign_pandas(df,
     #     X=PX1 FOR I=1, PX2 FOR I=2, PX3,  FOR I=3 
     #-----------------------------------------------------------------------
     df.SX[k8] = df.X[i] 
-    if k8 == 1:
+    if k8 == 0:
         
         df.PDSI[i] = df.X[i]  
         df.PHDI[i] = df.PX3[i] 
