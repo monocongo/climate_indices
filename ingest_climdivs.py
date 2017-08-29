@@ -172,7 +172,9 @@ if __name__ == '__main__':
                                                 divs_to_Hs)
         
         # create variable for the remaining intermediate (water balance) variables
-        for variable_name in ['etdat', 'pdat', 'pedat', 'pldat', 'prdat', 'rdat', 'rodat', 'spdat', 'sssdat', 'ssudat', 'tldat', 'pdsi.index', 'phdi.index', 'pmdi.index', 'z.index', 'x1dat', 'x2dat', 'x3dat']:
+        for variable_name in ['etdat', 'pdat', 'pedat', 'pldat', 'prdat', 'rdat', 'rodat', 'spdat', 'sssdat', 
+                              'ssudat', 'tldat', 'cp.index', 'pdsi.index', 'phdi.index', 'pmdi.index', 'z.index', 
+                              'x1dat',  'x2dat', 'x3dat', 'calibr.coef', 'phat']:
 
             # TODO these attributes only applicable for water balance variables, 
             # update units etc. when ingesting all intermediates such as X1, X2, Z-index, etc.
