@@ -261,10 +261,10 @@ if __name__ == '__main__':
                                                                         calibration_end_year)
                 
                 # find the differences between the new (Matlab-derived) and previous (Fortran-derived) versions
-                pdsi_diffs = PDSI - pdinew_PDSI.flatten()
-                phdi_diffs = PHDI - pdinew_PHDI.flatten()
-                pmdi_diffs = PMDI - pdinew_PMDI.flatten()
-                zindex_diffs = zindex - pdinew_Z.flatten()
+                pdsi_diffs = pdinew_PDSI.flatten() - input_dataset.variables['pdsi.index'][division_index, :]
+                phdi_diffs = pdinew_PHDI.flatten() - input_dataset.variables['phdi.index'][division_index, :]
+                pmdi_diffs = pdinew_PMDI.flatten() - input_dataset.variables['pmdi.index'][division_index, :]
+                zindex_diffs = pdinew_Z.flatten() - input_dataset.variables['z.index'][division_index, :]
             
                 # dictionary of variable names to corresponding arrays of differences to facilitate looping below
                 varnames_to_arrays = {'PDSI': pdsi_diffs,
@@ -275,8 +275,31 @@ if __name__ == '__main__':
                 # we want to see all zero differences, if any non-zero differences exist then raise an alert
                 zeros = np.zeros(pdsi_diffs.shape)
                 for varname, diffs_array in varnames_to_arrays.items():
-                    if not np.allclose(diffs_array, zeros, atol=0.001, equal_nan=True):
-                        logger.warn('Division {0}: Comparing new Palmer against operational pdinew.f: ' + \
+                    tolerance = 0.01
+                    if not np.allclose(diffs_array, zeros, atol=tolerance, equal_nan=True):
+                        logger.warn('Division {0}: Comparing new Palmer (pdinew.py) against operational pdinew.f: ' + \
+                                    'Non-matching values for {1}'.format(division_id, varname))
+                        offending_indices = np.where(abs(diffs_array) > 0)
+                        logger.warn('Time steps with significant differences: {0}'.format(offending_indices))
+
+                # find the differences between the new (Matlab-derived) and previous (Fortran-derived) versions
+                pdsi_diffs = PDSI - input_dataset.variables['pdsi.index'][division_index, :]
+                phdi_diffs = PHDI - input_dataset.variables['phdi.index'][division_index, :]
+                pmdi_diffs = PMDI - input_dataset.variables['pmdi.index'][division_index, :]
+                zindex_diffs = zindex - input_dataset.variables['z.index'][division_index, :]
+            
+                # dictionary of variable names to corresponding arrays of differences to facilitate looping below
+                varnames_to_arrays = {'PDSI': pdsi_diffs,
+                                      'PHDI': phdi_diffs,
+                                      'PMDI': pmdi_diffs,
+                                      'Z-INDEX': zindex_diffs }
+
+                # we want to see all zero differences, if any non-zero differences exist then raise an alert
+                zeros = np.zeros(pdsi_diffs.shape)
+                for varname, diffs_array in varnames_to_arrays.items():
+                    tolerance = 0.01
+                    if not np.allclose(diffs_array, zeros, atol=tolerance, equal_nan=True):
+                        logger.warn('Division {0}: Comparing new Palmer (palmer.py) against operational pdinew.f: ' + \
                                     'Non-matching values for {1}'.format(division_id, varname))
                         offending_indices = np.where(abs(diffs_array) > 0)
                         logger.warn('Time steps with significant differences: {0}'.format(offending_indices))
