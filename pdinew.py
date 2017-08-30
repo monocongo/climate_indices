@@ -741,18 +741,18 @@ def _wet_spell_abatement(df,
 # compare to Function_Uw()
 # from line 180 in pdinew.f
 def _dry_spell_abatement(df,
-                                K8,
-                                k8max,
-                                j, 
-                                m, 
-                                nendyr, 
-                                nbegyr, 
-                                PV,
-                                V,
-                                X1, 
-                                X2,
-                                X3,
-                                PRO):
+                         K8,
+                         k8max,
+                         j, 
+                         m, 
+                         nendyr, 
+                         nbegyr, 
+                         PV,
+                         V,
+                         X1, 
+                         X2,
+                         X3,
+                         PRO):
 
     # combine the years (j) and months (m) indices to series index ix
     ix = (df.indexj[K8] * 12) + df.indexm[K8]
@@ -848,7 +848,7 @@ def _compute_X(df,
         if df.PX3[i] == 0.0:   
             #         ------------------- IF NO EXISTING WET SPELL OR DROUGHT   
             #                             X1 BECOMES THE NEW X3 
-            df.X[i]   = df.PX1[i] 
+            df.X[i] = df.PX1[i] 
             df.PX3[i] = df.PX1[i] 
             df.PX1[i] = 0.0
             iass = 1
@@ -1032,20 +1032,7 @@ def _assign(df,
     #     X=PX1 FOR I=1, PX2 FOR I=2, PX3,  FOR I=3 
     #-----------------------------------------------------------------------
     df.SX[k8] = df.X[i] 
-    if k8 == 0:  # no backtracking called for
-        
-        # set the PDSI to X
-        df.PDSI[i] = df.X[i]  
-
-        # the PHDI is X3 if not zero, otherwise use X
-        df.PHDI[i] = df.PX3[i]         
-        if df.PX3[i] == 0.0:
-            df.PHDI[i] = df.X[i]
-        
-        # select the best fit for WPLM
-        df.WPLM[i] = _case(df.PPR[i], df.PX1[i], df.PX2[i], df.PX3[i]) 
-        
-    else:
+    if k8 > 0:  # perform backtracking
         
         if iass == 3:  
             #     ---------------- USE ALL X3 VALUES
@@ -1056,13 +1043,19 @@ def _assign(df,
         else: 
             #     -------------- BACKTRACK THRU ARRAYS, STORING ASSIGNED X1 (OR X2) 
             #                    IN SX UNTIL IT IS ZERO, THEN SWITCHING TO THE OTHER
-            #                    UNTIL IT IS ZERO, ETC. 
-            for Mm in range(k8, 0, -1):
+            #                    UNTIL IT IS ZERO, ETC.
+            #TODO/FIXME
+            # does this correspond with the Fortran indexing from line 1100 in pdinew.f? 
+            for Mm in range(k8 - 1, -1, -1):
                 
-                if df.SX1[Mm] == 0:
-                    df.SX[Mm] = df.SX2[Mm]
-                else:
+                if df.SX2[Mm] == 0:
                     df.SX[Mm] = df.SX1[Mm]
+                else:
+                    df.SX[Mm] = df.SX2[Mm]
+#                 if df.SX1[Mm] == 0:
+#                     df.SX[Mm] = df.SX2[Mm]
+#                 else:
+#                     df.SX[Mm] = df.SX1[Mm]
     
         #-----------------------------------------------------------------------
         #     PROPER ASSIGNMENTS TO ARRAY SX HAVE BEEN MADE,
@@ -1088,16 +1081,16 @@ def _assign(df,
                                 df.PX2[ix],
                                 df.PX3[ix])
 
-        # set the PDSI to X
-        df.PDSI[i] = df.X[i]  
+    # set the PDSI to X
+    df.PDSI[i] = df.X[i]  
 
-        # the PHDI is X3 if not zero, otherwise use X
-        df.PHDI[i] = df.PX3[i]         
-        if df.PX3[i] == 0.0:
-            df.PHDI[i] = df.X[i]
-        
-        # select the best fit for WPLM
-        df.WPLM[i] = _case(df.PPR[i], df.PX1[i], df.PX2[i], df.PX3[i]) 
+    # the PHDI is X3 if not zero, otherwise use X
+    df.PHDI[i] = df.PX3[i]         
+    if df.PX3[i] == 0.0:
+        df.PHDI[i] = df.X[i]
+    
+    # select the best fit for WPLM
+    df.WPLM[i] = _case(df.PPR[i], df.PX1[i], df.PX2[i], df.PX3[i]) 
 
     return df
 
