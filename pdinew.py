@@ -615,7 +615,7 @@ def _zindex_pdsi(P,
                         # compare to
                         # Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Ud(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
                         # in palmer.pdsi_from_zindex()
-                        df, X1, X2, X3, V, PRO, K8 = _wet_spell_abatement(df, V, K8, PRO, j, m, nendyr, nbegyr, X1, X2, X3)
+                        df, X1, X2, X3, V, PRO, K8, k8max = _wet_spell_abatement(df, V, K8, k8max, PRO, j, m, nendyr, nbegyr, X1, X2, X3)
 
                 elif X3 < -0.5:  
                     #         ------------------------- WE ARE IN A DROUGHT 
@@ -635,25 +635,25 @@ def _zindex_pdsi(P,
                         # in palmer.pdsi_from_zindex()
                         df, X1, X2, X3, V, PRO, K8, k8max = _dry_spell_abatement(df, K8, k8max, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, PRO)
 
-                else:
-                    #     ------------------------------------------ABATEMENT IS UNDERWAY   
-                    if X3 > 0.0:
-                        
-                        #         ----------------------- WE ARE IN A WET SPELL 
-                        #GO TO 170 in pdinew.f
-                        # compare to
-                        # Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Ud(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
-                        # in palmer.pdsi_from_zindex()
-                        df, X1, X2, X3, V, PRO, K8, k8max = _wet_spell_abatement(df, V, K8, PRO, j, m, nendyr, nbegyr, X1, X2, X3)
+            else:
+                #     ------------------------------------------ABATEMENT IS UNDERWAY   
+                if X3 > 0.0:
                     
-                    else:  # if X3 <= 0.0:
-                        
-                        #         ----------------------- WE ARE IN A DROUGHT   
-                        #GO TO 180
-                        # compare to
-                        # Uw, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Uw(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
-                        # in palmer.pdsi_from_zindex()
-                        df, X1, X2, X3, V, PRO, K8, k8max = _dry_spell_abatement(df, K8, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, PRO)
+                    #         ----------------------- WE ARE IN A WET SPELL 
+                    #GO TO 170 in pdinew.f
+                    # compare to
+                    # Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Ud(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
+                    # in palmer.pdsi_from_zindex()
+                    df, X1, X2, X3, V, PRO, K8, k8max = _wet_spell_abatement(df, V, K8, k8max, PRO, j, m, nendyr, nbegyr, X1, X2, X3)
+                
+                else:  # if X3 <= 0.0:
+                    
+                    #         ----------------------- WE ARE IN A DROUGHT   
+                    #GO TO 180
+                    # compare to
+                    # Uw, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Uw(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
+                    # in palmer.pdsi_from_zindex()
+                    df, X1, X2, X3, V, PRO, K8, k8max = _dry_spell_abatement(df, K8, k8max, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, PRO)
 
 #     # assign X to the PDSI array?
 #     df.PDSI = df.X
@@ -679,19 +679,20 @@ def _zindex_pdsi(P,
 # from line 170 in pdinew.f
 # NOTE careful not to confuse the PRO being returned (probability) with PRO array of potential run off values
 def _wet_spell_abatement(df,
-                                V, 
-                                K8, 
-                                PRO,
-                                j, 
-                                m, 
-                                nendyr, 
-                                nbegyr,
-                                X1, 
-                                X2, 
-                                X3):
+                         V, 
+                         K8, 
+                         k8max,
+                         PRO,
+                         j, 
+                         m, 
+                         nendyr, 
+                         nbegyr,
+                         X1, 
+                         X2, 
+                         X3):
     
     # combine the years (j) and months (m) indices to series index ix
-    ix = (my_df.indexj[k8] * 12) + my_df.indexm[k8]
+    ix = (df.indexj[K8] * 12) + df.indexm[K8]
         
     #-----------------------------------------------------------------------
     #      WET SPELL ABATEMENT IS POSSIBLE  
@@ -936,11 +937,6 @@ def _compute_X(df,
     K8 = K8 + 1
     k8max = K8  
 
-    #### EXPERIMENTAL !!!!!!!!!!!!!!
-    # assign the X to PDSI?
-    df.PDSI[i] = df.X[i]
-    ###########################
-    
     #-----------------------------------------------------------------------
     #     SAVE THIS MONTHS CALCULATED VARIABLES (V,PRO,X1,X2,X3) FOR   
     #     USE WITH NEXT MONTHS DATA 
@@ -954,6 +950,7 @@ def _compute_X(df,
     return df, X1, X2, X3, V, PRO, K8, k8max
  
 #-----------------------------------------------------------------------------------------------------------------------
+# from 210 in pdinew.f
 def _between_0s(df,
                 K8,
                 k8max, 
@@ -979,7 +976,7 @@ def _between_0s(df,
     df.PX3[ix] = (0.897 * X3) + (df.Z[ix] / 3.0)
     df.X[ix] = df.PX3[ix] 
     
-    if K8 == 1: 
+    if K8 == 0: 
         
         df.PDSI[ix] = df.X[ix]  
         df.PHDI[ix] = df.PX3[ix] 
@@ -987,9 +984,6 @@ def _between_0s(df,
         if df.PX3[ix] == 0.0:
             
             df.PHDI[ix] = df.X[ix]
-        
-        # create 1-D index from the years (j) and months (m) indices
-        ix = (j * 12) + m
         
         df.WPLM[ix] = _case(df.PPR[ix], df.PX1[ix], df.PX2[ix], df.PX3[ix]) 
         
@@ -1038,7 +1032,7 @@ def _assign(df,
     #     X=PX1 FOR I=1, PX2 FOR I=2, PX3,  FOR I=3 
     #-----------------------------------------------------------------------
     df.SX[k8] = df.X[i] 
-    if k8 == 0:
+    if k8 == 0:  # no backtracking called for
         
         df.PDSI[i] = df.X[i]  
         df.PHDI[i] = df.PX3[i] 
@@ -1072,22 +1066,36 @@ def _assign(df,
         #     OUTPUT THE MESS   
         #-----------------------------------------------------------------------
     
-        for n in range(k8):
-            ix = (df.indexj[n] * 12) + df.indexm[n]
-            df.PDSI[ix] = df.SX[n] 
-            df.PHDI[ix] = df.PX3[ix]
+        for n in range(k8):   # backtracking assignment of X
             
+            # get the j/m index we need to start assigning to from the backtracking process
+            ix = (df.indexj[n] * 12) + df.indexm[n]
+            
+            # pull from the current backtracking index
+            df.PDSI[ix] = df.SX[n] 
+            
+            # the PHDI is X3 if not zero, otherwise use X
+            df.PHDI[ix] = df.PX3[ix]
             if df.PX3[ix] == 0.0:
                 df.PHDI[ix] = df.SX[n]
                 
+            # select the best fit for WPLM
             df.WPLM[ix] = _case(df.PPR[ix],
                                 df.PX1[ix], 
                                 df.PX2[ix],
                                 df.PX3[ix])
 
-        #TODO?
-        # should we clear/zero the K8 and k8max values here since they've just been used for the output of df.SX values?
+        # set the PDSI to X
+        df.PDSI[i] = df.X[i]  
+
+        # the PHDI is X3 if not zero, otherwise use X
+        df.PHDI[i] = df.PX3[i]         
+        if df.PX3[i] == 0.0:
+            df.PHDI[i] = df.X[i]
         
+        # select the best fit for WPLM
+        df.WPLM[i] = _case(df.PPR[i], df.PX1[i], df.PX2[i], df.PX3[i]) 
+
     return df
 
 #-----------------------------------------------------------------------------------------------------------------------
