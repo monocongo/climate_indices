@@ -1034,12 +1034,15 @@ def _assign(df,
     df.SX[k8] = df.X[i] 
     if k8 == 0:  # no backtracking called for
         
+        # set the PDSI to X
         df.PDSI[i] = df.X[i]  
-        df.PHDI[i] = df.PX3[i] 
-        
+
+        # the PHDI is X3 if not zero, otherwise use X
+        df.PHDI[i] = df.PX3[i]         
         if df.PX3[i] == 0.0:
             df.PHDI[i] = df.X[i]
         
+        # select the best fit for WPLM
         df.WPLM[i] = _case(df.PPR[i], df.PX1[i], df.PX2[i], df.PX3[i]) 
         
     else:
