@@ -670,7 +670,7 @@ def _zindex_pdsi(P,
         
             df.PHDI[ix] = df.X[ix]
         
-        df.PDSI[ix] = _case(df.PPR[ix], df.PX1[ix], df.PX2[ix], df.PX3[ix]) 
+        df.WPLM[ix] = _case(df.PPR[ix], df.PX1[ix], df.PX2[ix], df.PX3[ix]) 
       
     return df.PDSI.values, df.PHDI.values, df.WPLM.values, df.Z.values
 
@@ -810,7 +810,7 @@ def _dry_spell_abatement(df,
 #-----------------------------------------------------------------------------------------------------------------------
 # compare to 
 # PX1, PX2, PX3, X, BT = Main(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT)
-# in pdsi_from_zindex()
+# in palmer.pdsi_from_zindex()
 # from line 200 in pdinew.f
 def _compute_X(df,
                X1,
@@ -830,7 +830,7 @@ def _compute_X(df,
     # FIXME ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     #
     # We have an issue in this function whereby we sometimes happen to not fall into any of the conditionals below 
-    # which result in a call to the _assign_pands() function, resulting in df.* values of NaN for this index i.
+    # which result in a call to the _assign() function, resulting in df.* values of NaN for this index i.
     #
     # FIXME ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -852,7 +852,7 @@ def _compute_X(df,
             df.PX1[i] = 0.0
             iass = 1
             df = _assign(df, iass, K8, j, m, nendyr, nbegyr)
-#             K8 = 0 # ?
+            K8 = k8max = 0
             
             #GOTO 220 in pdinew.f
             V = PV 
@@ -875,7 +875,7 @@ def _compute_X(df,
             df.PX2[i] = 0.0  
             iass = 2            
             df = _assign(df, iass, K8, j, m, nendyr, nbegyr)
-#             K8 = 0 # ?
+            K8 = k8max = 0
 
             #GOTO 220 in pdinew.f
             V = PV 
@@ -894,7 +894,7 @@ def _compute_X(df,
             df.X[i] = df.PX2[i]   
             iass = 2            
             df = _assign(df, iass, K8, j, m, nendyr, nbegyr)
-#             K8 = 0
+            K8 = k8max = 0
 
             #GOTO 220 in pdinew.f
             V = PV 
@@ -910,7 +910,7 @@ def _compute_X(df,
             df.X[i] = df.PX1[i]   
             iass = 1   
             df = _assign(df, iass, K8, j, m, nendyr, nbegyr)
-#             K8 = 0
+            K8 = k8max = 0
 
             #GOTO 220 in pdinew.f
             V = PV 
@@ -936,6 +936,11 @@ def _compute_X(df,
     K8 = K8 + 1
     k8max = K8  
 
+    #### EXPERIMENTAL !!!!!!!!!!!!!!
+    # assign the X to PDSI?
+    df.PDSI[i] = df.X[i]
+    ###########################
+    
     #-----------------------------------------------------------------------
     #     SAVE THIS MONTHS CALCULATED VARIABLES (V,PRO,X1,X2,X3) FOR   
     #     USE WITH NEXT MONTHS DATA 
@@ -949,11 +954,6 @@ def _compute_X(df,
     return df, X1, X2, X3, V, PRO, K8, k8max
  
 #-----------------------------------------------------------------------------------------------------------------------
-# compare to Between0s()
-# 
-# typical usage:
-#
-# PV, PX1, PX2, PX3, PPe, X, BT = Between0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)
 def _between_0s(df,
                 K8,
                 k8max, 
@@ -991,12 +991,13 @@ def _between_0s(df,
         # create 1-D index from the years (j) and months (m) indices
         ix = (j * 12) + m
         
-        df.PDSI[ix] = _case(df.PPR[ix], df.PX1[ix], df.PX2[ix], df.PX3[ix]) 
+        df.WPLM[ix] = _case(df.PPR[ix], df.PX1[ix], df.PX2[ix], df.PX3[ix]) 
         
     else:
 
         iass = 3   
         df = _assign(df, iass, K8, j, m, nendyr, nbegyr)
+        K8 = k8max = 0
 
     #-----------------------------------------------------------------------------------------------
     #     SAVE THIS MONTHS CALCULATED VARIABLES (V, PRO, X1, X2, X3) FOR USE WITH NEXT MONTHS DATA 
@@ -1045,7 +1046,7 @@ def _assign(df,
         if df.PX3[i] == 0.0:
             df.PHDI[i] = df.X[i]
         
-        df.PDSI[i] = _case(df.PPR[i], df.PX1[i], df.PX2[i], df.PX3[i]) 
+        df.WPLM[i] = _case(df.PPR[i], df.PX1[i], df.PX2[i], df.PX3[i]) 
         
     else:
         
@@ -1079,7 +1080,7 @@ def _assign(df,
             if df.PX3[ix] == 0.0:
                 df.PHDI[ix] = df.SX[n]
                 
-            df.PDSI[ix] = _case(df.PPR[ix],
+            df.WPLM[ix] = _case(df.PPR[ix],
                                 df.PX1[ix], 
                                 df.PX2[ix],
                                 df.PX3[ix])
