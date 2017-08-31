@@ -1027,7 +1027,7 @@ def _assign(df,
     i = (j * 12) + m
     
     # flag to determine which of the SX* values to save
-    ISAVE  = iass
+    ISAVE = iass
 
     #   
     #-----------------------------------------------------------------------
@@ -1055,10 +1055,16 @@ def _assign(df,
                     if df.SX1[Mm] == 0:
                         ISAVE = 2
                         df.SX[Mm] = df.SX2[Mm]
+                    else:
+                        ISAVE = 1
+                        df.SX[Mm] = df.SX1[Mm]
                 elif ISAVE == 2:
                     if df.SX2[Mm] == 0:
                         ISAVE = 1
                         df.SX[Mm] = df.SX1[Mm]
+                    else:
+                        ISAVE = 2
+                        df.SX[Mm] = df.SX2[Mm]
     
         #-----------------------------------------------------------------------
         #     PROPER ASSIGNMENTS TO ARRAY SX HAVE BEEN MADE,
