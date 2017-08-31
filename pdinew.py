@@ -1026,6 +1026,9 @@ def _assign(df,
     # convert the 2-D time step indices (j, m) to a series index i
     i = (j * 12) + m
     
+    # flag to determine which of the SX* values to save
+    ISAVE  = iass
+
     #   
     #-----------------------------------------------------------------------
     #     FIRST FINISH OFF FILE 8 WITH LATEST VALUES OF PX3, Z,X
@@ -1045,17 +1048,17 @@ def _assign(df,
             #                    IN SX UNTIL IT IS ZERO, THEN SWITCHING TO THE OTHER
             #                    UNTIL IT IS ZERO, ETC.
             #TODO/FIXME
-            # does this correspond with the Fortran indexing from line 1100 in pdinew.f? 
+            # does this correspond with the Fortran looping from line 1100 in pdinew.f? 
             for Mm in range(k8 - 1, -1, -1):
-                
-                if df.SX2[Mm] == 0:
-                    df.SX[Mm] = df.SX1[Mm]
-                else:
-                    df.SX[Mm] = df.SX2[Mm]
-#                 if df.SX1[Mm] == 0:
-#                     df.SX[Mm] = df.SX2[Mm]
-#                 else:
-#                     df.SX[Mm] = df.SX1[Mm]
+
+                if ISAVE == 1:
+                    if df.SX1[Mm] == 0:
+                        ISAVE = 2
+                        df.SX[Mm] = df.SX2[Mm]
+                elif ISAVE == 2:
+                    if df.SX2[Mm] == 0:
+                        ISAVE = 1
+                        df.SX[Mm] = df.SX1[Mm]
     
         #-----------------------------------------------------------------------
         #     PROPER ASSIGNMENTS TO ARRAY SX HAVE BEEN MADE,
