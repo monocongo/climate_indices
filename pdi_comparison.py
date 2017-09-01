@@ -246,6 +246,12 @@ if __name__ == '__main__':
 #                     for i in offending_indices[0]:
 #                         print('{0}  Expected:  {1}   Actual: {2}'.format(i, K[i], AK[i]))
  
+                # get the expected/target values from the NetCDF
+                expected_pdsi = input_dataset.variables['pdsi.index'][division_index, :]
+                expected_phdi = input_dataset.variables['phdi.index'][division_index, :]
+                expected_pmdi = input_dataset.variables['pmdi.index'][division_index, :]
+                expected_zindex = input_dataset.variables['z.index'][division_index, :]
+                
                 # compute PDSI etc. using PDSI code translated from pdinew.f
                 pdinew_PDSI, pdinew_PHDI, pdinew_PMDI, pdinew_Z = pdinew.pdsi_from_climatology(precip_timeseries,
                                                                                                temp_timeseries,
@@ -256,13 +262,8 @@ if __name__ == '__main__':
                                                                                                data_begin_year,
                                                                                                data_end_year,
                                                                                                calibration_begin_year,
-                                                                                               calibration_end_year)
-                
-                # get the expected/target values from the NetCDF
-                expected_pdsi = input_dataset.variables['pdsi.index'][division_index, :]
-                expected_phdi = input_dataset.variables['phdi.index'][division_index, :]
-                expected_pmdi = input_dataset.variables['pmdi.index'][division_index, :]
-                expected_zindex = input_dataset.variables['z.index'][division_index, :]
+                                                                                               calibration_end_year,
+                                                                                               expected_pdsi)
                 
                 # find the differences between the new (Matlab-derived) and previous (Fortran-derived) versions
                 pdsi_diffs = pdinew_PDSI.flatten() - expected_pdsi
@@ -272,8 +273,8 @@ if __name__ == '__main__':
             
                 # dictionary of variable names to corresponding arrays of differences to facilitate looping below
                 varnames_to_arrays = {'PDSI': (pdsi_diffs, expected_pdsi, pdinew_PDSI),
-                                      'PHDI': (phdi_diffs, expected_phdi, pdinew_PHDI),
-                                      'PMDI': (pmdi_diffs, expected_pmdi, pdinew_PMDI),
+#                                       'PHDI': (phdi_diffs, expected_phdi, pdinew_PHDI),
+#                                       'PMDI': (pmdi_diffs, expected_pmdi, pdinew_PMDI),
                                       'Z-INDEX': (zindex_diffs, expected_zindex, pdinew_Z) }
 
                 # we want to see all zero differences, if any non-zero differences exist then raise an alert
@@ -310,8 +311,8 @@ if __name__ == '__main__':
             
                 # dictionary of variable names to corresponding arrays of differences to facilitate looping below
                 varnames_to_arrays = {'PDSI': (pdsi_diffs, expected_pdsi, PDSI),
-                                      'PHDI': (phdi_diffs, expected_phdi, PHDI),
-                                      'PMDI': (pmdi_diffs, expected_pmdi, PMDI),
+#                                       'PHDI': (phdi_diffs, expected_phdi, PHDI),
+#                                       'PMDI': (pmdi_diffs, expected_pmdi, PMDI),
                                       'Z-INDEX': (zindex_diffs, expected_zindex, zindex) }
 
                 # we want to see all zero differences, if any non-zero differences exist then raise an alert
