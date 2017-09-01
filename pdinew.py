@@ -22,7 +22,8 @@ def pdsi_from_climatology(precip_timeseries,
                           data_begin_year,
                           data_end_year,
                           calibration_begin_year,
-                          calibration_end_year):
+                          calibration_end_year,
+                          expected_pdsi_for_debug):
     
     # calculate the negative tangent of the latitude which is used as an argument to the water balance function
     neg_tan_lat = -1 * math.tan(math.radians(latitude))
@@ -76,7 +77,8 @@ def pdsi_from_climatology(precip_timeseries,
                                               delta,
                                               K, 
                                               data_begin_year, 
-                                              data_end_year)
+                                              data_end_year,
+                                              expected_pdsi_for_debug)
                 
     return PDSI, PHDI, PMDI, Z
 
@@ -499,8 +501,12 @@ def _zindex_pdsi(P,
                  delta,
                  AK,
                  nbegyr,#=1895,
-                 nendyr):#=2017
+                 nendyr,#=2017
+                 expected_pdsi):
 
+    # reshape the expected PDSI to match with others (in case of mismatch)
+    expected_pdsi = np.reshape(expected_pdsi, P.shape)
+    
     # reshape the precipitation and PPR to (years, 12)
     P = utils.reshape_to_years_months(P)
     
@@ -539,7 +545,7 @@ def _zindex_pdsi(P,
                       columns=['P'])
 
     # create a list of coluumn names that match to the intermediate work arrays
-    column_names = ['PPR', 'CP', 'Z', 'PDSI', 'PHDI', 'WPLM', 'SX', 'SX1', 'SX2', 'SX3', 'X', 'indexj', 'indexm', 'PX1', 'PX2', 'PX3']
+    column_names = ['PPR', 'CP', 'Z', 'PDSI', 'PHDI', 'WPLM', 'SX', 'SX1', 'SX2', 'SX3', 'X', 'indexj', 'indexm', 'PX1', 'PX2', 'PX3', 'expected_pdsi']
     for column_name in column_names:
         
         # get the array corresponding to the current column
@@ -937,6 +943,9 @@ def _compute_X(df,
     K8 = K8 + 1
     k8max = K8  
 
+#     #DEBUG ONLY -- REMOVE
+#     print('\nBacktracking arrays:\tSX1: {0}\n\tSX2: {1}\n\tSX3: {2}\n\tK8: {3}'.format(df.SX1[0:K8], df.SX2[0:K8], df.SX3[0:K8], K8))
+
     #-----------------------------------------------------------------------
     #     SAVE THIS MONTHS CALCULATED VARIABLES (V,PRO,X1,X2,X3) FOR   
     #     USE WITH NEXT MONTHS DATA 
@@ -1079,6 +1088,26 @@ def _assign(df,
             # pull from the current backtracking index
             df.PDSI[ix] = df.SX[n] 
             
+            print('\nBACKTRACKING  ix: {0}'.format(ix))
+            tolerance = 0.01
+            if abs(df.expected_pdsi[ix] - df.PDSI[ix]) > tolerance:
+                print('\tPDSI:  Expected {0}\n\t       Backtrack: {1}\n\tSX1: {2}:  \tSX2: {3}  \tSX3: {4}'.format(df.expected_pdsi[ix], 
+                                                                                                                   df.PDSI[ix],
+                                                                                                                   df.SX1[n], 
+                                                                                                                   df.SX2[n], 
+                                                                                                                   df.SX3[n]))
+                print('\n\tPX1: {1}:  \tPX2: {1}  \tPX3: {2}'.format(df.PX1[ix], df.PX2[ix], df.PX3[ix]))
+                if abs(df.expected_pdsi[ix] - df.SX1[n]) < tolerance:
+                    print('We missed assigning the SX1 to SX in the previous assignment from 1100 in pdinew.f')
+                elif abs(df.expected_pdsi[ix] - df.SX2[n]) < tolerance:
+                    print('We missed assigning the SX2 to SX in the previous assignment from 1100 in pdinew.f')
+                elif abs(df.expected_pdsi[ix] - df.SX3[n]) < tolerance:
+                    print('We missed assigning the SX3 to SX in the previous assignment from 1100 in pdinew.f')
+                elif abs(df.expected_pdsi[ix] - df.X[ix]) < tolerance:
+                    print('PX3/X identified: !!! Missed assignment of the X value to SX in the previous assignment from 1100 in pdinew.f')
+                elif abs(df.expected_pdsi[ix] - df.PX3[ix]) < tolerance:
+                    print('PX3/X identified: !!! Missed assignment of the PX3 value to SX in the previous assignment from 1100 in pdinew.f')
+                    
             # the PHDI is X3 if not zero, otherwise use X
             df.PHDI[ix] = df.PX3[ix]
             if df.PX3[ix] == 0.0:
