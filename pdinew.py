@@ -560,7 +560,9 @@ def _zindex_pdsi(P,
         for m in range(12):
 
             i = (j * 12) + m
-            
+
+            # these indices keep track of the latest year and month index corresponding 
+            # to the current backtracking index (K8), K8 > 0 indicates backtracking is required
             df.indexj[K8] = j
             df.indexm[K8] = m
 
@@ -661,9 +663,6 @@ def _zindex_pdsi(P,
                     # in palmer.pdsi_from_zindex()
                     df, X1, X2, X3, V, PRO, K8, k8max = _dry_spell_abatement(df, K8, k8max, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, PRO)
 
-#     # assign X to the PDSI array?
-#     df.PDSI = df.X
-    
     for k8 in range(0, k8max):
 
         # years(j) and months(m) to series index ix
@@ -685,6 +684,7 @@ def _zindex_pdsi(P,
 def _get_PPR_PX3(df,
                  PRO,
                  ZE,
+                 V,
                  PV,
                  ix,
                  X3):
@@ -750,32 +750,10 @@ def _wet_spell_abatement(df,
         ZE = -2.691 * X3 + 1.5
 
         # compute the PPR and PX3 values    
-        df = _get_PPR_PX3(df, PRO, ZE, PV, ix, X3)
+        df = _get_PPR_PX3(df, PRO, ZE, V, PV, ix, X3)
         
-#         #-----------------------------------------------------------------------
-#         #     PROB(END) = 100 * (V/Q)  WHERE:   
-#         #             V = SUM OF MOISTURE EXCESS OR DEFICIT (UD OR UW)  
-#         #                 DURING CURRENT ABATEMENT PERIOD   
-#         #             Q = TOTAL MOISTURE ANOMALY REQUIRED TO END THE
-#         #                 CURRENT DROUGHT OR WET SPELL  
-#         #-----------------------------------------------------------------------
-#         if PRO == 100.0: 
-#             #     --------------------- DROUGHT OR WET CONTINUES, CALCULATE 
-#             #                           PROB(END) - VARIABLE ZE 
-#             Q = ZE
-#         else:  
-#             Q = ZE + V
-#     
-#         df.PPR[ix] = (PV / Q) * 100.0  # eq. 30 Palmer 1965, percentage probability that a drought or wet spell has ended
-#         if df.PPR[ix] >= 100.0:
-#              
-#               df.PPR[ix] = 100.0
-#               df.PX3[ix] = 0.0  
-#         else:
-#               # Wells et al (2003) eq. 4
-#               df.PX3[ix] = (0.897 * X3) + (df.Z[ix] / 3.0)
-
     # continue at label 200 in pdinew.f
+    # recompute the X values and other intermediates
     return _compute_X(df, X1, X2, j, m, K8, k8max, nendyr, nbegyr, PV)
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -816,39 +794,10 @@ def _dry_spell_abatement(df,
         ZE = -2.691 * X3 - 1.5
         
         # compute the PPR and PX3 values    
-        df = _get_PPR_PX3(df, PRO, ZE, PV, ix, X3)
+        df = _get_PPR_PX3(df, PRO, ZE, V, PV, ix, X3)
         
-#         #-----------------------------------------------------------------------
-#         #     PROB(END) = 100 * (V/Q)  WHERE:   
-#         #                 V = SUM OF MOISTURE EXCESS OR DEFICIT (UD OR UW)  
-#         #                 DURING CURRENT ABATEMENT PERIOD   
-#         #             Q = TOTAL MOISTURE ANOMALY REQUIRED TO END THE
-#         #                 CURRENT DROUGHT OR WET SPELL  
-#         #-----------------------------------------------------------------------
-#         if PRO == 100.0: 
-#             #     --------------------- DROUGHT OR WET CONTINUES, CALCULATE 
-#             #                           PROB(END) - VARIABLE ZE 
-#             Q = ZE
-#             
-#         else:  
-#             
-#             Q = ZE + V
-# 
-#         # convert the 2-D index values j (years) and m (months) to a series index
-#         i = (j * 12) + m
-#         
-#         df.PPR[i] = (PV / Q) * 100.0 # eq. 30 Palmer 1965, percentage probability that a drought or wet spell has ended
-#         
-#         if df.PPR[i] >= 100.0: 
-#         
-#             df.PPR[i] = 100.0
-#             df.PX3[i] = 0.0  
-#         
-#         else:
-#         
-#             df.PX3[i] = (0.897 * X3) + (df.Z[i] / 3.0)
-          
     # continue at label 200 in pdinew.f
+    # recompute the X values and other intermediates
     return _compute_X(df, X1, X2, j, m, K8, k8max, nendyr, nbegyr, PV)
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -972,12 +921,9 @@ def _compute_X(df,
     K8 = K8 + 1
     k8max = K8  
     
-#     #REMOVE/FIXME
-#     # EXPERIMENTAL
-#     df.SX[K8] = df.PX3[i]
-    
     #DEBUG ONLY -- REMOVE
-    print('\nBacktracking arrays:\nSX1: {0}\nSX2: {1}\nSX3: {2}\nK8: {3}'.format(df.SX1[0:K8], df.SX2[0:K8], df.SX3[0:K8], K8))
+    print('\nBacktracking arrays for index: {0}'.format(i))
+    print('\nSX:\n{0}\nSX1:\n{1}\nSX2:\n{2}\nSX3:\n{3}\nK8: {4}'.format(df.SX[0:K8], df.SX1[0:K8], df.SX2[0:K8], df.SX3[0:K8], K8))
 
     #-----------------------------------------------------------------------
     #     SAVE THIS MONTHS CALCULATED VARIABLES (V,PRO,X1,X2,X3) FOR   
@@ -1136,14 +1082,16 @@ def _assign(df,
             # show backtracking array contents and describe differences
             tolerance = 0.01            
             if abs(df.expected_pdsi[ix] - df.PDSI[ix]) > tolerance:
+                print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
                 print('\nBACKTRACKING  ix: {0}'.format(ix))
-                print('\tPDSI:  Expected {0}\n\t       Backtrack: {1}\nSX1: {2}\nSX2: {3}\nSX3: {4}\nSX: {5}'.format(df.expected_pdsi[ix], 
-                                                                                                                     df.PDSI[ix],
-                                                                                                                     df.SX1[0:n], 
-                                                                                                                     df.SX2[0:n], 
-                                                                                                                     df.SX3[0:n], 
-                                                                                                                     df.SX[0:n]))
-                print('\n\tPX1: {0}:  \tPX2: {1}  \tPX3: {2}'.format(df.PX1[ix - 2:ix + 2], df.PX2[ix - 2:ix + 2], df.PX3[ix - 2:ix + 2]))
+                print('\tPDSI:  Expected {0}\n\t       Backtrack: {1}\nSX1:\n{2}'.format(df.expected_pdsi[ix], 
+                                                                                         df.PDSI[ix],
+                                                                                         df.SX1[0:k8]))
+                print('\nSX2:\n{0}\nSX3:\n{1}\nSX:\n{2}'.format(df.SX2[0:k8], 
+                                                                df.SX3[0:k8], 
+                                                                df.SX[0:k8]))
+                      
+                print('\n\nPX1: {0}\nPX2: {1}\nPX3: {2}'.format(df.PX1[ix - 2:ix + 2], df.PX2[ix - 2:ix + 2], df.PX3[ix - 2:ix + 2]))
                 if abs(df.expected_pdsi[ix] - df.SX1[n]) < tolerance:
                     print('We missed assigning the SX1 to SX in the previous assignment from 1100 in pdinew.f')
                 elif abs(df.expected_pdsi[ix] - df.SX2[n]) < tolerance:
@@ -1154,6 +1102,18 @@ def _assign(df,
                     print('X identified: !!! Missed assignment of the X value to SX in the previous assignment from 1100 in pdinew.f')
                 if abs(df.expected_pdsi[ix] - df.PX3[ix]) < tolerance:
                     print('PX3 identified: !!! Missed assignment of the PX3 value to SX in the previous assignment from 1100 in pdinew.f')
+                if abs(df.expected_pdsi[ix] - df.X[ix - 1]) < tolerance:
+                    print('Index off-by-one error for assigning X to SX from 1100 in pdinew.f')
+                if abs(df.expected_pdsi[ix] - df.PX3[ix - 1]) < tolerance:
+                    print('Index off-by-one error for assigning PX3 to SX from 1100 in pdinew.f')
+                if abs(df.expected_pdsi[ix] - df.X[ix + 1]) < tolerance:
+                    print('Index off-by-one error for assigning X to SX from 1100 in pdinew.f')
+                if abs(df.expected_pdsi[ix] - df.PX3[ix + 1]) < tolerance:
+                    print('Index off-by-one error for assigning PX3 to SX from 1100 in pdinew.f')
+                if abs(df.expected_pdsi[ix] - df.X[n + 1]) < tolerance:
+                    print('Index off-by-one error for assigning X to SX from 1100 in pdinew.f')
+                if abs(df.expected_pdsi[ix] - df.PX3[n + 1]) < tolerance:
+                    print('Index off-by-one error for assigning PX3 to SX from 1100 in pdinew.f')
             #!!!!!!!!!----------- cut here -------------------------------------------------------
                     
             # the PHDI is X3 if not zero, otherwise use X
