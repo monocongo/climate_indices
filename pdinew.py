@@ -681,6 +681,7 @@ def _zindex_pdsi(P,
     return df.PDSI.values, df.PHDI.values, df.WPLM.values, df.Z.values
 
 #-----------------------------------------------------------------------------------------------------------------------
+# from label 190 in pdinew.f
 def _get_PPR_PX3(df,
                  PRO,
                  ZE,
@@ -1075,8 +1076,22 @@ def _assign(df,
     #     FIRST FINISH OFF FILE 8 WITH LATEST VALUES OF PX3, Z,X
     #     X=PX1 FOR I=1, PX2 FOR I=2, PX3,  FOR I=3 
     #-----------------------------------------------------------------------
-    df.SX[k8] = df.X[i] 
-    if k8 > 0:  # perform backtracking
+    df.SX[k8] = df.X[i]
+     
+    if k8 == 0:  # no backtracking
+
+        # set the PDSI to X
+        df.PDSI[i] = df.X[i]  
+    
+        # the PHDI is X3 if not zero, otherwise use X
+        df.PHDI[i] = df.PX3[i]         
+        if df.PX3[i] == 0.0:
+            df.PHDI[i] = df.X[i]
+        
+        # select the best fit for WPLM
+        df.WPLM[i] = _case(df.PPR[i], df.PX1[i], df.PX2[i], df.PX3[i]) 
+
+    else:  # perform backtracking
         
         if iass == 3:  
             #     ---------------- USE ALL X3 VALUES
@@ -1103,11 +1118,11 @@ def _assign(df,
                     else:
                         df.SX[Mm] = df.SX2[Mm]
     
+        # label 70 from pdinew.f
         #-----------------------------------------------------------------------
         #     PROPER ASSIGNMENTS TO ARRAY SX HAVE BEEN MADE,
         #     OUTPUT THE MESS   
         #-----------------------------------------------------------------------
-    
         for n in range(k8):   # backtracking assignment of X
             
             # get the j/m index for the array we will assign to in the backtracking process
@@ -1116,16 +1131,18 @@ def _assign(df,
             # pull from the current backtracking index
             df.PDSI[ix] = df.SX[n] 
 
+            #!!!!!!!!!!!!!!!!!!!!!!!!     Debugging section below -- remove before deployment
+            #
             # show backtracking array contents and describe differences
             tolerance = 0.01            
             if abs(df.expected_pdsi[ix] - df.PDSI[ix]) > tolerance:
                 print('\nBACKTRACKING  ix: {0}'.format(ix))
                 print('\tPDSI:  Expected {0}\n\t       Backtrack: {1}\nSX1: {2}\nSX2: {3}\nSX3: {4}\nSX: {5}'.format(df.expected_pdsi[ix], 
-                                                                                                                              df.PDSI[ix],
-                                                                                                                              df.SX1[0:n], 
-                                                                                                                              df.SX2[0:n], 
-                                                                                                                              df.SX3[0:n], 
-                                                                                                                              df.SX[0:n]))
+                                                                                                                     df.PDSI[ix],
+                                                                                                                     df.SX1[0:n], 
+                                                                                                                     df.SX2[0:n], 
+                                                                                                                     df.SX3[0:n], 
+                                                                                                                     df.SX[0:n]))
                 print('\n\tPX1: {0}:  \tPX2: {1}  \tPX3: {2}'.format(df.PX1[ix - 2:ix + 2], df.PX2[ix - 2:ix + 2], df.PX3[ix - 2:ix + 2]))
                 if abs(df.expected_pdsi[ix] - df.SX1[n]) < tolerance:
                     print('We missed assigning the SX1 to SX in the previous assignment from 1100 in pdinew.f')
@@ -1137,6 +1154,7 @@ def _assign(df,
                     print('X identified: !!! Missed assignment of the X value to SX in the previous assignment from 1100 in pdinew.f')
                 if abs(df.expected_pdsi[ix] - df.PX3[ix]) < tolerance:
                     print('PX3 identified: !!! Missed assignment of the PX3 value to SX in the previous assignment from 1100 in pdinew.f')
+            #!!!!!!!!!----------- cut here -------------------------------------------------------
                     
             # the PHDI is X3 if not zero, otherwise use X
             df.PHDI[ix] = df.PX3[ix]
@@ -1148,17 +1166,6 @@ def _assign(df,
                                 df.PX1[ix], 
                                 df.PX2[ix],
                                 df.PX3[ix])
-
-    # set the PDSI to X
-    df.PDSI[i] = df.X[i]  
-
-    # the PHDI is X3 if not zero, otherwise use X
-    df.PHDI[i] = df.PX3[i]         
-    if df.PX3[i] == 0.0:
-        df.PHDI[i] = df.X[i]
-    
-    # select the best fit for WPLM
-    df.WPLM[i] = _case(df.PPR[i], df.PX1[i], df.PX2[i], df.PX3[i]) 
 
     return df
 
