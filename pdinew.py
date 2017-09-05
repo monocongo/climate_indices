@@ -681,6 +681,39 @@ def _zindex_pdsi(P,
     return df.PDSI.values, df.PHDI.values, df.WPLM.values, df.Z.values
 
 #-----------------------------------------------------------------------------------------------------------------------
+def _get_PPR_PX3(df,
+                 PRO,
+                 ZE,
+                 PV,
+                 ix,
+                 X3):
+    
+    #-----------------------------------------------------------------------
+    #     PROB(END) = 100 * (V/Q)  WHERE:   
+    #             V = SUM OF MOISTURE EXCESS OR DEFICIT (UD OR UW)  
+    #                 DURING CURRENT ABATEMENT PERIOD   
+    #             Q = TOTAL MOISTURE ANOMALY REQUIRED TO END THE
+    #                 CURRENT DROUGHT OR WET SPELL  
+    #-----------------------------------------------------------------------
+    if PRO == 100.0: 
+        #     --------------------- DROUGHT OR WET CONTINUES, CALCULATE 
+        #                           PROB(END) - VARIABLE ZE 
+        Q = ZE
+    else:  
+        Q = ZE + V
+
+    df.PPR[ix] = (PV / Q) * 100.0  # eq. 30 Palmer 1965, percentage probability that a drought or wet spell has ended
+    if df.PPR[ix] >= 100.0:
+         
+          df.PPR[ix] = 100.0
+          df.PX3[ix] = 0.0  
+    else:
+          # Wells et al (2003) eq. 4
+          df.PX3[ix] = (0.897 * X3) + (df.Z[ix] / 3.0)
+
+    return df
+
+#-----------------------------------------------------------------------------------------------------------------------
 # compare to Function_Ud()
 # from line 170 in pdinew.f
 # NOTE careful not to confuse the PRO being returned (probability) with PRO array of potential run off values
@@ -707,40 +740,41 @@ def _wet_spell_abatement(df,
     PV = UD + min(V, 0.0) 
     if PV >= 0.0:
 
-        # GOTO 210 
+        # GO TO label 210 in pdinew.f
         df, X1, X2, X3, V, PRO, K8, k8max = _between_0s(df, K8, k8max, X1, X2, X3, j, m, nendyr, nbegyr)
 
     else:
         #     ---------------------- DURING A WET SPELL, PV => 0 IMPLIES
         #                            PROB(END) HAS RETURNED TO 0
         ZE = -2.691 * X3 + 1.5
-    
-        #-----------------------------------------------------------------------
-        #     PROB(END) = 100 * (V/Q)  WHERE:   
-        #             V = SUM OF MOISTURE EXCESS OR DEFICIT (UD OR UW)  
-        #                 DURING CURRENT ABATEMENT PERIOD   
-        #             Q = TOTAL MOISTURE ANOMALY REQUIRED TO END THE
-        #                 CURRENT DROUGHT OR WET SPELL  
-        #-----------------------------------------------------------------------
-        if PRO == 100.0: 
-            #     --------------------- DROUGHT OR WET CONTINUES, CALCULATE 
-            #                           PROB(END) - VARIABLE ZE 
-            Q = ZE
-        else:  
-            Q = ZE + V
-    
-        df.PPR[ix] = (PV / Q) * 100.0  # eq. 30 Palmer 1965, percentage probability that a drought or wet spell has ended
-        if df.PPR[ix] >= 100.0:
-             
-              df.PPR[ix] = 100.0
-              df.PX3[ix] = 0.0  
-        else:
-              # Wells et al (2003) eq. 4
-              df.PX3[ix] = (0.897 * X3) + (df.Z[ix] / 3.0)
 
-
-        # in new version the X values and backtracking is again computed here, skipped in the NCEI Fortran
+        # compute the PPR and PX3 values    
+        df = _get_PPR_PX3(df, PRO, ZE, PV, ix, X3)
         
+#         #-----------------------------------------------------------------------
+#         #     PROB(END) = 100 * (V/Q)  WHERE:   
+#         #             V = SUM OF MOISTURE EXCESS OR DEFICIT (UD OR UW)  
+#         #                 DURING CURRENT ABATEMENT PERIOD   
+#         #             Q = TOTAL MOISTURE ANOMALY REQUIRED TO END THE
+#         #                 CURRENT DROUGHT OR WET SPELL  
+#         #-----------------------------------------------------------------------
+#         if PRO == 100.0: 
+#             #     --------------------- DROUGHT OR WET CONTINUES, CALCULATE 
+#             #                           PROB(END) - VARIABLE ZE 
+#             Q = ZE
+#         else:  
+#             Q = ZE + V
+#     
+#         df.PPR[ix] = (PV / Q) * 100.0  # eq. 30 Palmer 1965, percentage probability that a drought or wet spell has ended
+#         if df.PPR[ix] >= 100.0:
+#              
+#               df.PPR[ix] = 100.0
+#               df.PX3[ix] = 0.0  
+#         else:
+#               # Wells et al (2003) eq. 4
+#               df.PX3[ix] = (0.897 * X3) + (df.Z[ix] / 3.0)
+
+    # continue at label 200 in pdinew.f
     return _compute_X(df, X1, X2, j, m, K8, k8max, nendyr, nbegyr, PV)
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -779,46 +813,48 @@ def _dry_spell_abatement(df,
         #     ---------------------- DURING A DROUGHT, PV =< 0 IMPLIES  
         #                            PROB(END) HAS RETURNED TO 0
         ZE = -2.691 * X3 - 1.5
-        #-----------------------------------------------------------------------
-        #     PROB(END) = 100 * (V/Q)  WHERE:   
-        #                 V = SUM OF MOISTURE EXCESS OR DEFICIT (UD OR UW)  
-        #                 DURING CURRENT ABATEMENT PERIOD   
-        #             Q = TOTAL MOISTURE ANOMALY REQUIRED TO END THE
-        #                 CURRENT DROUGHT OR WET SPELL  
-        #-----------------------------------------------------------------------
-        if PRO == 100.0: 
-            #     --------------------- DROUGHT OR WET CONTINUES, CALCULATE 
-            #                           PROB(END) - VARIABLE ZE 
-            Q = ZE
-            
-        else:  
-            
-            Q = ZE + V
-
-        # convert the 2-D index values j (years) and m (months) to a series index
-        i = (j * 12) + m
         
-        df.PPR[i] = (PV / Q) * 100.0 # eq. 30 Palmer 1965, percentage probability that a drought or wet spell has ended
+        # compute the PPR and PX3 values    
+        df = _get_PPR_PX3(df, PRO, ZE, PV, ix, X3)
         
-        if df.PPR[i] >= 100.0: 
-        
-            df.PPR[i] = 100.0
-            df.PX3[i] = 0.0  
-        
-        else:
-        
-            df.PX3[i] = (0.897 * X3) + (df.Z[i] / 3.0)
+#         #-----------------------------------------------------------------------
+#         #     PROB(END) = 100 * (V/Q)  WHERE:   
+#         #                 V = SUM OF MOISTURE EXCESS OR DEFICIT (UD OR UW)  
+#         #                 DURING CURRENT ABATEMENT PERIOD   
+#         #             Q = TOTAL MOISTURE ANOMALY REQUIRED TO END THE
+#         #                 CURRENT DROUGHT OR WET SPELL  
+#         #-----------------------------------------------------------------------
+#         if PRO == 100.0: 
+#             #     --------------------- DROUGHT OR WET CONTINUES, CALCULATE 
+#             #                           PROB(END) - VARIABLE ZE 
+#             Q = ZE
+#             
+#         else:  
+#             
+#             Q = ZE + V
+# 
+#         # convert the 2-D index values j (years) and m (months) to a series index
+#         i = (j * 12) + m
+#         
+#         df.PPR[i] = (PV / Q) * 100.0 # eq. 30 Palmer 1965, percentage probability that a drought or wet spell has ended
+#         
+#         if df.PPR[i] >= 100.0: 
+#         
+#             df.PPR[i] = 100.0
+#             df.PX3[i] = 0.0  
+#         
+#         else:
+#         
+#             df.PX3[i] = (0.897 * X3) + (df.Z[i] / 3.0)
           
-
-        #NOTE in new version the X values and backtracking is again computed here, not done in the NCEI Fortran
-
+    # continue at label 200 in pdinew.f
     return _compute_X(df, X1, X2, j, m, K8, k8max, nendyr, nbegyr, PV)
 
 #-----------------------------------------------------------------------------------------------------------------------
 # compare to 
 # PX1, PX2, PX3, X, BT = Main(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT)
 # in palmer.pdsi_from_zindex()
-# from line 200 in pdinew.f
+# from label 200 in pdinew.f
 def _compute_X(df,
                X1,
                X2,
@@ -1080,27 +1116,17 @@ def _assign(df,
             # pull from the current backtracking index
             df.PDSI[ix] = df.SX[n] 
 
-            # DEBUG ONLY -- REMOVE
-            if ix == 22:
-                pass
-                
-            #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            # EXPERIMENTAL / REMOVE
-            if df.PX1[ix] == 0.0 and df.PX2[ix] == 0.0 and abs(df.PX3[ix]) > 0.0:
-                print('\nAssigning PX3 to PDSI')
-                df.PDSI[ix] = df.PX3[ix]  
-            #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
             # show backtracking array contents and describe differences
             tolerance = 0.01            
             if abs(df.expected_pdsi[ix] - df.PDSI[ix]) > tolerance:
                 print('\nBACKTRACKING  ix: {0}'.format(ix))
-                print('\tPDSI:  Expected {0}\n\t       Backtrack: {1}\n\tSX1: {2}:  \tSX2: {3}  \tSX3: {4}'.format(df.expected_pdsi[ix], 
-                                                                                                                   df.PDSI[ix],
-                                                                                                                   df.SX1[n], 
-                                                                                                                   df.SX2[n], 
-                                                                                                                   df.SX3[n]))
-                print('\n\tPX1: {1}:  \tPX2: {1}  \tPX3: {2}'.format(df.PX1[ix], df.PX2[ix], df.PX3[ix]))
+                print('\tPDSI:  Expected {0}\n\t       Backtrack: {1}\nSX1: {2}\nSX2: {3}\nSX3: {4}\nSX: {5}'.format(df.expected_pdsi[ix], 
+                                                                                                                              df.PDSI[ix],
+                                                                                                                              df.SX1[0:n], 
+                                                                                                                              df.SX2[0:n], 
+                                                                                                                              df.SX3[0:n], 
+                                                                                                                              df.SX[0:n]))
+                print('\n\tPX1: {0}:  \tPX2: {1}  \tPX3: {2}'.format(df.PX1[ix - 2:ix + 2], df.PX2[ix - 2:ix + 2], df.PX3[ix - 2:ix + 2]))
                 if abs(df.expected_pdsi[ix] - df.SX1[n]) < tolerance:
                     print('We missed assigning the SX1 to SX in the previous assignment from 1100 in pdinew.f')
                 elif abs(df.expected_pdsi[ix] - df.SX2[n]) < tolerance:
@@ -1109,7 +1135,7 @@ def _assign(df,
                     print('We missed assigning the SX3 to SX in the previous assignment from 1100 in pdinew.f')
                 elif abs(df.expected_pdsi[ix] - df.X[ix]) < tolerance:
                     print('X identified: !!! Missed assignment of the X value to SX in the previous assignment from 1100 in pdinew.f')
-                elif abs(df.expected_pdsi[ix] - df.PX3[ix]) < tolerance:
+                if abs(df.expected_pdsi[ix] - df.PX3[ix]) < tolerance:
                     print('PX3 identified: !!! Missed assignment of the PX3 value to SX in the previous assignment from 1100 in pdinew.f')
                     
             # the PHDI is X3 if not zero, otherwise use X
