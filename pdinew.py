@@ -833,14 +833,6 @@ def _compute_X(df,
     # the values within the DataFrame are in a series, so get the single index value assuming j is years and m is months
     i = (j * 12) + m
 
-
-    # FIXME ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    #
-    # We have an issue in this function whereby we sometimes happen to not fall into any of the conditionals below 
-    # which result in a call to the _assign() function, resulting in df.* values of NaN for this index i.
-    #
-    # FIXME ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
     #-----------------------------------------------------------------------
     #     CONTINUE X1 AND X2 CALCULATIONS.  
     #     IF EITHER INDICATES THE START OF A NEW WET OR DROUGHT,
@@ -942,9 +934,13 @@ def _compute_X(df,
     df.X[i]  = df.PX3[i] 
     K8 = K8 + 1
     k8max = K8  
-
-#     #DEBUG ONLY -- REMOVE
-#     print('\nBacktracking arrays:\tSX1: {0}\n\tSX2: {1}\n\tSX3: {2}\n\tK8: {3}'.format(df.SX1[0:K8], df.SX2[0:K8], df.SX3[0:K8], K8))
+    
+#     #REMOVE/FIXME
+#     # EXPERIMENTAL
+#     df.SX[K8] = df.PX3[i]
+    
+    #DEBUG ONLY -- REMOVE
+    print('\nBacktracking arrays:\nSX1: {0}\nSX2: {1}\nSX3: {2}\nK8: {3}'.format(df.SX1[0:K8], df.SX2[0:K8], df.SX3[0:K8], K8))
 
     #-----------------------------------------------------------------------
     #     SAVE THIS MONTHS CALCULATED VARIABLES (V,PRO,X1,X2,X3) FOR   
@@ -985,7 +981,7 @@ def _between_0s(df,
     df.PX3[ix] = (0.897 * X3) + (df.Z[ix] / 3.0)
     df.X[ix] = df.PX3[ix] 
     
-    if K8 == 0: 
+    if K8 == 0:  # no backtracking required
         
         df.PDSI[ix] = df.X[ix]  
         df.PHDI[ix] = df.PX3[ix] 
@@ -996,7 +992,7 @@ def _between_0s(df,
         
         df.WPLM[ix] = _case(df.PPR[ix], df.PX1[ix], df.PX2[ix], df.PX3[ix]) 
         
-    else:
+    else:  # perform backtracking, assigning all backtrack array values to the stored X3
 
         iass = 3   
         df = _assign(df, iass, K8, j, m, nendyr, nbegyr)
@@ -1056,23 +1052,19 @@ def _assign(df,
             #     -------------- BACKTRACK THRU ARRAYS, STORING ASSIGNED X1 (OR X2) 
             #                    IN SX UNTIL IT IS ZERO, THEN SWITCHING TO THE OTHER
             #                    UNTIL IT IS ZERO, ETC.
-            #TODO/FIXME
-            # does this correspond with the Fortran looping from line 1100 in pdinew.f? 
             for Mm in range(k8 - 1, -1, -1):
 
-                if ISAVE == 1:
-                    if df.SX1[Mm] == 0:
+                if ISAVE == 1: # then GO TO 20 in pdinew.f
+                    if df.SX1[Mm] == 0:  # then GO TO 50 in pdinew.f
                         ISAVE = 2
                         df.SX[Mm] = df.SX2[Mm]
                     else:
-                        ISAVE = 1
                         df.SX[Mm] = df.SX1[Mm]
-                elif ISAVE == 2:
-                    if df.SX2[Mm] == 0:
+                elif ISAVE == 2: # then GO TO 40 in pdinew.f
+                    if df.SX2[Mm] == 0: # then GO TO 30 in pdinew.f
                         ISAVE = 1
                         df.SX[Mm] = df.SX1[Mm]
                     else:
-                        ISAVE = 2
                         df.SX[Mm] = df.SX2[Mm]
     
         #-----------------------------------------------------------------------
@@ -1082,15 +1074,27 @@ def _assign(df,
     
         for n in range(k8):   # backtracking assignment of X
             
-            # get the j/m index we need to start assigning to from the backtracking process
+            # get the j/m index for the array we will assign to in the backtracking process
             ix = (df.indexj[n] * 12) + df.indexm[n]
             
             # pull from the current backtracking index
             df.PDSI[ix] = df.SX[n] 
-            
-            print('\nBACKTRACKING  ix: {0}'.format(ix))
-            tolerance = 0.01
+
+            # DEBUG ONLY -- REMOVE
+            if ix == 22:
+                pass
+                
+            #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            # EXPERIMENTAL / REMOVE
+            if df.PX1[ix] == 0.0 and df.PX2[ix] == 0.0 and abs(df.PX3[ix]) > 0.0:
+                print('\nAssigning PX3 to PDSI')
+                df.PDSI[ix] = df.PX3[ix]  
+            #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+            # show backtracking array contents and describe differences
+            tolerance = 0.01            
             if abs(df.expected_pdsi[ix] - df.PDSI[ix]) > tolerance:
+                print('\nBACKTRACKING  ix: {0}'.format(ix))
                 print('\tPDSI:  Expected {0}\n\t       Backtrack: {1}\n\tSX1: {2}:  \tSX2: {3}  \tSX3: {4}'.format(df.expected_pdsi[ix], 
                                                                                                                    df.PDSI[ix],
                                                                                                                    df.SX1[n], 
@@ -1104,9 +1108,9 @@ def _assign(df,
                 elif abs(df.expected_pdsi[ix] - df.SX3[n]) < tolerance:
                     print('We missed assigning the SX3 to SX in the previous assignment from 1100 in pdinew.f')
                 elif abs(df.expected_pdsi[ix] - df.X[ix]) < tolerance:
-                    print('PX3/X identified: !!! Missed assignment of the X value to SX in the previous assignment from 1100 in pdinew.f')
+                    print('X identified: !!! Missed assignment of the X value to SX in the previous assignment from 1100 in pdinew.f')
                 elif abs(df.expected_pdsi[ix] - df.PX3[ix]) < tolerance:
-                    print('PX3/X identified: !!! Missed assignment of the PX3 value to SX in the previous assignment from 1100 in pdinew.f')
+                    print('PX3 identified: !!! Missed assignment of the PX3 value to SX in the previous assignment from 1100 in pdinew.f')
                     
             # the PHDI is X3 if not zero, otherwise use X
             df.PHDI[ix] = df.PX3[ix]
