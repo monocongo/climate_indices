@@ -286,8 +286,8 @@ if __name__ == '__main__':
                     actual = array_tuple[2]
                     
                     if not np.allclose(diffs_array, zeros, atol=tolerance, equal_nan=True):
-                        logger.warn('Division {0}: Comparing new Palmer (pdinew.py) against operational pdinew.f: ' + \
-                                    '\nNon-matching values for {1}'.format(division_id, varname))
+                        logger.warn('Division {0}: Comparing new Palmer (pdinew.py) against '.format(division_id) + \
+                                    'operational pdinew.f: \nNon-matching values for {0}'.format(varname))
                         offending_indices = np.where(abs(diffs_array) > tolerance)
                         #logger.warn('Time steps with significant differences: {0}'.format(offending_indices))
                         for i in offending_indices[0]:

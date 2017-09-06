@@ -510,24 +510,6 @@ def _zindex_pdsi(P,
     # reshape the precipitation and PPR to (years, 12)
     P = utils.reshape_to_years_months(P)
     
-    # create empty/zero arrays for intermediate values
-    PPR = np.full(P.shape, np.NaN)
-    CP = np.full(P.shape, np.NaN)
-    Z = np.full(P.shape, np.NaN)    
-    PDSI = np.full(P.shape, np.NaN)
-    PHDI = np.full(P.shape, np.NaN)
-    WPLM = np.full(P.shape, np.NaN)
-    SX = np.full(P.shape, np.NaN)
-    X = np.full(P.shape, np.NaN)
-    indexj = np.empty(P.shape, dtype=int)
-    indexm = np.empty(P.shape, dtype=int)
-    PX1 = np.zeros(P.shape)
-    PX2 = np.zeros(P.shape)
-    PX3 = np.zeros(P.shape)
-    SX1 = np.zeros(P.shape)
-    SX2 = np.zeros(P.shape)
-    SX3 = np.zeros(P.shape)
-    
     # intermediate values used in computations below 
     PV  = 0.0
     V   = 0.0 
@@ -545,15 +527,28 @@ def _zindex_pdsi(P,
                       columns=['P'])
 
     # create a list of coluumn names that match to the intermediate work arrays
-    column_names = ['PPR', 'CP', 'Z', 'PDSI', 'PHDI', 'WPLM', 'SX', 'SX1', 'SX2', 'SX3', 'X', 'indexj', 'indexm', 'PX1', 'PX2', 'PX3', 'expected_pdsi']
+    column_names = ['PPR', 'CP', 'Z', 'PDSI', 'PHDI', 'WPLM', 'SX', 'SX1', 'SX2', 'SX3', 'X', 'PX1', 'PX2', 'PX3']
     for column_name in column_names:
         
         # get the array corresponding to the current column
-        column_array = eval(column_name).flatten()
+        column_array = np.full(P.shape, np.NaN).flatten()
         
         # add the column to the DataFrame (as a Series)
         df[column_name] = pd.Series(column_array)
 
+    # add the J and M (year and month) index columns (used to keep track of which year/month index to use for the start of backtracking)
+    column_names = ['indexj', 'indexm']
+    for column_name in column_names:
+        
+        # get the array corresponding to the current column
+        column_array = np.full(P.shape, 0, dtype=int).flatten()
+        
+        # add the column to the DataFrame (as a Series)
+        df[column_name] = pd.Series(column_array)
+
+    # add the expected PDSI values so we can compare against these as we're debugging
+    df['expected_pdsi'] = pd.Series(expected_pdsi)
+    
     # loop over all years and months of the time series
     for j in range(P.shape[0]):    
                 
@@ -561,6 +556,12 @@ def _zindex_pdsi(P,
 
             i = (j * 12) + m
 
+            # DEBUGGING ONLY -- REMOVE
+            if i == 78:
+                pass
+            else:
+                print('i: {0}'.format(i))
+            
             # these indices keep track of the latest year and month index corresponding 
             # to the current backtracking index (K8), K8 > 0 indicates backtracking is required
             df.indexj[K8] = j
@@ -663,10 +664,10 @@ def _zindex_pdsi(P,
                     # in palmer.pdsi_from_zindex()
                     df, X1, X2, X3, V, PRO, K8, k8max = _dry_spell_abatement(df, K8, k8max, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, PRO)
 
-    for k8 in range(0, k8max):
+    for backtrack_index in range(0, k8max):
 
         # years(j) and months(m) to series index ix
-        ix = (df.indexj[k8] * 12) + df.indexm[k8]
+        ix = (df.indexj[backtrack_index] * 12) + df.indexm[backtrack_index]
         
         df.PDSI[ix] = df.X[ix] 
         df.PHDI[ix] = df.PX3[ix]
@@ -732,7 +733,7 @@ def _wet_spell_abatement(df,
                          X3):
     
     # combine the years (j) and months (m) indices to series index ix
-    ix = (df.indexj[K8] * 12) + df.indexm[K8]
+    ix = (j * 12) + m
         
     #-----------------------------------------------------------------------
     #      WET SPELL ABATEMENT IS POSSIBLE  
@@ -774,7 +775,7 @@ def _dry_spell_abatement(df,
                          PRO):
 
     # combine the years (j) and months (m) indices to series index ix
-    ix = (df.indexj[K8] * 12) + df.indexm[K8]
+    ix = (j * 12) + m
         
     #-----------------------------------------------------------------------
     #      DROUGHT ABATEMENT IS POSSIBLE
@@ -838,7 +839,7 @@ def _compute_X(df,
             iass = 1
             df = _assign(df, iass, K8, j, m, nendyr, nbegyr)
             K8 = k8max = 0
-            
+                
             #GOTO 220 in pdinew.f
             V = PV 
             PRO = df.PPR[i] 
@@ -914,6 +915,12 @@ def _compute_X(df,
     #     CHOOSING THE APPROPRIATE X1 OR X2 TO BE THAT MONTH'S X. 
     #-----------------------------------------------------------------------
     
+    #DEVELOPMENT/DEBUG -- REMOVE? this appears to fix many issues with backtracking
+    # reset the year and month index arrays so that the current j/m location is used as the first backtracking indices
+    if K8 == 0:
+        df.indexj[K8] = j
+        df.indexm[K8] = m
+
     df.SX1[K8] = df.PX1[i] 
     df.SX2[K8] = df.PX2[i] 
     df.SX3[K8] = df.PX3[i] 
@@ -921,10 +928,6 @@ def _compute_X(df,
     K8 = K8 + 1
     k8max = K8  
     
-    #DEBUG ONLY -- REMOVE
-    print('\nBacktracking arrays for index: {0}'.format(i))
-    print('\nSX:\n{0}\nSX1:\n{1}\nSX2:\n{2}\nSX3:\n{3}\nK8: {4}'.format(df.SX[0:K8], df.SX1[0:K8], df.SX2[0:K8], df.SX3[0:K8], K8))
-
     #-----------------------------------------------------------------------
     #     SAVE THIS MONTHS CALCULATED VARIABLES (V,PRO,X1,X2,X3) FOR   
     #     USE WITH NEXT MONTHS DATA 
@@ -995,7 +998,7 @@ def _between_0s(df,
 #-----------------------------------------------------------------------------------------------------------------------
 def _assign(df,
             iass,
-            k8,
+            backsteps,
             j,
             m,
             nendyr,
@@ -1004,7 +1007,7 @@ def _assign(df,
     '''
     :df pandas DataFrame
     :param iass:
-    :param k8:  
+    :param backsteps:  
     :param j:
     :param m:
     :param nendyr:
@@ -1022,9 +1025,9 @@ def _assign(df,
     #     FIRST FINISH OFF FILE 8 WITH LATEST VALUES OF PX3, Z,X
     #     X=PX1 FOR I=1, PX2 FOR I=2, PX3,  FOR I=3 
     #-----------------------------------------------------------------------
-    df.SX[k8] = df.X[i]
+    df.SX[backsteps] = df.X[i]
      
-    if k8 == 0:  # no backtracking
+    if backsteps == 0:  # no backtracking
 
         # set the PDSI to X
         df.PDSI[i] = df.X[i]  
@@ -1041,7 +1044,7 @@ def _assign(df,
         
         if iass == 3:  
             #     ---------------- USE ALL X3 VALUES
-            for Mm in range(k8):
+            for Mm in range(backsteps):
         
                 df.SX[Mm] = df.SX3[Mm]
     
@@ -1049,7 +1052,7 @@ def _assign(df,
             #     -------------- BACKTRACK THRU ARRAYS, STORING ASSIGNED X1 (OR X2) 
             #                    IN SX UNTIL IT IS ZERO, THEN SWITCHING TO THE OTHER
             #                    UNTIL IT IS ZERO, ETC.
-            for Mm in range(k8 - 1, -1, -1):
+            for Mm in range(backsteps - 1, -1, -1):
 
                 if ISAVE == 1: # then GO TO 20 in pdinew.f
                     if df.SX1[Mm] == 0:  # then GO TO 50 in pdinew.f
@@ -1069,11 +1072,15 @@ def _assign(df,
         #     PROPER ASSIGNMENTS TO ARRAY SX HAVE BEEN MADE,
         #     OUTPUT THE MESS   
         #-----------------------------------------------------------------------
-        for n in range(k8):   # backtracking assignment of X
+        for n in range(backsteps + 1):   # backtracking assignment of X
             
             # get the j/m index for the array we will assign to in the backtracking process
             ix = (df.indexj[n] * 12) + df.indexm[n]
             
+            #DEBUGGING ONLY -- REMOVE
+            if ix == 22:
+                dbugg = 0
+                
             # pull from the current backtracking index
             df.PDSI[ix] = df.SX[n] 
 
@@ -1083,37 +1090,12 @@ def _assign(df,
             tolerance = 0.01            
             if abs(df.expected_pdsi[ix] - df.PDSI[ix]) > tolerance:
                 print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
-                print('\nBACKTRACKING  ix: {0}'.format(ix))
-                print('\tPDSI:  Expected {0}\n\t       Backtrack: {1}\nSX1:\n{2}'.format(df.expected_pdsi[ix], 
-                                                                                         df.PDSI[ix],
-                                                                                         df.SX1[0:k8]))
-                print('\nSX2:\n{0}\nSX3:\n{1}\nSX:\n{2}'.format(df.SX2[0:k8], 
-                                                                df.SX3[0:k8], 
-                                                                df.SX[0:k8]))
-                      
-                print('\n\nPX1: {0}\nPX2: {1}\nPX3: {2}'.format(df.PX1[ix - 2:ix + 2], df.PX2[ix - 2:ix + 2], df.PX3[ix - 2:ix + 2]))
-                if abs(df.expected_pdsi[ix] - df.SX1[n]) < tolerance:
-                    print('We missed assigning the SX1 to SX in the previous assignment from 1100 in pdinew.f')
-                elif abs(df.expected_pdsi[ix] - df.SX2[n]) < tolerance:
-                    print('We missed assigning the SX2 to SX in the previous assignment from 1100 in pdinew.f')
-                elif abs(df.expected_pdsi[ix] - df.SX3[n]) < tolerance:
-                    print('We missed assigning the SX3 to SX in the previous assignment from 1100 in pdinew.f')
-                elif abs(df.expected_pdsi[ix] - df.X[ix]) < tolerance:
-                    print('X identified: !!! Missed assignment of the X value to SX in the previous assignment from 1100 in pdinew.f')
-                if abs(df.expected_pdsi[ix] - df.PX3[ix]) < tolerance:
-                    print('PX3 identified: !!! Missed assignment of the PX3 value to SX in the previous assignment from 1100 in pdinew.f')
-                if abs(df.expected_pdsi[ix] - df.X[ix - 1]) < tolerance:
-                    print('Index off-by-one error for assigning X to SX from 1100 in pdinew.f')
-                if abs(df.expected_pdsi[ix] - df.PX3[ix - 1]) < tolerance:
-                    print('Index off-by-one error for assigning PX3 to SX from 1100 in pdinew.f')
-                if abs(df.expected_pdsi[ix] - df.X[ix + 1]) < tolerance:
-                    print('Index off-by-one error for assigning X to SX from 1100 in pdinew.f')
-                if abs(df.expected_pdsi[ix] - df.PX3[ix + 1]) < tolerance:
-                    print('Index off-by-one error for assigning PX3 to SX from 1100 in pdinew.f')
-                if abs(df.expected_pdsi[ix] - df.X[n + 1]) < tolerance:
-                    print('Index off-by-one error for assigning X to SX from 1100 in pdinew.f')
-                if abs(df.expected_pdsi[ix] - df.PX3[n + 1]) < tolerance:
-                    print('Index off-by-one error for assigning PX3 to SX from 1100 in pdinew.f')
+                print('\nBACKTRACKING  actual:  {0}\tix: {1}'.format(i, ix))
+                print('\tNumber of backtracking steps:  {0}'.format(backsteps))
+                print('\tPDSI:  Expected {0}\n\t       Backtrack: {1}\nSX:\n{2}'.format(df.expected_pdsi[ix], 
+                                                                                        df.PDSI[ix],
+                                                                                        df.SX[0:backsteps]))
+                print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
             #!!!!!!!!!----------- cut here -------------------------------------------------------
                     
             # the PHDI is X3 if not zero, otherwise use X
