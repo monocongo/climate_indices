@@ -1,6 +1,7 @@
 import calendar
 import logging
 import math
+import numba
 import numpy as np
 import pandas as pd
 import utils
@@ -11,6 +12,9 @@ logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s',
                     datefmt='%Y-%m-%d  %H:%M:%S')
 logger = logging.getLogger(__name__)
+
+# set numpy's print options so when array values are printed we can control the precision
+np.set_printoptions(formatter={'float': lambda x: "{0:.2f}".format(x)})
 
 #-----------------------------------------------------------------------------------------------------------------------
 def pdsi_from_climatology(precip_timeseries,
@@ -83,6 +87,7 @@ def pdsi_from_climatology(precip_timeseries,
     return PDSI, PHDI, PMDI, Z
 
 #-----------------------------------------------------------------------------------------------------------------------
+#@numba.jit
 def _cafec_coefficients(P,
                         PET,
                         ET,
@@ -264,6 +269,7 @@ def _cafec_coefficients(P,
     return alpha, beta, delta, gamma, t_ratio
 
 #-----------------------------------------------------------------------------------------------------------------------
+@numba.jit
 def _climatic_characteristic(alpha,
                              beta,
                              gamma,
@@ -309,6 +315,7 @@ def _climatic_characteristic(alpha,
     return AK
 
 #-----------------------------------------------------------------------------------------------------------------------
+@numba.jit
 def _water_balance(T,
                    P,
                    AWC,
@@ -518,7 +525,6 @@ def _zindex_pdsi(P,
     X2  = 0.0 
     X3  = 0.0 
     K8  = 0
-    k8max = 0
 
     # create container for the arrays and values we'll use throughout the computation loop below
     array0 = np.reshape(P, (P.size, 1))
@@ -557,7 +563,8 @@ def _zindex_pdsi(P,
             i = (j * 12) + m
 
             # DEBUGGING ONLY -- REMOVE
-            if i == 78:
+            if i == 62:
+                display_debug_info(df, i, j, m, K8)
                 pass
             else:
                 print('i: {0}'.format(i))
@@ -606,7 +613,7 @@ def _zindex_pdsi(P,
                     # compare to 
                     # PX1, PX2, PX3, X, BT = Main(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT)
                     # in palmer.pdsi_from_zindex()
-                    df, X1, X2, X3, V, PRO, K8, k8max = _compute_X(df, X1, X2, j, m, K8, k8max, nendyr, nbegyr, PV)
+                    df, X1, X2, X3, V, PRO, K8 = _compute_X(df, X1, X2, j, m, K8, nendyr, nbegyr, PV)
                      
                 elif X3 > 0.5:   
                     #         ----------------------- WE ARE IN A WET SPELL 
@@ -616,7 +623,7 @@ def _zindex_pdsi(P,
                         # compare to 
                         # PV, PX1, PX2, PX3, PPe, X, BT = Between0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)
                         # in palmer.pdsi_from_zindex()
-                        df, X1, X2, X3, V, PRO, K8, k8max = _between_0s(df, K8, k8max, X1, X2, X3, j, m, nendyr, nbegyr)
+                        df, X1, X2, X3, V, PRO, K8 = _between_0s(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
                         
                     else:
                         #             ------------------ THE WET STARTS TO ABATE (AND MAY END)  
@@ -624,7 +631,7 @@ def _zindex_pdsi(P,
                         # compare to
                         # Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Ud(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
                         # in palmer.pdsi_from_zindex()
-                        df, X1, X2, X3, V, PRO, K8, k8max = _wet_spell_abatement(df, V, K8, k8max, PRO, j, m, nendyr, nbegyr, X1, X2, X3)
+                        df, X1, X2, X3, V, PRO, K8 = _wet_spell_abatement(df, V, K8, PRO, j, m, nendyr, nbegyr, X1, X2, X3)
 
                 elif X3 < -0.5:  
                     #         ------------------------- WE ARE IN A DROUGHT 
@@ -634,7 +641,7 @@ def _zindex_pdsi(P,
                         # compare to 
                         # PV, PX1, PX2, PX3, PPe, X, BT = Between0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)
                         # in palmer.pdsi_from_zindex()
-                        df, X1, X2, X3, V, PRO, K8, k8max = _between_0s(df, K8, k8max, X1, X2, X3, j, m, nendyr, nbegyr)
+                        df, X1, X2, X3, V, PRO, K8 = _between_0s(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
 
                     else:
                         #             ------------------ THE DROUGHT STARTS TO ABATE (AND MAY END)  
@@ -642,7 +649,7 @@ def _zindex_pdsi(P,
                         # compare to 
                         # Uw, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Uw(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
                         # in palmer.pdsi_from_zindex()
-                        df, X1, X2, X3, V, PRO, K8, k8max = _dry_spell_abatement(df, K8, k8max, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, PRO)
+                        df, X1, X2, X3, V, PRO, K8 = _dry_spell_abatement(df, K8, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, PRO)
 
             else:
                 #     ------------------------------------------ABATEMENT IS UNDERWAY   
@@ -653,7 +660,7 @@ def _zindex_pdsi(P,
                     # compare to
                     # Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Ud(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
                     # in palmer.pdsi_from_zindex()
-                    df, X1, X2, X3, V, PRO, K8, k8max = _wet_spell_abatement(df, V, K8, k8max, PRO, j, m, nendyr, nbegyr, X1, X2, X3)
+                    df, X1, X2, X3, V, PRO, K8 = _wet_spell_abatement(df, V, K8, PRO, j, m, nendyr, nbegyr, X1, X2, X3)
                 
                 else:  # if X3 <= 0.0:
                     
@@ -662,9 +669,9 @@ def _zindex_pdsi(P,
                     # compare to
                     # Uw, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Uw(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
                     # in palmer.pdsi_from_zindex()
-                    df, X1, X2, X3, V, PRO, K8, k8max = _dry_spell_abatement(df, K8, k8max, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, PRO)
+                    df, X1, X2, X3, V, PRO, K8 = _dry_spell_abatement(df, K8, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, PRO)
 
-    for backtrack_index in range(0, k8max):
+    for backtrack_index in range(0, K8):
 
         # years(j) and months(m) to series index ix
         ix = (df.indexj[backtrack_index] * 12) + df.indexm[backtrack_index]
@@ -722,7 +729,6 @@ def _get_PPR_PX3(df,
 def _wet_spell_abatement(df,
                          V, 
                          K8, 
-                         k8max,
                          PRO,
                          j, 
                          m, 
@@ -732,18 +738,18 @@ def _wet_spell_abatement(df,
                          X2, 
                          X3):
     
-    # combine the years (j) and months (m) indices to series index ix
-    ix = (j * 12) + m
+    # combine the years (j) and months (m) indices to series index i
+    i = (j * 12) + m
         
     #-----------------------------------------------------------------------
     #      WET SPELL ABATEMENT IS POSSIBLE  
     #-----------------------------------------------------------------------
-    UD = df.Z[ix] - 0.15  
+    UD = df.Z[i] - 0.15  
     PV = UD + min(V, 0.0) 
     if PV >= 0.0:
 
         # GO TO label 210 in pdinew.f
-        df, X1, X2, X3, V, PRO, K8, k8max = _between_0s(df, K8, k8max, X1, X2, X3, j, m, nendyr, nbegyr)
+        df, X1, X2, X3, V, PRO, K8 = _between_0s(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
 
     else:
         #     ---------------------- DURING A WET SPELL, PV => 0 IMPLIES
@@ -751,18 +757,17 @@ def _wet_spell_abatement(df,
         ZE = -2.691 * X3 + 1.5
 
         # compute the PPR and PX3 values    
-        df = _get_PPR_PX3(df, PRO, ZE, V, PV, ix, X3)
+        df = _get_PPR_PX3(df, PRO, ZE, V, PV, i, X3)
         
     # continue at label 200 in pdinew.f
     # recompute the X values and other intermediates
-    return _compute_X(df, X1, X2, j, m, K8, k8max, nendyr, nbegyr, PV)
+    return _compute_X(df, X1, X2, j, m, K8, nendyr, nbegyr, PV)
 
 #-----------------------------------------------------------------------------------------------------------------------
 # compare to Function_Uw()
 # from line 180 in pdinew.f
 def _dry_spell_abatement(df,
                          K8,
-                         k8max,
                          j, 
                          m, 
                          nendyr, 
@@ -774,20 +779,20 @@ def _dry_spell_abatement(df,
                          X3,
                          PRO):
 
-    # combine the years (j) and months (m) indices to series index ix
-    ix = (j * 12) + m
+    # combine the years (j) and months (m) indices to series index i
+    i = (j * 12) + m
         
     #-----------------------------------------------------------------------
     #      DROUGHT ABATEMENT IS POSSIBLE
     #-----------------------------------------------------------------------
-    UW = df.Z[ix] + 0.15  
+    UW = df.Z[i] + 0.15  
     PV = UW + max(V, 0.0) 
     if PV <= 0:
         # GOTO 210 in pdinew.f
         # compare to 
         # PV, PX1, PX2, PX3, PPe, X, BT = Between0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)
         # in pdsi_from_zindex()
-        df, X1, X2, X3, V, PRO, K8, k8max = _between_0s(df, K8, k8max, X1, X2, X3, j, m, nendyr, nbegyr)
+        df, X1, X2, X3, V, PRO, K8 = _between_0s(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
             
     else:
         #     ---------------------- DURING A DROUGHT, PV =< 0 IMPLIES  
@@ -795,11 +800,11 @@ def _dry_spell_abatement(df,
         ZE = -2.691 * X3 - 1.5
         
         # compute the PPR and PX3 values    
-        df = _get_PPR_PX3(df, PRO, ZE, V, PV, ix, X3)
+        df = _get_PPR_PX3(df, PRO, ZE, V, PV, i, X3)
         
     # continue at label 200 in pdinew.f
     # recompute the X values and other intermediates
-    return _compute_X(df, X1, X2, j, m, K8, k8max, nendyr, nbegyr, PV)
+    return _compute_X(df, X1, X2, j, m, K8, nendyr, nbegyr, PV)
 
 #-----------------------------------------------------------------------------------------------------------------------
 # compare to 
@@ -812,13 +817,16 @@ def _compute_X(df,
                j,
                m,
                K8,
-               k8max,
                nendyr, 
                nbegyr, 
                PV):
     
     # the values within the DataFrame are in a series, so get the single index value assuming j is years and m is months
     i = (j * 12) + m
+
+    #DEBUGGING ONLY -- REMOVE
+    print('\nENTER _compute_X()')
+    display_debug_info(df, i, j, m, K8)
 
     #-----------------------------------------------------------------------
     #     CONTINUE X1 AND X2 CALCULATIONS.  
@@ -838,7 +846,7 @@ def _compute_X(df,
             df.PX1[i] = 0.0
             iass = 1
             df = _assign(df, iass, K8, j, m, nendyr, nbegyr)
-            K8 = k8max = 0
+            K8 = 0
                 
             #GOTO 220 in pdinew.f
             V = PV 
@@ -847,7 +855,7 @@ def _compute_X(df,
             X2  = df.PX2[i] 
             X3  = df.PX3[i] 
 
-            return df, X1, X2, X3, V, PRO, K8, k8max
+            return df, X1, X2, X3, V, PRO, K8
             
     df.PX2[i] = (0.897 * X2) + (df.Z[i] / 3.0)
     df.PX2[i] = min(df.PX2[i], 0.0)   
@@ -861,7 +869,7 @@ def _compute_X(df,
             df.PX2[i] = 0.0  
             iass = 2            
             df = _assign(df, iass, K8, j, m, nendyr, nbegyr)
-            K8 = k8max = 0
+            K8 = 0
 
             #GOTO 220 in pdinew.f
             V = PV 
@@ -870,7 +878,7 @@ def _compute_X(df,
             X2  = df.PX2[i] 
             X3  = df.PX3[i] 
 
-            return df, X1, X2, X3, V, PRO, K8, k8max
+            return df, X1, X2, X3, V, PRO, K8
             
     if df.PX3[i] == 0.0:   
         #    -------------------- NO ESTABLISHED DROUGHT (WET SPELL), BUT X3=0  
@@ -880,7 +888,7 @@ def _compute_X(df,
             df.X[i] = df.PX2[i]   
             iass = 2            
             df = _assign(df, iass, K8, j, m, nendyr, nbegyr)
-            K8 = k8max = 0
+            K8 = 0
 
             #GOTO 220 in pdinew.f
             V = PV 
@@ -889,14 +897,14 @@ def _compute_X(df,
             X2  = df.PX2[i] 
             X3  = df.PX3[i] 
 
-            return df, X1, X2, X3, V, PRO, K8, k8max
+            return df, X1, X2, X3, V, PRO, K8
 
         elif df.PX2[i] == 0:
             
             df.X[i] = df.PX1[i]   
             iass = 1   
             df = _assign(df, iass, K8, j, m, nendyr, nbegyr)
-            K8 = k8max = 0
+            K8 = 0
 
             #GOTO 220 in pdinew.f
             V = PV 
@@ -905,7 +913,7 @@ def _compute_X(df,
             X2  = df.PX2[i] 
             X3  = df.PX3[i] 
 
-            return df, X1, X2, X3, V, PRO, K8, k8max
+            return df, X1, X2, X3, V, PRO, K8
 
     #-----------------------------------------------------------------------
     #     AT THIS POINT THERE IS NO DETERMINED VALUE TO ASSIGN TO X,
@@ -916,7 +924,7 @@ def _compute_X(df,
     #-----------------------------------------------------------------------
     
     #DEVELOPMENT/DEBUG -- REMOVE? this appears to fix many issues with backtracking
-    # reset the year and month index arrays so that the current j/m location is used as the first backtracking indices
+    # reset the year and month index arrays so that the current j/m month is used as the first backtracking month
     if K8 == 0:
         df.indexj[K8] = j
         df.indexm[K8] = m
@@ -924,9 +932,8 @@ def _compute_X(df,
     df.SX1[K8] = df.PX1[i] 
     df.SX2[K8] = df.PX2[i] 
     df.SX3[K8] = df.PX3[i] 
-    df.X[i]  = df.PX3[i] 
+    df.X[i]    = df.PX3[i] 
     K8 = K8 + 1
-    k8max = K8  
     
     #-----------------------------------------------------------------------
     #     SAVE THIS MONTHS CALCULATED VARIABLES (V,PRO,X1,X2,X3) FOR   
@@ -938,13 +945,16 @@ def _compute_X(df,
     X2  = df.PX2[i] 
     X3  = df.PX3[i] 
 
-    return df, X1, X2, X3, V, PRO, K8, k8max
+    #DEBUGGING ONLY -- REMOVE
+    print('\nEXIT _compute_X()')
+    display_debug_info(df, i, j, m, K8)
+
+    return df, X1, X2, X3, V, PRO, K8
  
 #-----------------------------------------------------------------------------------------------------------------------
 # from 210 in pdinew.f
 def _between_0s(df,
                 K8,
-                k8max, 
                 X1,
                 X2, 
                 X3, 
@@ -954,51 +964,51 @@ def _between_0s(df,
                 nbegyr):
 
     # convert years/months (j/m) indices to a series index
-    ix = (j * 12) + m
+    i = (j * 12) + m
     
     #-----------------------------------------------------------------------
     #     PROB(END) RETURNS TO 0.  A POSSIBLE ABATEMENT HAS FIZZLED OUT,
     #     SO WE ACCEPT ALL STORED VALUES OF X3  
     #-----------------------------------------------------------------------
     PV = 0.0 
-    df.PPR[ix] = 0.0 
-    df.PX1[ix] = 0.0 
-    df.PX2[ix] = 0.0 
-    df.PX3[ix] = (0.897 * X3) + (df.Z[ix] / 3.0)
-    df.X[ix] = df.PX3[ix] 
+    df.PPR[i] = 0.0 
+    df.PX1[i] = 0.0 
+    df.PX2[i] = 0.0 
+    df.PX3[i] = (0.897 * X3) + (df.Z[i] / 3.0)
+    df.X[i] = df.PX3[i] 
     
     if K8 == 0:  # no backtracking required
         
-        df.PDSI[ix] = df.X[ix]  
-        df.PHDI[ix] = df.PX3[ix] 
+        df.PDSI[i] = df.X[i]  
+        df.PHDI[i] = df.PX3[i] 
         
-        if df.PX3[ix] == 0.0:
+        if df.PX3[i] == 0.0:
             
-            df.PHDI[ix] = df.X[ix]
+            df.PHDI[i] = df.X[i]
         
-        df.WPLM[ix] = _case(df.PPR[ix], df.PX1[ix], df.PX2[ix], df.PX3[ix]) 
+        df.WPLM[i] = _case(df.PPR[i], df.PX1[i], df.PX2[i], df.PX3[i]) 
         
     else:  # perform backtracking, assigning all backtrack array values to the stored X3
 
         iass = 3   
         df = _assign(df, iass, K8, j, m, nendyr, nbegyr)
-        K8 = k8max = 0
+        K8 = 0
 
     #-----------------------------------------------------------------------------------------------
     #     SAVE THIS MONTHS CALCULATED VARIABLES (V, PRO, X1, X2, X3) FOR USE WITH NEXT MONTHS DATA 
     #-----------------------------------------------------------------------------------------------
     V = PV 
-    PRO = df.PPR[ix] 
-    X1  = df.PX1[ix] 
-    X2  = df.PX2[ix] 
-    X3  = df.PX3[ix] 
+    PRO = df.PPR[i] 
+    X1  = df.PX1[i] 
+    X2  = df.PX2[i] 
+    X3  = df.PX3[i] 
 
-    return df, X1, X2, X3, V, PRO, K8, k8max
+    return df, X1, X2, X3, V, PRO, K8
 
 #-----------------------------------------------------------------------------------------------------------------------
 def _assign(df,
             iass,
-            backsteps,
+            K8,
             j,
             m,
             nendyr,
@@ -1007,7 +1017,7 @@ def _assign(df,
     '''
     :df pandas DataFrame
     :param iass:
-    :param backsteps:  
+    :param K8:  
     :param j:
     :param m:
     :param nendyr:
@@ -1020,14 +1030,18 @@ def _assign(df,
     # flag to determine which of the SX* values to save
     ISAVE = iass
 
+    #DEBUGGING ONLY -- REMOVE
+    print('\nENTER _assign() with ISAVE == {0}'.format(ISAVE))
+    display_debug_info(df, i, j, m, K8)
+
     #   
     #-----------------------------------------------------------------------
     #     FIRST FINISH OFF FILE 8 WITH LATEST VALUES OF PX3, Z,X
     #     X=PX1 FOR I=1, PX2 FOR I=2, PX3,  FOR I=3 
     #-----------------------------------------------------------------------
-    df.SX[backsteps] = df.X[i]
+    df.SX[K8] = df.X[i]
      
-    if backsteps == 0:  # no backtracking
+    if K8 == 0:  # no backtracking
 
         # set the PDSI to X
         df.PDSI[i] = df.X[i]  
@@ -1044,7 +1058,7 @@ def _assign(df,
         
         if iass == 3:  
             #     ---------------- USE ALL X3 VALUES
-            for Mm in range(backsteps):
+            for Mm in range(K8):
         
                 df.SX[Mm] = df.SX3[Mm]
     
@@ -1052,7 +1066,7 @@ def _assign(df,
             #     -------------- BACKTRACK THRU ARRAYS, STORING ASSIGNED X1 (OR X2) 
             #                    IN SX UNTIL IT IS ZERO, THEN SWITCHING TO THE OTHER
             #                    UNTIL IT IS ZERO, ETC.
-            for Mm in range(backsteps - 1, -1, -1):
+            for Mm in range(K8 - 1, -1, -1):
 
                 if ISAVE == 1: # then GO TO 20 in pdinew.f
                     if df.SX1[Mm] == 0:  # then GO TO 50 in pdinew.f
@@ -1072,15 +1086,12 @@ def _assign(df,
         #     PROPER ASSIGNMENTS TO ARRAY SX HAVE BEEN MADE,
         #     OUTPUT THE MESS   
         #-----------------------------------------------------------------------
-        for n in range(backsteps + 1):   # backtracking assignment of X
+        for n in range(1, K8 + 1):   # backtracking assignment of X  (TESTING -- REMOVE -- DEBUGGING)
+#         for n in range(K8 + 1):   # backtracking assignment of X
             
             # get the j/m index for the array we will assign to in the backtracking process
             ix = (df.indexj[n] * 12) + df.indexm[n]
             
-            #DEBUGGING ONLY -- REMOVE
-            if ix == 22:
-                dbugg = 0
-                
             # pull from the current backtracking index
             df.PDSI[ix] = df.SX[n] 
 
@@ -1091,10 +1102,10 @@ def _assign(df,
             if abs(df.expected_pdsi[ix] - df.PDSI[ix]) > tolerance:
                 print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
                 print('\nBACKTRACKING  actual:  {0}\tix: {1}'.format(i, ix))
-                print('\tNumber of backtracking steps:  {0}'.format(backsteps))
+                print('\tNumber of backtracking steps:  {0}'.format(K8))
                 print('\tPDSI:  Expected {0}\n\t       Backtrack: {1}\nSX:\n{2}'.format(df.expected_pdsi[ix], 
                                                                                         df.PDSI[ix],
-                                                                                        df.SX[0:backsteps]))
+                                                                                        df.SX[0:K8]))
                 print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
             #!!!!!!!!!----------- cut here -------------------------------------------------------
                     
@@ -1108,6 +1119,10 @@ def _assign(df,
                                 df.PX1[ix], 
                                 df.PX2[ix],
                                 df.PX3[ix])
+
+    #DEBUGGING ONLY -- REMOVE
+    print('\nEXIT _assign()')
+    display_debug_info(df, i, j, m, K8)
 
     return df
 
@@ -1153,3 +1168,30 @@ def _case(PROB,
         PDSI = X3
  
     return PDSI
+
+#-----------------------------------------------------------------------------------------------------------------------
+def display_debug_info(df,
+                       i,
+                       j,
+                       m,
+                       K8):
+    if i >= 2:
+        irange = 2
+    elif i == 1:
+        irange = 1
+    else:
+        irange = 0
+         
+    print('Index: {0}'.format(i))
+    print('J: {0}'.format(j))
+    print('M: {0}'.format(m))
+    print('\nPDSI:\n{0}'.format(df.PDSI.values[i-irange:i+irange]))
+    print('\nExpected:\n{0}'.format(df.expected_pdsi.values[i-irange:i+irange]))    
+    print('\nK8: {0}'.format(K8))
+    print('SX:\n{0}'.format(df.SX.values[0:K8]))
+    print('SX1:\n{0}'.format(df.SX1.values[0:K8]))
+    print('SX2:\n{0}'.format(df.SX2.values[0:K8]))
+    print('SX3:\n{0}'.format(df.SX3.values[0:K8]))
+    print('\nIndexJ:\t{0}'.format(df.indexj.values[0:K8]))
+    print('IndexM:\t{0}'.format(df.indexm.values[0:K8]))
+    
