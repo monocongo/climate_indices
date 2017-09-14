@@ -236,7 +236,7 @@ if __name__ == '__main__':
 #                                                      calibration_begin_year,
 #                                                      calibration_end_year)
 #                  
-#                 # look at the differences of the climatic characteristic results of the two implementations
+#                 # look at the differences of the climatic characteristic results from the two implementations
 #                 K_diffs = K - AK        
 #                 zeros = np.zeros(K_diffs.shape)
 #                 if not np.allclose(K_diffs, zeros, atol=tolerance, equal_nan=True):
@@ -246,6 +246,8 @@ if __name__ == '__main__':
 #                     for i in offending_indices[0]:
 #                         print('{0}  Expected:  {1}   Actual: {2}'.format(i, K[i], AK[i]))
  
+ #TODO add Z-Index comparison here, using the pdinew._zindex() and palmer._Z_index() functions
+  
                 # get the expected/target values from the NetCDF
                 expected_pdsi = input_dataset.variables['pdsi.index'][division_index, :]
                 expected_phdi = input_dataset.variables['phdi.index'][division_index, :]
@@ -289,10 +291,14 @@ if __name__ == '__main__':
                         logger.warn('Division {0}: Comparing new Palmer (pdinew.py) against '.format(division_id) + \
                                     'operational pdinew.f: \nNon-matching values for {0}'.format(varname))
                         offending_indices = np.where(abs(diffs_array) > tolerance)
-                        #logger.warn('Time steps with significant differences: {0}'.format(offending_indices))
-                        for i in offending_indices[0]:
-                            
-                            print('{0}  Expected:  {1}   Actual: {2}'.format(i, expected[i], actual[i]))
+                        non_offending_indices = np.where(abs(diffs_array) <= tolerance)
+                        nan_indices = np.where(actual is np.NaN)
+                        logger.warn('Time steps with NaN ({0}): {1}'.format(np.isnan(actual).sum(), nan_indices))
+                        logger.warn('Time steps with significant differences ({0}): {1}'.format(len(offending_indices[0]), offending_indices[0])) 
+                       
+#                         for i in offending_indices[0]:
+#                             
+#                             print('{0}  Expected:  {1}   Actual: {2}'.format(i, expected[i], actual[i]))
 
                 # compute PDSI etc. using new PDSI code translated from Jacobi et al MatLab code
                 PDSI, PHDI, PMDI, zindex = palmer.pdsi_from_climatology(precip_timeseries,
@@ -305,8 +311,8 @@ if __name__ == '__main__':
                 
                 # find the differences between the new (Matlab-derived) and previous (Fortran-derived) versions
                 pdsi_diffs = PDSI - expected_pdsi
-                phdi_diffs = PHDI - expected_phdi
-                pmdi_diffs = PMDI - expected_pmdi
+#                 phdi_diffs = PHDI - expected_phdi
+#                 pmdi_diffs = PMDI - expected_pmdi
                 zindex_diffs = zindex - expected_zindex
             
                 # dictionary of variable names to corresponding arrays of differences to facilitate looping below
@@ -329,10 +335,11 @@ if __name__ == '__main__':
                         logger.warn('Division {0}: Comparing new Palmer (palmer.py) against operational pdinew.f: ' + \
                                     '\nNon-matching values for {1}'.format(division_id, varname))
                         offending_indices = np.where(abs(diffs_array) > tolerance)
-                        #logger.warn('Time steps with significant differences: {0}'.format(offending_indices))                        
-                        for i in offending_indices[0]:
-                            
-                            print('{0}  Expected:  {1}   Actual: {2}'.format(i, expected[i], actual[i]))
+                        non_offending_indices = np.where(abs(diffs_array) <= tolerance)
+                        logger.warn('Time steps with significant differences ({0}): {1}'.format(offending_indices.size, offending_indices))                        
+#                         for i in offending_indices[0]:
+#                             
+#                             print('{0}  Expected:  {1}   Actual: {2}'.format(i, expected[i], actual[i]))
 
     except Exception as ex:
         logger.exception('Failed to complete', exc_info=True)

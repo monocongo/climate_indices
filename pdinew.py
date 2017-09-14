@@ -34,7 +34,8 @@ def pdsi_from_climatology(precip_timeseries,
 
     # compute water balance values using the function translated from the Fortran pdinew.f
     #NOTE keep this code in place in order to compute the PET used later, since the two have 
-    # different PET algorithms and we want to compare PDSI using the same PET inputs 
+    # different PET algorithms and we want to compare PDSI using the same PET inputs
+    #FIXME clarify the difference between SP and PRO (spdat and prodat)
     pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, prodat, tdat, sssdat, ssudat = \
         _water_balance(temp_timeseries, precip_timeseries, awc, neg_tan_lat, B, H)
                  
@@ -69,21 +70,28 @@ def pdsi_from_climatology(precip_timeseries,
                                  calibration_begin_year,
                                  calibration_end_year)
 
-    # compute the indices now that we have calculated all required intermediate values    
-    PDSI, PHDI, PMDI, Z = _zindex_pdsi(precip_timeseries,
-                                              pedat,
-                                              prdat,
-                                              spdat,
-                                              pldat,
-                                              alpha,
-                                              beta,
-                                              gamma,
-                                              delta,
-                                              K, 
-                                              data_begin_year, 
-                                              data_end_year,
-                                              expected_pdsi_for_debug)
-                
+    # compute the Z-index
+    #TODO eliminate the P-hat once development/debugging is complete, since it's really an intermediate/internal value
+    Z, P_hat = _zindex(alpha, 
+                       beta, 
+                       gamma, 
+                       delta, 
+                       precip_timeseries, 
+                       pedat, 
+                       prdat, 
+                       spdat, 
+                       pldat, 
+                       K)
+
+    # compute the final Palmers
+    #TODO/FIXME eliminate the expected PDSI argument once development/debugging is complete
+    PDSI, PHDI, PMDI = _pdsi(precip_timeseries,
+                             Z,
+                             K, 
+                             data_begin_year, 
+                             data_end_year,
+                             expected_pdsi_for_debug)
+    
     return PDSI, PHDI, PMDI, Z
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -337,6 +345,10 @@ def _water_balance(T,
     :return: P, SP, PE, PL, PR, R, L, ET, RO, T, SSs, SSu
     :rtype: numpy arrays with shape (total_years, 12)
     '''
+    #TODO document the differences between PRO and SP, as the SP return value (spdat) is being used as PRO (potential
+    # runoff) in later parts of the code, let's verify that this is intended, or perhaps spdat and prodat are 
+    # synonymous/duplicates and one of these can be eliminated, suspicion is that the PRO variable in pdinew.f
+    # refers to a probability value, so the variable for potential runoff is named SP instead (?)
     
     # find the number of years from the input array, assume shape (months)
     
@@ -351,6 +363,7 @@ def _water_balance(T,
     SU = AWC
     WCTOT = AWC + WCTOP
 
+    #TODO document this, where do these come from?
     PHI = np.array([-0.3865982, -0.2316132, -0.0378180, 0.1715539, 0.3458803, 0.4308320, \
                      0.3916645, 0.2452467, 0.0535511, -0.15583436, -0.3340551, -0.4310691])
     
@@ -369,7 +382,7 @@ def _water_balance(T,
     sssdat = np.full((total_years, 12), np.NaN)
     ssudat = np.full((total_years, 12), np.NaN)
 
-    #       loop on years and months
+    # loop on years and months
     end_year = begin_year + total_years
     years_range = range(begin_year, end_year)
     for year_index, year in enumerate(years_range):
@@ -386,7 +399,7 @@ def _water_balance(T,
             PR = AWC + WCTOP - SP
 
             # PRO is the potential runoff. According to Alley (1984),
-            # PRO = AWC - PR = Ss + Su; here Ss and Su refer to those values at
+            # PRO = AWC - PR = Ss + Su; with Ss and Su referring to those values at
             # the beginning of the month: Ss0 and Su0.
             PRO = SP
 
@@ -495,45 +508,106 @@ def _water_balance(T,
             SU = SSU
 
     return pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, prodat, tdat, sssdat, ssudat
-    
-#-----------------------------------------------------------------------------------------------------------------------
-def _zindex_pdsi(P,
-                 PE,
-                 PR,
-                 SP,
-                 PL,
-                 alpha,
-                 beta,
-                 gamma,
-                 delta,
-                 AK,
-                 nbegyr,#=1895,
-                 nendyr,#=2017
-                 expected_pdsi):
 
+#-----------------------------------------------------------------------------------------------------------------------
+def _zindex(alpha,
+            beta,
+            gamma,
+            delta,
+            P,
+            PE,
+            PR,
+            PRO,
+            PL,
+            K):
+    '''
+    Compute the Z-Index and CAFEC precipitation value for a single monthly time step.
+    
+    :param alpha: array of the monthly "alpha" CAFEC coefficients, 1-D with 12 elements, one per calendar month 
+    :param beta: array of the monthly "beta" CAFEC coefficients, 1-D with 12 elements, one per calendar month 
+    :param gamma: array of the monthly "delta" CAFEC coefficients, 1-D with 12 elements, one per calendar month 
+    :param delta: array of the monthly "gamma" CAFEC coefficients, 1-D with 12 elements, one per calendar month 
+    :param P: array of monthly precipitation values, 1-D with total size matching the corresponding 2-D arrays 
+    :param PE: array of monthly potential evapotranspiration values, 2-D with shape (# of years, 12) 
+    :param PR: array of monthly potential recharge values, 2-D with shape (# of years, 12) 
+    :param PRO: array of monthly potential runoff values, 2-D with shape (# of years, 12) 
+    :param PL: array of monthly potential loss values, 2-D with shape (# of years, 12) 
+    :param K: array of the monthly climatic characteristic, 1-D with 12 elements, one per calendar month 
+    :return Z-Index and CAFEC precipitation (P-hat)
+    :rtype: two floats
+    '''
+    
+    # reshape the precipitation array, expected to have 1-D shape, to 2-D shape (years, 12)
+    P = utils.reshape_to_years_months(P)
+    
+    # allocate the Z-Index and P-hat arrays we'll build and return
+    Z = np.full(P.shape, np.NaN)
+    P_hat = np.full(P.shape, np.NaN)
+    
+    # loop over all years and months of the time series
+    for j in range(P.shape[0]):    
+                
+        for m in range(12):
+
+            # compute the CAFEC precipitation (P-hat)
+            ET_hat = alpha[m] * PE[j, m]             # eq. 10, Palmer 1965
+            R_hat = beta[m] * PR[j, m]               # eq. 11, Palmer 1965
+            RO_hat = gamma[m] * PRO[j, m]            # eq. 12, Palmer 1965
+            L_hat = delta[m] * PL[j, m]              # eq. 13, Palmer 1965
+            P_hat = ET_hat + R_hat + RO_hat - L_hat  # eq. 14, Palmer 1965
+            
+            # moisture departure
+            d = P[j, m] - P_hat      # eq. 15, Palmer 1965 
+            
+            # Z-Index
+            Z[j, m] = K[m] * d    # eq. 19, Palmer 1965 
+            
+    return Z, P_hat
+
+#-----------------------------------------------------------------------------------------------------------------------
+def _pdsi(P,
+          Z,
+          K,
+          nbegyr,#=1895,
+          nendyr,#=2017
+          expected_pdsi):
+    '''
+    :param P: 1-D array of precipitation values
+    :param Z: 2-D array of Z-Index values, corresponding in total size to P
+    :param K: 1-D array of climatic characteristic values, one per calendar month (12 total)
+    :param nbegyr: initial year of input datasets (P, Z)
+    :param nbegyr: final year (inclusive) of input datasets (P, Z)
+    :param expected_pdsi: for DEBUGGING/DEBUG only -- REMOVE 
+    '''
     # reshape the expected PDSI to match with others (in case of mismatch)
     expected_pdsi = np.reshape(expected_pdsi, P.shape)
     
-    # reshape the precipitation and PPR to (years, 12)
+    # reshape the precipitation array to (total # of years, 12)
     P = utils.reshape_to_years_months(P)
     
     # intermediate values used in computations below 
-    PV  = 0.0
-    V   = 0.0 
-    PRO = 0.0 
-    X1  = 0.0 
-    X2  = 0.0 
-    X3  = 0.0 
-    K8  = 0
+    PV = 0.0
+    V = 0.0
+    
+    # provisional X (severity index) values computed for each step
+    X1 = 0.0   # index appropriate to a wet spell that is becoming established, as well as the percent chance that a wet spell has begun 
+    X2 = 0.0   # index appropriate to a drought that is becoming established, as well as the percent chance that a drought has begun
+    X3 = 0.0   # index appropriate to a wet spell or drought that has already been established
+    
+    # total number of backtrack months, i.e. when backtracking we'll back fill this many months
+    K8 = 0
+    
+    # percentage probability that an established weather spell (wet or dry) has ended (Pe in Palmer 1965, eq. 30)
+    prob_established = 0.0   ##NOTE was PRO in the original Fortran pdinew.f, now the variable name PRO is used for potential runoff
 
-    # create container for the arrays and values we'll use throughout the computation loop below
+    # create a DataFrame to use as a container for the arrays and values we'll use throughout the computation loop below
     array0 = np.reshape(P, (P.size, 1))
     df = pd.DataFrame(data=array0, 
                       index=range(0, array0.size), 
                       columns=['P'])
 
     # create a list of coluumn names that match to the intermediate work arrays
-    column_names = ['PPR', 'CP', 'Z', 'PDSI', 'PHDI', 'WPLM', 'SX', 'SX1', 'SX2', 'SX3', 'X', 'PX1', 'PX2', 'PX3']
+    column_names = ['PPR', 'PDSI', 'PHDI', 'WPLM', 'SX', 'SX1', 'SX2', 'SX3', 'X', 'PX1', 'PX2', 'PX3']
     for column_name in column_names:
         
         # get the array corresponding to the current column
@@ -542,8 +616,8 @@ def _zindex_pdsi(P,
         # add the column to the DataFrame (as a Series)
         df[column_name] = pd.Series(column_array)
 
-    # add the J and M (year and month) index columns (used to keep track of which year/month index to use for the start of backtracking)
-    column_names = ['indexj', 'indexm']
+    # add the year and month index columns used to keep track of which year/month index to use for the start of backtracking
+    column_names = ['index_j', 'index_m']
     for column_name in column_names:
         
         # get the array corresponding to the current column
@@ -555,6 +629,9 @@ def _zindex_pdsi(P,
     # add the expected PDSI values so we can compare against these as we're debugging
     df['expected_pdsi'] = pd.Series(expected_pdsi)
     
+    # add the Z-Index array into the DataFrame as a Series column 
+    df['Z'] = pd.Series(Z.flatten())
+    
     # loop over all years and months of the time series
     for j in range(P.shape[0]):    
                 
@@ -563,16 +640,14 @@ def _zindex_pdsi(P,
             i = (j * 12) + m
 
             # DEBUGGING ONLY -- REMOVE
-            if i == 62:
+            print('i: {0}'.format(i))
+            if i == 60:
                 display_debug_info(df, i, j, m, K8)
-                pass
-            else:
-                print('i: {0}'.format(i))
             
             # these indices keep track of the latest year and month index corresponding 
             # to the current backtracking index (K8), K8 > 0 indicates backtracking is required
-            df.indexj[K8] = j
-            df.indexm[K8] = m
+            df.index_j[K8] = j
+            df.index_m[K8] = m
 
             #-----------------------------------------------------------------------
             #     LOOP FROM 160 TO 230 REREADS data FOR CALCULATION OF   
@@ -580,26 +655,8 @@ def _zindex_pdsi(P,
             #     THE FINAL OUTPUTS ARE THE VARIABLES PX3, X, AND Z  WRITTEN
             #     TO FILE 11.   
             #-----------------------------------------------------------------------
-            ZE = 0.0 
-            UD = 0.0 
-            UW = 0.0 
-            
-            # compute the CAFEC precipitation (df.CP)
-            CET = alpha[m] * PE[j, m]   # eq. 10, Palmer 1965
-            CR = beta[m] * PR[j, m]     # eq. 11, Palmer 1965
-            CRO = gamma[m] * SP[j, m]   # eq. 12, Palmer 1965
-            CL = delta[m] * PL[j, m]    # eq. 13, Palmer 1965
-            df.CP[i] = CET + CR + CRO - CL  # eq. 14, Palmer 1965
-            
-            # moisture departure, d
-            CD = df.P[i] - df.CP[i]  
-            
-            # Z-index = K * d
-            df.Z[i] = AK[m] * CD
-            
-            # now with the Z-Index value computed we compute X based on current values
              
-            if PRO == 100.0 or PRO == 0.0:  
+            if prob_established == 100.0 or prob_established == 0.0:  
             #     ------------------------------------ NO ABATEMENT UNDERWAY
             #                                          WET OR DROUGHT WILL END IF   
             #                                             -0.5 =< X3 =< 0.5   
@@ -613,7 +670,7 @@ def _zindex_pdsi(P,
                     # compare to 
                     # PX1, PX2, PX3, X, BT = Main(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT)
                     # in palmer.pdsi_from_zindex()
-                    df, X1, X2, X3, V, PRO, K8 = _compute_X(df, X1, X2, j, m, K8, nendyr, nbegyr, PV)
+                    df, X1, X2, X3, V, prob_established, K8 = _compute_X(df, X1, X2, j, m, K8, nendyr, nbegyr, PV)
                      
                 elif X3 > 0.5:   
                     #         ----------------------- WE ARE IN A WET SPELL 
@@ -623,7 +680,7 @@ def _zindex_pdsi(P,
                         # compare to 
                         # PV, PX1, PX2, PX3, PPe, X, BT = Between0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)
                         # in palmer.pdsi_from_zindex()
-                        df, X1, X2, X3, V, PRO, K8 = _between_0s(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
+                        df, X1, X2, X3, V, prob_established, K8 = _between_0s(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
                         
                     else:
                         #             ------------------ THE WET STARTS TO ABATE (AND MAY END)  
@@ -631,7 +688,7 @@ def _zindex_pdsi(P,
                         # compare to
                         # Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Ud(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
                         # in palmer.pdsi_from_zindex()
-                        df, X1, X2, X3, V, PRO, K8 = _wet_spell_abatement(df, V, K8, PRO, j, m, nendyr, nbegyr, X1, X2, X3)
+                        df, X1, X2, X3, V, prob_established, K8 = _wet_spell_abatement(df, V, K8, prob_established, j, m, nendyr, nbegyr, X1, X2, X3)
 
                 elif X3 < -0.5:  
                     #         ------------------------- WE ARE IN A DROUGHT 
@@ -641,7 +698,7 @@ def _zindex_pdsi(P,
                         # compare to 
                         # PV, PX1, PX2, PX3, PPe, X, BT = Between0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)
                         # in palmer.pdsi_from_zindex()
-                        df, X1, X2, X3, V, PRO, K8 = _between_0s(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
+                        df, X1, X2, X3, V, prob_established, K8 = _between_0s(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
 
                     else:
                         #             ------------------ THE DROUGHT STARTS TO ABATE (AND MAY END)  
@@ -649,7 +706,7 @@ def _zindex_pdsi(P,
                         # compare to 
                         # Uw, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Uw(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
                         # in palmer.pdsi_from_zindex()
-                        df, X1, X2, X3, V, PRO, K8 = _dry_spell_abatement(df, K8, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, PRO)
+                        df, X1, X2, X3, V, prob_established, K8 = _dry_spell_abatement(df, K8, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, prob_established)
 
             else:
                 #     ------------------------------------------ABATEMENT IS UNDERWAY   
@@ -660,7 +717,7 @@ def _zindex_pdsi(P,
                     # compare to
                     # Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Ud(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
                     # in palmer.pdsi_from_zindex()
-                    df, X1, X2, X3, V, PRO, K8 = _wet_spell_abatement(df, V, K8, PRO, j, m, nendyr, nbegyr, X1, X2, X3)
+                    df, X1, X2, X3, V, prob_established, K8 = _wet_spell_abatement(df, V, K8, prob_established, j, m, nendyr, nbegyr, X1, X2, X3)
                 
                 else:  # if X3 <= 0.0:
                     
@@ -669,12 +726,13 @@ def _zindex_pdsi(P,
                     # compare to
                     # Uw, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Uw(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
                     # in palmer.pdsi_from_zindex()
-                    df, X1, X2, X3, V, PRO, K8 = _dry_spell_abatement(df, K8, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, PRO)
+                    df, X1, X2, X3, V, prob_established, K8 = _dry_spell_abatement(df, K8, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, prob_established)
 
-    for backtrack_index in range(0, K8):
+    # clear out the remaining values from the backtracking array, if any are left, assigning into the indices arrays
+    for x in range(0, K8):
 
-        # years(j) and months(m) to series index ix
-        ix = (df.indexj[backtrack_index] * 12) + df.indexm[backtrack_index]
+        # turn the 2-D backtracking (years and months) indices into an 1-D series index
+        ix = (df.index_j[x] * 12) + df.index_m[x]
         
         df.PDSI[ix] = df.X[ix] 
         df.PHDI[ix] = df.PX3[ix]
@@ -685,7 +743,8 @@ def _zindex_pdsi(P,
         
         df.WPLM[ix] = _case(df.PPR[ix], df.PX1[ix], df.PX2[ix], df.PX3[ix]) 
       
-    return df.PDSI.values, df.PHDI.values, df.WPLM.values, df.Z.values
+    # return the Palmer severity index values as 1-D arrays
+    return df.PDSI.values, df.PHDI.values, df.WPLM.values
 
 #-----------------------------------------------------------------------------------------------------------------------
 # from label 190 in pdinew.f
@@ -824,9 +883,9 @@ def _compute_X(df,
     # the values within the DataFrame are in a series, so get the single index value assuming j is years and m is months
     i = (j * 12) + m
 
-    #DEBUGGING ONLY -- REMOVE
-    print('\nENTER _compute_X()')
-    display_debug_info(df, i, j, m, K8)
+#     #DEBUGGING ONLY -- REMOVE
+#     print('\nENTER _compute_X()')
+#     display_debug_info(df, i, j, m, K8)
 
     #-----------------------------------------------------------------------
     #     CONTINUE X1 AND X2 CALCULATIONS.  
@@ -923,11 +982,12 @@ def _compute_X(df,
     #     CHOOSING THE APPROPRIATE X1 OR X2 TO BE THAT MONTH'S X. 
     #-----------------------------------------------------------------------
     
-    #DEVELOPMENT/DEBUG -- REMOVE? this appears to fix many issues with backtracking
+    #DEVELOPMENT/DEBUG -- REMOVE? this appears to fix some issues with backtracking
     # reset the year and month index arrays so that the current j/m month is used as the first backtracking month
+    #!!!---- NOTE ---- nothing equivalent is in the original pdinew.f code
     if K8 == 0:
-        df.indexj[K8] = j
-        df.indexm[K8] = m
+        df.index_j[K8] = j
+        df.index_m[K8] = m
 
     df.SX1[K8] = df.PX1[i] 
     df.SX2[K8] = df.PX2[i] 
@@ -963,7 +1023,7 @@ def _between_0s(df,
                 nendyr, 
                 nbegyr):
 
-    # convert years/months (j/m) indices to a series index
+    # convert year/month (j/m) indices to a series index (2-D -> 1-D)
     i = (j * 12) + m
     
     #-----------------------------------------------------------------------
@@ -1030,9 +1090,9 @@ def _assign(df,
     # flag to determine which of the SX* values to save
     ISAVE = iass
 
-    #DEBUGGING ONLY -- REMOVE
-    print('\nENTER _assign() with ISAVE == {0}'.format(ISAVE))
-    display_debug_info(df, i, j, m, K8)
+#     #DEBUGGING ONLY -- REMOVE
+#     print('\nENTER _assign() with ISAVE == {0}'.format(ISAVE))
+#     display_debug_info(df, i, j, m, K8)
 
     #   
     #-----------------------------------------------------------------------
@@ -1086,11 +1146,14 @@ def _assign(df,
         #     PROPER ASSIGNMENTS TO ARRAY SX HAVE BEEN MADE,
         #     OUTPUT THE MESS   
         #-----------------------------------------------------------------------
-        for n in range(1, K8 + 1):   # backtracking assignment of X  (TESTING -- REMOVE -- DEBUGGING)
-#         for n in range(K8 + 1):   # backtracking assignment of X
+#         # NOTE- in the original pdinew.f code this loop starts from the first element, 
+#         # but we're instead starting this loop from the second at index == 1)
+#         for n in range(1, K8 + 1):   # backtracking assignment of X  (NOTE 
+        for n in range(K8 + 1):   # backtracking assignment of X
             
-            # get the j/m index for the array we will assign to in the backtracking process
-            ix = (df.indexj[n] * 12) + df.indexm[n]
+            # get the 1-D index equivalent to the j/m index for the final arrays 
+            # (PDSI, PHDI, etc.) that we'll assign to in the backtracking process
+            ix = (df.index_j[n] * 12) + df.index_m[n]
             
             # pull from the current backtracking index
             df.PDSI[ix] = df.SX[n] 
@@ -1101,11 +1164,10 @@ def _assign(df,
             tolerance = 0.01            
             if abs(df.expected_pdsi[ix] - df.PDSI[ix]) > tolerance:
                 print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
-                print('\nBACKTRACKING  actual:  {0}\tix: {1}'.format(i, ix))
-                print('\tNumber of backtracking steps:  {0}'.format(K8))
-                print('\tPDSI:  Expected {0}\n\t       Backtrack: {1}\nSX:\n{2}'.format(df.expected_pdsi[ix], 
-                                                                                        df.PDSI[ix],
-                                                                                        df.SX[0:K8]))
+                print('\nBACKTRACKING  actual time step:  {0}\tBacktracking index: {1}'.format(i, ix))
+                print('\tNumber of backtracking steps (K8):  {0}'.format(K8))
+                print('\tPDSI:  Expected {0}\n\t       Backtrack: {1}'.format(df.expected_pdsi[ix], 
+                                                                              df.PDSI[ix]))
                 print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
             #!!!!!!!!!----------- cut here -------------------------------------------------------
                     
@@ -1155,13 +1217,13 @@ def _case(PROB,
     elif  PROB > 0.0 and PROB < 100.0: # GO TO 20 in pdinew.f
 
         # put the probability value into 0..1 range
-        PRO = PROB / 100.0
+        probability = PROB / 100.0
         if X3 > 0.0: #) GO TO 30
             #     TAKE THE WEIGHTED SUM OF X3 AND X2
-            PDSI = (1.0 - PRO) * X3 + PRO * X2   
+            PDSI = (1.0 - probability) * X3 + probability * X2   
         else:  
             #     TAKE THE WEIGHTED SUM OF X3 AND X1
-            PDSI = (1.0 - PRO) * X3 + PRO * X1   
+            PDSI = (1.0 - probability) * X3 + probability * X1   
 
     else:
         #     A WEATHER SPELL IS ESTABLISHED AND PDSI=X3 AND IS FINAL
@@ -1175,23 +1237,24 @@ def display_debug_info(df,
                        j,
                        m,
                        K8):
-    if i >= 2:
-        irange = 2
-    elif i == 1:
-        irange = 1
-    else:
-        irange = 0
-         
-    print('Index: {0}'.format(i))
-    print('J: {0}'.format(j))
-    print('M: {0}'.format(m))
-    print('\nPDSI:\n{0}'.format(df.PDSI.values[i-irange:i+irange]))
-    print('\nExpected:\n{0}'.format(df.expected_pdsi.values[i-irange:i+irange]))    
-    print('\nK8: {0}'.format(K8))
-    print('SX:\n{0}'.format(df.SX.values[0:K8]))
-    print('SX1:\n{0}'.format(df.SX1.values[0:K8]))
-    print('SX2:\n{0}'.format(df.SX2.values[0:K8]))
-    print('SX3:\n{0}'.format(df.SX3.values[0:K8]))
-    print('\nIndexJ:\t{0}'.format(df.indexj.values[0:K8]))
-    print('IndexM:\t{0}'.format(df.indexm.values[0:K8]))
+    pass
+#     if i >= 2:
+#         irange = 2
+#     elif i == 1:
+#         irange = 1
+#     else:
+#         irange = 0
+#          
+#     print('Index: {0}'.format(i))
+#     print('J: {0}'.format(j))
+#     print('M: {0}'.format(m))
+#     print('\nPDSI:\n{0}'.format(df.PDSI.values[i-irange:i+irange]))
+#     print('\nExpected:\n{0}'.format(df.expected_pdsi.values[i-irange:i+irange]))    
+#     print('\nK8: {0}'.format(K8))
+#     print('SX:\n{0}'.format(df.SX.values[0:K8]))
+#     print('SX1:\n{0}'.format(df.SX1.values[0:K8]))
+#     print('SX2:\n{0}'.format(df.SX2.values[0:K8]))
+#     print('SX3:\n{0}'.format(df.SX3.values[0:K8]))
+#     print('\nIndexJ:\t{0}'.format(df.index_j.values[0:K8]))
+#     print('IndexM:\t{0}'.format(df.index_m.values[0:K8]))
     
