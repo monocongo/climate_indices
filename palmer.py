@@ -805,13 +805,16 @@ def _compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT):
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def _backtrack(k, PPe, PX1, PX2, PX3, X, BT):
-
-    # This function backtracks through previous PX1 and PX2 values.
-    # Backtracking occurs in two instances: (1) After the probability reaches 
-    # 100 and (2) When the probability is zero. In either case, the
-    # backtracking function works by backtracking through PX1 and PX2 until
-    # reaching a month where PPe = 0. Either PX1 or PX2 is assigned to X as the
-    # backtracking progresses.
+    '''
+    This function steps through stored index values computed for previous months and if/when . 
+    
+    Backtracking occurs in two instances: 
+    
+    (1) after the probability reaches 100 percent, and 
+    (2) when the probability is zero. 
+    In either case, the backtracking function works by backtracking through PX1 and PX2 until reaching a month 
+    where PPe == 0. Either PX1 or PX2 is assigned to X as the backtracking progresses.
+    '''
     
     # Backtracking occurs from either PPe[k] = 100 or PPe[k] = 0 to the first 
     # instance in the previous record where PPe = 0. This "for" loop counts 
@@ -916,8 +919,8 @@ def _dry_spell_abatement(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X,
     # In the case of an established drought, Palmer (1965) notes that a value of Z = -0.15 will maintain an
     # index of -0.50 from month to month. An established drought or wet spell is considered definitely over
     # when the index reaches the "near normal" category which lies between -0.50 and +0.50. Therefore, any
-    # value of Z >= -0.15 will tend to end a drought.
-    Uw[k] = Z[k] + 0.15 
+    # value of Z >= -0.15 will tend to end a drought. See Palmer 1965, pp. 29-30
+    Uw[k] = Z[k] + 0.15  # Palmer 1965, eq. 29
     
     PV = Uw[k] + max(V, 0)
     if PV <= 0:
@@ -950,10 +953,11 @@ def _dry_spell_abatement(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X,
 # previously Function_Ud
 def _wet_spell_abatement(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT):
 
-    # In the case of an established wet spell, Palmer (1965) notes that a value of Z = +0.15 will maintain an index of +0.50 
-    # from month to month. An established drought or wet spell is considered definitely over when the index reaches the "near 
-    # normal" category which lies between -0.50 and +0.50. Therefore, any value of Z <= +0.15 will tend to end a wet spell.
-    Ud[k] = Z[k] - 0.15
+    # In the case of an established wet spell, Palmer (1965) notes that a value of Z = +0.15 will maintain an 
+    # index of +0.50 from month to month. An established drought or wet spell is considered definitely over
+    # when the index reaches the "near normal" category which lies between -0.50 and +0.50. Therefore, any 
+    # value of Z <= +0.15 will tend to end a wet spell. See Palmer 1965, pp. 29-30
+    Ud[k] = Z[k] - 0.15  # Palmer 1965, eq. 32
     
     PV = Ud[k] + min(V, 0)
     if PV >= 0: 
