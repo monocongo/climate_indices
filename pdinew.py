@@ -407,13 +407,13 @@ def _water_balance(T,
             #     1 - CALCULATE PE (POTENTIAL EVAPOTRANSPIRATION)   
             #-----------------------------------------------------------------------
             if temperature <= 32.0:
-                PE   = 0.0
+                PE = 0.0
             else:  
                 DUM = PHI[month_index] * TLA 
                 DK = math.atan(math.sqrt(1.0 - (DUM * DUM)) / DUM)   
                 if DK < 0.0:
                     DK = 3.141593 + DK  
-                DK   = (DK + 0.0157) / 1.57  
+                DK = (DK + 0.0157) / 1.57  
                 if temperature >= 80.0:
                     PE = (math.sin((temperature / 57.3) - 0.166) - 0.76) * DK
                 else:  
@@ -589,7 +589,7 @@ def _pdsi(P,
     PV = 0.0
     V = 0.0
     
-    # provisional X (severity index) values computed for each step
+    # provisional severity index values computed for each step
     X1 = 0.0   # index appropriate to a wet spell that is becoming established, as well as the percent chance that a wet spell has begun 
     X2 = 0.0   # index appropriate to a drought that is becoming established, as well as the percent chance that a drought has begun
     X3 = 0.0   # index appropriate to a wet spell or drought that has already been established
@@ -598,7 +598,7 @@ def _pdsi(P,
     K8 = 0
     
     # percentage probability that an established weather spell (wet or dry) has ended (Pe in Palmer 1965, eq. 30)
-    prob_established = 0.0   ##NOTE was PRO in the original Fortran pdinew.f, now the variable name PRO is used for potential runoff
+    prob_ended = 0.0   ##NOTE this was PRO in the original Fortran pdinew.f, now the variable name PRO is used for potential runoff
 
     # create a DataFrame to use as a container for the arrays and values we'll use throughout the computation loop below
     array0 = np.reshape(P, (P.size, 1))
@@ -641,7 +641,7 @@ def _pdsi(P,
 
             # DEBUGGING ONLY -- REMOVE
             print('i: {0}'.format(i))
-            if i == 60:
+            if i == 59:
                 display_debug_info(df, i, j, m, K8)
             
             # these indices keep track of the latest year and month index corresponding 
@@ -649,6 +649,8 @@ def _pdsi(P,
             df.index_j[K8] = j
             df.index_m[K8] = m
 
+            # original comments from pdinew.f, left in place to facilitate development
+            #TODO/FIXME update/replace
             #-----------------------------------------------------------------------
             #     LOOP FROM 160 TO 230 REREADS data FOR CALCULATION OF   
             #     THE Z-INDEX (MOISTURE ANOMALY) AND PDSI (VARIABLE X). 
@@ -656,10 +658,12 @@ def _pdsi(P,
             #     TO FILE 11.   
             #-----------------------------------------------------------------------
              
-            if prob_established == 100.0 or prob_established == 0.0:  
+            if prob_ended == 100.0 or prob_ended == 0.0:  
             #     ------------------------------------ NO ABATEMENT UNDERWAY
             #                                          WET OR DROUGHT WILL END IF   
             #                                             -0.5 =< X3 =< 0.5   
+                
+                # "near normal" is defined as the range [-0.5 ... 0.5], Palmer 1965 p. 29
                 if abs(X3) <= 0.5:
                 #         ---------------------------------- END OF DROUGHT OR WET  
                     PV = 0.0 
@@ -667,46 +671,34 @@ def _pdsi(P,
                     df.PX3[i] = 0.0 
                     #             ------------ BUT CHECK FOR NEW WET OR DROUGHT START FIRST
                     # GOTO 200 in pdinew.f
-                    # compare to 
-                    # PX1, PX2, PX3, X, BT = Main(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT)
-                    # in palmer.pdsi_from_zindex()
-                    df, X1, X2, X3, V, prob_established, K8 = _compute_X(df, X1, X2, j, m, K8, nendyr, nbegyr, PV)
+                    df, X1, X2, X3, V, prob_ended, K8 = _compute_X(df, X1, X2, j, m, K8, nendyr, nbegyr, PV)
                      
                 elif X3 > 0.5:   
                     #         ----------------------- WE ARE IN A WET SPELL 
                     if df.Z[i] >= 0.15:   
                         #              ------------------ THE WET SPELL INTENSIFIES 
                         #GO TO 210 in pdinew.f
-                        # compare to 
-                        # PV, PX1, PX2, PX3, PPe, X, BT = Between0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)
-                        # in palmer.pdsi_from_zindex()
-                        df, X1, X2, X3, V, prob_established, K8 = _between_0s(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
+                        df, X1, X2, X3, V, prob_ended, K8 = _between_0s(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
                         
                     else:
                         #             ------------------ THE WET STARTS TO ABATE (AND MAY END)  
                         #GO TO 170 in pdinew.f
-                        # compare to
-                        # Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Ud(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
-                        # in palmer.pdsi_from_zindex()
-                        df, X1, X2, X3, V, prob_established, K8 = _wet_spell_abatement(df, V, K8, prob_established, j, m, nendyr, nbegyr, X1, X2, X3)
+                        df, X1, X2, X3, V, prob_ended, K8 = _wet_spell_abatement(df, V, K8, prob_ended, j, m, nendyr, nbegyr, X1, X2, X3)
 
                 elif X3 < -0.5:  
-                    #         ------------------------- WE ARE IN A DROUGHT 
-                    if df.Z[i] <= -0.15:  
+                    #         ------------------------- WE ARE IN A DROUGHT
+                    
+                    # in order to start to pull out of a drought the Z-Index for the month needs to be >= -0.15 (Palmer 1965, eq. 29)
+                    if df.Z[i] < -0.15:  #NOTE pdinew.f uses <= here: "IF (Z(j,m).LE.-.15) THEN..."
                         #              -------------------- THE DROUGHT INTENSIFIES 
                         #GO TO 210
-                        # compare to 
-                        # PV, PX1, PX2, PX3, PPe, X, BT = Between0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)
-                        # in palmer.pdsi_from_zindex()
-                        df, X1, X2, X3, V, prob_established, K8 = _between_0s(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
+                        df, X1, X2, X3, V, prob_ended, K8 = _between_0s(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
 
                     else:
+                        # Palmer 1965, p. 29: "any value of Z >= -0.15 will tend to end a drought"
                         #             ------------------ THE DROUGHT STARTS TO ABATE (AND MAY END)  
                         #GO TO 180
-                        # compare to 
-                        # Uw, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Uw(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
-                        # in palmer.pdsi_from_zindex()
-                        df, X1, X2, X3, V, prob_established, K8 = _dry_spell_abatement(df, K8, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, prob_established)
+                        df, X1, X2, X3, V, prob_ended, K8 = _dry_spell_abatement(df, K8, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, prob_ended)
 
             else:
                 #     ------------------------------------------ABATEMENT IS UNDERWAY   
@@ -714,19 +706,13 @@ def _pdsi(P,
                     
                     #         ----------------------- WE ARE IN A WET SPELL 
                     #GO TO 170 in pdinew.f
-                    # compare to
-                    # Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Ud(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
-                    # in palmer.pdsi_from_zindex()
-                    df, X1, X2, X3, V, prob_established, K8 = _wet_spell_abatement(df, V, K8, prob_established, j, m, nendyr, nbegyr, X1, X2, X3)
+                    df, X1, X2, X3, V, prob_ended, K8 = _wet_spell_abatement(df, V, K8, prob_ended, j, m, nendyr, nbegyr, X1, X2, X3)
                 
                 else:  # if X3 <= 0.0:
                     
                     #         ----------------------- WE ARE IN A DROUGHT   
                     #GO TO 180
-                    # compare to
-                    # Uw, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = Function_Uw(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
-                    # in palmer.pdsi_from_zindex()
-                    df, X1, X2, X3, V, prob_established, K8 = _dry_spell_abatement(df, K8, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, prob_established)
+                    df, X1, X2, X3, V, prob_ended, K8 = _dry_spell_abatement(df, K8, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, prob_ended)
 
     # clear out the remaining values from the backtracking array, if any are left, assigning into the indices arrays
     for x in range(0, K8):
@@ -749,7 +735,7 @@ def _pdsi(P,
 #-----------------------------------------------------------------------------------------------------------------------
 # from label 190 in pdinew.f
 def _get_PPR_PX3(df,
-                 PRO,
+                 prob_ended,
                  ZE,
                  V,
                  PV,
@@ -763,7 +749,7 @@ def _get_PPR_PX3(df,
     #             Q = TOTAL MOISTURE ANOMALY REQUIRED TO END THE
     #                 CURRENT DROUGHT OR WET SPELL  
     #-----------------------------------------------------------------------
-    if PRO == 100.0: 
+    if prob_ended == 100.0: 
         #     --------------------- DROUGHT OR WET CONTINUES, CALCULATE 
         #                           PROB(END) - VARIABLE ZE 
         Q = ZE
@@ -782,13 +768,11 @@ def _get_PPR_PX3(df,
     return df
 
 #-----------------------------------------------------------------------------------------------------------------------
-# compare to Function_Ud()
 # from line 170 in pdinew.f
-# NOTE careful not to confuse the PRO being returned (probability) with PRO array of potential run off values
 def _wet_spell_abatement(df,
                          V, 
                          K8, 
-                         PRO,
+                         prob_ended,
                          j, 
                          m, 
                          nendyr, 
@@ -803,12 +787,12 @@ def _wet_spell_abatement(df,
     #-----------------------------------------------------------------------
     #      WET SPELL ABATEMENT IS POSSIBLE  
     #-----------------------------------------------------------------------
-    UD = df.Z[i] - 0.15  
-    PV = UD + min(V, 0.0) 
+    Ud = df.Z[i] - 0.15  
+    PV = Ud + min(V, 0.0) 
     if PV >= 0.0:
 
         # GO TO label 210 in pdinew.f
-        df, X1, X2, X3, V, PRO, K8 = _between_0s(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
+        df, X1, X2, X3, V, prob_ended, K8 = _between_0s(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
 
     else:
         #     ---------------------- DURING A WET SPELL, PV => 0 IMPLIES
@@ -816,14 +800,13 @@ def _wet_spell_abatement(df,
         ZE = -2.691 * X3 + 1.5
 
         # compute the PPR and PX3 values    
-        df = _get_PPR_PX3(df, PRO, ZE, V, PV, i, X3)
+        df = _get_PPR_PX3(df, prob_ended, ZE, V, PV, i, X3)
         
     # continue at label 200 in pdinew.f
     # recompute the X values and other intermediates
     return _compute_X(df, X1, X2, j, m, K8, nendyr, nbegyr, PV)
 
 #-----------------------------------------------------------------------------------------------------------------------
-# compare to Function_Uw()
 # from line 180 in pdinew.f
 def _dry_spell_abatement(df,
                          K8,
@@ -836,40 +819,41 @@ def _dry_spell_abatement(df,
                          X1, 
                          X2,
                          X3,
-                         PRO):
-
+                         prob_ended):
+    '''
+    
+    '''
+    
     # combine the years (j) and months (m) indices to series index i
     i = (j * 12) + m
         
     #-----------------------------------------------------------------------
     #      DROUGHT ABATEMENT IS POSSIBLE
     #-----------------------------------------------------------------------
-    UW = df.Z[i] + 0.15  
-    PV = UW + max(V, 0.0) 
+    Uw = df.Z[i] + 0.15       # Palmer 1965, eq. 29, the "effective wetness" of the current month 
+    PV = Uw + max(V, 0.0)     #VERIFY/FIXME add to the sum of Uw values that'll be used as the numerator for eq. 30 (Palmer 1965)
+    
+    #VERIFY/FIXME if the accumulated "effective wetness" value isn't positive then 
     if PV <= 0:
         # GOTO 210 in pdinew.f
-        # compare to 
-        # PV, PX1, PX2, PX3, PPe, X, BT = Between0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)
-        # in pdsi_from_zindex()
-        df, X1, X2, X3, V, PRO, K8 = _between_0s(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
+        df, X1, X2, X3, V, prob_ended, K8 = _between_0s(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
             
     else:
         #     ---------------------- DURING A DROUGHT, PV =< 0 IMPLIES  
         #                            PROB(END) HAS RETURNED TO 0
+        
+        # 
         ZE = -2.691 * X3 - 1.5
         
         # compute the PPR and PX3 values    
-        df = _get_PPR_PX3(df, PRO, ZE, V, PV, i, X3)
+        df = _get_PPR_PX3(df, prob_ended, ZE, V, PV, i, X3)
         
     # continue at label 200 in pdinew.f
     # recompute the X values and other intermediates
     return _compute_X(df, X1, X2, j, m, K8, nendyr, nbegyr, PV)
 
 #-----------------------------------------------------------------------------------------------------------------------
-# compare to 
-# PX1, PX2, PX3, X, BT = Main(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT)
-# in palmer.pdsi_from_zindex()
-# from label 200 in pdinew.f
+# label 200 in pdinew.f
 def _compute_X(df,
                X1,
                X2,
@@ -909,12 +893,12 @@ def _compute_X(df,
                 
             #GOTO 220 in pdinew.f
             V = PV 
-            PRO = df.PPR[i] 
+            prob_ended = df.PPR[i] 
             X1  = df.PX1[i] 
             X2  = df.PX2[i] 
             X3  = df.PX3[i] 
 
-            return df, X1, X2, X3, V, PRO, K8
+            return df, X1, X2, X3, V, prob_ended, K8
             
     df.PX2[i] = (0.897 * X2) + (df.Z[i] / 3.0)
     df.PX2[i] = min(df.PX2[i], 0.0)   
@@ -932,12 +916,12 @@ def _compute_X(df,
 
             #GOTO 220 in pdinew.f
             V = PV 
-            PRO = df.PPR[i] 
+            prob_ended = df.PPR[i] 
             X1  = df.PX1[i] 
             X2  = df.PX2[i] 
             X3  = df.PX3[i] 
 
-            return df, X1, X2, X3, V, PRO, K8
+            return df, X1, X2, X3, V, prob_ended, K8
             
     if df.PX3[i] == 0.0:   
         #    -------------------- NO ESTABLISHED DROUGHT (WET SPELL), BUT X3=0  
@@ -951,12 +935,12 @@ def _compute_X(df,
 
             #GOTO 220 in pdinew.f
             V = PV 
-            PRO = df.PPR[i] 
+            prob_ended = df.PPR[i] 
             X1  = df.PX1[i] 
             X2  = df.PX2[i] 
             X3  = df.PX3[i] 
 
-            return df, X1, X2, X3, V, PRO, K8
+            return df, X1, X2, X3, V, prob_ended, K8
 
         elif df.PX2[i] == 0:
             
@@ -967,12 +951,12 @@ def _compute_X(df,
 
             #GOTO 220 in pdinew.f
             V = PV 
-            PRO = df.PPR[i] 
+            prob_ended = df.PPR[i] 
             X1  = df.PX1[i] 
             X2  = df.PX2[i] 
             X3  = df.PX3[i] 
 
-            return df, X1, X2, X3, V, PRO, K8
+            return df, X1, X2, X3, V, prob_ended, K8
 
     #-----------------------------------------------------------------------
     #     AT THIS POINT THERE IS NO DETERMINED VALUE TO ASSIGN TO X,
@@ -1000,16 +984,16 @@ def _compute_X(df,
     #     USE WITH NEXT MONTHS DATA 
     #-----------------------------------------------------------------------
     V = PV 
-    PRO = df.PPR[i] 
+    prob_ended = df.PPR[i] 
     X1  = df.PX1[i] 
     X2  = df.PX2[i] 
     X3  = df.PX3[i] 
 
-    #DEBUGGING ONLY -- REMOVE
-    print('\nEXIT _compute_X()')
-    display_debug_info(df, i, j, m, K8)
+#     #DEBUGGING ONLY -- REMOVE
+#     print('\nEXIT _compute_X()')
+#     display_debug_info(df, i, j, m, K8)
 
-    return df, X1, X2, X3, V, PRO, K8
+    return df, X1, X2, X3, V, prob_ended, K8
  
 #-----------------------------------------------------------------------------------------------------------------------
 # from 210 in pdinew.f
@@ -1058,12 +1042,12 @@ def _between_0s(df,
     #     SAVE THIS MONTHS CALCULATED VARIABLES (V, PRO, X1, X2, X3) FOR USE WITH NEXT MONTHS DATA 
     #-----------------------------------------------------------------------------------------------
     V = PV 
-    PRO = df.PPR[i] 
-    X1  = df.PX1[i] 
-    X2  = df.PX2[i] 
-    X3  = df.PX3[i] 
+    X1 = df.PX1[i] 
+    X2 = df.PX2[i] 
+    X3 = df.PX3[i] 
+    prob_ended = df.PPR[i] 
 
-    return df, X1, X2, X3, V, PRO, K8
+    return df, X1, X2, X3, V, prob_ended, K8
 
 #-----------------------------------------------------------------------------------------------------------------------
 def _assign(df,
@@ -1182,9 +1166,9 @@ def _assign(df,
                                 df.PX2[ix],
                                 df.PX3[ix])
 
-    #DEBUGGING ONLY -- REMOVE
-    print('\nEXIT _assign()')
-    display_debug_info(df, i, j, m, K8)
+#     #DEBUGGING ONLY -- REMOVE
+#     print('\nEXIT _assign()')
+#     display_debug_info(df, i, j, m, K8)
 
     return df
 
