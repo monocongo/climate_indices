@@ -641,7 +641,7 @@ def _pdsi(P,
 
             # DEBUGGING ONLY -- REMOVE
             print('i: {0}'.format(i))
-            if i == 59:
+            if i == 65:
                 display_debug_info(df, i, j, m, K8)
             
             # these indices keep track of the latest year and month index corresponding 
@@ -689,7 +689,7 @@ def _pdsi(P,
                     #         ------------------------- WE ARE IN A DROUGHT
                     
                     # in order to start to pull out of a drought the Z-Index for the month needs to be >= -0.15 (Palmer 1965, eq. 29)
-                    if df.Z[i] < -0.15:  #NOTE pdinew.f uses <= here: "IF (Z(j,m).LE.-.15) THEN..."
+                    if df.Z[i] < -0.15:  #NOTE pdinew.f uses <= here, rather than <: "IF (Z(j,m).LE.-.15) THEN..."
                         #              -------------------- THE DROUGHT INTENSIFIES 
                         #GO TO 210
                         df, X1, X2, X3, V, prob_ended, K8 = _between_0s(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
@@ -831,19 +831,19 @@ def _dry_spell_abatement(df,
     #      DROUGHT ABATEMENT IS POSSIBLE
     #-----------------------------------------------------------------------
     Uw = df.Z[i] + 0.15       # Palmer 1965, eq. 29, the "effective wetness" of the current month 
-    PV = Uw + max(V, 0.0)     #VERIFY/FIXME add to the sum of Uw values that'll be used as the numerator for eq. 30 (Palmer 1965)
+    PV = Uw + max(V, 0.0)     #VERIFY this:  here we add to the sum of Uw values that'll be used as the numerator for eq. 30 (Palmer 1965)
     
     #VERIFY/FIXME if the accumulated "effective wetness" value isn't positive then 
     if PV <= 0:
+        #     ---------------------- DURING A DROUGHT, PV =< 0 IMPLIES  
+        #                            PROB(END) HAS RETURNED TO 0        
         # GOTO 210 in pdinew.f
         df, X1, X2, X3, V, prob_ended, K8 = _between_0s(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
             
     else:
-        #     ---------------------- DURING A DROUGHT, PV =< 0 IMPLIES  
-        #                            PROB(END) HAS RETURNED TO 0
-        
-        # 
-        ZE = -2.691 * X3 - 1.5
+        # calculate the Z value which indicates an end to the currently established drought, once this is known then 
+        # we can compare against the actual Z value, to see if we've pulled out of the established drought or not 
+        ZE = -2.691 * X3 - 1.5   # eq. 28, Palmer 1965
         
         # compute the PPR and PX3 values    
         df = _get_PPR_PX3(df, prob_ended, ZE, V, PV, i, X3)
@@ -1110,8 +1110,13 @@ def _assign(df,
             #     -------------- BACKTRACK THRU ARRAYS, STORING ASSIGNED X1 (OR X2) 
             #                    IN SX UNTIL IT IS ZERO, THEN SWITCHING TO THE OTHER
             #                    UNTIL IT IS ZERO, ETC.
-            for Mm in range(K8 - 1, -1, -1):
+#             for Mm in range(K8 - 1, -1, -1):
 
+            #!!!!!!!!!!!!!!!!
+            #DEVELOPMENT/DEBUG ONLY -- REMOVE
+            for Mm in range(K8):
+            #!!!!!!!!!!!!!!!!
+            
                 if ISAVE == 1: # then GO TO 20 in pdinew.f
                     if df.SX1[Mm] == 0:  # then GO TO 50 in pdinew.f
                         ISAVE = 2
@@ -1130,16 +1135,18 @@ def _assign(df,
         #     PROPER ASSIGNMENTS TO ARRAY SX HAVE BEEN MADE,
         #     OUTPUT THE MESS   
         #-----------------------------------------------------------------------
-#         # NOTE- in the original pdinew.f code this loop starts from the first element, 
-#         # but we're instead starting this loop from the second at index == 1)
-#         for n in range(1, K8 + 1):   # backtracking assignment of X  (NOTE 
-        for n in range(K8 + 1):   # backtracking assignment of X
+#         for n in range(K8 + 1):   # backtracking assignment of X
             
+        #!!!!!!!!!!!!!!!!
+        #DEVELOPMENT/DEBUG ONLY -- REMOVE
+        for n in range(K8):   # backtracking assignment of X
+        #!!!!!!!!!!!!!!!!
+        
             # get the 1-D index equivalent to the j/m index for the final arrays 
             # (PDSI, PHDI, etc.) that we'll assign to in the backtracking process
             ix = (df.index_j[n] * 12) + df.index_m[n]
             
-            # pull from the current backtracking index
+            # assign PDSI to the X value in the current index location within the backtracking array
             df.PDSI[ix] = df.SX[n] 
 
             #!!!!!!!!!!!!!!!!!!!!!!!!     Debugging section below -- remove before deployment
