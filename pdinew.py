@@ -641,7 +641,7 @@ def _pdsi(P,
 
             # DEBUGGING ONLY -- REMOVE
             print('i: {0}'.format(i))
-            if i == 65:
+            if i == 61:
                 display_debug_info(df, i, j, m, K8)
             
             # these indices keep track of the latest year and month index corresponding 
@@ -698,7 +698,7 @@ def _pdsi(P,
                         # Palmer 1965, p. 29: "any value of Z >= -0.15 will tend to end a drought"
                         #             ------------------ THE DROUGHT STARTS TO ABATE (AND MAY END)  
                         #GO TO 180
-                        df, X1, X2, X3, V, prob_ended, K8 = _dry_spell_abatement(df, K8, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, prob_ended)
+                        df, X1, X2, X3, V, prob_ended, K8 = _dry_spell_abatement(df, K8, j, m, nendyr, nbegyr, V, X1, X2, X3, prob_ended)
 
             else:
                 #     ------------------------------------------ABATEMENT IS UNDERWAY   
@@ -712,7 +712,7 @@ def _pdsi(P,
                     
                     #         ----------------------- WE ARE IN A DROUGHT   
                     #GO TO 180
-                    df, X1, X2, X3, V, prob_ended, K8 = _dry_spell_abatement(df, K8, j, m, nendyr, nbegyr, PV, V, X1, X2, X3, prob_ended)
+                    df, X1, X2, X3, V, prob_ended, K8 = _dry_spell_abatement(df, K8, j, m, nendyr, nbegyr, V, X1, X2, X3, prob_ended)
 
     # clear out the remaining values from the backtracking array, if any are left, assigning into the indices arrays
     for x in range(0, K8):
@@ -736,7 +736,7 @@ def _pdsi(P,
 # from label 190 in pdinew.f
 def _get_PPR_PX3(df,
                  prob_ended,
-                 ZE,
+                 Ze,
                  V,
                  PV,
                  ix,
@@ -751,12 +751,13 @@ def _get_PPR_PX3(df,
     #-----------------------------------------------------------------------
     if prob_ended == 100.0: 
         #     --------------------- DROUGHT OR WET CONTINUES, CALCULATE 
-        #                           PROB(END) - VARIABLE ZE 
-        Q = ZE
+        #                           PROB(END) - VARIABLE Ze 
+        Q = Ze
     else:  
-        Q = ZE + V
+        Q = Ze + V
 
-    df.PPR[ix] = (PV / Q) * 100.0  # eq. 30 Palmer 1965, percentage probability that a drought or wet spell has ended
+    # percentage probability that an established drought or wet spell has ended
+    df.PPR[ix] = (PV / Q) * 100.0   # eq. 30 Palmer 1965
     if df.PPR[ix] >= 100.0:
          
           df.PPR[ix] = 100.0
@@ -768,7 +769,7 @@ def _get_PPR_PX3(df,
     return df
 
 #-----------------------------------------------------------------------------------------------------------------------
-# from line 170 in pdinew.f
+# from label 170 in pdinew.f
 def _wet_spell_abatement(df,
                          V, 
                          K8, 
@@ -797,25 +798,25 @@ def _wet_spell_abatement(df,
     else:
         #     ---------------------- DURING A WET SPELL, PV => 0 IMPLIES
         #                            PROB(END) HAS RETURNED TO 0
-        ZE = -2.691 * X3 + 1.5
+        Ze = -2.691 * X3 + 1.5
 
         # compute the PPR and PX3 values    
-        df = _get_PPR_PX3(df, prob_ended, ZE, V, PV, i, X3)
+        df = _get_PPR_PX3(df, prob_ended, Ze, V, PV, i, X3)
         
     # continue at label 200 in pdinew.f
     # recompute the X values and other intermediates
     return _compute_X(df, X1, X2, j, m, K8, nendyr, nbegyr, PV)
 
 #-----------------------------------------------------------------------------------------------------------------------
-# from line 180 in pdinew.f
+# from label 180 in pdinew.f
 def _dry_spell_abatement(df,
                          K8,
                          j, 
                          m, 
                          nendyr, 
                          nbegyr, 
-                         PV,
-                         V,
+#                          PV,
+                         V,   # accumulated effective wetness
                          X1, 
                          X2,
                          X3,
@@ -824,16 +825,23 @@ def _dry_spell_abatement(df,
     
     '''
     
-    # combine the years (j) and months (m) indices to series index i
+    # combine the two-dimensional array indices (years (j) and months (m)) into a one-dimensional series index (i)
     i = (j * 12) + m
         
     #-----------------------------------------------------------------------
     #      DROUGHT ABATEMENT IS POSSIBLE
     #-----------------------------------------------------------------------
-    Uw = df.Z[i] + 0.15       # Palmer 1965, eq. 29, the "effective wetness" of the current month 
-    PV = Uw + max(V, 0.0)     #VERIFY this:  here we add to the sum of Uw values that'll be used as the numerator for eq. 30 (Palmer 1965)
     
-    #VERIFY/FIXME if the accumulated "effective wetness" value isn't positive then 
+    # the "effective wetness" of the current month
+    Uw = df.Z[i] + 0.15   # Palmer 1965, eq. 29
+    
+    # add this month's effective wetness to the previously accumulated effective wetness (if it was positive),
+    # this value will eventually be used as the numerator in the equation for calculating percentage probability
+    # that an established weather spell has ended (eq. 30, Palmer 1965)
+    PV = Uw + max(V, 0.0)
+    
+    # if this month's cumulative effective wetness value isn't positive then there is 
+    # insufficient moisture this month to end or even abate the established dry spell
     if PV <= 0:
         #     ---------------------- DURING A DROUGHT, PV =< 0 IMPLIES  
         #                            PROB(END) HAS RETURNED TO 0        
@@ -841,12 +849,16 @@ def _dry_spell_abatement(df,
         df, X1, X2, X3, V, prob_ended, K8 = _between_0s(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
             
     else:
-        # calculate the Z value which indicates an end to the currently established drought, once this is known then 
-        # we can compare against the actual Z value, to see if we've pulled out of the established drought or not 
-        ZE = -2.691 * X3 - 1.5   # eq. 28, Palmer 1965
+        # abatement is underway
         
-        # compute the PPR and PX3 values    
-        df = _get_PPR_PX3(df, prob_ended, ZE, V, PV, i, X3)
+        # Calculate the Z value which corresponds to an amount of moisture that is sufficient to end 
+        # the currently established drought in a single month. Once this is known then we can compare 
+        # against the actual Z value, to see if we've pulled out of the established drought or not 
+        Ze = -2.691 * X3 - 1.5   # eq. 28, Palmer 1965
+        
+        # compute the percentage probability that the established spell has ended (PPR),
+        # and the severity index for the established spell (PX3)
+        df = _get_PPR_PX3(df, prob_ended, Ze, V, PV, i, X3)
         
     # continue at label 200 in pdinew.f
     # recompute the X values and other intermediates
@@ -904,7 +916,7 @@ def _compute_X(df,
     df.PX2[i] = min(df.PX2[i], 0.0)   
     if df.PX2[i] <= -1.0:  
         
-        if (df.PX3[i] == 0.0):   
+        if df.PX3[i] == 0.0:   
             #         ------------------- IF NO EXISTING WET SPELL OR DROUGHT   
             #                             X2 BECOMES THE NEW X3 
             df.X[i]   = df.PX2[i] 
