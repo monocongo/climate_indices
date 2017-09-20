@@ -589,7 +589,8 @@ def _pdsi(P,
     PV = 0.0
     V = 0.0
     
-    # provisional severity index values computed for each step
+    # provisional severity index values computed for each month/timestep, typically carried forward for use
+    # in the next timestep, since current month X values are computed using the previous month's X values 
     X1 = 0.0   # index appropriate to a wet spell that is becoming established, as well as the percent chance that a wet spell has begun 
     X2 = 0.0   # index appropriate to a drought that is becoming established, as well as the percent chance that a drought has begun
     X3 = 0.0   # index appropriate to a wet spell or drought that has already been established
@@ -641,11 +642,11 @@ def _pdsi(P,
 
             # DEBUGGING ONLY -- REMOVE
             print('i: {0}'.format(i))
-            if i == 61:
-                display_debug_info(df, i, j, m, K8)
+            if i == 58:
+                print('debug breakpoint')
             
-            # these indices keep track of the latest year and month index corresponding 
-            # to the current backtracking index (K8), K8 > 0 indicates backtracking is required
+            # these indices keep track of the latest year (j) and month (m) indices corresponding 
+            # to the current backtracking index (K8), where K8 > 0 indicates backtracking is required
             df.index_j[K8] = j
             df.index_m[K8] = m
 
@@ -678,7 +679,8 @@ def _pdsi(P,
                     if df.Z[i] >= 0.15:   
                         #              ------------------ THE WET SPELL INTENSIFIES 
                         #GO TO 210 in pdinew.f
-                        df, X1, X2, X3, V, prob_ended, K8 = _between_0s(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
+                        df, X1, X2, X3, V, prob_ended, K8 = _between_0s(df, K8, X3, j, m, nendyr, nbegyr)
+                        
                         
                     else:
                         #             ------------------ THE WET STARTS TO ABATE (AND MAY END)  
@@ -692,7 +694,7 @@ def _pdsi(P,
                     if df.Z[i] < -0.15:  #NOTE pdinew.f uses <= here, rather than <: "IF (Z(j,m).LE.-.15) THEN..."
                         #              -------------------- THE DROUGHT INTENSIFIES 
                         #GO TO 210
-                        df, X1, X2, X3, V, prob_ended, K8 = _between_0s(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
+                        df, X1, X2, X3, V, prob_ended, K8 = _between_0s(df, K8, X3, j, m, nendyr, nbegyr)
 
                     else:
                         # Palmer 1965, p. 29: "any value of Z >= -0.15 will tend to end a drought"
@@ -763,7 +765,7 @@ def _get_PPR_PX3(df,
           df.PPR[ix] = 100.0
           df.PX3[ix] = 0.0  
     else:
-          # Wells et al (2003) eq. 4
+          # eq. 25, Palmer (1965); eq. 4, Wells et al (2003) 
           df.PX3[ix] = (0.897 * X3) + (df.Z[ix] / 3.0)
 
     return df
@@ -793,7 +795,7 @@ def _wet_spell_abatement(df,
     if PV >= 0.0:
 
         # GO TO label 210 in pdinew.f
-        df, X1, X2, X3, V, prob_ended, K8 = _between_0s(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
+        df, X1, X2, X3, V, prob_ended, K8 = _between_0s(df, K8, X3, j, m, nendyr, nbegyr)
 
     else:
         #     ---------------------- DURING A WET SPELL, PV => 0 IMPLIES
@@ -846,7 +848,7 @@ def _dry_spell_abatement(df,
         #     ---------------------- DURING A DROUGHT, PV =< 0 IMPLIES  
         #                            PROB(END) HAS RETURNED TO 0        
         # GOTO 210 in pdinew.f
-        df, X1, X2, X3, V, prob_ended, K8 = _between_0s(df, K8, X1, X2, X3, j, m, nendyr, nbegyr)
+        df, X1, X2, X3, V, prob_ended, K8 = _between_0s(df, K8, X3, j, m, nendyr, nbegyr)
             
     else:
         # abatement is underway
@@ -878,10 +880,6 @@ def _compute_X(df,
     
     # the values within the DataFrame are in a series, so get the single index value assuming j is years and m is months
     i = (j * 12) + m
-
-#     #DEBUGGING ONLY -- REMOVE
-#     print('\nENTER _compute_X()')
-#     display_debug_info(df, i, j, m, K8)
 
     #-----------------------------------------------------------------------
     #     CONTINUE X1 AND X2 CALCULATIONS.  
@@ -978,12 +976,15 @@ def _compute_X(df,
     #     CHOOSING THE APPROPRIATE X1 OR X2 TO BE THAT MONTH'S X. 
     #-----------------------------------------------------------------------
     
+    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     #DEVELOPMENT/DEBUG -- REMOVE? this appears to fix some issues with backtracking
-    # reset the year and month index arrays so that the current j/m month is used as the first backtracking month
     #!!!---- NOTE ---- nothing equivalent is in the original pdinew.f code
+    #TODO determine why this kludge is required, it probably will explain other outstanding issues
+    # reset the year and month index arrays so that the current j/m month is used as the first backtracking month
     if K8 == 0:
         df.index_j[K8] = j
         df.index_m[K8] = m
+    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     df.SX1[K8] = df.PX1[i] 
     df.SX2[K8] = df.PX2[i] 
@@ -997,13 +998,9 @@ def _compute_X(df,
     #-----------------------------------------------------------------------
     V = PV 
     prob_ended = df.PPR[i] 
-    X1  = df.PX1[i] 
-    X2  = df.PX2[i] 
-    X3  = df.PX3[i] 
-
-#     #DEBUGGING ONLY -- REMOVE
-#     print('\nEXIT _compute_X()')
-#     display_debug_info(df, i, j, m, K8)
+    X1 = df.PX1[i] 
+    X2 = df.PX2[i] 
+    X3 = df.PX3[i] 
 
     return df, X1, X2, X3, V, prob_ended, K8
  
@@ -1011,14 +1008,33 @@ def _compute_X(df,
 # from 210 in pdinew.f
 def _between_0s(df,
                 K8,
-                X1,
-                X2, 
                 X3, 
                 j, 
                 m, 
                 nendyr, 
                 nbegyr):
-
+    '''
+    Compute index values when a weather spell has been established and no abatement is underway. In this case we 
+    calculate the X3 for use as the current month's severity index, if no backtracking is called for, and if 
+    backtracking is called for then for all the backtracked months we'll use the X3 values computed for those months.
+    
+    :param df: a pandas DataFrame containing the arrays of various values used within
+    :param K8: the number of backtracking steps currently called for, i.e. the number of previous months for which 
+               a conclusive severity index has not yet been determined and which require back fill
+    :param X3: the previous month's severity index for any weather spell that has become established
+    :param j: the year index, assuming that the original climatology datasets are in a 2-D shape (years, months)  
+    :param m: the calendar month index, valid range [0..11], assuming that the original climatology datasets
+              are in a 2-D shape (years, months)
+    :param nendyr: final year of the time series
+    :param nbegyr: beginning year of the time series
+    :return: seven values: 1) the same pandas DataFrame used as the first argument, now with an updated state 
+                           2) the X1 for this month (always 0.0), to be used within the next month's index calculations  
+                           3) the X2 for this month (always 0.0), to be used within the next month's index calculations  
+                           4) the X3 for this month, to be used within the next month's index calculations
+                           5) the accumulated "effective wetness" after this month's accounting (always 0.0)
+                           6) the percentage probability that an established weather spell has ended (always 0.0) 
+                           7) the number of months requiring back fill via the backtracking process (always 0)
+    '''
     # convert year/month (j/m) indices to a series index (2-D -> 1-D)
     i = (j * 12) + m
     
@@ -1026,8 +1042,11 @@ def _between_0s(df,
     #     PROB(END) RETURNS TO 0.  A POSSIBLE ABATEMENT HAS FIZZLED OUT,
     #     SO WE ACCEPT ALL STORED VALUES OF X3  
     #-----------------------------------------------------------------------
-    PV = 0.0 
-    df.PPR[i] = 0.0 
+    
+    # the probability that we've reached the end of a weather spell (PPR, or Pe in Palmer 1965) is zero 
+    df.PPR[i] = 0.0
+    
+    # X3 is the index value in play here since our Pe is zero, so only calculate this month's X3 and use this as the X
     df.PX1[i] = 0.0 
     df.PX2[i] = 0.0 
     df.PX3[i] = (0.897 * X3) + (df.Z[i] / 3.0)
@@ -1044,7 +1063,7 @@ def _between_0s(df,
         
         df.WPLM[i] = _case(df.PPR[i], df.PX1[i], df.PX2[i], df.PX3[i]) 
         
-    else:  # perform backtracking, assigning all backtrack array values to the stored X3
+    else:  # perform backtracking, assigning the stored X3 values as our new backtrack array values
 
         iass = 3   
         df = _assign(df, iass, K8, j, m, nendyr, nbegyr)
@@ -1053,7 +1072,9 @@ def _between_0s(df,
     #-----------------------------------------------------------------------------------------------
     #     SAVE THIS MONTHS CALCULATED VARIABLES (V, PRO, X1, X2, X3) FOR USE WITH NEXT MONTHS DATA 
     #-----------------------------------------------------------------------------------------------
-    V = PV 
+    
+    # accumulated effective wetness reset to zero
+    V = 0.0
     X1 = df.PX1[i] 
     X2 = df.PX2[i] 
     X3 = df.PX3[i] 
@@ -1083,12 +1104,8 @@ def _assign(df,
     # convert the 2-D time step indices (j, m) to a series index i
     i = (j * 12) + m
     
-    # flag to determine which of the SX* values to save
+    # flag to determine which of the SX* values to save into the main backtracking array, df.SX
     ISAVE = iass
-
-#     #DEBUGGING ONLY -- REMOVE
-#     print('\nENTER _assign() with ISAVE == {0}'.format(ISAVE))
-#     display_debug_info(df, i, j, m, K8)
 
     #   
     #-----------------------------------------------------------------------
@@ -1097,7 +1114,7 @@ def _assign(df,
     #-----------------------------------------------------------------------
     df.SX[K8] = df.X[i]
      
-    if K8 == 0:  # no backtracking
+    if K8 == 0:  # no backtracking required
 
         # set the PDSI to X
         df.PDSI[i] = df.X[i]  
@@ -1114,6 +1131,7 @@ def _assign(df,
         
         if iass == 3:  
             #     ---------------- USE ALL X3 VALUES
+
             for Mm in range(K8):
         
                 df.SX[Mm] = df.SX3[Mm]
@@ -1122,24 +1140,39 @@ def _assign(df,
             #     -------------- BACKTRACK THRU ARRAYS, STORING ASSIGNED X1 (OR X2) 
             #                    IN SX UNTIL IT IS ZERO, THEN SWITCHING TO THE OTHER
             #                    UNTIL IT IS ZERO, ETC.
-#             for Mm in range(K8 - 1, -1, -1):
+            for Mm in range(K8 - 1, -1, -1):
 
-            #!!!!!!!!!!!!!!!!
-            #DEVELOPMENT/DEBUG ONLY -- REMOVE
-            for Mm in range(K8):
-            #!!!!!!!!!!!!!!!!
-            
                 if ISAVE == 1: # then GO TO 20 in pdinew.f
+                    
+                    # we should assign the stored X1 values into the main backtracking array until 
+                    # we find a stored X1 that is zero, which indicates a state change (wet to dry)
+                    
                     if df.SX1[Mm] == 0:  # then GO TO 50 in pdinew.f
+                        
+                        # the X1, or severity index for a wet spell that's being established, is zero 
+                        # for this backtrack month, indicating that we need to switch to using the X2 values
                         ISAVE = 2
                         df.SX[Mm] = df.SX2[Mm]
+                    
                     else:
+                        # assign the stored X1 into this backtrack month's position within the main backtracking array
                         df.SX[Mm] = df.SX1[Mm]
+                
                 elif ISAVE == 2: # then GO TO 40 in pdinew.f
+                    
+                    # we should assign the stored X2 values into the main backtracking array until 
+                    # we find a stored X2 that is zero, which indicates a state change (dry to wet)
+                    
                     if df.SX2[Mm] == 0: # then GO TO 30 in pdinew.f
+                        
+                        # the X2, or severity index for a dry spell that's being established, is zero 
+                        # for this backtrack month, indicating that we need to switch to using the X1 values
                         ISAVE = 1
                         df.SX[Mm] = df.SX1[Mm]
+                        
                     else:
+                        
+                        # assign the stored X2 into this backtrack month's position within the main backtracking array
                         df.SX[Mm] = df.SX2[Mm]
     
         # label 70 from pdinew.f
@@ -1147,34 +1180,35 @@ def _assign(df,
         #     PROPER ASSIGNMENTS TO ARRAY SX HAVE BEEN MADE,
         #     OUTPUT THE MESS   
         #-----------------------------------------------------------------------
-#         for n in range(K8 + 1):   # backtracking assignment of X
-            
-        #!!!!!!!!!!!!!!!!
-        #DEVELOPMENT/DEBUG ONLY -- REMOVE
-        for n in range(K8):   # backtracking assignment of X
-        #!!!!!!!!!!!!!!!!
         
+        for n in range(K8 + 1):   # backtracking assignment of X
+                    
             # get the 1-D index equivalent to the j/m index for the final arrays 
             # (PDSI, PHDI, etc.) that we'll assign to in the backtracking process
             ix = (df.index_j[n] * 12) + df.index_m[n]
             
-            # assign PDSI to the X value in the current index location within the backtracking array
+            # assign the backtracking array's value for the current backtrack month as that month's final PDSI value
             df.PDSI[ix] = df.SX[n] 
 
             #!!!!!!!!!!!!!!!!!!!!!!!!     Debugging section below -- remove before deployment
             #
             # show backtracking array contents and describe differences
             tolerance = 0.01            
-            if abs(df.expected_pdsi[ix] - df.PDSI[ix]) > tolerance:
+            if math.isnan(df.PDSI[ix]) or (abs(df.expected_pdsi[ix] - df.PDSI[ix]) > tolerance):
                 print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
                 print('\nBACKTRACKING  actual time step:  {0}\tBacktracking index: {1}'.format(i, ix))
                 print('\tNumber of backtracking steps (K8):  {0}'.format(K8))
-                print('\tPDSI:  Expected {0}\n\t       Backtrack: {1}'.format(df.expected_pdsi[ix], 
-                                                                              df.PDSI[ix]))
+                print('\tPDSI:  Expected {0:.2f}\n\t       Actual: {1:.2f}'.format(df.expected_pdsi[ix], 
+                                                                                   df.PDSI[ix]))
+                print('\nSX: {0}'.format(df.SX._values[0:K8]))
+                print('SX1: {0}'.format(df.SX1._values[0:K8]))
+                print('SX2: {0}'.format(df.SX2._values[0:K8]))
+                print('SX3: {0}'.format(df.SX3._values[0:K8]))
                 print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
             #!!!!!!!!!----------- cut here -------------------------------------------------------
                     
             # the PHDI is X3 if not zero, otherwise use X
+            #TODO literature reference for this?
             df.PHDI[ix] = df.PX3[ix]
             if df.PX3[ix] == 0.0:
                 df.PHDI[ix] = df.SX[n]
@@ -1184,10 +1218,6 @@ def _assign(df,
                                 df.PX1[ix], 
                                 df.PX2[ix],
                                 df.PX3[ix])
-
-#     #DEBUGGING ONLY -- REMOVE
-#     print('\nEXIT _assign()')
-#     display_debug_info(df, i, j, m, K8)
 
     return df
 
