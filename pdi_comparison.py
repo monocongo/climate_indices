@@ -262,7 +262,6 @@ if __name__ == '__main__':
                                                                                                B,
                                                                                                H,
                                                                                                data_begin_year,
-                                                                                               data_end_year,
                                                                                                calibration_begin_year,
                                                                                                calibration_end_year,
                                                                                                expected_pdsi)
