@@ -20,7 +20,7 @@ import warnings
 warnings.simplefilter('ignore', Warning)
 
 #-----------------------------------------------------------------------------------------------------------------------
-if __name__ == '__main__':
+def main():
 
     '''
     '''
@@ -299,47 +299,52 @@ if __name__ == '__main__':
 #                             
 #                             print('{0}  Expected:  {1}   Actual: {2}'.format(i, expected[i], actual[i]))
 
-                # compute PDSI etc. using new PDSI code translated from Jacobi et al MatLab code
-                PDSI, PHDI, PMDI, zindex = palmer.pdsi_from_climatology(precip_timeseries,
-                                                                        temp_timeseries,
-                                                                        awc,
-                                                                        latitude,
-                                                                        data_begin_year,
-                                                                        calibration_begin_year,
-                                                                        calibration_end_year)
-                
-                # find the differences between the new (Matlab-derived) and previous (Fortran-derived) versions
-                pdsi_diffs = PDSI - expected_pdsi
-#                 phdi_diffs = PHDI - expected_phdi
-#                 pmdi_diffs = PMDI - expected_pmdi
-                zindex_diffs = zindex - expected_zindex
-            
-                # dictionary of variable names to corresponding arrays of differences to facilitate looping below
-                varnames_to_arrays = {'PDSI': (pdsi_diffs, expected_pdsi, PDSI),
-#                                       'PHDI': (phdi_diffs, expected_phdi, PHDI),
-#                                       'PMDI': (pmdi_diffs, expected_pmdi, PMDI),
-                                      'Z-INDEX': (zindex_diffs, expected_zindex, zindex) }
-
-                # we want to see all zero differences, if any non-zero differences exist then raise an alert
-                zeros = np.zeros(pdsi_diffs.shape)
-                # tuple (diffs_array, expected, actual)
-                for varname, array_tuple in varnames_to_arrays.items():
-                    
-                    diffs_array = array_tuple[0]
-                    expected = array_tuple[1]
-                    actual = array_tuple[2]
-                    
-                    if not np.allclose(diffs_array, zeros, atol=tolerance, equal_nan=True):
-                        
-                        logger.warn('Division {0}: Comparing new Palmer (palmer.py) against operational pdinew.f: ' + \
-                                    '\nNon-matching values for {1}'.format(division_id, varname))
-                        offending_indices = np.where(abs(diffs_array) > tolerance)
-                        non_offending_indices = np.where(abs(diffs_array) <= tolerance)
-                        logger.warn('Time steps with significant differences ({0}): {1}'.format(offending_indices.size, offending_indices))                        
-#                         for i in offending_indices[0]:
-#                             
-#                             print('{0}  Expected:  {1}   Actual: {2}'.format(i, expected[i], actual[i]))
+#                 # compute PDSI etc. using new PDSI code translated from Jacobi et al MatLab code
+#                 PDSI, PHDI, PMDI, zindex = palmer.pdsi_from_climatology(precip_timeseries,
+#                                                                         temp_timeseries,
+#                                                                         awc,
+#                                                                         latitude,
+#                                                                         data_begin_year,
+#                                                                         calibration_begin_year,
+#                                                                         calibration_end_year)
+#                 
+#                 # find the differences between the new (Matlab-derived) and previous (Fortran-derived) versions
+#                 pdsi_diffs = PDSI - expected_pdsi
+# #                 phdi_diffs = PHDI - expected_phdi
+# #                 pmdi_diffs = PMDI - expected_pmdi
+#                 zindex_diffs = zindex - expected_zindex
+#             
+#                 # dictionary of variable names to corresponding arrays of differences to facilitate looping below
+#                 varnames_to_arrays = {'PDSI': (pdsi_diffs, expected_pdsi, PDSI),
+# #                                       'PHDI': (phdi_diffs, expected_phdi, PHDI),
+# #                                       'PMDI': (pmdi_diffs, expected_pmdi, PMDI),
+#                                       'Z-INDEX': (zindex_diffs, expected_zindex, zindex) }
+# 
+#                 # we want to see all zero differences, if any non-zero differences exist then raise an alert
+#                 zeros = np.zeros(pdsi_diffs.shape)
+#                 # tuple (diffs_array, expected, actual)
+#                 for varname, array_tuple in varnames_to_arrays.items():
+#                     
+#                     diffs_array = array_tuple[0]
+#                     expected = array_tuple[1]
+#                     actual = array_tuple[2]
+#                     
+#                     if not np.allclose(diffs_array, zeros, atol=tolerance, equal_nan=True):
+#                         
+#                         logger.warn('Division {0}: Comparing new Palmer (palmer.py) against operational pdinew.f: ' + \
+#                                     '\nNon-matching values for {1}'.format(division_id, varname))
+#                         offending_indices = np.where(abs(diffs_array) > tolerance)
+#                         non_offending_indices = np.where(abs(diffs_array) <= tolerance)
+#                         logger.warn('Time steps with significant differences ({0}): {1}'.format(offending_indices.size, offending_indices))                        
+# #                         for i in offending_indices[0]:
+# #                             
+# #                             print('{0}  Expected:  {1}   Actual: {2}'.format(i, expected[i], actual[i]))
 
     except Exception as ex:
         logger.exception('Failed to complete', exc_info=True)
         raise
+    
+#-----------------------------------------------------------------------------------------------------------------------
+if __name__ == "__main__":
+    main()
+    
