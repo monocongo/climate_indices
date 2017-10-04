@@ -5,6 +5,7 @@ import math
 import pandas as pd
 import sys
 
+#-----------------------------------------------------------------------------
 # set up a basic, global logger which will write to the console as standard error
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s',
@@ -14,9 +15,9 @@ logger = logging.getLogger(__name__)
 #-----------------------------------------------------------------------------
 def parse_variable(variable_file):
     '''
-    Parses a data variable's ASCII file, returning 1) a dictionary of division IDs to the corresponding 1-D array
-    of monthly values, 2) a dictionary of division IDs to the corresponding minimum and maximum years of the data
-    array for the division, 3) the minimum year for all divisions, and 4) the maximum year for all divisions.
+    Parses a data variable's ASCII file, returning 1) a dictionary of division IDs 
+    to the corresponding 1-D array of monthly values, 2) the minimum year for all 
+    divisions, and 3) the maximum year for all divisions.
     
     :param variable_file
     :return:  
@@ -52,15 +53,10 @@ def parse_variable(variable_file):
     for division_id, row_numbers in division_groups.items():
         rows = results_df.iloc[row_numbers]
         years_months_data = rows.as_matrix(columns=month_column_names)
-#         years_months_data = rows.as_matrix(columns=['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'])
         divs_to_arrays[division_id] = years_months_data.flatten()
-    
-#     # get the division IDs mapped to their corresponding minimum and maximum years
-#     divs_to_minmax_years = minmax_years_df.to_dict('index')
     
     # return the two dictionaries we've built
     return divs_to_arrays, division_min_years.min(), division_max_years.max()
-#     return divs_to_arrays, divs_to_minmax_years, division_min_years.min(), division_max_years.max()
 
 #-----------------------------------------------------------------------------------------------------------------------
 def parse_soil(soil_file):
@@ -68,9 +64,10 @@ def parse_soil(soil_file):
     Parse the soil constant file, reading both AWC and latitude values for each division.
     
     :param soil_file: ASCII file containing one line per climate division and with fixed width fields:
-                      (1) division ID, (2) available water capacity, (3) foo, (4) bar, and (5) the negative tangent 
-                      of the latitude of the climate division's centroid
-    :return two dictionaries, both with division IDs as keys, the first with AWCs as values, the second with latitudes as values
+                      (1) division ID, (2) available water capacity, (3) B, (4) H, and (5) the negative 
+                      tangent of the latitude of the climate division's centroid
+    :return two dictionaries, both with division IDs as keys, the first with AWCs as values, and the second 
+            with latitudes as values
     '''
 
     # use a list of column names to clue in pandas as to the structure of the ASCII rows
@@ -181,16 +178,20 @@ def main(temp_file,
 #-----------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
     '''
-    Download monthly data files from ftp://ftp.ncdc.noaa.gov/pub/data/cirs/climdiv/
+    Ingest nClimDiv files in ASCII format to a NetCDF version 4 file.
+    
+    Process:
+    
+    1. Download monthly data files from ftp://ftp.ncdc.noaa.gov/pub/data/cirs/climdiv/
     
     C:/home/data/nclimdiv/climdiv-tmpcdv-v1.0.0-20170906 
     C:/home/data/nclimdiv/climdiv-pcpndv-v1.0.0-20170906 
     
-    Download soil constants file from https://github.com/monocongo/indices_python/tree/climdivs_comparison/example_inputs/pdinew.soilconst
+    2. Download soil constants file from https://github.com/monocongo/indices_python/tree/climdivs_comparison/example_inputs/pdinew.soilconst
     
     C:/home/data/nclimdiv/pdinew.soilconst
     
-    Run the ingest code from https://github.com/monocongo/indices_python/tree/climdivs_comparison/ingest_climatology_nclimdiv.py
+    3. Run the ingest code from https://github.com/monocongo/indices_python/tree/climdivs_comparison/ingest_climatology_nclimdiv.py
     
     python -u ingest_climatology_nclimdiv.py \
       --temp_file C:/home/data/nclimdiv/climdiv-tmpcdv-v1.0.0-20170906 \
@@ -198,7 +199,7 @@ if __name__ == '__main__':
       --soil_file C:/home/data/nclimdiv/pdinew.soilconst \
       --out_file C:/home/data/nclimdiv/climdiv-climdv-v1.0.0-20170906.nc
       
-    Use the above result NetCDF file as input to Palmer code
+    Use the above result NetCDF file as input to NIDIS/NCEI Palmer code, etc.
     '''
     try:
 
