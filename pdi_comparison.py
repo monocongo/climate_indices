@@ -352,7 +352,7 @@ def main():
                         offending_indices = np.where(abs(diffs_array) > tolerance)
 #                         non_offending_indices = np.where(abs(diffs_array) <= tolerance)
 #                         logger.warn('Time steps with significant differences ({0}): {1}'.format(len(offending_indices), offending_indices))                        
-                        logger.warn('Time steps with significant differences ({0}, tolerance {1): {2}'.format(len(offending_indices[0]), 
+                        logger.warn('Time steps with significant differences ({0}, tolerance {1}): {2}'.format(len(offending_indices[0]), 
                                                                                                               tolerance, 
                                                                                                               offending_indices[0])) 
 #                         for i in offending_indices[0]:
