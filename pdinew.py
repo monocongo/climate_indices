@@ -4,6 +4,7 @@ import math
 import numba
 import numpy as np
 import pandas as pd
+import profile
 import utils
 import warnings
 
@@ -41,7 +42,7 @@ logger = logging.getLogger(__name__)
 np.set_printoptions(formatter={'float': lambda x: "{0:.2f}".format(x)})
 
 #-----------------------------------------------------------------------------------------------------------------------
-@profile
+#@profile
 def pdsi_from_climatology(precip_timeseries,
                           temp_timeseries,
                           awc,
@@ -109,15 +110,13 @@ def pdsi_from_climatology(precip_timeseries,
 
     # compute the final Palmers
     #TODO/FIXME eliminate the expected PDSI argument once development/debugging is complete
-    PDSI, PHDI, PMDI = _pdsi(precip_timeseries,
-                             Z,
-                             K, 
+    PDSI, PHDI, PMDI = _pdsi(Z,
                              expected_pdsi_for_debug)
     
     return PDSI, PHDI, PMDI, Z, pedat
 
 #-----------------------------------------------------------------------------------------------------------------------
-@profile
+#@profile
 #@numba.jit   #TODO/FIXME numba compile not working as expected yet, AssertionError
 def _cafec_coefficients(P,
                         PET,
@@ -288,7 +287,7 @@ def _cafec_coefficients(P,
     return alpha, beta, delta, gamma, t_ratio
 
 #-----------------------------------------------------------------------------------------------------------------------
-@profile
+#@profile
 def _climatic_characteristic(alpha,
                              beta,
                              gamma,
@@ -334,7 +333,7 @@ def _climatic_characteristic(alpha,
     return AK
 
 #-----------------------------------------------------------------------------------------------------------------------
-@profile
+#@profile
 #@numba.jit
 def _water_balance(T,
                    P,
@@ -524,7 +523,7 @@ def _water_balance(T,
     return pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, prodat, tdat, sssdat, ssudat
 
 #-----------------------------------------------------------------------------------------------------------------------
-@profile
+#@profile
 #@numba.jit
 def _zindex(alpha,
             beta,
@@ -581,24 +580,17 @@ def _zindex(alpha,
     return Z
 
 #-----------------------------------------------------------------------------------------------------------------------
-@profile
-def _pdsi(P,
-          Z,
-          K,
+#@profile
+def _pdsi(Z,
           expected_pdsi):
     '''
-    :param P: 1-D array of precipitation values
-    :param Z: 2-D array of Z-Index values, corresponding in total size to P
-    :param K: 1-D array of climatic characteristic values, one per calendar month (12 total)
+    :param Z: 2-D array of Z-Index values, corresponding in total size to Z
     :param expected_pdsi: for DEBUGGING/DEBUG only -- REMOVE 
     '''
     
     # indicate that we'll use the globals for the backtracking months count and the current time step
     global _k8
     global _i
-    
-    # reshape the precipitation array to (total # of years, 12)
-    P = utils.reshape_to_years_months(P)
     
     # initialize some effective wetness values (previous and current)
     PV = 0.0
@@ -614,114 +606,103 @@ def _pdsi(P,
     prob_ended = 0.0   ##NOTE this was PRO in pdinew.f, now the variable name PRO is used for potential runoff
 
     # create a DataFrame to use as a container for the arrays and values we'll use throughout the computation loop below
-    array0 = np.reshape(P, (P.size, 1))
-    df = pd.DataFrame(data=array0, 
-                      index=range(0, array0.size), 
-                      columns=['P'])
+    Z = np.reshape(Z, (Z.size, 1))
+    df = pd.DataFrame(data=Z, 
+                      index=range(0, Z.size), 
+                      columns=['Z'])
 
     # create a list of coluumn names that match to the intermediate work arrays
     column_names = ['PPR', 'PDSI', 'PHDI', 'WPLM', 'SX', 'SX1', 'SX2', 'SX3', 'X', 'PX1', 'PX2', 'PX3']
     for column_name in column_names:
         
         # get the array corresponding to the current column
-        column_array = np.full(P.shape, np.NaN).flatten()
+        column_array = np.full(Z.shape, np.NaN).flatten()
         
         # add the column to the DataFrame (as a Series)
         df[column_name] = pd.Series(column_array)
 
     # add a month index column used to keep track of which month index to use for the start of backtracking
-    column_array = np.full(P.shape, 0, dtype=int).flatten()
+    column_array = np.full(Z.shape, 0, dtype=int).flatten()
     df['index_i'] = pd.Series(column_array)
 
+    # DEBUG -- REMOVE
     # add the expected PDSI values so we can compare against these as we're debugging
     df['expected_pdsi'] = pd.Series(expected_pdsi.flatten())
-    
-    # add the Z-Index array into the DataFrame as a Series column 
-    df['Z'] = pd.Series(Z.flatten())
     
     # the total number of backtracking months, i.e. when performing backtracking we'll back fill this many months
     _k8 = 0
     
     # loop over all years and months of the time series
-    for j in range(P.shape[0]):    
+    for _i in range(Z.size):    
                 
-        for m in range(12):
+        # DEBUGGING ONLY -- REMOVE
+        print('_i: {0}'.format(_i))
+        
+        # keep track of final backtracking index, meaningful once _k8 > 0, where _k8 > 0 indicates that backtracking is required
+        df.index_i[_k8] = _i
+         
+        # original (all-caps) comments from pdinew.f, left in place to facilitate development
 
-            # compose an 1-D array index from the 2-D (year/month) indices, corresponding to the actual/sequential 
-            # month and is shared globally by the various other functions that are called within this loop 
-            _i = (j * 12) + m
-
-            # DEBUGGING ONLY -- REMOVE
-            print('_i: {0}'.format(_i))
-#             if _i == 62:
-#                 print('debug breakpoint')
+        # if the percentage probability (PPR in Palmer 1965) is 100% or 0%               
+        if prob_ended == 100.0 or prob_ended == 0.0:  
+        #     ------------------------------------ NO ABATEMENT UNDERWAY
+        #                                          WET OR DROUGHT WILL END IF   
+        #                                             -0.5 =< X3 =< 0.5   
             
-            # keep track of final backtracking index, meaningful once _k8 > 0, where _k8 > 0 indicates that backtracking is required
-            df.index_i[_k8] = _i
-             
-            # original (all-caps) comments from pdinew.f, left in place to facilitate development
-
-            # if the percentage probability (PPR in Palmer 1965) is 100% or 0%               
-            if prob_ended == 100.0 or prob_ended == 0.0:  
-            #     ------------------------------------ NO ABATEMENT UNDERWAY
-            #                                          WET OR DROUGHT WILL END IF   
-            #                                             -0.5 =< X3 =< 0.5   
-                
-                # "near normal" is defined as the range [-0.5 ... 0.5], Palmer 1965 p. 29
-                if abs(X3) <= 0.5:
-                #         ---------------------------------- END OF DROUGHT OR WET  
-                    PV = 0.0 
-                    df.PPR[_i] = 0.0 
-                    df.PX3[_i] = 0.0 
-                    #             ------------ BUT CHECK FOR NEW WET OR DROUGHT START FIRST
-                    # GOTO 200 in pdinew.f
-                    df, X1, X2, X3, V, prob_ended = _compute_X(df, X1, X2, PV)
-                     
-                elif X3 > 0.5:   
-                    #         ----------------------- WE ARE IN A WET SPELL 
-                    if df.Z[_i] >= 0.15:   
-                        #              ------------------ THE WET SPELL INTENSIFIES 
-                        #GO TO 210 in pdinew.f
-                        df, X1, X2, X3, V, PV, prob_ended = _between_0s(df, X3)
-                        
-                    else:
-                        #             ------------------ THE WET STARTS TO ABATE (AND MAY END)  
-                        #GO TO 170 in pdinew.f
-                        df, X1, X2, X3, V, prob_ended = _wet_spell_abatement(df, V, prob_ended, X1, X2, X3)
-
-                elif X3 < -0.5:  
-                    #         ------------------------- WE ARE IN A DROUGHT
+            # "near normal" is defined as the range [-0.5 ... 0.5], Palmer 1965 p. 29
+            if abs(X3) <= 0.5:
+            #         ---------------------------------- END OF DROUGHT OR WET  
+                PV = 0.0 
+                df.PPR[_i] = 0.0 
+                df.PX3[_i] = 0.0 
+                #             ------------ BUT CHECK FOR NEW WET OR DROUGHT START FIRST
+                # GOTO 200 in pdinew.f
+                df, X1, X2, X3, V, prob_ended = _compute_X(df, X1, X2, PV)
+                 
+            elif X3 > 0.5:   
+                #         ----------------------- WE ARE IN A WET SPELL 
+                if df.Z[_i] >= 0.15:   
+                    #              ------------------ THE WET SPELL INTENSIFIES 
+                    #GO TO 210 in pdinew.f
+                    df, X1, X2, X3, V, PV, prob_ended = _between_0s(df, X3)
                     
-                    # in order to start to pull out of a drought the Z-Index for the month needs to be >= -0.15 (Palmer 1965, eq. 29)
-                    if df.Z[_i] <= -0.15:  #NOTE pdinew.f uses <= here, rather than <: "IF (Z(j,m).LE.-.15) THEN..."
-                        #              -------------------- THE DROUGHT INTENSIFIES 
-                        #GO TO 210
-                        df, X1, X2, X3, V, PV, prob_ended = _between_0s(df, X3)
-
-                    else:
-                        # Palmer 1965, p. 29: "any value of Z >= -0.15 will tend to end a drought"
-                        #             ------------------ THE DROUGHT STARTS TO ABATE (AND MAY END)  
-                        #GO TO 180
-                        df, X1, X2, X3, V, prob_ended = _dry_spell_abatement(df, V, X1, X2, X3, prob_ended)
-
-            else:
-                #     ------------------------------------------ABATEMENT IS UNDERWAY   
-                if X3 > 0.0:
-                    
-                    #         ----------------------- WE ARE IN A WET SPELL 
+                else:
+                    #             ------------------ THE WET STARTS TO ABATE (AND MAY END)  
                     #GO TO 170 in pdinew.f
                     df, X1, X2, X3, V, prob_ended = _wet_spell_abatement(df, V, prob_ended, X1, X2, X3)
+
+            elif X3 < -0.5:  
+                #         ------------------------- WE ARE IN A DROUGHT
                 
-                else:  # if X3 <= 0.0:
-                    
-                    #         ----------------------- WE ARE IN A DROUGHT   
+                # in order to start to pull out of a drought the Z-Index for the month needs to be >= -0.15 (Palmer 1965, eq. 29)
+                if df.Z[_i] <= -0.15:  #NOTE pdinew.f uses <= here, rather than <: "IF (Z(j,m).LE.-.15) THEN..."
+                    #              -------------------- THE DROUGHT INTENSIFIES 
+                    #GO TO 210
+                    df, X1, X2, X3, V, PV, prob_ended = _between_0s(df, X3)
+
+                else:
+                    # Palmer 1965, p. 29: "any value of Z >= -0.15 will tend to end a drought"
+                    #             ------------------ THE DROUGHT STARTS TO ABATE (AND MAY END)  
                     #GO TO 180
                     df, X1, X2, X3, V, prob_ended = _dry_spell_abatement(df, V, X1, X2, X3, prob_ended)
+
+        else:
+            #     ------------------------------------------ABATEMENT IS UNDERWAY   
+            if X3 > 0.0:
+                
+                #         ----------------------- WE ARE IN A WET SPELL 
+                #GO TO 170 in pdinew.f
+                df, X1, X2, X3, V, prob_ended = _wet_spell_abatement(df, V, prob_ended, X1, X2, X3)
+            
+            else:  # if X3 <= 0.0:
+                
+                #         ----------------------- WE ARE IN A DROUGHT   
+                #GO TO 180
+                df, X1, X2, X3, V, prob_ended = _dry_spell_abatement(df, V, X1, X2, X3, prob_ended)
 
     # clear out the remaining values from the backtracking array, if any are left, assigning into the indices arrays
     for x in range(_k8):
 
-        # turn the 2-D backtracking (years and months) indices into an 1-D series index
         # get the next backtrack month index
         y = df.index_i[x]
 
@@ -739,7 +720,7 @@ def _pdsi(P,
 
 #-----------------------------------------------------------------------------------------------------------------------
 # from label 190 in pdinew.f
-@profile
+#@profile
 def _get_PPR_PX3(df,
                  prob_ended,
                  Ze,
@@ -778,13 +759,8 @@ def _get_PPR_PX3(df,
     return df
 
 #-----------------------------------------------------------------------------------------------------------------------
-#TODO merge _wet_spell_abatement() and _dry_spell_abatement() into a single function with a flag argument 
-# to designate applicability to either a wet or a dry spell, since the code for the two functions is 
-# essentially the same except for a couple of places where there's a sign difference, etc.
-
-#-----------------------------------------------------------------------------------------------------------------------
 # from label 170 in pdinew.f
-@profile
+#@profile
 def _wet_spell_abatement(df,
                          V, 
                          prob_ended,
@@ -822,7 +798,7 @@ def _wet_spell_abatement(df,
 
 #-----------------------------------------------------------------------------------------------------------------------
 # from label 180 in pdinew.f
-@profile
+#@profile
 def _dry_spell_abatement(df,
                          V,   # accumulated effective wetness
                          X1, 
@@ -876,7 +852,7 @@ def _dry_spell_abatement(df,
     
 #-----------------------------------------------------------------------------------------------------------------------
 # label 200 in pdinew.f
-@profile
+#@profile
 def _compute_X(df,
                X1,
                X2,
@@ -1005,7 +981,7 @@ def _compute_X(df,
  
 #-----------------------------------------------------------------------------------------------------------------------
 # from label 210 in pdinew.f
-@profile
+#@profile
 def _between_0s(df,
                 X3):
     '''
@@ -1078,7 +1054,7 @@ def _between_0s(df,
     return df, X1, X2, X3, V, PV, prob_ended
 
 #-----------------------------------------------------------------------------------------------------------------------
-@profile
+#@profile
 def _assign(df,
             which_X):
 
@@ -1201,24 +1177,23 @@ def _assign(df,
             # assign the backtracking array's value for the current backtrack month as that month's final PDSI value
             df.PDSI[ix] = df.SX[n] 
  
-#             #!!!!!!!!!!!!!!!!!!!!!!!!     Debugging section below -- remove before deployment
-#             #
-#             # show backtracking array contents and describe differences if assigned value differs from expected
-#             tolerance = 0.01            
-#             if math.isnan(df.PDSI[ix]) or (abs(df.expected_pdsi[ix] - df.PDSI[ix]) > tolerance):
-#                 print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
-#                 print('\nBACKTRACKING  actual time step:  {0}\tBacktracking index: {1}'.format(_i, ix))
-#                 print('\tNumber of backtracking steps (_k8):  {0}'.format(_k8))
-#                 print('\tPDSI:  Expected {0:.2f}\n\t       Actual:  {1:.2f}'.format(df.expected_pdsi[ix], 
-#                                                                                    df.PDSI[ix]))
-#                 print('\nSX: {0}'.format(df.SX._values[0:_k8+1]))
-#                 print('SX1: {0}'.format(df.SX1._values[0:_k8+1]))
-#                 print('SX2: {0}'.format(df.SX2._values[0:_k8+1]))
-#                 print('SX3: {0}'.format(df.SX3._values[0:_k8+1]))
-#                 print('\niass: {0}'.format(which_X))
-#                 print('\nwhich_X: {0}'.format(which_X))
-#                 print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
-#             #!!!!!!!!!----------- cut here -------------------------------------------------------
+            #!!!!!!!!!!!!!!!!!!!!!!!!     Debugging section below -- remove before deployment
+            #
+            # show backtracking array contents and describe differences if assigned value differs from expected
+            tolerance = 0.01            
+            if math.isnan(df.PDSI[ix]) or (abs(df.expected_pdsi[ix] - df.PDSI[ix]) > tolerance):
+                print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
+                print('\nBACKTRACKING  actual time step:  {0}\tBacktracking index: {1}'.format(_i, ix))
+                print('\tNumber of backtracking steps (_k8):  {0}'.format(_k8))
+                print('\tPDSI:  Expected {0:.2f}\n\t       Actual:  {1:.2f}'.format(df.expected_pdsi[ix], 
+                                                                                   df.PDSI[ix]))
+                print('\nSX: {0}'.format(df.SX._values[0:_k8+1]))
+                print('SX1: {0}'.format(df.SX1._values[0:_k8+1]))
+                print('SX2: {0}'.format(df.SX2._values[0:_k8+1]))
+                print('SX3: {0}'.format(df.SX3._values[0:_k8+1]))
+                print('\nwhich_X: {0}'.format(which_X))
+                print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
+            #!!!!!!!!!----------- cut here -------------------------------------------------------
                      
             # the PHDI is X3 if not zero, otherwise use X
             #TODO literature reference for this?
@@ -1235,15 +1210,10 @@ def _assign(df,
         # reset the backtracking month count / array index 
         _k8 = 0
 
-#         #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!        
-#         # DEBUG -- EXPERIMENTAL -- REMOVE?
-#         df.index_i[_k8] = _i
-#         #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!        
-
     return df
 
 #-----------------------------------------------------------------------------------------------------------------------
-@profile
+#@profile
 def _case(PROB,
           X1,
           X2,
