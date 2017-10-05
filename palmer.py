@@ -2,6 +2,7 @@ import calendar
 from collections import deque
 import logging
 import math
+import profile
 import numba
 import numpy as np
 import thornthwaite
@@ -18,56 +19,6 @@ logger = logging.getLogger(__name__)
 #-----------------------------------------------------------------------------------------------------------------------
 _PDSI_MIN = -4.0
 _PDSI_MAX = 4.0
-
-#-----------------------------------------------------------------------------------------------------------------------
-def print_values(values,
-                 title):
-    
-    print(title)
-
-    # use divmod to determine whether or not we'll have an additional/partial year    
-    dmod = divmod(len(values), 12)
-    if dmod[1] > 0:
-        additional = 1
-    else:
-        additional = 0
-        
-    # print each year's values per line
-    np.set_printoptions(precision=3)
-    for i in range(dmod[0] + additional):
-        print(values[i*12:i*12 + 12])
-        
-#-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit
-def _pmdi(probability,
-         X1, 
-         X2, 
-         X3):
-    
-    # the index is near normal and either a dry or wet spell exists, choose the largest absolute value of X1 or X2
-    if X3 == 0:
-        
-        if abs(X2) > abs(X1):
-            _pmdi = X2
-        else:
-            _pmdi = X1   
-    
-    else:
-        if (probability > 0) and (probability < 100):
-    
-            PRO = probability / 100.0
-            if X3 <= 0:
-                # use the weighted sum of X3 and X1
-                _pmdi = ((1.0 - PRO) * X3) + (PRO * X1)
-            
-            else:
-                # use the weighted sum of X3 and X2
-                _pmdi = ((1.0 - PRO) * X3) + (PRO * X2)
-        else:
-            # a weather spell is established
-            _pmdi = X3
-
-    return _pmdi
 
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
@@ -985,6 +936,7 @@ def _wet_spell_abatement(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X,
     return Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT
 
 #-----------------------------------------------------------------------------------------------------------------------
+# comparable to the case() subroutine in original NCDC pdi.f 
 def _pmdi(probability,
           X1, 
           X2, 
