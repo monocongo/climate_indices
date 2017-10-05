@@ -116,6 +116,7 @@ def pdsi_from_climatology(precip_timeseries,
     return PDSI, PHDI, PMDI, Z, pedat
 
 #-----------------------------------------------------------------------------------------------------------------------
+@profile
 #@numba.jit   #TODO/FIXME numba compile not working as expected yet, AssertionError
 def _cafec_coefficients(P,
                         PET,
@@ -286,7 +287,7 @@ def _cafec_coefficients(P,
     return alpha, beta, delta, gamma, t_ratio
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit
+@profile
 def _climatic_characteristic(alpha,
                              beta,
                              gamma,
@@ -332,7 +333,8 @@ def _climatic_characteristic(alpha,
     return AK
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit
+@profile
+#@numba.jit
 def _water_balance(T,
                    P,
                    AWC,
@@ -521,6 +523,8 @@ def _water_balance(T,
     return pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, prodat, tdat, sssdat, ssudat
 
 #-----------------------------------------------------------------------------------------------------------------------
+@profile
+#@numba.jit
 def _zindex(alpha,
             beta,
             gamma,
@@ -576,6 +580,7 @@ def _zindex(alpha,
     return Z
 
 #-----------------------------------------------------------------------------------------------------------------------
+@profile
 def _pdsi(P,
           Z,
           K,
@@ -627,15 +632,9 @@ def _pdsi(P,
         # add the column to the DataFrame (as a Series)
         df[column_name] = pd.Series(column_array)
 
-    # add the year and month index columns used to keep track of which year/month index to use for the start of backtracking
-    column_names = ['index_j', 'index_m', 'index_i']
-    for column_name in column_names:
-        
-        # get the array corresponding to the current column
-        column_array = np.full(P.shape, 0, dtype=int).flatten()
-        
-        # add the column to the DataFrame (as a Series)
-        df[column_name] = pd.Series(column_array)
+    # add a month index column used to keep track of which month index to use for the start of backtracking
+    column_array = np.full(P.shape, 0, dtype=int).flatten()
+    df['index_i'] = pd.Series(column_array)
 
     # add the expected PDSI values so we can compare against these as we're debugging
     df['expected_pdsi'] = pd.Series(expected_pdsi.flatten())
@@ -660,23 +659,12 @@ def _pdsi(P,
 #             if _i == 62:
 #                 print('debug breakpoint')
             
-            # keep track of final backtracking index, this is meaningful once _k8 > 0
+            # keep track of final backtracking index, meaningful once _k8 > 0, where _k8 > 0 indicates that backtracking is required
             df.index_i[_k8] = _i
              
-            # these indices keep track of the latest year (j) and month (m) indices corresponding to
-            # the current backtracking index (_k8), where _k8 > 0 indicates that backtracking is required
-            df.index_j[_k8] = j
-            df.index_m[_k8] = m
-
             # original (all-caps) comments from pdinew.f, left in place to facilitate development
-            #TODO/FIXME update/replace
-            #-----------------------------------------------------------------------
-            #     LOOP FROM 160 TO 230 REREADS data FOR CALCULATION OF   
-            #     THE Z-INDEX (MOISTURE ANOMALY) AND PDSI (VARIABLE X). 
-            #     THE FINAL OUTPUTS ARE THE VARIABLES PX3, X, AND Z  WRITTEN
-            #     TO FILE 11.   
-            #-----------------------------------------------------------------------
-             
+
+            # if the percentage probability (PPR in Palmer 1965) is 100% or 0%               
             if prob_ended == 100.0 or prob_ended == 0.0:  
             #     ------------------------------------ NO ABATEMENT UNDERWAY
             #                                          WET OR DROUGHT WILL END IF   
@@ -749,13 +737,6 @@ def _pdsi(P,
         
         df.WPLM[y] = _case(df.PPR[y], df.PX1[y], df.PX2[y], df.PX3[y]) 
     
-    
-#     # DEBUG - TEST -- REMOVE
-#     # fill in with X wherever there is a NaN  
-#     pdsi = np.where(np.isnan(df.PDSI.values), df.X.values, df.PDSI.values)
-#     return pdsi, df.PHDI.values, df.WPLM.values
-#     #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!    
-
     # return the Palmer severity index values as 1-D arrays
     return df.PDSI.values, df.PHDI.values, df.WPLM.values
 
@@ -834,17 +815,11 @@ def _wet_spell_abatement(df,
         # compute the PPR and PX3 values    
         df = _get_PPR_PX3(df, prob_ended, Ze, V, PV, X3)  # label 190 in pdinew.f
         
-        # EXPERIMENTAL - DEBUG -- REMOVE?        
         # continue at label 200 in pdinew.f
         # recompute the X values and other intermediates
         df, X1, X2, X3, V, prob_ended = _compute_X(df, X1, X2, PV)
 
-    # EXPERIMENTAL - DEBUG -- REMOVE?        
     return df, X1, X2, X3, V, prob_ended
-
-#     # continue at label 200 in pdinew.f
-#     # recompute the X values and other intermediates
-#     return _compute_X(df, X1, X2, PV)
 
 #-----------------------------------------------------------------------------------------------------------------------
 # from label 180 in pdinew.f
@@ -893,19 +868,12 @@ def _dry_spell_abatement(df,
         # and the severity index for the established spell (PX3)
         df = _get_PPR_PX3(df, prob_ended, Ze, V, PV, X3)  # label 190 in pdinew.f
         
-        # EXPERIMENTAL - DEBUG -- REMOVE?        
         # continue at label 200 in pdinew.f
         # recompute the X values and other intermediates
         df, X1, X2, X3, V, prob_ended = _compute_X(df, X1, X2, PV)
 
-    # EXPERIMENTAL - DEBUG -- REMOVE?        
     return df, X1, X2, X3, V, prob_ended
     
-    #ORIGINAL, outside of abatement underway condition, perhaps in error
-#     # continue at label 200 in pdinew.f
-#     # recompute the X values and other intermediates
-#     return _compute_X(df, X1, X2, PV)
-
 #-----------------------------------------------------------------------------------------------------------------------
 # label 200 in pdinew.f
 def _compute_X(df,
@@ -928,12 +896,10 @@ def _compute_X(df,
     df.PX1[_i] = (0.897 * X1) + (df.Z[_i] / 3.0)
     df.PX1[_i] = max(df.PX1[_i], 0.0)
 
-    # EXPERIMENTAL/DEBUG -- REMOVE
     # let's see if pre-computing the PX2 value here prevents us from getting into the error condition where we end up with a NaN for X2 
     df.PX2[_i] = (0.897 * X2) + (df.Z[_i] / 3.0)
     df.PX2[_i] = min(df.PX2[_i], 0.0)   
 
-        
     #TODO explain these conditionals, refer to literature
     if df.PX1[_i] >= 1.0:   
         
@@ -955,8 +921,7 @@ def _compute_X(df,
 
             return df, X1, X2, X3, V, prob_ended
             
-    df.PX2[_i] = (0.897 * X2) + (df.Z[_i] / 3.0)
-    df.PX2[_i] = min(df.PX2[_i], 0.0)   
+    #TODO explain these conditionals, refer to literature
     if df.PX2[_i] <= -1.0:  
         
         if df.PX3[_i] == 0.0:   
@@ -977,6 +942,7 @@ def _compute_X(df,
 
             return df, X1, X2, X3, V, prob_ended
             
+    #TODO explain these conditionals, refer to literature
     if df.PX3[_i] == 0.0:   
         #    -------------------- NO ESTABLISHED DROUGHT (WET SPELL), BUT X3=0  
         #                         SO EITHER (NONZERO) X1 OR X2 MUST BE USED AS X3   
@@ -1149,9 +1115,22 @@ def _assign(df,
 
     else:  # perform backtracking
         
+        #-------------------------------------------------------------------------------------------------------
+        # Here we're filling an array (SX) with the final PDSI values for each 
+        # of the months that are being back filled as part of the backtracking process.
+        # Each month has had three X values computed and stored in the SX? arrays,
+        # and based on which of these is specified we'll fill the SX array with the
+        # stored X values appropriate for the month. In the case of either X1 or X2 
+        # then we'll first check to make sure the X value has not gone to zero, 
+        # which indicates a state change and which flips the X that'll be saved 
+        # for the month and subsequent months until the value goes to zero (at which 
+        # point it would flip again).   
+        #-------------------------------------------------------------------------------------------------------
+        
         if which_X == 3:  
             #     ---------------- USE ALL X3 VALUES
 
+            # fill the stored backtrack values array (SX) with the stored X3 values for all the backtracked months
             for Mm in range(_k8):
         
                 df.SX[Mm] = df.SX3[Mm]  # label 10 in assign() within pdinew.f
@@ -1160,8 +1139,16 @@ def _assign(df,
             #     -------------- BACKTRACK THRU ARRAYS, STORING ASSIGNED X1 (OR X2) 
             #                    IN SX UNTIL IT IS ZERO, THEN SWITCHING TO THE OTHER
             #                    UNTIL IT IS ZERO, ETC.
+            
+            # loop from the final month of the backtracking stack through to the first 
             for Mm in range(_k8 - 1, -1, -1):  # corresponds with line 1100 in pdinew.f
 
+                #-------------------------------------------------------------------------------------------------------
+                # Based on which of the X values we're told to store we first check to make sure that it's non-zero,
+                # and if so then it's stored in SX, otherwise we start using the other X until it too becomes zero, 
+                # at which time the X being used (which_X) switches again, and so on.
+                #-------------------------------------------------------------------------------------------------------
+                
                 if which_X == 1: # then GO TO 20 in pdinew.f
                     
                     # we should assign the stored X1 values into the main backtracking array until 
@@ -1193,53 +1180,42 @@ def _assign(df,
                     else:
                         
                         # assign the stored X2 into this backtrack month's position within the main backtracking array
-                        df.SX[Mm] = df.SX2[Mm]
-    
-        
+                        df.SX[Mm] = df.SX2[Mm]    
+            
         # label 70 from pdinew.f
         #-----------------------------------------------------------------------
         #     PROPER ASSIGNMENTS TO ARRAY SX HAVE BEEN MADE,
         #     OUTPUT THE MESS   
         #-----------------------------------------------------------------------
          
-#         #!!!!! DEBUG -- REMOVE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!    
-#         if _k8 > 0:
-#             print('BACKTRACKING IS HAPPENING ---  _k8: {0}'.format(_k8))
-#         #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!    
-             
         # assignment of stored X values as the final Palmer index values for the unassigned/backtracking months 
         for n in range(_k8 + 1):  # this matches with pdinew.f line 1116 label 70 in assign() subroutine, DO 80 N = 1,K8
-#         for n in range(1, _k8 + 1):  # EXPERIMENTAL/DEBUG -- REMOVE (by starting the index at 1 instead of default 0 
-#                                      # we get errors much later in the process than we were seeing before, this may be 
-#                                      # revealing that there's an off-by-one error somewhere previous in the code and 
-#                                      # this kludge is the fix? Obviously not complete solution since our errors still show up
                      
             # get the 1-D index equivalent to the j/m index for the final arrays 
             # (PDSI, PHDI, etc.) that we'll assign to in the backtracking process
-#             ix = (df.index_j[n] * 12) + df.index_m[n]   # ORIGINAL
             ix = df.index_i[n]  # EXPERIMENTAL DEBUG --REMOVE?
              
             # assign the backtracking array's value for the current backtrack month as that month's final PDSI value
             df.PDSI[ix] = df.SX[n] 
  
-#             #!!!!!!!!!!!!!!!!!!!!!!!!     Debugging section below -- remove before deployment
-#             #
-#             # show backtracking array contents and describe differences if assigned value differs from expected
-#             tolerance = 0.01            
-#             if math.isnan(df.PDSI[ix]) or (abs(df.expected_pdsi[ix] - df.PDSI[ix]) > tolerance):
-#                 print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
-#                 print('\nBACKTRACKING  actual time step:  {0}\tBacktracking index: {1}'.format(_i, ix))
-#                 print('\tNumber of backtracking steps (_k8):  {0}'.format(_k8))
-#                 print('\tPDSI:  Expected {0:.2f}\n\t       Actual:  {1:.2f}'.format(df.expected_pdsi[ix], 
-#                                                                                    df.PDSI[ix]))
-#                 print('\nSX: {0}'.format(df.SX._values[0:_k8+1]))
-#                 print('SX1: {0}'.format(df.SX1._values[0:_k8+1]))
-#                 print('SX2: {0}'.format(df.SX2._values[0:_k8+1]))
-#                 print('SX3: {0}'.format(df.SX3._values[0:_k8+1]))
-#                 print('\niass: {0}'.format(which_X))
-#                 print('\nwhich_X: {0}'.format(which_X))
-#                 print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
-#             #!!!!!!!!!----------- cut here -------------------------------------------------------
+            #!!!!!!!!!!!!!!!!!!!!!!!!     Debugging section below -- remove before deployment
+            #
+            # show backtracking array contents and describe differences if assigned value differs from expected
+            tolerance = 0.01            
+            if math.isnan(df.PDSI[ix]) or (abs(df.expected_pdsi[ix] - df.PDSI[ix]) > tolerance):
+                print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
+                print('\nBACKTRACKING  actual time step:  {0}\tBacktracking index: {1}'.format(_i, ix))
+                print('\tNumber of backtracking steps (_k8):  {0}'.format(_k8))
+                print('\tPDSI:  Expected {0:.2f}\n\t       Actual:  {1:.2f}'.format(df.expected_pdsi[ix], 
+                                                                                   df.PDSI[ix]))
+                print('\nSX: {0}'.format(df.SX._values[0:_k8+1]))
+                print('SX1: {0}'.format(df.SX1._values[0:_k8+1]))
+                print('SX2: {0}'.format(df.SX2._values[0:_k8+1]))
+                print('SX3: {0}'.format(df.SX3._values[0:_k8+1]))
+                print('\niass: {0}'.format(which_X))
+                print('\nwhich_X: {0}'.format(which_X))
+                print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
+            #!!!!!!!!!----------- cut here -------------------------------------------------------
                      
             # the PHDI is X3 if not zero, otherwise use X
             #TODO literature reference for this?
@@ -1256,10 +1232,10 @@ def _assign(df,
         # reset the backtracking month count / array index 
         _k8 = 0
 
-        #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!        
-        # DEBUG -- EXPERIMENTAL -- REMOVE?
-        df.index_i[_k8] = _i
-        #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!        
+#         #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!        
+#         # DEBUG -- EXPERIMENTAL -- REMOVE?
+#         df.index_i[_k8] = _i
+#         #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!        
 
     return df
 
