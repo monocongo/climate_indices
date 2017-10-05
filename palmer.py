@@ -2081,16 +2081,6 @@ def pdsi(precip_time_series,
         # perform water balance accounting
         ET, PR, R, RO, PRO, L, PL = _water_balance(awc, pet_time_series, precip_time_series)
         
-#         # for debugging, print out the water balance variables
-#         print('\nWater Balance variables\n')
-#         print_values(ET, 'ET')
-#         print_values(PR, 'Potential Recharge: ')
-#         print_values(R, 'Recharge: ')
-#         print_values(RO, 'Runoff')
-#         print_values(PRO, 'Potential Runoff: ')
-#         print_values(L, 'Loss')
-#         print_values(PL, 'Potential Loss: ')
-        
         # if we have input time series (precipitation and PET) with an incomplete 
         # final year then we pad all the time series arrays with NaN values
         pad_months = 12 - (precip_time_series.size % 12)
