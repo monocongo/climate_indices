@@ -41,6 +41,7 @@ logger = logging.getLogger(__name__)
 np.set_printoptions(formatter={'float': lambda x: "{0:.2f}".format(x)})
 
 #-----------------------------------------------------------------------------------------------------------------------
+@profile
 def pdsi_from_climatology(precip_timeseries,
                           temp_timeseries,
                           awc,
@@ -599,10 +600,6 @@ def _pdsi(P,
     # reshape the precipitation array to (total # of years, 12)
     P = utils.reshape_to_years_months(P)
     
-#     #DEBUG ONLY -- REMOVE
-#     # reshape the expected PDSI to match with others (in case of mismatch)
-#     expected_pdsi = np.reshape(expected_pdsi, P.shape)
-    
     # initialize some effective wetness values (previous and current)
     PV = 0.0
     V = 0.0
@@ -742,6 +739,7 @@ def _pdsi(P,
 
 #-----------------------------------------------------------------------------------------------------------------------
 # from label 190 in pdinew.f
+@profile
 def _get_PPR_PX3(df,
                  prob_ended,
                  Ze,
@@ -786,6 +784,7 @@ def _get_PPR_PX3(df,
 
 #-----------------------------------------------------------------------------------------------------------------------
 # from label 170 in pdinew.f
+@profile
 def _wet_spell_abatement(df,
                          V, 
                          prob_ended,
@@ -823,6 +822,7 @@ def _wet_spell_abatement(df,
 
 #-----------------------------------------------------------------------------------------------------------------------
 # from label 180 in pdinew.f
+@profile
 def _dry_spell_abatement(df,
                          V,   # accumulated effective wetness
                          X1, 
@@ -876,6 +876,7 @@ def _dry_spell_abatement(df,
     
 #-----------------------------------------------------------------------------------------------------------------------
 # label 200 in pdinew.f
+@profile
 def _compute_X(df,
                X1,
                X2,
@@ -1004,6 +1005,7 @@ def _compute_X(df,
  
 #-----------------------------------------------------------------------------------------------------------------------
 # from label 210 in pdinew.f
+@profile
 def _between_0s(df,
                 X3):
     '''
@@ -1076,6 +1078,7 @@ def _between_0s(df,
     return df, X1, X2, X3, V, PV, prob_ended
 
 #-----------------------------------------------------------------------------------------------------------------------
+@profile
 def _assign(df,
             which_X):
 
@@ -1198,24 +1201,24 @@ def _assign(df,
             # assign the backtracking array's value for the current backtrack month as that month's final PDSI value
             df.PDSI[ix] = df.SX[n] 
  
-            #!!!!!!!!!!!!!!!!!!!!!!!!     Debugging section below -- remove before deployment
-            #
-            # show backtracking array contents and describe differences if assigned value differs from expected
-            tolerance = 0.01            
-            if math.isnan(df.PDSI[ix]) or (abs(df.expected_pdsi[ix] - df.PDSI[ix]) > tolerance):
-                print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
-                print('\nBACKTRACKING  actual time step:  {0}\tBacktracking index: {1}'.format(_i, ix))
-                print('\tNumber of backtracking steps (_k8):  {0}'.format(_k8))
-                print('\tPDSI:  Expected {0:.2f}\n\t       Actual:  {1:.2f}'.format(df.expected_pdsi[ix], 
-                                                                                   df.PDSI[ix]))
-                print('\nSX: {0}'.format(df.SX._values[0:_k8+1]))
-                print('SX1: {0}'.format(df.SX1._values[0:_k8+1]))
-                print('SX2: {0}'.format(df.SX2._values[0:_k8+1]))
-                print('SX3: {0}'.format(df.SX3._values[0:_k8+1]))
-                print('\niass: {0}'.format(which_X))
-                print('\nwhich_X: {0}'.format(which_X))
-                print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
-            #!!!!!!!!!----------- cut here -------------------------------------------------------
+#             #!!!!!!!!!!!!!!!!!!!!!!!!     Debugging section below -- remove before deployment
+#             #
+#             # show backtracking array contents and describe differences if assigned value differs from expected
+#             tolerance = 0.01            
+#             if math.isnan(df.PDSI[ix]) or (abs(df.expected_pdsi[ix] - df.PDSI[ix]) > tolerance):
+#                 print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
+#                 print('\nBACKTRACKING  actual time step:  {0}\tBacktracking index: {1}'.format(_i, ix))
+#                 print('\tNumber of backtracking steps (_k8):  {0}'.format(_k8))
+#                 print('\tPDSI:  Expected {0:.2f}\n\t       Actual:  {1:.2f}'.format(df.expected_pdsi[ix], 
+#                                                                                    df.PDSI[ix]))
+#                 print('\nSX: {0}'.format(df.SX._values[0:_k8+1]))
+#                 print('SX1: {0}'.format(df.SX1._values[0:_k8+1]))
+#                 print('SX2: {0}'.format(df.SX2._values[0:_k8+1]))
+#                 print('SX3: {0}'.format(df.SX3._values[0:_k8+1]))
+#                 print('\niass: {0}'.format(which_X))
+#                 print('\nwhich_X: {0}'.format(which_X))
+#                 print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
+#             #!!!!!!!!!----------- cut here -------------------------------------------------------
                      
             # the PHDI is X3 if not zero, otherwise use X
             #TODO literature reference for this?
@@ -1240,6 +1243,7 @@ def _assign(df,
     return df
 
 #-----------------------------------------------------------------------------------------------------------------------
+@profile
 def _case(PROB,
           X1,
           X2,

@@ -25,6 +25,10 @@ def main():
 
     try:
 
+        # FOR DEBUG/DEVELOPMENT ONLY -- REMOVE
+        _limit_counter = 0
+        _LIMIT = 10
+        
         # parse the command line arguments
         parser = argparse.ArgumentParser()
         parser.add_argument("--input_file", 
@@ -49,7 +53,12 @@ def main():
 
             # read the temperature, precipitation, latitude and AWC for each division
             for division_index, division_id in enumerate(list(input_dataset.variables['division'][:])):
-                
+        
+                # FOR DEBUG/DEVELOPMENT ONLY -- REMOVE
+                if _limit_counter > _LIMIT:
+                    break
+                _limit_counter += 1
+                    
                 # get the data for this division
                 precip_timeseries = input_dataset.variables[args.precip_var_name][division_index, :]
                 temp_timeseries = input_dataset.variables[args.temp_var_name][division_index, :]
