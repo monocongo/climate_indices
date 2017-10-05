@@ -5,6 +5,19 @@ import math
 import pandas as pd
 import sys
 
+'''
+run with arguments like below:
+
+--temp_file C:/home/data/nclimdiv/climdiv-tmpcdv-v1.0.0-20170906 
+--precip_file C:/home/data/nclimdiv/climdiv-pcpndv-v1.0.0-20170906 
+--pdsi_file C:/home/data/nclimdiv/climdiv-pdsidv-v1.0.0-20170906 
+--phdi_file C:/home/data/nclimdiv/climdiv-phdidv-v1.0.0-20170906 
+--pmdi_file C:/home/data/nclimdiv/climdiv-pmdidv-v1.0.0-20170906 
+--zindex_file C:/home/data/nclimdiv/climdiv-zndxdv-v1.0.0-20170906 
+--soil_file C:/home/data/nclimdiv/pdinew.soilconst 
+--out_file C:/home/data/nclimdiv/climdiv-climdv-v1.0.0-20170906.nc
+
+'''
 #-----------------------------------------------------------------------------
 # set up a basic, global logger which will write to the console as standard error
 logging.basicConfig(level=logging.INFO,
@@ -130,6 +143,10 @@ def add_variable_to_netcdf(variable_file_ascii,
 def main(temp_file,
          precip_file,
          soil_file,
+         pdsi_file,
+         phdi_file,
+         pmdi_file,
+         zindex_file,
          out_file):
 
     # parse the temperature and precipitation files to NetCDF
@@ -145,11 +162,35 @@ def main(temp_file,
                            'millimeters',
                            out_file,
                            False)
+    add_variable_to_netcdf(pdsi_file,
+                           'pdsi.index', 
+                           'PDSI from NCEI', 
+                           'no units',
+                           out_file,
+                           False)
+    add_variable_to_netcdf(phdi_file,
+                           'phdi.index', 
+                           'PHDI from NCEI', 
+                           'no units',
+                           out_file,
+                           False)
+    add_variable_to_netcdf(pmdi_file,
+                           'pmdi.index', 
+                           'PMDI from NCEI', 
+                           'no units',
+                           out_file,
+                           False)
+    add_variable_to_netcdf(zindex_file,
+                           'z.index', 
+                           'Z-Index from NCEI', 
+                           'no units',
+                           out_file,
+                           False)
     
     # parse the soil constant (available water capacity, lower level) and latitude for the divisions
     divs_to_awc, divs_to_lats, divs_to_Bs, divs_to_Hs = parse_soil(soil_file)
 
-    # create variables for AWC and latitude
+    # create variables for AWC, latitude, B, and H
     variable_attributes =  {'long_name': 'Available water capacity',
                             'standard_name': 'awc',
                             'units': 'inches'}
@@ -214,12 +255,24 @@ if __name__ == '__main__':
         parser.add_argument("--soil_file", 
                             help="ASCII file with available water capacity (AWC) and latitude values", 
                             required=True)
+        parser.add_argument("--pdsi_file", 
+                            help="ASCII file with PDSI values", 
+                            required=True)
+        parser.add_argument("--phdi_file", 
+                            help="ASCII file with PHDI values", 
+                            required=True)
+        parser.add_argument("--pmdi_file", 
+                            help="ASCII file with PMDI values", 
+                            required=True)
+        parser.add_argument("--zindex_file", 
+                            help="ASCII file with Z-Index values", 
+                            required=True)
         parser.add_argument("--out_file", 
                             help="NetCDF output file containing variables composed from the input data and soil files", 
                             required=True)
         args = parser.parse_args()
 
-        main(args.temp_file, args.precip_file, args.soil_file, args.out_file)
+        main(args.temp_file, args.precip_file, args.soil_file, args.pdsi_file, args.phdi_file, args.pmdi_file, args.zindex_file, args.out_file)
                 
     except:
     
