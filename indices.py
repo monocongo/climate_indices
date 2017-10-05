@@ -28,8 +28,6 @@ def spi_gamma(precips,
     
     :param precips: monthly precipitation values, in any units, first value assumed to correspond to January of the initial year
     :param months_scale: number of months over which the values should be scaled before the index is computed
-    :param valid_min: lower limit of the resulting index
-    :param valid_max: upper limit of the resulting index
     :return monthly SPI values fitted to the gamma distribution at the specified time scale, unitless
     :rtype: 1-D numpy.ndarray of floats corresponding in length to the input array of monthly precipitation values
     '''
@@ -148,6 +146,9 @@ def spei_gamma(months_scale,
             logger.error(message)
             raise ValueError(message)
 
+        # compute PET
+        pet_mm = pet(temps_celsius, latitude_degrees, data_start_year)
+
     elif pet_mm != None:
         
         # since we have PET as input we shouldn't have temperature as an input
@@ -169,11 +170,6 @@ def spei_gamma(months_scale,
             logger.error(message)
             raise ValueError(message)
 
-    # compute PET, if required
-    if temps_celsius != None:
-
-        pet_mm = pet(temps_celsius, latitude_degrees, data_start_year)
-    
     # subtract the PET from precipitation, adding an offset to ensure that all values are positive
     p_minus_pet = (precips_mm - pet_mm) + 1000.0
         
@@ -258,6 +254,9 @@ def spei_pearson(months_scale,
             logger.error(message)
             raise ValueError(message)
 
+        # compute PET
+        pet_mm = pet(temps_celsius, latitude_degrees, data_start_year)
+
     elif pet_mm != None:
         
         # since we have PET as input we shouldn't have temperature as an input
@@ -267,9 +266,9 @@ def spei_pearson(months_scale,
             raise ValueError(message)
         
         # make sure there's no confusion by not allowing a user to specify unnecessary parameters 
-        elif (latitude_degrees != None) or (data_start_year != None):
-            message = 'Extraneous arguments: since PET is provided as an input then both latitude ' + \
-                      'and the data start year must not also be specified, and one or both is.'
+        elif latitude_degrees != None:
+            message = 'Extraneous arguments: since PET is provided as an input then latitude ' + \
+                      'must not also be specified.'
             logger.error(message)
             raise ValueError(message)
             
@@ -278,11 +277,6 @@ def spei_pearson(months_scale,
             message = 'Incompatible precipitation and PET arrays'
             logger.error(message)
             raise ValueError(message)
-
-    # compute PET, if required
-    if temps_celsius != None:
-
-        pet_mm = pet(temps_celsius, latitude_degrees, data_start_year)
     
     # subtract the PET from precipitation, adding an offset to ensure that all values are positive
     p_minus_pet = (precips_mm - pet_mm) + 1000.0
@@ -424,25 +418,26 @@ def percentage_of_normal(monthly_values,
     return percentages_of_normal
     
 #-------------------------------------------------------------------------------------------------------------------------------------------
-def pet(temp_monthly_values,
+def pet(temperature_monthly_celsius,
         latitude_degrees,
         data_start_year):
 
     '''
     This function computes potential evapotranspiration (PET) using Thornthwaite's equation.
     
-    :param temp_monthly_values: an array of monthly average temperature values, in degrees Celsius
-    :param latitude_degrees: the latitude of the location, in degrees north
+    :param temperature_monthly_celsius: an array of monthly average temperature values, in degrees Celsius
+    :param latitude_degrees: the latitude of the location, in degrees north, must be within range [-90.0 ... 90.0] (inclusive), otherwise 
+                             a ValueError is raised
     :param data_start_year: the initial year of the input dataset
     :return: an array of PET values, of the same size and shape as the input temperature values array, in millimeters/month
     :rtype: 1-D numpy.ndarray of floats
     '''
-    if not np.all(np.isnan(temp_monthly_values)):
+    if not np.all(np.isnan(temperature_monthly_celsius)):
         
-        if not np.isnan(latitude_degrees) and latitude_degrees < 90.0 and latitude_degrees > -90.0:
+        if not np.isnan(latitude_degrees) and (latitude_degrees < 90.0) and (latitude_degrees > -90.0):
         
             # compute and return the PET values using Thornthwaite's equation
-            return thornthwaite.potential_evapotranspiration(temp_monthly_values, latitude_degrees, data_start_year)
+            return thornthwaite.potential_evapotranspiration(temperature_monthly_celsius, latitude_degrees, data_start_year)
         
         else:
             message = 'Invalid latitude value: {0} (must be in degrees north, between -90.0 and 90.0 inclusive)'.format(latitude_degrees)
@@ -451,6 +446,6 @@ def pet(temp_monthly_values,
         
     else:
         
-        # we started with all NaNs, so just return the same
-        return temp_monthly_values
+        # we started with all NaNs for the temperature, so just return the same
+        return temperature_monthly_celsius
         

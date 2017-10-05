@@ -3,43 +3,17 @@ import math
 from math import exp, lgamma, log, pi, sqrt
 from numba import float64, int32, jit
 import numpy as np
-import scipy
+import scipy.special
+import scipy.stats
+import utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global logger
-logging.basicConfig(level=logging.INFO,
+logging.basicConfig(level=logging.WARN,
                     format='%(asctime)s %(levelname)s %(message)s',
                     datefmt='%Y-%m-%d  %H:%M:%S')
 logger = logging.getLogger(__name__)
 
-#-----------------------------------------------------------------------------------------------------------------------
-@jit
-def _reshape_to_years_months(monthly_values):
-    '''
-    :param monthly_values: 1-D array of monthly values, assumed to start at January
-    :return: the original monthly values reshaped to 2-D, with each row representing a full year, with shape (years, 12)
-    :rtype: 2-D numpy.ndarray of floats
-    '''
-    
-    # make sure that we've been passed in a flat (1-D) array of values    
-    if len(monthly_values.shape) != 1:
-        message = 'Values array has an invalid shape: {}'.format(monthly_values.shape)
-        logger.error(message)
-        raise ValueError(message)
-
-    # pad the final months of the final year, if necessary
-    final_year_months = monthly_values.shape[0] % 12
-    if final_year_months > 0:
-        pad_months = 12 - final_year_months
-        pad_values = np.full((pad_months,), np.NaN)
-        monthly_values = np.append(monthly_values, pad_values)
-        
-    # we should have an ordinal number of years now (ordinally divisible by 12)
-    total_years = int(monthly_values.shape[0] / 12)
-    
-    # reshape from (months) to (years, 12) in order to have one year of months per row
-    return np.reshape(monthly_values, (total_years, 12))
-            
 #-----------------------------------------------------------------------------------------------------------------------
 @jit
 def sum_to_scale(values,
@@ -329,7 +303,7 @@ def _pearson3cdf(value,
     if abs(skew) <= 1e-6:
     
         z = (value - pearson3_parameters[0]) / pearson3_parameters[1]
-        return 0.5 + (0.5 * error_function(z * sqrt(0.5)))
+        return 0.5 + (0.5 * _error_function(z * sqrt(0.5)))
     
     alpha = 4.0 / (skew * skew)
     x = ((2.0 * (value - pearson3_parameters[0])) / (pearson3_parameters[1] * skew)) + alpha
@@ -351,6 +325,64 @@ def _pearson3cdf(value,
         else:
         
             result = np.NaN
+
+    return result
+
+#----------------------------------------------------------------------------------------------------------------------
+@jit(float64(float64))
+def _error_function(value):
+    '''
+    TODO
+    
+    :param value:
+    :return:  
+    '''
+    
+    result = 0.0
+    if value != 0.0:
+
+        absValue = abs(value)
+
+        if absValue > 6.25:
+            if value < 0:
+                result = -1.0
+            else:
+                result = 1.0
+        else:
+            exponential = exp(value * value * (-1))
+            sqrtOfTwo = sqrt(2.0)
+            zz = abs(value * sqrtOfTwo)
+            if absValue > 5.0:
+                # alternative error function calculation for when the input value is in the critical range
+                result = exponential * (sqrtOfTwo / pi) / \
+                                         (absValue + 1 / (zz + 2 / (zz + 3 / (zz + 4 / (zz + 0.65)))))
+
+            else:
+                # coefficients of rational-function approximation
+                P0 = 220.2068679123761
+                P1 = 221.2135961699311
+                P2 = 112.0792914978709
+                P3 = 33.91286607838300
+                P4 = 6.373962203531650
+                P5 = 0.7003830644436881
+                P6 = 0.03526249659989109
+                Q0 = 440.4137358247522
+                Q1 = 793.8265125199484
+                Q2 = 637.3336333788311
+                Q3 = 296.5642487796737
+                Q4 = 86.78073220294608
+                Q5 = 16.06417757920695
+                Q6 = 1.755667163182642
+                Q7 = 0.08838834764831844
+
+                # calculate the error function from the input value and constant values
+                result = exponential * ((((((P6 * zz + P5) * zz + P4) * zz + P3) * zz + P2) * zz + P1) * zz + P0) /  \
+                         (((((((Q7 * zz + Q6) * zz + Q5) * zz + Q4) * zz + Q3) * zz + Q2) * zz + Q1) * zz + Q0)
+
+            if value > 0.0:
+                result = 1 - result
+            elif value < 0:
+                result = result - 1.0
 
     return result
 
@@ -380,7 +412,7 @@ def transform_fitted_pearson(monthly_values,
     if len(monthly_values.shape) == 1:
         
         # we've been passed a 1-D array with shape (months), reshape it to 2-D with shape (years, 12)
-        monthly_values = _reshape_to_years_months(monthly_values)
+        monthly_values = utils.reshape_to_years_months(monthly_values)
     
     elif (len(monthly_values.shape) != 2) or monthly_values.shape[1] != 12:
      
@@ -468,7 +500,7 @@ def transform_fitted_gamma(monthly_values):
     if len(monthly_values.shape) == 1:
         
         # we've been passed a 1-D array with shape (months), reshape it to 2-D with shape (years, 12)
-        monthly_values = _reshape_to_years_months(monthly_values)
+        monthly_values = utils.reshape_to_years_months(monthly_values)
     
     elif (len(monthly_values.shape) != 2) or monthly_values.shape[1] != 12:
      
