@@ -1,11 +1,9 @@
 import argparse
 import logging
-import math
 import netCDF4
 import numpy as np
 import palmer
 import pdinew
-import utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global logger which will write to the console as standard error
@@ -246,7 +244,7 @@ def main():
 #                     for i in offending_indices[0]:
 #                         print('{0}  Expected:  {1}   Actual: {2}'.format(i, K[i], AK[i]))
  
- #TODO add Z-Index comparison here, using the pdinew._zindex() and palmer._Z_index() functions
+#TODO add Z-Index comparison here, using the pdinew._zindex() and palmer._Z_index() functions
   
                 # get the expected/target values from the NetCDF
                 expected_pdsi = input_dataset.variables['pdsi.index'][division_index, :]
@@ -255,51 +253,51 @@ def main():
                 expected_zindex = input_dataset.variables['z.index'][division_index, :]
                 
                 # compute PDSI etc. using PDSI code translated from pdinew.f
-                pdinew_PDSI, pdinew_PHDI, pdinew_PMDI, pdinew_Z = pdinew.pdsi_from_climatology(precip_timeseries,
-                                                                                               temp_timeseries,
-                                                                                               awc,
-                                                                                               latitude,
-                                                                                               B,
-                                                                                               H,
-                                                                                               data_begin_year,
-                                                                                               calibration_begin_year,
-                                                                                               calibration_end_year,
-                                                                                               expected_pdsi)
-                
+                pdinew_PDSI, pdinew_PHDI, pdinew_PMDI, pdinew_Z, PET = pdinew.pdsi_from_climatology(precip_timeseries,
+                                                                                                    temp_timeseries,
+                                                                                                    awc,
+                                                                                                    latitude,
+                                                                                                    B,
+                                                                                                    H,
+                                                                                                    data_begin_year,
+                                                                                                    calibration_begin_year,
+                                                                                                    calibration_end_year,
+                                                                                                    expected_pdsi)
+                 
                 # find the differences between the new (Matlab-derived) and previous (Fortran-derived) versions
                 pdsi_diffs = pdinew_PDSI.flatten() - expected_pdsi
                 phdi_diffs = pdinew_PHDI.flatten() - expected_phdi
                 pmdi_diffs = pdinew_PMDI.flatten() - expected_pmdi
                 zindex_diffs = pdinew_Z.flatten() - expected_zindex
-            
+             
                 # dictionary of variable names to corresponding arrays of differences to facilitate looping below
                 varnames_to_arrays = {'PDSI': (pdsi_diffs, expected_pdsi, pdinew_PDSI),
-#                                       'PHDI': (phdi_diffs, expected_phdi, pdinew_PHDI),
-#                                       'PMDI': (pmdi_diffs, expected_pmdi, pdinew_PMDI),
+                                      'PHDI': (phdi_diffs, expected_phdi, pdinew_PHDI),
+                                      'PMDI': (pmdi_diffs, expected_pmdi, pdinew_PMDI),
                                       'Z-INDEX': (zindex_diffs, expected_zindex, pdinew_Z) }
-
+ 
                 # we want to see all zero differences, if any non-zero differences exist then raise an alert
                 zeros = np.zeros(pdsi_diffs.shape)
                 for varname, array_tuple in varnames_to_arrays.items():
-                    
+                     
                     diffs_array = array_tuple[0]
                     expected = array_tuple[1]
                     actual = array_tuple[2]
-                    
+                     
                     if not np.allclose(diffs_array, zeros, atol=tolerance, equal_nan=True):
                         logger.warn('Division {0}: Comparing new Palmer (pdinew.py) against '.format(division_id) + \
                                     'operational pdinew.f: \nNon-matching values for {0}'.format(varname))
                         offending_indices = np.where(abs(diffs_array) > tolerance)
-                        non_offending_indices = np.where(abs(diffs_array) <= tolerance)
+#                         non_offending_indices = np.where(abs(diffs_array) <= tolerance)
                         nan_indices = np.where(actual is np.NaN)
                         logger.warn('Time steps with NaN ({0}): {1}'.format(np.isnan(actual).sum(), nan_indices))
                         logger.warn('Time steps with significant differences ({0}): {1}'.format(len(offending_indices[0]), offending_indices[0])) 
-                       
+                        
 #                         for i in offending_indices[0]:
 #                             
 #                             print('{0}  Expected:  {1}   Actual: {2}'.format(i, expected[i], actual[i]))
 
-#                 # compute PDSI etc. using new PDSI code translated from Jacobi et al MatLab code
+                # compute PDSI etc. using new PDSI code translated from Jacobi et al MatLab code
 #                 PDSI, PHDI, PMDI, zindex = palmer.pdsi_from_climatology(precip_timeseries,
 #                                                                         temp_timeseries,
 #                                                                         awc,
@@ -307,38 +305,50 @@ def main():
 #                                                                         data_begin_year,
 #                                                                         calibration_begin_year,
 #                                                                         calibration_end_year)
-#                 
-#                 # find the differences between the new (Matlab-derived) and previous (Fortran-derived) versions
-#                 pdsi_diffs = PDSI - expected_pdsi
-# #                 phdi_diffs = PHDI - expected_phdi
-# #                 pmdi_diffs = PMDI - expected_pmdi
-#                 zindex_diffs = zindex - expected_zindex
-#             
-#                 # dictionary of variable names to corresponding arrays of differences to facilitate looping below
-#                 varnames_to_arrays = {'PDSI': (pdsi_diffs, expected_pdsi, PDSI),
-# #                                       'PHDI': (phdi_diffs, expected_phdi, PHDI),
-# #                                       'PMDI': (pmdi_diffs, expected_pmdi, PMDI),
-#                                       'Z-INDEX': (zindex_diffs, expected_zindex, zindex) }
-# 
-#                 # we want to see all zero differences, if any non-zero differences exist then raise an alert
-#                 zeros = np.zeros(pdsi_diffs.shape)
-#                 # tuple (diffs_array, expected, actual)
-#                 for varname, array_tuple in varnames_to_arrays.items():
-#                     
-#                     diffs_array = array_tuple[0]
-#                     expected = array_tuple[1]
-#                     actual = array_tuple[2]
-#                     
-#                     if not np.allclose(diffs_array, zeros, atol=tolerance, equal_nan=True):
-#                         
-#                         logger.warn('Division {0}: Comparing new Palmer (palmer.py) against operational pdinew.f: ' + \
-#                                     '\nNon-matching values for {1}'.format(division_id, varname))
-#                         offending_indices = np.where(abs(diffs_array) > tolerance)
+                PDSI, PHDI, PMDI, zindex = palmer.pdsi(precip_timeseries,
+                                                       PET.flatten(),
+                                                       awc,
+                                                       data_begin_year,
+                                                       calibration_begin_year,
+                                                       calibration_end_year)
+                 
+                # find the differences between the new (Matlab-derived) and previous (Fortran-derived) versions
+                pdsi_diffs = PDSI - expected_pdsi
+                phdi_diffs = PHDI - expected_phdi
+                pmdi_diffs = PMDI - expected_pmdi
+                zindex_diffs = zindex - expected_zindex
+             
+                # dictionary of variable names to corresponding arrays of differences to facilitate looping below
+                varnames_to_arrays = {'PDSI': (pdsi_diffs, expected_pdsi, PDSI),
+                                      'PHDI': (phdi_diffs, expected_phdi, PHDI),
+                                      'PMDI': (pmdi_diffs, expected_pmdi, PMDI),
+                                      'Z-INDEX': (zindex_diffs, expected_zindex, zindex) }
+ 
+                # absolute tolerance used for comparison of values, original values compared against are in hundredths
+                tolerance = 0.25
+
+                # we want to see all zero differences, if any non-zero differences exist then raise an alert
+                zeros = np.zeros(pdsi_diffs.shape)
+                # tuple (diffs_array, expected, actual)
+                for varname, array_tuple in varnames_to_arrays.items():
+                     
+                    diffs_array = array_tuple[0]
+                    expected = array_tuple[1]
+                    actual = array_tuple[2]
+                     
+                    if not np.allclose(diffs_array, zeros, atol=tolerance, equal_nan=True):
+                         
+                        logger.warn('Division {0}: Comparing new Palmer (palmer.py) against operational pdinew.f: '.format(division_id) + \
+                                    '\nNon-matching values for {0}'.format(varname))
+                        offending_indices = np.where(abs(diffs_array) > tolerance)
 #                         non_offending_indices = np.where(abs(diffs_array) <= tolerance)
-#                         logger.warn('Time steps with significant differences ({0}): {1}'.format(offending_indices.size, offending_indices))                        
-# #                         for i in offending_indices[0]:
-# #                             
-# #                             print('{0}  Expected:  {1}   Actual: {2}'.format(i, expected[i], actual[i]))
+#                         logger.warn('Time steps with significant differences ({0}): {1}'.format(len(offending_indices), offending_indices))                        
+                        logger.warn('Time steps with significant differences ({0}, tolerance {1): {2}'.format(len(offending_indices[0]), 
+                                                                                                              tolerance, 
+                                                                                                              offending_indices[0])) 
+#                         for i in offending_indices[0]:
+#                              
+#                             print('{0}  Expected:  {1}   Actual: {2}'.format(i, expected[i], actual[i]))
 
     except Exception as ex:
         logger.exception('Failed to complete', exc_info=True)

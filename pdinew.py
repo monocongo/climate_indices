@@ -95,16 +95,16 @@ def pdsi_from_climatology(precip_timeseries,
 
     # compute the Z-index
     #TODO eliminate the P-hat once development/debugging is complete, since it's really an intermediate/internal value
-    Z, P_hat = _zindex(alpha, 
-                       beta, 
-                       gamma, 
-                       delta, 
-                       precip_timeseries, 
-                       pedat, 
-                       prdat, 
-                       spdat, 
-                       pldat, 
-                       K)
+    Z = _zindex(alpha, 
+                beta, 
+                gamma, 
+                delta, 
+                precip_timeseries, 
+                pedat, 
+                prdat, 
+                spdat, 
+                pldat, 
+                K)
 
     # compute the final Palmers
     #TODO/FIXME eliminate the expected PDSI argument once development/debugging is complete
@@ -113,7 +113,7 @@ def pdsi_from_climatology(precip_timeseries,
                              K, 
                              expected_pdsi_for_debug)
     
-    return PDSI, PHDI, PMDI, Z
+    return PDSI, PHDI, PMDI, Z, pedat
 
 #-----------------------------------------------------------------------------------------------------------------------
 #@numba.jit   #TODO/FIXME numba compile not working as expected yet, AssertionError
@@ -189,7 +189,6 @@ def _cafec_coefficients(P,
     # determine the array (year axis) indices for the calibration period
     total_data_years = int(P.shape[0] / 12)
     data_end_year = data_start_year + total_data_years - 1
-    total_calibration_years = calibration_end_year - calibration_start_year + 1
     calibration_start_year_index = calibration_start_year - data_start_year
     calibration_end_year_index = calibration_end_year - data_start_year 
     
@@ -203,7 +202,6 @@ def _cafec_coefficients(P,
         L_calibration = L[calibration_start_year_index:calibration_end_year_index + 1]
         PL_calibration = PL[calibration_start_year_index:calibration_end_year_index + 1]
         RO_calibration = RO[calibration_start_year_index:calibration_end_year_index + 1]
-        PRO_calibration = PRO[calibration_start_year_index:calibration_end_year_index + 1]
         SP_calibration = SP[calibration_start_year_index:calibration_end_year_index + 1]
     else:
         P_calibration = P
@@ -214,7 +212,7 @@ def _cafec_coefficients(P,
         L_calibration = L
         PL_calibration = PL
         RO_calibration = RO
-        PRO_calibration = PRO
+#        PRO_calibration = PRO
         SP_calibration = SP
 
     # due to (innocuous/annoying) RuntimeWarnings raised by some math/numpy modules, we wrap the below code in a catcher
@@ -575,7 +573,7 @@ def _zindex(alpha,
             # Z-Index
             Z[j, m] = K[m] * d    # eq. 19, Palmer 1965 
             
-    return Z, P_hat
+    return Z
 
 #-----------------------------------------------------------------------------------------------------------------------
 def _pdsi(P,
@@ -659,20 +657,10 @@ def _pdsi(P,
 
             # DEBUGGING ONLY -- REMOVE
             print('_i: {0}'.format(_i))
-            if _i == 62:
-                print('debug breakpoint')
-                tolerance = 0.01
-                for b in range(_i):
-                    if abs(df.PDSI[b] - df.expected_pdsi[b]) > tolerance:
-                        print('At month {0}:  actual: {1}\n                                           expected: {2}'.format(b, df.expected_pdsi[b], df.PDSI[b]))
-#             if math.isnan(X1):
-#                 print('X1 is NaN')
-#             if math.isnan(X2):
-#                 print('X2 is NaN')
-#             if math.isnan(X3):
-#                 print('X3 is NaN')
+#             if _i == 62:
+#                 print('debug breakpoint')
             
-            # DEBUG/EXPERIMENTAL -- REMOVE?
+            # keep track of final backtracking index, this is meaningful once _k8 > 0
             df.index_i[_k8] = _i
              
             # these indices keep track of the latest year (j) and month (m) indices corresponding to
@@ -749,8 +737,9 @@ def _pdsi(P,
     for x in range(_k8):
 
         # turn the 2-D backtracking (years and months) indices into an 1-D series index
-        y = (df.index_j[x] * 12) + df.index_m[x]
-        
+        # get the next backtrack month index
+        y = df.index_i[x]
+
         df.PDSI[y] = df.X[y] 
         df.PHDI[y] = df.PX3[y]
         
@@ -801,11 +790,11 @@ def _get_PPR_PX3(df,
     df.PPR[_i] = (PV / Q) * 100.0   # eq. 30 Palmer 1965
     if df.PPR[_i] >= 100.0:
          
-          df.PPR[_i] = 100.0
-          df.PX3[_i] = 0.0  
+        df.PPR[_i] = 100.0
+        df.PX3[_i] = 0.0  
     else:
-          # eq. 25, Palmer (1965); eq. 4, Wells et al (2003) 
-          df.PX3[_i] = (0.897 * X3) + (df.Z[_i] / 3.0)
+        # eq. 25, Palmer (1965); eq. 4, Wells et al (2003) 
+        df.PX3[_i] = (0.897 * X3) + (df.Z[_i] / 3.0)
 
     return df
 
@@ -1213,10 +1202,10 @@ def _assign(df,
         #     OUTPUT THE MESS   
         #-----------------------------------------------------------------------
          
-        #!!!!! DEBUG -- REMOVE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!    
-        if _k8 > 0:
-            print('BACKTRACKING IS HAPPENING ---  _k8: {0}'.format(_k8))
-        #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!    
+#         #!!!!! DEBUG -- REMOVE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!    
+#         if _k8 > 0:
+#             print('BACKTRACKING IS HAPPENING ---  _k8: {0}'.format(_k8))
+#         #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!    
              
         # assignment of stored X values as the final Palmer index values for the unassigned/backtracking months 
         for n in range(_k8 + 1):  # this matches with pdinew.f line 1116 label 70 in assign() subroutine, DO 80 N = 1,K8
@@ -1233,24 +1222,24 @@ def _assign(df,
             # assign the backtracking array's value for the current backtrack month as that month's final PDSI value
             df.PDSI[ix] = df.SX[n] 
  
-            #!!!!!!!!!!!!!!!!!!!!!!!!     Debugging section below -- remove before deployment
-            #
-            # show backtracking array contents and describe differences if assigned value differs from expected
-            tolerance = 0.01            
-            if math.isnan(df.PDSI[ix]) or (abs(df.expected_pdsi[ix] - df.PDSI[ix]) > tolerance):
-                print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
-                print('\nBACKTRACKING  actual time step:  {0}\tBacktracking index: {1}'.format(_i, ix))
-                print('\tNumber of backtracking steps (_k8):  {0}'.format(_k8))
-                print('\tPDSI:  Expected {0:.2f}\n\t       Actual:  {1:.2f}'.format(df.expected_pdsi[ix], 
-                                                                                   df.PDSI[ix]))
-                print('\nSX: {0}'.format(df.SX._values[0:_k8+1]))
-                print('SX1: {0}'.format(df.SX1._values[0:_k8+1]))
-                print('SX2: {0}'.format(df.SX2._values[0:_k8+1]))
-                print('SX3: {0}'.format(df.SX3._values[0:_k8+1]))
-                print('\niass: {0}'.format(which_X))
-                print('\nwhich_X: {0}'.format(which_X))
-                print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
-            #!!!!!!!!!----------- cut here -------------------------------------------------------
+#             #!!!!!!!!!!!!!!!!!!!!!!!!     Debugging section below -- remove before deployment
+#             #
+#             # show backtracking array contents and describe differences if assigned value differs from expected
+#             tolerance = 0.01            
+#             if math.isnan(df.PDSI[ix]) or (abs(df.expected_pdsi[ix] - df.PDSI[ix]) > tolerance):
+#                 print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
+#                 print('\nBACKTRACKING  actual time step:  {0}\tBacktracking index: {1}'.format(_i, ix))
+#                 print('\tNumber of backtracking steps (_k8):  {0}'.format(_k8))
+#                 print('\tPDSI:  Expected {0:.2f}\n\t       Actual:  {1:.2f}'.format(df.expected_pdsi[ix], 
+#                                                                                    df.PDSI[ix]))
+#                 print('\nSX: {0}'.format(df.SX._values[0:_k8+1]))
+#                 print('SX1: {0}'.format(df.SX1._values[0:_k8+1]))
+#                 print('SX2: {0}'.format(df.SX2._values[0:_k8+1]))
+#                 print('SX3: {0}'.format(df.SX3._values[0:_k8+1]))
+#                 print('\niass: {0}'.format(which_X))
+#                 print('\nwhich_X: {0}'.format(which_X))
+#                 print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
+#             #!!!!!!!!!----------- cut here -------------------------------------------------------
                      
             # the PHDI is X3 if not zero, otherwise use X
             #TODO literature reference for this?
@@ -1316,31 +1305,3 @@ def _case(PROB,
         PDSI = X3
  
     return PDSI
-
-#-----------------------------------------------------------------------------------------------------------------------
-def display_debug_info(df,
-                       i,
-                       j,
-                       m,
-                       K8):
-    pass
-#     if i >= 2:
-#         irange = 2
-#     elif i == 1:
-#         irange = 1
-#     else:
-#         irange = 0
-#          
-#     print('Index: {0}'.format(i))
-#     print('J: {0}'.format(j))
-#     print('M: {0}'.format(m))
-#     print('\nPDSI:\n{0}'.format(df.PDSI.values[i-irange:i+irange]))
-#     print('\nExpected:\n{0}'.format(df.expected_pdsi.values[i-irange:i+irange]))    
-#     print('\nK8: {0}'.format(K8))
-#     print('SX:\n{0}'.format(df.SX.values[0:K8]))
-#     print('SX1:\n{0}'.format(df.SX1.values[0:K8]))
-#     print('SX2:\n{0}'.format(df.SX2.values[0:K8]))
-#     print('SX3:\n{0}'.format(df.SX3.values[0:K8]))
-#     print('\nIndexJ:\t{0}'.format(df.index_j.values[0:K8]))
-#     print('IndexM:\t{0}'.format(df.index_m.values[0:K8]))
-    
