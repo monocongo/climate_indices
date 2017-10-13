@@ -5,6 +5,7 @@ import math
 import profile
 import numba
 import numpy as np
+import scipy.constants
 import thornthwaite
 import utils
 import warnings
@@ -15,11 +16,14 @@ logging.basicConfig(level=logging.INFO,
                     datefmt='%Y-%m-%d  %H:%M:%S')
 logger = logging.getLogger(__name__)
 
-
 #-----------------------------------------------------------------------------------------------------------------------
 _PDSI_MIN = -4.0
 _PDSI_MAX = 4.0
 
+#!!!!!!!!!!!!!!!!!!!!
+# globals FOR DEBUG ONLY -- REMOVE
+_debug_differences = 0.0
+_debug_differences_count = 0
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def _water_balance(AWC,
@@ -697,9 +701,57 @@ def _z_index(P,
     return z.flatten()
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit
+# from pdinew.f
+def _pe(temperature,
+        month_index,
+        latitude,
+        B,
+        H):
+    """
+    Computes potential evapotranspiration based on the method used in original PDSI code pdi.f
+    
+    :param temperature: temperature value in degrees Fahrenheit
+    :param month_index: index into monthly timeseries, with 0 corresponding to January of the initial year
+    :param latitude: latitude value in degrees north 
+    :param B: ?
+    :param H: ?
+    """
+    #TODO document this, where do these come from?
+    PHI = np.array([-0.3865982, -0.2316132, -0.0378180, 0.1715539, 0.3458803, 0.4308320, \
+                     0.3916645, 0.2452467, 0.0535511, -0.15583436, -0.3340551, -0.4310691])
+    
+#     TLA = -1 * math.tan(math.radians(latitude))
+    TLA = math.tan(math.radians(latitude))
+    
+    #-----------------------------------------------------------------------
+    #     1 - CALCULATE PE (POTENTIAL EVAPOTRANSPIRATION)   
+    #-----------------------------------------------------------------------
+    if temperature <= 32.0:
+        PE = 0.0
+    else:  
+        DUM = PHI[month_index % 12] * TLA 
+        
+        try:
+            DK = math.atan(math.sqrt(1.0 - (DUM * DUM)) / DUM)   
+        except ValueError:
+            logger.exception('Failed to complete', exc_info=True)
+            raise
+            
+        if DK < 0.0:
+            DK = 3.141593 + DK  
+        DK = (DK + 0.0157) / 1.57  
+        if temperature >= 80.0:
+            PE = (math.sin((temperature / 57.3) - 0.166) - 0.76) * DK
+        else:  
+            DUM = math.log(temperature - 32.0)
+            PE = math.exp(-3.863233 + (B * 1.715598) - (B * math.log(H)) + (B * DUM)) * DK 
+
+    return PE
+
+#-----------------------------------------------------------------------------------------------------------------------
+#@numba.jit
 # previously Main()
-def _compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT):
+def _compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT, expected_pdsi):
 
     # This function calculates PX1 and PX2 and calls the backtracking loop.
     # If the absolute value of PX1 or PX2 goes over 1, that value becomes the new PX3. 
@@ -711,51 +763,58 @@ def _compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT):
     if (PX1[k] >= 1) and (PX3[k] == 0):
         # When PX1 >= 1 the wet spell becomes established. X is assigned as PX1
         # and PX3 = PX1. PX1 is set to zero after PX3 is set to PX1. BT is set
-        # to 1 and the _backtrack_self_calibrated function is called to begin backtracking up
+        # to 1 and the _backtrack() function is called to begin backtracking up
         # PX1.
         X[k] = PX1[k]              
         PX3[k] = PX1[k]            
         PX1[k] = 0
         BT[k] = 1
-        X, BT = _backtrack(k, PPe, PX1, PX2, PX3, X, BT)                                                             
+        X, BT = _backtrack(k, PPe, PX1, PX2, PX3, X, BT, expected_pdsi)                                                             
     
     elif (PX2[k] <= -1) and (PX3[k] == 0):
         # When PX2 <= -1 the drought becomes established. X is assigned as PX2
         # and PX3 = PX2. PX2 is set to zero after PX3 is set to PX2. BT is set
-        # to 2 and the _backtrack_self_calibrated function is called to begin backtracking up PX2.
+        # to 2 and the _backtrack() function is called to begin backtracking up PX2.
         X[k] = PX2[k]
         PX3[k] = PX2[k]
         PX2[k] = 0
         BT[k] = 2
-        X, BT = _backtrack(k, PPe, PX1, PX2, PX3, X, BT)                                                             
+        X, BT = _backtrack(k, PPe, PX1, PX2, PX3, X, BT, expected_pdsi)                                                             
     
     elif PX3[k] == 0:
         # When PX3 is zero and both |PX1| and |PX2| are less than 1, there is
         # no established drought or wet spell. X is set to whatever PX1 or PX2
         # value is not equal to zero. BT is set to either 1 or 2 depending on
-        # which PX1 or PX2 value equals zero. The _backtrack_self_calibrated function is called
+        # which PX1 or PX2 value equals zero. The _backtrack() function is called
         # to begin backtracking up either PX1 or PX2 depending on the BT value.
         if PX1[k] == 0:
         
             X[k] = PX2[k]
             BT[k] = 2
-            X, BT = _backtrack(k, PPe, PX1, PX2, PX3, X, BT)                                                                 
+            X, BT = _backtrack(k, PPe, PX1, PX2, PX3, X, BT, expected_pdsi)                                                                 
 
         elif PX2[k] == 0:
             
             X[k] = PX1[k]
             BT[k] = 1
-            X, BT = _backtrack(k, PPe, PX1, PX2, PX3, X, BT)                                                          
+            X, BT = _backtrack(k, PPe, PX1, PX2, PX3, X, BT, expected_pdsi)                                                          
     else:
         # There is no determined value to assign to X when PX3 ~= 0, 
-        # 0 <= PX1 < 1, and -1 < PX2 <= 0 so set X = PX3.   
-        X[k] = PX3[k]
+        # 0 <= PX1 < 1, and -1 < PX2 <= 0 so set X = PX3 for now.   
+        X[k] = PX3[k]   # BT[k] stays zero, no update from its initial value, this will trigger backtracking to assign either X1 or X2 values depending upon the previous value of BT
 
     return PX1, PX2, PX3, X, BT
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit
-def _backtrack(k, PPe, PX1, PX2, PX3, X, BT):
+#@numba.jit
+def _backtrack(k, 
+               PPe, 
+               PX1, 
+               PX2, 
+               PX3, 
+               X, 
+               BT,
+               expected_pdsi):
     '''
     This function steps through stored index values computed for previous months and if/when . 
     
@@ -766,10 +825,13 @@ def _backtrack(k, PPe, PX1, PX2, PX3, X, BT):
     In either case, the backtracking function works by backtracking through PX1 and PX2 until reaching a month 
     where PPe == 0. Either PX1 or PX2 is assigned to X as the backtracking progresses.
     '''
+    # DEBUG ONLY -- REMOVE
+    global _debug_differences
+    global _debug_differences_count
     
     # Backtracking occurs from either PPe[k] = 100 or PPe[k] = 0 to the first 
-    # instance in the previous record where PPe = 0. This "for" loop counts 
-    # back through previous PPe values to find the first instance where PPe = 0.
+    # instance in the previous record where PPe = 0. This loop counts back
+    # through previous PPe values to find the first instance where PPe = 0.
     # r is a variable used to mark the place of the last PPe = 0 before PPe = 100.
     r = 0
     for c in range(k, 0, -1):
@@ -817,19 +879,34 @@ def _backtrack(k, PPe, PX1, PX2, PX3, X, BT):
                 X[count] = PX1[count]
                 BT[count - 1] = 1
     
+        # DEBUG -- REMOVE !!!!!!!!!!!!!!!!!!!
+        tolerance = 0.01
+        difference = abs(X[count] - expected_pdsi[count])
+        if difference > tolerance:
+#              print('_compute_X: At index {0} there is a discrepency -- actual: {1}  expected: {2}'.format(count, 
+#                                                                                                           X[count], 
+#                                                                                                           expected_pdsi[count]))
+             _debug_differences += difference
+             _debug_differences_count += 1
+        #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        
     return X, BT
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit
-def _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X):
+#@numba.jit
+def _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X, expected_pdsi):
 
     # This function is called when non-zero, non-one hundred PPe values occur
     # between values of PPe = 0. When this happens, a possible abatement
     # discontinues without ending the wet spell or drought. X should be
     # assigned to PX3 for all months between, and including, the two instances
     # of PPe = 0 (cf. Alley, 1984; Journal of Climate and Applied Meteorology, 
-    # Vol. 23, No. 7). To do this, _backtrack_self_calibrated up to the first instance of 
+    # Vol. 23, No. 7). To do this, _backtrack() up to the first instance of 
     # PPe = 0 while setting X to PX3. 
+    
+    # DEBUG ONLY -- REMOVE
+    global _debug_differences
+    global _debug_differences_count
     
     # Since the possible abatement has ended, the drought or wet spell
     # continues. Set PV, PX1, PX2, and PPe to 0. Calculate PX3 and set X = PX3.
@@ -840,7 +917,7 @@ def _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X):
     PPe[k] = 0                     
     PX3[k] = 0.897 * X3 + (Z[k] / 3)
     X[k] = PX3[k]
-    BT[k] = 3
+    BT[k] = 3  # use the X3 value for this month if/when backtracking occurs
     
     # In order to set all values of X between the two instances of PPe = 0, the
     # first instance of PPe = 0 must be found. This "for" loop counts back 
@@ -852,40 +929,51 @@ def _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X):
     
     # Backtrack from the current month where PPe = 0 to the last month where PPe = 0.
     for count in range(k, r - 1, -1):
-        # Set X = PX3
+        # Set X = PX3, where the BT array indicates it for the month
         if BT[count] == 3:
             X[count] = PX3[count]
             # If the end of the backtracking loop hasn't been reached, set the
             # BT value for the preceding month to 3 to continue the backtracking.
             if count != r:
-                BT[count - 1] = 3
+                BT[count - 1] = 3  # this makes it so that the previous if condition will be met for the previous month (the next backtracking step), so that it too will be assigned an X3 value; by this mechanism we enable the assignment of X3 values all the way back to index r
+
+            # DEBUG -- REMOVE !!!!!!!!!!!!!!!!!!!
+            tolerance = 0.01
+            difference = abs(X[count] - expected_pdsi[count])
+            if difference > tolerance:
+#                  print('_between_0s: At index {0} there is a discrepency -- actual: {1}  expected: {2}'.format(count, 
+#                                                                                                                X[count], 
+#                                                                                                                expected_pdsi[count]))
+                 _debug_differences += difference
+                 _debug_differences_count += 1
+            #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     return PV, PX1, PX2, PX3, PPe, X, BT
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit
+#@numba.jit
 # previously Function_Uw
-def _dry_spell_abatement(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT):
+def _dry_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT, expected_pdsi):
 
     # In the case of an established drought, Palmer (1965) notes that a value of Z = -0.15 will maintain an
     # index of -0.50 from month to month. An established drought or wet spell is considered definitely over
     # when the index reaches the "near normal" category which lies between -0.50 and +0.50. Therefore, any
     # value of Z >= -0.15 will tend to end a drought. See Palmer 1965, pp. 29-30
-    Uw[k] = Z[k] + 0.15  # Palmer 1965, eq. 29
+    Uw = Z[k] + 0.15  # Palmer 1965, eq. 29
     
-    PV = Uw[k] + max(V, 0)
+    PV = Uw + max(V, 0)  # add this month's effective wetness to the previously accumulated effective wetness (if it was positive), this value will eventually be used as the numerator in the equation for calculating percentage probability that an established weather spell has ended (Pe, eq. 30, Palmer 1965)
     if PV <= 0:
         # During a drought, PV <= 0 implies PPe = 0 (i.e., the 
         # probability that the drought has ended returns to zero).                                                             
         Q = 0 
-        PV, PX1, PX2, PX3, PPe, X, BT = _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)                                                                 
+        PV, PX1, PX2, PX3, PPe, X, BT = _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X, expected_pdsi)                                                                 
     
     else:
-        Ze[k] = -2.691 * X3 - 1.5
+        Ze = (-2.691 * X3) - 1.5  # (Palmer eq. 28) Calculate the soil moisture anomaly (Z value) which corresponds to an amount of moisture that is sufficient to end the currently established drought in a single month. Once this is known then we can compare against the actual Z value, to see if we've pulled out of the established drought or not
         if Pe == 100: 
-            Q = Ze[k]  # Q is the total moisture anomaly required to end the current drought.
+            Q = Ze  # Q is the total moisture anomaly required to end the current drought.
         else:
-            Q = Ze[k] + V
+            Q = Ze + V
 
         PPe[k] = (PV / Q) * 100
     
@@ -895,34 +983,34 @@ def _dry_spell_abatement(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X,
         else:
             PX3[k] = 0.897 * X3 + (Z[k] / 3)
 
-        PX1, PX2, PX3, X, BT = _compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT)                                                                 
+        PX1, PX2, PX3, X, BT = _compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT, expected_pdsi)                                                                 
 
-    return Uw, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT
+    return PV, PPe, PX1, PX2, PX3, X, BT
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit
+#@numba.jit
 # previously Function_Ud
-def _wet_spell_abatement(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT):
+def _wet_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT, expected_pdsi):
 
     # In the case of an established wet spell, Palmer (1965) notes that a value of Z = +0.15 will maintain an 
     # index of +0.50 from month to month. An established drought or wet spell is considered definitely over
     # when the index reaches the "near normal" category which lies between -0.50 and +0.50. Therefore, any 
     # value of Z <= +0.15 will tend to end a wet spell. See Palmer 1965, pp. 29-30
-    Ud[k] = Z[k] - 0.15  # Palmer 1965, eq. 32
+    Ud = Z[k] - 0.15  # Palmer 1965, eq. 32
     
-    PV = Ud[k] + min(V, 0)
+    PV = Ud + min(V, 0)
     if PV >= 0: 
         # During a wet spell, PV >= 0 implies PPe = 0 (i.e., the 
         # probability that the wet spell has ended returns to zero).
         Q = 0 
-        PV, PX1, PX2, PX3, PPe, X, BT = _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)                                                           
+        PV, PX1, PX2, PX3, PPe, X, BT = _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X, expected_pdsi)                                                           
     
     else:
-        Ze[k] = -2.691 * X3 + 1.5
+        Ze = -2.691 * X3 + 1.5
         if Pe == 100:
-            Q = Ze[k]      # Q is the total moisture anomaly required to end the current wet spell.
+            Q = Ze      # Q is the total moisture anomaly required to end the current wet spell.
         else:
-            Q = Ze[k] + V
+            Q = Ze + V
 
         PPe[k] = (PV / Q) * 100
         if PPe[k] >= 100:
@@ -931,9 +1019,9 @@ def _wet_spell_abatement(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X,
         else:
             PX3[k] = 0.897 * X3 + (Z[k] / 3)
 
-        PX1, PX2, PX3, X, BT = _compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT)                                                                 
+        PX1, PX2, PX3, X, BT = _compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT, expected_pdsi)                                                                 
 
-    return Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT
+    return PV, PPe, PX1, PX2, PX3, X, BT
 
 #-----------------------------------------------------------------------------------------------------------------------
 # comparable to the case() subroutine in original NCDC pdi.f 
@@ -969,8 +1057,16 @@ def _pmdi(probability,
 
 #------------------------------------------------------------------------------------------------------------------
 #@numba.jit
-def _pdsi_from_zindex(Z):
+def _pdsi_from_zindex(Z,
+                      expected_pdsi):
 
+    # DEBUG ONLY -- REMOVE
+    global _debug_differences
+    global _debug_differences_count
+    _debug_differences = 0.0
+    _debug_differences_count = 0
+
+    
     ## INITIALIZE PDSI AND PHDI CALCULATIONS
     
     # V is the sum of the Uw (Ud) values for the current and previous months of an
@@ -980,16 +1076,16 @@ def _pdsi_from_zindex(Z):
     X1 = 0.0 # X1 is the severity index value for an incipient wet spell for a month.
     X2 = 0.0 # X2 is the severity index value for an incipient dry spell for a month.
     X3 = 0.0 # X3 is the severity index value of the current established wet or dry spell for a month.
-    Q = 0.0
+#     Q = 0.0
     
     number_of_months = Z.shape[0]
     
     # BACTRACKING VARIABLES
     
     # BT is the backtracking variable, and is pre-allocated with zeros. Its value (1, 2, or 3) indicates which 
-    # intermediate index (X1, X2, or X3) to _backtrack_self_calibrated up, selecting the associated term (X1, X2, or X3) for the PDSI. NOTE: BT may
-    # be operationally left equal to 0, as it cannot be known in real time when an existing drought or wet spell may or may not be over.
-    BT = np.zeros((number_of_months,)) 
+    # intermediate index (X1, X2, or X3) to backtrack up, selecting the associated term (X1, X2, or X3) for the PDSI. 
+    # NOTE: BT may be operationally left equal to 0, as it cannot be known in real time when an existing drought or wet spell may or may not be over.
+    BT = np.zeros((number_of_months,), dtype=np.int8) 
     
     ## CALCULATE PDSI AND PHDI
     PX1 = np.zeros((number_of_months,))
@@ -999,15 +1095,15 @@ def _pdsi_from_zindex(Z):
     X = np.zeros((number_of_months,))
     PMDI = np.zeros((number_of_months,))
     
-    # Ze is the soil moisture anomaly (Z) value that will end the current established dry or wet spell in that 
-    # month and is used in calculating the Q value and subsequently the Pe value for a month
-    Ze = np.zeros((number_of_months,))
-    
-    # Uw is the effective wetness required in a month to end the current established dry spell (drought)
-    Uw = np.zeros((number_of_months,))
-    
-    # Ud is the effective dryness required in a month to end the current wet spell
-    Ud = np.zeros((number_of_months,))
+#     # Ze is the soil moisture anomaly (Z) value that will end the current established dry or wet spell in that 
+#     # month and is used in calculating the Q value and subsequently the Pe value for a month
+#     Ze = np.zeros((number_of_months,))
+#
+#     # Uw is the effective wetness required in a month to end the current established dry spell (drought)
+#     Uw = np.zeros((number_of_months,))
+#     
+#     # Ud is the effective dryness required in a month to end the current wet spell
+#     Ud = np.zeros((number_of_months,))
     
     # Palmer Hydrological Drought Index
     PHDI = np.zeros((number_of_months,))
@@ -1015,6 +1111,10 @@ def _pdsi_from_zindex(Z):
     # loop over all months in the dataset, calculating PDSI and PHDI for each
     for k in range(number_of_months):
         
+#         # DEBUGGING ONLY -- REMOVE
+#         print('k: {0}'.format(k))
+        
+        #TODO/FIXME why is this here at the start of the loop, rather than at the conclusion?
         PMDI[k] = _pmdi(Pe, X1, X2, X3)
         
         if (Pe == 100) or (Pe == 0):   # no abatement underway
@@ -1030,39 +1130,43 @@ def _pdsi_from_zindex(Z):
                 # PX3 is the preliminary X3 value and is used in operational calculations.
                 PX3[k] = 0 
                                 
-                PX1, PX2, PX3, X, BT = _compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT)
+                PX1, PX2, PX3, X, BT = _compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT, expected_pdsi)
  
             elif X3 > 0.5: # Wet spell underway
                 
                 if Z[k] >= 0.15: # Wet spell intensifies
                 
-                    PV, PX1, PX2, PX3, PPe, X, BT = _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)                                                  
+                    PV, PX1, PX2, PX3, PPe, X, BT = _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X, expected_pdsi)                                                  
                 
                 else: # Wet spell starts to abate, and it may end.
                 
-                    Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = _wet_spell_abatement(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
+                    PV, PPe, PX1, PX2, PX3, X, BT = _wet_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT, expected_pdsi)
                                                                                                
             elif X3 < -0.5: # Drought underway
                 
                 if Z[k] <= -0.15: # Drought intensifies 
                 
-                    PV, PX1, PX2, PX3, PPe, X, BT = _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)                                                 
+                    PV, PX1, PX2, PX3, PPe, X, BT = _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X, expected_pdsi)                                                 
                 
                 else: # Drought starts to abate, and it may end.
                 
-                    Uw, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = _dry_spell_abatement(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
+                    PV, PPe, PX1, PX2, PX3, X, BT = _dry_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT, expected_pdsi)
                                                                                           
         else: # Abatement underway
             
             if X3 > 0: # Wet spell underway
                 
-                Ud, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = _wet_spell_abatement(k, Ud, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)                                                     
+                PV, PPe, PX1, PX2, PX3, X, BT = _wet_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT, expected_pdsi)                                                     
             
             else: # Drought underway
                 
-                Uw, Ze, Q, PV, PPe, PX1, PX2, PX3, X, BT = _dry_spell_abatement(k, Uw, Z, Ze, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
-                                                                                                    
-        ## Assign V, Pe, X1, X2, and X3 for next month (k + 1)
+                PV, PPe, PX1, PX2, PX3, X, BT = _dry_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT, expected_pdsi)
+        
+        #EXPERIMENTAL/DEBUG -- REMOVE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!                                                                                            
+        PMDI[k] = _pmdi(Pe, X1, X2, X3)
+        #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+        ## Assign V, Pe, X1, X2, and X3 for use with the next month
         V = PV
         Pe = PPe[k]
         X1 = PX1[k]
@@ -1080,28 +1184,40 @@ def _pdsi_from_zindex(Z):
         if k > 0:
             if (PX3[k - 1] == 0) and (BT[k - 1] == 0):
                 r = 0
-                for c in range(k - 1, 0, -1):
+                for c in range(k - 1, 0, -1):  # here we loop over the BT array to look for the most previous month step where the value is not zero
                     if BT[c] != 0:
-                        # Backtracking continues in a backstepping procedure up through the first month where BT is not equal to zero.
+                        # Backtracking continues in a backstepping procedure up through the most previous month where BT is not equal to zero
                         r = c + 1    # r is the row number up through which backtracking continues.
                         break
 
-                for count0 in range(k - 1, r - 1, -1):
+                for count0 in range(k - 1, r - 1, -1):  # here we loop over the BT array from the previous month (k - 1) through the r index (most previous month with BT != 0), at each month assigning to X the value for the month called for in the BT array, unless that value is 0 in which case the BT value is switched and the corresponding X values are assigned (see _assign() in pdinew.f/pdinew.py)
                     BT[count0] = BT[count0 + 1] # Assign BT to next month's BT value.
                     if BT[count0] == 2:
-                        if PX2[count0] == 0: # If BT = 2, X = PX2 unless PX2 = 0, then X = PX1.
+                        if PX2[count0] == 0:  # If BT = 2, X = PX2 unless PX2 = 0, then X = PX1.
                             X[count0] = PX1[count0]
-                            BT[count0] = 1
+                            BT[count0] = 1  # flip the X we'll choose next step, from X2 to X1
                         else:
                             X[count0] = PX2[count0]
-                            BT[count0] = 2
+#                            BT[count0] = 2
                     elif BT[count0] == 1:
-                        if PX1[count0] == 0: # If BT = 1, X = PX1 unless PX1 = 0, then X = PX2.
+                        if PX1[count0] == 0:  # If BT = 1, X = PX1 unless PX1 = 0, then X = PX2.
                             X[count0] = PX2[count0] 
-                            BT[count0] = 2
+                            BT[count0] = 2  # flip the X we'll choose next step, from X1 to X2
                         else:
                             X[count0] = PX1[count0]
-                            BT[count0] = 1
+#                            BT[count0] = 1
+                    
+                    # DEBUG -- REMOVE !!!!!!!!!!!!!!!!!!!
+                    tolerance = 0.01
+                    difference = abs(X[count0] - expected_pdsi[count0])
+                    if difference > tolerance:
+#                         print('_between_0s: At index {0} there is a discrepency -- actual: {1}  expected: {2}'.format(count0, 
+#                                                                                                                       X[count0], 
+#                                                                                                                       expected_pdsi[count0]))
+                        _debug_differences += difference
+                        _debug_differences_count += 1
+                    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 
         # In instances where there is no established spell for the last monthly observation, X is initially 
         # assigned to 0. The code below sets X in the last month to greater of |PX1| or |PX2|. This prevents 
@@ -1112,11 +1228,28 @@ def _pdsi_from_zindex(Z):
                     X[k] = PX1[k]
                 else:
                     X[k] = PX2[k]
+
+                # DEBUG -- REMOVE !!!!!!!!!!!!!!!!!!!
+                tolerance = 0.01
+                difference = abs(X[k] - expected_pdsi[k])
+                if difference > tolerance:
+#                     print('_between_0s: At index {0} there is a discrepency -- actual: {1}  expected: {2}'.format(k, 
+#                                                                                                                   X[k], 
+#                                                                                                                   expected_pdsi[k]))
+                    _debug_differences += difference
+                    _debug_differences_count += 1
+                #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                 
         # round values to four decimal places
-        for values in [X1, X2, X3, Pe, V, Q, X, PX1, PX2, PX3, PPe, Ud, Uw, Ze]:
+        for values in [X1, X2, X3, Pe, V, X, PX1, PX2, PX3, PPe]:
             values = np.around(values, decimals=4)
         
+#     #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#     # DEBUG ONLY -- REMOVE
+#     print('\n\n\tAverage difference between actual and expected PDSI values for division: {0}'.format(_debug_differences / _debug_differences_count))
+#     #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    
+
     ## ASSIGN PDSI VALUES
     # NOTE: 
     # In Palmer's effort to create a meteorological drought index (PDSI),
@@ -1695,6 +1828,20 @@ def _least_squares(x,
     return leastSquaresSlope, leastSquaresIntercept
 
 #-----------------------------------------------------------------------------------------------------------------------
+def potential_evapotranspiration(monthly_temps_celsius, 
+                                 latitude,
+                                 B,
+                                 H):
+
+    # assumes monthly_temps_celsius, B, and H have same dimensions, etc.
+    
+    pet = np.full(monthly_temps_celsius.shape, np.NaN)
+    monthly_temps_fahrenheit = scipy.constants.C2F(monthly_temps_celsius)
+    for i in range(monthly_temps_celsius.size):
+        pet[i] = _pe(monthly_temps_fahrenheit[i], i, latitude, B, H)
+    return pet
+
+#-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def pdsi_from_climatology(precip_time_series,
                           temp_time_series,
@@ -1702,7 +1849,10 @@ def pdsi_from_climatology(precip_time_series,
                           latitude,
                           data_start_year,
                           calibration_start_year,
-                          calibration_end_year):
+                          calibration_end_year,
+                          expected_pdsi,
+                          B=None,
+                          H=None):
 
     '''
     This function computes the Palmer Drought Severity Index (PDSI), Palmer Hydrological Drought Index (PHDI), 
@@ -1722,14 +1872,21 @@ def pdsi_from_climatology(precip_time_series,
     # convert monthly temperatures from Fahrenheit to Celsius
     monthly_temps_celsius = (temp_time_series - 32) * 5.0 / 9.0
 
-    # compute PET
-    pet_time_series = thornthwaite.potential_evapotranspiration(monthly_temps_celsius, 
-                                                                latitude, 
-                                                                data_start_year)
+    # compute PET using method from original PDSI code pdi.f
+    pet_time_series = potential_evapotranspiration(monthly_temps_celsius, 
+                                                   latitude,
+                                                   B,
+                                                   H)
+#     # compute PET
+#     pet_time_series = thornthwaite.potential_evapotranspiration(monthly_temps_celsius, 
+#                                                                 latitude, 
+#                                                                 data_start_year)
+
     return pdsi(precip_time_series,
                 pet_time_series.flatten(),
                 awc,
                 data_start_year,
+                expected_pdsi,
                 calibration_start_year,
                 calibration_end_year)
 
@@ -2008,6 +2165,7 @@ def pdsi(precip_time_series,
          pet_time_series,
          awc,
          data_start_year,
+         expected_pdsi,
          calibration_start_year=1931,
          calibration_end_year=1990):
     '''
@@ -2066,7 +2224,8 @@ def pdsi(precip_time_series,
             zindex = zindex[0:-pad_months]
             
         # compute PDSI and other associated variables
-        PDSI, PHDI, PMDI = _pdsi_from_zindex(zindex)
+        PDSI, PHDI, PMDI = _pdsi_from_zindex(zindex,
+                                             expected_pdsi)
         
         return PDSI, PHDI, PMDI, zindex
     
