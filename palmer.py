@@ -1828,10 +1828,10 @@ def _least_squares(x,
     return leastSquaresSlope, leastSquaresIntercept
 
 #-----------------------------------------------------------------------------------------------------------------------
-def potential_evapotranspiration(monthly_temps_celsius, 
-                                 latitude,
-                                 B,
-                                 H):
+def _pdinew_potential_evapotranspiration(monthly_temps_celsius, 
+                                         latitude,
+                                         B,
+                                         H):
 
     # assumes monthly_temps_celsius, B, and H have same dimensions, etc.
     
@@ -1840,6 +1840,65 @@ def potential_evapotranspiration(monthly_temps_celsius,
     for i in range(monthly_temps_celsius.size):
         pet[i] = _pe(monthly_temps_fahrenheit[i], i, latitude, B, H)
     return pet
+
+#-----------------------------------------------------------------------------------------------------------------------
+#@numba.jit
+def pdi_from_climatology(precip_time_series,
+                         temp_time_series,
+                         awc,
+                         latitude,
+                         data_start_year,
+                         calibration_start_year,
+                         calibration_end_year,
+                         expected_pdsi,
+                         B=None,
+                         H=None):
+
+    '''
+    This function computes the Palmer Drought Severity Index (PDSI), Palmer Hydrological Drought Index (PHDI), 
+    and Palmer Z-Index.
+    
+    :param precip_time_series: time series of monthly precipitation values, in inches
+    :param temperature_time_series: time series of monthly temperature values, in degrees Fahrenheit
+    :param awc: available water capacity (soil constant), in inches
+    :param latitude: latitude, in degrees north 
+    :param data_start_year: initial year of the input precipitation and temperature datasets, 
+                            both of which are assumed to start in January of this year
+    :param calibration_start_year: initial year of the calibration period 
+    :param calibration_end_year: final year of the calibration period 
+    :return: four numpy arrays containing PDSI, PHDI, PMDI, and Z-Index values respectively 
+    '''
+
+    # convert monthly temperatures from Fahrenheit to Celsius
+    monthly_temps_celsius = (temp_time_series - 32) * 5.0 / 9.0
+
+    # compute PET using method from original PDSI code pdi.f
+    pet_time_series = _pdinew_potential_evapotranspiration(monthly_temps_celsius, 
+                                                           latitude,
+                                                           B,
+                                                           H)
+
+    # calculate water balance variables
+    ET, PR, R, RO, PRO, L, PL = _water_balance(awc + 1.0, pet_time_series, precip_time_series)
+
+    # compute the Palmer Z-Index             
+    Z = _z_index(precip_time_series,
+                 pet_time_series,
+                 ET,
+                 PR,
+                 R,
+                 RO,
+                 PRO,
+                 L,
+                 PL,
+                 data_start_year,
+                 calibration_start_year,
+                 calibration_end_year)
+
+    # compute PDSI, etc.
+    PDSI, PHDI, PMDI = _pdsi_from_zindex(Z.flatten(), expected_pdsi)
+
+    return PDSI, PHDI, PMDI, Z
 
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
@@ -1872,13 +1931,13 @@ def pdsi_from_climatology(precip_time_series,
     # convert monthly temperatures from Fahrenheit to Celsius
     monthly_temps_celsius = (temp_time_series - 32) * 5.0 / 9.0
 
-    # compute PET using method from original PDSI code pdi.f
-    pet_time_series = potential_evapotranspiration(monthly_temps_celsius, 
-                                                   latitude,
-                                                   B,
-                                                   H)
+    # compute PET using method from original PDSI code pdinew.f
+    pet_time_series = _pdinew_potential_evapotranspiration(monthly_temps_celsius, 
+                                                           latitude,
+                                                           B,
+                                                           H)
 #     # compute PET
-#     pet_time_series = thornthwaite.potential_evapotranspiration(monthly_temps_celsius, 
+#     pet_time_series = thornthwaite._pdinew_potential_evapotranspiration(monthly_temps_celsius, 
 #                                                                 latitude, 
 #                                                                 data_start_year)
 
