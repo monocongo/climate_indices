@@ -1162,14 +1162,15 @@ def _pdsi_from_zindex(Z,
 #                            BT[count0] = 1
                     
                     # DEBUG -- REMOVE !!!!!!!!!!!!!!!!!!!
-                    tolerance = 0.01
-                    difference = abs(X[count0] - expected_pdsi[count0])
-                    if difference > tolerance:
-#                         print('_between_0s: At index {0} there is a discrepency -- actual: {1}  expected: {2}'.format(count0, 
-#                                                                                                                       X[count0], 
-#                                                                                                                       expected_pdsi[count0]))
-                        _debug_differences += difference
-                        _debug_differences_count += 1
+                    if expected_pdsi is not None:
+                        tolerance = 0.01
+                        difference = abs(X[count0] - expected_pdsi[count0])
+                        if difference > tolerance:
+    #                         print('_between_0s: At index {0} there is a discrepency -- actual: {1}  expected: {2}'.format(count0, 
+    #                                                                                                                       X[count0], 
+    #                                                                                                                       expected_pdsi[count0]))
+                            _debug_differences += difference
+                            _debug_differences_count += 1
                     #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
@@ -1184,14 +1185,15 @@ def _pdsi_from_zindex(Z,
                     X[k] = PX2[k]
 
                 # DEBUG -- REMOVE !!!!!!!!!!!!!!!!!!!
-                tolerance = 0.01
-                difference = abs(X[k] - expected_pdsi[k])
-                if difference > tolerance:
-#                     print('_between_0s: At index {0} there is a discrepency -- actual: {1}  expected: {2}'.format(k, 
-#                                                                                                                   X[k], 
-#                                                                                                                   expected_pdsi[k]))
-                    _debug_differences += difference
-                    _debug_differences_count += 1
+                if expected_pdsi is not None:
+                    tolerance = 0.01
+                    difference = abs(X[k] - expected_pdsi[k])
+                    if difference > tolerance:
+    #                     print('_between_0s: At index {0} there is a discrepency -- actual: {1}  expected: {2}'.format(k, 
+    #                                                                                                                   X[k], 
+    #                                                                                                                   expected_pdsi[k]))
+                        _debug_differences += difference
+                        _debug_differences_count += 1
                 #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                 
         # round values to four decimal places
