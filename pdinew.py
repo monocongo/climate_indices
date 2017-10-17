@@ -61,7 +61,8 @@ def pdsi_from_climatology(precip_timeseries,
     #NOTE keep this code in place in order to compute the PET used later, since the two have 
     # different PET algorithms and we want to compare PDSI using the same PET inputs
     #FIXME clarify the difference between SP and PRO (spdat and prodat)
-    pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, prodat, tdat, sssdat, ssudat = \
+#     pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, prodat, tdat, sssdat, ssudat = \
+    pdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, prodat, tdat, sssdat, ssudat = \
         _water_balance(temp_timeseries, precip_timeseries, awc, neg_tan_lat, B, H)
                  
     #NOTE we need to compute CAFEC coefficients for use later/below
@@ -75,7 +76,7 @@ def pdsi_from_climatology(precip_timeseries,
                                                              prodat,
                                                              tldat,
                                                              pldat,
-                                                             spdat,
+#                                                              spdat,
                                                              data_begin_year,
                                                              calibration_begin_year,
                                                              calibration_end_year)
@@ -88,7 +89,7 @@ def pdsi_from_climatology(precip_timeseries,
                                  pdat,
                                  pedat,
                                  prdat,
-                                 spdat,
+                                 prodat,
                                  pldat,
                                  t_ratio,
                                  data_begin_year,
@@ -104,7 +105,7 @@ def pdsi_from_climatology(precip_timeseries,
                 precip_timeseries, 
                 pedat, 
                 prdat, 
-                spdat, 
+                prodat, 
                 pldat, 
                 K)
 
@@ -127,7 +128,6 @@ def _cafec_coefficients(P,
                         PRO,
                         L,
                         PL,
-                        SP,
                         data_start_year,
                         calibration_start_year,
                         calibration_end_year):
@@ -153,8 +153,6 @@ def _cafec_coefficients(P,
               (array size) should be a multiple of 12 (representing an ordinal number of full years)
     :param PL: 1-D numpy.ndarray of monthly potential loss values, in inches, the number of array elements 
               (array size) should be a multiple of 12 (representing an ordinal number of full years)
-    :param SP: 1-D numpy.ndarray of monthly SP values, in inches, the number of array elements 
-               (array size) should be a multiple of 12 (representing an ordinal number of full years)
     :param data_start_year: initial year of the input arrays, i.e. the first element of each of the input arrays 
                             is assumed to correspond to January of this initial year
     :param calibration_start_year: initial year of the calibration period, should be greater than or equal to the data_start_year
@@ -175,7 +173,6 @@ def _cafec_coefficients(P,
     PRO = utils.reshape_to_years_months(PRO)
     L = utils.reshape_to_years_months(L)
     P = utils.reshape_to_years_months(P)
-    SP = utils.reshape_to_years_months(SP)
         
     # ALPHA, BETA, GAMMA, DELTA CALCULATIONS
     # A calibration period is used to calculate alpha, beta, gamma, and 
@@ -203,7 +200,7 @@ def _cafec_coefficients(P,
         L_calibration = L[calibration_start_year_index:calibration_end_year_index + 1]
         PL_calibration = PL[calibration_start_year_index:calibration_end_year_index + 1]
         RO_calibration = RO[calibration_start_year_index:calibration_end_year_index + 1]
-        SP_calibration = SP[calibration_start_year_index:calibration_end_year_index + 1]
+        PRO_calibration = PRO[calibration_start_year_index:calibration_end_year_index + 1]
     else:
         P_calibration = P
         ET_calibration = ET
@@ -213,8 +210,7 @@ def _cafec_coefficients(P,
         L_calibration = L
         PL_calibration = PL
         RO_calibration = RO
-#        PRO_calibration = PRO
-        SP_calibration = SP
+        PRO_calibration = PRO
 
     # due to (innocuous/annoying) RuntimeWarnings raised by some math/numpy modules, we wrap the below code in a catcher
     with warnings.catch_warnings():
@@ -229,7 +225,7 @@ def _cafec_coefficients(P,
         L_sum = np.nansum(L_calibration, axis=0)
         PL_sum = np.nansum(PL_calibration, axis=0)
         RO_sum = np.nansum(RO_calibration, axis=0)
-        SP_sum = np.nansum(SP_calibration, axis=0)
+        PRO_sum = np.nansum(PRO_calibration, axis=0)
             
         # (calendar) monthly CAFEC coefficients
         alpha = np.empty((12,))
@@ -265,8 +261,8 @@ def _cafec_coefficients(P,
             #   
             #     GAMMA CALCULATION 
             #     ----------------- 
-            if SP_sum[i] != 0.0:  
-                gamma[i] = RO_sum[i] / SP_sum[i]  
+            if PRO_sum[i] != 0.0:  
+                gamma[i] = RO_sum[i] / PRO_sum[i]  
             else:  
                 if RO_sum[i] == 0.0:  
                     gamma[i] = 1.   
@@ -296,7 +292,7 @@ def _climatic_characteristic(alpha,
                              Pdat,
                              PEdat,
                              PRdat,
-                             SPdat,
+                             PROdat,
                              PLdat,
                              t_ratio,
                              begin_year,
@@ -315,7 +311,7 @@ def _climatic_characteristic(alpha,
             #     REREAD MONTHLY PARAMETERS FOR CALCULATION OF 
             #     THE 'K' MONTHLY WEIGHTING FACTORS USED IN Z-INDEX CALCULATION 
             #-----------------------------------------------------------------------
-            PHAT = (alpha[m] * PEdat[j, m]) + (beta[m] * PRdat[j, m]) + (gamma[m] * SPdat[j, m]) - (delta[m] * PLdat[j, m])  
+            PHAT = (alpha[m] * PEdat[j, m]) + (beta[m] * PRdat[j, m]) + (gamma[m] * PROdat[j, m]) - (delta[m] * PLdat[j, m])  
             D = Pdat[j, m] - PHAT   
             SABSD[m] = SABSD[m] + abs(D) 
 
@@ -383,7 +379,7 @@ def _water_balance(T,
     
     # initialize the data arrays with NaNs    
     pdat = np.full((total_years, 12), np.NaN)
-    spdat = np.full((total_years, 12), np.NaN)
+#     spdat = np.full((total_years, 12), np.NaN)
     pedat = np.full((total_years, 12), np.NaN)
     pldat = np.full((total_years, 12), np.NaN)
     prdat = np.full((total_years, 12), np.NaN)
@@ -504,7 +500,7 @@ def _water_balance(T,
 
             # set the climatology and water balance data array values for this year/month time step
             pdat[year_index, month_index] = precipitation
-            spdat[year_index, month_index] = SP
+#             spdat[year_index, month_index] = SP
             pedat[year_index, month_index] = PE
             pldat[year_index, month_index] = PL
             prdat[year_index, month_index] = PR
@@ -521,7 +517,8 @@ def _water_balance(T,
             SS = SSS
             SU = SSU
 
-    return pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, prodat, tdat, sssdat, ssudat
+#     return pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, prodat, tdat, sssdat, ssudat
+    return pdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, prodat, tdat, sssdat, ssudat
 
 #-----------------------------------------------------------------------------------------------------------------------
 #@profile
@@ -606,7 +603,8 @@ def _zindex_from_climatology(temp_timeseries,
     #NOTE keep this code in place in order to compute the PET used later, since the two have 
     # different PET algorithms and we want to compare PDSI using the same PET inputs
     #FIXME clarify the difference between SP and PRO (spdat and prodat)
-    pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, prodat, tdat, sssdat, ssudat = \
+#     pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, prodat, tdat, sssdat, ssudat = \
+    pdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, prodat, tdat, sssdat, ssudat = \
         _water_balance(temp_timeseries, precip_timeseries, awc, neg_tan_lat, B, H)
                  
     #NOTE we need to compute CAFEC coefficients for use later/below
@@ -620,7 +618,6 @@ def _zindex_from_climatology(temp_timeseries,
                                                              prodat,
                                                              tldat,
                                                              pldat,
-                                                             spdat,
                                                              data_begin_year,
                                                              calibration_begin_year,
                                                              calibration_end_year)
@@ -633,7 +630,7 @@ def _zindex_from_climatology(temp_timeseries,
                                  pdat,
                                  pedat,
                                  prdat,
-                                 spdat,
+                                 prodat,
                                  pldat,
                                  t_ratio,
                                  data_begin_year,
@@ -649,7 +646,7 @@ def _zindex_from_climatology(temp_timeseries,
                    precip_timeseries, 
                    pedat, 
                    prdat, 
-                   spdat, 
+                   prodat, 
                    pldat, 
                    K)
 

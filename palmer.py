@@ -1988,7 +1988,7 @@ def scpdsi_from_climatology(precip_time_series,
                             both of which are assumed to start in January of this year
     :param calibration_start_year: initial year of the calibration period 
     :param calibration_end_year: final year of the calibration period 
-    :return: four numpy arrays containing PDSI, PHDI, PMDI, and Z-Index values respectively 
+    :return: five numpy arrays of floats containing SCPDSI, PDSI, PHDI, PMDI, and Z-Index values respectively 
     '''
 
     # convert monthly temperatures from Fahrenheit to Celsius
@@ -2228,8 +2228,8 @@ def scpdsi(precip_time_series,
         #FIXME is this necessary/redundant after the trim above?
         ET = ET[:SCPDSI.size]
         
-#         return SCPDSI, final_PDSI, PHDI, PMDI, zindex
-        return SCPDSI, final_PDSI, PHDI, PMDI, zindex, ET, PR, R, RO, PRO, L, PL  # include additional water balance values for debugging
+        return [SCPDSI, final_PDSI, PHDI, PMDI, zindex]
+#         return SCPDSI, final_PDSI, PHDI, PMDI, zindex, ET, PR, R, RO, PRO, L, PL  # include additional water balance values for debugging
     
     except:
         # catch all exceptions, log rudimentary error information
