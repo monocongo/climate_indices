@@ -288,6 +288,7 @@ def _cafec_coefficients(P,
 
 #-----------------------------------------------------------------------------------------------------------------------
 #@profile
+@numba.jit
 def _climatic_characteristic(alpha,
                              beta,
                              gamma,
@@ -524,7 +525,7 @@ def _water_balance(T,
 
 #-----------------------------------------------------------------------------------------------------------------------
 #@profile
-#@numba.jit
+@numba.jit
 def _zindex(alpha,
             beta,
             gamma,
@@ -536,7 +537,7 @@ def _zindex(alpha,
             PL,
             K):
     '''
-    Compute the Z-Index and CAFEC precipitation value for a single monthly time step.
+    Compute the Z-Index for a time series.
     
     :param alpha: array of the monthly "alpha" CAFEC coefficients, 1-D with 12 elements, one per calendar month 
     :param beta: array of the monthly "beta" CAFEC coefficients, 1-D with 12 elements, one per calendar month 
@@ -581,6 +582,80 @@ def _zindex(alpha,
 
 #-----------------------------------------------------------------------------------------------------------------------
 #@profile
+@numba.jit
+def _zindex_from_climatology(temp_timeseries, 
+                             precip_timeseries, 
+                             awc, 
+                             neg_tan_lat, 
+                             B, 
+                             H,
+                             data_begin_year,
+                             calibration_begin_year,
+                             calibration_end_year):
+    '''
+    Compute the Z-Index for a time series.
+    
+    :return Z-Index
+    :rtype: array of floats
+    '''
+    
+#     # calculate the negative tangent of the latitude which is used as an argument to the water balance function
+#     neg_tan_lat = -1 * math.tan(math.radians(latitude))
+
+    # compute water balance values using the function translated from the Fortran pdinew.f
+    #NOTE keep this code in place in order to compute the PET used later, since the two have 
+    # different PET algorithms and we want to compare PDSI using the same PET inputs
+    #FIXME clarify the difference between SP and PRO (spdat and prodat)
+    pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, prodat, tdat, sssdat, ssudat = \
+        _water_balance(temp_timeseries, precip_timeseries, awc, neg_tan_lat, B, H)
+                 
+    #NOTE we need to compute CAFEC coefficients for use later/below
+    # compute PDSI etc. using translated functions from pdinew.f Fortran code
+    alpha, beta, delta, gamma, t_ratio = _cafec_coefficients(precip_timeseries,
+                                                             pedat,
+                                                             etdat,
+                                                             prdat,
+                                                             rdat,
+                                                             rodat,
+                                                             prodat,
+                                                             tldat,
+                                                             pldat,
+                                                             spdat,
+                                                             data_begin_year,
+                                                             calibration_begin_year,
+                                                             calibration_end_year)
+     
+    # compute the weighting factor (climatic characteristic) using the version translated from pdinew.f
+    K = _climatic_characteristic(alpha,
+                                 beta,
+                                 gamma,
+                                 delta,
+                                 pdat,
+                                 pedat,
+                                 prdat,
+                                 spdat,
+                                 pldat,
+                                 t_ratio,
+                                 data_begin_year,
+                                 calibration_begin_year,
+                                 calibration_end_year)
+
+    # compute the Z-index
+    #TODO eliminate the P-hat once development/debugging is complete, since it's really an intermediate/internal value
+    return _zindex(alpha, 
+                   beta, 
+                   gamma, 
+                   delta, 
+                   precip_timeseries, 
+                   pedat, 
+                   prdat, 
+                   spdat, 
+                   pldat, 
+                   K)
+
+#-----------------------------------------------------------------------------------------------------------------------
+#@profile
+#@numba.jit  #FIXME not yet working
 def _pdsi(Z,
           expected_pdsi):
     '''
@@ -721,6 +796,7 @@ def _pdsi(Z,
 #-----------------------------------------------------------------------------------------------------------------------
 # from label 190 in pdinew.f
 #@profile
+@numba.jit
 def _get_PPR_PX3(df,
                  prob_ended,
                  Ze,
@@ -761,6 +837,7 @@ def _get_PPR_PX3(df,
 #-----------------------------------------------------------------------------------------------------------------------
 # from label 170 in pdinew.f
 #@profile
+@numba.jit
 def _wet_spell_abatement(df,
                          V, 
                          prob_ended,
@@ -799,6 +876,7 @@ def _wet_spell_abatement(df,
 #-----------------------------------------------------------------------------------------------------------------------
 # from label 180 in pdinew.f
 #@profile
+@numba.jit
 def _dry_spell_abatement(df,
                          V,   # accumulated effective wetness
                          X1, 
@@ -853,6 +931,7 @@ def _dry_spell_abatement(df,
 #-----------------------------------------------------------------------------------------------------------------------
 # label 200 in pdinew.f
 #@profile
+#@numba.jit  #FIXME not working yet
 def _compute_X(df,
                X1,
                X2,
@@ -982,6 +1061,7 @@ def _compute_X(df,
 #-----------------------------------------------------------------------------------------------------------------------
 # from label 210 in pdinew.f
 #@profile
+@numba.jit
 def _between_0s(df,
                 X3):
     '''
@@ -1055,6 +1135,7 @@ def _between_0s(df,
 
 #-----------------------------------------------------------------------------------------------------------------------
 #@profile
+#@numba.jit  #FIXME not working yet
 def _assign(df,
             which_X):
 
@@ -1214,6 +1295,7 @@ def _assign(df,
 
 #-----------------------------------------------------------------------------------------------------------------------
 #@profile
+@numba.jit
 def _case(PROB,
           X1,
           X2,
