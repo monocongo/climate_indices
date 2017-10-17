@@ -1068,8 +1068,8 @@ def _pdsi_from_zindex(Z,
 #         # DEBUGGING ONLY -- REMOVE
 #         print('k: {0}'.format(k))
         
-#         #TODO/FIXME why is this here at the start of the loop, rather than at the conclusion?
-#         PMDI[k] = _pmdi(Pe, X1, X2, X3)
+        #TODO/FIXME why is this here at the start of the loop, rather than at the conclusion?
+        PMDI[k] = _pmdi(Pe, X1, X2, X3)
         
         if (Pe == 100) or (Pe == 0):   # no abatement underway
             
@@ -1116,9 +1116,9 @@ def _pdsi_from_zindex(Z,
                 
                 PV, PPe, PX1, PX2, PX3, X, BT = _dry_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT, expected_pdsi)
         
-        #EXPERIMENTAL/DEBUG -- REMOVE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!                                                                                            
-        PMDI[k] = _pmdi(Pe, X1, X2, X3)
-        #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#         #EXPERIMENTAL/DEBUG -- REMOVE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!                                                                                            
+#         PMDI[k] = _pmdi(Pe, X1, X2, X3)
+#         #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
         ## Assign V, Pe, X1, X2, and X3 for use with the next month
         V = PV
