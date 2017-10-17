@@ -701,54 +701,6 @@ def _z_index(P,
     return z.flatten()
 
 #-----------------------------------------------------------------------------------------------------------------------
-# from pdinew.f
-def _pe(temperature,
-        month_index,
-        latitude,
-        B,
-        H):
-    """
-    Computes potential evapotranspiration based on the method used in original PDSI code pdi.f
-    
-    :param temperature: temperature value in degrees Fahrenheit
-    :param month_index: index into monthly timeseries, with 0 corresponding to January of the initial year
-    :param latitude: latitude value in degrees north 
-    :param B: ?
-    :param H: ?
-    """
-    #TODO document this, where do these come from?
-    PHI = np.array([-0.3865982, -0.2316132, -0.0378180, 0.1715539, 0.3458803, 0.4308320, \
-                     0.3916645, 0.2452467, 0.0535511, -0.15583436, -0.3340551, -0.4310691])
-    
-#     TLA = -1 * math.tan(math.radians(latitude))
-    TLA = math.tan(math.radians(latitude))
-    
-    #-----------------------------------------------------------------------
-    #     1 - CALCULATE PE (POTENTIAL EVAPOTRANSPIRATION)   
-    #-----------------------------------------------------------------------
-    if temperature <= 32.0:
-        PE = 0.0
-    else:  
-        DUM = PHI[month_index % 12] * TLA 
-        
-        try:
-            DK = math.atan(math.sqrt(1.0 - (DUM * DUM)) / DUM)   
-        except ValueError:
-            logger.exception('Failed to complete', exc_info=True)
-            raise
-            
-        if DK < 0.0:
-            DK = 3.141593 + DK  
-        DK = (DK + 0.0157) / 1.57  
-        if temperature >= 80.0:
-            PE = (math.sin((temperature / 57.3) - 0.166) - 0.76) * DK
-        else:  
-            DUM = math.log(temperature - 32.0)
-            PE = math.exp(-3.863233 + (B * 1.715598) - (B * math.log(H)) + (B * DUM)) * DK 
-
-    return PE
-
-#-----------------------------------------------------------------------------------------------------------------------
 #@numba.jit
 # previously Main()
 def _compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT, expected_pdsi):
@@ -1828,8 +1780,67 @@ def _least_squares(x,
     return leastSquaresSlope, leastSquaresIntercept
 
 #-----------------------------------------------------------------------------------------------------------------------
+# from pdinew.f
+def _pe(temperature,
+        month_index,
+        latitude,
+        data_start_year,
+        B,
+        H):
+    """
+    Computes potential evapotranspiration based on the method used in original PDSI code pdi.f
+    
+    :param temperature: temperature value in degrees Fahrenheit
+    :param month_index: index into monthly timeseries, with 0 corresponding to January of the initial year
+    :param latitude: latitude value in degrees north 
+    :param data_start_year: initial year of the data being computed
+    :param B: ?
+    :param H: ?
+    """
+    #TODO document this, where do these come from?
+    PHI = np.array([-0.3865982, -0.2316132, -0.0378180, 0.1715539, 0.3458803, 0.4308320, \
+                     0.3916645, 0.2452467, 0.0535511, -0.15583436, -0.3340551, -0.4310691])
+    
+    TLA = -1 * math.tan(math.radians(latitude))
+#     TLA = math.tan(math.radians(latitude))
+    
+    #-----------------------------------------------------------------------
+    #     1 - CALCULATE PE (POTENTIAL EVAPOTRANSPIRATION)   
+    #-----------------------------------------------------------------------
+    if temperature <= 32.0:
+        PE = 0.0
+    else:  
+        DUM = PHI[month_index % 12] * TLA 
+        
+        try:
+            DK = math.atan(math.sqrt(1.0 - (DUM * DUM)) / DUM)   
+        except ValueError:
+            logger.exception('Failed to complete', exc_info=True)
+            raise
+            
+        if DK < 0.0:
+            DK = 3.141593 + DK  
+        DK = (DK + 0.0157) / 1.57  
+        if temperature >= 80.0:
+            PE = (math.sin((temperature / 57.3) - 0.166) - 0.76) * DK
+        else:  
+            DUM = math.log(temperature - 32.0)
+            PE = math.exp(-3.863233 + (B * 1.715598) - (B * math.log(H)) + (B * DUM)) * DK 
+
+        #-----------------------------------------------------------------------
+        #     CONVERT DAILY TO MONTHLY  
+        #-----------------------------------------------------------------------
+        year = data_start_year + int((month_index + 1) / 12)
+#         month = (month_index + 1) % 12
+        month = month_index % 12
+        PE = PE * calendar.monthrange(year, month + 1)[1]
+
+    return PE
+
+#-----------------------------------------------------------------------------------------------------------------------
 def _pdinew_potential_evapotranspiration(monthly_temps_celsius, 
                                          latitude,
+                                         data_start_year,
                                          B,
                                          H):
 
@@ -1838,7 +1849,7 @@ def _pdinew_potential_evapotranspiration(monthly_temps_celsius,
     pet = np.full(monthly_temps_celsius.shape, np.NaN)
     monthly_temps_fahrenheit = scipy.constants.C2F(monthly_temps_celsius)
     for i in range(monthly_temps_celsius.size):
-        pet[i] = _pe(monthly_temps_fahrenheit[i], i, latitude, B, H)
+        pet[i] = _pe(monthly_temps_fahrenheit[i], i, latitude, data_start_year, B, H)
     return pet
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -1875,6 +1886,7 @@ def pdi_from_climatology(precip_time_series,
     # compute PET using method from original PDSI code pdi.f
     pet_time_series = _pdinew_potential_evapotranspiration(monthly_temps_celsius, 
                                                            latitude,
+                                                           data_start_year,
                                                            B,
                                                            H)
 
@@ -1934,6 +1946,7 @@ def pdsi_from_climatology(precip_time_series,
     # compute PET using method from original PDSI code pdinew.f
     pet_time_series = _pdinew_potential_evapotranspiration(monthly_temps_celsius, 
                                                            latitude,
+                                                           data_start_year,
                                                            B,
                                                            H)
 #     # compute PET
