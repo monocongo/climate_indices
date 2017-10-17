@@ -108,8 +108,8 @@ def main():
 
                 # get the expected/target values from the NetCDF
                 expected_pdsi = input_dataset.variables['pdsi.index'][division_index, :]
-#                 expected_phdi = input_dataset.variables['phdi.index'][division_index, :]
-#                 expected_pmdi = input_dataset.variables['pmdi.index'][division_index, :]
+                expected_phdi = input_dataset.variables['phdi.index'][division_index, :]
+                expected_pmdi = input_dataset.variables['pmdi.index'][division_index, :]
                 expected_zindex = input_dataset.variables['z.index'][division_index, :]
                 
                 # calibration period years used operationally with pdinew.f
@@ -527,14 +527,14 @@ def main():
 
                 # find the differences between the new (Matlab-derived) and previous (Fortran-derived) versions
                 pdsi_diffs = palmer_PDSI.flatten() - expected_pdsi
-#                 phdi_diffs = palmer_PHDI.flatten() - expected_phdi
-#                 pmdi_diffs = palmer_PMDI.flatten() - expected_pmdi
+                phdi_diffs = palmer_PHDI.flatten() - expected_phdi
+                pmdi_diffs = palmer_PMDI.flatten() - expected_pmdi
                 zindex_diffs = palmer_Z.flatten() - expected_zindex
                
                 # dictionary of variable names to corresponding arrays of differences to facilitate looping below
                 varnames_to_arrays = {'palmer_PDSI': (pdsi_diffs, expected_pdsi, palmer_PDSI.flatten()),
-#                                       'palmer_PHDI': (phdi_diffs, expected_phdi, pdinew_PHDI),
-#                                       'palmer_PMDI': (pmdi_diffs, expected_pmdi, pdinew_PMDI),
+                                      'palmer_PHDI': (phdi_diffs, expected_phdi, pdinew_PHDI),
+                                      'palmer_PMDI': (pmdi_diffs, expected_pmdi, pdinew_PMDI),
                                       'palmer_Z-INDEX': (zindex_diffs, expected_zindex, palmer_Z.flatten()) }
    
                 # we want to see all zero differences, if any non-zero differences exist then raise an alert

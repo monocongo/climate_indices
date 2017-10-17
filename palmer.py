@@ -832,14 +832,15 @@ def _backtrack(k,
                 BT[count - 1] = 1
     
         # DEBUG -- REMOVE !!!!!!!!!!!!!!!!!!!
-        tolerance = 0.01
-        difference = abs(X[count] - expected_pdsi[count])
-        if difference > tolerance:
-#              print('_compute_X: At index {0} there is a discrepency -- actual: {1}  expected: {2}'.format(count, 
-#                                                                                                           X[count], 
-#                                                                                                           expected_pdsi[count]))
-             _debug_differences += difference
-             _debug_differences_count += 1
+        if expected_pdsi is not None:
+            tolerance = 0.01
+            difference = abs(X[count] - expected_pdsi[count])
+            if difference > tolerance:
+    #              print('_compute_X: At index {0} there is a discrepency -- actual: {1}  expected: {2}'.format(count, 
+    #                                                                                                           X[count], 
+    #                                                                                                           expected_pdsi[count]))
+                 _debug_differences += difference
+                 _debug_differences_count += 1
         #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         
     return X, BT
@@ -890,14 +891,15 @@ def _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X, expected_pdsi):
                 BT[count - 1] = 3  # this makes it so that the previous if condition will be met for the previous month (the next backtracking step), so that it too will be assigned an X3 value; by this mechanism we enable the assignment of X3 values all the way back to index r
 
             # DEBUG -- REMOVE !!!!!!!!!!!!!!!!!!!
-            tolerance = 0.01
-            difference = abs(X[count] - expected_pdsi[count])
-            if difference > tolerance:
-#                  print('_between_0s: At index {0} there is a discrepency -- actual: {1}  expected: {2}'.format(count, 
+            if expected_pdsi is not None:
+                tolerance = 0.01
+                difference = abs(X[count] - expected_pdsi[count])
+                if difference > tolerance:
+#                      print('_between_0s: At index {0} there is a discrepency -- actual: {1}  expected: {2}'.format(count, 
 #                                                                                                                X[count], 
 #                                                                                                                expected_pdsi[count]))
-                 _debug_differences += difference
-                 _debug_differences_count += 1
+                    _debug_differences += difference
+                    _debug_differences_count += 1
             #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     return PV, PX1, PX2, PX3, PPe, X, BT
@@ -2206,7 +2208,7 @@ def scpdsi(precip_time_series,
             PL = PL[0:-pad_months]
             
         # compute PDSI and other associated variables
-        PDSI, PHDI, PMDI = _pdsi_from_zindex(zindex)
+        PDSI, PHDI, PMDI = _pdsi_from_zindex(zindex, None)
 
         # keep a copy of the originally computed PDSI for return
         final_PDSI = np.array(PDSI)
@@ -2219,7 +2221,7 @@ def scpdsi(precip_time_series,
                                                data_start_year)
 
         # recompute PDSI and other associated variables
-        SCPDSI, PHDI, PMDI = _pdsi_from_zindex(zindex)
+        SCPDSI, PHDI, PMDI = _pdsi_from_zindex(zindex, None)
         
         #FIXME is this necessary/redundant after the trim above?
         ET = ET[:SCPDSI.size]
