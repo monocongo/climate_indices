@@ -331,11 +331,11 @@ def _water_balance(AWC,
         L[k] = Ls[k] + Lu[k]
         S[k] = Ss[k] + Su[k]
         
-        # DEBUG ONLY -- REMOVE
-        if R[k] < 0:
-            logger.warn('Trouble, negative recharge for month {0}'.format(k))
-        if L[k] < 0:
-            logger.warn('Trouble, negative loss for month {0}'.format(k))
+#         # DEBUG ONLY -- REMOVE
+#         if R[k] < 0:
+#             logger.warn('Negative recharge for month {0}'.format(k))
+#         if L[k] < 0:
+#             logger.warn('Negative loss for month {0}'.format(k))
         
         # S0, Ss0, and Su0 are reset to their end of the current month [k]
         # values - S, Ss, and Su0, respectively - such that they can be
@@ -1068,8 +1068,8 @@ def _pdsi_from_zindex(Z,
 #         # DEBUGGING ONLY -- REMOVE
 #         print('k: {0}'.format(k))
         
-        #TODO/FIXME why is this here at the start of the loop, rather than at the conclusion?
-        PMDI[k] = _pmdi(Pe, X1, X2, X3)
+#         #TODO/FIXME why is this here at the start of the loop, rather than at the conclusion?
+#         PMDI[k] = _pmdi(Pe, X1, X2, X3)
         
         if (Pe == 100) or (Pe == 0):   # no abatement underway
             
