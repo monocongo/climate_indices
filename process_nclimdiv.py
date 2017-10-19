@@ -323,7 +323,7 @@ def process_division(division_index,
             
             # convert temperatures from Fahrenheit to Celsius, if necessary
             temperature_units = input_dataset[temp_var_name].units
-            if temperature_units in ['degree_Fahrenheit', 'fahrenheit', 'Fahrenheit', 'F']:
+            if temperature_units in ['degree_Fahrenheit', 'degrees Fahrenheit', 'fahrenheit', 'Fahrenheit', 'F']:
                 
                 temperature = np.apply_along_axis(f2c, 0, temperature)
 
@@ -556,8 +556,11 @@ if __name__ == '__main__':
             # get the number of divisions in the input dataset(s)
             divisions_size = input_dataset.variables['division'].size
         
+        number_of_processes = 2
+        # number_of_processes = multiprocessing.cpu_count()
+
         # create a process Pool, with copies of the shared array going to each pooled/forked process
-        pool = multiprocessing.Pool(processes=1,#multiprocessing.cpu_count(),
+        pool = multiprocessing.Pool(processes=number_of_processes,
                                     initializer=init_process,
                                     initargs=(args.input_file,
                                               args.output_file,
