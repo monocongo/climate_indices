@@ -24,6 +24,8 @@ _PDSI_MAX = 4.0
 # globals FOR DEBUG ONLY -- REMOVE
 _debug_differences = 0.0
 _debug_differences_count = 0
+_debug_tolerance = 0.1
+
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def _water_balance(AWC,
@@ -831,18 +833,6 @@ def _backtrack(k,
                 X[count] = PX1[count]
                 BT[count - 1] = 1
     
-        # DEBUG -- REMOVE !!!!!!!!!!!!!!!!!!!
-        if expected_pdsi is not None:
-            tolerance = 0.01
-            difference = abs(X[count] - expected_pdsi[count])
-            if difference > tolerance:
-    #              print('_compute_X: At index {0} there is a discrepency -- actual: {1}  expected: {2}'.format(count, 
-    #                                                                                                           X[count], 
-    #                                                                                                           expected_pdsi[count]))
-                 _debug_differences += difference
-                 _debug_differences_count += 1
-        #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        
     return X, BT
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -890,23 +880,10 @@ def _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X, expected_pdsi):
             if count != r:
                 BT[count - 1] = 3  # this makes it so that the previous if condition will be met for the previous month (the next backtracking step), so that it too will be assigned an X3 value; by this mechanism we enable the assignment of X3 values all the way back to index r
 
-            # DEBUG -- REMOVE !!!!!!!!!!!!!!!!!!!
-            if expected_pdsi is not None:
-                tolerance = 0.01
-                difference = abs(X[count] - expected_pdsi[count])
-                if difference > tolerance:
-#                      print('_between_0s: At index {0} there is a discrepency -- actual: {1}  expected: {2}'.format(count, 
-#                                                                                                                X[count], 
-#                                                                                                                expected_pdsi[count]))
-                    _debug_differences += difference
-                    _debug_differences_count += 1
-            #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
     return PV, PX1, PX2, PX3, PPe, X, BT
 
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit
-# previously Function_Uw
+@numba.jit
 def _dry_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT, expected_pdsi):
 
     # In the case of an established drought, Palmer (1965) notes that a value of Z = -0.15 will maintain an
@@ -942,8 +919,7 @@ def _dry_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT, exp
     return PV, PPe, PX1, PX2, PX3, X, BT
 
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit
-# previously Function_Ud
+@numba.jit
 def _wet_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT, expected_pdsi):
 
     # In the case of an established wet spell, Palmer (1965) notes that a value of Z = +0.15 will maintain an 
@@ -979,6 +955,7 @@ def _wet_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT, exp
 
 #-----------------------------------------------------------------------------------------------------------------------
 # comparable to the case() subroutine in original NCDC pdi.f 
+@numba.jit
 def _pmdi(probability,
           X1, 
           X2, 
@@ -1026,50 +1003,31 @@ def _pdsi_from_zindex(Z,
     # V is the sum of the Uw (Ud) values for the current and previous months of an
     # established dry (wet) spell and is used in calculating the Pe value for a month.
     V = 0.0
-    Pe = 0.0 # Pe is the probability that the current wet or dry spell has ended in a month.
-    X1 = 0.0 # X1 is the severity index value for an incipient wet spell for a month.
-    X2 = 0.0 # X2 is the severity index value for an incipient dry spell for a month.
-    X3 = 0.0 # X3 is the severity index value of the current established wet or dry spell for a month.
-#     Q = 0.0
+    
+    Pe = 0.0 # the probability that the current wet or dry spell has ended in a month
+    X1 = 0.0 # the severity index value for an incipient wet spell for a month
+    X2 = 0.0 # the severity index value for an incipient dry spell for a month
+    X3 = 0.0 # the severity index value of the current established wet or dry spell for a month
     
     number_of_months = Z.shape[0]
     
-    # BACTRACKING VARIABLES
-    
     # BT is the backtracking variable, and is pre-allocated with zeros. Its value (1, 2, or 3) indicates which 
     # intermediate index (X1, X2, or X3) to backtrack up, selecting the associated term (X1, X2, or X3) for the PDSI. 
-    # NOTE: BT may be operationally left equal to 0, as it cannot be known in real time when an existing drought or wet spell may or may not be over.
+    # NOTE: BT may be operationally left equal to 0, as it cannot be known in real time when an existing drought or 
+    # wet spell may or may not be over.
     BT = np.zeros((number_of_months,), dtype=np.int8) 
     
-    ## CALCULATE PDSI AND PHDI
+    # initialize arrays
     PX1 = np.zeros((number_of_months,))
     PX2 = np.zeros((number_of_months,))
     PX3 = np.zeros((number_of_months,))
     PPe = np.zeros((number_of_months,))
     X = np.zeros((number_of_months,))
     PMDI = np.zeros((number_of_months,))
-    
-#     # Ze is the soil moisture anomaly (Z) value that will end the current established dry or wet spell in that 
-#     # month and is used in calculating the Q value and subsequently the Pe value for a month
-#     Ze = np.zeros((number_of_months,))
-#
-#     # Uw is the effective wetness required in a month to end the current established dry spell (drought)
-#     Uw = np.zeros((number_of_months,))
-#     
-#     # Ud is the effective dryness required in a month to end the current wet spell
-#     Ud = np.zeros((number_of_months,))
-    
-    # Palmer Hydrological Drought Index
     PHDI = np.zeros((number_of_months,))
 
     # loop over all months in the dataset, calculating PDSI and PHDI for each
     for k in range(number_of_months):
-        
-#         # DEBUGGING ONLY -- REMOVE
-#         print('k: {0}'.format(k))
-        
-        #TODO/FIXME why is this here at the start of the loop, rather than at the conclusion?
-        PMDI[k] = _pmdi(Pe, X1, X2, X3)
         
         if (Pe == 100) or (Pe == 0):   # no abatement underway
             
@@ -1116,10 +1074,6 @@ def _pdsi_from_zindex(Z,
                 
                 PV, PPe, PX1, PX2, PX3, X, BT = _dry_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT, expected_pdsi)
         
-#         #EXPERIMENTAL/DEBUG -- REMOVE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!                                                                                            
-#         PMDI[k] = _pmdi(Pe, X1, X2, X3)
-#         #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
         ## Assign V, Pe, X1, X2, and X3 for use with the next month
         V = PV
         Pe = PPe[k]
@@ -1127,6 +1081,9 @@ def _pdsi_from_zindex(Z,
         X2 = PX2[k]
         X3 = PX3[k]
         
+        # select a PMDI
+        PMDI[k] = _pmdi(Pe, X1, X2, X3)
+
         ## ASSIGN X FOR CASES WHERE PX3 AND BT EQUAL ZERO
         # NOTE: This is a conflicting case that arises where X cannot be
         # assigned as X1, X2, or X3 in real time. Here 0 < PX1 < 1, 
@@ -1152,28 +1109,13 @@ def _pdsi_from_zindex(Z,
                             BT[count0] = 1  # flip the X we'll choose next step, from X2 to X1
                         else:
                             X[count0] = PX2[count0]
-#                            BT[count0] = 2
                     elif BT[count0] == 1:
                         if PX1[count0] == 0:  # If BT = 1, X = PX1 unless PX1 = 0, then X = PX2.
                             X[count0] = PX2[count0] 
                             BT[count0] = 2  # flip the X we'll choose next step, from X1 to X2
                         else:
                             X[count0] = PX1[count0]
-#                            BT[count0] = 1
                     
-                    # DEBUG -- REMOVE !!!!!!!!!!!!!!!!!!!
-                    if expected_pdsi is not None:
-                        tolerance = 0.01
-                        difference = abs(X[count0] - expected_pdsi[count0])
-                        if difference > tolerance:
-    #                         print('_between_0s: At index {0} there is a discrepency -- actual: {1}  expected: {2}'.format(count0, 
-    #                                                                                                                       X[count0], 
-    #                                                                                                                       expected_pdsi[count0]))
-                            _debug_differences += difference
-                            _debug_differences_count += 1
-                    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-
         # In instances where there is no established spell for the last monthly observation, X is initially 
         # assigned to 0. The code below sets X in the last month to greater of |PX1| or |PX2|. This prevents 
         # the PHDI from being inappropriately set to 0. 
@@ -1184,28 +1126,10 @@ def _pdsi_from_zindex(Z,
                 else:
                     X[k] = PX2[k]
 
-                # DEBUG -- REMOVE !!!!!!!!!!!!!!!!!!!
-                if expected_pdsi is not None:
-                    tolerance = 0.01
-                    difference = abs(X[k] - expected_pdsi[k])
-                    if difference > tolerance:
-    #                     print('_between_0s: At index {0} there is a discrepency -- actual: {1}  expected: {2}'.format(k, 
-    #                                                                                                                   X[k], 
-    #                                                                                                                   expected_pdsi[k]))
-                        _debug_differences += difference
-                        _debug_differences_count += 1
-                #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                
         # round values to four decimal places
         for values in [X1, X2, X3, Pe, V, X, PX1, PX2, PX3, PPe]:
             values = np.around(values, decimals=4)
         
-#     #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-#     # DEBUG ONLY -- REMOVE
-#     print('\n\n\tAverage difference between actual and expected PDSI values for division: {0}'.format(_debug_differences / _debug_differences_count))
-#     #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    
-
     ## ASSIGN PDSI VALUES
     # NOTE: 
     # In Palmer's effort to create a meteorological drought index (PDSI),
