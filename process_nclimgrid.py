@@ -308,8 +308,11 @@ def process_latitude_palmer(lat_index):
         pet_lock.release()
 
         # read the latitude slice of input precipitation and available water capacity values 
-        precip_lat_slice = precip_dataset[precip_var_name][:, lat_index, :]   # assuming (time, lat, lon) orientation
-        awc_lat_slice = awc_dataset[awc_var_name][lat_index, :]             # assuming (lat, lon) orientation
+        precip_lat_slice = precip_dataset[precip_var_name][:, lat_index, :]      # assuming (time, lat, lon) orientation
+        if len(awc_dataset[awc_var_name][:].shape) == 2:
+            awc_lat_slice = awc_dataset[awc_var_name][lat_index, :].flatten()    # assuming (lat, lon) orientation
+        elif len(awc_dataset[awc_var_name][:].shape) == 3:
+            awc_lat_slice = awc_dataset[awc_var_name][:, lat_index, :].flatten() # assuming (time, lat, lon) orientation
         
         # allocate arrays to contain a latitude slice of Palmer values
         lon_size = temp_dataset['lon'].size
