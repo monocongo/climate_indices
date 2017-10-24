@@ -1999,7 +1999,7 @@ def _pdsi_at_percentile(pdsi_values,
     return sorted_pdsi_values[int(len(pdsi_values) * percentile)]
     
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit
+#@numba.jit  # commented to allow for debugging, JIT appears to work fine here
 def _self_calibrate(pdsi_values,
                     sczindex_values,
                     calibration_start_year,
@@ -2009,8 +2009,16 @@ def _self_calibrate(pdsi_values,
     # remove periods before the end of the interval
     # calibrate using upper and lower 2% of values within the user-defined calibration interval
     # this is explained in equations (14) and (15) of Wells et al
-    dry_ratio = _PDSI_MIN / _pdsi_at_percentile(pdsi_values, 0.02) 
-    wet_ratio = _PDSI_MAX / _pdsi_at_percentile(pdsi_values, 0.98) 
+    dry_extreme = _pdsi_at_percentile(pdsi_values, 0.02)
+    if dry_extreme == 0.0:
+        dry_ratio = 1.0
+    else:
+        dry_ratio = _PDSI_MIN / dry_extreme
+    wet_extreme = _pdsi_at_percentile(pdsi_values, 0.98)
+    if wet_extreme == 0.0:
+        wet_ratio = 1.0
+    else:
+        wet_ratio = _PDSI_MAX / wet_extreme
         
     # adjust the self-calibrated Z-index values, using either the wet or dry ratio
     #TODO replace the below loop with a vectorized equivalent
