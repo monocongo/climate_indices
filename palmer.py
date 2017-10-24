@@ -350,7 +350,7 @@ def _water_balance(AWC,
     return ET, PR, R, RO, PRO, L, PL 
           
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit
+#@numba.jit   # not working yet
 def _cafec_coefficients(P,
                         PET,
                         ET,
@@ -472,6 +472,7 @@ def _cafec_coefficients(P,
     return alpha, beta, gamma, delta
 
 #-----------------------------------------------------------------------------------------------------------------------    
+@numba.jit
 def _calibrate_data(arrays,
                     data_start_year,
                     calibration_start_year,
@@ -502,6 +503,7 @@ def _calibrate_data(arrays,
     return calibration_arrays
 
 #-----------------------------------------------------------------------------------------------------------------------
+@numba.jit
 def _climatic_characteristic(alpha,
                              beta,
                              gamma,
@@ -595,7 +597,7 @@ def _climatic_characteristic(alpha,
     return K
 
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit
+#@numba.jit  # not working yet, AssertionError: Failed at object (analyzing bytecode)
 def _z_index(P,
              PET,
              ET,
@@ -682,19 +684,18 @@ def _z_index(P,
     
     # loop over the full period of record and compute the CAFEC precipitation, and use this to determine the moisture departure
     # FULL RECORD CAFEC AND d CALCULATION
-    CAFEC = np.empty((P.shape[0], 12))
     z = np.empty((P.shape[0], 12))
     for n in range(P.shape[0]):
         for i in range(12):
             
             # calculate the CAFEC precipitation
-            CAFEC[n, i] = (alpha[i] * PET[n, i]) + \
-                          (beta[i] * PR[n, i]) + \
-                          (gamma[i] * PRO[n, i]) - \
-                          (delta[i] * PL[n, i])
+            CAFEC = (alpha[i] * PET[n, i]) + \
+                    (beta[i] * PR[n, i]) + \
+                    (gamma[i] * PRO[n, i]) - \
+                    (delta[i] * PL[n, i])
             
             # Calculate d_hat, difference between actual precipitation and CAFEC precipitation
-            departure = P[n, i] - CAFEC[n, i]
+            departure = P[n, i] - CAFEC
             
             # Calculate the Z-index (moisture anomaly index)
             z[n, i] = K[i] * departure
@@ -703,7 +704,7 @@ def _z_index(P,
     return z.flatten()
 
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit
+@numba.jit
 # previously Main()
 def _compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT, expected_pdsi):
 
@@ -760,7 +761,7 @@ def _compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT, expected_pdsi):
     return PX1, PX2, PX3, X, BT
 
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit
+@numba.jit
 def _backtrack(k, 
                PPe, 
                PX1, 
@@ -836,7 +837,7 @@ def _backtrack(k,
     return X, BT
 
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit
+@numba.jit
 def _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X, expected_pdsi):
 
     # This function is called when non-zero, non-one hundred PPe values occur
@@ -1781,7 +1782,7 @@ def _pdinew_potential_evapotranspiration(monthly_temps_celsius,
     return pet
 
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit
+@numba.jit
 def pdi_from_climatology(precip_time_series,
                          temp_time_series,
                          awc,
@@ -1990,12 +1991,12 @@ def _duration_factors(pdsi_values,
     return slope, intercept
 
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit
+@numba.jit
 def _pdsi_at_percentile(pdsi_values,
                         percentile):
 
-    pdsiSorted = sorted(pdsi_values)
-    return pdsiSorted[int(len(pdsi_values) * percentile)]
+    sorted_pdsi_values = sorted(pdsi_values)
+    return sorted_pdsi_values[int(len(pdsi_values) * percentile)]
     
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
