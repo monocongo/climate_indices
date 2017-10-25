@@ -11,6 +11,11 @@ import subprocess
 import sys
 from netCDF4 import Dataset, num2date
 
+# static constants
+_VALID_MIN = -10.0
+_VALID_MAX = 10.0
+
+
 # set up a basic, global logger which will write to the console as standard error
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s',
@@ -86,9 +91,6 @@ def process_latitude_spi_spei_pnp(lat_index):
     with Dataset(precip_netcdf) as precip_dataset, \
          Dataset(pet_netcdf) as pet_dataset:
 
-        valid_min = -3.09
-        valid_max = 3.09
-                                                  
         # read the latitude slice of input precipitation and PET values 
         precip_lat_slice = precip_dataset[precip_var_name][:, lat_index, :]   # assuming (time, lat, lon) orientation
         pet_lat_slice = pet_dataset['pet'][:, lat_index, :]   # assuming (time, lat, lon) orientation
@@ -358,10 +360,11 @@ def process_latitude_palmer(lat_index):
                                                calibration_start_year,
                                                calibration_end_year)
     
-                scpdsi_lat_slice[:, 0, lon_index] = palmer_values[0]
-                pdsi_lat_slice[:, 0, lon_index] = palmer_values[1]
-                phdi_lat_slice[:, 0, lon_index] = palmer_values[2]
-                pmdi_lat_slice[:, 0, lon_index] = palmer_values[3]
+                # add the values into the slice, first clipping all values to the valid range
+                scpdsi_lat_slice[:, 0, lon_index] = np.clip(palmer_values[0], _VALID_MIN, _VALID_MAX)
+                pdsi_lat_slice[:, 0, lon_index] = np.clip(palmer_values[1], _VALID_MIN, _VALID_MAX)
+                phdi_lat_slice[:, 0, lon_index] = np.clip(palmer_values[2], _VALID_MIN, _VALID_MAX)
+                pmdi_lat_slice[:, 0, lon_index] = np.clip(palmer_values[3], _VALID_MIN, _VALID_MAX)
                 zindex_lat_slice[:, 0, lon_index] = palmer_values[4]
         
         # open the existing PDSI NetCDF file for writing, copy the latitude slice into the PET variable at the indexed latitude position 
@@ -535,8 +538,6 @@ def initialize_unscaled_netcdfs(base_file_path,
     zindex_netcdf = base_file_path + '_zindex.nc'
     scpdsi_netcdf = base_file_path + '_scpdsi.nc'
     pmdi_netcdf = base_file_path + '_pmdi.nc'
-    valid_min = -10.0
-    valid_max = 10.0
     
     initialize_netcdf(pet_netcdf,
                       template_netcdf,
@@ -549,32 +550,32 @@ def initialize_unscaled_netcdfs(base_file_path,
                       template_netcdf,
                       'pdsi',
                       'Palmer Drought Severity Index (PDSI)',
-                      valid_min,
-                      valid_max)
+                      _VALID_MIN,
+                      _VALID_MAX)
     initialize_netcdf(phdi_netcdf,
                       template_netcdf,
                       'phdi',
                       'Palmer Hydrological Drought Index (PHDI)',
-                      valid_min,
-                      valid_max)
+                      _VALID_MIN,
+                      _VALID_MAX)
     initialize_netcdf(zindex_netcdf,
                       template_netcdf,
                       'zindex',
                       'Palmer Z-Index',
-                      valid_min,
-                      valid_max)
+                      _VALID_MIN,
+                      _VALID_MAX)
     initialize_netcdf(scpdsi_netcdf,
                       template_netcdf,
                       'scpdsi',
                       'Self-calibrated Palmer Drought Severity Index (scPDSI)',
-                      valid_min,
-                      valid_max)
+                      _VALID_MIN,
+                      _VALID_MAX)
     initialize_netcdf(pmdi_netcdf,
                       template_netcdf,
                       'pmdi',
                       'Palmer Modified Drought Index (PMDI)',
-                      valid_min,
-                      valid_max)
+                      _VALID_MIN,
+                      _VALID_MAX)
 
     return {'pet': pet_netcdf,
             'pdsi': pdsi_netcdf,
