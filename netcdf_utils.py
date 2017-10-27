@@ -166,8 +166,8 @@ def initialize_dataset(file_path,
     
     # set the coordinate variables' values
     time_variable[:] = template_dataset.variables['time'][:]
-    x_variable[:] = template_dataset.variables[x_dim_name]
-    y_variable[:] = template_dataset.variables[y_dim_name]
+    x_variable[:] = template_dataset.variables[x_dim_name][:]
+    y_variable[:] = template_dataset.variables[y_dim_name][:]
 
     if (data_variable_name != None):
         
@@ -176,7 +176,8 @@ def initialize_dataset(file_path,
                                               data_dtype, 
                                               ('time', x_dim_name, y_dim_name,), 
                                               fill_value=data_fill_value)        
-        data_variable.setncatts(data_variable_attributes)
+        if (data_variable_attributes != None):
+            data_variable.setncatts(data_variable_attributes)
 
     return netcdf
     
@@ -252,6 +253,57 @@ def create_variable_grid(netcdf,
 
     return netcdf
 
+#-----------------------------------------------------------------------------------------------------------------------
+def add_variable_climgrid(file_path,
+                          variable_name,
+                          variable_attributes,
+                          variable_array,
+                          y_dim_name='lat', 
+                          x_dim_name='lon'):
+    '''
+    Adds a two-dimensional (division, time) variable to an existing climate divisions NetCDF. The variable is created 
+    and populated with the provided data values. 
+    
+    :param file_path: existing NetCDF to which the variable will be added. This NetCDF is assumed to contain 
+                      the dimensions "division" and "time" as well as corresponding coordinate variables.
+    :param variable_name: name of the new variable to be added, a variable with this name should not already exist
+    :param variable_attributes: the attributes that should be assigned to the new variable
+    :param variable_array: an array of values, with shape (times, y_dim, x_dim).
+                           The number of elements within the time dimension of the arrays should match with the number  
+                           of time steps of the existing NetCDF being added to (as specified by the time coordinate variable).
+    '''
+    
+    #TODO/FIXME add checks of the array's dimensions to make sure they match with the variable's dimensions, etc.
+    
+    # open the output file in append mode for writing, set its dimensions and coordinate variables
+    with netCDF4.Dataset(file_path, 'a') as dataset:
+
+        # make sure that the variable name isn't already in use
+        if variable_name in dataset.variables.keys():
+            
+            variable = dataset.variables[variable_name]
+            
+#             message = 'Variable name \'{0}\' is already being used within the NetCDF file \'{1}\''.format(variable_name, file_path)
+#             logger.error(message)
+#             raise ValueError(message)
+            
+        else:
+
+            # get the NetCDF datatype applicable to the data array we'll store in the variable
+            netcdf_data_type = find_netcdf_datatype(np.NaN)
+    
+            # create the variable, set the attributes
+            variable = dataset.createVariable(variable_name, 
+                                              netcdf_data_type, 
+                                              ('time', y_dim_name, x_dim_name), 
+                                              fill_value=np.NaN)
+            
+        if variable_attributes is not None:
+            variable.setncatts(variable_attributes)
+        
+        # assign the array into the variable
+        variable[:, :, :] = variable_array
+            
 #-----------------------------------------------------------------------------------------------------------------------
 def add_variable_climdivs(file_path,
                           variable_name,
