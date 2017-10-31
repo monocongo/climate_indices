@@ -31,19 +31,21 @@ _debug_tolerance = 0.1
 def _water_balance(AWC,
                    PET,
                    P):
-
-    # This function calculates the Thornthwaite water balance using inputs from
-    # the PET function and user-loaded precipitation data.
+    """
+    This function calculates water balance accounting values corresponding to a timeseries of precipitation and PET values.
     
-    # NOTE: PET AND P SHOULD BE READ IN AS A MATRIX IN INCHES. AWC IS A
-    # CONSTANT AND SHOULD BE READ IN INCHES AS WELL.
-    
-    # P and PET should be in inches, flatten to a 1-D array
+    :param AWC: available water capacity, in inches
+    :param PET: timeseries of potential evapotranspiration values, in inches
+    :param P: timeseries of precipitation values, in inches
+    :return: numpy arrays for ET, PR, R, RO, PRO, L, and PL 
+    """
+    # flatten timeseries to a 1-D array
     PET = PET.flatten() 
     P = P.flatten()
     
     total_months = PET.shape[0]
 
+    # allocate arrays for the water balance values
     ET = np.zeros((total_months,))
     PR = np.zeros((total_months,))
     R = np.zeros((total_months,))
