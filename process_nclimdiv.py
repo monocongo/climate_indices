@@ -59,9 +59,9 @@ def init_process(worker_input_netcdf,
     calibration_end_year = worker_calibration_end_year
     
 #-----------------------------------------------------------------------------------------------------------------------
-def initialize_netcdf(new_netcdf,
-                      template_netcdf,
-                      month_scales=[1, 2, 3, 6, 12, 24]):
+def _initialize_netcdf(new_netcdf,
+                       template_netcdf,
+                       month_scales=[1, 2, 3, 6, 12, 24]):
     '''
     This function is used to initialize and return a netCDF4.Dataset object.
     
@@ -542,50 +542,15 @@ if __name__ == '__main__':
                             required=True)
         args = parser.parse_args()
 
-        # initialize the output NetCDF that will contain the computed indices
-        initialize_netcdf(args.output_file, args.input_file, args.month_scales)
+        process_nclimdiv(args.input_file, 
+                         args.output_file, 
+                         args.month_scales, 
+                         args.temp_var_name,
+                         args.precip_var_name,
+                         args.awc_var_name,
+                         args.calibration_start_year,
+                         args.calibration_end_year)
         
-        # open the NetCDF files 
-        with netCDF4.Dataset(args.input_file) as input_dataset:
-             
-            # get the initial and final year of the input datasets
-            time_variable = input_dataset.variables['time']
-            data_start_year = netCDF4.num2date(time_variable[0], time_variable.units).year
-            data_end_year = netCDF4.num2date(time_variable[-1], time_variable.units).year
- 
-            # get the number of divisions in the input dataset(s)
-            divisions_size = input_dataset.variables['division'].size
-        
-        number_of_processes = 2
-        # number_of_processes = multiprocessing.cpu_count()
-
-        # create a process Pool, with copies of the shared array going to each pooled/forked process
-        pool = multiprocessing.Pool(processes=number_of_processes,
-                                    initializer=init_process,
-                                    initargs=(args.input_file,
-                                              args.output_file,
-                                              args.temp_var_name,
-                                              args.precip_var_name,
-                                              args.awc_var_name,
-                                              args.month_scales,
-                                              data_start_year,
-                                              data_end_year,
-                                              args.calibration_start_year,
-                                              args.calibration_end_year))
- 
-        # map the divisions indices as an arguments iterable to the compute function
-        result = pool.map_async(compute_and_write_division, range(divisions_size))
-                  
-        # get the exception(s) thrown, if any
-        result.get()
-              
-        # close the pool and wait on all processes to finish
-        pool.close()
-        pool.join()
-
-#         # convert and move the output file
-#         convert_and_move_netcdf([args.output_file, args.output_file])
-              
         # report on the elapsed time
         end_datetime = datetime.now()
         logger.info("End time:      {}".format(end_datetime, '%x'))
@@ -595,3 +560,54 @@ if __name__ == '__main__':
     except Exception as ex:
         logger.exception('Failed to complete', exc_info=True)
         raise
+    
+#-----------------------------------------------------------------------------------------------------------------------
+def process_nclimdiv(input_file, 
+                     output_file, 
+                     month_scales, 
+                     temp_var_name,
+                     precip_var_name,
+                     awc_var_name,
+                     calibration_start_year,
+                     calibration_end_year):
+    
+    # initialize the output NetCDF that will contain the computed indices
+    _initialize_netcdf(output_file, input_file, month_scales)
+        
+    # open the NetCDF files 
+    with netCDF4.Dataset(input_file) as input_dataset:
+         
+        # get the initial and final year of the input datasets
+        time_variable = input_dataset.variables['time']
+        data_start_year = netCDF4.num2date(time_variable[0], time_variable.units).year
+        data_end_year = netCDF4.num2date(time_variable[-1], time_variable.units).year
+    
+        # get the number of divisions in the input dataset(s)
+        divisions_size = input_dataset.variables['division'].size
+    
+    number_of_processes = multiprocessing.cpu_count()
+    
+    # create a process Pool, with copies of the shared array going to each pooled/forked process
+    pool = multiprocessing.Pool(processes=number_of_processes,
+                                initializer=init_process,
+                                initargs=(input_file,
+                                          output_file,
+                                          temp_var_name,
+                                          precip_var_name,
+                                          awc_var_name,
+                                          month_scales,
+                                          data_start_year,
+                                          data_end_year,
+                                          calibration_start_year,
+                                          calibration_end_year))
+    
+    # map the divisions indices as an arguments iterable to the compute function
+    result = pool.map_async(compute_and_write_division, range(divisions_size))
+              
+    # get the exception(s) thrown, if any
+    result.get()
+          
+    # close the pool and wait on all processes to finish
+    pool.close()
+    pool.join()
+    

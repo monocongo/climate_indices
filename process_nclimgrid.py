@@ -11,17 +11,19 @@ import subprocess
 import sys
 from netCDF4 import Dataset, num2date
 
+#-----------------------------------------------------------------------------------------------------------------------
 # static constants
 _VALID_MIN = -10.0
 _VALID_MAX = 10.0
 
-
+#-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global logger which will write to the console as standard error
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s',
                     datefmt='%Y-%m-%d  %H:%M:%S')
 logger = logging.getLogger(__name__)
 
+#-----------------------------------------------------------------------------------------------------------------------
 # multiprocessing locks we'll use to synchronize I/O writes to NetCDF files, one per each output file
 pet_lock = multiprocessing.Lock()
 pdsi_lock = multiprocessing.Lock()
