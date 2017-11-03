@@ -10,6 +10,7 @@ from numpy import float64
 import pandas as pd
 import process_nclimdiv
 import urllib
+import wget
 
 #-----------------------------------------------------------------------------------------------------------------------
 _TEMP_VAR_NAME = 'tavg'
@@ -27,14 +28,15 @@ logger = logging.getLogger(__name__)
 #-----------------------------------------------------------------------------------------------------------------------
 def compute_days(initial_year, 
                  total_months):
-    '''
-    This function computes a series (list) of day values to correspond with the first day of the month for each month of a time series
-    starting from an initial year.
+    """
+    This function computes a series (list) of day values to correspond with the first day of the month for each month 
+    of a time series starting from an initial year.
     
     :param initial_year:
     :param total_months: total number of months in the time series
     :return: numpy array of integers corresponding to   
-    '''
+    """
+    
     # the date from which the returned array of day values are since (i.e. when using "days since <start_date>" as our units for time)    
     start_date = datetime(initial_year, 1, 1)
     
@@ -55,7 +57,7 @@ def compute_days(initial_year,
     return days
 
 #-----------------------------------------------------------------------------------------------------------------------
-def get_processing_date():
+def _get_processing_date():
     '''
     Gets the processing date as specified in the file ftp://ftp.ncdc.noaa.gov/pub/data/cirs/climdiv/procdate.txt
     '''
@@ -69,8 +71,8 @@ def get_processing_date():
     return processing_date
 
 #-----------------------------------------------------------------------------------------------------------------------
-def parse_climatology(processing_date,
-                      p_or_t='T'):
+def _parse_climatology(processing_date,
+                       p_or_t='T'):
 
     # get the relevant ASCII file for US climate divisions from NCEI
     if p_or_t == 'P':
@@ -85,13 +87,13 @@ def parse_climatology(processing_date,
         raise ValueError('Invalid p_or_t argument: {}'.format(p_or_t))
         
     # download the file
-    divisions_file = urllib.request.urlopen(file_url + 'dv-v1.0.0-{0}'.format(processing_date))
+    div_file = urllib.request.urlopen(file_url + 'dv-v1.0.0-{0}'.format(processing_date))
 
     # use a list of column names to clue in pandas as to the structure of the ASCII rows
     column_names = ['division_year', 'jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
 
     # read the file into a pandas DataFrame object  
-    results_df = pd.read_csv(divisions_file, 
+    results_df = pd.read_csv(div_file, 
                              delim_whitespace=True,
                              header=None,
                              names=column_names,
@@ -133,7 +135,7 @@ def parse_climatology(processing_date,
     return divs_to_arrays, divs_to_minmax_years, division_min_years.min(), division_max_years.max()
 
 #-----------------------------------------------------------------------------------------------------------------------
-def parse_results(divisions_file,
+def _parse_results(div_file,
                   intermediates=False):
 
     # read the file into a pandas DataFrame    
@@ -141,7 +143,7 @@ def parse_results(divisions_file,
         column_names = ['division_year', 'jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec', 'fill_value']
     else:
         column_names = ['division_year', 'jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
-    results_df = pd.read_csv(divisions_file, 
+    results_df = pd.read_csv(div_file, 
                              delim_whitespace=True,
                              header=None,
                              names=column_names,
@@ -182,25 +184,22 @@ def parse_results(divisions_file,
     return divs_to_arrays, divs_to_minmax_years, division_min_years.min(), division_max_years.max()
 
 #-----------------------------------------------------------------------------------------------------------------------
-def parse_soil_constants():
+def _parse_soil_constants(soil_file):
     '''
     Parse the soil constant file, reading both AWC and latitude values for each division.
     '''
-    divisions_file = 'C:/home/climdivs/soil_constant_divisions.txt'
-
     # use a list of column names to clue in pandas as to the structure of the ASCII rows
     column_names = ['division_id', _AWC_VAR_NAME, 'foo', 'bar', 'neg_tan_lat']
     columns_to_use = ['division_id', _AWC_VAR_NAME, 'neg_tan_lat']
 
     # read the file into a pandas DataFrame object  
-    results_df = pd.read_csv(divisions_file, 
+    results_df = pd.read_csv(soil_file, 
                              delim_whitespace=True,
                              header=None,
                              names=column_names,
                              usecols=columns_to_use,
                              dtype={'division_id': int})
 
-    
     # make the division ID our index
     results_df.set_index('division_id', drop=True, inplace=True)
     
@@ -366,7 +365,7 @@ if __name__ == '__main__':
         logger.info("Start time:    {0}".format(start_datetime, '%x'))
 
         # get the date string we'll use for file identification
-        processing_date = get_processing_date()
+        processing_date = _get_processing_date()
     
 #         # parse the command line arguments
 #         parser = argparse.ArgumentParser()
@@ -400,12 +399,9 @@ if __name__ == '__main__':
         precip_var_name = _PRECIP_VAR_NAME
         awc_var_name = _AWC_VAR_NAME
         
-        # DEBUG ONLY -- REMOVE if deployed in production or if code is shared externally
-#         nclimdiv_netcdf = 'C:/home/climdivs/nclimdiv_{0}.nc'.format(processing_date)
-
         # parse both the precipitation and the temperature datasets
-        p_divs_to_arrays, p_divs_to_minmax_years, p_min_year, p_max_year = parse_climatology(processing_date, p_or_t='P')
-        t_divs_to_arrays, t_divs_to_minmax_years, t_min_year, t_max_year = parse_climatology(processing_date, p_or_t='T')
+        p_divs_to_arrays, p_divs_to_minmax_years, p_min_year, p_max_year = _parse_climatology(processing_date, p_or_t='P')
+        t_divs_to_arrays, t_divs_to_minmax_years, t_min_year, t_max_year = _parse_climatology(processing_date, p_or_t='T')
         
         # determine the number of times and divisions for each (should match?) 
         total_months = (p_max_year - p_min_year + 1) * 12
@@ -426,9 +422,6 @@ if __name__ == '__main__':
         variable_minmax_years = {_TEMP_VAR_NAME: [t_min_year, t_max_year],
                                  _PRECIP_VAR_NAME: [p_min_year, p_max_year]}
         
-        # get the date string we'll use for file identification
-        processing_date = get_processing_date()
-    
         # parse the indicator datasets
         vars_to_divs_to_arrays = {}
         for variable in ['zndx', 'sp01', 'sp02', 'sp03', 'sp06', 'sp12', 'sp24', 'pdsi', 'phdi', 'pmdi']:
@@ -438,18 +431,22 @@ if __name__ == '__main__':
             file_url = 'ftp://ftp.ncdc.noaa.gov/pub/data/cirs/climdiv/climdiv-{0}dv-v1.0.0-{1}'.format(variable, processing_date)
         
             # download the file
-            divisions_file = urllib.request.urlopen(file_url)
+            div_file = urllib.request.urlopen(file_url)
 
             var_name = 'cmb_' + variable
             
             # parse the index values into corresponding dictionaries, arrays, etc.
-            divisional_array, minmax_years, min_year, max_year = parse_results(divisions_file)
+            divisional_array, minmax_years, min_year, max_year = _parse_results(div_file)
             divisional_arrays[var_name] = divisional_array
             divisional_minmax_years[var_name] = minmax_years
             variable_minmax_years[var_name] = [min_year, max_year]
                             
+    #     div_file = 'C:/home/climdivs/soil_constant_divisions.txt'
+        soil_url = 'https://raw.githubusercontent.com/monocongo/indices_python/master/example_inputs/pdinew.soilconst'
+        soil_file = wget.download(soil_url)
+    
         # parse the soil constant (available water capacity)
-        divs_to_awc, divs_to_lats = parse_soil_constants()
+        divs_to_awc, divs_to_lats = _parse_soil_constants(soil_file)
         
         # write the values as NetCDF
         create_netcdf(nclimdiv_netcdf,
