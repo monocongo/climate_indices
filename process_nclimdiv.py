@@ -9,6 +9,7 @@ import numpy as np
 import os
 import subprocess
 import sys
+import numba
 
 # set up a basic, global logger which will write to the console as standard error
 logging.basicConfig(level=logging.INFO,
@@ -285,6 +286,7 @@ def compute_and_write_division(division_index):
                      calibration_end_year)
 
 #-----------------------------------------------------------------------------------------------------------------------
+#@numba.jit  # not working yet
 def process_division(division_index,
                      input_file,
                      output_file,
@@ -304,6 +306,7 @@ def process_division(division_index,
     with netCDF4.Dataset(input_file) as input_dataset:
         
         division_id = input_dataset['division'][division_index]
+
         logger.info('Processing indices for division {0}'.format(division_id))
     
         # read the division of input temperature values 
@@ -542,6 +545,7 @@ if __name__ == '__main__':
                             required=True)
         args = parser.parse_args()
 
+        # compute indices, write results to NetCDF
         process_nclimdiv(args.input_file, 
                          args.output_file, 
                          args.month_scales, 
@@ -570,6 +574,17 @@ def process_nclimdiv(input_file,
                      awc_var_name,
                      calibration_start_year,
                      calibration_end_year):
+    """
+    :param input_file: NetCDF assumed to contain precipitation, temperature, and soil constant values for NCEI US 
+                       climate divisions (nClimDiv)
+    :param output_file: NetCDF file to which results are written, will be overwritten if file already exists
+    :param month_scales: 
+    :param temp_var_name: 
+    :param precip_var_name: 
+    :param awc_var_name:
+    :param calibration_start_year: 
+    :param calibration_end_year:  
+    """
     
     # initialize the output NetCDF that will contain the computed indices
     _initialize_netcdf(output_file, input_file, month_scales)
@@ -585,10 +600,8 @@ def process_nclimdiv(input_file,
         # get the number of divisions in the input dataset(s)
         divisions_size = input_dataset.variables['division'].size
     
-    number_of_processes = multiprocessing.cpu_count()
-    
     # create a process Pool, with copies of the shared array going to each pooled/forked process
-    pool = multiprocessing.Pool(processes=number_of_processes,
+    pool = multiprocessing.Pool(processes=1,#multiprocessing.cpu_count(),
                                 initializer=init_process,
                                 initargs=(input_file,
                                           output_file,
