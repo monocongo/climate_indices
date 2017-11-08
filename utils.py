@@ -1,3 +1,4 @@
+from datetime import datetime
 import logging
 import numba
 import numpy as np
@@ -8,6 +9,37 @@ logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s %(levelname)s %(message)s',
                     datefmt='%Y-%m-%d  %H:%M:%S')
 logger = logging.getLogger(__name__)
+
+#-----------------------------------------------------------------------------------------------------------------------
+def compute_days(initial_year, 
+                 total_months):
+    """
+    This function computes a series (list) of day values to correspond with the first day of the month for each month 
+    of a time series starting from an initial year.
+    
+    :param initial_year:
+    :param total_months: total number of months in the time series
+    :return: numpy array of integers corresponding to   
+    """
+    
+    # the date from which the returned array of day values are since (i.e. when using "days since <start_date>" as our units for time)    
+    start_date = datetime(initial_year, 1, 1)
+    
+    # initialize the list of day values we'll build
+    days = np.empty(total_months, dtype=int)
+    
+    # loop over all time steps (months)
+    for i in range(total_months):
+        years = int(i / 12)  # the number of years since the initial year 
+        months = int(i % 12) # the number of months since January
+        
+        # cook up a date for the current time step (month)
+        current_date = datetime(initial_year + years, 1 + months, 1)
+        
+        # leverage the difference between dates operation available with datetime objects
+        days[i] = (current_date - start_date).days
+    
+    return days
 
 #-----------------------------------------------------------------------------------------------------------------------
 #@numba.jit
