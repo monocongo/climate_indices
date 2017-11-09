@@ -265,7 +265,8 @@ class PalmerTestCase(unittest.TestCase):
         0.13, 7.41, 21.97, 57.87, 102.66, 140.08, 135.54, 138.37, 107.93, 60.00, 12.60, 13.62, \
         4.52, 1.13, 32.45, 68.00, 105.95, 149.20, 165.82, 135.81, 103.20, 60.00, 36.08, 29.00, \
         4.19, 14.30, 44.33, 64.48, 97.73, 151.97, 169.05, 154.83, 119.98, 75.00, 33.28, 12.46, \
-        19.77, 25.63, 37.14, 79.57, 98.02, 132.23, 162.97, 18.25, 16.23, 15.25, 13.54, 13.39 ])
+#         19.77, 25.63, 37.14, 79.57, 98.02, 132.23, 162.97, 18.25, 16.23, 15.25, 13.54, 13.39 ])
+        19.77, 25.63, 37.14, 79.57, 98.02, 132.23, 162.97, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ])
     
     global _awc_AL01
     _awc_AL01 = 5.0
@@ -1417,6 +1418,17 @@ class PalmerTestCase(unittest.TestCase):
             name = lst[0]
             actual = lst[1]
             expected = lst[2]
+            
+#             #REMOVE -- DEBUG ONLY
+#             if name == 'PR':
+#                 for i in range(actual.size):
+#                     if not math.isnan(actual[i]) and not math.isnan(expected[i]) and not math.isclose(expected[i], actual[i], abs_tol=0.01):
+#                         print('PR mismatch in month {0}\n\tExpected:  {1}\n\tComputed:  {2}'.format(i, expected[i], actual[i]))
+#                     elif not math.isnan(actual[i]) and math.isnan(expected[i]):
+#                         print('PR NaN location mismatch in month {0}\n\tExpected:  {1}\n\tComputed:  {2}'.format(i, expected[i], actual[i]))
+#                     elif math.isnan(actual[i]) and not math.isnan(expected[i]):
+#                         print('PR NaN location mismatch in month {0}\n\tExpected:  {1}\n\tComputed:  {2}'.format(i, expected[i], actual[i]))
+                            
             np.testing.assert_allclose(actual, 
                                        expected, 
                                        atol=0.01,

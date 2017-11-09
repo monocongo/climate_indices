@@ -89,24 +89,70 @@ def initialize_netcdf(new_netcdf,
                 data_variable[:] = var_data
         
 #-----------------------------------------------------------------------------------------------------------------------
-def _plot_and_save(diffs,
-                   number_of_bins,
-                   range_lower, 
-                   range_upper,
-                   index,
-                   division_id,
-                   output_dir,
-                   histogram_title):
+def _rmse(predictions, targets):
+    """
+    Root mean square error
+    
+    :param predictions: np.ndarray
+    :param targets: np.ndarray
+    :return: np.ndarray
+    """
+    return np.sqrt(((predictions - targets) ** 2).mean())
+
+#-----------------------------------------------------------------------------------------------------------------------
+def _plot_and_save_histograms(diffs,
+                              number_of_bins,
+                              range_lower, 
+                              range_upper,
+                              index,
+                              division_id,
+                              output_dir,
+                              title):
     
     # plot a histogram of the differences
     plt.gcf().clear()
     plt.hist(diffs[:], bins=number_of_bins, range=(range_lower, range_upper))
-    plt.title(histogram_title + ': {0}, Division {1}'.format(index, division_id))
+    plt.title(title + ': {0}, Division {1}'.format(index, division_id))
     plt.xlabel("Value")
     plt.ylabel("Frequency")
     file_name = output_dir + os.sep + 'nclimdiv_diffs_{0}_{1}'.format(index, division_id) + '.png'
     logger.info('Saving plot for index {0} as file {1}'.format(index, file_name))
     plt.savefig(file_name)
+
+#-----------------------------------------------------------------------------------------------------------------------
+def _plot_and_save_lines(expected,
+                         actual,
+                         diffs,
+                         division_id,
+                         varname,
+                         output_dir):
+
+    error = _rmse(actual, expected)
+    
+    # set figure size to (x, y)
+    plt.figure(figsize=(30, 6))
+    
+    # plot the values and differences
+    x = np.arange(diffs.size)
+    ax = plt.axes()
+    ax.set_ylim([-5, 5])
+    plt.axhline()
+    expected_line, = plt.plot(x, expected, color='blue', label='NCEI (expected)')
+    actual_line, = plt.plot(x, actual, color='yellow', linestyle='--', label='NIDIS (actual)')
+    diffs_line, = plt.plot(x, diffs, color='red', label='Difference')
+    plt.legend(handles=[expected_line, actual_line, diffs_line], loc='upper left')
+    plt.title('Comparison for division {0}: {1}     (RMSE: {2})'.format(division_id, varname, error))
+    plt.xlabel("months")
+    plt.ylabel("value")
+    
+    plt.subplots_adjust(left=0.02, right=0.99, top=0.9, bottom=0.1)
+    
+    file_name = output_dir + os.sep + '{0}_div_{1}'.format(varname, division_id) + '.png'
+    logger.info('Saving plot for variable/division {0}/{1} as file {2}'.format(varname, division_id, file_name))
+    plt.savefig(file_name, bbox_inches='tight')
+                
+#     plt.show()
+    plt.close()
 
 #-----------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
@@ -184,15 +230,23 @@ if __name__ == '__main__':
                 differences = data_CMB - data_NIDIS
                 diffs[division_index] = differences
  
-                # plot the differences and save to file
-                _plot_and_save(differences,
-                               number_of_bins,
-                               range_lower, 
-                               range_upper,
-                               index,
-                               division_id,
-                               args.output_dir,
-                               histogram_title)
+#                 # plot the differences as a histogram and save to file
+#                 _plot_and_save_histograms(differences,
+#                                           number_of_bins,
+#                                           range_lower, 
+#                                           range_upper,
+#                                           index,
+#                                           division_id,
+#                                           args.output_dir,
+#                                           histogram_title)
+
+                # plot and save line graphs showing correlation of values and differences
+                _plot_and_save_lines(data_NIDIS,
+                                     data_CMB,
+                                     differences,
+                                     division_id,
+                                     index,
+                                     args.output_dir)
 
             # add the variable into the dataset and add the data into the variable
             netcdf_utils.add_variable_climdivs(netcdf_file_OUT, index, dataset_NIDIS.variables[var_names[1]].__dict__, diffs)
