@@ -21,7 +21,7 @@ _PDSI_MIN = -4.0
 _PDSI_MAX = 4.0
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit
+#@numba.jit
 def _water_balance(AWC,
                    PET,
                    P):
@@ -466,7 +466,7 @@ def _cafec_coefficients(P,
     return alpha, beta, gamma, delta
 
 #-----------------------------------------------------------------------------------------------------------------------    
-@numba.jit
+#@numba.jit
 def _calibrate_data(arrays,
                     data_start_year,
                     calibration_start_year,
@@ -1752,13 +1752,26 @@ def _pdinew_potential_evapotranspiration(monthly_temps_celsius,
                                          data_start_year,
                                          B,
                                          H):
-
+    """
+    Compute PET using the previous method used in the water balance section of pdinew.f, returning PET in millimeters.
+    
+    :param monthly_temps_celsius:
+    :param latitude:  
+    :param data_start_year:
+    :param B:
+    :param H:   
+    """
+    
     # assumes monthly_temps_celsius, B, and H have same dimensions, etc.
     
     pet = np.full(monthly_temps_celsius.shape, np.NaN)
     monthly_temps_fahrenheit = scipy.constants.C2F(monthly_temps_celsius)
     for i in range(monthly_temps_celsius.size):
         pet[i] = _pe(monthly_temps_fahrenheit[i], i, latitude, data_start_year, B, H)
+        
+#         #TODO/FIXME confirm units, at this point if PET is in inches, convert to millimeters
+#         pet = pet * 25.4   # 1 inch == 25.4 millimeters
+        
     return pet
 
 #-----------------------------------------------------------------------------------------------------------------------

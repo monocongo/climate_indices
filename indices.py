@@ -73,6 +73,10 @@ def spi_pearson(precips,
     scaled_precips = compute.sum_to_scale(precips, months_scale)
 
     # fit the scaled values to a Pearson Type III distribution and transform the values to corresponding normalized sigmas 
+#     transformed_fitted_values = compute.transform_fitted_pearson_new(scaled_precips, 
+#                                                                      data_start_year,
+#                                                                      calibration_year_initial,
+#                                                                      calibration_year_final)
     transformed_fitted_values = compute.transform_fitted_pearson(scaled_precips, 
                                                                  data_start_year,
                                                                  calibration_year_initial,
@@ -292,6 +296,10 @@ def spei_pearson(months_scale,
                                                                  data_start_year,
                                                                  calibration_year_initial,
                                                                  calibration_year_final)
+#     transformed_fitted_values = compute.transform_fitted_pearson_new(scaled_values, 
+#                                                                      data_start_year,
+#                                                                      calibration_year_initial,
+#                                                                      calibration_year_final)
         
     # clip values to within the valid range, reshape the array back to 1-D
     spei = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
