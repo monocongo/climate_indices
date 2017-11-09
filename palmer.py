@@ -20,12 +20,6 @@ logger = logging.getLogger(__name__)
 _PDSI_MIN = -4.0
 _PDSI_MAX = 4.0
 
-#!!!!!!!!!!!!!!!!!!!!
-# globals FOR DEBUG ONLY -- REMOVE
-_debug_differences = 0.0
-_debug_differences_count = 0
-_debug_tolerance = 0.1
-
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def _water_balance(AWC,
@@ -782,10 +776,6 @@ def _backtrack(k,
     In either case, the backtracking function works by backtracking through PX1 and PX2 until reaching a month 
     where PPe == 0. Either PX1 or PX2 is assigned to X as the backtracking progresses.
     '''
-    # DEBUG ONLY -- REMOVE
-    global _debug_differences
-    global _debug_differences_count
-    
     # Backtracking occurs from either PPe[k] = 100 or PPe[k] = 0 to the first 
     # instance in the previous record where PPe = 0. This loop counts back
     # through previous PPe values to find the first instance where PPe = 0.
@@ -849,10 +839,6 @@ def _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X, expected_pdsi):
     # of PPe = 0 (cf. Alley, 1984; Journal of Climate and Applied Meteorology, 
     # Vol. 23, No. 7). To do this, _backtrack() up to the first instance of 
     # PPe = 0 while setting X to PX3. 
-    
-    # DEBUG ONLY -- REMOVE
-    global _debug_differences
-    global _debug_differences_count
     
     # Since the possible abatement has ended, the drought or wet spell
     # continues. Set PV, PX1, PX2, and PPe to 0. Calculate PX3 and set X = PX3.
@@ -994,13 +980,6 @@ def _pmdi(probability,
 def _pdsi_from_zindex(Z,
                       expected_pdsi):
 
-    # DEBUG ONLY -- REMOVE
-    global _debug_differences
-    global _debug_differences_count
-    _debug_differences = 0.0
-    _debug_differences_count = 0
-
-    
     ## INITIALIZE PDSI AND PHDI CALCULATIONS
     
     # V is the sum of the Uw (Ud) values for the current and previous months of an
@@ -1173,10 +1152,10 @@ def _compute_scpdsi(established_index_values,
                     pdsi_values,
                     wet_index_values,
                     dry_index_values,
-                    wetM,
-                    wetB,
-                    dryM,
-                    dryB,
+                    wet_m,
+                    wet_b,
+                    dry_m,
+                    dry_b,
                     calibration_complete,
                     tolerance=0.0):
     '''
@@ -1187,10 +1166,10 @@ def _compute_scpdsi(established_index_values,
     :param pdsi_values
     :param wet_index_values
     :param dry_index_values
-    :param wetM
-    :param wetB
-    :param dryM
-    :param dryB
+    :param wet_m
+    :param wet_b
+    :param dry_m
+    :param dry_b
     :param calibration_complete
     :param tolerance
      '''
@@ -1199,20 +1178,21 @@ def _compute_scpdsi(established_index_values,
     dry_index_deque = deque([])
 
     # Initializes the book keeping indices used in finding the PDSI
-    _dblV = 0.0
-    _dblQ = 0.0
+    V = 0.0
+    Q = 0.0
 
+    # current and previous period (month/time step) indices
     period = 0
-    prvKey = -1
+    previous = -1
 
     for period in range(established_index_values.size):
     
         # These variables represent the values for  corresponding variables for the current period.
         # They are kept separate because many calculations depend on last period's values.  
-        newX = 0
-        newX1 = 0
-        newX2 = 0
-        newX3 = 0
+        new_X = 0
+        new_X1 = 0
+        new_X2 = 0
+        new_X3 = 0
         previous_established_index_X3 = 0
 
 #         # ZE is the Z value needed to end an established spell
@@ -1224,19 +1204,19 @@ def _compute_scpdsi(established_index_values,
 #         # wd is a sign changing flag.  It allows for use of the same equations during both a wet or dry spell by adjusting the appropriate signs.
 #         wd
 
-        if (prvKey >= 0) and not np.isnan(established_index_values[prvKey]):
+        if (previous >= 0) and not np.isnan(established_index_values[previous]):
         
-            previous_established_index_X3 = established_index_values[prvKey]
+            previous_established_index_X3 = established_index_values[previous]
 
         if previous_established_index_X3 >= 0:
         
-            m = wetM
-            b = wetB
+            m = wet_m
+            b = wet_b
         
         else:
         
-            m = dryM
-            b = dryB
+            m = dry_m
+            b = dry_b
         
         if not np.isnan(sczindex_values[period]) and ((m + b) != 0):
 
@@ -1251,86 +1231,86 @@ def _compute_scpdsi(established_index_values,
             # If EstablishedIndex is 0 then there is no reason to calculate Q or ZE, V and Prob are reset to 0;
             if previous_established_index_X3 == 0:
             
-                newX3 = 0
-                newV = 0
-                newProb = 0
-                newX, newX1, newX2, newX3 = _choose_X(pdsi_values,
+                new_X3 = 0
+                new_V = 0
+                new_probability = 0
+                new_X, new_X1, new_X2, new_X3 = _choose_X(pdsi_values,
                                                       established_index_values,
                                                       wet_index_values,
                                                       dry_index_values,
                                                       sczindex_values,
                                                       wet_index_deque,
                                                       dry_index_deque,
-                                                      wetM,
-                                                      wetB,
-                                                      dryM,
-                                                      dryB,
-                                                      newX, 
-                                                      newX1, 
-                                                      newX2, 
-                                                      newX3, 
+                                                      wet_m,
+                                                      wet_b,
+                                                      dry_m,
+                                                      dry_b,
+                                                      new_X, 
+                                                      new_X1, 
+                                                      new_X2, 
+                                                      new_X3, 
                                                       period, 
-                                                      prvKey)
+                                                      previous)
 
             # Otherwise all calculations are needed.
             else:
                                 
-                newX3 = (c * previous_established_index_X3 + sczindex_values[period] / (m + b))
+                new_X3 = (c * previous_established_index_X3 + sczindex_values[period] / (m + b))
                 # ZE is the Z value needed to end an established spell
                 ZE = (m + b) * (wd * 0.5 - c * previous_established_index_X3)
-                _dblQ = ZE + _dblV
-                newV = sczindex_values[period] - wd * (m * 0.5) + wd * min(wd * _dblV + tolerance, 0)
+                Q = ZE + V
+                new_V = sczindex_values[period] - wd * (m * 0.5) + wd * min(wd * V + tolerance, 0)
 
-                if (wd * newV) > 0:
+                if (wd * new_V) > 0:
                 
-                    newV = 0
-                    newProb = 0
-                    newX1 = 0
-                    newX2 = 0
-                    newX = newX3
+                    new_V = 0
+                    new_probability = 0
+                    new_X1 = 0
+                    new_X2 = 0
+                    new_X = new_X3
 
                     wet_index_deque.clear()
                     dry_index_deque.clear()
                 
                 else:
 
-                    newProb = (newV / _dblQ) * 100;
-                    if newProb >= (100 - tolerance):
+                    new_probability = (new_V / Q) * 100;
+                    if new_probability >= (100 - tolerance):
 
-                        newX3 = 0
-                        newV = 0
-                        newProb = 100
+                        new_X3 = 0
+                        new_V = 0
+                        new_probability = 100
 
-                    # xValues should be a list of doubles
-                    newX, newX1, newX2, newX3 = _choose_X(pdsi_values,
-                                                          established_index_values,
-                                                          wet_index_values,
-                                                          dry_index_values,
-                                                          sczindex_values,
-                                                          wet_index_deque,
-                                                          dry_index_deque,
-                                                          wetM,
-                                                          wetB,
-                                                          dryM,
-                                                          dryB,
-                                                          newX, 
-                                                          newX1, 
-                                                          newX2, 
-                                                          newX3, 
-                                                          period, 
-                                                          prvKey)
+                    # choose the X values
+                    new_X, new_X1, new_X2, new_X3 = _choose_X(pdsi_values,
+                                                              established_index_values,
+                                                              wet_index_values,
+                                                              dry_index_values,
+                                                              sczindex_values,
+                                                              wet_index_deque,
+                                                              dry_index_deque,
+                                                              wet_m,
+                                                              wet_b,
+                                                              dry_m,
+                                                              dry_b,
+                                                              new_X, 
+                                                              new_X1, 
+                                                              new_X2, 
+                                                              new_X3, 
+                                                              period, 
+                                                              previous)
 
-            wet_index_values[period] = newX1
-            dry_index_values[period] = newX2
-            established_index_values[period] = newX3
+            wet_index_values[period] = new_X1
+            dry_index_values[period] = new_X2
+            established_index_values[period] = new_X3
             
             if calibration_complete:
-                scpdsi_values[period] = newX
+                scpdsi_values[period] = new_X
             else:
-                pdsi_values[period] = newX
+                pdsi_values[period] = new_X
             
             # update variables for next month:
-            _dblV = newV
+            V = new_V
         
         else:
         
@@ -1345,7 +1325,7 @@ def _compute_scpdsi(established_index_values,
             else:
                 pdsi_values[period] = np.NaN
 
-        prvKey = period
+        previous = period
         period += 1
 
     return pdsi_values, scpdsi_values, wet_index_values, dry_index_values, established_index_values
@@ -1762,13 +1742,13 @@ def _pe(temperature,
         #     CONVERT DAILY TO MONTHLY  
         #-----------------------------------------------------------------------
         year = data_start_year + int((month_index + 1) / 12)
-#         month = (month_index + 1) % 12
         month = month_index % 12
         PE = PE * calendar.monthrange(year, month + 1)[1]
 
     return PE
 
 #-----------------------------------------------------------------------------------------------------------------------
+@numba.jit
 def _pdinew_potential_evapotranspiration(monthly_temps_celsius, 
                                          latitude,
                                          data_start_year,
@@ -2160,11 +2140,7 @@ def scpdsi(precip_time_series,
         # recompute PDSI and other associated variables
         SCPDSI, PHDI, PMDI = _pdsi_from_zindex(zindex, None)
         
-        #FIXME is this necessary/redundant after the trim above?
-        ET = ET[:SCPDSI.size]
-        
         return [SCPDSI, final_PDSI, PHDI, PMDI, zindex]
-#         return SCPDSI, final_PDSI, PHDI, PMDI, zindex, ET, PR, R, RO, PRO, L, PL  # include additional water balance values for debugging
     
     except:
         # catch all exceptions, log rudimentary error information
