@@ -502,15 +502,18 @@ def process_nclimdiv(input_file,
                      calibration_start_year,
                      calibration_end_year):
     """
+    Ccomputes indices for all climate divisions in a NetCDF file, producing an output NetCDF containing
+    variables corresponding to the computed indices.
+    
     :param input_file: NetCDF assumed to contain precipitation, temperature, and soil constant values for NCEI US 
                        climate divisions (nClimDiv)
     :param output_file: NetCDF file to which results are written, will be overwritten if file already exists
-    :param month_scales: 
-    :param temp_var_name: 
-    :param precip_var_name: 
-    :param awc_var_name:
-    :param calibration_start_year: 
-    :param calibration_end_year:  
+    :param month_scales: month multiples to use for computing scaled indices (SPI, SPEI, and PNP)
+    :param temp_var_name: expected name of the temperature variable in the input NetCDF
+    :param precip_var_name: expected name of the precipitation variable in the input NetCDF
+    :param awc_var_name: expected name of the AWC variable in the input NetCDF
+    :param calibration_start_year: initial year of the calibration period
+    :param calibration_end_year: final year of the calibration period
     """
     
     # initialize the output NetCDF that will contain the computed indices
@@ -562,7 +565,10 @@ if __name__ == '__main__':
     
     A single input NetCDF containing temperature, precipitation, latitude, and available water capacity variables for US climate divisions 
     is required.
-      
+    
+    The variables named for precipitation and temperature are expected to have dimensions (division, time), 
+    and AWC with a single division dimension.
+    
     Example command line arguments: 
     
         --input_file C:/home/climdivs/climdivs_201701.nc 
