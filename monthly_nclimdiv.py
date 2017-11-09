@@ -73,12 +73,12 @@ if __name__ == '__main__':
         nclimdiv_netcdf = '{0}_{1}.nc'.format('C:/home/data/nclimdiv/nclimdiv', processing_date)
 #         nclimdiv_netcdf = '{0}_{1}.nc'.format(args.base_file_path, processing_date)
 
-        # ingest the nClimDiv datasets into a NetCDF
-        ingest_nclimdiv.ingest_netcdf(nclimdiv_netcdf, 
-                                      processing_date,        
-                                      _TEMP_VAR_NAME,
-                                      _PRECIP_VAR_NAME,
-                                      _AWC_VAR_NAME)
+#         # ingest the nClimDiv datasets into a NetCDF
+#         ingest_nclimdiv.ingest_netcdf(nclimdiv_netcdf, 
+#                                       processing_date,        
+#                                       _TEMP_VAR_NAME,
+#                                       _PRECIP_VAR_NAME,
+#                                       _AWC_VAR_NAME)
         
         # come up with a file to use as the results NetCDF
         indices_netcdf = '{0}_{1}.nc'.format('C:/home/data/nclimdiv/nclimdiv_nidis', processing_date)

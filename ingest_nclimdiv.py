@@ -158,8 +158,10 @@ def _parse_soil_constants(soil_file,
     Parse the soil constant file, reading both AWC and latitude values for each division.
     '''
     # use a list of column names to clue in pandas as to the structure of the ASCII rows
-    column_names = ['division_id', awc_var_name, 'foo', 'bar', 'neg_tan_lat']
-    columns_to_use = ['division_id', awc_var_name, 'neg_tan_lat']
+    column_names = ['division_id', awc_var_name, 'B', 'H', 'neg_tan_lat']
+    columns_to_use = column_names
+#     column_names = ['division_id', awc_var_name, 'foo', 'bar', 'neg_tan_lat']
+#     columns_to_use = ['division_id', awc_var_name, 'neg_tan_lat']
 
     # read the file into a pandas DataFrame object  
     results_df = pd.read_csv(soil_file, 
@@ -181,8 +183,10 @@ def _parse_soil_constants(soil_file,
     # produce a dictionary mapping divison IDs to corresponding AWC and latitude values
     divs_to_awc = results_df[awc_var_name].to_dict()
     divs_to_lats = results_df['lat'].to_dict()
+    divs_to_bs = results_df['B'].to_dict()
+    divs_to_hs = results_df['H'].to_dict()
     
-    return divs_to_awc, divs_to_lats
+    return divs_to_awc, divs_to_lats, divs_to_bs, divs_to_hs
 
 #-----------------------------------------------------------------------------------------------------------------------
 def _create_netcdf(nclimdiv_netcdf,
@@ -192,6 +196,8 @@ def _create_netcdf(nclimdiv_netcdf,
                    minmax_years,
                    divs_to_awc,
                    divs_to_lats,
+                   divs_to_bs,
+                   divs_to_hs,
                    total_months,
                    temp_var_name,
                    precip_var_name,
@@ -266,13 +272,23 @@ def _create_netcdf(nclimdiv_netcdf,
         awc_variable.valid_min = 0.0
         awc_variable.valid_max = 100.0
 
-        # create the available water capacity variable
+        # create the latitude variable
         lat_variable = dataset.createVariable('lat', float_type, (_DIVISION_VAR_NAME,), fill_value=filler)
         lat_variable.long_name = 'latitude' 
         lat_variable.standard_name = 'latitude' 
         lat_variable.units = 'degrees north' 
         lat_variable.valid_min = -90.0
         lat_variable.valid_max = 90.0
+
+        # create the B variable
+        b_variable = dataset.createVariable('B', float_type, (_DIVISION_VAR_NAME,), fill_value=filler)
+        b_variable.long_name = 'B' 
+        b_variable.standard_name = 'B' 
+
+        # create the H variable
+        h_variable = dataset.createVariable('H', float_type, (_DIVISION_VAR_NAME,), fill_value=filler)
+        h_variable.long_name = 'H' 
+        h_variable.standard_name = 'H' 
 
         # process each climatology and indicator variable
         for var_name in variable_names:
@@ -323,61 +339,17 @@ def _create_netcdf(nclimdiv_netcdf,
                 awc_value = divs_to_awc[division_id]
             if division_id in divs_to_lats.keys():
                 lat_value = divs_to_lats[division_id]
+            if division_id in divs_to_bs.keys():
+                b_value = divs_to_bs[division_id]
+            if division_id in divs_to_hs.keys():
+                h_value = divs_to_hs[division_id]
 
             # set the AWC value for the division
             awc_variable[division_index] = awc_value
             lat_variable[division_index] = lat_value
+            b_variable[division_index] = b_value
+            h_variable[division_index] = h_value
             
-#-----------------------------------------------------------------------------------------------------------------------
-if __name__ == '__main__':
-
-    try:
-
-        # log some timing info, used later for elapsed time
-        start_datetime = datetime.now()
-        logger.info("Start time:    {0}".format(start_datetime, '%x'))
-
-        # get the date string we'll use for file identification
-        processing_date = _get_processing_date()
-    
-#         # parse the command line arguments
-#         parser = argparse.ArgumentParser()
-#         parser.add_argument("--base_file_path", 
-#                             help="Output file path up to the base file name. For example if this value is /abc/base then the ouput " + \
-#                                  "file will be/abc/base_<processing_date>.nc", 
-#                             required=True)
-#         parser.add_argument("--month_scales",
-#                             help="Month scales over which the PNP, SPI, and SPEI values are to be computed",
-#                             type=int,
-#                             nargs = '*',
-#                             choices=range(1, 73),
-#                             required=True)
-#         parser.add_argument("--calibration_start_year",
-#                             help="Initial year of calibration period",
-#                             type=int,
-#                             choices=range(1870, start_datetime.year + 1),
-#                             required=True)
-#         parser.add_argument("--calibration_end_year",
-#                             help="Final year of calibration period",
-#                             type=int,
-#                             choices=range(1870, start_datetime.year + 1),
-#                             required=True)
-#         args = parser.parse_args()
-        
-        # the NetCDF file we want to write
-        nclimdiv_netcdf = '{0}_{1}.nc'.format('C:/home/data/nclimdiv/nclimdiv', processing_date)
-#         nclimdiv_netcdf = '{0}_{1}.nc'.format(args.base_file_path, processing_date)
-
-        ingest_netcdf(nclimdiv_netcdf,
-                      processing_date,
-                      'tavg',
-                      'prcp',
-                      'awc')
-        
-    except:
-        logger.exception('Failed to complete', exc_info=True)
-        raise
-    
 #-----------------------------------------------------------------------------------------------------------------------
 def ingest_netcdf(nclimdiv_netcdf,
                   processing_date,
@@ -390,7 +362,7 @@ def ingest_netcdf(nclimdiv_netcdf,
         # parse the soil constant (available water capacity)
         soil_url = 'https://raw.githubusercontent.com/monocongo/indices_python/master/example_inputs/pdinew.soilconst'
         soil_file = wget.download(soil_url)
-        divs_to_awc, divs_to_lats = _parse_soil_constants(soil_file, awc_var_name)
+        divs_to_awc, divs_to_lats, divs_to_bs, divs_to_hs = _parse_soil_constants(soil_file, awc_var_name)
         
         # remove the soil file
         os.remove(soil_file)
@@ -446,6 +418,8 @@ def ingest_netcdf(nclimdiv_netcdf,
                        variable_minmax_years,
                        divs_to_awc,
                        divs_to_lats,
+                       divs_to_bs,
+                       divs_to_hs,
                        total_months,
                        temp_var_name,
                        precip_var_name,
@@ -455,5 +429,57 @@ def ingest_netcdf(nclimdiv_netcdf,
         print('\nMonthly nClimDiv NetCDF file: {0}'.format(nclimdiv_netcdf))
 
     except:
+        
         logger.exception('Failed to complete', exc_info=True)
         raise
+
+#-----------------------------------------------------------------------------------------------------------------------
+if __name__ == '__main__':
+
+    try:
+
+        # log some timing info, used later for elapsed time
+        start_datetime = datetime.now()
+        logger.info("Start time:    {0}".format(start_datetime, '%x'))
+
+        # get the date string we'll use for file identification
+        processing_date = _get_processing_date()
+    
+#         # parse the command line arguments
+#         parser = argparse.ArgumentParser()
+#         parser.add_argument("--base_file_path", 
+#                             help="Output file path up to the base file name. For example if this value is /abc/base then the ouput " + \
+#                                  "file will be/abc/base_<processing_date>.nc", 
+#                             required=True)
+#         parser.add_argument("--month_scales",
+#                             help="Month scales over which the PNP, SPI, and SPEI values are to be computed",
+#                             type=int,
+#                             nargs = '*',
+#                             choices=range(1, 73),
+#                             required=True)
+#         parser.add_argument("--calibration_start_year",
+#                             help="Initial year of calibration period",
+#                             type=int,
+#                             choices=range(1870, start_datetime.year + 1),
+#                             required=True)
+#         parser.add_argument("--calibration_end_year",
+#                             help="Final year of calibration period",
+#                             type=int,
+#                             choices=range(1870, start_datetime.year + 1),
+#                             required=True)
+#         args = parser.parse_args()
+        
+        # the NetCDF file we want to write
+        nclimdiv_netcdf = '{0}_{1}.nc'.format('C:/home/data/nclimdiv/nclimdiv', processing_date)
+#         nclimdiv_netcdf = '{0}_{1}.nc'.format(args.base_file_path, processing_date)
+
+        ingest_netcdf(nclimdiv_netcdf,
+                      processing_date,
+                      'tavg',
+                      'prcp',
+                      'awc')
+        
+    except:
+        logger.exception('Failed to complete', exc_info=True)
+        raise
+    

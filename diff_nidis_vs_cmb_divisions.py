@@ -66,7 +66,7 @@ def initialize_netcdf(new_netcdf,
         time_variable = new_dataset.createVariable('time', time_dtype, ('time',))
         division_variable = new_dataset.createVariable('division', divisions_dtype, ('division',))
 
-        # set the coordinate variables' attributes and values
+        # set the coordinate variables' attributes and var_names
         time_variable.setncatts(template_dataset.variables['time'].__dict__)
         time_variable[:] = template_dataset.variables['time'][:]
         division_variable.setncatts(template_dataset.variables['division'].__dict__)
@@ -89,15 +89,35 @@ def initialize_netcdf(new_netcdf,
                 data_variable[:] = var_data
         
 #-----------------------------------------------------------------------------------------------------------------------
+def _plot_and_save(diffs,
+                   number_of_bins,
+                   range_lower, 
+                   range_upper,
+                   index,
+                   division_id,
+                   output_dir,
+                   histogram_title):
+    
+    # plot a histogram of the differences
+    plt.gcf().clear()
+    plt.hist(diffs[:], bins=number_of_bins, range=(range_lower, range_upper))
+    plt.title(histogram_title + ': {0}, Division {1}'.format(index, division_id))
+    plt.xlabel("Value")
+    plt.ylabel("Frequency")
+    file_name = output_dir + os.sep + 'nclimdiv_diffs_{0}_{1}'.format(index, division_id) + '.png'
+    logger.info('Saving plot for index {0} as file {1}'.format(index, file_name))
+    plt.savefig(file_name)
+
+#-----------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
 
     # parse the command line arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--nidis_file", 
-                        help="NIDIS input dataset file (NetCDF) containing values for the named variable", 
+                        help="NIDIS input dataset file (NetCDF) containing var_names for the named variable", 
                         required=True)
     parser.add_argument("--cmb_file", 
-                        help="CMB input dataset file (NetCDF) containing values for the named variable", 
+                        help="CMB input dataset file (NetCDF) containing var_names for the named variable", 
                         required=True)
     parser.add_argument("--output_file",
                         help=" Output file path and name",
@@ -134,71 +154,73 @@ if __name__ == '__main__':
                                                   divisions_dim_name) as dataset_OUT:
 
         # variable names for variables to diff from the two datasets
-        vars = {'PDSI': ('pdsi.index', 'pdsi'),
-                'PHDI': ('phdi.index', 'phdi'),
-                'PMDI': ('pmdi.index', 'pmdi'),
-                'Z-Index': ('z.index', 'zindex')}
-        for var_name, values in vars.items():
+        vars = {'PDSI': ('cmb_pdsi', 'pdsi'),
+                'PHDI': ('cmb_phdi', 'phdi'),
+                'PMDI': ('cmb_pmdi', 'pmdi'),
+                'Z-Index': ('cmb_zndx', 'zindex')}
+        for index, var_names in vars.items():
                     
             # TODO validate that the two variables exist, have compatible dimensions/units, etc., all of which is assumed below
 
-            logger.info('Computing differences on variable {0}'.format(var_name))
+            logger.info('Computing differences on variable {0}'.format(index))
             
             # allocate an array for the differences for this variable
             diffs = {}
             
             size = dataset_CMB.variables['division'][:].size
             
-            for division_index in range(dataset_CMB.variables['division'][:].size):
+            # common title for plots
+            histogram_title = 'CMB vs. NIDIS: '
+ 
+            for division_index, division_id in enumerate(dataset_CMB.variables['division'][:]):
              
-                print('Computing diffs for division {0}'.format(division_index))
+                logger.info('Computing diffs for climate division ID: {0}'.format(division_id))
                 
-                # get the variable values for the month, mask the NaNs (data assumed to be in (division, time) dimension order)
-                data_CMB = np.ma.masked_invalid(dataset_CMB.variables[values[0]][division_index, :], copy=False)
-                data_NIDIS = np.ma.masked_invalid(dataset_NIDIS.variables[values[1]][division_index, :], copy=False)
+                # get the variable var_names for the month, mask the NaNs (data assumed to be in (division, time) dimension order)
+                data_CMB = np.ma.masked_invalid(dataset_CMB.variables[var_names[0]][division_index, :], copy=False)
+                data_NIDIS = np.ma.masked_invalid(dataset_NIDIS.variables[var_names[1]][division_index, :], copy=False)
          
                 # get the difference of the two
-                diffs[division_index] = data_CMB - data_NIDIS
+                differences = data_CMB - data_NIDIS
+                diffs[division_index] = differences
  
+                # plot the differences and save to file
+                _plot_and_save(differences,
+                               number_of_bins,
+                               range_lower, 
+                               range_upper,
+                               index,
+                               division_id,
+                               args.output_dir,
+                               histogram_title)
+
             # add the variable into the dataset and add the data into the variable
-            netcdf_utils.add_variable_climdivs(netcdf_file_OUT, var_name, dataset_NIDIS.variables[values[1]].__dict__, diffs)
+            netcdf_utils.add_variable_climdivs(netcdf_file_OUT, index, dataset_NIDIS.variables[var_names[1]].__dict__, diffs)
 
-            # get the variable values for the month, mask the NaNs (data assumed to be in (division, time) dimension order)
-            data_CMB = np.ma.masked_invalid(dataset_CMB.variables[values[0]][:, :], copy=False)
-            data_NIDIS = np.ma.masked_invalid(dataset_NIDIS.variables[values[1]][:, :], copy=False)
-            
-            # get the difference of the two
-            diffs = data_CMB - data_NIDIS
-            
-#             # keep the original shape
-#             original_shape = diffs.shape
-#
-#             # get just the unmasked values, as a 1-D (flattened) array
-#             diffs = diffs[~diffs.mask]
-# 
-#             # reshape back to original shape
-#             diffs = np.reshape(diffs, original_shape)
-            
-            # plot the differences on a monthly basis
-    
-            # reshape from (divisions, months) to (divisions, years, 12)
-            diffs = utils.reshape_to_divs_years_months(diffs)
-            
-            # common title
-            histogram_title = 'CMB vs. NIDIS: '
-
-            # loop over each month
-            for i in range(12):
-    
-                # get the month as a string
-                month = datetime.datetime.strptime(str(i + 1), "%m").strftime("%b")
-    
-                # plot a histogram of the differences
-                plt.gcf().clear()
-                plt.hist(diffs[:, :, i], bins=number_of_bins, range=(range_lower, range_upper))
-                plt.title(histogram_title + ': {0}/{1}'.format(var_name, month))
-                plt.xlabel("Value")
-                plt.ylabel("Frequency")
-                file_name = args.output_dir + os.sep + 'diffs_cmb_nidis_{0}_'.format(var_name) + str(i + 1).zfill(2) + '.png'
-                logger.info('Saving plot for month {0} as file {1}'.format(i + 1, file_name))
-                plt.savefig(file_name)
+#             # get the variable values, mask the NaNs (data assumed to be in (division, time) dimension order)
+#             data_CMB = np.ma.masked_invalid(dataset_CMB.variables[var_names[0]][:, :], copy=False)
+#             data_NIDIS = np.ma.masked_invalid(dataset_NIDIS.variables[var_names[1]][:, :], copy=False)
+#             
+#             # get the difference of the two
+#             diffs = data_CMB - data_NIDIS
+#             
+#             # plot the differences on a monthly basis
+#     
+#             # reshape from (divisions, months) to (divisions, years, 12)
+#             diffs = utils.reshape_to_divs_years_months(diffs)
+#             
+#             # loop over each month
+#             for i in range(12):
+#     
+#                 # get the month as a string
+#                 month = datetime.datetime.strptime(str(i + 1), "%m").strftime("%b")
+#     
+#                 # plot a histogram of the differences
+#                 plt.gcf().clear()
+#                 plt.hist(diffs[:, :, i], bins=number_of_bins, range=(range_lower, range_upper))
+#                 plt.title(histogram_title + ': {0}/{1}'.format(index, month))
+#                 plt.xlabel("Value")
+#                 plt.ylabel("Frequency")
+#                 file_name = args.output_dir + os.sep + 'diffs_cmb_nidis_{0}_'.format(index) + str(i + 1).zfill(2) + '.png'
+#                 logger.info('Saving plot for month {0} as file {1}'.format(i + 1, file_name))
+#                 plt.savefig(file_name)

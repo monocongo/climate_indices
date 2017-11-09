@@ -7,6 +7,7 @@ import netCDF4
 import netcdf_utils
 import numpy as np
 import os
+import palmer
 import subprocess
 import sys
 import numba
@@ -340,9 +341,20 @@ def process_division(division_index,
             logger.info('\tComputing PET for division {0}'.format(division_id))
 
             # compute PET across all longitudes of the latitude slice
-            pet_time_series = indices.pet(temperature, 
-                                          latitude_degrees=latitude, 
-                                          data_start_year=initial_data_year)
+
+            # DEBUG/TESTING -- REMOVE
+            # compute PET using the original method used in monthly CMB processing (pdinew.f)
+            B = input_dataset['B'][division_index]    # assuming (divisions) orientation
+            H = input_dataset['H'][division_index]    # assuming (divisions) orientation
+            pet_time_series = palmer._pdinew_potential_evapotranspiration(temperature, 
+                                                                          latitude,
+                                                                          data_start_year,
+                                                                          B,
+                                                                          H)
+
+#             pet_time_series = indices.pet(temperature, 
+#                                           latitude_degrees=latitude, 
+#                                           data_start_year=initial_data_year)
         
             # the above returns PET in millimeters, note this for further consideration
             pet_units = 'millimeter'
@@ -481,6 +493,65 @@ def process_division(division_index,
                     lock.release()
 
 #-----------------------------------------------------------------------------------------------------------------------
+def process_nclimdiv(input_file, 
+                     output_file, 
+                     month_scales, 
+                     temp_var_name,
+                     precip_var_name,
+                     awc_var_name,
+                     calibration_start_year,
+                     calibration_end_year):
+    """
+    :param input_file: NetCDF assumed to contain precipitation, temperature, and soil constant values for NCEI US 
+                       climate divisions (nClimDiv)
+    :param output_file: NetCDF file to which results are written, will be overwritten if file already exists
+    :param month_scales: 
+    :param temp_var_name: 
+    :param precip_var_name: 
+    :param awc_var_name:
+    :param calibration_start_year: 
+    :param calibration_end_year:  
+    """
+    
+    # initialize the output NetCDF that will contain the computed indices
+    _initialize_netcdf(output_file, input_file, month_scales)
+        
+    # open the NetCDF files 
+    with netCDF4.Dataset(input_file) as input_dataset:
+         
+        # get the initial and final year of the input datasets
+        time_variable = input_dataset.variables['time']
+        data_start_year = netCDF4.num2date(time_variable[0], time_variable.units).year
+        data_end_year = netCDF4.num2date(time_variable[-1], time_variable.units).year
+    
+        # get the number of divisions in the input dataset(s)
+        divisions_size = input_dataset.variables['division'].size
+    
+    # create a process Pool, with copies of the shared array going to each pooled/forked process
+    pool = multiprocessing.Pool(processes=1,#multiprocessing.cpu_count(),
+                                initializer=init_process,
+                                initargs=(input_file,
+                                          output_file,
+                                          temp_var_name,
+                                          precip_var_name,
+                                          awc_var_name,
+                                          month_scales,
+                                          data_start_year,
+                                          data_end_year,
+                                          calibration_start_year,
+                                          calibration_end_year))
+    
+    # map the divisions indices as an arguments iterable to the compute function
+    result = pool.map_async(compute_and_write_division, range(divisions_size))
+              
+    # get the exception(s) thrown, if any
+    result.get()
+          
+    # close the pool and wait on all processes to finish
+    pool.close()
+    pool.join()
+    
+#-----------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
 
     '''
@@ -564,63 +635,4 @@ if __name__ == '__main__':
     except Exception as ex:
         logger.exception('Failed to complete', exc_info=True)
         raise
-    
-#-----------------------------------------------------------------------------------------------------------------------
-def process_nclimdiv(input_file, 
-                     output_file, 
-                     month_scales, 
-                     temp_var_name,
-                     precip_var_name,
-                     awc_var_name,
-                     calibration_start_year,
-                     calibration_end_year):
-    """
-    :param input_file: NetCDF assumed to contain precipitation, temperature, and soil constant values for NCEI US 
-                       climate divisions (nClimDiv)
-    :param output_file: NetCDF file to which results are written, will be overwritten if file already exists
-    :param month_scales: 
-    :param temp_var_name: 
-    :param precip_var_name: 
-    :param awc_var_name:
-    :param calibration_start_year: 
-    :param calibration_end_year:  
-    """
-    
-    # initialize the output NetCDF that will contain the computed indices
-    _initialize_netcdf(output_file, input_file, month_scales)
-        
-    # open the NetCDF files 
-    with netCDF4.Dataset(input_file) as input_dataset:
-         
-        # get the initial and final year of the input datasets
-        time_variable = input_dataset.variables['time']
-        data_start_year = netCDF4.num2date(time_variable[0], time_variable.units).year
-        data_end_year = netCDF4.num2date(time_variable[-1], time_variable.units).year
-    
-        # get the number of divisions in the input dataset(s)
-        divisions_size = input_dataset.variables['division'].size
-    
-    # create a process Pool, with copies of the shared array going to each pooled/forked process
-    pool = multiprocessing.Pool(processes=1,#multiprocessing.cpu_count(),
-                                initializer=init_process,
-                                initargs=(input_file,
-                                          output_file,
-                                          temp_var_name,
-                                          precip_var_name,
-                                          awc_var_name,
-                                          month_scales,
-                                          data_start_year,
-                                          data_end_year,
-                                          calibration_start_year,
-                                          calibration_end_year))
-    
-    # map the divisions indices as an arguments iterable to the compute function
-    result = pool.map_async(compute_and_write_division, range(divisions_size))
-              
-    # get the exception(s) thrown, if any
-    result.get()
-          
-    # close the pool and wait on all processes to finish
-    pool.close()
-    pool.join()
     
