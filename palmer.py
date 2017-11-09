@@ -71,9 +71,7 @@ def _water_balance(AWC,
     
     # E is the amount of room (in inches) in the underlying soil layer that is available to be recharged with excess precipitation
     E = np.zeros((total_months,))
-
-    ## CONSTANTS
-    
+   
     # NOTE: SOIL MOISTURE STORAGE IS HANDLED BY DIVIDING THE SOIL INTO TWO
     # LAYERS AND ASSUMING THAT 1 INCH OF WATER CAN BE STORED IN THE SURFACE
     # LAYER. AWC IS THE COMBINED AVAILABLE MOISTURE CAPACITY IN BOTH SOIL
