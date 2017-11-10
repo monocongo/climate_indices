@@ -310,8 +310,10 @@ def process_division(division_index,
 
         logger.info('Processing indices for division {0}'.format(division_id))
     
-        # read the division of input temperature values 
+        # read input temperature, B, and H values for the division
         temperature = input_dataset[temp_var_name][division_index, :]    # assuming (divisions, time) orientation
+        B = input_dataset['B'][division_index]    # assuming (divisions) orientation
+        H = input_dataset['H'][division_index]    # assuming (divisions) orientation
         
         # initialize the latitude outside of the valid range, in order to use this within a conditional below to verify a valid latitude
         latitude = -100.0  
@@ -344,8 +346,6 @@ def process_division(division_index,
 
             # DEBUG/TESTING -- REMOVE
             # compute PET using the original method used in monthly CMB processing (pdinew.f)
-            B = input_dataset['B'][division_index]    # assuming (divisions) orientation
-            H = input_dataset['H'][division_index]    # assuming (divisions) orientation
             pet_time_series = palmer._pdinew_potential_evapotranspiration(temperature, 
                                                                           latitude,
                                                                           data_start_year,
@@ -410,19 +410,36 @@ def process_division(division_index,
     
                     logger.info('\tComputing PDSI for division {0}'.format(division_id))
 
-                    # compute Palmer indicators
-                    palmer_values = indices.scpdsi(precip_time_series,
-                                                   pet_time_series,
-                                                   awc,
-                                                   initial_data_year,
-                                                   calibration_start_year,
-                                                   calibration_end_year)
-        
-                    scpdsi = palmer_values[0]
-                    pdsi = palmer_values[1]
-                    phdi = palmer_values[2]
-                    pmdi = palmer_values[3]
-                    zindex = palmer_values[4]
+                    # compute Palmer indicators using translation of operational Fortran version pdinew.f
+                    palmer_values = indices.pdinew_pdsi(precip_time_series,
+                                                        temperature,
+                                                        awc,
+                                                        latitude,
+                                                        initial_data_year,
+                                                        calibration_start_year,
+                                                        calibration_end_year,
+                                                        B,
+                                                        H)
+                    
+                    pdsi = palmer_values[0]
+                    phdi = palmer_values[1]
+                    pmdi = palmer_values[2]
+                    zindex = palmer_values[3]
+#                     #DEBUG ONLY -- REMOVE
+#                     pet = palmer_values[4]
+                    
+#                     # compute Palmer indicators
+#                     palmer_values = indices.scpdsi(precip_time_series,
+#                                                    pet_time_series,
+#                                                    awc,
+#                                                    initial_data_year,
+#                                                    calibration_start_year,
+#                                                    calibration_end_year)
+#                     scpdsi = palmer_values[0]
+#                     pdsi = palmer_values[1]
+#                     phdi = palmer_values[2]
+#                     pmdi = palmer_values[3]
+#                     zindex = palmer_values[4]
     
                     # write the PDSI values to NetCDF
                     lock.acquire()
@@ -432,65 +449,67 @@ def process_division(division_index,
                         output_dataset['pmdi'][division_index, :] = np.reshape(pmdi, (1, pmdi.size))
                         output_dataset['scpdsi'][division_index, :] = np.reshape(pdsi, (1, scpdsi.size))
                         output_dataset['zindex'][division_index, :] = np.reshape(zindex, (1, zindex.size))
+#                         #DEBUG ONLY -- REMOVE
+#                         output_dataset['pet'][division_index, :] = np.reshape(pet, (1, pet.size))
                         output_dataset.sync()
                     lock.release()
     
-                # process the SPI and SPEI at the specified month scales
-                for months in scale_months:
-                    
-                    logger.info('\tComputing SPI/SPEI/PNP at {0}-month scale for division {1}'.format(months, division_id))
-
-                    #TODO ensure that the precipitation and PET values are using the same units
-                    
-                    # compute SPEI/Gamma
-                    spei_gamma = indices.spei_gamma(months,
-                                                    precip_time_series,
-                                                    pet_mm=pet_time_series)
-
-                    # compute SPEI/Pearson
-                    spei_pearson = indices.spei_pearson(months,
-                                                        data_start_year,
-                                                        precip_time_series,
-                                                        pet_mm=pet_time_series,
-                                                        calibration_year_initial=calibration_start_year,
-                                                        calibration_year_final=calibration_end_year)
-                     
-                    # compute SPI/Gamma
-                    spi_gamma = indices.spi_gamma(precip_time_series, 
-                                                  months)
-             
-                    # compute SPI/Pearson
-                    spi_pearson = indices.spi_pearson(precip_time_series, 
-                                                      months,
-                                                      data_start_year,
-                                                      calibration_start_year, 
-                                                      calibration_end_year)        
-        
-                    # compute PNP
-                    pnp = indices.percentage_of_normal(precip_time_series, 
-                                                       months,
-                                                       data_start_year,
-                                                       calibration_start_year, 
-                                                       calibration_end_year)        
-    
-                    # create variable names which should correspond to the appropriate scaled indicator output variables
-                    scaled_name_suffix = str(months).zfill(2)
-                    spei_gamma_variable_name = 'spei_gamma_' + scaled_name_suffix
-                    spei_pearson_variable_name = 'spei_pearson_' + scaled_name_suffix
-                    spi_gamma_variable_name = 'spi_gamma_' + scaled_name_suffix
-                    spi_pearson_variable_name = 'spi_pearson_' + scaled_name_suffix
-                    pnp_variable_name = 'pnp_' + scaled_name_suffix
-    
-                    # write the SPI, SPEI, and PNP values to NetCDF        
-                    lock.acquire()
-                    with netCDF4.Dataset(output_file, 'a') as output_dataset:
-                        output_dataset[spei_gamma_variable_name][division_index, :] = np.reshape(spei_gamma, (1, spei_gamma.size))
-                        output_dataset[spei_pearson_variable_name][division_index, :] = np.reshape(spei_pearson, (1, spei_pearson.size))
-                        output_dataset[spi_gamma_variable_name][division_index, :] = np.reshape(spi_gamma, (1, spi_gamma.size))
-                        output_dataset[spi_pearson_variable_name][division_index, :] = np.reshape(spi_pearson, (1, spi_pearson.size))
-                        output_dataset[pnp_variable_name][division_index, :] = np.reshape(pnp, (1, pnp.size))
-                        output_dataset.sync()
-                    lock.release()
+#                 # process the SPI and SPEI at the specified month scales
+#                 for months in scale_months:
+#                     
+#                     logger.info('\tComputing SPI/SPEI/PNP at {0}-month scale for division {1}'.format(months, division_id))
+# 
+#                     #TODO ensure that the precipitation and PET values are using the same units
+#                     
+#                     # compute SPEI/Gamma
+#                     spei_gamma = indices.spei_gamma(months,
+#                                                     precip_time_series,
+#                                                     pet_mm=pet_time_series)
+# 
+#                     # compute SPEI/Pearson
+#                     spei_pearson = indices.spei_pearson(months,
+#                                                         data_start_year,
+#                                                         precip_time_series,
+#                                                         pet_mm=pet_time_series,
+#                                                         calibration_year_initial=calibration_start_year,
+#                                                         calibration_year_final=calibration_end_year)
+#                      
+#                     # compute SPI/Gamma
+#                     spi_gamma = indices.spi_gamma(precip_time_series, 
+#                                                   months)
+#              
+#                     # compute SPI/Pearson
+#                     spi_pearson = indices.spi_pearson(precip_time_series, 
+#                                                       months,
+#                                                       data_start_year,
+#                                                       calibration_start_year, 
+#                                                       calibration_end_year)        
+#         
+#                     # compute PNP
+#                     pnp = indices.percentage_of_normal(precip_time_series, 
+#                                                        months,
+#                                                        data_start_year,
+#                                                        calibration_start_year, 
+#                                                        calibration_end_year)        
+#     
+#                     # create variable names which should correspond to the appropriate scaled indicator output variables
+#                     scaled_name_suffix = str(months).zfill(2)
+#                     spei_gamma_variable_name = 'spei_gamma_' + scaled_name_suffix
+#                     spei_pearson_variable_name = 'spei_pearson_' + scaled_name_suffix
+#                     spi_gamma_variable_name = 'spi_gamma_' + scaled_name_suffix
+#                     spi_pearson_variable_name = 'spi_pearson_' + scaled_name_suffix
+#                     pnp_variable_name = 'pnp_' + scaled_name_suffix
+#     
+#                     # write the SPI, SPEI, and PNP values to NetCDF        
+#                     lock.acquire()
+#                     with netCDF4.Dataset(output_file, 'a') as output_dataset:
+#                         output_dataset[spei_gamma_variable_name][division_index, :] = np.reshape(spei_gamma, (1, spei_gamma.size))
+#                         output_dataset[spei_pearson_variable_name][division_index, :] = np.reshape(spei_pearson, (1, spei_pearson.size))
+#                         output_dataset[spi_gamma_variable_name][division_index, :] = np.reshape(spi_gamma, (1, spi_gamma.size))
+#                         output_dataset[spi_pearson_variable_name][division_index, :] = np.reshape(spi_pearson, (1, spi_pearson.size))
+#                         output_dataset[pnp_variable_name][division_index, :] = np.reshape(pnp, (1, pnp.size))
+#                         output_dataset.sync()
+#                     lock.release()
 
 #-----------------------------------------------------------------------------------------------------------------------
 def process_nclimdiv(input_file, 
@@ -502,7 +521,7 @@ def process_nclimdiv(input_file,
                      calibration_start_year,
                      calibration_end_year):
     """
-    Ccomputes indices for all climate divisions in a NetCDF file, producing an output NetCDF containing
+    Computes indices for all climate divisions in a NetCDF file, producing an output NetCDF containing
     variables corresponding to the computed indices.
     
     :param input_file: NetCDF assumed to contain precipitation, temperature, and soil constant values for NCEI US 
