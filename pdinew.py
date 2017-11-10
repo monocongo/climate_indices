@@ -53,6 +53,9 @@ def pdsi_from_climatology(precip_timeseries,
                           calibration_begin_year,
                           calibration_end_year,
                           expected_pdsi_for_debug):
+    """
+    :return: PDSI, PHDI, PMDI, Z, PET
+    """
     
     # calculate the negative tangent of the latitude which is used as an argument to the water balance function
     neg_tan_lat = -1 * math.tan(math.radians(latitude))
@@ -331,7 +334,7 @@ def _climatic_characteristic(alpha,
 
 #-----------------------------------------------------------------------------------------------------------------------
 #@profile
-#@numba.jit
+@numba.jit
 def _water_balance(T,
                    P,
                    AWC,
@@ -654,7 +657,7 @@ def _zindex_from_climatology(temp_timeseries,
 #@profile
 #@numba.jit  #FIXME not yet working
 def _pdsi(Z,
-          expected_pdsi):
+          expected_pdsi=None):
     '''
     :param Z: 2-D array of Z-Index values, corresponding in total size to Z
     :param expected_pdsi: for DEBUGGING/DEBUG only -- REMOVE 
@@ -697,9 +700,10 @@ def _pdsi(Z,
     column_array = np.full(Z.shape, 0, dtype=int).flatten()
     df['index_i'] = pd.Series(column_array)
 
-    # DEBUG -- REMOVE
-    # add the expected PDSI values so we can compare against these as we're debugging
-    df['expected_pdsi'] = pd.Series(expected_pdsi.flatten())
+#     # DEBUG -- REMOVE
+#     # add the expected PDSI values so we can compare against these as we're debugging
+#     if expected_pdsi is not None:
+#         df['expected_pdsi'] = pd.Series(expected_pdsi.flatten())
     
     # the total number of backtracking months, i.e. when performing backtracking we'll back fill this many months
     _k8 = 0
@@ -707,8 +711,8 @@ def _pdsi(Z,
     # loop over all years and months of the time series
     for _i in range(Z.size):    
                 
-        # DEBUGGING ONLY -- REMOVE
-        print('_i: {0}'.format(_i))
+#         # DEBUGGING ONLY -- REMOVE
+#         print('_i: {0}'.format(_i))
         
         # keep track of final backtracking index, meaningful once _k8 > 0, where _k8 > 0 indicates that backtracking is required
         df.index_i[_k8] = _i
@@ -1255,23 +1259,24 @@ def _assign(df,
             # assign the backtracking array's value for the current backtrack month as that month's final PDSI value
             df.PDSI[ix] = df.SX[n] 
  
-            #!!!!!!!!!!!!!!!!!!!!!!!!     Debugging section below -- remove before deployment
-            #
-            # show backtracking array contents and describe differences if assigned value differs from expected
-            tolerance = 0.01            
-            if math.isnan(df.PDSI[ix]) or (abs(df.expected_pdsi[ix] - df.PDSI[ix]) > tolerance):
-                print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
-                print('\nBACKTRACKING  actual time step:  {0}\tBacktracking index: {1}'.format(_i, ix))
-                print('\tNumber of backtracking steps (_k8):  {0}'.format(_k8))
-                print('\tPDSI:  Expected {0:.2f}\n\t       Actual:  {1:.2f}'.format(df.expected_pdsi[ix], 
-                                                                                   df.PDSI[ix]))
-                print('\nSX: {0}'.format(df.SX._values[0:_k8+1]))
-                print('SX1: {0}'.format(df.SX1._values[0:_k8+1]))
-                print('SX2: {0}'.format(df.SX2._values[0:_k8+1]))
-                print('SX3: {0}'.format(df.SX3._values[0:_k8+1]))
-                print('\nwhich_X: {0}'.format(which_X))
-                print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
-            #!!!!!!!!!----------- cut here -------------------------------------------------------
+#             #!!!!!!!!!!!!!!!!!!!!!!!!     Debugging section below -- remove before deployment
+#             #
+#             # show backtracking array contents and describe differences if assigned value differs from expected
+#             if expected_pdsi is not None:
+#                 tolerance = 0.01            
+#                 if math.isnan(df.PDSI[ix]) or (abs(df.expected_pdsi[ix] - df.PDSI[ix]) > tolerance):
+#                     print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
+#                     print('\nBACKTRACKING  actual time step:  {0}\tBacktracking index: {1}'.format(_i, ix))
+#                     print('\tNumber of backtracking steps (_k8):  {0}'.format(_k8))
+#                     print('\tPDSI:  Expected {0:.2f}\n\t       Actual:  {1:.2f}'.format(df.expected_pdsi[ix], 
+#                                                                                        df.PDSI[ix]))
+#                     print('\nSX: {0}'.format(df.SX._values[0:_k8+1]))
+#                     print('SX1: {0}'.format(df.SX1._values[0:_k8+1]))
+#                     print('SX2: {0}'.format(df.SX2._values[0:_k8+1]))
+#                     print('SX3: {0}'.format(df.SX3._values[0:_k8+1]))
+#                     print('\nwhich_X: {0}'.format(which_X))
+#                     print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
+#             #!!!!!!!!!----------- cut here -------------------------------------------------------
                      
             # the PHDI is X3 if not zero, otherwise use X
             #TODO literature reference for this?
