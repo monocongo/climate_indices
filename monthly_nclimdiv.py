@@ -45,53 +45,52 @@ if __name__ == '__main__':
         # get the date string we'll use for file identification
         processing_date = _get_processing_date()
     
-#         # parse the command line arguments
-#         parser = argparse.ArgumentParser()
-#         parser.add_argument("--base_file_path", 
-#                             help="Output file path up to the base file name. For example if this value is /abc/base then the ouput " + \
-#                                  "file will be/abc/base_<processing_date>.nc", 
-#                             required=True)
-#         parser.add_argument("--month_scales",
-#                             help="Month scales over which the PNP, SPI, and SPEI values are to be computed",
-#                             type=int,
-#                             nargs = '*',
-#                             choices=range(1, 73),
-#                             required=True)
-#         parser.add_argument("--calibration_start_year",
-#                             help="Initial year of calibration period",
-#                             type=int,
-#                             choices=range(1870, start_datetime.year + 1),
-#                             required=True)
-#         parser.add_argument("--calibration_end_year",
-#                             help="Final year of calibration period",
-#                             type=int,
-#                             choices=range(1870, start_datetime.year + 1),
-#                             required=True)
-#         args = parser.parse_args()
-        
+        # parse the command line arguments
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--base_file_path", 
+                            help="Output file path up to the base file name. For example if this value is /abc/base then the ouput " + \
+                                 "file will be/abc/base_<processing_date>.nc", 
+                            required=True)
+        parser.add_argument("--month_scales",
+                            help="Month scales over which the PNP, SPI, and SPEI values are to be computed",
+                            type=int,
+                            nargs = '*',
+                            choices=range(1, 73),
+                            required=True)
+        parser.add_argument("--calibration_start_year",
+                            help="Initial year of calibration period",
+                            type=int,
+                            choices=range(1870, start_datetime.year + 1),
+                            required=True)
+        parser.add_argument("--calibration_end_year",
+                            help="Final year of calibration period",
+                            type=int,
+                            choices=range(1870, start_datetime.year + 1),
+                            required=True)
+        args = parser.parse_args()
+                
         # the NetCDF file we want to write
-        nclimdiv_netcdf = '{0}_{1}.nc'.format('C:/home/data/nclimdiv/nclimdiv', processing_date)
-#         nclimdiv_netcdf = '{0}_{1}.nc'.format(args.base_file_path, processing_date)
+        nclimdiv_netcdf = '{0}_{1}.nc'.format(args.base_file_path, processing_date)
 
-#         # ingest the nClimDiv datasets into a NetCDF
-#         ingest_nclimdiv.ingest_netcdf(nclimdiv_netcdf, 
-#                                       processing_date,        
-#                                       _TEMP_VAR_NAME,
-#                                       _PRECIP_VAR_NAME,
-#                                       _AWC_VAR_NAME)
+        # ingest the nClimDiv datasets into a NetCDF
+        ingest_nclimdiv.ingest_netcdf(nclimdiv_netcdf, 
+                                      processing_date,        
+                                      _TEMP_VAR_NAME,
+                                      _PRECIP_VAR_NAME,
+                                      _AWC_VAR_NAME)
         
         # come up with a file to use as the results NetCDF
-        indices_netcdf = '{0}_{1}.nc'.format('C:/home/data/nclimdiv/nclimdiv_nidis', processing_date)
+        indices_netcdf = '{0}_{1}_nidis.nc'.format(args.base_file_path, processing_date)
 
         # compute indices for the nClimDiv dataset we just ingested
         process_nclimdiv.process_nclimdiv(nclimdiv_netcdf, 
                                           indices_netcdf, 
-                                          [1, 2, 3, 6, 9, 12, 24], 
+                                          args.month_scales, 
                                           _TEMP_VAR_NAME,
                                           _PRECIP_VAR_NAME,
                                           _AWC_VAR_NAME,
-                                          1931, 
-                                          1990)
+                                          args.calibration_start_year, 
+                                          args.calibration_end_year)
         
         print('\nNIDIS indices file: {0}'.format(indices_netcdf))
         
