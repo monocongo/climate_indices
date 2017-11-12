@@ -1,3 +1,4 @@
+#from lmoments3 import distr
 import logging
 import math
 from math import exp, lgamma, log, pi, sqrt
@@ -697,5 +698,9 @@ def pearson3_fitting_values_new(values,
         monthly_fitting_values[1, month_index] = shape
         monthly_fitting_values[2, month_index] = location
         monthly_fitting_values[3, month_index] = scale
+#         paras = distr.pe3.lmom_fit(calibration_values)
+#         monthly_fitting_values[1, month_index] = paras['skew']
+#         monthly_fitting_values[2, month_index] = paras['loc']
+#         monthly_fitting_values[3, month_index] = paras['scale']
 
     return monthly_fitting_values
