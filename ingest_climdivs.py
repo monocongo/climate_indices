@@ -122,7 +122,7 @@ if __name__ == '__main__':
                             help="NetCDF output file containing variables composed from the input data and soil files", 
                             required=True)
         args = parser.parse_args()
-
+        
         # parse the temperature to get the years range of the period of record, values array for each division, etc.
         divs_to_arrays, divs_to_minmax_years, min_year, max_year = parse_variable(os.sep.join((args.data_dir, 'tdat.div')))
         
@@ -174,7 +174,7 @@ if __name__ == '__main__':
         # create variable for the remaining intermediate (water balance) variables
         for variable_name in ['etdat', 'pdat', 'pedat', 'pldat', 'prdat', 'rdat', 'rodat', 'spdat', 'sssdat', 
                               'ssudat', 'tldat', 'cp.index', 'pdsi.index', 'phdi.index', 'pmdi.index', 'z.index', 
-                              'x1dat',  'x2dat', 'x3dat', 'calibr.coef', 'phat']:
+                              'x1dat',  'x2dat', 'x3dat', 'phat']:
 
             # TODO these attributes only applicable for water balance variables, 
             # update units etc. when ingesting all intermediates such as X1, X2, Z-index, etc.
