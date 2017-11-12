@@ -30,6 +30,10 @@ def _water_balance(AWC,
                    PET,
                    P):
 
+    #EXPERIMENTAL/DEBUG ONLY -- REMOVE
+    if AWC >= 1.0:
+        AWC = AWC - 1.0
+    
     # This function calculates the Thornthwaite water balance using inputs from
     # the PET function and user-loaded precipitation data.
     
@@ -1066,8 +1070,8 @@ def _pdsi_from_zindex(Z,
 #         # DEBUGGING ONLY -- REMOVE
 #         print('k: {0}'.format(k))
         
-        #TODO/FIXME why is this here at the start of the loop, rather than at the conclusion?
-        PMDI[k] = _pmdi(Pe, X1, X2, X3)
+#         #TODO/FIXME why is this here at the start of the loop, rather than at the conclusion?
+#         PMDI[k] = _pmdi(Pe, X1, X2, X3)
         
         if (Pe == 100) or (Pe == 0):   # no abatement underway
             
@@ -1847,7 +1851,8 @@ def _pdinew_potential_evapotranspiration(monthly_temps_celsius,
     # assumes monthly_temps_celsius, B, and H have same dimensions, etc.
     
     pet = np.full(monthly_temps_celsius.shape, np.NaN)
-    monthly_temps_fahrenheit = scipy.constants.C2F(monthly_temps_celsius)
+#     monthly_temps_fahrenheit = scipy.constants.C2F(monthly_temps_celsius)
+    monthly_temps_fahrenheit = scipy.constants.convert_temperature(monthly_temps_celsius, 'C', 'F')
     for i in range(monthly_temps_celsius.size):
         pet[i] = _pe(monthly_temps_fahrenheit[i], i, latitude, data_start_year, B, H)
     return pet

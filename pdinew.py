@@ -366,6 +366,10 @@ def _water_balance(T,
     
     #TODO determine the total number of years from the original shape of the input array, assume shape == (total months)
     
+    #EXPERIMENTAL/DEBUG ONLY -- REMOVE
+    if AWC >= 1.0:
+        AWC = AWC - 1.0
+    
     # reshape the precipitation array from 1-D (assumed to be total months) to (years, 12) with the second  
     # dimension being calendar months, and the final/missing monthly values of the final year padded with NaNs
     T = utils.reshape_to_years_months(T)
