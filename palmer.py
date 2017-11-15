@@ -4,6 +4,7 @@ import logging
 import math
 import profile
 import numba
+from numba import float64, int32
 import numpy as np
 import scipy.constants
 import thornthwaite
@@ -25,7 +26,8 @@ _PDSI_MAX = 4.0
 _debug_differences = 0.0
 _debug_differences_count = 0
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit
+#@numba.jit(nopython=True, parallel=True)
+@numba.jit((float64,float64[:],float64[:]))
 def _water_balance(AWC,
                    PET,
                    P):
@@ -352,7 +354,8 @@ def _water_balance(AWC,
     return ET, PR, R, RO, PRO, L, PL 
           
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit
+#@numba.jit(nopython=True, parallel=True)
+#@numba.jit    # Numba not working yet 
 def _cafec_coefficients(P,
                         PET,
                         ET,
@@ -597,7 +600,9 @@ def _climatic_characteristic(alpha,
     return K
 
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit
+#@numba.jit(nopython=True, parallel=True)
+#@numba.jit(float64[:](float64[:],float64[:],float64[:],float64[:],float64[:],float64[:],float64[:],float64[:],float64[:],int32,int32,int32))
+#@numba.jit   # Numba not working yet
 def _z_index(P,
              PET,
              ET,
@@ -705,9 +710,10 @@ def _z_index(P,
     return z.flatten()
 
 #-----------------------------------------------------------------------------------------------------------------------
+@numba.jit(nopython=True, parallel=True)
 #@numba.jit
 # previously Main()
-def _compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT, expected_pdsi):
+def _compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT, expected_pdsi=None):
 
     # This function calculates PX1 and PX2 and calls the backtracking loop.
     # If the absolute value of PX1 or PX2 goes over 1, that value becomes the new PX3. 
@@ -762,6 +768,7 @@ def _compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT, expected_pdsi):
     return PX1, PX2, PX3, X, BT
 
 #-----------------------------------------------------------------------------------------------------------------------
+@numba.jit(nopython=True, parallel=True)
 #@numba.jit
 def _backtrack(k, 
                PPe, 
@@ -770,7 +777,7 @@ def _backtrack(k,
                PX3, 
                X, 
                BT,
-               expected_pdsi):
+               expected_pdsi=None):
     '''
     This function steps through stored index values computed for previous months and if/when . 
     
@@ -836,21 +843,23 @@ def _backtrack(k,
                 BT[count - 1] = 1
     
         # DEBUG -- REMOVE !!!!!!!!!!!!!!!!!!!
-        tolerance = 0.01
-        difference = abs(X[count] - expected_pdsi[count])
-        if difference > tolerance:
-#              print('_compute_X: At index {0} there is a discrepency -- actual: {1}  expected: {2}'.format(count, 
-#                                                                                                           X[count], 
-#                                                                                                           expected_pdsi[count]))
-             _debug_differences += difference
-             _debug_differences_count += 1
+        if expected_pdsi is not None:
+            tolerance = 0.01
+            difference = abs(X[count] - expected_pdsi[count])
+            if difference > tolerance:
+    #              print('_compute_X: At index {0} there is a discrepancy -- actual: {1}  expected: {2}'.format(count, 
+    #                                                                                                           X[count], 
+    #                                                                                                           expected_pdsi[count]))
+                 _debug_differences += difference
+                 _debug_differences_count += 1
         #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         
     return X, BT
 
 #-----------------------------------------------------------------------------------------------------------------------
+@numba.jit(nopython=True, parallel=True)
 #@numba.jit
-def _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X, expected_pdsi):
+def _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X, expected_pdsi=None):
 
     # This function is called when non-zero, non-one hundred PPe values occur
     # between values of PPe = 0. When this happens, a possible abatement
@@ -894,22 +903,24 @@ def _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X, expected_pdsi):
                 BT[count - 1] = 3  # this makes it so that the previous if condition will be met for the previous month (the next backtracking step), so that it too will be assigned an X3 value; by this mechanism we enable the assignment of X3 values all the way back to index r
 
             # DEBUG -- REMOVE !!!!!!!!!!!!!!!!!!!
-            tolerance = 0.01
-            difference = abs(X[count] - expected_pdsi[count])
-            if difference > tolerance:
-#                  print('_between_0s: At index {0} there is a discrepency -- actual: {1}  expected: {2}'.format(count, 
-#                                                                                                                X[count], 
-#                                                                                                                expected_pdsi[count]))
-                 _debug_differences += difference
-                 _debug_differences_count += 1
+            if expected_pdsi is not None:
+                tolerance = 0.01
+                difference = abs(X[count] - expected_pdsi[count])
+                if difference > tolerance:
+    #                  print('_between_0s: At index {0} there is a discrepency -- actual: {1}  expected: {2}'.format(count, 
+    #                                                                                                                X[count], 
+    #                                                                                                                expected_pdsi[count]))
+                     _debug_differences += difference
+                     _debug_differences_count += 1
             #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     return PV, PX1, PX2, PX3, PPe, X, BT
 
 #-----------------------------------------------------------------------------------------------------------------------
+@numba.jit(nopython=True, parallel=True)
 #@numba.jit
 # previously Function_Uw
-def _dry_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT, expected_pdsi):
+def _dry_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT, expected_pdsi=None):
 
     # In the case of an established drought, Palmer (1965) notes that a value of Z = -0.15 will maintain an
     # index of -0.50 from month to month. An established drought or wet spell is considered definitely over
@@ -944,9 +955,10 @@ def _dry_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT, exp
     return PV, PPe, PX1, PX2, PX3, X, BT
 
 #-----------------------------------------------------------------------------------------------------------------------
+@numba.jit(nopython=True, parallel=True)
 #@numba.jit
 # previously Function_Ud
-def _wet_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT, expected_pdsi):
+def _wet_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT, expected_pdsi=None):
 
     # In the case of an established wet spell, Palmer (1965) notes that a value of Z = +0.15 will maintain an 
     # index of +0.50 from month to month. An established drought or wet spell is considered definitely over
@@ -1012,9 +1024,10 @@ def _pmdi(probability,
     return _pmdi
 
 #------------------------------------------------------------------------------------------------------------------
-#@numba.jit
+#@numba.jit(nopython=True, parallel=True)
+#@numba.jit    # Numba not working yet
 def _pdsi_from_zindex(Z,
-                      expected_pdsi):
+                      expected_pdsi=None):
 
     # DEBUG ONLY -- REMOVE
     global _debug_differences
@@ -1164,14 +1177,15 @@ def _pdsi_from_zindex(Z,
 #                            BT[count0] = 1
                     
                     # DEBUG -- REMOVE !!!!!!!!!!!!!!!!!!!
-                    tolerance = 0.01
-                    difference = abs(X[count0] - expected_pdsi[count0])
-                    if difference > tolerance:
-#                         print('_between_0s: At index {0} there is a discrepency -- actual: {1}  expected: {2}'.format(count0, 
-#                                                                                                                       X[count0], 
-#                                                                                                                       expected_pdsi[count0]))
-                        _debug_differences += difference
-                        _debug_differences_count += 1
+                    if expected_pdsi is not None:
+                        tolerance = 0.01
+                        difference = abs(X[count0] - expected_pdsi[count0])
+                        if difference > tolerance:
+    #                         print('_between_0s: At index {0} there is a discrepency -- actual: {1}  expected: {2}'.format(count0, 
+    #                                                                                                                       X[count0], 
+    #                                                                                                                       expected_pdsi[count0]))
+                            _debug_differences += difference
+                            _debug_differences_count += 1
                     #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
@@ -1186,14 +1200,15 @@ def _pdsi_from_zindex(Z,
                     X[k] = PX2[k]
 
                 # DEBUG -- REMOVE !!!!!!!!!!!!!!!!!!!
-                tolerance = 0.01
-                difference = abs(X[k] - expected_pdsi[k])
-                if difference > tolerance:
-#                     print('_between_0s: At index {0} there is a discrepency -- actual: {1}  expected: {2}'.format(k, 
-#                                                                                                                   X[k], 
-#                                                                                                                   expected_pdsi[k]))
-                    _debug_differences += difference
-                    _debug_differences_count += 1
+                if expected_pdsi is not None:
+                    tolerance = 0.01
+                    difference = abs(X[k] - expected_pdsi[k])
+                    if difference > tolerance:
+    #                     print('_between_0s: At index {0} there is a discrepency -- actual: {1}  expected: {2}'.format(k, 
+    #                                                                                                                   X[k], 
+    #                                                                                                                   expected_pdsi[k]))
+                        _debug_differences += difference
+                        _debug_differences_count += 1
                 #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                 
         # round values to four decimal places
@@ -1239,7 +1254,8 @@ def _pdsi_from_zindex(Z,
     return PDSI, PHDI, PMDI
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit
+@numba.jit(nopython=True, parallel=True)
+#@numba.jit
 def _compute_scpdsi(established_index_values,
                     sczindex_values,
                     scpdsi_values,
@@ -1424,7 +1440,8 @@ def _compute_scpdsi(established_index_values,
     return pdsi_values, scpdsi_values, wet_index_values, dry_index_values, established_index_values
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit
+@numba.jit(nopython=True, parallel=True)
+#@numba.jit
 def _choose_X(pdsi_values,
               established_index_values,
               wet_index_values,
@@ -1539,7 +1556,8 @@ def _choose_X(pdsi_values,
     return newX, newX1, newX2, newX3
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit
+@numba.jit(nopython=True, parallel=True)
+#@numba.jit
 def _backtrack_self_calibrated(pdsi_values,
                                wet_index_deque,
                                dry_index_deque,
@@ -1578,7 +1596,8 @@ def _backtrack_self_calibrated(pdsi_values,
         pdsi_values[month_index] = num1
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit
+@numba.jit(nopython=True, parallel=True)
+#@numba.jit
 def _z_sum(interval, 
            wet_or_dry,
            sczindex_values,
@@ -1712,7 +1731,8 @@ def _z_sum(interval,
         return largest_sum
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit
+@numba.jit(nopython=True, parallel=True)
+#@numba.jit
 def _least_squares(x, 
                  y, 
                  n, 
@@ -1858,6 +1878,7 @@ def _pdinew_potential_evapotranspiration(monthly_temps_celsius,
     return pet
 
 #-----------------------------------------------------------------------------------------------------------------------
+#@numba.jit(nopython=True, parallel=True)
 #@numba.jit
 def pdi_from_climatology(precip_time_series,
                          temp_time_series,
@@ -1918,7 +1939,8 @@ def pdi_from_climatology(precip_time_series,
     return PDSI, PHDI, PMDI, Z
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit
+#@numba.jit(nopython=True, parallel=True)
+#@numba.jit
 def pdsi_from_climatology(precip_time_series,
                           temp_time_series,
                           awc,
@@ -1968,7 +1990,8 @@ def pdsi_from_climatology(precip_time_series,
                 calibration_end_year)
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit
+#@numba.jit(nopython=True, parallel=True)
+#@numba.jit
 def scpdsi_from_climatology(precip_time_series,
                             temp_time_series,
                             awc,
@@ -2007,13 +2030,14 @@ def scpdsi_from_climatology(precip_time_series,
                   calibration_end_year)
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit
+@numba.jit(nopython=True, parallel=True)
+#@numba.jit
 def _duration_factors(pdsi_values,
-                     zindex_values,
-                     calibration_start_year,
-                     calibration_end_year,
-                     data_start_year,
-                     wet_or_dry):
+                      zindex_values,
+                      calibration_start_year,
+                      calibration_end_year,
+                      data_start_year,
+                      wet_or_dry):
     '''
     This functions calculates m and b, which are used to calculated X(i)
     based on the Z index.  These constants will determine the
@@ -2067,15 +2091,17 @@ def _duration_factors(pdsi_values,
     return slope, intercept
 
 #-----------------------------------------------------------------------------------------------------------------------
+#@numba.jit(nopython=True, parallel=True)
 #@numba.jit
 def _pdsi_at_percentile(pdsi_values,
                         percentile):
 
-    pdsiSorted = sorted(pdsi_values)
-    return pdsiSorted[int(len(pdsi_values) * percentile)]
+    pdsi_sorted = sorted(pdsi_values)
+    return pdsi_sorted[int(len(pdsi_values) * percentile)]
     
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit
+#@numba.jit(nopython=True, parallel=True)
+#@numba.jit
 def _self_calibrate(pdsi_values,
                     sczindex_values,
                     calibration_start_year,
