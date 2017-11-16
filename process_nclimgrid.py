@@ -724,10 +724,9 @@ if __name__ == '__main__':
                             type=int,
                             choices=range(1870, start_datetime.year + 1),
                             required=True)
-        parser.add_argument("--destination_dir",
-                            help="Destination directory where output indices files will be written",
-                            required=True)
-        
+#         parser.add_argument("--destination_dir",
+#                             help="Destination directory where output indices files will be written",
+#                             required=True)        
         args = parser.parse_args()
 
         # the number of worker processes we'll have in our process pool
