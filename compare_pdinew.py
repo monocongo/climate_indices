@@ -83,7 +83,7 @@ def main():
             for division_index, division_id in enumerate(division_ids):
         
 #                 # DEBUG ONLY -- RMEOVE
-#                 if division_id <= 306:
+#                 if division_id < 1302:
 #                     continue
                 
                 # FOR DEBUG/DEVELOPMENT ONLY -- REMOVE
@@ -178,7 +178,7 @@ def main():
 #                     expected = array_tuple[1]
 #                     actual = array_tuple[2].flatten()
 #                         
-#                     plot_diffs(expected,
+#                     _plot_diffs(expected,
 #                                actual,
 #                                division_id,
 #                                varname)
@@ -197,8 +197,7 @@ def main():
                                                                                                     H,
                                                                                                     data_begin_year,
                                                                                                     calibration_begin_year,
-                                                                                                    calibration_end_year,
-                                                                                                    expected_pdsi)
+                                                                                                    calibration_end_year)
                     
                 # find the differences between the new (Matlab-derived) and previous (Fortran-derived) versions
                 pdsi_diffs = pdinew_PDSI.flatten() - expected_pdsi
@@ -221,25 +220,25 @@ def main():
                     expected = array_tuple[1]
                     actual = array_tuple[2]
                         
-                    plot_diffs(expected,
-                               actual,
-                               division_id,
-                               varname,
-                               args.output_dir)
+                    _plot_diffs(expected,
+                                actual,
+                                division_id,
+                                varname,
+                                args.output_dir)
  
     except Exception as ex:
         logger.exception('Failed to complete', exc_info=True)
         raise
     
 #-----------------------------------------------------------------------------------------------------------------------
-def plot_diffs(expected,
-               actual,
-               division_id,
-               varname,
-               output_dir):
+def _plot_diffs(expected,
+                actual,
+                division_id,
+                varname,
+                output_dir):
 
     diffs = expected - actual     
-    error = rmse(actual, expected)
+    error = _rmse(actual, expected)
     
     # plot the values and differences
     x = np.arange(diffs.size)

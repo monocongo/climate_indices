@@ -660,11 +660,9 @@ def _zindex_from_climatology(temp_timeseries,
 #-----------------------------------------------------------------------------------------------------------------------
 #@profile
 #@numba.jit  #FIXME not yet working
-def _pdsi(Z,
-          expected_pdsi):
+def _pdsi(Z):
     '''
     :param Z: 2-D array of Z-Index values, corresponding in total size to Z
-    :param expected_pdsi: for DEBUGGING/DEBUG only -- REMOVE 
     '''
     
     # indicate that we'll use the globals for the backtracking months count and the current time step
@@ -704,10 +702,6 @@ def _pdsi(Z,
     column_array = np.full(Z.shape, 0, dtype=int).flatten()
     df['index_i'] = pd.Series(column_array)
 
-    # DEBUG -- REMOVE
-    # add the expected PDSI values so we can compare against these as we're debugging
-    df['expected_pdsi'] = pd.Series(expected_pdsi.flatten())
-    
     # the total number of backtracking months, i.e. when performing backtracking we'll back fill this many months
     _k8 = 0
     
@@ -1262,24 +1256,6 @@ def _assign(df,
             # assign the backtracking array's value for the current backtrack month as that month's final PDSI value
             df.PDSI[ix] = df.SX[n] 
  
-            #!!!!!!!!!!!!!!!!!!!!!!!!     Debugging section below -- remove before deployment
-            #
-            # show backtracking array contents and describe differences if assigned value differs from expected
-            tolerance = 0.01            
-            if math.isnan(df.PDSI[ix]) or (abs(df.expected_pdsi[ix] - df.PDSI[ix]) > tolerance):
-                print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
-                print('\nBACKTRACKING  actual time step:  {0}\tBacktracking index: {1}'.format(_i, ix))
-                print('\tNumber of backtracking steps (_k8):  {0}'.format(_k8))
-                print('\tPDSI:  Expected {0:.2f}\n\t       Actual:  {1:.2f}'.format(df.expected_pdsi[ix], 
-                                                                                   df.PDSI[ix]))
-                print('\nSX: {0}'.format(df.SX._values[0:_k8+1]))
-                print('SX1: {0}'.format(df.SX1._values[0:_k8+1]))
-                print('SX2: {0}'.format(df.SX2._values[0:_k8+1]))
-                print('SX3: {0}'.format(df.SX3._values[0:_k8+1]))
-                print('\nwhich_X: {0}'.format(which_X))
-                print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
-            #!!!!!!!!!----------- cut here -------------------------------------------------------
-                     
             # the PHDI is X3 if not zero, otherwise use X
             #TODO literature reference for this?
             df.PHDI[ix] = df.PX3[ix]
