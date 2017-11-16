@@ -432,7 +432,10 @@ def pet(temperature_monthly_celsius,
     :return: an array of PET values, of the same size and shape as the input temperature values array, in millimeters/month
     :rtype: 1-D numpy.ndarray of floats
     '''
-    if not np.all(np.isnan(temperature_monthly_celsius)):
+    
+    # make sure we're not dealing with all NaN values
+    nan_indices = np.isnan(temperature_monthly_celsius)
+    if not np.all(nan_indices):
         
         if not np.isnan(latitude_degrees) and (latitude_degrees < 90.0) and (latitude_degrees > -90.0):
         
