@@ -139,7 +139,6 @@ def main():
                                                                                               data_begin_year,
                                                                                               calibration_begin_year,
                                                                                               calibration_end_year,
-                                                                                              expected_pdsi,
                                                                                               B,
                                                                                               H)
  
