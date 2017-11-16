@@ -23,7 +23,7 @@ _PDSI_MAX = 4.0
 
 #-----------------------------------------------------------------------------------------------------------------------
 #@numba.jit(nopython=True, parallel=True)
-@numba.jit((float64,float64[:],float64[:]))
+@numba.jit
 def _water_balance(AWC,
                    PET,
                    P):
@@ -1822,13 +1822,17 @@ def pdi_from_climatology(precip_time_series,
     # convert monthly temperatures from Fahrenheit to Celsius
     monthly_temps_celsius = (temp_time_series - 32) * 5.0 / 9.0
 
-    # compute PET using method from original PDSI code pdi.f
-    pet_time_series = _pdinew_potential_evapotranspiration(monthly_temps_celsius, 
-                                                           latitude,
-                                                           data_start_year,
-                                                           B,
-                                                           H)
+#     # compute PET using method from original PDSI code pdi.f
+#     pet_time_series = _pdinew_potential_evapotranspiration(monthly_temps_celsius, 
+#                                                            latitude,
+#                                                            data_start_year,
+#                                                            B,
+#                                                            H)
 
+    # compute PET
+    pet_time_series = thornthwaite._pdinew_potential_evapotranspiration(monthly_temps_celsius, 
+                                                                        latitude, 
+                                                                        data_start_year)
     # calculate water balance variables
     ET, PR, R, RO, PRO, L, PL = _water_balance(awc + 1.0, pet_time_series, precip_time_series)
 
@@ -1882,16 +1886,17 @@ def pdsi_from_climatology(precip_time_series,
     # convert monthly temperatures from Fahrenheit to Celsius
     monthly_temps_celsius = (temp_time_series - 32) * 5.0 / 9.0
 
-    # compute PET using method from original PDSI code pdinew.f
-    pet_time_series = _pdinew_potential_evapotranspiration(monthly_temps_celsius, 
-                                                           latitude,
-                                                           data_start_year,
-                                                           B,
-                                                           H)
-#     # compute PET
-#     pet_time_series = thornthwaite._pdinew_potential_evapotranspiration(monthly_temps_celsius, 
-#                                                                 latitude, 
-#                                                                 data_start_year)
+#     # compute PET using method from original PDSI code pdinew.f
+#     pet_time_series = _pdinew_potential_evapotranspiration(monthly_temps_celsius, 
+#                                                            latitude,
+#                                                            data_start_year,
+#                                                            B,
+#                                                            H)
+
+    # compute PET
+    pet_time_series = thornthwaite._pdinew_potential_evapotranspiration(monthly_temps_celsius, 
+                                                                        latitude, 
+                                                                        data_start_year)
 
     return pdsi(precip_time_series,
                 pet_time_series.flatten(),
