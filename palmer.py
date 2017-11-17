@@ -1013,16 +1013,6 @@ def _pdsi_from_zindex(Z):
     X = np.zeros((number_of_months,))
     PMDI = np.zeros((number_of_months,))
     
-#     # Ze is the soil moisture anomaly (Z) value that will end the current established dry or wet spell in that 
-#     # month and is used in calculating the Q value and subsequently the Pe value for a month
-#     Ze = np.zeros((number_of_months,))
-#
-#     # Uw is the effective wetness required in a month to end the current established dry spell (drought)
-#     Uw = np.zeros((number_of_months,))
-#     
-#     # Ud is the effective dryness required in a month to end the current wet spell
-#     Ud = np.zeros((number_of_months,))
-    
     # Palmer Hydrological Drought Index
     PHDI = np.zeros((number_of_months,))
 
@@ -1112,14 +1102,12 @@ def _pdsi_from_zindex(Z):
                             BT[count0] = 1  # flip the X we'll choose next step, from X2 to X1
                         else:
                             X[count0] = PX2[count0]
-#                            BT[count0] = 2
                     elif BT[count0] == 1:
                         if PX1[count0] == 0:  # If BT = 1, X = PX1 unless PX1 = 0, then X = PX2.
                             X[count0] = PX2[count0] 
                             BT[count0] = 2  # flip the X we'll choose next step, from X1 to X2
                         else:
                             X[count0] = PX1[count0]
-#                            BT[count0] = 1
                     
         # In instances where there is no established spell for the last monthly observation, X is initially 
         # assigned to 0. The code below sets X in the last month to greater of |PX1| or |PX2|. This prevents 
@@ -1168,8 +1156,7 @@ def _pdsi_from_zindex(Z):
     return PDSI, PHDI, PMDI
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit(nopython=True, parallel=True)
-#@numba.jit
+#@numba.jit  # not working yet
 def _compute_scpdsi(established_index_values,
                     sczindex_values,
                     scpdsi_values,
@@ -1510,8 +1497,7 @@ def _backtrack_self_calibrated(pdsi_values,
         pdsi_values[month_index] = num1
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit(nopython=True, parallel=True)
-#@numba.jit
+@numba.jit
 def _z_sum(interval, 
            wet_or_dry,
            sczindex_values,
@@ -1645,8 +1631,7 @@ def _z_sum(interval,
         return largest_sum
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit(nopython=True, parallel=True)
-#@numba.jit
+@numba.jit
 def _least_squares(x, 
                  y, 
                  n, 
@@ -1946,8 +1931,7 @@ def scpdsi_from_climatology(precip_time_series,
                   calibration_end_year)
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit(nopython=True, parallel=True)
-#@numba.jit
+#@numba.jit    # not working yet
 def _duration_factors(pdsi_values,
                       zindex_values,
                       calibration_start_year,
