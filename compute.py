@@ -281,7 +281,7 @@ def _pearson3_fitting_values(values,
     return monthly_fitting_values
 
 #----------------------------------------------------------------------------------------------------------------------
-@jit
+@jit(float64(float64,float64[:]))
 def _pearson3cdf(value,
                  pearson3_parameters):
     '''
@@ -388,7 +388,7 @@ def _error_function(value):
     return result
 
 #-----------------------------------------------------------------------------------------------------------------------
-@jit
+@jit(float64[:](float64[:],int32,int32,int32))
 def transform_fitted_pearson(monthly_values,
                              data_start_year,
                              calibration_start_year,
@@ -406,7 +406,7 @@ def transform_fitted_pearson(monthly_values,
     
     # if we're passed all missing values then we can't compute anything, return the same array of missing values
     if np.all(np.isnan(monthly_values)):
-        logger.info('An array of all fill values was passed as the argument, no action taken, returning the same array')
+#         logger.info('An array of all fill values was passed as the argument, no action taken, returning the same array')
         return monthly_values
         
     # validate (and possibly reshape) the input array
