@@ -2,8 +2,8 @@ import argparse
 from datetime import datetime
 import indices
 import logging
+import math
 import multiprocessing
-#import netCDF4
 import netcdf_utils
 import numpy as np
 import os
@@ -308,8 +308,9 @@ def process_latitude_palmer(lat_index):
         pet_lock.release()
 
         # read the latitude slice of input precipitation and available water capacity values 
-        precip_lat_slice = precip_dataset[precip_var_name][:, lat_index, :]   # assuming (time, lat, lon) orientation
-        awc_lat_slice = awc_dataset[awc_var_name][lat_index, :]             # assuming (lat, lon) orientation
+        precip_lat_slice = precip_dataset[precip_var_name][:, lat_index, :]    # assuming (time, lat, lon) orientation
+        awc_lat_slice = awc_dataset[awc_var_name][:, lat_index, :].flatten()   # assuming (time, lat, lon) orientation
+        awc_fill_value = awc_dataset[awc_var_name]._FillValue
         
         # allocate arrays to contain a latitude slice of Palmer values
         lon_size = temp_dataset['lon'].size
@@ -329,13 +330,16 @@ def process_latitude_palmer(lat_index):
             pet_time_series = pet_lat_slice[:, lon_index]
             awc = awc_lat_slice[lon_index]
             
-            # compute Palmer indices if we have valid inputs
-            if (not np.all(np.isnan(precip_time_series))) and \
-               (not np.all(np.isnan(pet_time_series))) and \
-               (not np.isnan(awc)):
+            # compute Palmer indices only if we have valid inputs
+            if _is_data_valid(precip_time_series) and \
+               _is_data_valid(pet_time_series) and \
+               awc is not np.ma.masked and \
+               not math.isnan(awc):
+                
+                # DEBUG ONLY -- REMOVE
+                if awc == 0:
+                    print('AWC is 0 at lon index: {0}'.format(lon_index))
                     
-#                 logger.info('     Longitude index {0}'.format(lon_index))
-
                 # put precipitation into inches if not already
                 mm_to_inches_multiplier = 0.0393701
                 possible_mm_units = ['millimeters', 'millimeter', 'mm']
@@ -402,88 +406,43 @@ def process_latitude_palmer(lat_index):
         pmdi_lock.release()
 
 #-----------------------------------------------------------------------------------------------------------------------
-def initialize_netcdf(file_path,
-                      template_netcdf,
-                      variable_name,
-                      variable_long_name,
-                      valid_min,
-                      valid_max,
-                      variable_units=None,
-                      fill_value=np.float32(np.NaN)):
-    '''
-    This function is used to initialize and return a netCDF4.Dataset object.
+def _is_data_valid(data):
+    """
+    Returns whether or not an array is valid, i.e. a supported array type (ndarray or MaskArray) which is not all-NaN.
     
-    :param file_path: the file path/name of the NetCDF Dataset object returned by this function
-    :param template_dataset: an existing/open NetCDF Dataset object which will be used as a template for the Dataset
-                             that will be created by this function
-    :param variable_name: the variable name which will be used to identify the main data variable within the Dataset
-    :param variable_long_name: the long name attribute of the main data variable within the Dataset
-    :param variable_units: string specifying the units of the variable 
-    :param valid_min: the minimum value to which the main data variable of the resulting Dataset(s) will be clipped
-    :param valid_max: the maximum value to which the main data variable of the resulting Dataset(s) will be clipped
-    :param fill_value: the fill value to use for main data variable of the resulting Dataset(s)
-    :return: an open netCDF4.Dataset object
-    '''
+    :param data: data object, expected as either numpy.ndarry or numpy.ma.MaskArray
+    :return True if array is non-NaN for at least one element and is an array type valid for processing by other modules 
+    :rtype: boolean
+    """
+    
+    # make sure we're not dealing with all NaN values
+    if np.ma.isMaskedArray(data):
 
-    with Dataset(template_netcdf, 'r') as template_dataset:
- 
-        # get the template's dimension sizes
-        lat_size = template_dataset.variables['lat'].size
-        lon_size = template_dataset.variables['lon'].size
+        if data.count() > 0:
+            valid_flag = True
+        else:
+            valid_flag = False
     
-        # make a basic set of variable attributes
-        variable_attributes = {'valid_min' : valid_min,
-                               'valid_max' : valid_max,
-                               'long_name' : variable_long_name}
-        if variable_units != None:
-            variable_attributes['units'] = variable_units
+    elif isinstance(data, np.ndarray):
+   
+        if not np.all(np.isnan(data)):
+            valid_flag = True
+        else:
+            valid_flag = False
+    
+    else:
+        logger.warn('Invalid data type passed for precipitation data')
+        valid_flag = False
+    
+    return valid_flag
             
-        # open the dataset as a NetCDF in write mode
-        dataset = Dataset(file_path, 'w')
-        
-        # copy the global attributes from the input
-        # TODO/FIXME add/modify global attributes to correspond with the actual dataset
-        dataset.setncatts(template_dataset.__dict__)
-        
-        # create the time, x, and y dimensions
-        dataset.createDimension('time', None)
-        dataset.createDimension('lat', lat_size)
-        dataset.createDimension('lon', lon_size)
-    
-        # get the appropriate data types to use for the variables
-        time_dtype = netcdf_utils.find_netcdf_datatype(template_dataset.variables['time'])
-        lat_dtype = netcdf_utils.find_netcdf_datatype(template_dataset.variables['lat'])
-        lon_dtype = netcdf_utils.find_netcdf_datatype(template_dataset.variables['lon'])
-        data_dtype = netcdf_utils.find_netcdf_datatype(fill_value)
-    
-        # create the variables
-        time_variable = dataset.createVariable('time', time_dtype, ('time',))
-        y_variable = dataset.createVariable('lat', lat_dtype, ('lat',))
-        x_variable = dataset.createVariable('lon', lon_dtype, ('lon',))
-        data_variable = dataset.createVariable(variable_name,
-                                               data_dtype,
-                                               ('time', 'lat', 'lon',),
-                                               fill_value=fill_value, 
-                                               zlib=False)
-    
-        # set the variables' attributes
-        time_variable.setncatts(template_dataset.variables['time'].__dict__)
-        y_variable.setncatts(template_dataset.variables['lat'].__dict__)
-        x_variable.setncatts(template_dataset.variables['lon'].__dict__)
-        data_variable.setncatts(variable_attributes)
-    
-        # set the coordinate variables' values
-        time_variable[:] = template_dataset.variables['time'][:]
-        y_variable[:] = template_dataset.variables['lat'][:]
-        x_variable[:] = template_dataset.variables['lon'][:]
-
-        # close the NetCDF
-        dataset.close()
-
 #-----------------------------------------------------------------------------------------------------------------------
 def validate_compatibility(precip_dataset, 
+                           precip_var_name,
                            temp_dataset,
-                           awc_dataset):
+                           temp_var_name,
+                           awc_dataset,
+                           awc_var_name):
 
     # get the time, lat, and lon variables from the three datasets we want to validate against each other
     precip_time = precip_dataset.variables['time']
@@ -522,6 +481,21 @@ def validate_compatibility(precip_dataset,
         logger.error(message)
         raise ValueError(message)
 
+    # make sure that each variable has (time, lat, lon) dimensions, in that order    
+    expected_dimensions = ('time', 'lat', 'lon')
+    if not temp_dataset.variables[temp_var_name].dimensions == expected_dimensions:
+        message = 'Unexpected dimensions for the {0} variable of the {1} dataset: {2}\nExpected dimensions are (\'time\', \'lat\', \'lon\')'.format(temp_var_name, temp_dataset_name, temp_dataset.variables[temp_var_name].dimensions)
+        logger.error(message)
+        raise ValueError(message)
+    if not precip_dataset.variables[precip_var_name].dimensions == expected_dimensions:
+        message = 'Unexpected dimensions for the {0} variable of the {1} dataset: {2}\nExpected dimensions are (\'time\', \'lat\', \'lon\')'.format(precip_var_name, precip_dataset_name, precip_dataset.variables[precip_var_name].dimensions)
+        logger.error(message)
+        raise ValueError(message)
+    if not awc_dataset.variables[awc_var_name].dimensions == expected_dimensions:
+        message = 'Unexpected dimensions for the {0} variable of the {1} dataset: {2}\nExpected dimensions are (\'time\', \'lat\', \'lon\')'.format(awc_var_name, awc_dataset_name, awc_dataset.variables[awc_var_name].dimensions)
+        logger.error(message)
+        raise ValueError(message)
+
 #-----------------------------------------------------------------------------------------------------------------------
 def initialize_unscaled_netcdfs(base_file_path,
                                 template_netcdf):
@@ -535,43 +509,43 @@ def initialize_unscaled_netcdfs(base_file_path,
     valid_min = -10.0
     valid_max = 10.0
     
-    initialize_netcdf(pet_netcdf,
-                      template_netcdf,
-                      'pet',
-                      'Potential Evapotranspiration (PET), from Thornthwaite\'s equation',
-                      0.0,
-                      2000.0,
-                      'millimeter')
-    initialize_netcdf(pdsi_netcdf,
-                      template_netcdf,
-                      'pdsi',
-                      'Palmer Drought Severity Index (PDSI)',
-                      valid_min,
-                      valid_max)
-    initialize_netcdf(phdi_netcdf,
-                      template_netcdf,
-                      'phdi',
-                      'Palmer Hydrological Drought Index (PHDI)',
-                      valid_min,
-                      valid_max)
-    initialize_netcdf(zindex_netcdf,
-                      template_netcdf,
-                      'zindex',
-                      'Palmer Z-Index',
-                      valid_min,
-                      valid_max)
-    initialize_netcdf(scpdsi_netcdf,
-                      template_netcdf,
-                      'scpdsi',
-                      'Self-calibrated Palmer Drought Severity Index (scPDSI)',
-                      valid_min,
-                      valid_max)
-    initialize_netcdf(pmdi_netcdf,
-                      template_netcdf,
-                      'pmdi',
-                      'Palmer Modified Drought Index (PMDI)',
-                      valid_min,
-                      valid_max)
+    netcdf_utils.initialize_netcdf_single_variable_grid(pet_netcdf,
+                                                        template_netcdf,
+                                                        'pet',
+                                                        'Potential Evapotranspiration (PET), from Thornthwaite\'s equation',
+                                                        0.0,
+                                                        2000.0,
+                                                        'millimeter')
+    netcdf_utils.initialize_netcdf_single_variable_grid(pdsi_netcdf,
+                                                        template_netcdf,
+                                                        'pdsi',
+                                                        'Palmer Drought Severity Index (PDSI)',
+                                                        valid_min,
+                                                        valid_max)
+    netcdf_utils.initialize_netcdf_single_variable_grid(phdi_netcdf,
+                                                        template_netcdf,
+                                                        'phdi',
+                                                        'Palmer Hydrological Drought Index (PHDI)',
+                                                        valid_min,
+                                                        valid_max)
+    netcdf_utils.initialize_netcdf_single_variable_grid(zindex_netcdf,
+                                                        template_netcdf,
+                                                        'zindex',
+                                                        'Palmer Z-Index',
+                                                        valid_min,
+                                                        valid_max)
+    netcdf_utils.initialize_netcdf_single_variable_grid(scpdsi_netcdf,
+                                                        template_netcdf,
+                                                        'scpdsi',
+                                                        'Self-calibrated Palmer Drought Severity Index (scPDSI)',
+                                                        valid_min,
+                                                        valid_max)
+    netcdf_utils.initialize_netcdf_single_variable_grid(pmdi_netcdf,
+                                                        template_netcdf,
+                                                        'pmdi',
+                                                        'Palmer Modified Drought Index (PMDI)',
+                                                        valid_min,
+                                                        valid_max)
 
     return {'pet': pet_netcdf,
             'pdsi': pdsi_netcdf,
@@ -614,12 +588,12 @@ def initialize_scaled_netcdfs(base_file_path,
         netcdf_file = base_file_path + '_' + variable_name + '.nc'
         
         # initialize the output NetCDF dataset
-        initialize_netcdf(netcdf_file, 
-                          template_netcdf,
-                          variable_name,
-                          long_name.format(scale_months),
-                          valid_min,
-                          valid_max)
+        netcdf_utils.initialize_netcdf_single_variable_grid(netcdf_file, 
+                                                            template_netcdf,
+                                                            variable_name,
+                                                            long_name.format(scale_months),
+                                                            valid_min,
+                                                            valid_max)
     
         # add the months scale index's NetCDF to the dictionary for the current index
         scaled_netcdfs[index] = netcdf_file
@@ -730,7 +704,7 @@ if __name__ == '__main__':
         args = parser.parse_args()
 
         # the number of worker processes we'll have in our process pool
-        number_of_workers = multiprocessing.cpu_count()
+        number_of_workers = 1#multiprocessing.cpu_count()
         
         # initialize the NetCDFs to be used as output files for the Palmer and PET indices,
         # getting dictionaries of index names mapped to corresponding NetCDF files
@@ -742,9 +716,12 @@ if __name__ == '__main__':
              Dataset(args.awc_file) as awc_dataset:
               
             # make sure the datasets are compatible dimensionally
-            validate_compatibility(precip_dataset, 
+            validate_compatibility(precip_dataset,
+                                   args.precip_var_name,
                                    temp_dataset, 
-                                   awc_dataset)
+                                   args.temp_var_name,
+                                   awc_dataset,
+                                   args.awc_var_name)
               
             # get the initial year of the input dataset(s)
             time_variable = precip_dataset.variables['time']
@@ -771,13 +748,13 @@ if __name__ == '__main__':
                                               data_start_year,
                                               args.calibration_start_year,
                                               args.calibration_end_year))
-        
+         
         # map the latitude indices as an arguments iterable to the compute function
         result = pool.map_async(process_latitude_palmer, range(lat_size))
-                 
+                  
         # get the exception(s) thrown, if any
         result.get()
-                 
+                  
         # close the pool and wait on all processes to finish
         pool.close()
         pool.join()

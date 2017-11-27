@@ -126,6 +126,89 @@ def create_dataset_climdivs(file_path,
         divisions_variable[:] = np.array(sorted(division_ids), dtype=np.dtype(int))
     
 #-----------------------------------------------------------------------------------------------------------------------
+def initialize_netcdf_single_variable_grid(file_path,
+                                           template_netcdf,
+                                           variable_name,
+                                           variable_long_name,
+                                           valid_min,
+                                           valid_max,
+                                           variable_units=None,
+                                           fill_value=np.float32(np.NaN)):
+    '''
+    This function is used to initialize and return a netCDF4.Dataset object, containing a single data variable having 
+    dimensions (time, lat, lon). The input data values array is assumed to be a 3-D array with indices corresponding to 
+    the variable dimensions. The latitude, longitude, and time values are copied from the template NetCDF, which is 
+    assumed to have dimension sizes matching to the axes of the variable values array. Global attributes are also copied 
+    from the template NetCDF.
+    
+    :param file_path: the file path/name of the NetCDF Dataset object returned by this function
+    :param template_dataset: an existing/open NetCDF Dataset object which will be used as a template for the Dataset
+                             that will be created by this function
+    :param variable_name: the variable name which will be used to identify the main data variable within the Dataset
+    :param variable_long_name: the long name attribute of the main data variable within the Dataset
+    :param variable_units: string specifying the units of the variable 
+    :param valid_min: the minimum value to which the main data variable of the resulting Dataset(s) will be clipped
+    :param valid_max: the maximum value to which the main data variable of the resulting Dataset(s) will be clipped
+    :param fill_value: the fill value to use for main data variable of the resulting Dataset(s)
+    :return: an open netCDF4.Dataset object
+    '''
+
+    with netCDF4.Dataset(template_netcdf, 'r') as template_dataset:
+ 
+        # get the template's dimension sizes
+        lat_size = template_dataset.variables['lat'].size
+        lon_size = template_dataset.variables['lon'].size
+    
+        # make a basic set of variable attributes
+        variable_attributes = {'valid_min' : valid_min,
+                               'valid_max' : valid_max,
+                               'long_name' : variable_long_name}
+        if variable_units != None:
+            variable_attributes['units'] = variable_units
+            
+        # open the dataset as a NetCDF in write mode
+        dataset = netCDF4.Dataset(file_path, 'w')
+        
+        # copy the global attributes from the input
+        # TODO/FIXME add/modify global attributes to correspond with the actual dataset
+        dataset.setncatts(template_dataset.__dict__)
+        
+        # create the time, x, and y dimensions
+        dataset.createDimension('time', None)
+        dataset.createDimension('lat', lat_size)
+        dataset.createDimension('lon', lon_size)
+    
+        # get the appropriate data types to use for the variables
+        time_dtype = find_netcdf_datatype(template_dataset.variables['time'])
+        lat_dtype = find_netcdf_datatype(template_dataset.variables['lat'])
+        lon_dtype = find_netcdf_datatype(template_dataset.variables['lon'])
+        data_dtype = find_netcdf_datatype(fill_value)
+    
+        # create the variables
+        time_variable = dataset.createVariable('time', time_dtype, ('time',))
+        y_variable = dataset.createVariable('lat', lat_dtype, ('lat',))
+        x_variable = dataset.createVariable('lon', lon_dtype, ('lon',))
+        data_variable = dataset.createVariable(variable_name,
+                                               data_dtype,
+                                               ('time', 'lat', 'lon',),
+                                               fill_value=fill_value, 
+                                               zlib=False)
+    
+        # set the variables' attributes
+        time_variable.setncatts(template_dataset.variables['time'].__dict__)
+        y_variable.setncatts(template_dataset.variables['lat'].__dict__)
+        x_variable.setncatts(template_dataset.variables['lon'].__dict__)
+        data_variable.setncatts(variable_attributes)
+    
+        # set the coordinate variables' values
+        time_variable[:] = template_dataset.variables['time'][:]
+        y_variable[:] = template_dataset.variables['lat'][:]
+        x_variable[:] = template_dataset.variables['lon'][:]
+
+        # close the NetCDF
+        dataset.close()
+
+#-----------------------------------------------------------------------------------------------------------------------
 def initialize_dataset(file_path,
                        template_dataset,
                        x_dim_name,
