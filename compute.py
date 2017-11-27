@@ -494,7 +494,7 @@ def transform_fitted_gamma(monthly_values):
     
     # if we're passed all missing values then we can't compute anything, return the same array of missing values
     if np.all(np.isnan(monthly_values)):
-        logger.info('An array of all fill values was passed as the argument, no action taken, returning the same array')
+#         logger.info('An array of all fill values was passed as the argument, no action taken, returning the same array')
         return monthly_values
         
     # validate (and possibly reshape) the input array

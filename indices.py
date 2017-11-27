@@ -85,7 +85,7 @@ def spi_pearson(precips,
     return spi[0:original_length]
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
-@jit(float64[:](int64, float64[:], float64[:], float64[:], int64, float64))
+#@jit(float64[:](int64, float64[:], float64[:], float64[:], int64, float64))  # uncomment/enable in production
 def spei_gamma(months_scale,
                precips_mm,
                pet_mm=None,
@@ -434,21 +434,27 @@ def pet(temperature_monthly_celsius,
     '''
     
     # make sure we're not dealing with all NaN values
-    nan_indices = np.isnan(temperature_monthly_celsius)
-    if not np.all(nan_indices):
+    if np.ma.isMaskedArray(temperature_monthly_celsius) and temperature_monthly_celsius.count() == 0:
         
-        if not np.isnan(latitude_degrees) and (latitude_degrees < 90.0) and (latitude_degrees > -90.0):
+        # we started with all NaNs for the temperature, so just return the same
+        return temperature_monthly_celsius
+
+    else:
+        
+        # we were passed a vanilla Numpy array, look for indices where the value == NaN
+        nan_indices = np.isnan(temperature_monthly_celsius)
+        if np.all(nan_indices):
+        
+            # we started with all NaNs for the temperature, so just return the same
+            return temperature_monthly_celsius
+        
+    # make sure we're not dealing with a NaN latitude value
+    if not np.isnan(latitude_degrees) and (latitude_degrees < 90.0) and (latitude_degrees > -90.0):
         
             # compute and return the PET values using Thornthwaite's equation
             return thornthwaite.potential_evapotranspiration(temperature_monthly_celsius, latitude_degrees, data_start_year)
         
-        else:
-            message = 'Invalid latitude value: {0} (must be in degrees north, between -90.0 and 90.0 inclusive)'.format(latitude_degrees)
-            logger.error(message)
-            raise ValueError(message)
-        
     else:
-        
-        # we started with all NaNs for the temperature, so just return the same
-        return temperature_monthly_celsius
-        
+        message = 'Invalid latitude value: {0} (must be in degrees north, between -90.0 and 90.0 inclusive)'.format(latitude_degrees)
+        logger.error(message)
+        raise ValueError(message)

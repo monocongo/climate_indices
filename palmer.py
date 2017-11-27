@@ -22,8 +22,7 @@ _PDSI_MIN = -4.0
 _PDSI_MAX = 4.0
 
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit(nopython=True, parallel=True)
-@numba.jit
+#@numba.jit   # uncomment for production
 def _water_balance(AWC,
                    PET,
                    P):
@@ -700,8 +699,8 @@ def _z_index(P,
     return z.flatten()
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit(nopython=True, parallel=True)
-#@numba.jit
+#@numba.jit(nopython=True, parallel=True)
+@numba.jit
 # previously Main()
 def _compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT):
 
@@ -758,8 +757,8 @@ def _compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT):
     return PX1, PX2, PX3, X, BT
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit(nopython=True, parallel=True)
-#@numba.jit
+#@numba.jit(nopython=True, parallel=True)
+@numba.jit
 def _backtrack(k, 
                PPe, 
                PX1, 
@@ -830,8 +829,8 @@ def _backtrack(k,
     return X, BT
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit(nopython=True, parallel=True)
-#@numba.jit
+#@numba.jit(nopython=True, parallel=True)
+@numba.jit
 def _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X):
 
     # This function is called when non-zero, non-one hundred PPe values occur
@@ -874,9 +873,8 @@ def _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X):
     return PV, PX1, PX2, PX3, PPe, X, BT
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit(nopython=True, parallel=True)
-#@numba.jit
-# previously Function_Uw
+#@numba.jit(nopython=True, parallel=True)
+@numba.jit
 def _dry_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT):
 
     # In the case of an established drought, Palmer (1965) notes that a value of Z = -0.15 will maintain an
@@ -912,9 +910,8 @@ def _dry_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT):
     return PV, PPe, PX1, PX2, PX3, X, BT
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit(nopython=True, parallel=True)
-#@numba.jit
-# previously Function_Ud
+#@numba.jit(nopython=True, parallel=True)
+@numba.jit
 def _wet_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT):
 
     # In the case of an established wet spell, Palmer (1965) notes that a value of Z = +0.15 will maintain an 
@@ -1341,8 +1338,7 @@ def _compute_scpdsi(established_index_values,
     return pdsi_values, scpdsi_values, wet_index_values, dry_index_values, established_index_values
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit(nopython=True, parallel=True)
-#@numba.jit
+@numba.jit
 def _choose_X(pdsi_values,
               established_index_values,
               wet_index_values,
@@ -1457,8 +1453,8 @@ def _choose_X(pdsi_values,
     return newX, newX1, newX2, newX3
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit(nopython=True, parallel=True)
-#@numba.jit
+#@numba.jit(nopython=True, parallel=True)
+@numba.jit
 def _backtrack_self_calibrated(pdsi_values,
                                wet_index_deque,
                                dry_index_deque,
