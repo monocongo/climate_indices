@@ -143,7 +143,7 @@ def _estimate_lmoments(values):
     number_of_values = np.count_nonzero(~np.isnan(values))
     if (number_of_values < 4):
         message = 'Insufficient number of values to perform sample L-moments estimation'
-        logger.warn(message)
+        logger.warning(message)
         raise ValueError(message)
         
     # sort the values into ascending order
@@ -156,7 +156,7 @@ def _estimate_lmoments(values):
         term = values[i - 1]
         sums[0] = sums[0] + term
         for j in range(1, 3):
-            z = z - 1
+            z -= 1
             term = term * z
             sums[j] = sums[j] + term
         
@@ -276,7 +276,7 @@ def _pearson3_fitting_values(values,
                 monthly_fitting_values[3, month_index] = pearson_parameters[2]
 
             else:
-                logger.warn('Due to invalid L-moments the Pearson fitting values for month {0} are defaulting to zero'.format(month_index))
+                logger.warning('Due to invalid L-moments the Pearson fitting values for month {0} are defaulting to zero'.format(month_index))
 
     return monthly_fitting_values
 
@@ -479,7 +479,8 @@ def transform_fitted_pearson(monthly_values,
                 
     return fitted_values
 
-#-----------------------------------------------------------------------------------------------------------------------@jit
+#-----------------------------------------------------------------------------------------------------------------------
+@jit
 def transform_fitted_gamma(monthly_values):
     '''
     TODO explain this    

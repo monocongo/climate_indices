@@ -431,7 +431,7 @@ def _is_data_valid(data):
             valid_flag = False
     
     else:
-        logger.warn('Invalid data type passed for precipitation data')
+        logger.warning('Invalid data type passed for precipitation data')
         valid_flag = False
     
     return valid_flag
