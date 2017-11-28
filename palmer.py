@@ -22,7 +22,7 @@ _PDSI_MIN = -4.0
 _PDSI_MAX = 4.0
 
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit   # uncomment for production
+@numba.jit
 def _water_balance(AWC,
                    PET,
                    P):
@@ -343,8 +343,7 @@ def _water_balance(AWC,
     return ET, PR, R, RO, PRO, L, PL 
           
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit(nopython=True, parallel=True)
-#@numba.jit    # Numba not working yet 
+#@numba.jit    # not working yet 
 def _cafec_coefficients(P,
                         PET,
                         ET,
@@ -466,6 +465,7 @@ def _cafec_coefficients(P,
     return alpha, beta, gamma, delta
 
 #-----------------------------------------------------------------------------------------------------------------------    
+@numba.jit
 def _calibrate_data(arrays,
                     data_start_year,
                     calibration_start_year,
@@ -496,6 +496,7 @@ def _calibrate_data(arrays,
     return calibration_arrays
 
 #-----------------------------------------------------------------------------------------------------------------------
+@numba.jit
 def _climatic_characteristic(alpha,
                              beta,
                              gamma,
@@ -589,9 +590,7 @@ def _climatic_characteristic(alpha,
     return K
 
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit(nopython=True, parallel=True)
-#@numba.jit(float64[:](float64[:],float64[:],float64[:],float64[:],float64[:],float64[:],float64[:],float64[:],float64[:],int32,int32,int32))
-#@numba.jit   # Numba not working yet
+#@numba.jit   # not working yet
 def _z_index(P,
              PET,
              ET,
@@ -699,9 +698,8 @@ def _z_index(P,
     return z.flatten()
 
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit(nopython=True, parallel=True)
-@numba.jit
 # previously Main()
+@numba.jit
 def _compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT):
 
     # This function calculates PX1 and PX2 and calls the backtracking loop.
@@ -757,7 +755,6 @@ def _compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT):
     return PX1, PX2, PX3, X, BT
 
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit(nopython=True, parallel=True)
 @numba.jit
 def _backtrack(k, 
                PPe, 
@@ -829,7 +826,6 @@ def _backtrack(k,
     return X, BT
 
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit(nopython=True, parallel=True)
 @numba.jit
 def _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X):
 
@@ -873,7 +869,6 @@ def _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X):
     return PV, PX1, PX2, PX3, PPe, X, BT
 
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit(nopython=True, parallel=True)
 @numba.jit
 def _dry_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT):
 
@@ -910,7 +905,6 @@ def _dry_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT):
     return PV, PPe, PX1, PX2, PX3, X, BT
 
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit(nopython=True, parallel=True)
 @numba.jit
 def _wet_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT):
 
@@ -947,6 +941,7 @@ def _wet_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT):
 
 #-----------------------------------------------------------------------------------------------------------------------
 # comparable to the case() subroutine in original NCDC pdi.f 
+@numba.jit
 def _pmdi(probability,
           X1, 
           X2, 
@@ -978,8 +973,7 @@ def _pmdi(probability,
     return _pmdi
 
 #------------------------------------------------------------------------------------------------------------------
-#@numba.jit(nopython=True, parallel=True)
-#@numba.jit    # Numba not working yet
+#@numba.jit    # not working yet
 def _pdsi_from_zindex(Z):
 
     ## INITIALIZE PDSI AND PHDI CALCULATIONS
@@ -991,7 +985,6 @@ def _pdsi_from_zindex(Z):
     X1 = 0.0 # X1 is the severity index value for an incipient wet spell for a month.
     X2 = 0.0 # X2 is the severity index value for an incipient dry spell for a month.
     X3 = 0.0 # X3 is the severity index value of the current established wet or dry spell for a month.
-#     Q = 0.0
     
     number_of_months = Z.shape[0]
     
@@ -1453,7 +1446,6 @@ def _choose_X(pdsi_values,
     return newX, newX1, newX2, newX3
 
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit(nopython=True, parallel=True)
 @numba.jit
 def _backtrack_self_calibrated(pdsi_values,
                                wet_index_deque,
@@ -1629,9 +1621,9 @@ def _z_sum(interval,
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def _least_squares(x, 
-                 y, 
-                 n, 
-                 wetOrDry):
+                   y, 
+                   n, 
+                   wetOrDry):
     
     correlation = 0.0
     c_tol = 0.85
@@ -1750,7 +1742,6 @@ def _pe(temperature,
         #     CONVERT DAILY TO MONTHLY  
         #-----------------------------------------------------------------------
         year = data_start_year + int((month_index + 1) / 12)
-#         month = (month_index + 1) % 12
         month = month_index % 12
         PE = PE * calendar.monthrange(year, month + 1)[1]
 
@@ -1766,79 +1757,13 @@ def _pdinew_potential_evapotranspiration(monthly_temps_celsius,
     # assumes monthly_temps_celsius, B, and H have same dimensions, etc.
     
     pet = np.full(monthly_temps_celsius.shape, np.NaN)
-#     monthly_temps_fahrenheit = scipy.constants.C2F(monthly_temps_celsius)
     monthly_temps_fahrenheit = scipy.constants.convert_temperature(monthly_temps_celsius, 'C', 'F')
     for i in range(monthly_temps_celsius.size):
         pet[i] = _pe(monthly_temps_fahrenheit[i], i, latitude, data_start_year, B, H)
     return pet
 
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit(nopython=True, parallel=True)
-#@numba.jit
-def pdi_from_climatology(precip_time_series,
-                         temp_time_series,
-                         awc,
-                         latitude,
-                         data_start_year,
-                         calibration_start_year,
-                         calibration_end_year,
-                         B=None,
-                         H=None):
-
-    '''
-    This function computes the Palmer Drought Severity Index (PDSI), Palmer Hydrological Drought Index (PHDI), 
-    and Palmer Z-Index.
-    
-    :param precip_time_series: time series of monthly precipitation values, in inches
-    :param temperature_time_series: time series of monthly temperature values, in degrees Fahrenheit
-    :param awc: available water capacity (soil constant), in inches
-    :param latitude: latitude, in degrees north 
-    :param data_start_year: initial year of the input precipitation and temperature datasets, 
-                            both of which are assumed to start in January of this year
-    :param calibration_start_year: initial year of the calibration period 
-    :param calibration_end_year: final year of the calibration period 
-    :return: four numpy arrays containing PDSI, PHDI, PMDI, and Z-Index values respectively 
-    '''
-
-    # convert monthly temperatures from Fahrenheit to Celsius
-    monthly_temps_celsius = (temp_time_series - 32) * 5.0 / 9.0
-
-#     # compute PET using method from original PDSI code pdi.f
-#     pet_time_series = _pdinew_potential_evapotranspiration(monthly_temps_celsius, 
-#                                                            latitude,
-#                                                            data_start_year,
-#                                                            B,
-#                                                            H)
-
-    # compute PET
-    pet_time_series = thornthwaite._pdinew_potential_evapotranspiration(monthly_temps_celsius, 
-                                                                        latitude, 
-                                                                        data_start_year)
-    # calculate water balance variables
-    ET, PR, R, RO, PRO, L, PL = _water_balance(awc + 1.0, pet_time_series, precip_time_series)
-
-    # compute the Palmer Z-Index             
-    Z = _z_index(precip_time_series,
-                 pet_time_series,
-                 ET,
-                 PR,
-                 R,
-                 RO,
-                 PRO,
-                 L,
-                 PL,
-                 data_start_year,
-                 calibration_start_year,
-                 calibration_end_year)
-
-    # compute PDSI, etc.
-    PDSI, PHDI, PMDI = _pdsi_from_zindex(Z.flatten())
-
-    return PDSI, PHDI, PMDI, Z
-
-#-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit(nopython=True, parallel=True)
-#@numba.jit
+#@numba.jit      # working?
 def pdsi_from_climatology(precip_time_series,
                           temp_time_series,
                           awc,
@@ -1875,9 +1800,9 @@ def pdsi_from_climatology(precip_time_series,
 #                                                            H)
 
     # compute PET
-    pet_time_series = thornthwaite._pdinew_potential_evapotranspiration(monthly_temps_celsius, 
-                                                                        latitude, 
-                                                                        data_start_year)
+    pet_time_series = thornthwaite.potential_evapotranspiration(monthly_temps_celsius, 
+                                                                latitude, 
+                                                                data_start_year)
 
     return pdsi(precip_time_series,
                 pet_time_series.flatten(),
@@ -1887,8 +1812,7 @@ def pdsi_from_climatology(precip_time_series,
                 calibration_end_year)
 
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit(nopython=True, parallel=True)
-#@numba.jit
+#@numba.jit          # working?
 def scpdsi_from_climatology(precip_time_series,
                             temp_time_series,
                             awc,
@@ -1988,7 +1912,7 @@ def _duration_factors(pdsi_values,
 
 #-----------------------------------------------------------------------------------------------------------------------
 #@numba.jit(nopython=True, parallel=True)
-#@numba.jit
+@numba.jit
 def _pdsi_at_percentile(pdsi_values,
                         percentile):
 
@@ -1997,7 +1921,7 @@ def _pdsi_at_percentile(pdsi_values,
     
 #-----------------------------------------------------------------------------------------------------------------------
 #@numba.jit(nopython=True, parallel=True)
-#@numba.jit
+@numba.jit
 def _self_calibrate(pdsi_values,
                     sczindex_values,
                     calibration_start_year,
