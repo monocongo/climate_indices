@@ -61,16 +61,20 @@ def init_process(worker_input_netcdf,
 #-----------------------------------------------------------------------------------------------------------------------
 def initialize_netcdf(new_netcdf,
                       template_netcdf,
-                      month_scales=[1, 2, 3, 6, 12, 24]):
-    '''
+                      month_scales=None):
+    """
     This function is used to initialize and return a netCDF4.Dataset object.
     
     :param new_netcdf: the file path/name of the new NetCDF Dataset object to be created and returned by this function
     :param template_netcdf: an existing/open NetCDF Dataset object which will be used as a template for the Dataset
                             that will be created by this function
-    :param month_scales: some of the indicators this script computes, such as SPI, SPEI, and PNP, are typically computed for multiple
+    :param month_scales: some of the indices this script computes, such as SPI, SPEI, and PNP, are typically computed for multiple
                          month scales (i.e. 1-month, 3-month, 6-month, etc.), these can be specified here as a list of integers 
-    '''
+    """
+
+    # default to a common set of month scales if none were provided
+    if month_scales is None:
+        month_scales = [1, 2, 3, 6, 12, 24]
 
     # use NaNs as our default fill/missing value
     fill_value=np.float32(np.NaN)
@@ -108,10 +112,10 @@ def initialize_netcdf(new_netcdf,
         division_variable.setncatts(template_dataset.variables['division'].__dict__)
         division_variable[:] = template_dataset.variables['division'][:]
 
-        # create a variable for each unscaledindicator
-        unscaled_indicators = ['pet', 'pdsi', 'phdi', 'pmdi', 'zindex', 'scpdsi']
-        for indicator in unscaled_indicators:
-            if indicator == 'pet':
+        # create a variable for each unscaled index
+        unscaled_indices = ['pet', 'pdsi', 'phdi', 'pmdi', 'zindex', 'scpdsi']
+        for index in unscaled_indices:
+            if index == 'pet':
                 
                 variable_name = 'pet'
                 variable_attributes = {'standard_name': 'pet',
@@ -120,7 +124,7 @@ def initialize_netcdf(new_netcdf,
                                        'valid_max': 2000.0,
                                        'units': 'millimeter'}
             
-            elif indicator == 'pdsi':
+            elif index == 'pdsi':
                 
                 variable_name = 'pdsi'
                 variable_attributes = {'standard_name': 'pdsi',
@@ -128,7 +132,7 @@ def initialize_netcdf(new_netcdf,
                                        'valid_min': -10.0,
                                        'valid_max': 10.0}
             
-            elif indicator == 'scpdsi':
+            elif index == 'scpdsi':
                 
                 variable_name = 'scpdsi'
                 variable_attributes = {'standard_name': 'scpdsi',
@@ -136,7 +140,7 @@ def initialize_netcdf(new_netcdf,
                                        'valid_min': -10.0,
                                        'valid_max': 10.0}
             
-            elif indicator == 'phdi':
+            elif index == 'phdi':
                 
                 variable_name = 'phdi'
                 variable_attributes = {'standard_name': 'phdi',
@@ -144,7 +148,7 @@ def initialize_netcdf(new_netcdf,
                                        'valid_min': -10.0,
                                        'valid_max': 10.0}
             
-            elif indicator == 'pmdi':
+            elif index == 'pmdi':
                 
                 variable_name = 'pmdi'
                 variable_attributes = {'standard_name': 'pmdi',
@@ -152,13 +156,19 @@ def initialize_netcdf(new_netcdf,
                                        'valid_min': -10.0,
                                        'valid_max': 10.0}
             
-            elif indicator == 'zindex':
+            elif index == 'zindex':
                 
                 variable_name = 'zindex'
                 variable_attributes = {'standard_name': 'zindex',
                                        'long_name': 'Palmer Z-Index',
                                        'valid_min': -10.0,
                                        'valid_max': 10.0}
+
+            else:
+
+                message = '{0} is an unsupported index type'.format(index)
+                logger.error(message)
+                raise ValueError(message)
 
             # create variables with scale month
             data_variable = new_dataset.createVariable(variable_name,
@@ -168,42 +178,42 @@ def initialize_netcdf(new_netcdf,
                                                        zlib=False)
             data_variable.setncatts(variable_attributes)
 
-        # create a variable for each scaled indicator
-        scaled_indicators = ['pnp', 'spi_gamma', 'spi_pearson', 'spei_gamma', 'spei_pearson']
-        for indicator in scaled_indicators:
+        # create a variable for each scaled index
+        scaled_indices = ['pnp', 'spi_gamma', 'spi_pearson', 'spei_gamma', 'spei_pearson']
+        for index in scaled_indices:
             for months in month_scales:
                 
-                variable_name = indicator + '_{}'.format(str(months).zfill(2))
+                variable_name = index + '_{}'.format(str(months).zfill(2))
                 
-                if indicator == 'spi_gamma':
+                if index == 'spi_gamma':
             
                     variable_attributes = {'standard_name': variable_name,
                                            'long_name': 'SPI (Gamma), {}-month scale'.format(months),
                                            'valid_min': -3.09,
                                            'valid_max': 3.09}
 
-                elif indicator == 'spi_pearson':
+                elif index == 'spi_pearson':
             
                     variable_attributes = {'standard_name': variable_name,
                                            'long_name': 'SPI (Pearson), {}-month scale'.format(months),
                                            'valid_min': -3.09,
                                            'valid_max': 3.09}
 
-                elif indicator == 'spei_gamma':
+                elif index == 'spei_gamma':
             
                     variable_attributes = {'standard_name': variable_name,
                                            'long_name': 'SPEI (Gamma), {}-month scale'.format(months),
                                            'valid_min': -3.09,
                                            'valid_max': 3.09}
 
-                elif indicator == 'spei_pearson':
+                elif index == 'spei_pearson':
             
                     variable_attributes = {'standard_name': variable_name,
                                            'long_name': 'SPEI (Pearson), {}-month scale'.format(months),
                                            'valid_min': -3.09,
                                            'valid_max': 3.09}
 
-                elif indicator == 'pnp':
+                elif index == 'pnp':
             
                     variable_attributes = {'standard_name': variable_name,
                                            'long_name': 'Percent average precipitation, {}-month scale'.format(months),
@@ -211,7 +221,13 @@ def initialize_netcdf(new_netcdf,
                                            'valid_max': 10.0,
                                            'units': 'percent of average'}
 
-                # create month scaled variable 
+                else:
+
+                    message = '{0} is an unsupported index type'.format(index)
+                    logger.error(message)
+                    raise ValueError(message)
+
+                # create month scaled variable
                 data_variable = new_dataset.createVariable(variable_name,
                                                            data_dtype,
                                                            ('division', 'time',),
@@ -323,7 +339,7 @@ def process_division(division_index,
             
             # convert temperatures from Fahrenheit to Celsius, if necessary
             temperature_units = input_dataset[temp_var_name].units
-            if temperature_units in ['degree_Fahrenheit', 'fahrenheit', 'Fahrenheit', 'F']:
+            if temperature_units in ['degree_Fahrenheit', 'degrees Fahrenheit', 'fahrenheit', 'Fahrenheit', 'F']:
                 
                 temperature = np.apply_along_axis(f2c, 0, temperature)
 
@@ -331,7 +347,7 @@ def process_division(division_index,
                 
                 raise ValueError('Unsupported temperature units: \'{0}\''.format(temperature_units))
     
-            # use the numpyapply_along_axis() function for computing indicators such as PET that take a single time series 
+            # use the numpyapply_along_axis() function for computing indices such as PET that take a single time series
             # array as input (i.e. each division's time series is the initial 1-D array argument to the function we'll apply)
             
             logger.info('\tComputing PET for division {0}'.format(division_id))
@@ -354,8 +370,9 @@ def process_division(division_index,
         else:
             
             pet_time_series = np.full(temperature.shape, np.NaN)
-            
-        # read the division's input precipitation and available water capacity values 
+            pet_units = None
+
+        # read the division's input precipitation and available water capacity values
         precip_time_series = input_dataset[precip_var_name][division_index, :]   # assuming (divisions, time) orientation
         
         if division_index < input_dataset[awc_var_name][:].size:
@@ -383,7 +400,7 @@ def process_division(division_index,
     
             if not np.isnan(pet_time_series).all():
             
-                # compute Palmer indicators if we have valid inputs
+                # compute Palmer indices if we have valid inputs
                 if not np.isnan(awc):
                         
                     # if PET is in mm, convert to inches
@@ -395,7 +412,7 @@ def process_division(division_index,
     
                     logger.info('\tComputing PDSI for division {0}'.format(division_id))
 
-                    # compute Palmer indicators
+                    # compute Palmer indices
                     palmer_values = indices.scpdsi(precip_time_series,
                                                    pet_time_series,
                                                    awc,
@@ -458,7 +475,7 @@ def process_division(division_index,
                                                        calibration_start_year, 
                                                        calibration_end_year)        
     
-                    # create variable names which should correspond to the appropriate scaled indicator output variables
+                    # create variable names which should correspond to the appropriate scaled index output variables
                     scaled_name_suffix = str(months).zfill(2)
                     spei_gamma_variable_name = 'spei_gamma_' + scaled_name_suffix
                     spei_pearson_variable_name = 'spei_pearson_' + scaled_name_suffix
@@ -481,9 +498,9 @@ def process_division(division_index,
 if __name__ == '__main__':
 
     '''
-    This script performs climate indicator processing for US climate divisions.
+    This script performs climate index processing for US climate divisions.
     
-    Indicators included are SPI and SPEI (both Gamma and Pearson Type III fittings), PET, PNP, and Palmers (PDSI, scPDSI, PHDI, 
+    Indices included are SPI and SPEI (both Gamma and Pearson Type III fittings), PET, PNP, and Palmers (PDSI, scPDSI, PHDI,
     PMDI, and Z-Index).
     
     A single input NetCDF containing temperature, precipitation, latitude, and available water capacity variables for US climate divisions 

@@ -139,7 +139,7 @@ def _monthly_mean_daylight_hours(latitude_radians,
     '''
 
     # get the array of days for each month based on whether or not we're in a leap year
-    if leap == False:
+    if not leap:
         month_days = _MONTH_DAYS_NONLEAP
     else:
         month_days = _MONTH_DAYS_LEAP

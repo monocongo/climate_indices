@@ -160,13 +160,13 @@ def main():
 # 
 #                     # report if we see any significant differences
 #                     if not np.allclose(diffs, zeros, atol=_TOLERANCE, equal_nan=True):
-#                         logger.warn('Division {0}: Comparing new Palmer (pdinew.py) against '.format(division_id) + \
+#                         logger.warning('Division {0}: Comparing new Palmer (pdinew.py) against '.format(division_id) + \
 #                                     'operational pdinew.f: \nNon-matching values for {0}'.format(varname))
 #                         offending_indices = np.where(abs(diffs) > _TOLERANCE)
 # #                         non_offending_indices = np.where(abs(diffs) <= _TOLERANCE)
 #                         nan_indices = np.where(actual is np.NaN)
-#                         logger.warn('Time steps with NaN ({0}): {1}'.format(np.isnan(actual).sum(), nan_indices))
-#                         logger.warn('Time steps with significant differences ({0}): {1}'.format(len(offending_indices[0]), offending_indices[0])) 
+#                         logger.warning('Time steps with NaN ({0}): {1}'.format(np.isnan(actual).sum(), nan_indices))
+#                         logger.warning('Time steps with significant differences ({0}): {1}'.format(len(offending_indices[0]), offending_indices[0])) 
 #                           
 # #                         for i in offending_indices[0]:
 # #                             
@@ -221,10 +221,10 @@ def main():
                 zeros = np.zeros(spdat_diffs.shape)
                 for varname, diffs in varnames_to_arrays.items():
                     if not np.allclose(diffs, zeros, atol=_TOLERANCE, equal_nan=True):
-                        logger.warn('Division {0}: Comparing pdinew.py against operational pdinew.f water balance: '.format(division_id) + \
-                                    '\nNon-matching difference arrays for water balance variable: {0}'.format(varname))
+                        logger.warning('Division {0}: Comparing pdinew.py against operational pdinew.f water balance: '.format(division_id) + \
+                                       '\nNon-matching difference arrays for water balance variable: {0}'.format(varname))
                         offending_indices = np.where(abs(diffs) > _TOLERANCE)
-                        logger.warn('Indices with significant differences: {0}'.format(offending_indices))
+                        logger.warning('Indices with significant differences: {0}'.format(offending_indices))
  
 #                 # convert monthly temperatures from Fahrenheit to Celsius
 #                 monthly_temps_celsius = (temp_timeseries - 32) * 5.0 / 9.0
@@ -239,10 +239,10 @@ def main():
 #                 # we want to see all zero differences, if any non-zero differences exist then raise an alert
 #                 diffs = input_dataset.variables['pedat'][division_index, :] - palmer_PE
 #                 if not np.allclose(diffs, zeros, atol=_TOLERANCE, equal_nan=True):
-#                     logger.warn('Division {0}: Comparing pdinew.py against operational pdinew.f PET: '.format(division_id) + \
+#                     logger.warning('Division {0}: Comparing pdinew.py against operational pdinew.f PET: '.format(division_id) + \
 #                                 '\nNon-matching difference arrays for PET')
 #                     offending_indices = np.where(abs(diffs) > _TOLERANCE)
-#                     logger.warn('Indices with significant differences ({0}): {1}'.format(offending_indices[0].size, offending_indices[0]))
+#                     logger.warning('Indices with significant differences ({0}): {1}'.format(offending_indices[0].size, offending_indices[0]))
 #  
 #                 # compute the water balance values using the new Python version derived from Jacobi et al Matlab palmer_PDSI
 #                 palmer_ET, palmer_PR, palmer_R, palmer_RO, palmer_PRO, palmer_L, palmer_PL = \
@@ -271,11 +271,11 @@ def main():
 #                 zeros = np.zeros(pldat_diffs.shape)
 #                 for varname, diffs in varnames_to_arrays.items():
 #                     if not np.allclose(diffs, zeros, atol=_TOLERANCE, equal_nan=True):
-#                         logger.warn('Division {0}: Comparing palmer.py against operational pdinew.f water balance: '.
+#                         logger.warning('Division {0}: Comparing palmer.py against operational pdinew.f water balance: '.
 #                                     format(division_id) + \
 #                                     '\nNon-matching difference arrays for water balance variable: {0}'.format(varname))
 #                         offending_indices = np.where(abs(diffs) > _TOLERANCE)
-#                         logger.warn('Indices with significant differences: {0}'.format(offending_indices[0]))
+#                         logger.warning('Indices with significant differences: {0}'.format(offending_indices[0]))
 #                             
 # #                 # compare the values against the operational values produced monthly by NCEI (assumed to be from pdinew.f)
 # #                 etdat_wb_diffs = input_dataset.variables['etdat'][division_index, :] - palmer_ET
@@ -305,10 +305,10 @@ def main():
 # #                 zeros = np.zeros(pl_diffs.shape)
 # #                 for varname, diffs in varnames_to_arrays.items():
 # #                     if not np.allclose(diffs, zeros, atol=_TOLERANCE, equal_nan=True):
-# #                         logger.warn('Division {0}: Comparing palmer.py against operational pdinew.f: '.format(division_id) + \
+# #                         logger.warning('Division {0}: Comparing palmer.py against operational pdinew.f: '.format(division_id) + \
 # #                                     '\nNon-matching difference arrays for water balance variable: {0}'.format(varname))
 # #                         offending_indices = np.where(abs(diffs) > _TOLERANCE)
-# #                         logger.warn('Indices with significant differences: {0}'.format(offending_indices))
+# #                         logger.warning('Indices with significant differences: {0}'.format(offending_indices))
  
  
                 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -327,11 +327,10 @@ def main():
                                                                                                             pdinew_prodat,
                                                                                                             pdinew_tldat,
                                                                                                             pdinew_pldat,
-                                                                                                            pdinew_spdat,
                                                                                                             data_begin_year,
                                                                                                             calibration_begin_year,
                                                                                                             calibration_end_year)
-                    
+
                 # compute the coefficients using the new function   palmer_ET, palmer_PR, palmer_R, palmer_RO, palmer_PRO, palmer_L, palmer_PL
                 palmer_alpha, palmer_beta, palmer_gamma, palmer_delta = palmer._cafec_coefficients(precip_timeseries,
                                                                                                             pdinew_pedat,
@@ -362,10 +361,10 @@ def main():
                 zeros = np.zeros(alpha_diffs.shape)
                 for varname, diffs in varnames_to_arrays.items():
                     if not np.allclose(diffs, zeros, atol=_TOLERANCE, equal_nan=True):
-                        logger.warn('Division {0}: Comparing new Palmer against operational pdinew.f: ' + \
+                        logger.warning('Division {0}: Comparing new Palmer against operational pdinew.f: ' + \
                                     '\nNon-matching difference arrays for CAFEC coefficient: {1}'.format(division_id, varname))
                         offending_indices = np.where(abs(diffs) > _TOLERANCE)
-                        logger.warn('Indices with significant differences: {0}'.format(offending_indices[0]))
+                        logger.warning('Indices with significant differences: {0}'.format(offending_indices[0]))
 
 
                 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -411,9 +410,9 @@ def main():
                 diffs = palmer_K - pdinew_K        
                 zeros = np.zeros(diffs.shape)
                 if not np.allclose(diffs, zeros, atol=_TOLERANCE, equal_nan=True):
-                    logger.warn('Division {0}: Non-matching difference arrays for climatic characteristic: {1}'.format(division_id, varname))
+                    logger.warning('Division {0}: Non-matching difference arrays for climatic characteristic: {1}'.format(division_id, varname))
                     offending_indices = np.where(abs(diffs) > _TOLERANCE)
-                    #logger.warn('Time steps with significant differences: {0}'.format(offending_indices))
+                    #logger.warning('Time steps with significant differences: {0}'.format(offending_indices))
                     for i in offending_indices[0]:
                         print('{0}  Expected/NCEI:  {1}   Actual/NIDIS: {2}'.format(i, pdinew_K[i], palmer_K[i]))
     
@@ -458,9 +457,9 @@ def main():
 #                 diffs = pdinew_Z - palmer_Z
 #                 zeros = np.zeros(diffs.shape)
 #                 if not np.allclose(diffs, zeros, atol=_TOLERANCE, equal_nan=True):
-#                     logger.warn('Division {0}: Non-matching difference arrays for palmer_Z-Index: {1}'.format(division_id, varname))
+#                     logger.warning('Division {0}: Non-matching difference arrays for palmer_Z-Index: {1}'.format(division_id, varname))
 #                     offending_indices = np.where(abs(diffs) > _TOLERANCE)
-#                     #logger.warn('Time steps with significant differences: {0}'.format(offending_indices))
+#                     #logger.warning('Time steps with significant differences: {0}'.format(offending_indices))
 #                     for i in offending_indices[0]:
 #                         print('{0}  Expected:  {1}   Actual: {2}'.format(i, K[i], pdinew_K[i]))
  
@@ -505,13 +504,13 @@ def main():
  
                     # we expect to see all zero differences, if any non-zero differences exist then raise an alert
                     if not np.allclose(diffs, zeros, atol=_TOLERANCE, equal_nan=True):
-                        logger.warn('Division {0}: Comparing new Palmer (pdinew.py) against '.format(division_id) + \
-                                    'operational pdinew.f: \nNon-matching values for {0}'.format(varname))
+                        logger.warning('Division {0}: Comparing new Palmer (pdinew.py) against '.format(division_id) + \
+                                        'operational pdinew.f: \nNon-matching values for {0}'.format(varname))
                         offending_indices = np.where(abs(diffs) > _TOLERANCE)
 #                         non_offending_indices = np.where(abs(diffs) <= _TOLERANCE)
                         nan_indices = np.where(actual is np.NaN)
-                        logger.warn('Time steps with NaN ({0}): {1}'.format(np.isnan(actual).sum(), nan_indices))
-                        logger.warn('Time steps with significant differences ({0}): {1}'.format(len(offending_indices[0]), offending_indices[0])) 
+                        logger.warning('Time steps with NaN ({0}): {1}'.format(np.isnan(actual).sum(), nan_indices))
+                        logger.warning('Time steps with significant differences ({0}): {1}'.format(len(offending_indices[0]), offending_indices[0])) 
                            
 #                         for i in offending_indices[0]:
 #                             
