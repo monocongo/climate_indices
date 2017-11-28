@@ -163,7 +163,7 @@ def initialize_netcdf_single_variable_grid(file_path,
         variable_attributes = {'valid_min' : valid_min,
                                'valid_max' : valid_max,
                                'long_name' : variable_long_name}
-        if variable_units != None:
+        if variable_units is not None:
             variable_attributes['units'] = variable_units
             
         # open the dataset as a NetCDF in write mode
@@ -252,7 +252,7 @@ def initialize_dataset(file_path,
     x_variable[:] = template_dataset.variables[x_dim_name]
     y_variable[:] = template_dataset.variables[y_dim_name]
 
-    if (data_variable_name != None):
+    if (data_variable_name is not None):
         
         data_dtype = find_netcdf_datatype(data_fill_value)
         data_variable = netcdf.createVariable(data_variable_name, 
@@ -300,7 +300,7 @@ def initialize_dataset_climdivs(file_path,
     time_variable[:] = template_dataset.variables['time'][:]
     divisions_variable[:] = template_dataset.variables[divisions_dim_name][:]
 
-    if (data_variable_name != None):
+    if (data_variable_name is not None):
         
         data_dtype = find_netcdf_datatype(data_fill_value)
         data_variable = netcdf.createVariable(data_variable_name, 
