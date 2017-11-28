@@ -132,15 +132,15 @@ def main():
 
                 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
                 # compute palmer_PDSI etc. using new palmer_PDSI code translated from Jacobi et al MatLab code
-                palmer_PDSI, palmer_PHDI, palmer_PMDI, palmer_Z = palmer.pdi_from_climatology(precip_timeseries,
-                                                                                              temp_timeseries,
-                                                                                              awc,
-                                                                                              latitude,
-                                                                                              data_begin_year,
-                                                                                              calibration_begin_year,
-                                                                                              calibration_end_year,
-                                                                                              B,
-                                                                                              H)
+                palmer_PDSI, palmer_PHDI, palmer_PMDI, palmer_Z = palmer.pdsi_from_climatology(precip_timeseries,
+                                                                                               temp_timeseries,
+                                                                                               awc,
+                                                                                               latitude,
+                                                                                               data_begin_year,
+                                                                                               calibration_begin_year,
+                                                                                               calibration_end_year,
+                                                                                               B,
+                                                                                               H)
  
                 # find the differences between the new (Matlab-derived) and NCEI results
                 pdsi_diffs = palmer_PDSI.flatten() - expected_pdsi
