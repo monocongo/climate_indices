@@ -125,16 +125,16 @@ def spei_gamma(months_scale,
     '''
     
     # validate the function's argument combinations
-    if temps_celsius != None:
+    if temps_celsius is not None:
         
         # since we have temperature then it's expected that we'll compute PET internally, so we shouldn't have PET as an input
-        if pet_mm != None:
+        if pet_mm is not None:
             message = 'Incompatible arguments: either temperature or PET arrays can be specified as arguments, but not both' 
             logger.error(message)
             raise ValueError(message)
         
         # we'll need both the latitude and data start year in order to compute PET 
-        elif (latitude_degrees == None) or (data_start_year == None):
+        elif (latitude_degrees is None) or (data_start_year is None):
             message = 'Missing arguments: since temperature is provided as an input then both latitude ' + \
                       'and the data start year must also be specified, and one or both is not'
             logger.error(message)
@@ -149,16 +149,16 @@ def spei_gamma(months_scale,
         # compute PET
         pet_mm = pet(temps_celsius, latitude_degrees, data_start_year)
 
-    elif pet_mm != None:
+    elif pet_mm is not None:
         
         # since we have PET as input we shouldn't have temperature as an input
-        if temps_celsius != None:
+        if temps_celsius is not None:
             message = 'Incompatible arguments: either temperature or PET arrays can be specified as arguments, but not both.' 
             logger.error(message)
             raise ValueError(message)
         
         # make sure there's no confusion by not allowing a user to specify unnecessary parameters 
-        elif (latitude_degrees != None) or (data_start_year != None):
+        elif (latitude_degrees is not None) or (data_start_year is not None):
             message = 'Extraneous arguments: since PET is provided as an input then both latitude ' + \
                       'and the data start year must not also be specified, and one or both is.'
             logger.error(message)
@@ -233,16 +233,16 @@ def spei_pearson(months_scale,
     '''
     
     # validate the function's argument combinations
-    if temps_celsius != None:
+    if temps_celsius is not None:
         
         # since we have temperature then it's expected that we'll compute PET internally, so we shouldn't have PET as an input
-        if pet_mm != None:
+        if pet_mm is not None:
             message = 'Incompatible arguments: either temperature or PET arrays can be specified as arguments, but not both' 
             logger.error(message)
             raise ValueError(message)
         
         # we'll need the latitude in order to compute PET 
-        elif latitude_degrees == None:
+        elif latitude_degrees is None:
             message = 'Missing arguments: since temperature is provided as an input then both latitude ' + \
                       'and the data start year must also be specified, and one or both is not'
             logger.error(message)
@@ -257,16 +257,16 @@ def spei_pearson(months_scale,
         # compute PET
         pet_mm = pet(temps_celsius, latitude_degrees, data_start_year)
 
-    elif pet_mm != None:
+    elif pet_mm is not None:
         
         # since we have PET as input we shouldn't have temperature as an input
-        if temps_celsius != None:
+        if temps_celsius is not None:
             message = 'Incompatible arguments: either temperature or PET arrays can be specified as arguments, but not both.' 
             logger.error(message)
             raise ValueError(message)
         
         # make sure there's no confusion by not allowing a user to specify unnecessary parameters 
-        elif latitude_degrees != None:
+        elif latitude_degrees is not None:
             message = 'Extraneous arguments: since PET is provided as an input then latitude ' + \
                       'must not also be specified.'
             logger.error(message)
@@ -451,8 +451,8 @@ def pet(temperature_monthly_celsius,
     # make sure we're not dealing with a NaN latitude value
     if not np.isnan(latitude_degrees) and (latitude_degrees < 90.0) and (latitude_degrees > -90.0):
         
-            # compute and return the PET values using Thornthwaite's equation
-            return thornthwaite.potential_evapotranspiration(temperature_monthly_celsius, latitude_degrees, data_start_year)
+        # compute and return the PET values using Thornthwaite's equation
+        return thornthwaite.potential_evapotranspiration(temperature_monthly_celsius, latitude_degrees, data_start_year)
         
     else:
         message = 'Invalid latitude value: {0} (must be in degrees north, between -90.0 and 90.0 inclusive)'.format(latitude_degrees)
