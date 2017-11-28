@@ -480,7 +480,6 @@ def transform_fitted_pearson(monthly_values,
     return fitted_values
 
 #-----------------------------------------------------------------------------------------------------------------------@jit
-
 def transform_fitted_gamma(monthly_values):
     '''
     TODO explain this    
