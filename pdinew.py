@@ -51,8 +51,7 @@ def pdsi_from_climatology(precip_timeseries,
                           H,
                           data_begin_year,
                           calibration_begin_year,
-                          calibration_end_year,
-                          expected_pdsi_for_debug):
+                          calibration_end_year):
     
     # calculate the negative tangent of the latitude which is used as an argument to the water balance function
     neg_tan_lat = -1 * math.tan(math.radians(latitude))
@@ -109,9 +108,7 @@ def pdsi_from_climatology(precip_timeseries,
                 K)
 
     # compute the final Palmers
-    #TODO/FIXME eliminate the expected PDSI argument once development/debugging is complete
-    PDSI, PHDI, PMDI = _pdsi(Z,
-                             expected_pdsi_for_debug)
+    PDSI, PHDI, PMDI = _pdsi(Z)
     
     return PDSI, PHDI, PMDI, Z, pedat
 
