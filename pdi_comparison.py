@@ -88,15 +88,11 @@ def main():
             # read the temperature, precipitation, latitude and AWC for each division
             for division_index, division_id in enumerate(division_ids):
         
-                # DEBUG ONLY -- RMEOVE
-                if division_id <= 306:
-                    continue
+#                 # DEBUG ONLY -- RMEOVE
+#                 if division_id <= 306:
+#                     continue
                 
-#                 # FOR DEBUG/DEVELOPMENT ONLY -- REMOVE
                 print('\n\n======================================================================\nDivision ID: {0}\n'.format(division_id))
-#                 if _limit_counter > _LIMIT:
-#                     break
-#                 _limit_counter += 1
                     
                 # get the data for this division
                 precip_timeseries = input_dataset.variables[args.precip_var_name][division_index, :]
@@ -182,6 +178,8 @@ def main():
                 # Water balance accounting
                 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+                print('\nWater balance accounting')
+                
                 # calculate the negative tangent of the latitude which is used as an argument to the water balance function
                 neg_tan_lat = -1 * math.tan(math.radians(latitude))
     
@@ -246,7 +244,6 @@ def main():
 #                     offending_indices = np.where(abs(diffs) > _TOLERANCE)
 #                     logger.warn('Indices with significant differences ({0}): {1}'.format(offending_indices[0].size, offending_indices[0]))
 #  
-#                 #NOTE we need this water balance call to stay uncommented in order to get the palmer_PRO value used later/below
 #                 # compute the water balance values using the new Python version derived from Jacobi et al Matlab palmer_PDSI
 #                 palmer_ET, palmer_PR, palmer_R, palmer_RO, palmer_PRO, palmer_L, palmer_PL = \
 #                     palmer._water_balance(awc + 1.0, pdinew_pedat, pdinew_pdat)
@@ -318,6 +315,8 @@ def main():
                 # CAFEC coefficients
                 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+                print('\nCAFEC coefficients')
+
                 # compute palmer_PDSI etc. using translated functions from pdinew.f Fortran code
                 pdinew_alpha, pdinew_beta, pdinew_delta, pdinew_gamma, t_ratio = pdinew._cafec_coefficients(precip_timeseries,
                                                                                                             pdinew_pedat,
@@ -343,29 +342,9 @@ def main():
                                                                                                             pdinew_prodat,
                                                                                                             pdinew_tldat,
                                                                                                             pdinew_pldat,
-#                                                                                                    palmer_PE,
-#                                                                                                    palmer_ET,
-#                                                                                                    palmer_PR,
-#                                                                                                    palmer_R,
-#                                                                                                    palmer_RO,
-#                                                                                                    palmer_PRO,
-#                                                                                                    palmer_L,
-#                                                                                                    palmer_PL,
-                                                                                                   data_begin_year,
-                                                                                                   calibration_begin_year,
-                                                                                                   calibration_end_year)
- 
-#                 # graph differences in the calculated CAFEC coefficients 
-#                 arrays = {'pdinew_alpha': [pdinew_alpha, palmer_alpha],
-#                           'pdinew_beta': [pdinew_beta, palmer_beta],
-#                           'pdinew_gamma': [pdinew_gamma, palmer_gamma],
-#                           'pdinew_delta': [pdinew_delta, palmer_delta]}
-#                 for key, value in arrays.items():
-#                     plot_diffs(value[0],
-#                                value[1],
-#                                division_id,
-#                                key)
- 
+                                                                                                            data_begin_year,
+                                                                                                            calibration_begin_year,
+                                                                                                            calibration_end_year) 
    
                 # look at the differences between the results of the old and new versions of the coefficients code                
                 alpha_diffs = pdinew_alpha - palmer_alpha
@@ -393,6 +372,8 @@ def main():
                 # Climatic characteristic, K
                 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+                print('\nClimatic characteristic, K')
+                
                 # compute the weighting factor (climatic characteristic) using the version translated from pdinew.f
                 pdinew_K = pdinew._climatic_characteristic(pdinew_alpha,
                                                            pdinew_beta,
@@ -425,22 +406,6 @@ def main():
                                                            data_begin_year,
                                                            calibration_begin_year,
                                                            calibration_end_year)
-#                 palmer_K = palmer._climatic_characteristic(palmer_alpha,
-#                                                            palmer_beta,
-#                                                            palmer_gamma,
-#                                                            palmer_delta,
-#                                                            precip_timeseries,
-#                                                            palmer_ET,
-#                                                            palmer_PE,
-#                                                            palmer_R,
-#                                                            palmer_PR,
-#                                                            palmer_RO,
-#                                                            palmer_PRO,
-#                                                            palmer_L,
-#                                                            palmer_PL,
-#                                                            data_begin_year,
-#                                                            calibration_begin_year,
-#                                                            calibration_end_year)
    
                 # look at the differences of the climatic characteristic results from the two implementations
                 diffs = palmer_K - pdinew_K        
@@ -457,6 +422,8 @@ def main():
                 # Z-Index
                 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+                print('\nZ-Index')
+
                 # compute the palmer_Z-Index using the new (Matlab derived) version
                 palmer_Z = palmer._z_index(precip_timeseries,
                                            pdinew_pedat,
@@ -471,18 +438,7 @@ def main():
                                            calibration_begin_year,
                                            calibration_end_year)
  
-#                 # compute the palmer_Z-Index using the original (Fortran derived) version
-#                 pdinew_Z = pdinew._zindex(pdinew_alpha,
-#                                             pdinew_beta,
-#                                             pdinew_gamma,
-#                                             pdinew_delta,
-#                                             precip_timeseries,
-#                                             pdinew_pedat,
-#                                             pdinew_prdat,
-#                                             pdinew_prodat,
-#                                             pdinew_pldat,
-#                                             K)
-                 
+                # compute the palmer_Z-Index using the original (Fortran derived) version
                 pdinew_Z = pdinew._zindex_from_climatology(pdinew_tdat, 
                                                            pdinew_pdat, 
                                                            awc, 
@@ -508,6 +464,8 @@ def main():
 #                     for i in offending_indices[0]:
 #                         print('{0}  Expected:  {1}   Actual: {2}'.format(i, K[i], pdinew_K[i]))
  
+                print('\nPDSI (pdinew.f)')
+
                 # compute palmer_PDSI etc. using palmer_PDSI code translated from pdinew.f
                 pdinew_PDSI, pdinew_PHDI, pdinew_PMDI, pdinew_Z, PET = pdinew.pdsi_from_climatology(pdinew_pdat,
                                                                                                     pdinew_tdat,
@@ -517,8 +475,7 @@ def main():
                                                                                                     H,
                                                                                                     data_begin_year,
                                                                                                     calibration_begin_year,
-                                                                                                    calibration_end_year,
-                                                                                                    expected_pdsi)
+                                                                                                    calibration_end_year)
                     
                 # find the differences between the new (Matlab-derived) and previous (Fortran-derived) versions
                 pdsi_diffs = pdinew_PDSI.flatten() - expected_pdsi
@@ -532,7 +489,7 @@ def main():
 #                                       'palmer_PMDI': (pmdi_diffs, expected_pmdi, pdinew_PMDI),
                                       'pdinew_Z-INDEX': (zindex_diffs, expected_zindex, pdinew_Z.flatten()) }
     
-                # we want to see all zero differences, if any non-zero differences exist then raise an alert
+                # go through variables plotting and indicating differences
                 zeros = np.zeros(pdsi_diffs.shape)
                 for varname, array_tuple in varnames_to_arrays.items():
                         
@@ -540,11 +497,13 @@ def main():
                     expected = array_tuple[1]
                     actual = array_tuple[2]
                         
+                    # plot the differences between the expected and actual results
                     plot_diffs(expected,
                                actual,
                                division_id,
                                varname)
  
+                    # we expect to see all zero differences, if any non-zero differences exist then raise an alert
                     if not np.allclose(diffs, zeros, atol=_TOLERANCE, equal_nan=True):
                         logger.warn('Division {0}: Comparing new Palmer (pdinew.py) against '.format(division_id) + \
                                     'operational pdinew.f: \nNon-matching values for {0}'.format(varname))
@@ -558,6 +517,8 @@ def main():
 #                             
 #                             print('{0}  Expected:  {1}   Actual: {2}'.format(i, expected[i], actual[i]))
    
+                print('\nPDSI (palmer.py)')
+
                 # compute palmer_PDSI etc. using new palmer_PDSI code translated from Jacobi et al MatLab code
                 palmer_PDSI, palmer_PHDI, palmer_PMDI, palmer_Z = palmer.pdsi_from_climatology(pdinew_pdat,
                                                                                                pdinew_tdat,
@@ -566,7 +527,6 @@ def main():
                                                                                                data_begin_year,
                                                                                                calibration_begin_year,
                                                                                                calibration_end_year,
-                                                                                               expected_pdsi,
                                                                                                B,
                                                                                                H)
 
@@ -578,8 +538,7 @@ def main():
                 varnames_to_arrays = {'palmer_PDSI': (pdsi_diffs, expected_pdsi, palmer_PDSI.flatten()),
                                       'palmer_Z-INDEX': (zindex_diffs, expected_zindex, palmer_Z.flatten()) }
    
-                # we want to see all zero differences, if any non-zero differences exist then raise an alert
-                zeros = np.zeros(pdsi_diffs.shape)
+                # plot the differences between the expected and actual results
                 for varname, array_tuple in varnames_to_arrays.items():
                        
                     diffs = array_tuple[0]
@@ -590,72 +549,6 @@ def main():
                                actual,
                                division_id,
                                varname)
-
-#                     if not np.allclose(diffs, zeros, atol=_TOLERANCE, equal_nan=True):
-#                         logger.warn('Division {0}: Comparing new Palmer (pdinew.py) against '.format(division_id) + \
-#                                     'operational pdinew.f: \nNon-matching values for {0}'.format(varname))
-#                         offending_indices = np.where(abs(diffs) > _TOLERANCE)
-# #                         non_offending_indices = np.where(abs(diffs) <= _TOLERANCE)
-#                         nan_indices = np.where(actual is np.NaN)
-#                         logger.warn('Time steps with NaN ({0}): {1}'.format(np.isnan(actual).sum(), nan_indices))
-#                         logger.warn('Time steps with significant differences ({0}): {1}'.format(len(offending_indices[0]), offending_indices[0])) 
-                          
-#                         for i in offending_indices[0]:
-#                             
-#                             print('{0}  Expected:  {1}   Actual: {2}'.format(i, expected[i], actual[i]))
-
-#                 palmer_PDSI, palmer_PHDI, palmer_PMDI, zindex = palmer.pdsi(precip_timeseries,
-#                                                        pdinew_pedat.flatten(),
-#                                                        awc,
-#                                                        data_begin_year,
-#                                                        expected_pdsi,
-#                                                        calibration_begin_year,
-#                                                        calibration_end_year)
-                
-#                 # compute palmer_PDSI and other associated variables
-#                 palmer_PDSI, palmer_PHDI, palmer_PMDI = palmer._pdsi_from_zindex(pdinew_Z.flatten(), expected_pdsi)
-# #                 palmer_PDSI, palmer_PHDI, palmer_PMDI = palmer._pdsi_from_zindex(palmer_Z, expected_pdsi)
-# 
-#                 # find the differences between the new (Matlab-derived) and previous (Fortran-derived) versions
-# #                 pdsi_diffs = np.absolute(palmer_PDSI - expected_pdsi)
-#                 pdsi_diffs = palmer_PDSI - expected_pdsi
-# #                 phdi_diffs = np.absolute(palmer_PHDI - expected_phdi)
-# #                 pmdi_diffs = np.absolute(palmer_PMDI - expected_pmdi)
-# # #                 zindex_diffs = np.absolute(zindex - expected_zindex)
-# #                 zindex_diffs = zindex - expected_zindex
-#              
-#                 # dictionary of variable names to corresponding arrays of differences to facilitate looping below
-#                 varnames_to_arrays = {'palmer_PDSI': (pdsi_diffs, expected_pdsi, palmer_PDSI)}#,
-# #                                       'palmer_PHDI': (phdi_diffs, expected_phdi, palmer_PHDI),
-# #                                       'palmer_PMDI': (pmdi_diffs, expected_pmdi, palmer_PMDI),
-# #                                      'palmer_Z-INDEX': (zindex_diffs, expected_zindex, zindex) }
-#  
-#                 # we want to see all zero differences, if any non-zero differences exist then raise an alert
-#                 zeros = np.zeros(pdsi_diffs.shape)
-#                 # tuple (diffs, expected, actual)
-#                 for varname, array_tuple in varnames_to_arrays.items():
-# 
-#                     plot_diffs(array_tuple[1],
-#                                array_tuple[2],
-#                                division_id,
-#                                varname)
-# 
-# #                     if not np.allclose(diffs, zeros, atol=_TOLERANCE, equal_nan=True):
-# #                          
-# #                         logger.warn('Division {0}: Comparing new Palmer (palmer.py) against operational pdinew.f: '.format(division_id) + \
-# #                                     '\nNon-matching values for {0}'.format(varname))
-# #                         offending_indices = np.where(abs(diffs) > _TOLERANCE)
-# # #                         non_offending_indices = np.where(abs(diffs) <= _TOLERANCE)
-# # #                         logger.warn('Time steps with significant differences ({0}): {1}'.format(len(offending_indices), offending_indices))                        
-# #                         logger.warn('Time steps with significant differences ({0}, tolerance {1})'.format(len(offending_indices[0]), 
-# #                                                                                                           _TOLERANCE))
-# #                         print('Division {0}: {1} average difference: {2}'.format(division_id, varname, np.nanmean(diffs)))
-# # #                         logger.warn('Time steps with significant differences ({0}, tolerance {1}): {2}'.format(len(offending_indices[0]), 
-# # #                                                                                                               _TOLERANCE, 
-# # #                                                                                                               offending_indices[0])) 
-# # #                         for i in offending_indices[0]:
-# # #                              
-# # #                             print('{0}  Expected:  {1}   Actual: {2}'.format(i, expected[i], actual[i]))
 
     except Exception as ex:
         logger.exception('Failed to complete', exc_info=True)
