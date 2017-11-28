@@ -48,7 +48,8 @@ def spi_gamma(precips,
     return spi[0:original_length]
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
-@jit(float64[:](float64[:], int64, int64, int64, int64))
+#@jit(float64[:](float64[:], int64, int64, int64, int64))
+@jit     # use this under the assumption that this is preferable to explicit specification of signature argument types
 def spi_pearson(precips, 
                 months_scale,
                 data_start_year,
@@ -86,6 +87,7 @@ def spi_pearson(precips,
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 #@jit(float64[:](int64, float64[:], float64[:], float64[:], int64, float64))  # uncomment/enable in production
+@jit     # use this under the assumption that this is preferable to explicit specification of signature argument types
 def spei_gamma(months_scale,
                precips_mm,
                pet_mm=None,
@@ -189,7 +191,8 @@ def spei_gamma(months_scale,
     return spei[0:original_length]
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
-@jit(float64[:](int64, int64, float64[:], float64[:], float64[:], float64, int64, int64))
+#@jit(float64[:](int64, int64, float64[:], float64[:], float64[:], float64, int64, int64))
+@jit     # use this under the assumption that this is preferable to explicit specification of signature argument types
 def spei_pearson(months_scale,
                  data_start_year,
                  precips_mm,
@@ -358,7 +361,8 @@ def pdsi(precip_time_series,
                        calibration_end_year)
     
 #-------------------------------------------------------------------------------------------------------------------------------------------
-@jit(float64[:](float64[:], int64, int64, int64, int64))
+#@jit(float64[:](float64[:], int64, int64, int64, int64))
+@jit     # use this under the assumption that this is preferable to explicit specification of signature argument types
 def percentage_of_normal(monthly_values, 
                          months_scale,
                          data_start_year,
@@ -418,6 +422,7 @@ def percentage_of_normal(monthly_values,
     return percentages_of_normal
     
 #-------------------------------------------------------------------------------------------------------------------------------------------
+@jit     # use this under the assumption that this is preferable to explicit specification of signature argument types
 def pet(temperature_monthly_celsius,
         latitude_degrees,
         data_start_year):
