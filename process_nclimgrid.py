@@ -730,6 +730,10 @@ if __name__ == '__main__':
             # get the number of latitudes in the input dataset(s)
             lat_size = precip_dataset.variables['lat'].size
               
+        #--------------------------------------------------------------------------------------------------------------
+        # Create PET and Palmer index NetCDF files, computed from input temperature, precipitation, and soil constant.
+        #--------------------------------------------------------------------------------------------------------------
+
         # create a process Pool for worker processes to compute PET and Palmer indices, passing arguments to an initializing function
         pool = multiprocessing.Pool(processes=number_of_workers,
                                     initializer=init_palmer_process,
@@ -748,17 +752,21 @@ if __name__ == '__main__':
                                               data_start_year,
                                               args.calibration_start_year,
                                               args.calibration_end_year))
-         
+          
         # map the latitude indices as an arguments iterable to the compute function
         result = pool.map_async(process_latitude_palmer, range(lat_size))
-                  
+                   
         # get the exception(s) thrown, if any
         result.get()
-                  
+                   
         # close the pool and wait on all processes to finish
         pool.close()
         pool.join()
           
+        #----------------------------------------------------------------------------------------------------------
+        # Take the PET and Palmer index NetCDF files, compress and move to destination directory.
+        #----------------------------------------------------------------------------------------------------------
+        
 #         input_output_netcdfs = []
 #         for index in ['pdsi', 'phdi', 'scpdsi', 'zindex']:
 #             
