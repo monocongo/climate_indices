@@ -307,9 +307,24 @@ def process_latitude_palmer(lat_index):
         pet_dataset.close()
         pet_lock.release()
 
+        # determine the dimensionality of the AWC dataset, in case there is a missing time 
+        # dimension and/or a switched lat/lon, then get the AWC latitude slice accordingly
+        awc_dims = awc_dataset[awc_var_name].dimensions
+        if awc_dims == ('time', 'lat', 'lon'):
+            awc_lat_slice = awc_dataset[awc_var_name][:, lat_index, :].flatten() # assuming (time, lat, lon) orientation
+        elif awc_dims == ('lat', 'lon'):
+            awc_lat_slice = awc_dataset[awc_var_name][lat_index, :].flatten()    # assuming (lat, lon) orientation
+        elif awc_dims == ('time', 'lon', 'lat'):
+            awc_lat_slice = awc_dataset[awc_var_name][:, :, lat_index].flatten() # assuming (time, lon, lat) orientation
+        elif awc_dims == ('lon', 'lat'):
+            awc_lat_slice = awc_dataset[awc_var_name][:, lat_index].flatten()    # assuming (lon, lat) orientation
+        else:
+            message = 'Unable to read the soil constant (AWC) values due to unsupported AWC variable dimensions: {0}'.format(awc_dims)
+            logger.error(message)
+            raise ValueError(message)
+        
         # read the latitude slice of input precipitation and available water capacity values 
         precip_lat_slice = precip_dataset[precip_var_name][:, lat_index, :]    # assuming (time, lat, lon) orientation
-        awc_lat_slice = awc_dataset[awc_var_name][:, lat_index, :].flatten()   # assuming (time, lat, lon) orientation
         awc_fill_value = awc_dataset[awc_var_name]._FillValue
         
         # allocate arrays to contain a latitude slice of Palmer values
@@ -334,13 +349,10 @@ def process_latitude_palmer(lat_index):
             if _is_data_valid(precip_time_series) and \
                _is_data_valid(pet_time_series) and \
                awc is not np.ma.masked and \
-               not math.isnan(awc):
+               not math.isnan(awc) and \
+               not math.isclose(awc, awc_fill_value):
                 
-                # DEBUG ONLY -- REMOVE
-                if awc == 0:
-                    print('AWC is 0 at lon index: {0}'.format(lon_index))
-                    
-                # put precipitation into inches if not already
+                # put precipitation into inches, if not already
                 mm_to_inches_multiplier = 0.0393701
                 possible_mm_units = ['millimeters', 'millimeter', 'mm']
                 if precip_dataset[precip_var_name].units in possible_mm_units:
