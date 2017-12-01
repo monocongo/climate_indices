@@ -2,6 +2,7 @@ import calendar
 from collections import deque
 import logging
 import math
+import pdinew
 import profile
 import numba
 from numba import float64, int32
@@ -26,16 +27,18 @@ _PDSI_MAX = 4.0
 def _water_balance(AWC,
                    PET,
                    P):
-
-    #EXPERIMENTAL/DEBUG ONLY -- REMOVE
-    if AWC >= 1.0:
-        AWC = AWC - 1.0
+    """
+    Performs a water balance accounting for a location which accounts for several monthly water balance variables, 
+    calculated based on precipitation, potential evapotranspiration, and available water capacity of the soil.
+     
+    Input arrays are expected to be the same size, corresponding to the total number of months.
     
-    # This function calculates the Thornthwaite water balance using inputs from
-    # the PET function and user-loaded precipitation data.
-    
-    # NOTE: PET AND P SHOULD BE READ IN AS A MATRIX IN INCHES. AWC IS A
-    # CONSTANT AND SHOULD BE READ IN INCHES AS WELL.
+    :param AWC: available water capacity (total, including top/surface inch), in inches 
+    :param PET: potential evapotranspiration, in inches 
+    :param P: precipitation, in inches 
+    :return: seven numpy arrays with values for evapotranspiration, potential recharge, recharge, runoff, 
+             potential runoff, loss, and potential loss 
+    """
     
     # P and PET should be in inches, flatten to a 1-D array
     PET = PET.flatten() 
@@ -312,7 +315,7 @@ def _water_balance(AWC,
                 Ls[k] = Ss0
                 Rs[k] = 0
                 Ss[k] = 0
-                Lu[k] = min((abs(B[k]) - Ls[k]) * Su0 / (AWC), Su0)
+                Lu[k] = min(((abs(B[k]) - Ls[k]) * Su0) / AWC, Su0)
                 #*
                 #
                 # Lu[k] = min((abs(B[k]) - Ls[k])*Su0/(AWC + 1),Su0);
@@ -465,7 +468,7 @@ def _cafec_coefficients(P,
     return alpha, beta, gamma, delta
 
 #-----------------------------------------------------------------------------------------------------------------------    
-@numba.jit
+@numba.jit  # this may not work well on Linux, needed to comment out this on climgrid-dev
 def _calibrate_data(arrays,
                     data_start_year,
                     calibration_start_year,
@@ -1695,78 +1698,6 @@ def _least_squares(x,
     return leastSquaresSlope, leastSquaresIntercept
 
 #-----------------------------------------------------------------------------------------------------------------------
-# from pdinew.f
-def _pe(temperature,
-        month_index,
-        latitude,
-        data_start_year,
-        B,
-        H):
-    """
-    Computes potential evapotranspiration based on the method used in original PDSI code pdi.f
-    
-    :param temperature: temperature value in degrees Fahrenheit
-    :param month_index: index into monthly timeseries, with 0 corresponding to January of the initial year
-    :param latitude: latitude value in degrees north 
-    :param data_start_year: initial year of the data being computed
-    :param B: ?
-    :param H: ?
-    """
-    #TODO document this, where do these come from?
-    PHI = np.array([-0.3865982, -0.2316132, -0.0378180, 0.1715539, 0.3458803, 0.4308320, \
-                     0.3916645, 0.2452467, 0.0535511, -0.15583436, -0.3340551, -0.4310691])
-    
-    TLA = -1 * math.tan(math.radians(latitude))
-#     TLA = math.tan(math.radians(latitude))
-    
-    #-----------------------------------------------------------------------
-    #     1 - CALCULATE PE (POTENTIAL EVAPOTRANSPIRATION)   
-    #-----------------------------------------------------------------------
-    if temperature <= 32.0:
-        PE = 0.0
-    else:  
-        DUM = PHI[month_index % 12] * TLA 
-        
-        try:
-            DK = math.atan(math.sqrt(1.0 - (DUM * DUM)) / DUM)   
-        except ValueError:
-            logger.exception('Failed to complete', exc_info=True)
-            raise
-            
-        if DK < 0.0:
-            DK = 3.141593 + DK  
-        DK = (DK + 0.0157) / 1.57  
-        if temperature >= 80.0:
-            PE = (math.sin((temperature / 57.3) - 0.166) - 0.76) * DK
-        else:  
-            DUM = math.log(temperature - 32.0)
-            PE = math.exp(-3.863233 + (B * 1.715598) - (B * math.log(H)) + (B * DUM)) * DK 
-
-        #-----------------------------------------------------------------------
-        #     CONVERT DAILY TO MONTHLY  
-        #-----------------------------------------------------------------------
-        year = data_start_year + int((month_index + 1) / 12)
-        month = month_index % 12
-        PE = PE * calendar.monthrange(year, month + 1)[1]
-
-    return PE
-
-#-----------------------------------------------------------------------------------------------------------------------
-def _pdinew_potential_evapotranspiration(monthly_temps_celsius,
-                                         latitude,
-                                         data_start_year,
-                                         B,
-                                         H):
-
-    # assumes monthly_temps_celsius, B, and H have same dimensions, etc.
-    
-    pet = np.full(monthly_temps_celsius.shape, np.NaN)
-    monthly_temps_fahrenheit = scipy.constants.convert_temperature(monthly_temps_celsius, 'C', 'F')
-    for i in range(monthly_temps_celsius.size):
-        pet[i] = _pe(monthly_temps_fahrenheit[i], i, latitude, data_start_year, B, H)
-    return pet
-
-#-----------------------------------------------------------------------------------------------------------------------
 #@numba.jit      # working?
 def pdsi_from_climatology(precip_time_series,
                           temp_time_series,
@@ -1796,17 +1727,18 @@ def pdsi_from_climatology(precip_time_series,
     # convert monthly temperatures from Fahrenheit to Celsius
     monthly_temps_celsius = (temp_time_series - 32) * 5.0 / 9.0
 
-#     # compute PET using method from original PDSI code pdinew.f
-#     pet_time_series = _pdinew_potential_evapotranspiration(monthly_temps_celsius, 
-#                                                            latitude,
-#                                                            data_start_year,
-#                                                            B,
-#                                                            H)
+    # DEBUG ONLY -- REMOVE
+    # compute PET using method from original PDSI code pdinew.f
+    pet_time_series = pdinew.potential_evapotranspiration(monthly_temps_celsius, 
+                                                           latitude,
+                                                           data_start_year,
+                                                           B,
+                                                           H)
 
-    # compute PET
-    pet_time_series = thornthwaite.potential_evapotranspiration(monthly_temps_celsius, 
-                                                                latitude, 
-                                                                data_start_year)
+#     # compute PET
+#     pet_time_series = thornthwaite.potential_evapotranspiration(monthly_temps_celsius, 
+#                                                                 latitude, 
+#                                                                 data_start_year)
 
     return pdsi(precip_time_series,
                 pet_time_series.flatten(),
@@ -1921,7 +1853,7 @@ def _pdsi_at_percentile(pdsi_values,
     return pdsi_sorted[int(len(pdsi_values) * percentile)]
     
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit
+#@numba.jit
 def _self_calibrate(pdsi_values,
                     sczindex_values,
                     calibration_start_year,
@@ -2038,7 +1970,7 @@ def scpdsi(precip_time_series,
                           RO, 
                           PRO, 
                           L, 
-                          L, 
+                          PL, 
                           data_start_year, 
                           calibration_start_year, 
                           calibration_end_year)

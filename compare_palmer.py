@@ -98,9 +98,9 @@ def main():
             # read the temperature, precipitation, latitude and AWC for each division
             for division_index, division_id in enumerate(division_ids):
         
-#                 # DEBUG ONLY -- RMEOVE
-#                 if division_id <= 306:
-#                     continue
+                # DEBUG ONLY -- RMEOVE
+                if division_id > 206:
+                    break
                 
 #                 # FOR DEBUG/DEVELOPMENT ONLY -- REMOVE
                 print('\n\n======================================================================\nDivision ID: {0}\n'.format(division_id))
@@ -134,7 +134,7 @@ def main():
                 # compute palmer_PDSI etc. using new palmer_PDSI code translated from Jacobi et al MatLab code
                 palmer_PDSI, palmer_PHDI, palmer_PMDI, palmer_Z = palmer.pdsi_from_climatology(precip_timeseries,
                                                                                                temp_timeseries,
-                                                                                               awc,
+                                                                                               awc + 1.0,  # original AWC value is underlying layer only, top layer is one inch so we add it here
                                                                                                latitude,
                                                                                                data_begin_year,
                                                                                                calibration_begin_year,
@@ -198,7 +198,7 @@ def plot_diffs(expected,
     plt.xlabel("months")
     plt.ylabel("value")
 #     plt.show()
-    plt.savefig(output_dir + '/compare_cmb_vs_{0}_{1}.png'.format(varname, division_id))
+    plt.savefig(output_dir + '/compare_palmer_{0}_{1}.png'.format(varname, division_id))
     plt.close()
 
 #-----------------------------------------------------------------------------------------------------------------------

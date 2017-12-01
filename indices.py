@@ -3,6 +3,7 @@ import logging
 from numba import float64, int64, jit
 import numpy as np
 import palmer
+import pdinew
 import scipy.stats
 import thornthwaite
 import warnings
@@ -425,7 +426,9 @@ def percentage_of_normal(monthly_values,
 @jit     # use this under the assumption that this is preferable to explicit specification of signature argument types
 def pet(temperature_monthly_celsius,
         latitude_degrees,
-        data_start_year):
+        data_start_year,
+        B=None,
+        H=None):
 
     '''
     This function computes potential evapotranspiration (PET) using Thornthwaite's equation.
@@ -456,8 +459,15 @@ def pet(temperature_monthly_celsius,
     # make sure we're not dealing with a NaN latitude value
     if not np.isnan(latitude_degrees) and (latitude_degrees < 90.0) and (latitude_degrees > -90.0):
         
-        # compute and return the PET values using Thornthwaite's equation
-        return thornthwaite.potential_evapotranspiration(temperature_monthly_celsius, latitude_degrees, data_start_year)
+#         # compute and return the PET values using Thornthwaite's equation
+#         return thornthwaite.potential_evapotranspiration(temperature_monthly_celsius, latitude_degrees, data_start_year)
+        
+        # DEBUG ONLY -- REMOVE
+        return pdinew.potential_evapotranspiration(temperature_monthly_celsius,
+                                                   latitude_degrees,
+                                                   data_start_year,
+                                                   B,
+                                                   H)
         
     else:
         message = 'Invalid latitude value: {0} (must be in degrees north, between -90.0 and 90.0 inclusive)'.format(latitude_degrees)
