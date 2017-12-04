@@ -109,13 +109,19 @@ def merge_wrcc_prism(precip_file_base,
                 # get the precipitation file if it's not on local disk
                 precip_file = precip_file_base + '_{0}_PRISM.nc'.format(month)
                 if not os.path.isfile(precip_file):
-                    precip_file = wget.download('ftp://pubfiles.dri.edu/pub/mcevoy/WWDT_input/pon1_{0}_PRISM.nc'.format(month))
+                    url = 'ftp://pubfiles.dri.edu/pub/mcevoy/WWDT_input/pon1_{0}_PRISM.nc'.format(month)
+                    logger.info('Downloading from {0}'.format(url))
+                    precip_file = wget.download(url)
+                    logger.info('\tTemporary input data file: {0}'.format(precip_file))
                     cleanup_precip = True
 
                 # get the temperature file if it's not on local disk
                 temp_file = temp_file_base + '_{0}_PRISM.nc'.format(month)
                 if not os.path.isfile(temp_file):
-                    temp_file = wget.download('ftp://pubfiles.dri.edu/pub/mcevoy/WWDT_input/mdn1_{0}_PRISM.nc'.format(month))
+                    url = 'ftp://pubfiles.dri.edu/pub/mcevoy/WWDT_input/mdn1_{0}_PRISM.nc'.format(month)
+                    logger.info('Downloading from {0}'.format(url))
+                    temp_file = wget.download(url)
+                    logger.info('\tTemporary input data file: {0}'.format(temp_file))
                     cleanup_temp = True
 
                 # open the two input NetCDF files, closed automatically on completion of this loop steo                
@@ -126,7 +132,9 @@ def merge_wrcc_prism(precip_file_base,
                     times_precip = precip_dataset.variables['day'][:]
                     times_temp = temp_dataset.variables['day'][:]
                     if np.allclose(times_precip, times_temp):
-                        
+
+                        logger.info('Assigning data for month: {0}'.format(month))
+                                                
                         # add the times at every 12th time step (month) to correspond to the current calendar month
                         output_dataset.variables['time'][month - 1::12] = times_precip
                         
@@ -135,16 +143,18 @@ def merge_wrcc_prism(precip_file_base,
                         output_dataset.variables['tavg'][month - 1::12] = temp_dataset.variables['data'][:]
         
                     else:
-                        
+                        # the times didn't match, can't add a values array with incompatible dimensions
                         message = 'Incompatible time values found in temperature and precipitation files for month {0}'.format(month)
-                        logger.warning(message)
+                        logger.error(message)
                         raise ValueError(message)
 
                 # if we downloaded the files then remove them now        
                 if cleanup_precip:
                     os.remove(precip_file)                  
+                    logger.info('Removed temporary input data file: {0}'.format(precip_file))
                 if cleanup_temp:
                     os.remove(temp_file)
+                    logger.info('Removed temporary input data file: {0}'.format(temp_file))
 
         # report on the elapsed time
         end_datetime = datetime.now()
