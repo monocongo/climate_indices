@@ -330,7 +330,7 @@ def _climatic_characteristic(alpha,
 
 #-----------------------------------------------------------------------------------------------------------------------
 #@profile
-#@numba.jit
+@numba.jit
 def _water_balance(T,
                    P,
                    AWC,
@@ -493,7 +493,7 @@ def _water_balance(T,
                     #         ----------------------- EVAP FROM BOTH LAYERS 
                     SL  = SS  
                     SSS = 0.0 
-                    UL  = (PE - precipitation - SL) * SU / (WCTOT)  
+                    UL  = (PE - precipitation - SL) * SU / (WCTOT)  # this includes the fix suggested by Jacobi 2013 
                     UL  = min(UL, SU)
                     SSU = SU - UL 
 
