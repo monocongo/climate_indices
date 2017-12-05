@@ -503,7 +503,9 @@ def validate_compatibility(precip_dataset,
         message = 'Unexpected dimensions for the {0} variable of the {1} dataset: {2}\nExpected dimensions are (\'time\', \'lat\', \'lon\')'.format(precip_var_name, precip_dataset_name, precip_dataset.variables[precip_var_name].dimensions)
         logger.error(message)
         raise ValueError(message)
-    if not awc_dataset.variables[awc_var_name].dimensions == expected_dimensions:
+    if (not awc_dataset.variables[awc_var_name].dimensions == expected_dimensions) and \
+        (not awc_dataset.variables[awc_var_name].dimensions == ('lat', 'lon')) and \
+        (not awc_dataset.variables[awc_var_name].dimensions == ('lon', 'lat')):
         message = 'Unexpected dimensions for the {0} variable of the {1} dataset: {2}\nExpected dimensions are (\'time\', \'lat\', \'lon\')'.format(awc_var_name, awc_dataset_name, awc_dataset.variables[awc_var_name].dimensions)
         logger.error(message)
         raise ValueError(message)
