@@ -74,20 +74,24 @@ def _initialize_dataset(file_path,
         time_variable[:] = np.full((t_size * 12), fill_value=np.NaN, dtype=time_dtype)
     
         # create placeholder variables for precipitation and temperature
-        netcdf.createVariable('prcp', 
-                              data_dtype, 
-                              ('time', 'lat', 'lon',), 
-                              fill_value=np.NaN)        
-        netcdf.createVariable('tavg', 
-                              data_dtype, 
-                              ('time', 'lat', 'lon',), 
-                              fill_value=np.NaN)
+        precip_variable = netcdf.createVariable('prcp', 
+                                                data_dtype, 
+                                                ('time', 'lat', 'lon',), 
+                                                fill_value=np.NaN)
+        precip_variable.units = 'millimeters'
+        precip_variable.description = 'Accumulated precipitation'
+        temp_variable = netcdf.createVariable('tavg', 
+                                              data_dtype, 
+                                              ('time', 'lat', 'lon',), 
+                                              fill_value=np.NaN)
+        temp_variable.units = 'Celsius'
+        temp_variable.description = 'Mean temperature'
             
     return netcdf
     
 #-----------------------------------------------------------------------------------------------------------------------
 def merge_wrcc_prism(precip_file_base, 
-                     temp_file_base, 
+                     temp_file_base,
                      output_file):
     
     try:
@@ -100,6 +104,7 @@ def merge_wrcc_prism(precip_file_base,
         with _initialize_dataset(output_file,
                                  precip_file_base + '_1_PRISM.nc') as output_dataset:
               
+            # loop over each calendar month, add values into the output dataset variables accordingly
             for month in range(1, 13):
                 
                 # we'll flip these flags if we download the associated files so we'll know to clean up once done
