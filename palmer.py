@@ -205,22 +205,22 @@ def _water_balance(AWC,
             PLu[k] = 0
             
         else: 
-            # A < 0 indicates that there is not sufficient moisture in the surface soil layer to satisfy the PET requirement for month k.
-            # Therefore, there is potential moisture loss from both the surface and underlying soil layers. The equation for PLu is
-            # given in Alley (1984).
+            # A < 0 indicates that there is not sufficient moisture in the surface soil layer to satisfy 
+            # the PET requirement for month k. Therefore, there is potential moisture loss from both the surface
+            # and underlying soil layers. The equation for PLu is given in Alley (1984).
             PLs[k] = Ss0
             PLu[k] = ((PET[k] - PLs[k]) * Su0) / AWC
             
-            # Su0 >= PLu indicates that there is sufficient moisture in the underlying soil layer to (along with the moisture in
-            # the surface soil layer) satisfy the PET requirement for month k; therefore, PLu is as calculated according to the equation 
-            # given in Alley (1984).
+            # Su0 >= PLu indicates that there is sufficient moisture in the underlying soil layer to (along with 
+            # the moisture in the surface soil layer) satisfy the PET requirement for month k; therefore, PLu is
+            # as calculated according to the equation given in Alley (1984).
             if Su0 >= PLu[k]: 
                 PLu[k] = ((PET[k] - PLs[k]) * Su0) / AWC
             
             else:
-                # Su0 < PLu indicates that there is not sufficient moisture in the underlying soil layer to (along with the 
-                # moisture in the surface soil layer) satisfy the PET requirement for month k; therefore, PLu is equal to the 
-                # moisture storage in the underlying soil layer at the beginning of the month.
+                # Su0 < PLu indicates that there is not sufficient moisture in the underlying soil layer to (along with  
+                # the moisture in the surface soil layer) satisfy the PET requirement for month k; therefore, PLu is 
+                # equal to the moisture storage in the underlying soil layer at the beginning of the month.
                 PLu[k] = Su0
         
         PL[k] = PLs[k] + PLu[k]
@@ -240,9 +240,9 @@ def _water_balance(AWC,
             C[k] = 1 - Ss0 
             
             if C[k] >= B[k]:
-                # C >= B indicates that there is AT LEAST enough room in the surface soil layer for recharge than there is excess
-                # precipitation. Therefore, precipitation will recharge ONLY the surface soil layer, and there is NO runoff and 
-                # NO soil moisture loss from either soil layer.
+                # C >= B indicates that there is AT LEAST enough room in the surface soil layer for recharge than there 
+                # is excess precipitation. Therefore, precipitation will recharge ONLY the surface soil layer, and there 
+                # is NO runoff and NO soil moisture loss from either soil layer.
                 Rs[k] = B[k]
                 Ls[k] = 0
                 Ss[k] = Ss0 + Rs[k]
@@ -252,36 +252,30 @@ def _water_balance(AWC,
                 RO[k] = 0
 
             else:
-                # C < B indicates that there is more excess precipitation 
-                # than there is room in the surface soil layer for 
-                # recharge. Therefore, the excess precipitation will 
-                # recharge BOTH the surface soil layer and the underlying 
-                # soil layer, and there is NO soil moisture loss from 
-                # either soil layer.
+                # C < B indicates that there is more excess precipitation than there is room in the surface soil layer  
+                # for recharge. Therefore, the excess precipitation will recharge BOTH the surface soil layer and 
+                # the underlying soil layer, and there is NO soil moisture loss from either soil layer.
                 Rs[k] = C[k]
                 Ls[k] = 0 
                 Ss[k] = 1   # the approximate number of inches of moisture allocated to the surface soil layer
                 D[k] = B[k] - Rs[k] # amount of excess precipitation (in inches) left over after the surface soil layer is recharged
                 E[k] = Su_AWC - Su0  # amount of room (in inches) in the underlying soil layer available to be recharged with excess precipitation
                 if E[k] > D[k]: 
-                    # E > D indicates that there is more room in the underlying soil layer than there is excess precipitation available  
-                    # after recharge to the surface soil layer. Therefore, there is no runoff.
+                    # E > D indicates that there is more room in the underlying soil layer than there is excess 
+                    # precipitation available after recharge to the surface soil layer. Therefore, there is no runoff.
                     Ru[k] = D[k]
                     RO[k] = 0
             
                 else: 
-                    # E <= D indicates that there is AT MOST enough room 
-                    # in the underlying soil layer for the excess
-                    # precipitation available after recharge to the 
-                    # surface soil layer. In the case that there is enough 
-                    # room, there is no runoff. In the case that there is 
-                    # not enough room, runoff occurs.
+                    # E <= D indicates that there is AT MOST enough room in the underlying soil layer for the excess
+                    # precipitation available after recharge to the surface soil layer. In the case that there is enough 
+                    # room, there is no runoff. In the case that there is not enough room, runoff occurs.
                     Ru[k] = E[k]
                     RO[k] = D[k] - Ru[k]
 
                 # Since there is more excess precipitation than there is room in the surface soil layer for recharge,
-                # the soil moisture storage in the underlying soil layer at the end of the month is equal to the storage at 
-                # the beginning of the month plus any recharge to the underlying soil layer.
+                # the soil moisture storage in the underlying soil layer at the end of the month is equal to the storage  
+                # at the beginning of the month plus any recharge to the underlying soil layer.
                 Lu[k] = 0
                 Su[k] = Su0 + Ru[k] 
 
@@ -296,10 +290,11 @@ def _water_balance(AWC,
             # moisture loss occurs, and there is NO runoff and NO recharge 
             # to either soil layer.
             if Ss0 >= abs(B[k]):
-                # Ss0 >= abs(B) indicates that there is AT LEAST sufficient moisture in the surface soil layer at the beginning 
-                # of the month k to satisfy the PET requirement for month k. Therefore, soil moisture loss occurs from ONLY the surface
-                # soil layer, and the soil moisture storage in the surface soil layer at the end of the month is equal to the storage
-                # at the beginning of the month less any loss from the surface soil layer.
+                # Ss0 >= abs(B) indicates that there is AT LEAST sufficient moisture in the surface soil layer at 
+                # the beginning of the month k to satisfy the PET requirement for month k. Therefore, soil moisture 
+                # loss occurs from ONLY the surface soil layer, and the soil moisture storage in the surface soil layer 
+                # at the end of the month is equal to the storage at the beginning of the month less any loss from
+                # the surface soil layer.
                 Ls[k] = abs(B[k])
                 Rs[k] = 0
                 Ss[k] = Ss0 - Ls[k]
@@ -307,11 +302,12 @@ def _water_balance(AWC,
                 Ru[k] = 0
                 Su[k] = Su0
             else: 
-                # Ss0 < abs(B) indicates that there is NOT sufficient moisture in the surface soil layer at the beginning of 
-                # month k to satisfy the PET requirement for month k. Therefore, soil moisture loss occurs from BOTH the 
-                # surface and underlying soil layers, and Lu is calculated according to the equation given in Alley (1984).
-                # The soil moisture storage in the underlying soil layer at the end of the month is equal to the storage 
-                # at the beginning of the month less the loss from the underlying soil layer.
+                # Ss0 < abs(B) indicates that there is NOT sufficient moisture in the surface soil layer at 
+                # the beginning of month k to satisfy the PET requirement for month k. Therefore, soil moisture loss 
+                # occurs from BOTH the surface and underlying soil layers, and Lu is calculated according to 
+                # the equation given in Alley (1984). The soil moisture storage in the underlying soil layer 
+                # at the end of the month is equal to the storage at the beginning of the month less the loss from
+                # the underlying soil layer.
                 Ls[k] = Ss0
                 Rs[k] = 0
                 Ss[k] = 0
@@ -319,15 +315,16 @@ def _water_balance(AWC,
                 #*
                 #
                 # Lu[k] = min((abs(B[k]) - Ls[k])*Su0/(AWC + 1),Su0);
-                # NOTE: This equation was used by the NCDC in their FORTRAN code
+                # NOTE: This equation above was used by the NCDC in their FORTRAN code (pdi.f)
                 # prior to 2013. See Jacobi et al. (2013) for a full explanation. 
                 #
                 #*
                 Ru[k] = 0
                 Su[k] = Su0 - Lu[k]
 
-            # Since there is NOT sufficient precipitation during month k to satisfy the PET requirement for month k, the actual 
-            # evapotranspiration is equal to precipitation plus any soil moisture loss from BOTH the surface and underlying soil layers.
+            # Since there is NOT sufficient precipitation during month k to satisfy the PET requirement for month k, 
+            # the actual evapotranspiration is equal to precipitation plus any soil moisture loss from BOTH the surface
+            # and underlying soil layers.
             RO[k] = 0
             ET[k] = P[k] + Ls[k] + Lu[k] 
             
@@ -383,7 +380,7 @@ def _cafec_coefficients(P,
                (array size) should be a multiple of 12 (representing an ordinal number of full years)
     :param data_start_year: initial year of the input arrays, i.e. the first element of each of the input arrays 
                             is assumed to correspond to January of this initial year
-    :param calibration_start_year: initial year of the calibration period, should be greater than or equal to the data_start_year
+    :param calibration_start_year: initial year of the calibration period, should be >= data_start_year
     :param calibration_end_year: final year of the calibration period
     :return 1-D numpy.ndarray of Z-Index values, with shape corresponding to the input arrays
     :rtype: numpy.ndarray of floats
@@ -396,11 +393,9 @@ def _cafec_coefficients(P,
                                                           calibration_end_year)
 
     # ALPHA, BETA, GAMMA, DELTA CALCULATIONS
-    # A calibration period is used to calculate alpha, beta, gamma, and 
-    # and delta, four coefficients dependent on the climate of the area being
-    # examined. The NCDC and CPC use the calibration period January 1931
-    # through December 1990 (cf. Karl, 1986; Journal of Climate and Applied 
-    # Meteorology, Vol. 25, No. 1, January 1986).
+    # A calibration period is used to calculate alpha, beta, gamma, and delta, four coefficients dependent upon 
+    # the climate of the area being examined. The NCDC and CPC use the calibration period January 1931
+    # through December 1990 (cf. Karl, 1986; Journal of Climate and Applied Meteorology, Vol. 25, No. 1, January 1986).
     
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=RuntimeWarning)
@@ -527,12 +522,10 @@ def _climatic_characteristic(alpha,
     
     # CALIBRATED CAFEC, K, AND d CALCULATION
     # NOTE: 
-    # The Z index is calculated with a calibrated K (weighting factor) but
-    # a full record d (difference between actual precipitation and CAFEC -
-    # climatically appropriate for existing conditions - precipitation).
-    # CAFEC precipitation is calculated analogously to a simple water
-    # balance, where precipitation is equal to evaporation plus runoff 
-    # (and groundwater recharge) plus or minus any change in soil moisture storage. 
+    # The Z index is calculated with a calibrated K (weighting factor) but a full record d (difference between actual 
+    # precipitation and CAFEC precipitation). CAFEC precipitation is calculated analogously to a simple water balance,
+    # where precipitation is equal to evaporation plus runoff (and ground water recharge) plus or minus any change 
+    # in soil moisture storage. 
     d_hat = np.empty((total_calibration_years, 12)) 
     for k in range(total_calibration_years):
         for i in range(12):
@@ -579,6 +572,7 @@ def _climatic_characteristic(alpha,
         # Calculate z_hat, the numerator of the K equation for month i.
         z_hat_m[i] = D_hat[i] * K_hat[i]
     
+    # sum the monthly Z-hat values
     z_hat = sum(z_hat_m)
     
     # Calculate the weighting factor, K, using the calibrated variables K_hat and z_hat. The purpose of
@@ -629,7 +623,7 @@ def _z_index(P,
                (array size) should be a multiple of 12 (representing an ordinal number of full years)
     :param data_start_year: initial year of the input arrays, i.e. the first element of each of the input arrays 
                             is assumed to correspond to January of this initial year
-    :param calibration_start_year: initial year of the calibration period, should be greater than or equal to the data_start_year
+    :param calibration_start_year: initial year of the calibration period, should be >= data_start_year
     :param calibration_end_year: final year of the calibration period
     :return 1-D numpy.ndarray of Z-Index values, with shape corresponding to the input arrays
     :rtype: numpy.ndarray of floats
@@ -1713,6 +1707,9 @@ def pdsi_from_climatology(precip_time_series,
     This function computes the Palmer Drought Severity Index (PDSI), Palmer Hydrological Drought Index (PHDI), 
     and Palmer Z-Index.
     
+    The PET values used in the calculation can be computed using Thornthwaite's method (default) or the original 
+    method used historically by NCDC (enabled by providing both B and H arguments).
+    
     :param precip_time_series: time series of monthly precipitation values, in inches
     :param temperature_time_series: time series of monthly temperature values, in degrees Fahrenheit
     :param awc: available water capacity (soil constant), in inches
@@ -1721,24 +1718,30 @@ def pdsi_from_climatology(precip_time_series,
                             both of which are assumed to start in January of this year
     :param calibration_start_year: initial year of the calibration period 
     :param calibration_end_year: final year of the calibration period 
+    :param B: PET related constant read from the soil constants file for stations and/or climate divisions,
+              if present along with the H argument then the original NCDC method for computing PET will be used 
+    :param H: PET related constant read from the soil constants file for stations and/or climate divisions,
+              if present along with the B argument then the original NCDC method for computing PET will be used 
     :return: four numpy arrays containing PDSI, PHDI, PMDI, and Z-Index values respectively 
     '''
 
     # convert monthly temperatures from Fahrenheit to Celsius
     monthly_temps_celsius = (temp_time_series - 32) * 5.0 / 9.0
 
-    # DEBUG ONLY -- REMOVE
-    # compute PET using method from original PDSI code pdinew.f
-    pet_time_series = pdinew.potential_evapotranspiration(monthly_temps_celsius, 
-                                                           latitude,
-                                                           data_start_year,
-                                                           B,
-                                                           H)
+    if B is not None and H is not None:
 
-#     # compute PET
-#     pet_time_series = thornthwaite.potential_evapotranspiration(monthly_temps_celsius, 
-#                                                                 latitude, 
-#                                                                 data_start_year)
+        # compute PET using method from original PDSI Fortran code pdinew.f
+        pet_time_series = pdinew.potential_evapotranspiration(monthly_temps_celsius, 
+                                                               latitude,
+                                                               data_start_year,
+                                                               B,
+                                                               H)
+
+    else:
+        # compute PET using the Thornthwaite method
+        pet_time_series = thornthwaite.potential_evapotranspiration(monthly_temps_celsius, 
+                                                                    latitude, 
+                                                                    data_start_year)
 
     return pdsi(precip_time_series,
                 pet_time_series.flatten(),
