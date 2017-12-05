@@ -339,11 +339,11 @@ def process_division(division_index,
             
             # convert temperatures from Fahrenheit to Celsius, if necessary
             temperature_units = input_dataset[temp_var_name].units
-            if temperature_units in ['degree_Fahrenheit', 'degrees Fahrenheit', 'fahrenheit', 'Fahrenheit', 'F']:
+            if temperature_units in ['degree_Fahrenheit', 'degrees Fahrenheit', 'degrees F', 'fahrenheit', 'Fahrenheit', 'F']:
                 
                 temperature = np.apply_along_axis(f2c, 0, temperature)
 
-            elif temperature_units not in ['degree_Celsius', 'celsius', 'Celsius', 'C']:
+            elif temperature_units not in ['degree_Celsius', 'degrees Celsius', 'degrees C', 'celsius', 'Celsius', 'C']:
                 
                 raise ValueError('Unsupported temperature units: \'{0}\''.format(temperature_units))
     
