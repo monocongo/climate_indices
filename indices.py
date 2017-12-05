@@ -459,15 +459,15 @@ def pet(temperature_monthly_celsius,
     # make sure we're not dealing with a NaN latitude value
     if not np.isnan(latitude_degrees) and (latitude_degrees < 90.0) and (latitude_degrees > -90.0):
         
-#         # compute and return the PET values using Thornthwaite's equation
-#         return thornthwaite.potential_evapotranspiration(temperature_monthly_celsius, latitude_degrees, data_start_year)
+        # compute and return the PET values using Thornthwaite's equation
+        return thornthwaite.potential_evapotranspiration(temperature_monthly_celsius, latitude_degrees, data_start_year)
         
-        # DEBUG ONLY -- REMOVE
-        return pdinew.potential_evapotranspiration(temperature_monthly_celsius,
-                                                   latitude_degrees,
-                                                   data_start_year,
-                                                   B,
-                                                   H)
+#         # DEBUG ONLY -- REMOVE
+#         return pdinew.potential_evapotranspiration(temperature_monthly_celsius,
+#                                                    latitude_degrees,
+#                                                    data_start_year,
+#                                                    B,
+#                                                    H)
         
     else:
         message = 'Invalid latitude value: {0} (must be in degrees north, between -90.0 and 90.0 inclusive)'.format(latitude_degrees)
