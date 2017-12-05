@@ -98,9 +98,9 @@ def main():
             # read the temperature, precipitation, latitude and AWC for each division
             for division_index, division_id in enumerate(division_ids):
         
-                # DEBUG ONLY -- RMEOVE
-                if division_id > 206:
-                    break
+#                 # DEBUG ONLY -- RMEOVE
+#                 if division_id > 102:
+#                     break
                 
 #                 # FOR DEBUG/DEVELOPMENT ONLY -- REMOVE
                 print('\n\n======================================================================\nDivision ID: {0}\n'.format(division_id))
@@ -151,7 +151,7 @@ def main():
                 # dictionary of variable names to corresponding arrays of differences to facilitate looping below
                 varnames_to_arrays = {'palmer_PDSI': (pdsi_diffs, expected_pdsi, palmer_PDSI.flatten()),
                                       'palmer_PHDI': (phdi_diffs, expected_phdi, palmer_PHDI),
-                                      'palmer_PMDI': (pmdi_diffs, expected_pmdi, palmer_PMDI),
+#                                       'palmer_PMDI': (pmdi_diffs, expected_pmdi, palmer_PMDI),
                                       'palmer_Z-INDEX': (zindex_diffs, expected_zindex, palmer_Z.flatten()) }
     
                 # we want to see all zero differences, if any non-zero differences exist then raise an alert
@@ -187,9 +187,18 @@ def plot_diffs(expected,
     
     # plot the values and differences
     x = np.arange(diffs.size)
+    
+    # set the Y-limit to range from -5 to 5, since this is the approximate range of values
     ax = plt.axes()
     ax.set_ylim([-5, 5])
+
+    # the X values will correspond to a horizontal line axis
     plt.axhline()
+    
+    # set the size of the plot to be larger/wider than the default
+    plt.rcParams["figure.figsize"] = [48, 8]
+    
+    # plot the lines, legend, title, labels, etc.
     expected_line, = plt.plot(x, expected, color='blue', label='NCEI (expected)')
     actual_line, = plt.plot(x, actual, color='yellow', linestyle='--', label='NIDIS (actual)')
     diffs_line, = plt.plot(x, diffs, color='red', label='Difference')
@@ -198,7 +207,10 @@ def plot_diffs(expected,
     plt.xlabel("months")
     plt.ylabel("value")
 #     plt.show()
-    plt.savefig(output_dir + '/compare_palmer_{0}_{1}.png'.format(varname, division_id))
+
+    # save the plot to file
+    plt.savefig(output_dir + '/compare_{0}_{1}_origpet.png'.format(varname, division_id))
+    
     plt.close()
 
 #-----------------------------------------------------------------------------------------------------------------------
