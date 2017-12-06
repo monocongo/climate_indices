@@ -63,7 +63,7 @@ Initially all tests should be run for validation:
 
 `$ python -m unittest test_*.py`
 
-If you run the above from the main bran branch and get an error then please send a report and/or add an issue, as all test should pass on the main branch.
+If you run the above from the main branch and get an error then please send a report and/or add an issue, as all test should pass on the main branch.
 
 ## Example indices processing scripts
 
@@ -1154,6 +1154,11 @@ through [CCO universal public domain dedication](https://creativecommons.org/pub
 
 
 1
+
+
+
+
+
 
 
 
