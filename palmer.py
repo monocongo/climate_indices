@@ -1952,7 +1952,7 @@ def scpdsi(precip_time_series,
         
         # if we have input time series (precipitation and PET) with an incomplete 
         # final year then we pad all the time series arrays with NaN values
-        pad_months = 12 - (precip_time_series.size % 12)
+        pad_months = (12 - (precip_time_series.size % 12)) % 12
         if pad_months > 0:            
             precip_time_series = np.pad(precip_time_series, (0, pad_months), 'constant', constant_values=(np.nan))
             pet_time_series = np.pad(pet_time_series, (0, pad_months), 'constant', constant_values=(np.nan))
