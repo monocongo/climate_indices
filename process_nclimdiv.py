@@ -320,6 +320,12 @@ def process_division(division_index,
     with netCDF4.Dataset(input_file) as input_dataset:
         
         division_id = input_dataset['division'][division_index]
+        
+        # only process divisions within CONUS, 101 - 4809
+#         if division_id > 4899:
+        if division_id != 1010:
+            return
+        
         logger.info('Processing indices for division {0}'.format(division_id))
     
         # read the division of input temperature values 
@@ -377,6 +383,7 @@ def process_division(division_index,
         
         if division_index < input_dataset[awc_var_name][:].size:
             awc = input_dataset[awc_var_name][division_index]               # assuming (divisions) orientation
+            awc += 1   # AWC values need to include top inch, values from the soil file do not, so we add top inch here
         else:
             awc = np.NaN
             
