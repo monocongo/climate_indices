@@ -321,10 +321,10 @@ def process_division(division_index,
         
         division_id = input_dataset['division'][division_index]
         
-        # only process divisions within CONUS, 101 - 4809
-#         if division_id > 4899:
-        if division_id != 1010:
-            return
+#         # only process divisions within CONUS, 101 - 4809
+# #         if division_id > 4899:
+#         if division_id != 1010:
+#             return
         
         logger.info('Processing indices for division {0}'.format(division_id))
     
