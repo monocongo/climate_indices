@@ -1,13 +1,9 @@
-import calendar
 from collections import deque
 import logging
 import math
 import pdinew
-import profile
 import numba
-from numba import float64, int32
 import numpy as np
-import scipy.constants
 import thornthwaite
 import utils
 import warnings
@@ -401,7 +397,6 @@ def _cafec_coefficients(P,
         warnings.simplefilter("ignore", category=RuntimeWarning)
         
         # get averages for each calendar month (compute means over the year axis, giving an average for each calendar month over all years)
-        P_bar = np.nanmean(P, axis=0)
         ET_bar = np.nanmean(ET, axis=0)
         PET_bar = np.nanmean(PET, axis=0)
         R_bar = np.nanmean(R, axis=0)
@@ -475,7 +470,6 @@ def _calibrate_data(arrays,
     # determine the array (year axis) indices for the calibration period
     total_data_years = int(arrays[0].shape[0] / 12)
     data_end_year = data_start_year + total_data_years - 1
-    total_calibration_years = calibration_end_year - calibration_start_year + 1
     calibration_start_year_index = calibration_start_year - data_start_year
     calibration_end_year_index = calibration_end_year - data_start_year 
 
@@ -546,14 +540,10 @@ def _climatic_characteristic(alpha,
     K_hat = np.empty((12,)) 
     z_hat_m = np.empty((12,)) 
     P_bar = np.nanmean(P, axis=0)
-    ET_bar = np.nanmean(ET, axis=0)
     PET_bar = np.nanmean(PET, axis=0)
     R_bar = np.nanmean(R, axis=0)
-    PR_bar = np.nanmean(PR, axis=0)
     L_bar = np.nanmean(L, axis=0)
-    PL_bar = np.nanmean(PL, axis=0)
     RO_bar = np.nanmean(RO, axis=0)
-    PRO_bar = np.nanmean(PRO, axis=0)
             
     for i in range(12):
                     
