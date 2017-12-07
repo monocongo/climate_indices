@@ -36,11 +36,6 @@ def _water_balance(AWC,
              potential runoff, loss, and potential loss 
     """
     
-    :param AWC: available water capacity, in inches
-    :param PET: timeseries of potential evapotranspiration values, in inches
-    :param P: timeseries of precipitation values, in inches
-    :return: numpy arrays for ET, PR, R, RO, PRO, L, and PL 
-    """
     # flatten timeseries to a 1-D array
     PET = PET.flatten() 
     P = P.flatten()
