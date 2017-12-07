@@ -24,7 +24,7 @@ Currently provided climate indices:
 ## Get involved
 We welcome you to use, make suggestions, and contribute to this code. 
 
-* Read our [contributing guidelines](https://github.com/monocongo/indices_python/CONTRIBUTING.md)
+* Read our [contributing guidelines](https://github.com/monocongo/indices_python/blob/master/CONTRIBUTING.md)
 * File an [issue](https://github.com/monocongo/indices_python/issues), or submit a pull request
 * Send us an [email](mailto:james.adams@noaa.gov)
 
