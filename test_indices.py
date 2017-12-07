@@ -1,5 +1,6 @@
 import indices
 import logging
+import math
 import numpy as np
 import unittest
 import scipy
@@ -403,8 +404,10 @@ class IndicesTestCase(unittest.TestCase):
                                    self.fixture_initial_data_year)
                                          
         # make sure PET is being computed as expected
-        self.assertTrue(np.allclose(computed_pet, self.fixture_pet_mm),
-                        'PET values not computed as expected')
+        np.testing.assert_allclose(computed_pet, 
+                                   self.fixture_pet_mm,
+                                   atol=0.01,
+                                   err_msg='PET values not computed as expected')
         
     #----------------------------------------------------------------------------------------
     def test_spi_gamma_1month(self):
@@ -540,8 +543,10 @@ class IndicesTestCase(unittest.TestCase):
         computed_spi = indices.spi_gamma(self.fixture_precips_mm, month_scale)
                                          
         # make sure SPI/gamma is being computed as expected
-        self.assertTrue(np.allclose(computed_spi, expected_spi, equal_nan=True), 
-                        'SPI/Gamma values for {0}-month scale not computed as expected'.format(month_scale))            
+        np.testing.assert_allclose(computed_spi, 
+                                   expected_spi, 
+                                   atol=0.01,
+                                   err_msg='SPI/Gamma values for {0}-month scale not computed as expected'.format(month_scale))
         
     #----------------------------------------------------------------------------------------
     def test_spi_gamma_6month(self):
@@ -677,8 +682,10 @@ class IndicesTestCase(unittest.TestCase):
         computed_spi = indices.spi_gamma(self.fixture_precips_mm, month_scale)
                                          
         # make sure SPI/gamma is being computed as expected
-        self.assertTrue(np.allclose(computed_spi, expected_spi, equal_nan=True), 
-                        'SPI/Gamma values for {0}-month scale not computed as expected'.format(month_scale))            
+        np.testing.assert_allclose(computed_spi, 
+                                   expected_spi, 
+                                   atol=0.01,
+                                   err_msg='SPI/Gamma values for {0}-month scale not computed as expected'.format(month_scale))
 
     #----------------------------------------------------------------------------------------
     def test_spi_pearson_6month(self):
@@ -814,10 +821,16 @@ class IndicesTestCase(unittest.TestCase):
         month_scale = 6
         computed_spi = indices.spi_pearson(self.fixture_precips_mm, month_scale, 1895, 1981, 2010)
                                          
-        # make sure SPI/Gamma is being computed as expected
-        self.assertTrue(np.allclose(computed_spi, expected_spi, equal_nan=True), 
-                        'SPI/Pearson values for {0}-month scale not computed as expected'.format(month_scale))           
-        
+        for i in range(computed_spi.size):
+            if not math.isclose(computed_spi[i], expected_spi[i], abs_tol=0.01) and not math.isnan(computed_spi[i]) and not math.isnan(expected_spi[i]): 
+                print('Month: {0}\n\tExpected:  {1}\n\tComputed:  {2}'.format(i, expected_spi[i], computed_spi[i]))
+
+        # make sure SPI/Pearson is being computed as expected
+        np.testing.assert_allclose(computed_spi, 
+                                   expected_spi, 
+                                   atol=0.01,
+                                   err_msg='SPI/Pearson values for {0}-month scale not computed as expected'.format(month_scale))
+
     #----------------------------------------------------------------------------------------
     def test_spei_pearson_6month(self):
          
@@ -955,10 +968,17 @@ class IndicesTestCase(unittest.TestCase):
                                              self.fixture_precips_mm, 
                                              temps_celsius=self.fixture_temps_celsius,
                                              latitude_degrees=self.fixture_latitude_degrees)
-                                          
+        
+        #DEBUG ONLY -- REMOVE                                  
+        for i in range(computed_spei.size):
+            if not math.isnan(computed_spei[i]) and not math.isnan(expected_spei[i]) and not math.isclose(computed_spei[i], expected_spei[i], abs_tol=0.01): 
+                print('Month: {0}\n\tExpected:  {1}\n\tComputed:  {2}'.format(i, expected_spei[i], computed_spei[i]))
+
         # make sure SPI/Gamma is being computed as expected
-        self.assertTrue(np.allclose(computed_spei, expected_spei, equal_nan=True), 
-                        'SPEI/Pearson values for {0}-month scale not computed as expected'.format(month_scale))           
+        np.testing.assert_allclose(computed_spei, 
+                                   expected_spei, 
+                                   atol=0.01,
+                                   err_msg='SPEI/Pearson values for {0}-month scale not computed as expected'.format(month_scale))
         
 #--------------------------------------------------------------------------------------------
 if __name__ == '__main__':

@@ -3,6 +3,7 @@ import logging
 import math
 import netCDF4
 import numpy as np
+import os
 import palmer
 import pdinew
 
@@ -12,7 +13,8 @@ Example usage:
 python -u <this_script> --input_file C:/home/data/nclimdiv/climdiv-climdv-v1.0.0-20170906.nc \
                         --precip_var_name prcp \
                         --temp_var_name tavg \
-                        --awc_var_name awc
+                        --awc_var_name awc \
+                        --output_dir C:/home/climdivs/pdi_differences
 """
 #-----------------------------------------------------------------------------------------------------------------------
 # set up matplotlib to use the Agg backend, in order to remove any dependencies on an X server,
@@ -73,7 +75,10 @@ def main():
                             required=True)
         parser.add_argument("--awc_var_name", 
                             help="Available water capacity variable name used in the input NetCDF file", 
-                            required=False)
+                            required=True)
+        parser.add_argument("--output_dir", 
+                            help="Output directory for monthly differences line graph plots", 
+                            required=True)
         args = parser.parse_args()
 
         # open the NetCDF files 
@@ -104,8 +109,8 @@ def main():
 
                 # get the expected/target values from the NetCDF
                 expected_pdsi = input_dataset.variables['pdsi.index'][division_index, :]
-#                 expected_phdi = input_dataset.variables['phdi.index'][division_index, :]
-#                 expected_pmdi = input_dataset.variables['pmdi.index'][division_index, :]
+                expected_phdi = input_dataset.variables['phdi.index'][division_index, :]
+                expected_pmdi = input_dataset.variables['pmdi.index'][division_index, :]
                 expected_zindex = input_dataset.variables['z.index'][division_index, :]
                 
                 # calibration period years used operationally with pdinew.f
@@ -131,33 +136,34 @@ def main():
 #                                                                                               expected_pdsi,
 #                                                                                               B,
 #                                                                                               H)
-# 
+#  
 #                 # find the differences between the new (Matlab-derived) and NCEI results
 #                 pdsi_diffs = palmer_PDSI.flatten() - expected_pdsi
 # #                 phdi_diffs = palmer_PHDI.flatten() - expected_phdi
 # #                 pmdi_diffs = palmer_PMDI.flatten() - expected_pmdi
 #                 zindex_diffs = palmer_Z.flatten() - expected_zindex
-#                
+#                 
 #                 # dictionary of variable names to corresponding arrays of differences to facilitate looping below
 #                 varnames_to_arrays = {'palmer_PDSI': (pdsi_diffs, expected_pdsi, palmer_PDSI.flatten()),
 # #                                       'palmer_PHDI': (phdi_diffs, expected_phdi, pdinew_PHDI),
 # #                                       'palmer_PMDI': (pmdi_diffs, expected_pmdi, pdinew_PMDI),
 #                                       'palmer_Z-INDEX': (zindex_diffs, expected_zindex, palmer_Z.flatten()) }
-#    
+#     
 #                 # we want to see all zero differences, if any non-zero differences exist then raise an alert
 #                 zeros = np.zeros(pdsi_diffs.shape)
 #                 for varname, array_tuple in varnames_to_arrays.items():
-#                        
+#                         
 #                     diffs = array_tuple[0]
 #                     expected = array_tuple[1]
 #                     actual = array_tuple[2]
-# 
+#  
 #                     # plot the two data arrays and the differences                       
 #                     plot_diffs(expected,
 #                                actual,
 #                                division_id,
-#                                varname)
-# 
+#                                varname,
+#                                args.output_dir)
+#  
 #                     # report if we see any significant differences
 #                     if not np.allclose(diffs, zeros, atol=_TOLERANCE, equal_nan=True):
 #                         logger.warning('Division {0}: Comparing new Palmer (pdinew.py) against '.format(division_id) + \
@@ -499,6 +505,7 @@ def main():
                     # plot the differences between the expected and actual results
                     plot_diffs(expected,
                                actual,
+                               diffs,
                                division_id,
                                varname)
  
@@ -556,11 +563,15 @@ def main():
 #-----------------------------------------------------------------------------------------------------------------------
 def plot_diffs(expected,
                actual,
+               diffs,
                division_id,
-               varname):
+               varname,
+               output_dir):
 
-    diffs = expected - actual     
     error = rmse(actual, expected)
+    
+    # set figure size to (x, y)
+    plt.figure(figsize=(30, 6))
     
     # plot the values and differences
     x = np.arange(diffs.size)

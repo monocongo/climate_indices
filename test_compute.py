@@ -272,8 +272,9 @@ class ComputeTestCase(unittest.TestCase):
         computed_values = compute.transform_fitted_gamma(self.fixture_monthly_values)
                                          
         # make sure the values are being computed as expected
-        self.assertTrue(np.allclose(computed_values, expected_values, equal_nan=True), 
-                        'Transformed gamma fitted values not computed as expected')            
+        np.testing.assert_allclose(computed_values, 
+                                   expected_values, 
+                                   err_msg='Transformed gamma fitted values not computed as expected')            
         
     #----------------------------------------------------------------------------------------
     def test_transform_fitted_pearson(self):
@@ -414,8 +415,10 @@ class ComputeTestCase(unittest.TestCase):
                                                            2010)
                                          
         # make sure the values are being computed as expected
-        self.assertTrue(np.allclose(computed_values, expected_values, equal_nan=True), 
-                        'Transformed Pearson Type III fitted values not computed as expected')            
+        np.testing.assert_allclose(computed_values, 
+                                   expected_values, 
+                                   atol=0.01,
+                                   err_msg='Transformed Pearson Type III fitted values not computed as expected')
         
     #----------------------------------------------------------------------------------------
     def test_sum_to_scale(self):
@@ -429,7 +432,6 @@ class ComputeTestCase(unittest.TestCase):
         expected_values = np.array([np.NaN, np.NaN, 13, 12, 9, 6, 9, 16, 18])
         np.testing.assert_allclose(computed_values, 
                                    expected_values, 
-                                   equal_nan=True, 
                                    err_msg='Sliding sums not computed as expected')            
 
         # test an input array with missing values on the end    
@@ -438,7 +440,6 @@ class ComputeTestCase(unittest.TestCase):
         expected_values = np.array([np.NaN, np.NaN, 13, 12, 9, 6, 9, 16, 18, np.NaN, np.NaN, np.NaN])
         np.testing.assert_allclose(computed_values, 
                                    expected_values, 
-                                   equal_nan=True, 
                                    err_msg='Sliding sums not computed as expected when missing values appended to end of input array')            
     
         # test an input array with missing values within the array    
@@ -447,7 +448,6 @@ class ComputeTestCase(unittest.TestCase):
         expected_values = np.array([np.NaN, np.NaN, 13, 12, 9, 6, 9, np.NaN, np.NaN, np.NaN, 19])
         np.testing.assert_allclose(computed_values, 
                                    expected_values, 
-                                   equal_nan=True, 
                                    err_msg='Sliding sums not computed as expected when missing values appended to end of input array')            
     
     #----------------------------------------------------------------------------------------

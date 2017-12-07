@@ -260,6 +260,7 @@ def initialize_dataset(file_path,
                                               ('time', x_dim_name, y_dim_name,), 
                                               fill_value=data_fill_value)        
         if data_variable_attributes is not None:
+
             data_variable.setncatts(data_variable_attributes)
 
     return netcdf
@@ -400,7 +401,7 @@ def add_variable_climdivs(file_path,
                       the dimensions "division" and "time" as well as corresponding coordinate variables.
     :param variable_name: name of the new variable to be added, a variable with this name should not already exist
     :param variable_attributes: the attributes that should be assigned to the new variable
-    :param divisions_to_arrays: a dictionary with division IDs as keys and corresponding 1-D Numpy arrays as values.
+    :param divisions_to_arrays: a dictionary with division indices as keys and corresponding 1-D Numpy arrays as values.
                                The number of elements within the arrays should match with the number of time steps 
                                of the existing NetCDF being added to (as specified by the time coordinate variable).
     '''
@@ -433,10 +434,10 @@ def add_variable_climdivs(file_path,
         for division_index, division_id in enumerate(list(dataset.variables['division'][:])):
             
             # make sure we have a data array of monthly values for this division
-            if division_id in divisions_to_arrays.keys():
+            if division_index in divisions_to_arrays.keys():
 
                 # make sure the array has the expected number of time steps 
-                data_array = divisions_to_arrays[division_id]
+                data_array = divisions_to_arrays[division_index]
                 if data_array.size == times_size:
                 
                     # assign the array into the current division's slot in the variable
@@ -444,7 +445,7 @@ def add_variable_climdivs(file_path,
 
                 else:
 
-                    logger.info('Unexpected size of data array for division ID {0} -- '.format(division_id) + 
+                    logger.info('Unexpected size of data array for division index {0} -- '.format(division_index) + 
                                 'expected {0} time steps but the array contains {1}'.format(times_size, data_array.size))
             
 #-----------------------------------------------------------------------------------------------------------------------
