@@ -1403,7 +1403,6 @@ class PalmerTestCase(unittest.TestCase):
         
         # call the water balance accounting function, providing AL-01 climate division input data
         palmer_ET, palmer_PR, palmer_R, palmer_RO, palmer_PRO, palmer_L, palmer_PL = \
-
                     palmer._water_balance(_awc_AL01 + 1.0, _pet_AL01, _precip_AL01)
                     
         arys = [['ET', palmer_ET, _et_AL01], 
