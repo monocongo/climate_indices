@@ -75,6 +75,10 @@ def spi_pearson(precips,
     scaled_precips = compute.sum_to_scale(precips, months_scale)
 
     # fit the scaled values to a Pearson Type III distribution and transform the values to corresponding normalized sigmas 
+#     transformed_fitted_values = compute.transform_fitted_pearson_new(scaled_precips, 
+#                                                                      data_start_year,
+#                                                                      calibration_year_initial,
+#                                                                      calibration_year_final)
     transformed_fitted_values = compute.transform_fitted_pearson(scaled_precips, 
                                                                  data_start_year,
                                                                  calibration_year_initial,
@@ -296,6 +300,10 @@ def spei_pearson(months_scale,
                                                                  data_start_year,
                                                                  calibration_year_initial,
                                                                  calibration_year_final)
+#     transformed_fitted_values = compute.transform_fitted_pearson_new(scaled_values, 
+#                                                                      data_start_year,
+#                                                                      calibration_year_initial,
+#                                                                      calibration_year_final)
         
     # clip values to within the valid range, reshape the array back to 1-D
     spei = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
@@ -332,6 +340,44 @@ def scpdsi(precip_time_series,
                          calibration_start_year,
                          calibration_end_year)
     
+#-------------------------------------------------------------------------------------------------------------------------------------------
+@jit
+def pdinew_pdsi(precip_time_series,
+                temp_time_series,
+                awc,
+                latitude,
+                data_start_year,
+                calibration_start_year,
+                calibration_end_year,
+                B,
+                H):
+    '''
+    This function computes the self-calibrated Palmer Drought Severity Index (scPDSI), Palmer Drought Severity Index 
+    (PDSI), Palmer Hydrological Drought Index (PHDI), Palmer Modified Drought Index (PMDI), and Palmer Z-Index.
+    Calls code known to correctly compute the PDSI values equal to results from NCEI Fortran implementation pdinew.f.
+    
+    :param precip_time_series: time series of monthly precipitation values, in inches
+    :param pet_time_series: time series of monthly PET values, in inches
+    :param awc: available water capacity (soil constant), in inches
+    :param data_start_year: initial year of the input precipitation and PET datasets, 
+                            both of which are assumed to start in January of this year
+    :param calibration_start_year: initial year of the calibration period 
+    :param calibration_end_year: final year of the calibration period 
+    :return: four numpy arrays containing PDSI, PHDI, ?, and Z-Index values respectively 
+    '''
+    
+    #REMOVE - FOR TESTING/DEBUG ONLY
+    return pdinew.pdsi_from_climatology(precip_time_series,
+                                        temp_time_series,
+                                        awc,
+                                        latitude,
+                                        B,
+                                        H,
+                                        data_start_year,
+                                        calibration_start_year,
+                                        calibration_end_year,
+                                        None)
+
 #-------------------------------------------------------------------------------------------------------------------------------------------
 @jit
 def pdsi(precip_time_series,

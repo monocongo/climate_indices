@@ -703,8 +703,8 @@ def _pdsi(Z):
     # loop over all years and months of the time series
     for _i in range(Z.size):    
                 
-        # DEBUGGING ONLY -- REMOVE
-        print('_i: {0}'.format(_i))
+#         # DEBUGGING ONLY -- REMOVE
+#         print('_i: {0}'.format(_i))
         
         # keep track of final backtracking index, meaningful once _k8 > 0, where _k8 > 0 indicates that backtracking is required
         df.index_i[_k8] = _i

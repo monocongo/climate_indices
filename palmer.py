@@ -19,7 +19,7 @@ _PDSI_MIN = -4.0
 _PDSI_MAX = 4.0
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.jit
+#@numba.jit
 def _water_balance(AWC,
                    PET,
                    P):
@@ -36,12 +36,18 @@ def _water_balance(AWC,
              potential runoff, loss, and potential loss 
     """
     
-    # P and PET should be in inches, flatten to a 1-D array
+    :param AWC: available water capacity, in inches
+    :param PET: timeseries of potential evapotranspiration values, in inches
+    :param P: timeseries of precipitation values, in inches
+    :return: numpy arrays for ET, PR, R, RO, PRO, L, and PL 
+    """
+    # flatten timeseries to a 1-D array
     PET = PET.flatten() 
     P = P.flatten()
     
     total_months = PET.shape[0]
 
+    # allocate arrays for the water balance values
     ET = np.zeros((total_months,))
     PR = np.zeros((total_months,))
     R = np.zeros((total_months,))
@@ -73,9 +79,7 @@ def _water_balance(AWC,
     
     # E is the amount of room (in inches) in the underlying soil layer that is available to be recharged with excess precipitation
     E = np.zeros((total_months,))
-
-    ## CONSTANTS
-    
+   
     # NOTE: SOIL MOISTURE STORAGE IS HANDLED BY DIVIDING THE SOIL INTO TWO
     # LAYERS AND ASSUMING THAT 1 INCH OF WATER CAN BE STORED IN THE SURFACE
     # LAYER. AWC IS THE COMBINED AVAILABLE MOISTURE CAPACITY IN BOTH SOIL
@@ -577,7 +581,7 @@ def _climatic_characteristic(alpha,
     return K
 
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit   # not working yet
+#@numba.jit  # not working yet, AssertionError: Failed at object (analyzing bytecode)
 def _z_index(P,
              PET,
              ET,
@@ -664,19 +668,18 @@ def _z_index(P,
     
     # loop over the full period of record and compute the CAFEC precipitation, and use this to determine the moisture departure
     # FULL RECORD CAFEC AND d CALCULATION
-    CAFEC = np.empty((P.shape[0], 12))
     z = np.empty((P.shape[0], 12))
     for n in range(P.shape[0]):
         for i in range(12):
             
             # calculate the CAFEC precipitation
-            CAFEC[n, i] = (alpha[i] * PET[n, i]) + \
-                          (beta[i] * PR[n, i]) + \
-                          (gamma[i] * PRO[n, i]) - \
-                          (delta[i] * PL[n, i])
+            CAFEC = (alpha[i] * PET[n, i]) + \
+                    (beta[i] * PR[n, i]) + \
+                    (gamma[i] * PRO[n, i]) - \
+                    (delta[i] * PL[n, i])
             
             # Calculate d_hat, difference between actual precipitation and CAFEC precipitation
-            departure = P[n, i] - CAFEC[n, i]
+            departure = P[n, i] - CAFEC
             
             # Calculate the Z-index (moisture anomaly index)
             z[n, i] = K[i] * departure
@@ -974,17 +977,22 @@ def _pdsi_from_zindex(Z):
     X1 = 0.0 # X1 is the severity index value for an incipient wet spell for a month.
     X2 = 0.0 # X2 is the severity index value for an incipient dry spell for a month.
     X3 = 0.0 # X3 is the severity index value of the current established wet or dry spell for a month.
+
+    
+    Pe = 0.0 # the probability that the current wet or dry spell has ended in a month
+    X1 = 0.0 # the severity index value for an incipient wet spell for a month
+    X2 = 0.0 # the severity index value for an incipient dry spell for a month
+    X3 = 0.0 # the severity index value of the current established wet or dry spell for a month
     
     number_of_months = Z.shape[0]
     
-    # BACTRACKING VARIABLES
-    
     # BT is the backtracking variable, and is pre-allocated with zeros. Its value (1, 2, or 3) indicates which 
     # intermediate index (X1, X2, or X3) to backtrack up, selecting the associated term (X1, X2, or X3) for the PDSI. 
-    # NOTE: BT may be operationally left equal to 0, as it cannot be known in real time when an existing drought or wet spell may or may not be over.
+    # NOTE: BT may be operationally left equal to 0, as it cannot be known in real time when an existing drought or 
+    # wet spell may or may not be over.
     BT = np.zeros((number_of_months,), dtype=np.int8) 
     
-    ## CALCULATE PDSI AND PHDI
+    # initialize arrays
     PX1 = np.zeros((number_of_months,))
     PX2 = np.zeros((number_of_months,))
     PX3 = np.zeros((number_of_months,))
@@ -1058,6 +1066,9 @@ def _pdsi_from_zindex(Z):
         X2 = PX2[k]
         X3 = PX3[k]
         
+        # select a PMDI
+        PMDI[k] = _pmdi(Pe, X1, X2, X3)
+
         ## ASSIGN X FOR CASES WHERE PX3 AND BT EQUAL ZERO
         # NOTE: This is a conflicting case that arises where X cannot be
         # assigned as X1, X2, or X3 in real time. Here 0 < PX1 < 1, 
@@ -1173,6 +1184,7 @@ def _compute_scpdsi(established_index_values,
     V = 0.0
     Q = 0.0
 
+    # current and previous period (month/time step) indices
     period = 0
     previous_key = -1
 
@@ -1856,8 +1868,16 @@ def _self_calibrate(pdsi_values,
     # remove periods before the end of the interval
     # calibrate using upper and lower 2% of values within the user-defined calibration interval
     # this is explained in equations (14) and (15) of Wells et al
-    dry_ratio = _PDSI_MIN / _pdsi_at_percentile(pdsi_values, 0.02) 
-    wet_ratio = _PDSI_MAX / _pdsi_at_percentile(pdsi_values, 0.98) 
+    dry_extreme = _pdsi_at_percentile(pdsi_values, 0.02)
+    if dry_extreme == 0.0:
+        dry_ratio = 1.0
+    else:
+        dry_ratio = _PDSI_MIN / dry_extreme
+    wet_extreme = _pdsi_at_percentile(pdsi_values, 0.98)
+    if wet_extreme == 0.0:
+        wet_ratio = 1.0
+    else:
+        wet_ratio = _PDSI_MAX / wet_extreme
         
     # adjust the self-calibrated Z-index values, using either the wet or dry ratio
     #TODO replace the below loop with a vectorized equivalent
@@ -1980,7 +2000,7 @@ def scpdsi(precip_time_series,
             PL = PL[0:-pad_months]
             
         # compute PDSI and other associated variables
-        PDSI, PHDI, PMDI = _pdsi_from_zindex(zindex)
+        PDSI, PHDI, PMDI = _pdsi_from_zindex(zindex, None)
 
         # keep a copy of the originally computed PDSI for return
         final_PDSI = np.array(PDSI)

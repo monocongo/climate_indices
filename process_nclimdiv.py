@@ -7,8 +7,10 @@ import netCDF4
 import netcdf_utils
 import numpy as np
 import os
+import palmer
 import subprocess
 import sys
+import numba
 
 # set up a basic, global logger which will write to the console as standard error
 logging.basicConfig(level=logging.INFO,
@@ -301,6 +303,7 @@ def compute_and_write_division(division_index):
                      calibration_end_year)
 
 #-----------------------------------------------------------------------------------------------------------------------
+#@numba.jit  # not working yet
 def process_division(division_index,
                      input_file,
                      output_file,
@@ -328,8 +331,10 @@ def process_division(division_index,
         
         logger.info('Processing indices for division {0}'.format(division_id))
     
-        # read the division of input temperature values 
+        # read input temperature, B, and H values for the division
         temperature = input_dataset[temp_var_name][division_index, :]    # assuming (divisions, time) orientation
+        B = input_dataset['B'][division_index]    # assuming (divisions) orientation
+        H = input_dataset['H'][division_index]    # assuming (divisions) orientation
         
         # initialize the latitude outside of the valid range, in order to use this within a conditional below to verify a valid latitude
         latitude = -100.0  
@@ -359,9 +364,18 @@ def process_division(division_index,
             logger.info('\tComputing PET for division {0}'.format(division_id))
 
             # compute PET across all longitudes of the latitude slice
-            pet_time_series = indices.pet(temperature, 
-                                          latitude_degrees=latitude, 
-                                          data_start_year=initial_data_year)
+
+            # DEBUG/TESTING -- REMOVE
+            # compute PET using the original method used in monthly CMB processing (pdinew.f)
+            pet_time_series = palmer._pdinew_potential_evapotranspiration(temperature, 
+                                                                          latitude,
+                                                                          data_start_year,
+                                                                          B,
+                                                                          H)
+
+#             pet_time_series = indices.pet(temperature, 
+#                                           latitude_degrees=latitude, 
+#                                           data_start_year=initial_data_year)
         
             # the above returns PET in millimeters, note this for further consideration
             pet_units = 'millimeter'
@@ -441,46 +455,102 @@ def process_division(division_index,
                         output_dataset['pmdi'][division_index, :] = np.reshape(pmdi, (1, pmdi.size))
                         output_dataset['scpdsi'][division_index, :] = np.reshape(pdsi, (1, scpdsi.size))
                         output_dataset['zindex'][division_index, :] = np.reshape(zindex, (1, zindex.size))
+#                         #DEBUG ONLY -- REMOVE
+#                         output_dataset['pet'][division_index, :] = np.reshape(pet, (1, pet.size))
                         output_dataset.sync()
                     lock.release()
     
-                # process the SPI and SPEI at the specified month scales
-                for months in scale_months:
-                    
-                    logger.info('\tComputing SPI/SPEI/PNP at {0}-month scale for division {1}'.format(months, division_id))
+#                 # process the SPI and SPEI at the specified month scales
+#                 for months in scale_months:
+#                     
+#                     logger.info('\tComputing SPI/SPEI/PNP at {0}-month scale for division {1}'.format(months, division_id))
+# 
+#                     #TODO ensure that the precipitation and PET values are using the same units
+#                     
+#                     # compute SPEI/Gamma
+#                     spei_gamma = indices.spei_gamma(months,
+#                                                     precip_time_series,
+#                                                     pet_mm=pet_time_series)
+# 
+#                     # compute SPEI/Pearson
+#                     spei_pearson = indices.spei_pearson(months,
+#                                                         data_start_year,
+#                                                         precip_time_series,
+#                                                         pet_mm=pet_time_series,
+#                                                         calibration_year_initial=calibration_start_year,
+#                                                         calibration_year_final=calibration_end_year)
+#                      
+#                     # compute SPI/Gamma
+#                     spi_gamma = indices.spi_gamma(precip_time_series, 
+#                                                   months)
+#              
+#                     # compute SPI/Pearson
+#                     spi_pearson = indices.spi_pearson(precip_time_series, 
+#                                                       months,
+#                                                       data_start_year,
+#                                                       calibration_start_year, 
+#                                                       calibration_end_year)        
+#         
+#                     # compute PNP
+#                     pnp = indices.percentage_of_normal(precip_time_series, 
+#                                                        months,
+#                                                        data_start_year,
+#                                                        calibration_start_year, 
+#                                                        calibration_end_year)        
+#     
+#                     # create variable names which should correspond to the appropriate scaled indicator output variables
+#                     scaled_name_suffix = str(months).zfill(2)
+#                     spei_gamma_variable_name = 'spei_gamma_' + scaled_name_suffix
+#                     spei_pearson_variable_name = 'spei_pearson_' + scaled_name_suffix
+#                     spi_gamma_variable_name = 'spi_gamma_' + scaled_name_suffix
+#                     spi_pearson_variable_name = 'spi_pearson_' + scaled_name_suffix
+#                     pnp_variable_name = 'pnp_' + scaled_name_suffix
+#     
+#                     # write the SPI, SPEI, and PNP values to NetCDF        
+#                     lock.acquire()
+#                     with netCDF4.Dataset(output_file, 'a') as output_dataset:
+#                         output_dataset[spei_gamma_variable_name][division_index, :] = np.reshape(spei_gamma, (1, spei_gamma.size))
+#                         output_dataset[spei_pearson_variable_name][division_index, :] = np.reshape(spei_pearson, (1, spei_pearson.size))
+#                         output_dataset[spi_gamma_variable_name][division_index, :] = np.reshape(spi_gamma, (1, spi_gamma.size))
+#                         output_dataset[spi_pearson_variable_name][division_index, :] = np.reshape(spi_pearson, (1, spi_pearson.size))
+#                         output_dataset[pnp_variable_name][division_index, :] = np.reshape(pnp, (1, pnp.size))
+#                         output_dataset.sync()
+#                     lock.release()
 
-                    #TODO ensure that the precipitation and PET values are using the same units
-                    
-                    # compute SPEI/Gamma
-                    spei_gamma = indices.spei_gamma(months,
-                                                    precip_time_series,
-                                                    pet_mm=pet_time_series)
-
-                    # compute SPEI/Pearson
-                    spei_pearson = indices.spei_pearson(months,
-                                                        data_start_year,
-                                                        precip_time_series,
-                                                        pet_mm=pet_time_series,
-                                                        calibration_year_initial=calibration_start_year,
-                                                        calibration_year_final=calibration_end_year)
-                     
-                    # compute SPI/Gamma
-                    spi_gamma = indices.spi_gamma(precip_time_series, 
-                                                  months)
-             
-                    # compute SPI/Pearson
-                    spi_pearson = indices.spi_pearson(precip_time_series, 
-                                                      months,
-                                                      data_start_year,
-                                                      calibration_start_year, 
-                                                      calibration_end_year)        
+#-----------------------------------------------------------------------------------------------------------------------
+def process_nclimdiv(input_file, 
+                     output_file, 
+                     month_scales, 
+                     temp_var_name,
+                     precip_var_name,
+                     awc_var_name,
+                     calibration_start_year,
+                     calibration_end_year):
+    """
+    Computes indices for all climate divisions in a NetCDF file, producing an output NetCDF containing
+    variables corresponding to the computed indices.
+    
+    :param input_file: NetCDF assumed to contain precipitation, temperature, and soil constant values for NCEI US 
+                       climate divisions (nClimDiv)
+    :param output_file: NetCDF file to which results are written, will be overwritten if file already exists
+    :param month_scales: month multiples to use for computing scaled indices (SPI, SPEI, and PNP)
+    :param temp_var_name: expected name of the temperature variable in the input NetCDF
+    :param precip_var_name: expected name of the precipitation variable in the input NetCDF
+    :param awc_var_name: expected name of the AWC variable in the input NetCDF
+    :param calibration_start_year: initial year of the calibration period
+    :param calibration_end_year: final year of the calibration period
+    """
+    
+    # initialize the output NetCDF that will contain the computed indices
+    _initialize_netcdf(output_file, input_file, month_scales)
         
-                    # compute PNP
-                    pnp = indices.percentage_of_normal(precip_time_series, 
-                                                       months,
-                                                       data_start_year,
-                                                       calibration_start_year, 
-                                                       calibration_end_year)        
+    # open the NetCDF files 
+    with netCDF4.Dataset(input_file) as input_dataset:
+         
+        # get the initial and final year of the input datasets
+        time_variable = input_dataset.variables['time']
+        data_start_year = netCDF4.num2date(time_variable[0], time_variable.units).year
+        data_end_year = netCDF4.num2date(time_variable[-1], time_variable.units).year
     
                     # create variable names which should correspond to the appropriate scaled index output variables
                     scaled_name_suffix = str(months).zfill(2)
@@ -490,17 +560,6 @@ def process_division(division_index,
                     spi_pearson_variable_name = 'spi_pearson_' + scaled_name_suffix
                     pnp_variable_name = 'pnp_' + scaled_name_suffix
     
-                    # write the SPI, SPEI, and PNP values to NetCDF        
-                    lock.acquire()
-                    with netCDF4.Dataset(output_file, 'a') as output_dataset:
-                        output_dataset[spei_gamma_variable_name][division_index, :] = np.reshape(spei_gamma, (1, spei_gamma.size))
-                        output_dataset[spei_pearson_variable_name][division_index, :] = np.reshape(spei_pearson, (1, spei_pearson.size))
-                        output_dataset[spi_gamma_variable_name][division_index, :] = np.reshape(spi_gamma, (1, spi_gamma.size))
-                        output_dataset[spi_pearson_variable_name][division_index, :] = np.reshape(spi_pearson, (1, spi_pearson.size))
-                        output_dataset[pnp_variable_name][division_index, :] = np.reshape(pnp, (1, pnp.size))
-                        output_dataset.sync()
-                    lock.release()
-
 #-----------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
 
@@ -512,7 +571,10 @@ if __name__ == '__main__':
     
     A single input NetCDF containing temperature, precipitation, latitude, and available water capacity variables for US climate divisions 
     is required.
-      
+    
+    The variables named for precipitation and temperature are expected to have dimensions (division, time), 
+    and AWC with a single division dimension.
+    
     Example command line arguments: 
     
         --input_file C:/home/climdivs/climdivs_201701.nc 
@@ -566,47 +628,16 @@ if __name__ == '__main__':
                             required=True)
         args = parser.parse_args()
 
-        # initialize the output NetCDF that will contain the computed indices
-        initialize_netcdf(args.output_file, args.input_file, args.month_scales)
+        # compute indices, write results to NetCDF
+        process_nclimdiv(args.input_file, 
+                         args.output_file, 
+                         args.month_scales, 
+                         args.temp_var_name,
+                         args.precip_var_name,
+                         args.awc_var_name,
+                         args.calibration_start_year,
+                         args.calibration_end_year)
         
-        # open the NetCDF files 
-        with netCDF4.Dataset(args.input_file) as input_dataset:
-             
-            # get the initial and final year of the input datasets
-            time_variable = input_dataset.variables['time']
-            data_start_year = netCDF4.num2date(time_variable[0], time_variable.units).year
-            data_end_year = netCDF4.num2date(time_variable[-1], time_variable.units).year
- 
-            # get the number of divisions in the input dataset(s)
-            divisions_size = input_dataset.variables['division'].size
-        
-        # create a process Pool, with copies of the shared array going to each pooled/forked process
-        pool = multiprocessing.Pool(processes=1,#multiprocessing.cpu_count(),
-                                    initializer=init_process,
-                                    initargs=(args.input_file,
-                                              args.output_file,
-                                              args.temp_var_name,
-                                              args.precip_var_name,
-                                              args.awc_var_name,
-                                              args.month_scales,
-                                              data_start_year,
-                                              data_end_year,
-                                              args.calibration_start_year,
-                                              args.calibration_end_year))
- 
-        # map the divisions indices as an arguments iterable to the compute function
-        result = pool.map_async(compute_and_write_division, range(divisions_size))
-                  
-        # get the exception(s) thrown, if any
-        result.get()
-              
-        # close the pool and wait on all processes to finish
-        pool.close()
-        pool.join()
-
-#         # convert and move the output file
-#         convert_and_move_netcdf([args.output_file, args.output_file])
-              
         # report on the elapsed time
         end_datetime = datetime.now()
         logger.info("End time:      {}".format(end_datetime, '%x'))
@@ -616,3 +647,4 @@ if __name__ == '__main__':
     except Exception as ex:
         logger.exception('Failed to complete', exc_info=True)
         raise
+    
