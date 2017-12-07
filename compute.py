@@ -275,8 +275,11 @@ def _pearson3_fitting_values(values,
                 monthly_fitting_values[2, month_index] = pearson_parameters[1]
                 monthly_fitting_values[3, month_index] = pearson_parameters[2]
 
-            else:
-                logger.warning('Due to invalid L-moments the Pearson fitting values for month {0} are defaulting to zero'.format(month_index))
+#             else:
+#                 #FIXME/TODO there must be a better way to handle this, and/or is this as irrelevant 
+#                 #as swallowing the error here assumes? Do we get similar results using lmoments3 module?
+#                 #How does the comparable NCSU SPI code (Cumbie et al?) handle this?
+#                 logger.warn('Due to invalid L-moments the Pearson fitting values for month {0} are defaulting to zero'.format(month_index))
 
     return monthly_fitting_values
 
@@ -296,7 +299,10 @@ def _pearson3cdf(value,
     # it's only possible to make the calculation if the second Pearson parameter is above zero
     if pearson3_parameters[1] <= 0.0:
     
-        logger.debug("The second Pearson parameter is less than or equal to zero, invalid for the CDF calculation")
+        #FIXME/TODO there must be a better way to handle this, and/or is this as irrelevant 
+        #as swallowing the error here assumes? Do we get similar results using lmoments3 module?
+        #How does the comparable NCSU SPI code (Cumbie et al?) handle this?
+#         logger.debug("The second Pearson parameter is less than or equal to zero, invalid for the CDF calculation")
         return np.NaN
     
     result = 0
@@ -567,11 +573,15 @@ def transform_fitted_pearson_new(monthly_values,
         return monthly_values
         
     # compute the values we'll use to fit to the Pearson Type III distribution (parameters and probability of zero)
-    monthly_pearson_values = pearson3_fitting_values_new(monthly_values, 
-                                                         data_start_year,
-                                                         calibration_start_year,
-                                                         calibration_end_year)
+    monthly_pearson_values = _pearson3_fitting_values_new(monthly_values, 
+                                                          data_start_year,
+                                                          calibration_start_year,
+                                                          calibration_end_year)
     
+    # if we have a 1-D array of values then we assume it's (months) and convert to 2-D (years, months)
+    if len(monthly_values.shape) == 1:
+        monthly_values = utils.reshape_to_years_months(monthly_values)
+
     # allocate the array of values we'll return, with all values initialized to the fill value (NaN)
     fitted_values = np.full(monthly_values.shape, np.NaN)
     
@@ -628,7 +638,7 @@ def transform_fitted_pearson_new(monthly_values,
 
 #-----------------------------------------------------------------------------------------------------------------------
 #@jit
-def pearson3_fitting_values_new(values, 
+def _pearson3_fitting_values_new(values, 
                                 data_start_year, 
                                 calibration_start_year,
                                 calibration_end_year):
@@ -664,6 +674,11 @@ def pearson3_fitting_values_new(values,
     calibration_begin_index = (calibration_start_year - data_start_year)
     calibration_end_index = (calibration_end_year - data_start_year) + 1
     
+    # if we have a 1-D array of values then we assume it's (months) and convert to 2-D (years, months)
+    if len(values.shape) == 1:
+        values = utils.reshape_to_years_months(values)
+        
+        # assume all months, convert into 
     # now we'll use these sums to come up with the probability of zero and Pearson parameters for each calendar month
     monthly_fitting_values = np.zeros((4, 12))
     #TODO vectorize the below loop?
