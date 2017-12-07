@@ -5,13 +5,15 @@ import numba
 import numpy as np
 import pandas as pd
 import profile
+import scipy
 import utils
 import warnings
 
 #-----------------------------------------------------------------------------------------------------------------------
 # list the objects that we'll make publicly visible from this module, as interpreted by 'import *'
 # a good explanation of this: https://stackoverflow.com/questions/44834/can-someone-explain-all-in-python
-__all__ = ['pdsi_from_climatology']
+__all__ = ['pdsi_from_climatology',
+           'potential_evapotranspiration']
 
 #-----------------------------------------------------------------------------------------------------------------------
 # global variables
@@ -51,11 +53,7 @@ def pdsi_from_climatology(precip_timeseries,
                           H,
                           data_begin_year,
                           calibration_begin_year,
-                          calibration_end_year,
-                          expected_pdsi_for_debug):
-    """
-    :return: PDSI, PHDI, PMDI, Z, PET
-    """
+                          calibration_end_year):
     
     # calculate the negative tangent of the latitude which is used as an argument to the water balance function
     neg_tan_lat = -1 * math.tan(math.radians(latitude))
@@ -113,9 +111,7 @@ def pdsi_from_climatology(precip_timeseries,
                 K)
 
     # compute the final Palmers
-    #TODO/FIXME eliminate the expected PDSI argument once development/debugging is complete
-    PDSI, PHDI, PMDI = _pdsi(Z,
-                             expected_pdsi_for_debug)
+    PDSI, PHDI, PMDI = _pdsi(Z)
     
     return PDSI, PHDI, PMDI, Z, pedat
 
@@ -365,6 +361,10 @@ def _water_balance(T,
     
     #TODO determine the total number of years from the original shape of the input array, assume shape == (total months)
     
+    #EXPERIMENTAL/DEBUG ONLY -- REMOVE
+    if AWC >= 1.0:
+        AWC = AWC - 1.0
+    
     # reshape the precipitation array from 1-D (assumed to be total months) to (years, 12) with the second  
     # dimension being calendar months, and the final/missing monthly values of the final year padded with NaNs
     T = utils.reshape_to_years_months(T)
@@ -493,7 +493,7 @@ def _water_balance(T,
                     #         ----------------------- EVAP FROM BOTH LAYERS 
                     SL  = SS  
                     SSS = 0.0 
-                    UL  = (PE - precipitation - SL) * SU / (WCTOT)  
+                    UL  = (PE - precipitation - SL) * SU / (WCTOT)  # this includes the fix suggested by Jacobi 2013 
                     UL  = min(UL, SU)
                     SSU = SU - UL 
 
@@ -520,7 +520,6 @@ def _water_balance(T,
             SS = SSS
             SU = SSU
 
-#     return pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, prodat, tdat, sssdat, ssudat
     return pdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, prodat, tdat, sssdat, ssudat
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -656,11 +655,9 @@ def _zindex_from_climatology(temp_timeseries,
 #-----------------------------------------------------------------------------------------------------------------------
 #@profile
 #@numba.jit  #FIXME not yet working
-def _pdsi(Z,
-          expected_pdsi=None):
+def _pdsi(Z):
     '''
     :param Z: 2-D array of Z-Index values, corresponding in total size to Z
-    :param expected_pdsi: for DEBUGGING/DEBUG only -- REMOVE 
     '''
     
     # indicate that we'll use the globals for the backtracking months count and the current time step
@@ -700,11 +697,6 @@ def _pdsi(Z,
     column_array = np.full(Z.shape, 0, dtype=int).flatten()
     df['index_i'] = pd.Series(column_array)
 
-#     # DEBUG -- REMOVE
-#     # add the expected PDSI values so we can compare against these as we're debugging
-#     if expected_pdsi is not None:
-#         df['expected_pdsi'] = pd.Series(expected_pdsi.flatten())
-    
     # the total number of backtracking months, i.e. when performing backtracking we'll back fill this many months
     _k8 = 0
     
@@ -1259,25 +1251,6 @@ def _assign(df,
             # assign the backtracking array's value for the current backtrack month as that month's final PDSI value
             df.PDSI[ix] = df.SX[n] 
  
-#             #!!!!!!!!!!!!!!!!!!!!!!!!     Debugging section below -- remove before deployment
-#             #
-#             # show backtracking array contents and describe differences if assigned value differs from expected
-#             if expected_pdsi is not None:
-#                 tolerance = 0.01            
-#                 if math.isnan(df.PDSI[ix]) or (abs(df.expected_pdsi[ix] - df.PDSI[ix]) > tolerance):
-#                     print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
-#                     print('\nBACKTRACKING  actual time step:  {0}\tBacktracking index: {1}'.format(_i, ix))
-#                     print('\tNumber of backtracking steps (_k8):  {0}'.format(_k8))
-#                     print('\tPDSI:  Expected {0:.2f}\n\t       Actual:  {1:.2f}'.format(df.expected_pdsi[ix], 
-#                                                                                        df.PDSI[ix]))
-#                     print('\nSX: {0}'.format(df.SX._values[0:_k8+1]))
-#                     print('SX1: {0}'.format(df.SX1._values[0:_k8+1]))
-#                     print('SX2: {0}'.format(df.SX2._values[0:_k8+1]))
-#                     print('SX3: {0}'.format(df.SX3._values[0:_k8+1]))
-#                     print('\nwhich_X: {0}'.format(which_X))
-#                     print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
-#             #!!!!!!!!!----------- cut here -------------------------------------------------------
-                     
             # the PHDI is X3 if not zero, otherwise use X
             #TODO literature reference for this?
             df.PHDI[ix] = df.PX3[ix]
@@ -1323,7 +1296,7 @@ def _case(PROB,
         if abs(X2) > abs(X1): 
             PDSI = X2
 
-    elif  PROB > 0.0 and PROB < 100.0: # GO TO 20 in pdinew.f
+    elif 0.0 < PROB < 100.0: # GO TO 20 in pdinew.f
 
         # put the probability value into 0..1 range
         probability = PROB / 100.0
@@ -1339,3 +1312,76 @@ def _case(PROB,
         PDSI = X3
  
     return PDSI
+
+#-----------------------------------------------------------------------------------------------------------------------
+# from pdinew.f
+def _pe(temperature,
+        month_index,
+        latitude,
+        data_start_year,
+        B,
+        H):
+    """
+    Computes potential evapotranspiration based on the method used in original PDSI code pdi.f
+    
+    :param temperature: temperature value in degrees Fahrenheit
+    :param month_index: index into monthly timeseries, with 0 corresponding to January of the initial year
+    :param latitude: latitude value in degrees north 
+    :param data_start_year: initial year of the data being computed
+    :param B: ?
+    :param H: ?
+    """
+    #TODO document this, where do these come from?
+    PHI = np.array([-0.3865982, -0.2316132, -0.0378180, 0.1715539, 0.3458803, 0.4308320, \
+                     0.3916645, 0.2452467, 0.0535511, -0.15583436, -0.3340551, -0.4310691])
+    
+    TLA = -1 * math.tan(math.radians(latitude))
+#     TLA = math.tan(math.radians(latitude))
+    
+    #-----------------------------------------------------------------------
+    #     1 - CALCULATE PE (POTENTIAL EVAPOTRANSPIRATION)   
+    #-----------------------------------------------------------------------
+    if temperature <= 32.0:
+        PE = 0.0
+    else:  
+        DUM = PHI[month_index % 12] * TLA 
+        
+        try:
+            DK = math.atan(math.sqrt(1.0 - (DUM * DUM)) / DUM)   
+        except ValueError:
+            logger.exception('Failed to complete', exc_info=True)
+            raise
+            
+        if DK < 0.0:
+            DK = 3.141593 + DK  
+        DK = (DK + 0.0157) / 1.57  
+        if temperature >= 80.0:
+            PE = (math.sin((temperature / 57.3) - 0.166) - 0.76) * DK
+        else:  
+            DUM = math.log(temperature - 32.0)
+            PE = math.exp(-3.863233 + (B * 1.715598) - (B * math.log(H)) + (B * DUM)) * DK 
+
+        #-----------------------------------------------------------------------
+        #     CONVERT DAILY TO MONTHLY  
+        #-----------------------------------------------------------------------
+        year = data_start_year + int((month_index + 1) / 12)
+        month = month_index % 12
+        PE = PE * calendar.monthrange(year, month + 1)[1]
+
+    return PE
+
+#-----------------------------------------------------------------------------------------------------------------------
+def potential_evapotranspiration(monthly_temps_celsius,
+                                 latitude,
+                                 data_start_year,
+                                 B,
+                                 H):
+
+    # assumes monthly_temps_celsius, B, and H have same dimensions, etc.
+    
+    pet = np.full(monthly_temps_celsius.shape, np.NaN)
+    monthly_temps_fahrenheit = scipy.constants.convert_temperature(monthly_temps_celsius, 'C', 'F')
+    for i in range(monthly_temps_celsius.size):
+        pet[i] = _pe(monthly_temps_fahrenheit[i], i, latitude, data_start_year, B, H)
+    return pet
+

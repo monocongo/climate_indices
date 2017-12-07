@@ -1,12 +1,15 @@
-**Master**
+﻿**Master**
 [![Build Status](https://img.shields.io/travis/github.com/nidis/climate_indices/master.svg)](https://travis-ci.org/github.com/nidis/climate_indices)
 [![Test Coverage](https://img.shields.io/codecov/c/gitlab/github.com/nidis/climate_indices/master.svg)](https://codecov.io/github.com/nidis/climate_indices)
 [![Code Climate](https://img.shields.io/codeclimate/github.com/nidis/climate_indices.svg)](https://codeclimate.com/github.com/nidis/climate_indices)
 [![Dependencies](https://img.shields.io/gemnasium/github.com/nidis/climate_indices.svg)](https://gemnasium.com/github.com/nidis/climate_indices)
 
-# Climate indices for everyone
+## Community reference implementation of climate indices in Python 
 
-This project contains Python implementations of various climate indices, which provide a geographical and temporal picture of the severity of precipitation and temperature anomalies:
+This project contains Python implementations of various climate indices, which provide a geographical and temporal picture of the severity of precipitation and temperature anomalies. An attempt has been made to provide best-of-breed implementations of various climate indices commonly used for climate and drought monitoring, and to provide a codebase that is available for development by the climate science community, to facilitate the use of climate indices datasets computed in a standardized, validated, and transparent manner.
+
+
+Currently provided climate indices:
 
 * [SPI](https://climatedataguide.ucar.edu/climate-data/standardized-precipitation-index-spi): the number of standard deviations that the observed cumulative precipitation deviates from a normalized climatological average. Since it is possible to experience dry conditions over one time scale while simultaneously experiencing wet conditions over a different time scale, the provided implementation computes SPI for any monthly time scale (for example 1-month, 3-month, 12-month, etc.). To compute the SPI a long-term time series of precipitation accumulations over a specified time scale are first used to estimate a probability density function (either the gamma or Pearson Type III distribution). Once the precipitation time-series is fitted to the distribution it is then transformed into a normal distribution. Finally each time step is compared against this normalized distribution, with the resulting sigma as the SPI value for the time step. A zero index value for a particular time step reflects the median of the distribution of precipitation, a -3 indicates a very extreme dry spell, and a +3 indicates a very extreme wet spell. The more the index value departs from zero, the drier or wetter an event lasting X-months is when compared to the long-term climatology of the location. The SPI allows for comparison of precipitation observations at different locations with markedly different climates; an index value at one location expresses the same relative departure from median conditions at one location as at another location.
 * [SPEI](https://www.researchgate.net/publication/252361460_The_Standardized_Precipitation-Evapotranspiration_Index_SPEI_a_multiscalar_drought_index): the number of standard deviations that the observed cumulative precipitation minus potential evapotranspiration (P - PET) deviates from a normalized climatological average. The SPEI is designed to take into account both precipitation and potential evapotranspiration (PET) in determining drought. Thus, unlike the SPI, the SPEI captures the main impact of increased temperatures on water demand. Like the SPI, the SPEI can be calculated on a range of timescales from 1-48 months. At longer timescales (>~18 months), the SPEI has been shown to correlate with the self-calibrating PDSI (sc-PDSI). The SPEI is designed to take into account both precipitation and potential evapotranspiration (PET) in determining drought. Thus, unlike the SPI, the SPEI captures the main impact of increased temperatures on water demand. Like the SPI, the SPEI can be calculated on a range of timescales from 1-48 months. At longer timescales (>~18 months), the SPEI has been shown to correlate with the self-calibrating PDSI (sc-PDSI). PET is estimated using the Thornthwaite method (described below), and as such variables that can affect PET such as wind speed, surface humidity and solar radiation are not accounted for. The SPEI includes the role of temperature by subtracting the potential evapotranspiration from the precipitation and then applying the same distribution fitting and normalization process to find the sigma for each time step. SPEI is like SPI in that it also can be computed over any time scale, and the provided implementation computes values for any monthly time scale (for example 1-month, 3-month, 12-month, etc.).
@@ -21,8 +24,8 @@ This project contains Python implementations of various climate indices, which p
 ## Get involved
 We welcome you to use, make suggestions, and contribute to this code. 
 
-* Read our [contributing guidelines](https://github.com/nidis/climate_indices/CONTRIBUTING.md)
-* File an [issue](https://github.com/nidis/climate_indices/issues), or submit a pull request
+* Read our [contributing guidelines](https://github.com/monocongo/indices_python/CONTRIBUTING.md)
+* File an [issue](https://github.com/monocongo/indices_python/issues), or submit a pull request
 * Send us an [email](mailto:james.adams@noaa.gov)
 
 ## Environment set up
@@ -59,6 +62,8 @@ For users who'd prefer to not utilize the above approach using the provided `env
 Initially all tests should be run for validation:
 
 `$ python -m unittest test_*.py`
+
+If you run the above from the main branch and get an error then please send a report and/or add an issue, as all test should pass on the main branch.
 
 ## Example indices processing scripts
 
