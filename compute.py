@@ -1,4 +1,4 @@
-from lmoments3 import distr
+#from lmoments3 import distr
 import logging
 import math
 from math import exp, lgamma, log, pi, sqrt
@@ -143,7 +143,7 @@ def _estimate_lmoments(values):
     number_of_values = np.count_nonzero(~np.isnan(values))
     if (number_of_values < 4):
         message = 'Insufficient number of values to perform sample L-moments estimation'
-        logger.warn(message)
+        logger.warning(message)
         raise ValueError(message)
         
     # sort the values into ascending order
@@ -156,7 +156,7 @@ def _estimate_lmoments(values):
         term = values[i - 1]
         sums[0] = sums[0] + term
         for j in range(1, 3):
-            z = z - 1
+            z -= 1
             term = term * z
             sums[j] = sums[j] + term
         
@@ -284,7 +284,7 @@ def _pearson3_fitting_values(values,
     return monthly_fitting_values
 
 #----------------------------------------------------------------------------------------------------------------------
-@jit
+@jit(float64(float64,float64[:]))
 def _pearson3cdf(value,
                  pearson3_parameters):
     '''
@@ -394,7 +394,7 @@ def _error_function(value):
     return result
 
 #-----------------------------------------------------------------------------------------------------------------------
-@jit
+@jit(float64[:](float64[:],int32,int32,int32))
 def transform_fitted_pearson(monthly_values,
                              data_start_year,
                              calibration_start_year,
@@ -412,7 +412,7 @@ def transform_fitted_pearson(monthly_values,
     
     # if we're passed all missing values then we can't compute anything, return the same array of missing values
     if np.all(np.isnan(monthly_values)):
-        logger.info('An array of all fill values was passed as the argument, no action taken, returning the same array')
+#         logger.info('An array of all fill values was passed as the argument, no action taken, returning the same array')
         return monthly_values
         
     # validate (and possibly reshape) the input array
@@ -485,7 +485,8 @@ def transform_fitted_pearson(monthly_values,
                 
     return fitted_values
 
-#-----------------------------------------------------------------------------------------------------------------------@jit
+#-----------------------------------------------------------------------------------------------------------------------
+@jit
 def transform_fitted_gamma(monthly_values):
     '''
     TODO explain this    
@@ -499,7 +500,7 @@ def transform_fitted_gamma(monthly_values):
     
     # if we're passed all missing values then we can't compute anything, return the same array of missing values
     if np.all(np.isnan(monthly_values)):
-        logger.info('An array of all fill values was passed as the argument, no action taken, returning the same array')
+#         logger.info('An array of all fill values was passed as the argument, no action taken, returning the same array')
         return monthly_values
         
     # validate (and possibly reshape) the input array
@@ -708,13 +709,13 @@ def _pearson3_fitting_values_new(values,
         monthly_fitting_values[0, month_index] = probability_of_zero
         
         # get the Pearson Tyoe III parameters for this calendar month's values within the calibration period
-#         shape, location, scale = scipy.stats.pearson3.fit(calibration_values)
-#         monthly_fitting_values[1, month_index] = shape
-#         monthly_fitting_values[2, month_index] = location
-#         monthly_fitting_values[3, month_index] = scale
-        paras = distr.pe3.lmom_fit(calibration_values)
-        monthly_fitting_values[1, month_index] = paras['skew']
-        monthly_fitting_values[2, month_index] = paras['loc']
-        monthly_fitting_values[3, month_index] = paras['scale']
+        shape, location, scale = scipy.stats.pearson3.fit(calibration_values)
+        monthly_fitting_values[1, month_index] = shape
+        monthly_fitting_values[2, month_index] = location
+        monthly_fitting_values[3, month_index] = scale
+#         paras = distr.pe3.lmom_fit(calibration_values)
+#         monthly_fitting_values[1, month_index] = paras['skew']
+#         monthly_fitting_values[2, month_index] = paras['loc']
+#         monthly_fitting_values[3, month_index] = paras['scale']
 
     return monthly_fitting_values

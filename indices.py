@@ -49,7 +49,8 @@ def spi_gamma(precips,
     return spi[0:original_length]
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
-@jit(float64[:](float64[:], int64, int64, int64, int64))
+#@jit(float64[:](float64[:], int64, int64, int64, int64))
+@jit     # use this under the assumption that this is preferable to explicit specification of signature argument types
 def spi_pearson(precips, 
                 months_scale,
                 data_start_year,
@@ -90,7 +91,8 @@ def spi_pearson(precips,
     return spi[0:original_length]
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
-@jit(float64[:](int64, float64[:], float64[:], float64[:], int64, float64))
+#@jit(float64[:](int64, float64[:], float64[:], float64[:], int64, float64))  # uncomment/enable in production
+@jit     # use this under the assumption that this is preferable to explicit specification of signature argument types
 def spei_gamma(months_scale,
                precips_mm,
                pet_mm=None,
@@ -130,16 +132,16 @@ def spei_gamma(months_scale,
     '''
     
     # validate the function's argument combinations
-    if temps_celsius != None:
+    if temps_celsius is not None:
         
         # since we have temperature then it's expected that we'll compute PET internally, so we shouldn't have PET as an input
-        if pet_mm != None:
+        if pet_mm is not None:
             message = 'Incompatible arguments: either temperature or PET arrays can be specified as arguments, but not both' 
             logger.error(message)
             raise ValueError(message)
         
         # we'll need both the latitude and data start year in order to compute PET 
-        elif (latitude_degrees == None) or (data_start_year == None):
+        elif (latitude_degrees is None) or (data_start_year is None):
             message = 'Missing arguments: since temperature is provided as an input then both latitude ' + \
                       'and the data start year must also be specified, and one or both is not'
             logger.error(message)
@@ -154,16 +156,16 @@ def spei_gamma(months_scale,
         # compute PET
         pet_mm = pet(temps_celsius, latitude_degrees, data_start_year)
 
-    elif pet_mm != None:
+    elif pet_mm is not None:
         
         # since we have PET as input we shouldn't have temperature as an input
-        if temps_celsius != None:
+        if temps_celsius is not None:
             message = 'Incompatible arguments: either temperature or PET arrays can be specified as arguments, but not both.' 
             logger.error(message)
             raise ValueError(message)
         
         # make sure there's no confusion by not allowing a user to specify unnecessary parameters 
-        elif (latitude_degrees != None) or (data_start_year != None):
+        elif (latitude_degrees is not None) or (data_start_year is not None):
             message = 'Extraneous arguments: since PET is provided as an input then both latitude ' + \
                       'and the data start year must not also be specified, and one or both is.'
             logger.error(message)
@@ -194,7 +196,8 @@ def spei_gamma(months_scale,
     return spei[0:original_length]
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
-@jit(float64[:](int64, int64, float64[:], float64[:], float64[:], float64, int64, int64))
+#@jit(float64[:](int64, int64, float64[:], float64[:], float64[:], float64, int64, int64))
+@jit     # use this under the assumption that this is preferable to explicit specification of signature argument types
 def spei_pearson(months_scale,
                  data_start_year,
                  precips_mm,
@@ -238,16 +241,16 @@ def spei_pearson(months_scale,
     '''
     
     # validate the function's argument combinations
-    if temps_celsius != None:
+    if temps_celsius is not None:
         
         # since we have temperature then it's expected that we'll compute PET internally, so we shouldn't have PET as an input
-        if pet_mm != None:
+        if pet_mm is not None:
             message = 'Incompatible arguments: either temperature or PET arrays can be specified as arguments, but not both' 
             logger.error(message)
             raise ValueError(message)
         
         # we'll need the latitude in order to compute PET 
-        elif latitude_degrees == None:
+        elif latitude_degrees is None:
             message = 'Missing arguments: since temperature is provided as an input then both latitude ' + \
                       'and the data start year must also be specified, and one or both is not'
             logger.error(message)
@@ -262,16 +265,16 @@ def spei_pearson(months_scale,
         # compute PET
         pet_mm = pet(temps_celsius, latitude_degrees, data_start_year)
 
-    elif pet_mm != None:
+    elif pet_mm is not None:
         
         # since we have PET as input we shouldn't have temperature as an input
-        if temps_celsius != None:
+        if temps_celsius is not None:
             message = 'Incompatible arguments: either temperature or PET arrays can be specified as arguments, but not both.' 
             logger.error(message)
             raise ValueError(message)
         
         # make sure there's no confusion by not allowing a user to specify unnecessary parameters 
-        elif latitude_degrees != None:
+        elif latitude_degrees is not None:
             message = 'Extraneous arguments: since PET is provided as an input then latitude ' + \
                       'must not also be specified.'
             logger.error(message)
@@ -405,7 +408,8 @@ def pdsi(precip_time_series,
                        calibration_end_year)
     
 #-------------------------------------------------------------------------------------------------------------------------------------------
-@jit(float64[:](float64[:], int64, int64, int64, int64))
+#@jit(float64[:](float64[:], int64, int64, int64, int64))
+@jit     # use this under the assumption that this is preferable to explicit specification of signature argument types
 def percentage_of_normal(monthly_values, 
                          months_scale,
                          data_start_year,
@@ -465,9 +469,12 @@ def percentage_of_normal(monthly_values,
     return percentages_of_normal
     
 #-------------------------------------------------------------------------------------------------------------------------------------------
+@jit     # use this under the assumption that this is preferable to explicit specification of signature argument types
 def pet(temperature_monthly_celsius,
         latitude_degrees,
-        data_start_year):
+        data_start_year,
+        B=None,
+        H=None):
 
     '''
     This function computes potential evapotranspiration (PET) using Thornthwaite's equation.
@@ -479,20 +486,36 @@ def pet(temperature_monthly_celsius,
     :return: an array of PET values, of the same size and shape as the input temperature values array, in millimeters/month
     :rtype: 1-D numpy.ndarray of floats
     '''
-    if not np.all(np.isnan(temperature_monthly_celsius)):
-        
-        if not np.isnan(latitude_degrees) and (latitude_degrees < 90.0) and (latitude_degrees > -90.0):
-        
-            # compute and return the PET values using Thornthwaite's equation
-            return thornthwaite.potential_evapotranspiration(temperature_monthly_celsius, latitude_degrees, data_start_year)
-        
-        else:
-            message = 'Invalid latitude value: {0} (must be in degrees north, between -90.0 and 90.0 inclusive)'.format(latitude_degrees)
-            logger.error(message)
-            raise ValueError(message)
-        
-    else:
+    
+    # make sure we're not dealing with all NaN values
+    if np.ma.isMaskedArray(temperature_monthly_celsius) and temperature_monthly_celsius.count() == 0:
         
         # we started with all NaNs for the temperature, so just return the same
         return temperature_monthly_celsius
+
+    else:
         
+        # we were passed a vanilla Numpy array, look for indices where the value == NaN
+        nan_indices = np.isnan(temperature_monthly_celsius)
+        if np.all(nan_indices):
+        
+            # we started with all NaNs for the temperature, so just return the same
+            return temperature_monthly_celsius
+        
+    # make sure we're not dealing with a NaN latitude value
+    if not np.isnan(latitude_degrees) and (latitude_degrees < 90.0) and (latitude_degrees > -90.0):
+        
+        # compute and return the PET values using Thornthwaite's equation
+        return thornthwaite.potential_evapotranspiration(temperature_monthly_celsius, latitude_degrees, data_start_year)
+        
+#         # DEBUG ONLY -- REMOVE
+#         return pdinew.potential_evapotranspiration(temperature_monthly_celsius,
+#                                                    latitude_degrees,
+#                                                    data_start_year,
+#                                                    B,
+#                                                    H)
+        
+    else:
+        message = 'Invalid latitude value: {0} (must be in degrees north, between -90.0 and 90.0 inclusive)'.format(latitude_degrees)
+        logger.error(message)
+        raise ValueError(message)
