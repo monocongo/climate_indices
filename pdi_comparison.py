@@ -3,7 +3,6 @@ import logging
 import math
 import netCDF4
 import numpy as np
-import os
 import palmer
 import pdinew
 
@@ -19,7 +18,7 @@ python -u <this_script> --input_file C:/home/data/nclimdiv/climdiv-climdv-v1.0.0
 #-----------------------------------------------------------------------------------------------------------------------
 # set up matplotlib to use the Agg backend, in order to remove any dependencies on an X server,
 # for example to get around the ImportError: cannot import name 'QtCore'
-import matplotlib
+#import matplotlib
 #matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
@@ -87,9 +86,6 @@ def main():
             # get the division IDs as a list
             division_ids = list(input_dataset.variables['division'][:])
             
-            # create a dictionary containing division IDs as keys and average differences as values
-            divisions_to_differences = dict.fromkeys(division_ids)
-                               
             # read the temperature, precipitation, latitude and AWC for each division
             for division_index, division_id in enumerate(division_ids):
         
@@ -109,8 +105,8 @@ def main():
 
                 # get the expected/target values from the NetCDF
                 expected_pdsi = input_dataset.variables['pdsi.index'][division_index, :]
-                expected_phdi = input_dataset.variables['phdi.index'][division_index, :]
-                expected_pmdi = input_dataset.variables['pmdi.index'][division_index, :]
+#                 expected_phdi = input_dataset.variables['phdi.index'][division_index, :]
+#                 expected_pmdi = input_dataset.variables['pmdi.index'][division_index, :]
                 expected_zindex = input_dataset.variables['z.index'][division_index, :]
                 
                 # calibration period years used operationally with pdinew.f
@@ -122,7 +118,6 @@ def main():
                                   
                 #TODO get these values out of the NetCDF, compute from time values, etc.                        
                 data_begin_year = 1895
-                data_end_year = 2017
 
 #                 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #                 # compute palmer_PDSI etc. using new palmer_PDSI code translated from Jacobi et al MatLab code
@@ -556,7 +551,7 @@ def main():
                                division_id,
                                varname)
 
-    except Exception as ex:
+    except ExceptionS:
         logger.exception('Failed to complete', exc_info=True)
         raise
     
