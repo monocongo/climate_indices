@@ -1522,7 +1522,7 @@ def _z_sum(interval,
             
     calibration_period_initial_index = (calibration_start_year - input_start_year) * periods_per_year
     i = 0
-    while (i < calibration_period_initial_index) and (len(z_temporary) > 0):
+    while (i < calibration_period_initial_index) and z_temporary:
         
         # remove periods before the start of the calibration interval
         z_temporary.pop()
@@ -1614,7 +1614,8 @@ def _z_sum(interval,
     # find the highest reasonable value out of the summed values
     highest_reasonable_value = 0.0
     reasonable_tolerance_ratio = 1.25
-    while len(summed_values) > 0:
+#     while len(summed_values) > 0:
+    while summed_values:
 
         sum_value = summed_values.pop()
         if (sign * sum_value) > 0:

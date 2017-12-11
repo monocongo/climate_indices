@@ -4,8 +4,8 @@ import math
 import numba
 import numpy as np
 import pandas as pd
-import profile
-import scipy
+#import profile
+import scipy.constants
 import utils
 import warnings
 
@@ -59,15 +59,12 @@ def pdsi_from_climatology(precip_timeseries,
     neg_tan_lat = -1 * math.tan(math.radians(latitude))
 
     # compute water balance values using the function translated from the Fortran pdinew.f
-    #NOTE keep this code in place in order to compute the PET used later, since the two have 
-    # different PET algorithms and we want to compare PDSI using the same PET inputs
-    #FIXME clarify the difference between SP and PRO (spdat and prodat)
-#     pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, prodat, tdat, sssdat, ssudat = \
-    pdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, prodat, tdat, sssdat, ssudat = \
+    pdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, prodat = \
         _water_balance(temp_timeseries, precip_timeseries, awc, neg_tan_lat, B, H)
                  
-    #NOTE we need to compute CAFEC coefficients for use later/below
-    # compute PDSI etc. using translated functions from pdinew.f Fortran code
+    #TODO pdat should equal precipitation at this point, no need for duplicate array -- CONFIRM
+    
+    # compute CAFEC coefficients using translated functions from pdinew.f Fortran code
     alpha, beta, delta, gamma, t_ratio = _cafec_coefficients(precip_timeseries,
                                                              pedat,
                                                              etdat,
@@ -382,7 +379,6 @@ def _water_balance(T,
     
     # initialize the data arrays with NaNs    
     pdat = np.full((total_years, 12), np.NaN)
-#     spdat = np.full((total_years, 12), np.NaN)
     pedat = np.full((total_years, 12), np.NaN)
     pldat = np.full((total_years, 12), np.NaN)
     prdat = np.full((total_years, 12), np.NaN)
@@ -391,9 +387,6 @@ def _water_balance(T,
     etdat = np.full((total_years, 12), np.NaN)
     rodat = np.full((total_years, 12), np.NaN)
     prodat = np.full((total_years, 12), np.NaN)
-    tdat = np.full((total_years, 12), np.NaN)
-    sssdat = np.full((total_years, 12), np.NaN)
-    ssudat = np.full((total_years, 12), np.NaN)
 
     # loop on years and months
     end_year = begin_year + total_years
@@ -503,7 +496,6 @@ def _water_balance(T,
 
             # set the climatology and water balance data array values for this year/month time step
             pdat[year_index, month_index] = precipitation
-#             spdat[year_index, month_index] = SP
             pedat[year_index, month_index] = PE
             pldat[year_index, month_index] = PL
             prdat[year_index, month_index] = PR
@@ -512,15 +504,12 @@ def _water_balance(T,
             etdat[year_index, month_index] = ET
             rodat[year_index, month_index] = RO
             prodat[year_index, month_index] = PRO
-            tdat[year_index, month_index] = temperature
-            sssdat[year_index, month_index] = SSS
-            ssudat[year_index, month_index] = SSU
       
             # reset the upper and lower soil moisture values
             SS = SSS
             SU = SSU
 
-    return pdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, prodat, tdat, sssdat, ssudat
+    return pdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, prodat
 
 #-----------------------------------------------------------------------------------------------------------------------
 #@profile
@@ -602,11 +591,7 @@ def _zindex_from_climatology(temp_timeseries,
 #     neg_tan_lat = -1 * math.tan(math.radians(latitude))
 
     # compute water balance values using the function translated from the Fortran pdinew.f
-    #NOTE keep this code in place in order to compute the PET used later, since the two have 
-    # different PET algorithms and we want to compare PDSI using the same PET inputs
-    #FIXME clarify the difference between SP and PRO (spdat and prodat)
-#     pdat, spdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, prodat, tdat, sssdat, ssudat = \
-    pdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, prodat, tdat, sssdat, ssudat = \
+    pdat, pedat, pldat, prdat, rdat, tldat, etdat, rodat, prodat = \
         _water_balance(temp_timeseries, precip_timeseries, awc, neg_tan_lat, B, H)
                  
     #NOTE we need to compute CAFEC coefficients for use later/below
