@@ -1,7 +1,7 @@
 #from lmoments3 import distr
 import logging
 import math
-from math import exp, lgamma, log, pi, sqrt
+from math import exp, lgamma, pi, sqrt
 from numba import float64, int32, jit
 import numpy as np
 import scipy.special
@@ -219,10 +219,9 @@ def _pearson3_fitting_values(values,
     
     # make sure that we have data within the full calibration period, otherwise use the full period of record
     if (calibration_start_year < data_start_year) or (calibration_end_year > data_end_year):
-        logger.info('Insufficient data for the specified calibration period ({0}-{1}), instead using the full period ' + 
-                    'of record ({2}-{3})'.format(calibration_start_year, 
-                                                 calibration_end_year, 
-                                                 data_start_year, 
+        logger.info('Insufficient data for the specified calibration period ({0}-{1}), instead using the full period '.format(calibration_start_year, 
+                                                                                                                              calibration_end_year) + 
+                    'of record ({0}-{1})'.format(data_start_year, 
                                                  data_end_year))
         calibration_start_year = data_start_year
         calibration_end_year = data_end_year
@@ -588,7 +587,6 @@ def transform_fitted_pearson_new(monthly_values,
     # compute Pearson CDF -> probability values -> fitted values for the entire period of record
     probability_of_zero = 0.0
     probability_value = 0.0
-    pearson_parameters = np.zeros((3,))
     for year_index in range(monthly_values.shape[0]):
         for calendar_month_index in range(12):
 
@@ -662,10 +660,9 @@ def _pearson3_fitting_values_new(values,
     
     # make sure that we have data within the full calibration period, otherwise use the full period of record
     if (calibration_start_year < data_start_year) or (calibration_end_year > data_end_year):
-        logger.info('Insufficient data for the specified calibration period ({1}-{2}), instead using the full period ' + 
-                    'of record ({3}-{4})'.format(calibration_start_year, 
-                                                 calibration_end_year, 
-                                                 data_start_year, 
+        logger.info('Insufficient data for the specified calibration period ({0}-{1}), instead using the full period '.format(calibration_start_year, 
+                                                                                                                              calibration_end_year) + 
+                    'of record ({0}-{1})'.format(data_start_year, 
                                                  data_end_year))
         calibration_start_year = data_start_year
         calibration_end_year = data_end_year
