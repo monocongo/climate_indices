@@ -1134,13 +1134,14 @@ def _pdsi_from_zindex(Z):
     # X3 term changes more slowly than the values of the incipient (X1 and
     # X2) terms. The X3 term is the index for the long-term hydrologic
     # moisture condition and is the PHDI.
-    for s in range(len(PX3)):
-        if PX3[s] == 0:
+#     for s in range(len(PX3)):
+    for s, possible_phdi in enumerate(PX3):
+        if possible_phdi == 0:
             # For calculation and program advancement purposes, the PX3 term is sometimes set equal to 0. 
             # In such instances, the PHDI is set equal to X (the PDSI), which accurately reflects the X3 value.
             PHDI[s] = X[s]
         else:
-            PHDI[s] = PX3[s]
+            PHDI[s] = possible_phdi
     
     # return the computed variables
     return PDSI, PHDI, PMDI
@@ -1247,8 +1248,6 @@ def _compute_scpdsi(established_index_values,
                                                           dry_M,
                                                           dry_B,
                                                           new_X, 
-                                                          new_X1, 
-                                                          new_X2, 
                                                           new_X3, 
                                                           period, 
                                                           previous_key)
@@ -1295,8 +1294,6 @@ def _compute_scpdsi(established_index_values,
                                                           dry_M,
                                                           dry_B,
                                                           new_X, 
-                                                          new_X1, 
-                                                          new_X2, 
                                                           new_X3, 
                                                           period, 
                                                           previous_key)
@@ -1345,8 +1342,6 @@ def _choose_X(pdsi_values,
               dry_M,
               dry_B,
               new_X,
-              new_X1,
-              new_X2,
               new_X3,
               month_index, 
               previous_key,
@@ -1461,7 +1456,8 @@ def _backtrack_self_calibrated(pdsi_values,
     
     num1 = new_X
 
-    while (len(wet_index_deque) > 0) and (len(dry_index_deque) > 0):
+#     while (len(wet_index_deque) > 0) and (len(dry_index_deque) > 0):
+    while wet_index_deque and dry_index_deque:
     
         if num1 > 0:
         
@@ -1516,7 +1512,8 @@ def _z_sum(interval,
     sum_value = 0.0
     for i in range(interval):
     
-        if len(z_temporary) == 0:
+#         if len(z_temporary) == 0:
+        if not z_temporary:
            
             i = interval
             
@@ -1549,7 +1546,8 @@ def _z_sum(interval,
     # for each remaining Z value, recalculate the sum of Z values
     largest_sum = sum_value
     summed_values.appendleft(sum_value)
-    while (len(z_temporary) > 0) and (remaining_calibration_periods > 0):
+#     while (len(z_temporary) > 0) and (remaining_calibration_periods > 0):
+    while z_temporary and (remaining_calibration_periods > 0):
     
         # take the next Z-index value off the end of the list 
         z = z_temporary.pop()
