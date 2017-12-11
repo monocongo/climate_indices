@@ -450,16 +450,6 @@ class ComputeTestCase(unittest.TestCase):
                                    expected_values, 
                                    err_msg='Sliding sums not computed as expected when missing values appended to end of input array')            
     
-    #----------------------------------------------------------------------------------------
-    def test_count_zeros_and_non_missings(self):
-        '''
-        Test for the compute._count_zeros_and_non_missings() function
-        '''
-        values = np.array([3, 4, 0, 2, 3.1, 5, np.NaN, 8, 5, 6, 0.0, np.NaN, 5.6, 2])
-        zeros, non_missings = compute._count_zeros_and_non_missings(values)
-        self.assertEqual(zeros, 2, 'Failed to correctly count zero values')
-        self.assertEqual(non_missings, 12, 'Failed to correctly count non-missing values')
-        
 #     #----------------------------------------------------------------------------------------
 #     def test_error_function(self):
 #         '''

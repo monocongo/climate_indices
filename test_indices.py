@@ -3,7 +3,6 @@ import logging
 import math
 import numpy as np
 import unittest
-import scipy
 
 # disable logging messages
 logging.disable(logging.CRITICAL)
