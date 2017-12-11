@@ -1,15 +1,13 @@
-import argparse
 from datetime import datetime
 import ftplib
 from io import StringIO
 import logging
 import math
-import netCDF4
+# import netCDF4
+from netCDF4 import Dataset
 import numpy as np
-from numpy import float64
 import os
 import pandas as pd
-import process_nclimdiv
 import urllib
 import utils
 import wget
@@ -35,11 +33,10 @@ def _get_processing_date():
     ftp.cwd('pub/data/cirs/climdiv/')             
     ftp.retrlines('RETR procdate.txt', stringIO.write) 
     stringIO.seek(0)
-    processing_date = stringIO.readline()
-    return processing_date
+    return stringIO.readline()
 
 #-----------------------------------------------------------------------------------------------------------------------
-def _parse_climatology(processing_date,
+def _parse_climatology(date,
                        p_or_t='T'):
 
     # get the relevant ASCII file for US climate divisions from NCEI
@@ -55,7 +52,7 @@ def _parse_climatology(processing_date,
         raise ValueError('Invalid p_or_t argument: {}'.format(p_or_t))
         
     # download the file
-    div_file = urllib.request.urlopen(file_url + 'dv-v1.0.0-{0}'.format(processing_date))
+    div_file = urllib.request.urlopen(file_url + 'dv-v1.0.0-{0}'.format(date))
 
     # use a list of column names to clue in pandas as to the structure of the ASCII rows
     column_names = ['division_year', 'jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
@@ -209,7 +206,7 @@ def _create_netcdf(nclimdiv_netcdf,
     :param nclimdiv_netcdf: input NetCDF containing indicator values
     '''
     
-    with netCDF4.Dataset(nclimdiv_netcdf, 'w') as dataset:
+    with Dataset(nclimdiv_netcdf, 'w') as dataset:
 
         # open the output file for writing, set its dimensions and variables
         dataset.createDimension('time', None)
@@ -242,7 +239,7 @@ def _create_netcdf(nclimdiv_netcdf,
         # create a variable for each climatology and indicator
         variables = {}
         variable_names = divisional_arrays.keys()
-        filler = float64(np.NaN)
+        filler = np.NaN
         float_type = 'f8'
         for var_name in variable_names:
             
@@ -392,7 +389,6 @@ def ingest_netcdf(nclimdiv_netcdf,
                                  precip_var_name: [p_min_year, p_max_year]}
         
         # parse the indicator datasets
-        vars_to_divs_to_arrays = {}
         for variable in ['zndx', 'sp01', 'sp02', 'sp03', 'sp06', 'sp12', 'sp24', 'pdsi', 'phdi', 'pmdi']:
             
             # get the relevant US climate divisions ASCII file from NCEI
@@ -440,7 +436,7 @@ if __name__ == '__main__':
 
         # log some timing info, used later for elapsed time
         start_datetime = datetime.now()
-        logger.info("Start time:    {0}".format(start_datetime, '%x'))
+        logger.info("Start time:    {0}".format(start_datetime))
 
         # get the date string we'll use for file identification
         processing_date = _get_processing_date()
