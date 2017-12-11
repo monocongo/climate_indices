@@ -2068,16 +2068,22 @@ def pdsi(precip_time_series,
         # if we have input time series (precipitation and PET) with an incomplete 
         # final year then we pad all the time series arrays with NaN values
         pad_months = 12 - (precip_time_series.size % 12)
-        if pad_months > 0:            
-            precip_time_series = np.pad(precip_time_series, (0, pad_months), 'constant', constant_values=(np.nan))
-            pet_time_series = np.pad(pet_time_series, (0, pad_months), 'constant', constant_values=(np.nan))
-            ET = np.pad(ET, (0, pad_months), 'constant', constant_values=(np.nan))
-            PR = np.pad(PR, (0, pad_months), 'constant', constant_values=(np.nan))
-            R = np.pad(R, (0, pad_months), 'constant', constant_values=(np.nan))
-            RO = np.pad(RO, (0, pad_months), 'constant', constant_values=(np.nan))
-            PRO = np.pad(PRO, (0, pad_months), 'constant', constant_values=(np.nan))
-            L = np.pad(L, (0, pad_months), 'constant', constant_values=(np.nan))
-            PL = np.pad(PL, (0, pad_months), 'constant', constant_values=(np.nan))
+        if pad_months > 0:
+            
+            # pad arrays with empty/fill months at end of final year
+            arrays_to_pad = [precip_time_series, pet_time_series, ET, PR, R, RO, PRO, L, PL]
+            for ary in arrays_to_pad:
+                ary = np.pad(ary, (0, pad_months), 'constant', constant_values=(np.nan))
+                
+#             precip_time_series = np.pad(precip_time_series, (0, pad_months), 'constant', constant_values=(np.nan))
+#             pet_time_series = np.pad(pet_time_series, (0, pad_months), 'constant', constant_values=(np.nan))
+#             ET = np.pad(ET, (0, pad_months), 'constant', constant_values=(np.nan))
+#             PR = np.pad(PR, (0, pad_months), 'constant', constant_values=(np.nan))
+#             R = np.pad(R, (0, pad_months), 'constant', constant_values=(np.nan))
+#             RO = np.pad(RO, (0, pad_months), 'constant', constant_values=(np.nan))
+#             PRO = np.pad(PRO, (0, pad_months), 'constant', constant_values=(np.nan))
+#             L = np.pad(L, (0, pad_months), 'constant', constant_values=(np.nan))
+#             PL = np.pad(PL, (0, pad_months), 'constant', constant_values=(np.nan))
                 
         # compute Z-index values
         zindex = _z_index(precip_time_series, 
