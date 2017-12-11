@@ -57,7 +57,7 @@ def init_process_spi_spei_pnp(worker_precip_netcdf,
     
     # put the arguments into the global namespace
     global precip_netcdf, \
-           pet_netcdf, \
+           netcdf_pet, \
            precip_var_name, \
            spi_gamma_netcdf, \
            spi_pearson_netcdf, \
@@ -70,7 +70,7 @@ def init_process_spi_spei_pnp(worker_precip_netcdf,
            calibration_end_year
            
     precip_netcdf = worker_precip_netcdf
-    pet_netcdf = worker_pet_netcdf
+    netcdf_pet = worker_pet_netcdf
     precip_var_name = worker_precip_var_name
     spi_gamma_netcdf = worker_spi_gamma_netcdf
     spi_pearson_netcdf = worker_spi_pearson_netcdf
@@ -248,12 +248,12 @@ def init_palmer_process(worker_temp_netcdf,
            precip_var_name, \
            temp_var_name, \
            awc_var_name, \
-           pet_netcdf, \
-           pdsi_netcdf, \
-           phdi_netcdf, \
-           zindex_netcdf, \
-           scpdsi_netcdf, \
-           pmdi_netcdf, \
+           netcdf_pet, \
+           netcdf_pdsi, \
+           netcdf_phdi, \
+           netcdf_zindex, \
+           netcdf_scpdsi, \
+           netcdf_pmdi, \
            initial_data_year, \
            calibration_start_year, \
            calibration_end_year
@@ -264,12 +264,12 @@ def init_palmer_process(worker_temp_netcdf,
     temp_var_name = worker_temp_var_name
     precip_var_name = worker_precip_var_name
     awc_var_name = worker_awc_var_name
-    pet_netcdf = worker_pet_netcdf
-    pdsi_netcdf = worker_pdsi_netcdf
-    phdi_netcdf = worker_phdi_netcdf
-    zindex_netcdf = worker_zindex_netcdf
-    scpdsi_netcdf = worker_scpdsi_netcdf
-    pmdi_netcdf = worker_pmdi_netcdf
+    netcdf_pet = worker_pet_netcdf
+    netcdf_pdsi = worker_pdsi_netcdf
+    netcdf_phdi = worker_phdi_netcdf
+    netcdf_zindex = worker_zindex_netcdf
+    netcdf_scpdsi = worker_scpdsi_netcdf
+    netcdf_pmdi = worker_pmdi_netcdf
     initial_data_year = worker_initial_data_year
     calibration_start_year = worker_calibration_start_year
     calibration_end_year = worker_calibration_end_year
@@ -519,62 +519,67 @@ def validate_compatibility(precip_dataset,
 def initialize_unscaled_netcdfs(base_file_path,
                                 template_netcdf):
     
-    pet_netcdf = base_file_path + '_pet.nc'
-    pdsi_netcdf = base_file_path + '_pdsi.nc'
-    phdi_netcdf = base_file_path + '_phdi.nc'
-    zindex_netcdf = base_file_path + '_zindex.nc'
-    scpdsi_netcdf = base_file_path + '_scpdsi.nc'
-    pmdi_netcdf = base_file_path + '_pmdi.nc'
+    netcdf_pet = base_file_path + '_pet.nc'
+    netcdf_pdsi = base_file_path + '_pdsi.nc'
+    netcdf_phdi = base_file_path + '_phdi.nc'
+    netcdf_zindex = base_file_path + '_zindex.nc'
+    netcdf_scpdsi = base_file_path + '_scpdsi.nc'
+    netcdf_pmdi = base_file_path + '_pmdi.nc'
     
-    netcdf_utils.initialize_netcdf_single_variable_grid(pet_netcdf,
+    # min/max numbers for the Palmer indices
+    valid_min = -10.0
+    valid_max = 10.0
+
+    # initialize separate NetCDF files for each variable
+    netcdf_utils.initialize_netcdf_single_variable_grid(netcdf_pet,
                                                         template_netcdf,
                                                         'pet',
                                                         'Potential Evapotranspiration (PET), from Thornthwaite\'s equation',
                                                         0.0,
                                                         2000.0,
                                                         'millimeter')
-    netcdf_utils.initialize_netcdf_single_variable_grid(pdsi_netcdf,
+    netcdf_utils.initialize_netcdf_single_variable_grid(netcdf_pdsi,
                                                         template_netcdf,
                                                         'pdsi',
                                                         'Palmer Drought Severity Index (PDSI)',
                                                         valid_min,
                                                         valid_max)
-    netcdf_utils.initialize_netcdf_single_variable_grid(phdi_netcdf,
+    netcdf_utils.initialize_netcdf_single_variable_grid(netcdf_phdi,
                                                         template_netcdf,
                                                         'phdi',
                                                         'Palmer Hydrological Drought Index (PHDI)',
                                                         valid_min,
                                                         valid_max)
-    netcdf_utils.initialize_netcdf_single_variable_grid(zindex_netcdf,
+    netcdf_utils.initialize_netcdf_single_variable_grid(netcdf_zindex,
                                                         template_netcdf,
                                                         'zindex',
                                                         'Palmer Z-Index',
                                                         valid_min,
                                                         valid_max)
-    netcdf_utils.initialize_netcdf_single_variable_grid(scpdsi_netcdf,
+    netcdf_utils.initialize_netcdf_single_variable_grid(netcdf_scpdsi,
                                                         template_netcdf,
                                                         'scpdsi',
                                                         'Self-calibrated Palmer Drought Severity Index (scPDSI)',
                                                         valid_min,
                                                         valid_max)
-    netcdf_utils.initialize_netcdf_single_variable_grid(pmdi_netcdf,
+    netcdf_utils.initialize_netcdf_single_variable_grid(netcdf_pmdi,
                                                         template_netcdf,
                                                         'pmdi',
                                                         'Palmer Modified Drought Index (PMDI)',
                                                         valid_min,
                                                         valid_max)
 
-    return {'pet': pet_netcdf,
-            'pdsi': pdsi_netcdf,
-            'phdi': phdi_netcdf,
-            'zindex': zindex_netcdf,
-            'pmdi': pmdi_netcdf,
-            'scpdsi': scpdsi_netcdf}
+    return {'pet': netcdf_pet,
+            'pdsi': netcdf_pdsi,
+            'phdi': netcdf_phdi,
+            'zindex': netcdf_zindex,
+            'pmdi': netcdf_pmdi,
+            'scpdsi': netcdf_scpdsi}
     
 #-----------------------------------------------------------------------------------------------------------------------
-def initialize_scaled_netcdfs(base_file_path, 
-                              scale_months, 
-                              template_netcdf):
+def _initialize_scaled_netcdfs(base_file_path, 
+                               scale_months, 
+                               template_netcdf):
     
     # dictionary of index types to the NetCDF dataset files corresponding to the base index names and 
     # month scales (this is the object we'll build and return from this function)
@@ -810,7 +815,7 @@ if __name__ == '__main__':
         for scale_months in args.month_scales:
  
             # initialize the output NetCDFs for SPI gamma and Pearson for the month scale
-            scaled_netcdfs = initialize_scaled_netcdfs(args.output_file_base, scale_months, args.precip_file)
+            scaled_netcdfs = _initialize_scaled_netcdfs(args.output_file_base, scale_months, args.precip_file)
      
             # create a process Pool, initialize the global namespace to facilitate multiprocessing
             pool = multiprocessing.Pool(processes=number_of_workers,
@@ -862,9 +867,9 @@ if __name__ == '__main__':
          
         # report on the elapsed time
         end_datetime = datetime.now()
-        logger.info("End time:      {}".format(end_datetime, '%x'))
+        logger.info("End time:      {}".format(end_datetime))
         elapsed = end_datetime - start_datetime
-        logger.info("Elapsed time:  {}".format(elapsed, '%x'))
+        logger.info("Elapsed time:  {}".format(elapsed))
 
     except Exception as ex:
         logger.exception('Failed to complete', exc_info=True)

@@ -1,10 +1,8 @@
 import argparse
 import logging
 import indices
-import math
 import netCDF4
 import numpy as np
-import pdinew
 import scipy
 
 """
@@ -19,7 +17,7 @@ python -u <this_script> --input_file C:/home/data/nclimdiv/climdiv-climdv-v1.0.0
 # set up matplotlib to use the Agg backend, in order to remove any dependencies on an X server,
 # for example to get around the ImportError: cannot import name 'QtCore'
 import matplotlib
-#matplotlib.use('Agg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -65,10 +63,6 @@ def main():
 
     try:
 
-#         # FOR DEBUG/DEVELOPMENT ONLY -- REMOVE
-#         _limit_counter = 0
-#         _LIMIT = 10
-        
         # parse the command line arguments
         parser = argparse.ArgumentParser()
         parser.add_argument("--input_file", 
@@ -94,27 +88,15 @@ def main():
             # get the division IDs as a list
             division_ids = list(input_dataset.variables['division'][:])
             
-            # create a dictionary containing division IDs as keys and average differences as values
-            divisions_to_differences = dict.fromkeys(division_ids)
-                               
             # read the temperature, precipitation, latitude and AWC for each division
             for division_index, division_id in enumerate(division_ids):
         
-#                 # DEBUG ONLY -- RMEOVE
-#                 if division_id > 102:
-#                     break
-                
-#                 # FOR DEBUG/DEVELOPMENT ONLY -- REMOVE
+                # FOR DEBUG/DEVELOPMENT ONLY -- REMOVE
                 print('\n\n======================================================================\nDivision ID: {0}\n'.format(division_id))
-#                 if _limit_counter > _LIMIT:
-#                     break
-#                 _limit_counter += 1
                     
                 # get the data for this division
                 temp_timeseries = input_dataset.variables[args.temp_var_name][division_index, :]
                 latitude = input_dataset.variables['lat'][division_index]
-                B = input_dataset.variables['B'][division_index]
-                H = input_dataset.variables['H'][division_index]
 
                 # get the expected/target values from the NetCDF
                 expected_pet = input_dataset.variables['pedat'][division_index, :]
@@ -126,10 +108,14 @@ def main():
                 temp_timeseries = scipy.constants.convert_temperature(temp_timeseries, 'Fahrenheit', 'Celsius')
 
                 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-                # compute palmer_PDSI etc. using new palmer_PDSI code translated from Jacobi et al MatLab code
+                # compute PDSI etc. using new palmer.py PDSI code translated from Jacobi et al MatLab code
                 thornthwaite_pet = indices.pet(temp_timeseries,
                                                latitude,
                                                data_begin_year)
+                
+#                 # compute PDSI etc. using original PDSI code translated from NCDC Fortran code, now pdinew.py
+#                 B = input_dataset.variables['B'][division_index]
+#                 H = input_dataset.variables['H'][division_index]
 #                 ncdc_pet = pdinew.potential_evapotranspiration(temp_timeseries,
 #                                                                latitude,
 #                                                                data_begin_year,
@@ -139,23 +125,18 @@ def main():
                 # Thornthwaite function returns values in millimeters, convert to inches for comparison with NCDC values
                 thornthwaite_pet *= 0.0393701
                 
-                # find the differences between the Thornthwaite and NCDC method results
-                thornthwaite_diffs = thornthwaite_pet.flatten() - expected_pet
-#                 ncdc_diffs = ncdc_pet.flatten() - expected_pet
-                
                 # dictionary of variable names to corresponding arrays of differences to facilitate looping below
-                varnames_to_arrays = {'pet_thornthwaite': (thornthwaite_diffs, expected_pet, thornthwaite_pet.flatten()) }
-#                 varnames_to_arrays = {'pet_thornthwaite': (thornthwaite_diffs, expected_pet, thornthwaite_pet.flatten()),
-#                                       'pet_ncdc': (ncdc_diffs, expected_pet, ncdc_pet.flatten()) }
+                varnames_to_arrays = {'pet_thornthwaite': (expected_pet, thornthwaite_pet.flatten()) }
+#                 varnames_to_arrays = {'pet_thornthwaite': (expected_pet, thornthwaite_pet.flatten()),
+#                                       'pet_ncdc': (expected_pet, ncdc_pet.flatten()) }
     
                 # we want to see all zero differences, if any non-zero differences exist then raise an alert
                 for varname, array_tuple in varnames_to_arrays.items():
                         
                     print('Plotting differences for variable: {0}'.format(varname))
 
-                    diffs = array_tuple[0]
-                    expected = array_tuple[1]
-                    actual = array_tuple[2]
+                    expected = array_tuple[0]
+                    actual = array_tuple[1]
  
                     # plot the two data arrays and the differences                       
                     plot_diffs(expected,
@@ -164,7 +145,7 @@ def main():
                                varname,
                                args.output_dir)
  
-    except Exception as ex:
+    except Exception:
         logger.exception('Failed to complete', exc_info=True)
         raise
     

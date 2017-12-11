@@ -50,7 +50,11 @@ def rmse(predictions, targets):
     return np.sqrt(((predictions - targets) ** 2).mean())
 
 #-----------------------------------------------------------------------------------------------------------------------
-def main():
+def _main(input_file, 
+          temp_var_name, 
+          precip_var_name, 
+          awc_var_name,
+          output_dir):
 
     '''
     '''
@@ -61,27 +65,8 @@ def main():
 #         _limit_counter = 0
 #         _LIMIT = 10
         
-        # parse the command line arguments
-        parser = argparse.ArgumentParser()
-        parser.add_argument("--input_file", 
-                            help="Input dataset file (NetCDF) containing temperature, precipitation, and soil values for palmer_PDSI, SPI, SPEI, and PNP computations", 
-                            required=True)
-        parser.add_argument("--precip_var_name", 
-                            help="Precipitation variable name used in the input NetCDF file", 
-                            required=True)
-        parser.add_argument("--temp_var_name", 
-                            help="Temperature variable name used in the input NetCDF file", 
-                            required=True)
-        parser.add_argument("--awc_var_name", 
-                            help="Available water capacity variable name used in the input NetCDF file", 
-                            required=True)
-        parser.add_argument("--output_dir", 
-                            help="Output directory for monthly differences line graph plots", 
-                            required=True)
-        args = parser.parse_args()
-
         # open the NetCDF files 
-        with netCDF4.Dataset(args.input_file) as input_dataset:
+        with netCDF4.Dataset(input_file) as input_dataset:
 
             # get the division IDs as a list
             division_ids = list(input_dataset.variables['division'][:])
@@ -96,9 +81,9 @@ def main():
                 print('\n\n======================================================================\nDivision ID: {0}\n'.format(division_id))
                     
                 # get the data for this division
-                precip_timeseries = input_dataset.variables[args.precip_var_name][division_index, :]
-                temp_timeseries = input_dataset.variables[args.temp_var_name][division_index, :]
-                awc = input_dataset.variables[args.awc_var_name][division_index]
+                precip_timeseries = input_dataset.variables[precip_var_name][division_index, :]
+                temp_timeseries = input_dataset.variables[temp_var_name][division_index, :]
+                awc = input_dataset.variables[awc_var_name][division_index]
                 latitude = input_dataset.variables['lat'][division_index]
                 B = input_dataset.variables['B'][division_index]
                 H = input_dataset.variables['H'][division_index]
@@ -157,7 +142,7 @@ def main():
 #                                actual,
 #                                division_id,
 #                                varname,
-#                                args.output_dir)
+#                                output_dir)
 #  
 #                     # report if we see any significant differences
 #                     if not np.allclose(diffs, zeros, atol=_TOLERANCE, equal_nan=True):
@@ -362,8 +347,8 @@ def main():
                 zeros = np.zeros(alpha_diffs.shape)
                 for varname, diffs in varnames_to_arrays.items():
                     if not np.allclose(diffs, zeros, atol=_TOLERANCE, equal_nan=True):
-                        logger.warning('Division {0}: Comparing new Palmer against operational pdinew.f: ' + \
-                                    '\nNon-matching difference arrays for CAFEC coefficient: {1}'.format(division_id, varname))
+                        logger.warning('Division {0}: Comparing new Palmer against operational pdinew.f: '.format(division_id) + \
+                                       '\nNon-matching difference arrays for CAFEC coefficient: {0}'.format(varname))
                         offending_indices = np.where(abs(diffs) > _TOLERANCE)
                         logger.warning('Indices with significant differences: {0}'.format(offending_indices[0]))
 
@@ -498,11 +483,12 @@ def main():
                     actual = array_tuple[2]
                         
                     # plot the differences between the expected and actual results
-                    plot_diffs(expected,
-                               actual,
-                               diffs,
-                               division_id,
-                               varname)
+                    _plot_diffs(expected,
+                                actual,
+                                diffs,
+                                division_id,
+                                varname,
+                                output_dir)
  
                     # we expect to see all zero differences, if any non-zero differences exist then raise an alert
                     if not np.allclose(diffs, zeros, atol=_TOLERANCE, equal_nan=True):
@@ -546,22 +532,24 @@ def main():
                     expected = array_tuple[1]
                     actual = array_tuple[2]
                        
-                    plot_diffs(expected,
-                               actual,
-                               division_id,
-                               varname)
+                    _plot_diffs(expected,
+                                actual,
+                                diffs,
+                                division_id,
+                                varname,
+                                output_dir)
 
-    except ExceptionS:
+    except Exception:
         logger.exception('Failed to complete', exc_info=True)
         raise
     
 #-----------------------------------------------------------------------------------------------------------------------
-def plot_diffs(expected,
-               actual,
-               diffs,
-               division_id,
-               varname,
-               output_dir):
+def _plot_diffs(expected,
+                actual,
+                diffs,
+                division_id,
+                varname,
+                output_dir):
 
     error = rmse(actual, expected)
     
@@ -581,10 +569,34 @@ def plot_diffs(expected,
     plt.xlabel("months")
     plt.ylabel("value")
 #     plt.show()
-    plt.savefig('C:/home/data/nclimdiv/palmer_pdsi_diffs_w_cmb_{0}_{1}.png'.format(varname, division_id))
+    plt.savefig('{0}/palmer_diffs_w_cmb_{1}_{2}.png'.format(output_dir, varname, division_id))
     plt.close()
 
 #-----------------------------------------------------------------------------------------------------------------------
 if __name__ == "__main__":
-    main()
+    
+    # parse the command line arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input_file", 
+                        help="Input dataset file (NetCDF) containing temperature, precipitation, and soil values for palmer_PDSI, SPI, SPEI, and PNP computations", 
+                        required=True)
+    parser.add_argument("--precip_var_name", 
+                        help="Precipitation variable name used in the input NetCDF file", 
+                        required=True)
+    parser.add_argument("--temp_var_name", 
+                        help="Temperature variable name used in the input NetCDF file", 
+                        required=True)
+    parser.add_argument("--awc_var_name", 
+                        help="Available water capacity variable name used in the input NetCDF file", 
+                        required=True)
+    parser.add_argument("--output_dir", 
+                        help="Output directory for monthly differences line graph plots", 
+                        required=True)
+    args = parser.parse_args()
+
+    _main(args.input_file, 
+          args.temp_var_name, 
+          args.precip_var_name, 
+          args.awc_var_name, 
+          args.output_dir)
     

@@ -529,7 +529,7 @@ if __name__ == '__main__':
 
         # log some timing info, used later for elapsed time
         start_datetime = datetime.now()
-        logger.info("Start time:    {0}".format(start_datetime, '%x'))
+        logger.info('Start time:    {0}'.format(start_datetime))
 
         # parse the command line arguments
         parser = argparse.ArgumentParser()
@@ -609,9 +609,9 @@ if __name__ == '__main__':
               
         # report on the elapsed time
         end_datetime = datetime.now()
-        logger.info("End time:      {}".format(end_datetime, '%x'))
+        logger.info("End time:      {}".format(end_datetime))
         elapsed = end_datetime - start_datetime
-        logger.info("Elapsed time:  {}".format(elapsed, '%x'))
+        logger.info("Elapsed time:  {}".format(elapsed))
 
     except Exception as ex:
         logger.exception('Failed to complete', exc_info=True)
