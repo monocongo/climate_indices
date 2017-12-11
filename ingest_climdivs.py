@@ -1,13 +1,9 @@
 import argparse
-from datetime import datetime 
 import logging
 import netcdf_utils
-import numpy as np
 import os
 import math
-import netcdf_utils
 import pandas as pd
-import urllib
 import sys
 
 # set up a basic, global logger which will write to the console as standard error
@@ -78,7 +74,6 @@ def parse_soil(soil_file):
 
     # use a list of column names to clue in pandas as to the structure of the ASCII rows
     column_names = ['division_id', 'awc', 'B', 'H', 'neg_tan_lat']
-    columns_to_use = ['division_id', 'awc', 'neg_tan_lat']
 
     # read the file into a pandas DataFrame object  
     results_df = pd.read_fwf(soil_file, 
@@ -98,12 +93,12 @@ def parse_soil(soil_file):
     results_df.drop('neg_tan_lat', axis=1, inplace=True)
     
     # produce a dictionary mapping division IDs to corresponding AWC, latitude, B, and H values
-    divs_to_awc = results_df['awc'].to_dict()
-    divs_to_lats = results_df['lat'].to_dict()
-    divs_to_Bs = results_df['B'].to_dict()
-    divs_to_Hs = results_df['H'].to_dict()
+    divisions_to_awc = results_df['awc'].to_dict()
+    divisions_to_lats = results_df['lat'].to_dict()
+    divisions_to_Bs = results_df['B'].to_dict()
+    divisions_to_Hs = results_df['H'].to_dict()
     
-    return divs_to_awc, divs_to_lats, divs_to_Bs, divs_to_Hs
+    return divisions_to_awc, divisions_to_lats, divisions_to_Bs, divisions_to_Hs
     
 #-----------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
@@ -143,7 +138,7 @@ if __name__ == '__main__':
                                                     divs_to_arrays)
         
         # parse the soil constant (available water capacity, lower level) and latitude for the divisions
-        divs_to_awc, divs_to_lats, divs_to_Bs, divs_to_Hs = parse_soil(args.soil_file)
+        divisions_to_awc, divisions_to_lats, divisions_to_Bs, divisions_to_Hs = parse_soil(args.soil_file)
 
         # create variables for AWC and latitude
         variable_attributes =  {'long_name': 'Available water capacity',
@@ -152,24 +147,24 @@ if __name__ == '__main__':
         netcdf_utils.add_variable_climdivs_divs(args.out_file,
                                                 'awc',
                                                 variable_attributes,
-                                                divs_to_awc)
+                                                divisions_to_awc)
         variable_attributes =  {'long_name': 'Latitude',
                                 'standard_name': 'latitude',
                                 'units': 'degrees north'}
         netcdf_utils.add_variable_climdivs_divs(args.out_file,
                                                 'lat',
                                                 variable_attributes,
-                                                divs_to_lats)
+                                                divisions_to_lats)
         variable_attributes =  {'standard_name': 'B'}
         netcdf_utils.add_variable_climdivs_divs(args.out_file,
                                                 'B',
                                                 variable_attributes,
-                                                divs_to_Bs)
+                                                divisions_to_Bs)
         variable_attributes =  {'standard_name': 'H'}
         netcdf_utils.add_variable_climdivs_divs(args.out_file,
                                                 'H',
                                                 variable_attributes,
-                                                divs_to_Hs)
+                                                divisions_to_Hs)
         
         # create variable for the remaining intermediate (water balance) variables
         for variable_name in ['etdat', 'pdat', 'pedat', 'pldat', 'prdat', 'rdat', 'rodat', 'spdat', 'sssdat', 
