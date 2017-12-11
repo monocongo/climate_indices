@@ -1,8 +1,6 @@
 import logging
-import math
 import numpy as np
 import palmer
-import scipy
 import unittest
 
 # disable logging messages
