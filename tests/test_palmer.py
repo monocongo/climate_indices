@@ -13,7 +13,6 @@ class PalmerTestCase(unittest.TestCase):
     '''
 
     # precipitation time series from climate division 0101, 189501 - 201707
-    global _precip_AL01
     _precip_AL01 = np.array([
         7.37, 1.41, 7.17, 2.72, 3.06, 4.04, 4.58, 4.00, 3.41, 2.28, 1.83, 5.83, \
         2.47, 7.46, 6.23, 4.34, 2.92, 4.50, 3.78, 1.94, 2.67, 1.59, 6.20, 1.32, \
@@ -139,7 +138,6 @@ class PalmerTestCase(unittest.TestCase):
         4.23, 5.90, 5.00, 3.95, 1.48, 3.73, 4.89, 5.45, 0.67, 0.45, 3.73, 5.43, \
         5.71, 2.71, 5.42, 4.50, 5.51, 6.03, 5.31, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ])
 
-    global _pet_AL01
     _pet_AL01 = np.array([
         3.37, 0.13, 27.76, 63.94, 94.82, 139.02, 147.91, 145.12, 115.85, 36.22, 22.72, 8.51, \
         5.56, 10.63, 21.81, 81.38, 128.86, 133.82, 163.89, 159.15, 101.62, 48.42, 28.80, 9.37, \
@@ -266,10 +264,9 @@ class PalmerTestCase(unittest.TestCase):
         19.77, 25.63, 37.14, 79.57, 98.02, 132.23, 162.97, 18.25, 16.23, 15.25, 13.54, 13.39 ])
     
     # underlying layer of soil water field capacity (need to add 1 inch to get total AWC for water balance calculation
-    global _awc_AL01
     _awc_AL01 = 5.0
-         
-    global _ro_AL01
+
+    # runoff         
     _ro_AL01 = np.array([
         4.00, 1.28, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, \
         0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, \
@@ -394,8 +391,8 @@ class PalmerTestCase(unittest.TestCase):
         0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, \
         0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, \
         0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00 ])
-    
-    global _pro_AL01
+
+    # potential runoff    
     _pro_AL01 = np.array([
         6.00, 6.00, 6.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, \
         0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, \
@@ -521,7 +518,7 @@ class PalmerTestCase(unittest.TestCase):
         0.00, 0.04, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, \
         0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, np.NaN, np.NaN, np.NaN, np.NaN ])
 
-    global _l_AL01
+    # loss
     _l_AL01 = np.array([
         0.00, 0.00, 6.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, \
         0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, \
@@ -646,8 +643,8 @@ class PalmerTestCase(unittest.TestCase):
         0.00, 0.00, 3.14, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, \
         0.00, 0.04, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, \
         0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ])
-    
-    global _pl_AL01
+
+    # potential loss    
     _pl_AL01 = np.array([
         2.98, 0.13, 6.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, \
         0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, \
@@ -773,7 +770,7 @@ class PalmerTestCase(unittest.TestCase):
         0.00, 0.04, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, \
         0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, np.NaN, np.NaN, np.NaN, np.NaN ])
 
-    global _r_AL01
+    # recharge
     _r_AL01 = np.array([
         0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, \
         0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, \
@@ -899,7 +896,7 @@ class PalmerTestCase(unittest.TestCase):
         0.04, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, \
         0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00 ])
     
-    global _pr_AL01
+    # potential recharge
     _pr_AL01 = np.array([
         0.00, 0.00, 0.00, 6.00, 6.00, 6.00, 6.00, 6.00, 6.00, 6.00, 6.00, 6.00, \
         6.00, 6.00, 6.00, 6.00, 6.00, 6.00, 6.00, 6.00, 6.00, 6.00, 6.00, 6.00, \
@@ -1024,8 +1021,8 @@ class PalmerTestCase(unittest.TestCase):
         6.00, 6.00, 2.86, 6.00, 6.00, 6.00, 6.00, 6.00, 6.00, 6.00, 6.00, 6.00, \
         6.00, 5.96, 6.00, 6.00, 6.00, 6.00, 6.00, 6.00, 6.00, 6.00, 6.00, 6.00, \
         6.00, 6.00, 6.00, 6.00, 6.00, 6.00, 6.00, 6.00, np.NaN, np.NaN, np.NaN, np.NaN])
-        
-    global _et_AL01
+
+    # evapotranspiration        
     _et_AL01 = np.array([
         3.37, 0.13, 13.17, 2.72, 3.06, 4.04, 4.58, 4.00, 3.41, 2.28, 1.83, 5.83, \
         2.47, 7.46, 6.23, 4.34, 2.92, 4.50, 3.78, 1.94, 2.67, 1.59, 6.20, 1.32, \
@@ -1151,7 +1148,7 @@ class PalmerTestCase(unittest.TestCase):
         4.19, 5.94, 5.00, 3.95, 1.48, 3.73, 4.89, 5.45, 0.67, 0.45, 3.73, 5.43, \
         5.71, 2.71, 5.42, 4.50, 5.51, 6.03, 5.31, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN])                    
     
-    global _zindex_AL01
+    # Z-Index        
     _zindex_AL01 = np.array([
         1.90, 0.52, 2.98, -2.13, -1.09, 0.28, 0.41, 0.52, -0.72, 0.27, -1.84, 0.33, \
         -0.86, 0.57, 0.40, -1.94, -2.80, 1.02, -1.13, -2.57, -0.99, -1.10, 0.23, -1.58, \
@@ -1276,25 +1273,23 @@ class PalmerTestCase(unittest.TestCase):
         0.09, 1.32, 0.71, 1.24, 0.97, -2.12, 1.12, 4.51, -2.81, -0.14, -0.64, -1.42, \
         0.16, -0.78, -2.74, -1.09, -2.90, -0.55, 0.04, 2.07, -3.92, -3.72, -2.00, -0.60, \
         -3.01, -4.35, -1.72, -1.67, 1.36, 2.97, 0.77, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ])
-    
-    global _alpha_AL01
+
+    # CAFEC coefficient: alpha    
     _alpha_AL01 = np.array([ 0.6149, 0.5424, 0.2441, 0.0804, 0.0431, 0.0275, 0.0287, 0.0248, 0.0350, 0.0555, 0.2033, 0.5078 ])
     
-    global _beta_AL01
+    # CAFEC coefficient: beta    
     _beta_AL01 = np.array([ 0.2054, 0.0344, 0.0079, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1080 ])
     
-    global _gamma_AL01
+    # CAFEC coefficient: gamma    
     _gamma_AL01 = np.array([ 0.2331, 0.0078, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0 ])
     
-    global _delta_AL01
+    # CAFEC coefficient: delta    
     _delta_AL01 = np.array([ 0.3191, 0.5389, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 ])
     
-    global _K_AL01
+    # climatic characteristic
     _K_AL01 = np.array([ 0.3921, 0.3814, 0.4663, 0.8803, 1.0603, 1.2396, 1.2188, 1.2808, 1.1115, 1.0018, 0.6597, 0.387 ])
-    
-    global _calibration_begin_year
-    global _calibration_end_year
-    global _data_begin_year
+
+    # calibration years    
     _calibration_begin_year = 1931
     _calibration_end_year = 1990
     _data_begin_year = 1895
@@ -1304,36 +1299,24 @@ class PalmerTestCase(unittest.TestCase):
         '''
         Test for the palmer._z_index() function
         '''
-        global _precip_AL01
-        global _pet_AL01
-        global _et_AL01
-        global _pr_AL01
-        global _r_AL01
-        global _ro_AL01
-        global _pro_AL01
-        global _l_AL01
-        global _pl_AL01
-        global _data_begin_year
-        global _calibration_begin_year
-        global _calibration_end_year
-        
+
         # call the _z_index() function                                                                                        
-        Z = palmer._z_index(_precip_AL01,
-                            _pet_AL01,
-                            _et_AL01,
-                            _pr_AL01,
-                            _r_AL01,
-                            _ro_AL01,
-                            _pro_AL01,
-                            _l_AL01,
-                            _pl_AL01,
-                            _data_begin_year,
-                            _calibration_begin_year,
-                            _calibration_end_year)
+        Z = palmer._z_index(self._precip_AL01,
+                            self._pet_AL01,
+                            self._et_AL01,
+                            self._pr_AL01,
+                            self._r_AL01,
+                            self._ro_AL01,
+                            self._pro_AL01,
+                            self._l_AL01,
+                            self._pl_AL01,
+                            self._data_begin_year,
+                            self._calibration_begin_year,
+                            self._calibration_end_year)
         
         # compare against expected results
         np.testing.assert_allclose(Z, 
-                                   _zindex_AL01, 
+                                   self._zindex_AL01, 
                                    atol=0.01,
                                    err_msg='Not computing the Z-Index as expected')        
 
@@ -1344,26 +1327,26 @@ class PalmerTestCase(unittest.TestCase):
         '''
         
         # call the _cafec_coefficients() function                                                                                        
-        palmer_K = palmer._climatic_characteristic(_alpha_AL01,
-                                                   _beta_AL01,
-                                                   _gamma_AL01,
-                                                   _delta_AL01,
-                                                   _precip_AL01,
-                                                   _et_AL01,
-                                                   _pet_AL01,
-                                                   _r_AL01,
-                                                   _pr_AL01,
-                                                   _ro_AL01,
-                                                   _pro_AL01,
-                                                   _l_AL01,
-                                                   _pl_AL01,
-                                                   _data_begin_year,
-                                                   _calibration_begin_year,
-                                                   _calibration_end_year)
+        palmer_K = palmer._climatic_characteristic(self._alpha_AL01,
+                                                   self._beta_AL01,
+                                                   self._gamma_AL01,
+                                                   self._delta_AL01,
+                                                   self._precip_AL01,
+                                                   self._et_AL01,
+                                                   self._pet_AL01,
+                                                   self._r_AL01,
+                                                   self._pr_AL01,
+                                                   self._ro_AL01,
+                                                   self._pro_AL01,
+                                                   self._l_AL01,
+                                                   self._pl_AL01,
+                                                   self._data_begin_year,
+                                                   self._calibration_begin_year,
+                                                   self._calibration_end_year)
                     
         # compare against expected results
         np.testing.assert_allclose(palmer_K, 
-                                   _K_AL01, 
+                                   self._K_AL01, 
                                    atol=0.01,
                                    err_msg='Not computing the K as expected')        
 
@@ -1374,24 +1357,24 @@ class PalmerTestCase(unittest.TestCase):
         '''
         
         # call the _cafec_coefficients() function                                                                                        
-        alpha, beta, gamma, delta = palmer._cafec_coefficients(_precip_AL01,
-                                                               _pet_AL01,
-                                                               _et_AL01,
-                                                               _pr_AL01,
-                                                               _r_AL01,
-                                                               _ro_AL01,
-                                                               _pro_AL01,
-                                                               _l_AL01,
-                                                               _pl_AL01,
-                                                               _data_begin_year,
-                                                               _calibration_begin_year,
-                                                               _calibration_end_year)
+        alpha, beta, gamma, delta = palmer._cafec_coefficients(self._precip_AL01,
+                                                               self._pet_AL01,
+                                                               self._et_AL01,
+                                                               self._pr_AL01,
+                                                               self._r_AL01,
+                                                               self._ro_AL01,
+                                                               self._pro_AL01,
+                                                               self._l_AL01,
+                                                               self._pl_AL01,
+                                                               self._data_begin_year,
+                                                               self._calibration_begin_year,
+                                                               self._calibration_end_year)
         
         # verify that the function performed as expected
-        arys = [['Alpha', alpha, _alpha_AL01], 
-                ['Beta', beta, _beta_AL01],
-                ['Gamma', gamma, _gamma_AL01],
-                ['Delta', delta, _delta_AL01]]
+        arys = [['Alpha', alpha, self._alpha_AL01], 
+                ['Beta', beta, self._beta_AL01],
+                ['Gamma', gamma, self._gamma_AL01],
+                ['Delta', delta, self._delta_AL01]]
         
         for lst in arys:
             
@@ -1413,15 +1396,15 @@ class PalmerTestCase(unittest.TestCase):
         
         # call the water balance accounting function, providing AL-01 climate division input data
         palmer_ET, palmer_PR, palmer_R, palmer_RO, palmer_PRO, palmer_L, palmer_PL = \
-                    palmer._water_balance(_awc_AL01 + 1.0, _pet_AL01, _precip_AL01)
+                    palmer._water_balance(self._awc_AL01 + 1.0, self._pet_AL01, self._precip_AL01)
                     
-        arys = [['ET', palmer_ET, _et_AL01], 
-                ['PR', palmer_PR, _pr_AL01],
-                ['R', palmer_R, _r_AL01],
-                ['RO', palmer_RO, _ro_AL01],
-                ['PRO', palmer_PRO, _pro_AL01],
-                ['L', palmer_L, _l_AL01],
-                ['PL', palmer_PL, _pl_AL01]]
+        arys = [['ET', palmer_ET, self._et_AL01], 
+                ['PR', palmer_PR, self._pr_AL01],
+                ['R', palmer_R, self._r_AL01],
+                ['RO', palmer_RO, self._ro_AL01],
+                ['PRO', palmer_PRO, self._pro_AL01],
+                ['L', palmer_L, self._l_AL01],
+                ['PL', palmer_PL, self._pl_AL01]]
                   
         # verify that the function performed as expected
         for lst in arys:
