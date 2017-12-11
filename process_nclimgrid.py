@@ -57,7 +57,7 @@ def init_process_spi_spei_pnp(worker_precip_netcdf,
     
     # put the arguments into the global namespace
     global precip_netcdf, \
-           netcdf_pet, \
+           pet_netcdf, \
            precip_var_name, \
            spi_gamma_netcdf, \
            spi_pearson_netcdf, \
@@ -70,7 +70,7 @@ def init_process_spi_spei_pnp(worker_precip_netcdf,
            calibration_end_year
            
     precip_netcdf = worker_precip_netcdf
-    netcdf_pet = worker_pet_netcdf
+    pet_netcdf = worker_pet_netcdf
     precip_var_name = worker_precip_var_name
     spi_gamma_netcdf = worker_spi_gamma_netcdf
     spi_pearson_netcdf = worker_spi_pearson_netcdf
@@ -384,7 +384,7 @@ def process_latitude_palmer(lat_index):
         
         # open the existing PDSI NetCDF file for writing, copy the latitude slice into the PET variable at the indexed latitude position 
         pdsi_lock.acquire()
-        pdsi_dataset = Dataset(pdsi_netcdf, mode='a')
+        pdsi_dataset = Dataset(netcdf_pdsi, mode='a')
         pdsi_dataset['pdsi'][:, lat_index, :] = pdsi_lat_slice
         pdsi_dataset.sync()
         pdsi_dataset.close()
@@ -392,7 +392,7 @@ def process_latitude_palmer(lat_index):
 
         # open the existing PHDI NetCDF file for writing, copy the latitude slice into the PET variable at the indexed latitude position 
         phdi_lock.acquire()
-        phdi_dataset = Dataset(phdi_netcdf, mode='a')
+        phdi_dataset = Dataset(netcdf_phdi, mode='a')
         phdi_dataset['phdi'][:, lat_index, :] = phdi_lat_slice
         phdi_dataset.sync()
         phdi_dataset.close()
@@ -400,7 +400,7 @@ def process_latitude_palmer(lat_index):
 
         # open the existing Z-Index NetCDF file for writing, copy the latitude slice into the PET variable at the indexed latitude position 
         zindex_lock.acquire()
-        zindex_dataset = Dataset(zindex_netcdf, mode='a')
+        zindex_dataset = Dataset(netcdf_zindex, mode='a')
         zindex_dataset['zindex'][:, lat_index, :] = zindex_lat_slice
         zindex_dataset.sync()
         zindex_dataset.close()
@@ -408,7 +408,7 @@ def process_latitude_palmer(lat_index):
 
         # open the existing SCPDSI NetCDF file for writing, copy the latitude slice into the PET variable at the indexed latitude position 
         scpdsi_lock.acquire()
-        scpdsi_dataset = Dataset(scpdsi_netcdf, mode='a')
+        scpdsi_dataset = Dataset(netcdf_scpdsi, mode='a')
         scpdsi_dataset['scpdsi'][:, lat_index, :] = scpdsi_lat_slice
         scpdsi_dataset.sync()
         scpdsi_dataset.close()
@@ -416,7 +416,7 @@ def process_latitude_palmer(lat_index):
 
         # open the existing PHDI NetCDF file for writing, copy the latitude slice into the PET variable at the indexed latitude position 
         pmdi_lock.acquire()
-        pmdi_dataset = Dataset(pmdi_netcdf, mode='a')
+        pmdi_dataset = Dataset(netcdf_pmdi, mode='a')
         pmdi_dataset['pmdi'][:, lat_index, :] = pmdi_lat_slice
         pmdi_dataset.sync()
         pmdi_dataset.close()
@@ -435,7 +435,7 @@ def _is_data_valid(data):
     # make sure we're not dealing with all NaN values
     if np.ma.isMaskedArray(data):
 
-        if data.count() > 0:
+        if data.count():
             valid_flag = True
         else:
             valid_flag = False
@@ -454,22 +454,22 @@ def _is_data_valid(data):
     return valid_flag
             
 #-----------------------------------------------------------------------------------------------------------------------
-def validate_compatibility(precip_dataset, 
-                           precip_var_name,
-                           temp_dataset,
-                           temp_var_name,
-                           awc_dataset,
-                           awc_var_name):
+def validate_compatibility(precipitation_dataset, 
+                           precipitation_var_name,
+                           temperature_dataset,
+                           temperature_var_name,
+                           soil_dataset,
+                           soil_var_name):
 
     # get the time, lat, and lon variables from the three datasets we want to validate against each other
-    precip_time = precip_dataset.variables['time']
-    precip_lat = precip_dataset.variables['lat']
-    precip_lon = precip_dataset.variables['lon']
-    temp_time = temp_dataset.variables['time']
-    temp_lat = temp_dataset.variables['lat']
-    temp_lon = temp_dataset.variables['lon']
-    awc_lat = awc_dataset.variables['lat']
-    awc_lon = awc_dataset.variables['lon']
+    precip_time = precipitation_dataset.variables['time']
+    precip_lat = precipitation_dataset.variables['lat']
+    precip_lon = precipitation_dataset.variables['lon']
+    temp_time = temperature_dataset.variables['time']
+    temp_lat = temperature_dataset.variables['lat']
+    temp_lon = temperature_dataset.variables['lon']
+    awc_lat = soil_dataset.variables['lat']
+    awc_lon = soil_dataset.variables['lon']
     
     # dataset names to be used in error messages
     precip_dataset_name = 'precipitation'
@@ -500,18 +500,18 @@ def validate_compatibility(precip_dataset,
 
     # make sure that each variable has (time, lat, lon) dimensions, in that order    
     expected_dimensions = ('time', 'lat', 'lon')
-    if not temp_dataset.variables[temp_var_name].dimensions == expected_dimensions:
-        message = 'Unexpected dimensions for the {0} variable of the {1} dataset: {2}\nExpected dimensions are (\'time\', \'lat\', \'lon\')'.format(temp_var_name, temp_dataset_name, temp_dataset.variables[temp_var_name].dimensions)
+    if not temperature_dataset.variables[temperature_var_name].dimensions == expected_dimensions:
+        message = 'Unexpected dimensions for the {0} variable of the {1} dataset: {2}\nExpected dimensions are (\'time\', \'lat\', \'lon\')'.format(temperature_var_name, temp_dataset_name, temperature_dataset.variables[temperature_var_name].dimensions)
         logger.error(message)
         raise ValueError(message)
-    if not precip_dataset.variables[precip_var_name].dimensions == expected_dimensions:
-        message = 'Unexpected dimensions for the {0} variable of the {1} dataset: {2}\nExpected dimensions are (\'time\', \'lat\', \'lon\')'.format(precip_var_name, precip_dataset_name, precip_dataset.variables[precip_var_name].dimensions)
+    if not precipitation_dataset.variables[precipitation_var_name].dimensions == expected_dimensions:
+        message = 'Unexpected dimensions for the {0} variable of the {1} dataset: {2}\nExpected dimensions are (\'time\', \'lat\', \'lon\')'.format(precipitation_var_name, precip_dataset_name, precipitation_dataset.variables[precipitation_var_name].dimensions)
         logger.error(message)
         raise ValueError(message)
-    if (not awc_dataset.variables[awc_var_name].dimensions == expected_dimensions) and \
-        (not awc_dataset.variables[awc_var_name].dimensions == ('lat', 'lon')) and \
-        (not awc_dataset.variables[awc_var_name].dimensions == ('lon', 'lat')):
-        message = 'Unexpected dimensions for the {0} variable of the {1} dataset: {2}\nExpected dimensions are (\'time\', \'lat\', \'lon\')'.format(awc_var_name, awc_dataset_name, awc_dataset.variables[awc_var_name].dimensions)
+    if (not soil_constants_dataset.variables[soil_var_name].dimensions == expected_dimensions) and \
+        (not soil_constants_dataset.variables[soil_var_name].dimensions == ('lat', 'lon')) and \
+        (not soil_constants_dataset.variables[soil_var_name].dimensions == ('lon', 'lat')):
+        message = 'Unexpected dimensions for the {0} variable of the {1} dataset: {2}\nExpected dimensions are (\'time\', \'lat\', \'lon\')'.format(soil_var_name, awc_dataset_name, soil_constants_dataset.variables[soil_var_name].dimensions)
         logger.error(message)
         raise ValueError(message)
 
@@ -519,62 +519,62 @@ def validate_compatibility(precip_dataset,
 def initialize_unscaled_netcdfs(base_file_path,
                                 template_netcdf):
     
-    netcdf_pet = base_file_path + '_pet.nc'
-    netcdf_pdsi = base_file_path + '_pdsi.nc'
-    netcdf_phdi = base_file_path + '_phdi.nc'
-    netcdf_zindex = base_file_path + '_zindex.nc'
-    netcdf_scpdsi = base_file_path + '_scpdsi.nc'
-    netcdf_pmdi = base_file_path + '_pmdi.nc'
+    netcdf_file_pet = base_file_path + '_pet.nc'
+    netcdf_file_pdsi = base_file_path + '_pdsi.nc'
+    netcdf_file_phdi = base_file_path + '_phdi.nc'
+    netcdf_file_zindex = base_file_path + '_zindex.nc'
+    netcdf_file_scpdsi = base_file_path + '_scpdsi.nc'
+    netcdf_file_pmdi = base_file_path + '_pmdi.nc'
     
     # min/max numbers for the Palmer indices
     valid_min = -10.0
     valid_max = 10.0
 
     # initialize separate NetCDF files for each variable
-    netcdf_utils.initialize_netcdf_single_variable_grid(netcdf_pet,
+    netcdf_utils.initialize_netcdf_single_variable_grid(netcdf_file_pet,
                                                         template_netcdf,
                                                         'pet',
                                                         'Potential Evapotranspiration (PET), from Thornthwaite\'s equation',
                                                         0.0,
                                                         2000.0,
                                                         'millimeter')
-    netcdf_utils.initialize_netcdf_single_variable_grid(netcdf_pdsi,
+    netcdf_utils.initialize_netcdf_single_variable_grid(netcdf_file_pdsi,
                                                         template_netcdf,
                                                         'pdsi',
                                                         'Palmer Drought Severity Index (PDSI)',
                                                         valid_min,
                                                         valid_max)
-    netcdf_utils.initialize_netcdf_single_variable_grid(netcdf_phdi,
+    netcdf_utils.initialize_netcdf_single_variable_grid(netcdf_file_phdi,
                                                         template_netcdf,
                                                         'phdi',
                                                         'Palmer Hydrological Drought Index (PHDI)',
                                                         valid_min,
                                                         valid_max)
-    netcdf_utils.initialize_netcdf_single_variable_grid(netcdf_zindex,
+    netcdf_utils.initialize_netcdf_single_variable_grid(netcdf_file_zindex,
                                                         template_netcdf,
                                                         'zindex',
                                                         'Palmer Z-Index',
                                                         valid_min,
                                                         valid_max)
-    netcdf_utils.initialize_netcdf_single_variable_grid(netcdf_scpdsi,
+    netcdf_utils.initialize_netcdf_single_variable_grid(netcdf_file_scpdsi,
                                                         template_netcdf,
                                                         'scpdsi',
                                                         'Self-calibrated Palmer Drought Severity Index (scPDSI)',
                                                         valid_min,
                                                         valid_max)
-    netcdf_utils.initialize_netcdf_single_variable_grid(netcdf_pmdi,
+    netcdf_utils.initialize_netcdf_single_variable_grid(netcdf_file_pmdi,
                                                         template_netcdf,
                                                         'pmdi',
                                                         'Palmer Modified Drought Index (PMDI)',
                                                         valid_min,
                                                         valid_max)
 
-    return {'pet': netcdf_pet,
-            'pdsi': netcdf_pdsi,
-            'phdi': netcdf_phdi,
-            'zindex': netcdf_zindex,
-            'pmdi': netcdf_pmdi,
-            'scpdsi': netcdf_scpdsi}
+    return {'pet': netcdf_file_pet,
+            'pdsi': netcdf_file_pdsi,
+            'phdi': netcdf_file_phdi,
+            'zindex': netcdf_file_zindex,
+            'pmdi': netcdf_file_pmdi,
+            'scpdsi': netcdf_file_scpdsi}
     
 #-----------------------------------------------------------------------------------------------------------------------
 def _initialize_scaled_netcdfs(base_file_path, 
@@ -673,13 +673,14 @@ def convert_and_move_netcdf(input_and_output_netcdfs):
 if __name__ == '__main__':
 
     '''
+    This module can be used to perform climate indices processing on nClimGrid datasets in NetCDF.
     '''
 
     try:
 
         # log some timing info, used later for elapsed time
         start_datetime = datetime.now()
-        logger.info("Start time:    {0}".format(start_datetime, '%x'))
+        logger.info("Start time:    {0}".format(start_datetime))
 
         # parse the command line arguments
         parser = argparse.ArgumentParser()
