@@ -31,7 +31,6 @@ def init_process(worker_input_netcdf,
                  worker_awc_var_name,
                  worker_scale_months,
                  worker_data_start_year,
-                 worker_data_end_year,
                  worker_calibration_start_year, 
                  worker_calibration_end_year):
     
@@ -43,7 +42,6 @@ def init_process(worker_input_netcdf,
            awc_var_name, \
            scale_months, \
            data_start_year, \
-           data_end_year, \
            calibration_start_year, \
            calibration_end_year
            
@@ -54,7 +52,6 @@ def init_process(worker_input_netcdf,
     awc_var_name = worker_awc_var_name
     scale_months = worker_scale_months
     data_start_year = worker_data_start_year
-    data_end_year = worker_data_end_year
     calibration_start_year = worker_calibration_start_year
     calibration_end_year = worker_calibration_end_year
     
@@ -296,7 +293,6 @@ def compute_and_write_division(division_index):
                      awc_var_name,
                      scale_months,
                      data_start_year,
-                     data_end_year,
                      calibration_start_year,
                      calibration_end_year)
 
@@ -309,7 +305,6 @@ def process_division(division_index,
                      awc_var_name,
                      scale_months,
                      data_start_year,
-                     data_end_year,
                      calibration_start_year,
                      calibration_end_year):
     
@@ -575,7 +570,6 @@ if __name__ == '__main__':
             # get the initial and final year of the input datasets
             time_variable = input_dataset.variables['time']
             data_start_year = netCDF4.num2date(time_variable[0], time_variable.units).year
-            data_end_year = netCDF4.num2date(time_variable[-1], time_variable.units).year
  
             # get the number of divisions in the input dataset(s)
             divisions_size = input_dataset.variables['division'].size
@@ -590,7 +584,6 @@ if __name__ == '__main__':
                                               args.awc_var_name,
                                               args.month_scales,
                                               data_start_year,
-                                              data_end_year,
                                               args.calibration_start_year,
                                               args.calibration_end_year))
  
