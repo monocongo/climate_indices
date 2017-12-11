@@ -620,10 +620,19 @@ def _z_index(P,
     
     # the potential (PET, ET, PR, PL) and actual (R, RO, S, L, P) water balance arrays are reshaped as 2-D arrays  
     # (matrices) such that the rows of each matrix represent years and the columns represent calendar months
-    arrays_to_reshape = [PET, ET, PR, PL, R, RO, RO, PRO, L, P]
-    for ary in arrays_to_reshape:
-        ary = utils.reshape_to_years_months(ary)
-        
+#     arrays_to_reshape = [PET, ET, PR, PL, R, RO, RO, PRO, L, P]
+#     for ary in arrays_to_reshape:
+#         ary = utils.reshape_to_years_months(ary)
+    PET = utils.reshape_to_years_months(PET)
+    ET = utils.reshape_to_years_months(ET)
+    PR = utils.reshape_to_years_months(PR)
+    PL = utils.reshape_to_years_months(PL)
+    R = utils.reshape_to_years_months(R)
+    RO = utils.reshape_to_years_months(RO)
+    PRO = utils.reshape_to_years_months(PRO)
+    L = utils.reshape_to_years_months(L)
+    P = utils.reshape_to_years_months(P)
+
     # get the CAFEC coefficients
     alpha, beta, gamma, delta = _cafec_coefficients(P, 
                                                     PET, 
