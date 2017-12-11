@@ -1,17 +1,12 @@
 import argparse
 from datetime import datetime
-import indices
 import logging
-import math
-import multiprocessing
 import netCDF4
 import netcdf_utils
 import numpy as np
 import os
-import subprocess
-import sys
 from netCDF4 import Dataset, num2date
-import wget
+import urllib.request
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global logger which will write to the console as standard error
@@ -30,10 +25,10 @@ def _initialize_dataset(file_path,
                         template_path):
     
     # open the output file, set its dimensions and variables, we'll return this object in an open state
-    netcdf = netCDF4.Dataset(file_path, 'w')
+    netcdf = Dataset(file_path, 'w')
     
     # open the template NetCDF, closed upon function completion
-    with netCDF4.Dataset(template_path) as template_dataset:
+    with Dataset(template_path) as template_dataset:
 
         # copy the global attributes from the template
         netcdf.setncatts(template_dataset.__dict__)
@@ -116,7 +111,7 @@ def merge_wrcc_prism(precip_file_base,
                 if not os.path.isfile(precip_file):
                     url = 'ftp://pubfiles.dri.edu/pub/mcevoy/WWDT_input/pon1_{0}_PRISM.nc'.format(month)
                     logger.info('Downloading from {0}'.format(url))
-                    precip_file = wget.download(url)
+                    precip_file = urllib.request.urlretrieve(url)
                     logger.info('\tTemporary input data file: {0}'.format(precip_file))
                     cleanup_precip = True
 
@@ -125,7 +120,7 @@ def merge_wrcc_prism(precip_file_base,
                 if not os.path.isfile(temp_file):
                     url = 'ftp://pubfiles.dri.edu/pub/mcevoy/WWDT_input/mdn1_{0}_PRISM.nc'.format(month)
                     logger.info('Downloading from {0}'.format(url))
-                    temp_file = wget.download(url)
+                    temp_file = urllib.request.urlretrieve(url)
                     logger.info('\tTemporary input data file: {0}'.format(temp_file))
                     cleanup_temp = True
 
@@ -167,7 +162,7 @@ def merge_wrcc_prism(precip_file_base,
         elapsed = end_datetime - start_datetime
         logger.info("Elapsed time:  {}".format(elapsed, '%x'))
 
-    except Exception as ex:
+    except Exception:
         logger.exception('Failed to complete', exc_info=True)
         raise
     

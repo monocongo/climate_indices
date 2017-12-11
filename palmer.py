@@ -620,15 +620,9 @@ def _z_index(P,
     
     # the potential (PET, ET, PR, PL) and actual (R, RO, S, L, P) water balance arrays are reshaped as 2-D arrays  
     # (matrices) such that the rows of each matrix represent years and the columns represent calendar months
-    PET = utils.reshape_to_years_months(PET)
-    ET = utils.reshape_to_years_months(ET)
-    PR = utils.reshape_to_years_months(PR)
-    PL = utils.reshape_to_years_months(PL)
-    R = utils.reshape_to_years_months(R)
-    RO = utils.reshape_to_years_months(RO)
-    PRO = utils.reshape_to_years_months(PRO)
-    L = utils.reshape_to_years_months(L)
-    P = utils.reshape_to_years_months(P)
+    arrays_to_reshape = [PET, ET, PR, PL, R, RO, RO, PRO, L, P]
+    for ary in arrays_to_reshape:
+        ary = utils.reshape_to_years_months(ary)
         
     # get the CAFEC coefficients
     alpha, beta, gamma, delta = _cafec_coefficients(P, 
@@ -685,7 +679,7 @@ def _z_index(P,
 #-----------------------------------------------------------------------------------------------------------------------
 # previously Main()
 @numba.jit
-def _compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT):
+def _compute_X(Z, k, PPe, X1, X2, PX1, PX2, PX3, X, BT):
 
     # This function calculates PX1 and PX2 and calls the backtracking loop.
     # If the absolute value of PX1 or PX2 goes over 1, that value becomes the new PX3. 
@@ -887,7 +881,7 @@ def _dry_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT):
         else:
             PX3[k] = 0.897 * X3 + (Z[k] / 3)
 
-        PX1, PX2, PX3, X, BT = _compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT)                                                                 
+        PX1, PX2, PX3, X, BT = _compute_X(Z, k, PPe, X1, X2, PX1, PX2, PX3, X, BT)                                                                 
 
     return PV, PPe, PX1, PX2, PX3, X, BT
 
@@ -922,7 +916,7 @@ def _wet_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT):
         else:
             PX3[k] = 0.897 * X3 + (Z[k] / 3)
 
-        PX1, PX2, PX3, X, BT = _compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT)                                                                 
+        PX1, PX2, PX3, X, BT = _compute_X(Z, k, PPe, X1, X2, PX1, PX2, PX3, X, BT)                                                                 
 
     return PV, PPe, PX1, PX2, PX3, X, BT
 
@@ -968,10 +962,10 @@ def _pdsi_from_zindex(Z):
     # V is the sum of the Uw (Ud) values for the current and previous months of an
     # established dry (wet) spell and is used in calculating the Pe value for a month.
     V = 0.0
-    Pe = 0.0 # Pe is the probability that the current wet or dry spell has ended in a month.
-    X1 = 0.0 # X1 is the severity index value for an incipient wet spell for a month.
-    X2 = 0.0 # X2 is the severity index value for an incipient dry spell for a month.
-    X3 = 0.0 # X3 is the severity index value of the current established wet or dry spell for a month.
+#     Pe = 0.0 # Pe is the probability that the current wet or dry spell has ended in a month.
+#     X1 = 0.0 # X1 is the severity index value for an incipient wet spell for a month.
+#     X2 = 0.0 # X2 is the severity index value for an incipient dry spell for a month.
+#     X3 = 0.0 # X3 is the severity index value of the current established wet or dry spell for a month.
 
     
     Pe = 0.0 # the probability that the current wet or dry spell has ended in a month
@@ -1017,7 +1011,7 @@ def _pdsi_from_zindex(Z):
                 # PX3 is the preliminary X3 value and is used in operational calculations.
                 PX3[k] = 0 
                                 
-                PX1, PX2, PX3, X, BT = _compute_X(Z, k, PV, PPe, X1, X2, PX1, PX2, PX3, X, BT)
+                PX1, PX2, PX3, X, BT = _compute_X(Z, k, PPe, X1, X2, PX1, PX2, PX3, X, BT)
  
             elif X3 > 0.5: # Wet spell underway
                 
@@ -1378,7 +1372,6 @@ def _choose_X(pdsi_values,
                                    dry_index_deque,
                                    tolerance,
                                    new_X1,
-                                   new_X2,
                                    month_index)
         new_X = new_X1
         new_X3 = new_X1
@@ -1398,7 +1391,6 @@ def _choose_X(pdsi_values,
                                        dry_index_deque,
                                        tolerance,
                                        new_X2,
-                                       new_X1,
                                        month_index)
             new_X = new_X2
             new_X3 = new_X2
@@ -1413,7 +1405,6 @@ def _choose_X(pdsi_values,
                                            dry_index_deque,
                                            tolerance,
                                            new_X2,
-                                           new_X1,
                                            month_index)
                 new_X = new_X2
             
@@ -1424,7 +1415,6 @@ def _choose_X(pdsi_values,
                                            dry_index_deque,
                                            tolerance,
                                            new_X1,
-                                           new_X2,
                                            month_index)
                 new_X = new_X1
             
@@ -1449,20 +1439,18 @@ def _backtrack_self_calibrated(pdsi_values,
                                wet_index_deque,
                                dry_index_deque,
                                tolerance,
-                               X1, 
-                               X2, 
+                               new_X, 
                                month_index):
     '''
     :param pdsi_values
     :param wet_index_deque
     :param dry_index_deque
     :param tolerance
-    :param X1
-    :param X2
+    :param new_X
     :param month_index
     '''
     
-    num1 = X1
+    num1 = new_X
 
     while (len(wet_index_deque) > 0) and (len(dry_index_deque) > 0):
     
@@ -1995,7 +1983,7 @@ def scpdsi(precip_time_series,
             PL = PL[0:-pad_months]
             
         # compute PDSI and other associated variables
-        PDSI, PHDI, PMDI = _pdsi_from_zindex(zindex, None)
+        PDSI, PHDI, PMDI = _pdsi_from_zindex(zindex)
 
         # keep a copy of the originally computed PDSI for return
         final_PDSI = np.array(PDSI)
