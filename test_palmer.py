@@ -1304,6 +1304,18 @@ class PalmerTestCase(unittest.TestCase):
         '''
         Test for the palmer._z_index() function
         '''
+        global _precip_AL01
+        global _pet_AL01
+        global _et_AL01
+        global _pr_AL01
+        global _r_AL01
+        global _ro_AL01
+        global _pro_AL01
+        global _l_AL01
+        global _pl_AL01
+        global _data_begin_year
+        global _calibration_begin_year
+        global _calibration_end_year
         
         # call the _z_index() function                                                                                        
         Z = palmer._z_index(_precip_AL01,
@@ -1430,3 +1442,4 @@ class PalmerTestCase(unittest.TestCase):
 #--------------------------------------------------------------------------------------------
 if __name__ == '__main__':
     unittest.main()
+    
