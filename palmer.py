@@ -1893,11 +1893,12 @@ def _self_calibrate(pdsi_values,
         
     # adjust the self-calibrated Z-index values, using either the wet or dry ratio
     #TODO replace the below loop with a vectorized equivalent
-    for time_step in range(sczindex_values.size):
+    for time_step, sczindex in enumerate(sczindex_values):
+#     for time_step in range(sczindex_values.size):
     
-        if not np.isnan(sczindex_values[time_step]):
+        if not np.isnan(sczindex):
         
-            if sczindex_values[time_step] >= 0:
+            if sczindex >= 0:
             
                 adjustmentFactor = wet_ratio
             
@@ -1905,7 +1906,7 @@ def _self_calibrate(pdsi_values,
             
                 adjustmentFactor = dry_ratio
 
-            sczindex_values[time_step] = sczindex_values[time_step] * adjustmentFactor
+            sczindex_values[time_step] = sczindex * adjustmentFactor
 
     # allocate arrays which will be populated in the following step
     established_index_values = np.full(pdsi_values.shape, np.NaN)
