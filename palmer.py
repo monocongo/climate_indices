@@ -382,10 +382,23 @@ def _cafec_coefficients(P,
     '''
     
     # get only the data from within the calibration period
-    [P, PET, ET, PR, R, PRO, RO, PL, L] = _calibrate_data([P, PET, ET, PR, R, PRO, RO, PL, L],
-                                                          data_start_year,
-                                                          calibration_start_year,
-                                                          calibration_end_year)
+#     [P, PET, ET, PR, R, PRO, RO, PL, L] = _calibrate_data([P, PET, ET, PR, R, PRO, RO, PL, L],
+#                                                           data_start_year,
+#                                                           calibration_start_year,
+#                                                           calibration_end_year)
+    calibrated_arrays = _calibrate_data([P, PET, ET, PR, R, PRO, RO, PL, L],
+                                        data_start_year,
+                                        calibration_start_year,
+                                        calibration_end_year)
+    P = calibrated_arrays[0]
+    PET = calibrated_arrays[1]
+    ET = calibrated_arrays[2]
+    PR = calibrated_arrays[3]
+    R = calibrated_arrays[4]
+    PRO = calibrated_arrays[5]
+    RO = calibrated_arrays[6]
+    PL = calibrated_arrays[7]
+    L = calibrated_arrays[8]
 
     # ALPHA, BETA, GAMMA, DELTA CALCULATIONS
     # A calibration period is used to calculate alpha, beta, gamma, and delta, four coefficients dependent upon 
@@ -508,11 +521,20 @@ def _climatic_characteristic(alpha,
     total_calibration_years = calibration_end_year - calibration_start_year + 1
     
     # get only the data from within the calibration period
-    [P, PET, ET, PR, R, PRO, RO, PL, L] = _calibrate_data([P, PET, ET, PR, R, PRO, RO, PL, L],
-                                                          data_start_year,
-                                                          calibration_start_year,
-                                                          calibration_end_year)
-    
+    calibrated_arrays = _calibrate_data([P, PET, ET, PR, R, PRO, RO, PL, L],
+                                        data_start_year,
+                                        calibration_start_year,
+                                        calibration_end_year)
+    P = calibrated_arrays[0]
+    PET = calibrated_arrays[1]
+    ET = calibrated_arrays[2]
+    PR = calibrated_arrays[3]
+    R = calibrated_arrays[4]
+    PRO = calibrated_arrays[5]
+    RO = calibrated_arrays[6]
+    PL = calibrated_arrays[7]
+    L = calibrated_arrays[8]
+
     # CALIBRATED CAFEC, K, AND d CALCULATION
     # NOTE: 
     # The Z index is calculated with a calibrated K (weighting factor) but a full record d (difference between actual 
@@ -1607,9 +1629,8 @@ def _z_sum(interval,
     
         return highest_reasonable_value
     
-    else:  # DRY
-    
-        return largest_sum
+    # DRY  
+    return largest_sum
 
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
@@ -1814,9 +1835,9 @@ def _duration_factors(zindex_values,
     month_scales = [3, 6, 9, 12, 18, 24, 30, 36, 42, 48]
     
     z_sums = np.zeros((len(month_scales),))
-    for i in range(len(month_scales)):
+    for i, scale_months in enumerate(month_scales):
 
-        z_sums[i] = _z_sum(month_scales[i],
+        z_sums[i] = _z_sum(scale_months,
                            wet_or_dry, 
                            zindex_values,
                            12, 
