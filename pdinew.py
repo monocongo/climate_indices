@@ -1369,4 +1369,3 @@ def potential_evapotranspiration(monthly_temps_celsius,
     for i in range(monthly_temps_celsius.size):
         pet[i] = _pe(monthly_temps_fahrenheit[i], i, latitude, data_start_year, B, H)
     return pet
-

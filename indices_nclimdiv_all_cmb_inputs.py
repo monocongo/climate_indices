@@ -59,13 +59,13 @@ def init_process(worker_input_netcdf,
     calibration_end_year = worker_calibration_end_year
     
 #-----------------------------------------------------------------------------------------------------------------------
-def initialize_netcdf(output_netcdf,
+def initialize_netcdf(output_netcdf_filepath,
                       template_netcdf,
                       month_scales):
     '''
     This function is used to initialize and return a netCDF4.Dataset object.
     
-    :param output_netcdf: the file path/name of the NetCDF Dataset object returned by this function
+    :param output_netcdf_filepath: the file path/name of the NetCDF Dataset object returned by this function
     :param template_netcdf: an existing/open NetCDF Dataset object which will be used as a template for the Dataset
                             that will be created by this function
     :param month_scales: the various month scales for which scaled indices (SPI, SPEI, PNP) will be computed
@@ -74,11 +74,15 @@ def initialize_netcdf(output_netcdf,
 
     fill_value=np.float32(np.NaN)
 
+    # SPI and SPEI have a valid/useful range of [-3.09, 3.09]
+    valid_min = -3.09
+    valid_max = 3.09
+
     with netCDF4.Dataset(template_netcdf) as template_dataset, \
-         netCDF4.Dataset(output_netcdf, 'w') as output_dataset:
+         netCDF4.Dataset(output_netcdf_filepath, 'w') as output_dataset:
  
         # get the template's dimension sizes
-        divisions_size = template_dataset.variables['division'].size
+        divisions_count = template_dataset.variables['division'].size
         times_size = template_dataset.variables['time'].size
     
         # copy the global attributes from the input
@@ -88,7 +92,7 @@ def initialize_netcdf(output_netcdf,
         # create the time, x, and y dimensions
         output_dataset.createDimension('time', times_size)
 #         output_dataset.createDimension('time', None)
-        output_dataset.createDimension('division', divisions_size)
+        output_dataset.createDimension('division', divisions_count)
     
         # get the appropriate data types to use for the variables
         time_dtype = netcdf_utils.find_netcdf_datatype(template_dataset.variables['time'])
@@ -186,29 +190,29 @@ def initialize_netcdf(output_netcdf,
             
                     variable_attributes = {'standard_name': variable_name,
                                            'long_name': 'SPI (Gamma), {}-month scale'.format(months),
-                                           'valid_min': -3.09,
-                                           'valid_max': 3.09}
+                                           'valid_min': valid_min,
+                                           'valid_max': valid_max}
 
                 elif index == 'spi_pearson':
             
                     variable_attributes = {'standard_name': variable_name,
                                            'long_name': 'SPI (Pearson), {}-month scale'.format(months),
-                                           'valid_min': -3.09,
-                                           'valid_max': 3.09}
+                                           'valid_min': valid_min,
+                                           'valid_max': valid_max}
 
                 elif index == 'spei_gamma':
             
                     variable_attributes = {'standard_name': variable_name,
                                            'long_name': 'SPEI (Gamma), {}-month scale'.format(months),
-                                           'valid_min': -3.09,
-                                           'valid_max': 3.09}
+                                           'valid_min': valid_min,
+                                           'valid_max': valid_max}
 
                 elif index == 'spei_pearson':
             
                     variable_attributes = {'standard_name': variable_name,
                                            'long_name': 'SPEI (Pearson), {}-month scale'.format(months),
-                                           'valid_min': -3.09,
-                                           'valid_max': 3.09}
+                                           'valid_min': valid_min,
+                                           'valid_max': valid_max}
 
                 elif index == 'pnp':
             
@@ -275,6 +279,11 @@ def f2c(t):
 #-----------------------------------------------------------------------------------------------------------------------
 def compute_and_write_division(division_index):
     '''
+    Convenience function for use passing global variables as arguments to the process_division() function? To be honest 
+    not sure why this is present, acts sort of as a shell around process_division(), perhaps required in order to use 
+    the map_async() function which takes only a single argument.
+    
+    :param division_index: index for the climate division to be computed
     '''
     
     process_division(division_index,
@@ -408,10 +417,6 @@ def process_division(division_index,
                         output_dataset.sync()
                     lock.release()
     
-                # SPI and SPEI have a valid/useful range of [-3.09, 3.09]
-                valid_min = -3.09
-                valid_max = 3.09
-
                 logger.info('\tComputing SPI/SPEI/PNP for division index {0}'.format(division_index))
 
                 # process the SPI and SPEI at month scales
@@ -540,7 +545,7 @@ if __name__ == '__main__':
             data_start_year = netCDF4.num2date(time_variable[0], time_variable.units).year
  
             # get the number of divisions in the input dataset(s)
-            divisions_size = input_dataset.variables['division'].size
+            divisions_count = input_dataset.variables['division'].size
         
         # create a process Pool, with copies of the shared array going to each pooled/forked process
         pool = multiprocessing.Pool(processes=multiprocessing.cpu_count(),
@@ -556,8 +561,7 @@ if __name__ == '__main__':
                                               args.calibration_end_year))
  
         # map the divisions indices as an arguments iterable to the compute function
-#         result = pool.map_async(compute_and_write_division, [165]) # compute only for division index 165, i.e. division 2906 Highlands NM
-        result = pool.map_async(compute_and_write_division, range(divisions_size))
+        result = pool.map_async(compute_and_write_division, range(divisions_count))
                   
         # get the exception(s) thrown, if any
         result.get()
@@ -578,3 +582,4 @@ if __name__ == '__main__':
     except Exception as ex:
         logger.exception('Failed to complete', exc_info=True)
         raise
+    
