@@ -20,7 +20,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
         '''
          
         # compute sigmas of transformed (normalized) values fitted to a gamma distribution
-        computed_values = compute.transform_fitted_gamma(self.fixture_monthly_values)
+        computed_values = compute.transform_fitted_gamma(self.fixture_precips_mm)
                                           
         # make sure the values are being computed as expected
         np.testing.assert_allclose(computed_values, 
