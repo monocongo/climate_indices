@@ -1,8 +1,8 @@
 ﻿**Master**
-[![Build Status](https://img.shields.io/travis/github.com/nidis/climate_indices/master.svg)](https://travis-ci.org/github.com/nidis/climate_indices)
-[![Test Coverage](https://img.shields.io/codecov/c/gitlab/github.com/nidis/climate_indices/master.svg)](https://codecov.io/github.com/nidis/climate_indices)
-[![Code Climate](https://img.shields.io/codeclimate/github.com/nidis/climate_indices.svg)](https://codeclimate.com/github.com/nidis/climate_indices)
-[![Dependencies](https://img.shields.io/gemnasium/github.com/nidis/climate_indices.svg)](https://gemnasium.com/github.com/nidis/climate_indices)
+[![Build Status](https://img.shields.io/travis/github.com/nidis/climate_indices/master.svg)](https://travis-ci.org/github.com/monocongo/indices_python)
+[![Test Coverage](https://img.shields.io/codecov/c/gitlab/github.com/nidis/climate_indices/master.svg)](https://codecov.io/github.com/monocongo/indices_python)
+[![Code Climate](https://img.shields.io/codeclimate/github.com/nidis/climate_indices.svg)](https://codeclimate.com/github.com/monocongo/indices_python)
+[![Dependencies](https://img.shields.io/gemnasium/github.com/nidis/climate_indices.svg)](https://gemnasium.com/github.com/monocongo/indices_python)
 
 ## Community reference implementation of climate indices in Python 
 
