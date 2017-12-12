@@ -1,13 +1,17 @@
 import fixtures
 import logging
 import numpy as np
-import thornthwaite
 import unittest
 
+#-----------------------------------------------------------------------------------------------------------------------
+# use a context to add the required modules into the path for the test
+from context import thornthwaite
+
+#-----------------------------------------------------------------------------------------------------------------------
 # disable logging messages
 logging.disable(logging.CRITICAL)
 
-#-------------------------------------------------------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------------------------------
 class ThornthwaiteTestCase(fixtures.FixturesTestCase):
     '''
     Tests for `thornthwaite.py`.
@@ -46,7 +50,7 @@ class ThornthwaiteTestCase(fixtures.FixturesTestCase):
                           -91.0,   # latitude < -90 is invalid 
                           self.fixture_initial_data_year)
 
-#-------------------------------------------------------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
     
     unittest.main()
