@@ -233,46 +233,6 @@ def _initialize_netcdf(new_netcdf,
                 data_variable.setncatts(variable_attributes)
         
 #-----------------------------------------------------------------------------------------------------------------------
-def construct_nco_command(netcdf_operator):
-
-    # set the data directory path appropriate to the current platform
-    if ((sys.platform == 'linux') or (sys.platform == 'linux2')):
-        nco_home = '/home/james.adams/anaconda3/bin'
-        suffix = ''
-#         # to_null = ' >/dev/null 2>&1'  # use this if NCO error/warning/info messages become problematic
-#         to_null = ''
-    else:  # Windows
-        nco_home = 'C:/nco'
-        suffix = '.exe --no_tmp_fl'
-#         # to_null = ' >NUL 2>NUL'  # use this if NCO error/warning/info messages become problematic
-#         to_null = ''
-
-    # get the proper executable path for the NCO command that'll be used to perform the concatenation operation
-    normalized_executable_path = os.path.normpath(nco_home)
-    return os.path.join(os.sep, normalized_executable_path, netcdf_operator) + suffix # + to_null
-
-#-----------------------------------------------------------------------------------------------------------------------
-def convert_and_move_netcdf(input_and_output_netcdfs):
-
-    input_netcdf = input_and_output_netcdfs[0]
-    output_netcdf = input_and_output_netcdfs[1]
-
-    # get the proper executable path for the NCO command that'll be used to perform the conversion/compression 
-    ncks = construct_nco_command('ncks')
-
-    # build and run the command used to convert the file into a compressed NetCDF4 file
-    convert_and_compress_command = ncks + ' -O -4 -L 4 -h ' + input_netcdf + ' ' + output_netcdf
-    logger.info('Converting the temporary/work NetCDF file [%s] into a compressed NetCDF4 file [%s]', 
-                input_netcdf, 
-                output_netcdf)
-    logger.info('NCO conversion/compression command:  %s', convert_and_compress_command)
-    subprocess.call(convert_and_compress_command, shell=True)
-    
-    # remove the temporary/work file which will no longer needed
-    logger.info('Removing the temporary/work file [%s]', input_netcdf)
-    os.remove(input_netcdf)
-
-#-----------------------------------------------------------------------------------------------------------------------
 def f2c(t):
     '''
     Converts a temperature value from Fahrenheit to Celsius
@@ -599,7 +559,7 @@ if __name__ == '__main__':
         pool.join()
 
 #         # convert and move the output file
-#         convert_and_move_netcdf([args.output_file, args.output_file])
+#         netcdf_utils.convert_and_move_netcdf([args.output_file, args.output_file])
               
         # report on the elapsed time
         end_datetime = datetime.now()

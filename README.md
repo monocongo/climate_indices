@@ -135,4 +135,4 @@ This script has the following required command line arguments:
       --output_file nclimdiv_20170404_indices.nc`
 
 ## Copyright and licensing
-Please read more on our license page.
+Please read more on our [license](LICENSE) page.

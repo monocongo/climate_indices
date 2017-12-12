@@ -222,12 +222,12 @@ def _create_netcdf(output_netcdf,
 
         # create a time coordinate variable with an increment per month of the period of record
         chunk_sizes = [total_months]
-        time_variable = dataset.createVariable('time', 'i4', ('time',), chunksizes=chunk_sizes)
-        time_variable.long_name = 'time'
-        time_variable.standard_name = 'time'
-        time_variable.calendar = 'gregorian'
-        time_variable.units = 'days since ' + str(min_year) + '-01-01 00:00:00'
-        time_variable[:] = utils.compute_days(min_year, total_months)
+        time_units = dataset.createVariable('time', 'i4', ('time',), chunksizes=chunk_sizes)
+        time_units.long_name = 'time'
+        time_units.standard_name = 'time'
+        time_units.calendar = 'gregorian'
+        time_units.units = 'days since ' + str(min_year) + '-01-01 00:00:00'
+        time_units[:] = utils.compute_days(min_year, total_months)
 
         # create the division ID coordinate variable
         division_variable = dataset.createVariable(_DIVISION_VAR_NAME, 'i4', (_DIVISION_VAR_NAME,))
