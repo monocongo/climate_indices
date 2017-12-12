@@ -81,7 +81,7 @@ def initialize_netcdf(new_netcdf,
          netCDF4.Dataset(new_netcdf, 'w') as new_dataset:
  
         # get the template's dimension sizes
-        divisions_size = template_dataset.variables['division'].size
+        divisions_count = template_dataset.variables['division'].size
     
         # copy the global attributes from the input
         # TODO/FIXME add/modify global attributes to correspond with the actual dataset
@@ -92,7 +92,7 @@ def initialize_netcdf(new_netcdf,
         
         # create the time, x, and y dimensions
         new_dataset.createDimension('time', None)
-        new_dataset.createDimension('division', divisions_size)
+        new_dataset.createDimension('division', divisions_count)
     
         # get the appropriate data types to use for the variables
         time_dtype = netcdf_utils.find_netcdf_datatype(template_dataset.variables['time'])
@@ -262,13 +262,14 @@ def convert_and_move_netcdf(input_and_output_netcdfs):
 
     # build and run the command used to convert the file into a compressed NetCDF4 file
     convert_and_compress_command = ncks + ' -O -4 -L 4 -h ' + input_netcdf + ' ' + output_netcdf
-    logger.info('Converting the temporary/work NetCDF file [{0}] into a compressed NetCDF4 file [{1}]'\
-                .format(input_netcdf, output_netcdf))
-    logger.info('NCO conversion/compression command:  {0}'.format(convert_and_compress_command))
+    logger.info('Converting the temporary/work NetCDF file [%s] into a compressed NetCDF4 file [%s]', 
+                input_netcdf, 
+                output_netcdf)
+    logger.info('NCO conversion/compression command:  %s', convert_and_compress_command)
     subprocess.call(convert_and_compress_command, shell=True)
     
     # remove the temporary/work file which will no longer needed
-    logger.info('Removing the temporary/work file [{0}]'.format(input_netcdf))
+    logger.info('Removing the temporary/work file [%s]', input_netcdf)
     os.remove(input_netcdf)
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -321,7 +322,7 @@ def process_division(division_index,
 #         if division_id != 1010:
 #             return
         
-        logger.info('Processing indices for division {0}'.format(division_id))
+        logger.info('Processing indices for division %s', division_id)
     
         # read the division of input temperature values 
         temperature = input_dataset[temp_var_name][division_index, :]    # assuming (divisions, time) orientation
@@ -346,12 +347,12 @@ def process_division(division_index,
 
             elif temperature_units not in ['degree_Celsius', 'degrees Celsius', 'degrees C', 'celsius', 'Celsius', 'C']:
                 
-                raise ValueError('Unsupported temperature units: \'{0}\''.format(temperature_units))
+                raise ValueError('Unsupported temperature units: \'%s\'', temperature_units)
     
             # use the numpyapply_along_axis() function for computing indices such as PET that take a single time series
             # array as input (i.e. each division's time series is the initial 1-D array argument to the function we'll apply)
             
-            logger.info('\tComputing PET for division {0}'.format(division_id))
+            logger.info('\tComputing PET for division %s', division_id)
 
             # compute PET across all longitudes of the latitude slice
             pet_time_series = indices.pet(temperature, 
@@ -412,7 +413,7 @@ def process_division(division_index,
                     # PET is in mm, convert to inches since the Palmer uses imperial units
                     pet_time_series = pet_time_series * mm_to_inches_multiplier
     
-                    logger.info('\tComputing PDSI for division {0}'.format(division_id))
+                    logger.info('\tComputing PDSI for division %s', division_id)
 
                     # compute Palmer indices
                     palmer_values = indices.scpdsi(precip_time_series,
@@ -442,7 +443,7 @@ def process_division(division_index,
                 # process the SPI and SPEI at the specified month scales
                 for months in scale_months:
                     
-                    logger.info('\tComputing SPI/SPEI/PNP at {0}-month scale for division {1}'.format(months, division_id))
+                    logger.info('\tComputing SPI/SPEI/PNP at %s-month scale for division %s', months, division_id)
 
                     #TODO ensure that the precipitation and PET values are using the same units
                     
@@ -499,7 +500,7 @@ def process_division(division_index,
 #-----------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
 
-    '''
+    """
     This script performs climate index processing for US climate divisions.
     
     Indices included are SPI and SPEI (both Gamma and Pearson Type III fittings), PET, PNP, and Palmers (PDSI, scPDSI, PHDI,
@@ -518,13 +519,13 @@ if __name__ == '__main__':
         --month_scales 1 2 3 6 12 24 
         --calibration_start_year 1951 
         --calibration_end_year 2010
-    '''
+    """
 
     try:
 
         # log some timing info, used later for elapsed time
         start_datetime = datetime.now()
-        logger.info('Start time:    {0}'.format(start_datetime))
+        logger.info('Start time:    %s', start_datetime)
 
         # parse the command line arguments
         parser = argparse.ArgumentParser()
@@ -572,7 +573,7 @@ if __name__ == '__main__':
             data_start_year = netCDF4.num2date(time_variable[0], time_variable.units).year
  
             # get the number of divisions in the input dataset(s)
-            divisions_size = input_dataset.variables['division'].size
+            divisions_count = input_dataset.variables['division'].size
         
         # create a process Pool, with copies of the shared array going to each pooled/forked process
         pool = multiprocessing.Pool(processes=1,#multiprocessing.cpu_count(),
@@ -588,7 +589,7 @@ if __name__ == '__main__':
                                               args.calibration_end_year))
  
         # map the divisions indices as an arguments iterable to the compute function
-        result = pool.map_async(compute_and_write_division, range(divisions_size))
+        result = pool.map_async(compute_and_write_division, range(divisions_count))
                   
         # get the exception(s) thrown, if any
         result.get()
@@ -602,10 +603,11 @@ if __name__ == '__main__':
               
         # report on the elapsed time
         end_datetime = datetime.now()
-        logger.info("End time:      {}".format(end_datetime))
+        logger.info("End time:      %s", end_datetime)
         elapsed = end_datetime - start_datetime
-        logger.info("Elapsed time:  {}".format(elapsed))
+        logger.info("Elapsed time:  %s", elapsed)
 
-    except Exception as ex:
+    except Exception:
         logger.exception('Failed to complete', exc_info=True)
         raise
+    

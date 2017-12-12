@@ -115,7 +115,7 @@ def main():
                 # get the expected/target values from the NetCDF
                 expected_pdsi = input_dataset.variables['pdsi.index'][division_index, :]
                 expected_phdi = input_dataset.variables['phdi.index'][division_index, :]
-#                 expected_pmdi = input_dataset.variables['pmdi.index'][division_index, :]
+                expected_pmdi = input_dataset.variables['pmdi.index'][division_index, :]
                 expected_zindex = input_dataset.variables['z.index'][division_index, :]
                 
                 # calibration period years used operationally with pdinew.f
@@ -140,7 +140,7 @@ def main():
                 # dictionary of variable names to corresponding arrays of differences to facilitate looping below
                 varnames_to_arrays = {'palmer_PDSI': (expected_pdsi, palmer_PDSI.flatten()),
                                       'palmer_PHDI': (expected_phdi, palmer_PHDI),
-#                                       'palmer_PMDI': (expected_pmdi, palmer_PMDI),
+                                      'palmer_PMDI': (expected_pmdi, palmer_PMDI),
                                       'palmer_Z-INDEX': (expected_zindex, palmer_Z.flatten()) }
     
                 # we want to see all zero differences, if any non-zero differences exist then raise an alert
