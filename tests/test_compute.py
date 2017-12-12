@@ -34,7 +34,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
         '''
          
         # compute sigmas of transformed (normalized) values fitted to a gamma distribution
-        computed_values = compute.transform_fitted_pearson(self.fixture_monthly_values, 
+        computed_values = compute.transform_fitted_pearson(self.fixture_precips_mm, 
                                                            1895,
                                                            1981,
                                                            2010)
