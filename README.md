@@ -1,8 +1,11 @@
 ﻿**Master**
-[![Build Status](https://img.shields.io/travis/github.com/nidis/climate_indices/master.svg)](https://travis-ci.org/github.com/monocongo/indices_python)
-[![Test Coverage](https://img.shields.io/codecov/c/gitlab/github.com/nidis/climate_indices/master.svg)](https://codecov.io/github.com/monocongo/indices_python)
-[![Code Climate](https://img.shields.io/codeclimate/github.com/nidis/climate_indices.svg)](https://codeclimate.com/github.com/monocongo/indices_python)
-[![Dependencies](https://img.shields.io/gemnasium/github.com/nidis/climate_indices.svg)](https://gemnasium.com/github.com/monocongo/indices_python)
+<!---
+[![Build Status](https://img.shields.io/travis/github.com/monocongo/indices_python/master.svg)](https://travis-ci.org/github.com/monocongo/indices_python)
+[![Test Coverage](https://img.shields.io/codecov/c/gitlab/github.com/monocongo/indices_python/master.svg)](https://codecov.io/github.com/monocongo/indices_python)
+[![Code Climate](https://img.shields.io/codeclimate/github.com/monocongo/indices_python.svg)](https://codeclimate.com/github.com/monocongo/indices_python)
+[![Dependencies](https://img.shields.io/gemnasium/github.com/monocongo/indices_python.svg)](https://gemnasium.com/github.com/monocongo/indices_python)
+--->
+[![CodeFactor](https://www.codefactor.io/repository/github/monocongo/indices_python/badge/develop)](https://www.codefactor.io/repository/github/monocongo/indices_python/overview/develop)
 
 ## Community reference implementation of climate indices in Python 
 
