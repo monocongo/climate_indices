@@ -56,7 +56,7 @@ def init_process(worker_input_netcdf,
     calibration_end_year = worker_calibration_end_year
     
 #-----------------------------------------------------------------------------------------------------------------------
-def initialize_netcdf(new_netcdf,
+def _initialize_netcdf(new_netcdf,
                       template_netcdf,
                       month_scales=None):
     """
@@ -100,12 +100,12 @@ def initialize_netcdf(new_netcdf,
         data_dtype = netcdf_utils.find_netcdf_datatype(fill_value)
     
         # create the coordinate variables
-        time_variable = new_dataset.createVariable('time', time_dtype, ('time',))
+        time_units = new_dataset.createVariable('time', time_dtype, ('time',))
         division_variable = new_dataset.createVariable('division', divisions_dtype, ('division',))
 
         # set the coordinate variables' attributes and values
-        time_variable.setncatts(template_dataset.variables['time'].__dict__)
-        time_variable[:] = template_dataset.variables['time'][:]
+        time_units.setncatts(template_dataset.variables['time'].__dict__)
+        time_units[:] = template_dataset.variables['time'][:]
         division_variable.setncatts(template_dataset.variables['division'].__dict__)
         division_variable[:] = template_dataset.variables['division'][:]
 
@@ -563,14 +563,14 @@ if __name__ == '__main__':
         args = parser.parse_args()
 
         # initialize the output NetCDF that will contain the computed indices
-        initialize_netcdf(args.output_file, args.input_file, args.month_scales)
+        _initialize_netcdf(args.output_file, args.input_file, args.month_scales)
         
         # open the NetCDF files 
         with netCDF4.Dataset(args.input_file) as input_dataset:
              
             # get the initial and final year of the input datasets
-            time_variable = input_dataset.variables['time']
-            data_start_year = netCDF4.num2date(time_variable[0], time_variable.units).year
+            time_units = input_dataset.variables['time']
+            data_start_year = netCDF4.num2date(time_units[0], time_units.units).year
  
             # get the number of divisions in the input dataset(s)
             divisions_count = input_dataset.variables['division'].size

@@ -4,11 +4,12 @@ import indices
 import logging
 import math
 import multiprocessing
+from nco import Nco
 import netcdf_utils
 import numpy as np
 import os
-import subprocess
-import sys
+# import subprocess
+# import sys
 from netCDF4 import Dataset, num2date
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -87,7 +88,7 @@ def process_latitude_spi_spei_pnp(lat_index):
     '''
     '''
     
-    logger.info('Computing SPI, SPEI, and PNP for latitude index {0}'.format(lat_index))
+    logger.info('Computing SPI, SPEI, and PNP for latitude index %s', lat_index)
     
     # open the input NetCDFs
     with Dataset(precip_netcdf) as precip_dataset, \
@@ -279,7 +280,7 @@ def process_latitude_palmer(lat_index):
     '''
     '''
     
-    logger.info('Computing PET and Palmers for latitude index {0}'.format(lat_index))
+    logger.info('Computing PET and Palmers for latitude index %s', lat_index)
     
     # open the input NetCDFs
     with Dataset(precip_netcdf) as precip_dataset, \
@@ -365,7 +366,7 @@ def process_latitude_palmer(lat_index):
                 # PET is in mm, convert to inches
                 pet_time_series = pet_time_series * mm_to_inches_multiplier
 
-#                 logger.info('     Computing for longitude index {0}'.format(lon_index))
+#                 logger.info('     Computing for longitude index %s', lon_index)
 
                 # compute Palmer indices
                 palmer_values = indices.scpdsi(precip_time_series,
@@ -508,10 +509,10 @@ def validate_compatibility(precipitation_dataset,
         message = 'Unexpected dimensions for the {0} variable of the {1} dataset: {2}\nExpected dimensions are (\'time\', \'lat\', \'lon\')'.format(precipitation_var_name, precip_dataset_name, precipitation_dataset.variables[precipitation_var_name].dimensions)
         logger.error(message)
         raise ValueError(message)
-    if (not soil_constants_dataset.variables[soil_var_name].dimensions == expected_dimensions) and \
-        (not soil_constants_dataset.variables[soil_var_name].dimensions == ('lat', 'lon')) and \
-        (not soil_constants_dataset.variables[soil_var_name].dimensions == ('lon', 'lat')):
-        message = 'Unexpected dimensions for the {0} variable of the {1} dataset: {2}\nExpected dimensions are (\'time\', \'lat\', \'lon\')'.format(soil_var_name, awc_dataset_name, soil_constants_dataset.variables[soil_var_name].dimensions)
+    if (not soil_dataset.variables[soil_var_name].dimensions == expected_dimensions) and \
+        (not soil_dataset.variables[soil_var_name].dimensions == ('lat', 'lon')) and \
+        (not soil_dataset.variables[soil_var_name].dimensions == ('lon', 'lat')):
+        message = 'Unexpected dimensions for the {0} variable of the {1} dataset: {2}\nExpected dimensions are (\'time\', \'lat\', \'lon\')'.format(soil_var_name, awc_dataset_name, soil_dataset.variables[soil_var_name].dimensions)
         logger.error(message)
         raise ValueError(message)
 
@@ -578,12 +579,12 @@ def initialize_unscaled_netcdfs(base_file_path,
     
 #-----------------------------------------------------------------------------------------------------------------------
 def _initialize_scaled_netcdfs(base_file_path, 
-                               scale_months, 
+                               month_scales, 
                                template_netcdf):
     
     # dictionary of index types to the NetCDF dataset files corresponding to the base index names and 
     # month scales (this is the object we'll build and return from this function)
-    scaled_netcdfs = {}
+    netcdfs = {}
     
     # dictionary of index types mapped to their corresponding long variable names to be used within their respective NetCDFs 
     indicators_to_longnames = {'pnp': 'Percent of normal precipitation, {0}-month average',
@@ -604,7 +605,7 @@ def _initialize_scaled_netcdfs(base_file_path,
             valid_max = 3.09
 
         # create the variable name from the index and month scale
-        variable_name = index + '_{0}'.format(str(scale_months).zfill(2))
+        variable_name = index + '_{0}'.format(str(month_scales).zfill(2))
 
         # create the NetCDF file path from the 
         netcdf_file = base_file_path + '_' + variable_name + '.nc'
@@ -613,60 +614,67 @@ def _initialize_scaled_netcdfs(base_file_path,
         netcdf_utils.initialize_netcdf_single_variable_grid(netcdf_file, 
                                                             template_netcdf,
                                                             variable_name,
-                                                            long_name.format(scale_months),
+                                                            long_name.format(month_scales),
                                                             valid_min,
                                                             valid_max)
     
         # add the months scale index's NetCDF to the dictionary for the current index
-        scaled_netcdfs[index] = netcdf_file
+        netcdfs[index] = netcdf_file
         
-    return scaled_netcdfs
+    return netcdfs
+
+# #-----------------------------------------------------------------------------------------------------------------------
+# def construct_nco_command(netcdf_operator):
+#     '''
+#     This function constructs a NCO command appropriate to the platform where the code is running.
+#     
+#     :param netcdf_operator: the NCO command (eg. ncks, ncatted, etc.) to be called
+#     :return: executable command including full path, including platform-specific path separators
+#     :rtype: string   
+#     '''
+#     
+#     #TODO replace the hard-coded paths below with a function argument, the value of which is pulled from a command line option
+#     # set the NCO executable path appropriate to the current platform
+#     if ((sys.platform == 'linux') or (sys.platform == 'linux2')):
+#         nco_home = '/home/james.adams/anaconda3/bin'
+#         suffix = ''
+# #         # to_null = ' >/dev/null 2>&1'  # use this if NCO error/warning/info messages become problematic
+# #         to_null = ''
+#     else:  # Windows
+#         nco_home = 'C:/nco'
+#         suffix = '.exe --no_tmp_fl'
+# #         # to_null = ' >NUL 2>NUL'  # use this if NCO error/warning/info messages become problematic
+# #         to_null = ''
+# 
+#     # get the proper executable path for the NCO command that'll be used to perform the concatenation operation
+#     normalized_executable_path = os.path.normpath(nco_home)
+#     return os.path.join(os.sep, normalized_executable_path, netcdf_operator) + suffix # + to_null
 
 #-----------------------------------------------------------------------------------------------------------------------
-def construct_nco_command(netcdf_operator):
-    '''
-    This function constructs a NCO command appropriate to the platform where the code is running.
-    
-    :param netcdf_operator: the NCO command (eg. ncks, ncatted, etc.) to be called
-    :return: executable command including full path, including platform-specific path separators
-    :rtype: string   
-    '''
-    
-    #TODO replace the hard-coded paths below with a function argument, the value of which is pulled from a command line option
-    # set the NCO executable path appropriate to the current platform
-    if ((sys.platform == 'linux') or (sys.platform == 'linux2')):
-        nco_home = '/home/james.adams/anaconda3/bin'
-        suffix = ''
-#         # to_null = ' >/dev/null 2>&1'  # use this if NCO error/warning/info messages become problematic
-#         to_null = ''
-    else:  # Windows
-        nco_home = 'C:/nco'
-        suffix = '.exe --no_tmp_fl'
-#         # to_null = ' >NUL 2>NUL'  # use this if NCO error/warning/info messages become problematic
-#         to_null = ''
-
-    # get the proper executable path for the NCO command that'll be used to perform the concatenation operation
-    normalized_executable_path = os.path.normpath(nco_home)
-    return os.path.join(os.sep, normalized_executable_path, netcdf_operator) + suffix # + to_null
-
-#-----------------------------------------------------------------------------------------------------------------------
-def convert_and_move_netcdf(input_and_output_netcdfs):
+def _convert_and_move_netcdf(input_and_output_netcdfs):
 
     input_netcdf = input_and_output_netcdfs[0]
     output_netcdf = input_and_output_netcdfs[1]
 
-    # get the proper executable path for the NCO command that'll be used to perform the conversion/compression 
-    ncks = construct_nco_command('ncks')
+#     # get the proper executable path for the NCO command that'll be used to perform the conversion/compression 
+#     ncks = construct_nco_command('ncks')
+# 
+#     # build and run the command used to convert the file into a compressed NetCDF4 file
+#     convert_and_compress_command = ncks + ' -O -4 -L 4 -h ' + input_netcdf + ' ' + output_netcdf
+#     logger.info('Converting the temporary/work NetCDF file [%s] into a compressed NetCDF4 file [$s]', 
+#                 input_netcdf, 
+#                 output_netcdf)
+#     logger.info('NCO conversion/compression command:  %s', convert_and_compress_command)
+#     subprocess.call(convert_and_compress_command, shell=True)
 
-    # build and run the command used to convert the file into a compressed NetCDF4 file
-    convert_and_compress_command = ncks + ' -O -4 -L 4 -h ' + input_netcdf + ' ' + output_netcdf
-    logger.info('Converting the temporary/work NetCDF file [{0}] into a compressed NetCDF4 file [{1}]'\
-                .format(input_netcdf, output_netcdf))
-    logger.info('NCO conversion/compression command:  {0}'.format(convert_and_compress_command))
-    subprocess.call(convert_and_compress_command, shell=True)
+    # use NCO bindings to make conversion/compression command    
+    nco = Nco()
+    nco.ncks(input=input_netcdf,
+             output=output_netcdf,
+             options=['-O', '-4', '-L 4', '-h'])
     
     # remove the temporary/work file which will no longer needed
-    logger.info('Removing the temporary/work file [{0}]'.format(input_netcdf))
+    logger.info('Removing the temporary/work file [%s]', input_netcdf)
     os.remove(input_netcdf)
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -680,7 +688,7 @@ if __name__ == '__main__':
 
         # log some timing info, used later for elapsed time
         start_datetime = datetime.now()
-        logger.info("Start time:    {0}".format(start_datetime))
+        logger.info("Start time:    %s", start_datetime)
 
         # parse the command line arguments
         parser = argparse.ArgumentParser()
@@ -734,24 +742,24 @@ if __name__ == '__main__':
         unscaled_netcdfs = initialize_unscaled_netcdfs(args.output_file_base, args.precip_file)
             
         # open the input NetCDF files for compatibility validation and to get the data's time range 
-        with Dataset(args.precip_file) as precip_dataset, \
-             Dataset(args.temp_file) as temp_dataset, \
-             Dataset(args.awc_file) as awc_dataset:
+        with Dataset(args.precip_file) as dataset_precip, \
+             Dataset(args.temp_file) as dataset_temp, \
+             Dataset(args.awc_file) as dataset_awc:
               
             # make sure the datasets are compatible dimensionally
-            validate_compatibility(precip_dataset,
+            validate_compatibility(dataset_precip,
                                    args.precip_var_name,
-                                   temp_dataset, 
+                                   dataset_temp, 
                                    args.temp_var_name,
-                                   awc_dataset,
+                                   dataset_awc,
                                    args.awc_var_name)
               
             # get the initial year of the input dataset(s)
-            time_variable = precip_dataset.variables['time']
-            data_start_year = num2date(time_variable[0], time_variable.units).year
+            time_units = dataset_precip.variables['time']
+            data_start_year = num2date(time_units[0], time_units.units).year
   
             # get the number of latitudes in the input dataset(s)
-            lat_size = precip_dataset.variables['lat'].size
+            lat_size = dataset_precip.variables['lat'].size
               
         #--------------------------------------------------------------------------------------------------------------
         # Create PET and Palmer index NetCDF files, computed from input temperature, precipitation, and soil constant.
@@ -800,7 +808,7 @@ if __name__ == '__main__':
 #         pool = multiprocessing.Pool(processes=number_of_workers)
 #             
 #         # create an arguments iterable containing the input and output NetCDFs, map it to the convert function
-#         result = pool.map_async(convert_and_move_netcdf, input_output_netcdfs)
+#         result = pool.map_async(_convert_and_move_netcdf, input_output_netcdfs)
 #               
 #         # get the exception(s) thrown, if any
 #         result.get()
@@ -854,7 +862,7 @@ if __name__ == '__main__':
 #             pool = multiprocessing.Pool(processes=number_of_workers)
 #               
 #             # create an arguments iterable containing the input and output NetCDFs, map it to the convert function
-#             result = pool.map_async(convert_and_move_netcdf, input_output_netcdfs)
+#             result = pool.map_async(_convert_and_move_netcdf, input_output_netcdfs)
 #                 
 #             # get the exception(s) thrown, if any
 #             result.get()
@@ -864,13 +872,13 @@ if __name__ == '__main__':
 #             pool.join()
          
 #         # convert the PET file to compressed NetCDF4 and move into the destination directory
-#         convert_and_move_netcdf((unscaled_netcdfs['pet'], '/nidis/test/nclimgrid/pet/' + unscaled_netcdfs['pet']))
+#         _convert_and_move_netcdf((unscaled_netcdfs['pet'], '/nidis/test/nclimgrid/pet/' + unscaled_netcdfs['pet']))
          
         # report on the elapsed time
         end_datetime = datetime.now()
-        logger.info("End time:      {}".format(end_datetime))
+        logger.info("End time:      %s", end_datetime)
         elapsed = end_datetime - start_datetime
-        logger.info("Elapsed time:  {}".format(elapsed))
+        logger.info("Elapsed time:  %s", elapsed)
 
     except Exception as ex:
         logger.exception('Failed to complete', exc_info=True)
