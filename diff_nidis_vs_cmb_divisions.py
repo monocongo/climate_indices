@@ -19,7 +19,7 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------------------------------------------------
-def initialize_netcdf(new_netcdf,
+def _initialize_netcdf(new_netcdf,
                       template_netcdf,
                       variables=None):
     '''
@@ -59,12 +59,12 @@ def initialize_netcdf(new_netcdf,
         data_dtype = netcdf_utils.find_netcdf_datatype(fill_value)
     
         # create the coordinate variables
-        time_variable = new_dataset.createVariable('time', time_dtype, ('time',))
+        time_units = new_dataset.createVariable('time', time_dtype, ('time',))
         division_variable = new_dataset.createVariable('division', divisions_dtype, ('division',))
 
         # set the coordinate variables' attributes and var_names
-        time_variable.setncatts(template_dataset.variables['time'].__dict__)
-        time_variable[:] = template_dataset.variables['time'][:]
+        time_units.setncatts(template_dataset.variables['time'].__dict__)
+        time_units[:] = template_dataset.variables['time'][:]
         division_variable.setncatts(template_dataset.variables['division'].__dict__)
         division_variable[:] = template_dataset.variables['division'][:]
 

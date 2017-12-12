@@ -4,12 +4,8 @@ import indices
 import logging
 import math
 import multiprocessing
-from nco import Nco
 import netcdf_utils
 import numpy as np
-import os
-# import subprocess
-# import sys
 from netCDF4 import Dataset, num2date
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -436,17 +432,19 @@ def _is_data_valid(data):
     # make sure we're not dealing with all NaN values
     if np.ma.isMaskedArray(data):
 
-        if data.count():
-            valid_flag = True
-        else:
-            valid_flag = False
+        valid_flag = bool(data.count())
+#         if data.count():
+#             valid_flag = True
+#         else:
+#             valid_flag = False
     
     elif isinstance(data, np.ndarray):
    
-        if not np.all(np.isnan(data)):
-            valid_flag = True
-        else:
-            valid_flag = False
+        valid_flag = not np.all(np.isnan(data))
+#         if not np.all(np.isnan(data)):
+#             valid_flag = True
+#         else:
+#             valid_flag = False
     
     else:
         logger.warning('Invalid data type passed for precipitation data')
@@ -651,33 +649,6 @@ def _initialize_scaled_netcdfs(base_file_path,
 #     return os.path.join(os.sep, normalized_executable_path, netcdf_operator) + suffix # + to_null
 
 #-----------------------------------------------------------------------------------------------------------------------
-def _convert_and_move_netcdf(input_and_output_netcdfs):
-
-    input_netcdf = input_and_output_netcdfs[0]
-    output_netcdf = input_and_output_netcdfs[1]
-
-#     # get the proper executable path for the NCO command that'll be used to perform the conversion/compression 
-#     ncks = construct_nco_command('ncks')
-# 
-#     # build and run the command used to convert the file into a compressed NetCDF4 file
-#     convert_and_compress_command = ncks + ' -O -4 -L 4 -h ' + input_netcdf + ' ' + output_netcdf
-#     logger.info('Converting the temporary/work NetCDF file [%s] into a compressed NetCDF4 file [$s]', 
-#                 input_netcdf, 
-#                 output_netcdf)
-#     logger.info('NCO conversion/compression command:  %s', convert_and_compress_command)
-#     subprocess.call(convert_and_compress_command, shell=True)
-
-    # use NCO bindings to make conversion/compression command    
-    nco = Nco()
-    nco.ncks(input=input_netcdf,
-             output=output_netcdf,
-             options=['-O', '-4', '-L 4', '-h'])
-    
-    # remove the temporary/work file which will no longer needed
-    logger.info('Removing the temporary/work file [%s]', input_netcdf)
-    os.remove(input_netcdf)
-
-#-----------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
 
     '''
@@ -808,7 +779,7 @@ if __name__ == '__main__':
 #         pool = multiprocessing.Pool(processes=number_of_workers)
 #             
 #         # create an arguments iterable containing the input and output NetCDFs, map it to the convert function
-#         result = pool.map_async(_convert_and_move_netcdf, input_output_netcdfs)
+#         result = pool.map_async(netcdf_utils.convert_and_move_netcdf, input_output_netcdfs)
 #               
 #         # get the exception(s) thrown, if any
 #         result.get()
@@ -862,7 +833,7 @@ if __name__ == '__main__':
 #             pool = multiprocessing.Pool(processes=number_of_workers)
 #               
 #             # create an arguments iterable containing the input and output NetCDFs, map it to the convert function
-#             result = pool.map_async(_convert_and_move_netcdf, input_output_netcdfs)
+#             result = pool.map_async(netcdf_utils.convert_and_move_netcdf, input_output_netcdfs)
 #                 
 #             # get the exception(s) thrown, if any
 #             result.get()
@@ -872,7 +843,7 @@ if __name__ == '__main__':
 #             pool.join()
          
 #         # convert the PET file to compressed NetCDF4 and move into the destination directory
-#         _convert_and_move_netcdf((unscaled_netcdfs['pet'], '/nidis/test/nclimgrid/pet/' + unscaled_netcdfs['pet']))
+#         netcdf_utils.convert_and_move_netcdf((unscaled_netcdfs['pet'], '/nidis/test/nclimgrid/pet/' + unscaled_netcdfs['pet']))
          
         # report on the elapsed time
         end_datetime = datetime.now()
