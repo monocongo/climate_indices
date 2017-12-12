@@ -1,13 +1,17 @@
 import fixtures
 import logging
 import numpy as np
-import palmer
 import unittest
 
+#-----------------------------------------------------------------------------------------------------------------------
+# use a context to add the required modules into the path for the test
+from context import palmer
+
+#-----------------------------------------------------------------------------------------------------------------------
 # disable logging messages
 logging.disable(logging.CRITICAL)
 
-#-------------------------------------------------------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------------------------------
 class PalmerTestCase(fixtures.FixturesTestCase):
     '''
     Tests for `palmer.py`.
@@ -140,8 +144,7 @@ class PalmerTestCase(fixtures.FixturesTestCase):
                                        expected, 
                                        atol=0.01,
                                        err_msg='Not computing the {0} as expected'.format(name))        
-        
-#--------------------------------------------------------------------------------------------
+
+#-----------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
     unittest.main()
-    

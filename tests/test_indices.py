@@ -1,14 +1,18 @@
 import fixtures
-import indices
 import logging
 import math
 import numpy as np
 import unittest
 
+#-----------------------------------------------------------------------------------------------------------------------
+# use a context to add the required modules into the path for the test
+from context import indices
+
+#-----------------------------------------------------------------------------------------------------------------------
 # disable logging messages
 logging.disable(logging.CRITICAL)
 
-#-------------------------------------------------------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------------------------------
 class IndicesTestCase(fixtures.FixturesTestCase):
     '''
     Tests for `indices.py`.
