@@ -987,6 +987,7 @@ def _pmdi(probability,
 #------------------------------------------------------------------------------------------------------------------
 @numba.jit  # working?
 def _assign_X(k,
+              number_of_months,
               BT,
               PX1,
               PX2,
@@ -996,6 +997,7 @@ def _assign_X(k,
     Assign X values using backtracking.
     
     :param k: number of months to backtrack
+    :param number_of_months: ?
     :param BT: backtracking array 
     :param PX1: potential X1 values
     :param PX2: potential X2 values
@@ -1154,7 +1156,7 @@ def _pdsi_from_zindex(Z):
         PMDI[k] = _pmdi(Pe, X1, X2, X3)
 
         # assign X for cases where PX3 and BT equal 0
-        _assign_X(k, BT, PX1, PX2, PX3, X)
+        _assign_X(k, number_of_months, BT, PX1, PX2, PX3, X)
         
 #         ## ASSIGN X FOR CASES WHERE PX3 AND BT EQUAL ZERO
 #         # NOTE: This is a conflicting case that arises where X cannot be

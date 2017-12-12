@@ -1,6 +1,6 @@
 from datetime import datetime
 import logging
-from nco import Nco
+#from nco import Nco
 import netCDF4
 import numpy as np
 import os
