@@ -1158,48 +1158,6 @@ def _pdsi_from_zindex(Z):
         # assign X for cases where PX3 and BT equal 0
         _assign_X(k, number_of_months, BT, PX1, PX2, PX3, X)
         
-#         ## ASSIGN X FOR CASES WHERE PX3 AND BT EQUAL ZERO
-#         # NOTE: This is a conflicting case that arises where X cannot be
-#         # assigned as X1, X2, or X3 in real time. Here 0 < PX1 < 1, 
-#         # -1 < PX2 < 0, and PX3 = 0, and it is not obvious which
-#         # intermediate index should be assigned to X. Therefore,
-#         # backtracking is used here, where BT is set equal to the next
-#         # month's BT value and X is assigned to the intermediate index
-#         # associated with that BT value.
-#         if k > 0:
-#             if (PX3[k - 1] == 0) and (BT[k - 1] == 0):
-#                 r = 0
-#                 for c in range(k - 1, 0, -1):  # here we loop over the BT array to look for the most previous month step where the value is not zero
-#                     if BT[c] != 0:
-#                         # Backtracking continues in a backstepping procedure up through the most previous month where BT is not equal to zero
-#                         r = c + 1    # r is the row number up through which backtracking continues.
-#                         break
-# 
-#                 for count0 in range(k - 1, r - 1, -1):  # here we loop over the BT array from the previous month (k - 1) through the r index (most previous month with BT != 0), at each month assigning to X the value for the month called for in the BT array, unless that value is 0 in which case the BT value is switched and the corresponding X values are assigned (see _assign() in pdinew.f/pdinew.py)
-#                     BT[count0] = BT[count0 + 1] # Assign BT to next month's BT value.
-#                     if BT[count0] == 2:
-#                         if PX2[count0] == 0:  # If BT = 2, X = PX2 unless PX2 = 0, then X = PX1.
-#                             X[count0] = PX1[count0]
-#                             BT[count0] = 1  # flip the X we'll choose next step, from X2 to X1
-#                         else:
-#                             X[count0] = PX2[count0]
-#                     elif BT[count0] == 1:
-#                         if PX1[count0] == 0:  # If BT = 1, X = PX1 unless PX1 = 0, then X = PX2.
-#                             X[count0] = PX2[count0] 
-#                             BT[count0] = 2  # flip the X we'll choose next step, from X1 to X2
-#                         else:
-#                             X[count0] = PX1[count0]
-#                     
-#         # In instances where there is no established spell for the last monthly observation, X is initially 
-#         # assigned to 0. The code below sets X in the last month to greater of |PX1| or |PX2|. This prevents 
-#         # the PHDI from being inappropriately set to 0. 
-#         if k == (number_of_months - 1):
-#             if (PX3[k] == 0) and (X[k] == 0):
-#                 if abs(PX1[k]) > abs(PX2[k]):
-#                     X[k] = PX1[k]
-#                 else:
-#                     X[k] = PX2[k]
-
         # round values to four decimal places
         for values in [X1, X2, X3, Pe, V, X, PX1, PX2, PX3, PPe]:
             values = np.around(values, decimals=4)
@@ -1374,20 +1332,20 @@ def _compute_scpdsi(established_index_values,
 
                     # xValues should be a list of doubles
                     new_X, new_X1, new_X2, new_X3 = _choose_X(pdsi_values,
-                                                          established_index_values,
-                                                          wet_index_values,
-                                                          dry_index_values,
-                                                          sczindex_values,
-                                                          wet_index_deque,
-                                                          dry_index_deque,
-                                                          wet_M,
-                                                          wet_B,
-                                                          dry_M,
-                                                          dry_B,
-                                                          new_X, 
-                                                          new_X3, 
-                                                          period, 
-                                                          previous_key)
+                                                              established_index_values,
+                                                              wet_index_values,
+                                                              dry_index_values,
+                                                              sczindex_values,
+                                                              wet_index_deque,
+                                                              dry_index_deque,
+                                                              wet_M,
+                                                              wet_B,
+                                                              dry_M,
+                                                              dry_B,
+                                                              new_X, 
+                                                              new_X3, 
+                                                              period, 
+                                                              previous_key)
 
             wet_index_values[period] = new_X1
             dry_index_values[period] = new_X2
