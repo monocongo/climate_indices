@@ -333,6 +333,13 @@ def initialize_dataset_climdivs(file_path,
     # copy the global attributes from the template
     netcdf.setncatts(template_dataset.__dict__)
         
+    # copy the global attributes from the input
+    # TODO/FIXME add/modify global attributes to correspond with the actual dataset
+    netcdf.setncatts(template_dataset.__dict__)
+    
+    # use "ClimDiv-1.0" as the Conventions setting in order to facilitate visualization by the NOAA Weather and Climate Toolkit
+    netcdf.setncattr("Conventions", "ClimDiv-1.0")
+        
     # create the time, x, and y dimensions
     netcdf.createDimension('time', None)
     netcdf.createDimension(divisions_dim_name, divisions_size)
