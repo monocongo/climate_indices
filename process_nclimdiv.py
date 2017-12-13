@@ -10,13 +10,26 @@ import os
 import subprocess
 import sys
 
+#-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global logger which will write to the console as standard error
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s',
                     datefmt='%Y-%m-%d  %H:%M:%S')
 logger = logging.getLogger(__name__)
 
-# multiprocessing locks we'll use to synchronize I/O writes to NetCDF files, one per each output file
+#-----------------------------------------------------------------------------------------------------------------------
+# globals for use within each process
+input_netcdf = ''
+output_netcdf = ''
+temp_var_name = ''
+precip_var_name = ''
+awc_var_name = ''
+scale_months = []
+data_start_year = -1
+calibration_start_year = -1
+calibration_end_year = -1
+
+# multiprocessing lock we'll use to synchronize I/O writes to NetCDF file
 lock = multiprocessing.Lock()
 
 # ignore warnings
@@ -24,15 +37,15 @@ import warnings
 warnings.simplefilter('ignore', Warning)
 
 #-----------------------------------------------------------------------------------------------------------------------
-def init_process(worker_input_netcdf,
-                 worker_output_netcdf,
-                 worker_temp_var_name,
-                 worker_precip_var_name,
-                 worker_awc_var_name,
-                 worker_scale_months,
-                 worker_data_start_year,
-                 worker_calibration_start_year, 
-                 worker_calibration_end_year):
+def _init_process(worker_input_netcdf,
+                  worker_output_netcdf,
+                  worker_temp_var_name,
+                  worker_precip_var_name,
+                  worker_awc_var_name,
+                  worker_scale_months,
+                  worker_data_start_year,
+                  worker_calibration_start_year, 
+                  worker_calibration_end_year):
     
     # put the arguments into the global namespace
     global input_netcdf, \
@@ -537,7 +550,7 @@ if __name__ == '__main__':
         
         # create a process Pool, with copies of the shared array going to each pooled/forked process
         pool = multiprocessing.Pool(processes=1,#multiprocessing.cpu_count(),
-                                    initializer=init_process,
+                                    initializer=_init_process,
                                     initargs=(args.input_file,
                                               args.output_file,
                                               args.temp_var_name,
