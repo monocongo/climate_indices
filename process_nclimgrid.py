@@ -21,6 +21,24 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------------------------------------------------
+# globals used within all subprocesses, shared as globals for now until we can move these out as class members
+temp_netcdf = ''
+precip_netcdf = ''
+awc_netcdf = ''
+precip_var_name = ''
+temp_var_name = ''
+awc_var_name = ''
+netcdf_pet = ''
+netcdf_pdsi = ''
+netcdf_phdi = ''
+netcdf_zindex = ''
+netcdf_scpdsi = ''
+netcdf_pmdi = ''
+initial_data_year = -1
+calibration_start_year = -1
+calibration_end_year = -1
+
+#-----------------------------------------------------------------------------------------------------------------------
 # multiprocessing locks we'll use to synchronize I/O writes to NetCDF files, one per each output file
 pet_lock = multiprocessing.Lock()
 pdsi_lock = multiprocessing.Lock()
@@ -54,7 +72,7 @@ def init_process_spi_spei_pnp(worker_precip_netcdf,
     
     # put the arguments into the global namespace
     global precip_netcdf, \
-           pet_netcdf, \
+           netcdf_pet, \
            precip_var_name, \
            spi_gamma_netcdf, \
            spi_pearson_netcdf, \
@@ -67,7 +85,7 @@ def init_process_spi_spei_pnp(worker_precip_netcdf,
            calibration_end_year
            
     precip_netcdf = worker_precip_netcdf
-    pet_netcdf = worker_pet_netcdf
+    netcdf_pet = worker_pet_netcdf
     precip_var_name = worker_precip_var_name
     spi_gamma_netcdf = worker_spi_gamma_netcdf
     spi_pearson_netcdf = worker_spi_pearson_netcdf
@@ -88,7 +106,7 @@ def process_latitude_spi_spei_pnp(lat_index):
     
     # open the input NetCDFs
     with Dataset(precip_netcdf) as precip_dataset, \
-         Dataset(pet_netcdf) as pet_dataset:
+         Dataset(netcdf_pet) as pet_dataset:
 
         # read the latitude slice of input precipitation and PET values 
         precip_lat_slice = precip_dataset[precip_var_name][:, lat_index, :]   # assuming (time, lat, lon) orientation
@@ -274,6 +292,10 @@ def init_palmer_process(worker_temp_netcdf,
 #-----------------------------------------------------------------------------------------------------------------------
 def process_latitude_palmer(lat_index):
     '''
+    Perform computation of indices on a latitude slice, i.e. all lat/lon locations for a single latitude. Each lat/lon
+    will have its corresponding time series used as input, with a corresponding time series output for each index computed.
+    
+    :param lat_index: index of the latitude in the NetCDF, valid range is [0..(total # of divisions - 1)]
     '''
     
     logger.info('Computing PET and Palmers for latitude index %s', lat_index)
@@ -302,7 +324,7 @@ def process_latitude_palmer(lat_index):
     
         # open the existing PET NetCDF file for writing, copy the latitude slice into the PET variable at the indexed latitude position 
         pet_lock.acquire()
-        pet_dataset = Dataset(pet_netcdf, mode='a')
+        pet_dataset = Dataset(netcdf_pet, mode='a')
         pet_dataset['pet'][:, lat_index, :] = pet_lat_slice
         pet_dataset.sync()
         pet_dataset.close()
@@ -854,3 +876,4 @@ if __name__ == '__main__':
     except Exception as ex:
         logger.exception('Failed to complete', exc_info=True)
         raise
+    
