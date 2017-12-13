@@ -565,42 +565,44 @@ if __name__ == '__main__':
         with netcdf_utils.initialize_dataset_climdivs(args.output_file, 
                                                       args.input_file,
                                                       'division') as output_dataset:
+            
             # use 32-bit NaNs as our default fill/missing value
             missing_fill_value = np.float32(np.NaN)
-
-            # create a variable for each scaled index
-            pnp_attributes = {'standard_name': variable_name,
-                              'long_name': 'Percent average precipitation, {}-month scale'.format(months),
-                              'valid_min': 0,
-                              'valid_max': 10.0,
-                              'units': 'percent of average'}
-            spi_gamma_attributes = {'standard_name': variable_name,
-                                    'long_name': 'SPI (Gamma), {}-month scale'.format(months),
-                                    'valid_min': -3.09,
-                                    'valid_max': 3.09}
-            spi_pearson_attributes = {'standard_name': variable_name,
-                                      'long_name': 'SPI (Pearson), {}-month scale'.format(months),
-                                      'valid_min': -3.09,
-                                      'valid_max': 3.09}
-            spei_gamma_attributes = {'standard_name': variable_name,
-                                     'long_name': 'SPEI (Gamma), {}-month scale'.format(months),
-                                     'valid_min': -3.09,
-                                     'valid_max': 3.09}
-            spei_pearson_attributes = {'standard_name': variable_name,
-                                       'long_name': 'SPEI (Pearson), {}-month scale'.format(months),
-                                       'valid_min': -3.09,
-                                       'valid_max': 3.09}
+            data_dtype = netcdf_utils.find_netcdf_datatype(missing_fill_value)
             
-            scaled_indices_attributes = {'pnp': pnp_attributes,
-                                         'spi_gamma': spi_gamma_attributes,
-                                         'spi_pearson': spi_pearson_attributes,
-                                         'spei_gamma': spei_gamma_attributes,
-                                         'spei_pearson': spei_pearson_attributes}
-            
-            for index, variable_attributes in scaled_indices_attributes.getit:
+            for months in args.month_scales:
                 
-                for months in args.month_scales:
-                    
+                # create a variable for each scaled index
+                pnp_attributes = {'standard_name': 'pnp',
+                                  'long_name': 'Percent average precipitation, {}-month scale'.format(months),
+                                  'valid_min': 0,
+                                  'valid_max': 10.0,
+                                  'units': 'percent of average'}
+                spi_gamma_attributes = {'standard_name': 'spi_gamma',
+                                        'long_name': 'SPI (Gamma), {}-month scale'.format(months),
+                                        'valid_min': -3.09,
+                                        'valid_max': 3.09}
+                spi_pearson_attributes = {'standard_name': 'spi_pearson',
+                                          'long_name': 'SPI (Pearson), {}-month scale'.format(months),
+                                          'valid_min': -3.09,
+                                          'valid_max': 3.09}
+                spei_gamma_attributes = {'standard_name': 'spei_gamma',
+                                         'long_name': 'SPEI (Gamma), {}-month scale'.format(months),
+                                         'valid_min': -3.09,
+                                         'valid_max': 3.09}
+                spei_pearson_attributes = {'standard_name': 'spei_pearson',
+                                           'long_name': 'SPEI (Pearson), {}-month scale'.format(months),
+                                           'valid_min': -3.09,
+                                           'valid_max': 3.09}
+                
+                scaled_indices_attributes = {'pnp': pnp_attributes,
+                                             'spi_gamma': spi_gamma_attributes,
+                                             'spi_pearson': spi_pearson_attributes,
+                                             'spei_gamma': spei_gamma_attributes,
+                                             'spei_pearson': spei_pearson_attributes}
+
+                for index, variable_attributes in scaled_indices_attributes.items():
+                
                     variable_name = index + '_{}'.format(str(months).zfill(2))
                     
                     # create month scaled variable
