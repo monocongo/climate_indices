@@ -68,183 +68,183 @@ def _init_process(worker_input_netcdf,
     calibration_start_year = worker_calibration_start_year
     calibration_end_year = worker_calibration_end_year
     
-#-----------------------------------------------------------------------------------------------------------------------
-def _initialize_netcdf(new_netcdf,
-                      template_netcdf,
-                      month_scales=None):
-    """
-    This function is used to initialize and return a netCDF4.Dataset object.
-    
-    :param new_netcdf: the file path/name of the new NetCDF Dataset object to be created and returned by this function
-    :param template_netcdf: an existing/open NetCDF Dataset object which will be used as a template for the Dataset
-                            that will be created by this function
-    :param month_scales: some of the indices this script computes, such as SPI, SPEI, and PNP, are typically computed for multiple
-                         month scales (i.e. 1-month, 3-month, 6-month, etc.), these can be specified here as a list of integers 
-    """
-
-    # default to a common set of month scales if none were provided
-    if month_scales is None:
-        month_scales = [1, 2, 3, 6, 12, 24]
-
-    # use NaNs as our default fill/missing value
-    fill_value=np.float32(np.NaN)
-
-    # open the NetCDF datasets within a context manager
-    with netCDF4.Dataset(template_netcdf) as template_dataset, \
-         netCDF4.Dataset(new_netcdf, 'w') as new_dataset:
- 
-        # get the template's dimension sizes
-        divisions_count = template_dataset.variables['division'].size
-    
-        # copy the global attributes from the input
-        # TODO/FIXME add/modify global attributes to correspond with the actual dataset
-        new_dataset.setncatts(template_dataset.__dict__)
-        
-        # use "ClimDiv-1.0" as the Conventions setting in order to facilitate visualization by the NOAA Weather and Climate Toolkit
-        new_dataset.setncattr("Conventions", "ClimDiv-1.0")
-        
-        # create the time, x, and y dimensions
-        new_dataset.createDimension('time', None)
-        new_dataset.createDimension('division', divisions_count)
-    
-        # get the appropriate data types to use for the variables
-        time_dtype = netcdf_utils.find_netcdf_datatype(template_dataset.variables['time'])
-        divisions_dtype = netcdf_utils.find_netcdf_datatype(template_dataset.variables['division'])
-        data_dtype = netcdf_utils.find_netcdf_datatype(fill_value)
-    
-        # create the coordinate variables
-        time_units = new_dataset.createVariable('time', time_dtype, ('time',))
-        division_variable = new_dataset.createVariable('division', divisions_dtype, ('division',))
-
-        # set the coordinate variables' attributes and values
-        time_units.setncatts(template_dataset.variables['time'].__dict__)
-        time_units[:] = template_dataset.variables['time'][:]
-        division_variable.setncatts(template_dataset.variables['division'].__dict__)
-        division_variable[:] = template_dataset.variables['division'][:]
-
-        # create a variable for each unscaled index
-        unscaled_indices = ['pet', 'pdsi', 'phdi', 'pmdi', 'zindex', 'scpdsi']
-        for index in unscaled_indices:
-            if index == 'pet':
-                
-                variable_name = 'pet'
-                variable_attributes = {'standard_name': 'pet',
-                                       'long_name': 'Potential Evapotranspiration (PET), from Thornthwaite\'s equation',
-                                       'valid_min': 0.0,
-                                       'valid_max': 2000.0,
-                                       'units': 'millimeter'}
-            
-            elif index == 'pdsi':
-                
-                variable_name = 'pdsi'
-                variable_attributes = {'standard_name': 'pdsi',
-                                       'long_name': 'Palmer Drought Severity Index (PDSI)',
-                                       'valid_min': -10.0,
-                                       'valid_max': 10.0}
-            
-            elif index == 'scpdsi':
-                
-                variable_name = 'scpdsi'
-                variable_attributes = {'standard_name': 'scpdsi',
-                                       'long_name': 'Self-calibrated Palmer Drought Severity Index (PDSI)',
-                                       'valid_min': -10.0,
-                                       'valid_max': 10.0}
-            
-            elif index == 'phdi':
-                
-                variable_name = 'phdi'
-                variable_attributes = {'standard_name': 'phdi',
-                                       'long_name': 'Palmer Hydrological Drought Index (PHDI)',
-                                       'valid_min': -10.0,
-                                       'valid_max': 10.0}
-            
-            elif index == 'pmdi':
-                
-                variable_name = 'pmdi'
-                variable_attributes = {'standard_name': 'pmdi',
-                                       'long_name': 'Palmer Modified Drought Index (PMDI)',
-                                       'valid_min': -10.0,
-                                       'valid_max': 10.0}
-            
-            elif index == 'zindex':
-                
-                variable_name = 'zindex'
-                variable_attributes = {'standard_name': 'zindex',
-                                       'long_name': 'Palmer Z-Index',
-                                       'valid_min': -10.0,
-                                       'valid_max': 10.0}
-
-            else:
-
-                message = '{0} is an unsupported index type'.format(index)
-                logger.error(message)
-                raise ValueError(message)
-
-            # create variables with scale month
-            data_variable = new_dataset.createVariable(variable_name,
-                                                       data_dtype,
-                                                       ('division', 'time',),
-                                                       fill_value=fill_value, 
-                                                       zlib=False)
-            data_variable.setncatts(variable_attributes)
-
-        # create a variable for each scaled index
-        scaled_indices = ['pnp', 'spi_gamma', 'spi_pearson', 'spei_gamma', 'spei_pearson']
-        for index in scaled_indices:
-            for months in month_scales:
-                
-                variable_name = index + '_{}'.format(str(months).zfill(2))
-                
-                if index == 'spi_gamma':
-            
-                    variable_attributes = {'standard_name': variable_name,
-                                           'long_name': 'SPI (Gamma), {}-month scale'.format(months),
-                                           'valid_min': -3.09,
-                                           'valid_max': 3.09}
-
-                elif index == 'spi_pearson':
-            
-                    variable_attributes = {'standard_name': variable_name,
-                                           'long_name': 'SPI (Pearson), {}-month scale'.format(months),
-                                           'valid_min': -3.09,
-                                           'valid_max': 3.09}
-
-                elif index == 'spei_gamma':
-            
-                    variable_attributes = {'standard_name': variable_name,
-                                           'long_name': 'SPEI (Gamma), {}-month scale'.format(months),
-                                           'valid_min': -3.09,
-                                           'valid_max': 3.09}
-
-                elif index == 'spei_pearson':
-            
-                    variable_attributes = {'standard_name': variable_name,
-                                           'long_name': 'SPEI (Pearson), {}-month scale'.format(months),
-                                           'valid_min': -3.09,
-                                           'valid_max': 3.09}
-
-                elif index == 'pnp':
-            
-                    variable_attributes = {'standard_name': variable_name,
-                                           'long_name': 'Percent average precipitation, {}-month scale'.format(months),
-                                           'valid_min': 0,
-                                           'valid_max': 10.0,
-                                           'units': 'percent of average'}
-
-                else:
-
-                    message = '{0} is an unsupported index type'.format(index)
-                    logger.error(message)
-                    raise ValueError(message)
-
-                # create month scaled variable
-                data_variable = new_dataset.createVariable(variable_name,
-                                                           data_dtype,
-                                                           ('division', 'time',),
-                                                           fill_value=fill_value, 
-                                                           zlib=False)
-                data_variable.setncatts(variable_attributes)
-        
+# #-----------------------------------------------------------------------------------------------------------------------
+# def _initialize_netcdf(new_netcdf,
+#                       template_netcdf,
+#                       month_scales=None):
+#     """
+#     This function is used to initialize and return a netCDF4.Dataset object.
+#     
+#     :param new_netcdf: the file path/name of the new NetCDF Dataset object to be created and returned by this function
+#     :param template_netcdf: an existing/open NetCDF Dataset object which will be used as a template for the Dataset
+#                             that will be created by this function
+#     :param month_scales: some of the indices this script computes, such as SPI, SPEI, and PNP, are typically computed for multiple
+#                          month scales (i.e. 1-month, 3-month, 6-month, etc.), these can be specified here as a list of integers 
+#     """
+# 
+#     # default to a common set of month scales if none were provided
+#     if month_scales is None:
+#         month_scales = [1, 2, 3, 6, 12, 24]
+# 
+#     # use NaNs as our default fill/missing value
+#     fill_value=np.float32(np.NaN)
+# 
+#     # open the NetCDF datasets within a context manager
+#     with netCDF4.Dataset(template_netcdf) as template_dataset, \
+#          netCDF4.Dataset(new_netcdf, 'w') as new_dataset:
+#  
+#         # get the template's dimension sizes
+#         divisions_count = template_dataset.variables['division'].size
+#     
+#         # copy the global attributes from the input
+#         # TODO/FIXME add/modify global attributes to correspond with the actual dataset
+#         new_dataset.setncatts(template_dataset.__dict__)
+#         
+#         # use "ClimDiv-1.0" as the Conventions setting in order to facilitate visualization by the NOAA Weather and Climate Toolkit
+#         new_dataset.setncattr("Conventions", "ClimDiv-1.0")
+#         
+#         # create the time, x, and y dimensions
+#         new_dataset.createDimension('time', None)
+#         new_dataset.createDimension('division', divisions_count)
+#     
+#         # get the appropriate data types to use for the variables
+#         time_dtype = netcdf_utils.find_netcdf_datatype(template_dataset.variables['time'])
+#         divisions_dtype = netcdf_utils.find_netcdf_datatype(template_dataset.variables['division'])
+#         data_dtype = netcdf_utils.find_netcdf_datatype(fill_value)
+#     
+#         # create the coordinate variables
+#         time_units = new_dataset.createVariable('time', time_dtype, ('time',))
+#         division_variable = new_dataset.createVariable('division', divisions_dtype, ('division',))
+# 
+#         # set the coordinate variables' attributes and values
+#         time_units.setncatts(template_dataset.variables['time'].__dict__)
+#         time_units[:] = template_dataset.variables['time'][:]
+#         division_variable.setncatts(template_dataset.variables['division'].__dict__)
+#         division_variable[:] = template_dataset.variables['division'][:]
+# 
+#         # create a variable for each unscaled index
+#         unscaled_indices = ['pet', 'pdsi', 'phdi', 'pmdi', 'zindex', 'scpdsi']
+#         for index in unscaled_indices:
+#             if index == 'pet':
+#                 
+#                 variable_name = 'pet'
+#                 variable_attributes = {'standard_name': 'pet',
+#                                        'long_name': 'Potential Evapotranspiration (PET), from Thornthwaite\'s equation',
+#                                        'valid_min': 0.0,
+#                                        'valid_max': 2000.0,
+#                                        'units': 'millimeter'}
+#             
+#             elif index == 'pdsi':
+#                 
+#                 variable_name = 'pdsi'
+#                 variable_attributes = {'standard_name': 'pdsi',
+#                                        'long_name': 'Palmer Drought Severity Index (PDSI)',
+#                                        'valid_min': -10.0,
+#                                        'valid_max': 10.0}
+#             
+#             elif index == 'scpdsi':
+#                 
+#                 variable_name = 'scpdsi'
+#                 variable_attributes = {'standard_name': 'scpdsi',
+#                                        'long_name': 'Self-calibrated Palmer Drought Severity Index (PDSI)',
+#                                        'valid_min': -10.0,
+#                                        'valid_max': 10.0}
+#             
+#             elif index == 'phdi':
+#                 
+#                 variable_name = 'phdi'
+#                 variable_attributes = {'standard_name': 'phdi',
+#                                        'long_name': 'Palmer Hydrological Drought Index (PHDI)',
+#                                        'valid_min': -10.0,
+#                                        'valid_max': 10.0}
+#             
+#             elif index == 'pmdi':
+#                 
+#                 variable_name = 'pmdi'
+#                 variable_attributes = {'standard_name': 'pmdi',
+#                                        'long_name': 'Palmer Modified Drought Index (PMDI)',
+#                                        'valid_min': -10.0,
+#                                        'valid_max': 10.0}
+#             
+#             elif index == 'zindex':
+#                 
+#                 variable_name = 'zindex'
+#                 variable_attributes = {'standard_name': 'zindex',
+#                                        'long_name': 'Palmer Z-Index',
+#                                        'valid_min': -10.0,
+#                                        'valid_max': 10.0}
+# 
+#             else:
+# 
+#                 message = '{0} is an unsupported index type'.format(index)
+#                 logger.error(message)
+#                 raise ValueError(message)
+# 
+#             # create variables with scale month
+#             data_variable = new_dataset.createVariable(variable_name,
+#                                                        data_dtype,
+#                                                        ('division', 'time',),
+#                                                        fill_value=fill_value, 
+#                                                        zlib=False)
+#             data_variable.setncatts(variable_attributes)
+# 
+#         # create a variable for each scaled index
+#         scaled_indices = ['pnp', 'spi_gamma', 'spi_pearson', 'spei_gamma', 'spei_pearson']
+#         for index in scaled_indices:
+#             for months in month_scales:
+#                 
+#                 variable_name = index + '_{}'.format(str(months).zfill(2))
+#                 
+#                 if index == 'spi_gamma':
+#             
+#                     variable_attributes = {'standard_name': variable_name,
+#                                            'long_name': 'SPI (Gamma), {}-month scale'.format(months),
+#                                            'valid_min': -3.09,
+#                                            'valid_max': 3.09}
+# 
+#                 elif index == 'spi_pearson':
+#             
+#                     variable_attributes = {'standard_name': variable_name,
+#                                            'long_name': 'SPI (Pearson), {}-month scale'.format(months),
+#                                            'valid_min': -3.09,
+#                                            'valid_max': 3.09}
+# 
+#                 elif index == 'spei_gamma':
+#             
+#                     variable_attributes = {'standard_name': variable_name,
+#                                            'long_name': 'SPEI (Gamma), {}-month scale'.format(months),
+#                                            'valid_min': -3.09,
+#                                            'valid_max': 3.09}
+# 
+#                 elif index == 'spei_pearson':
+#             
+#                     variable_attributes = {'standard_name': variable_name,
+#                                            'long_name': 'SPEI (Pearson), {}-month scale'.format(months),
+#                                            'valid_min': -3.09,
+#                                            'valid_max': 3.09}
+# 
+#                 elif index == 'pnp':
+#             
+#                     variable_attributes = {'standard_name': variable_name,
+#                                            'long_name': 'Percent average precipitation, {}-month scale'.format(months),
+#                                            'valid_min': 0,
+#                                            'valid_max': 10.0,
+#                                            'units': 'percent of average'}
+# 
+#                 else:
+# 
+#                     message = '{0} is an unsupported index type'.format(index)
+#                     logger.error(message)
+#                     raise ValueError(message)
+# 
+#                 # create month scaled variable
+#                 data_variable = new_dataset.createVariable(variable_name,
+#                                                            data_dtype,
+#                                                            ('division', 'time',),
+#                                                            fill_value=fill_value, 
+#                                                            zlib=False)
+#                 data_variable.setncatts(variable_attributes)
+#         
 #-----------------------------------------------------------------------------------------------------------------------
 def f2c(t):
     '''
@@ -253,40 +253,18 @@ def f2c(t):
     return (t-32)*5.0/9
 
 #-----------------------------------------------------------------------------------------------------------------------
-def compute_and_write_division(division_index):
-    '''
-    #TODO explain why this wrapper function is required (facilitates multiprocessing since the default way of mapping a function
-    is with a single argument, the remaining arguments required are picked up from the global namespace in the function call below?)
-    '''
+def _compute_and_write_division(division_index):
+    """
+    Computes indices for a single division, writing the output into NetCDF.
     
-    process_division(division_index,
-                     input_netcdf,
-                     output_netcdf,
-                     temp_var_name,
-                     precip_var_name,
-                     awc_var_name,
-                     scale_months,
-                     data_start_year,
-                     calibration_start_year,
-                     calibration_end_year)
-
-#-----------------------------------------------------------------------------------------------------------------------
-def process_division(division_index,
-                     input_file,
-                     output_file,
-                     temp_var_name,
-                     precip_var_name,
-                     awc_var_name,
-                     scale_months,
-                     data_start_year,
-                     calibration_start_year,
-                     calibration_end_year):
+    :param division_index: 
+    """
     
     # use a different name alias for the data_start_year in order to avoid conflicts with function arguments that use the same name
     initial_data_year = data_start_year
     
     # open the NetCDF files 
-    with netCDF4.Dataset(input_file) as input_dataset:
+    with netCDF4.Dataset(input_netcdf) as input_dataset:
         
         division_id = input_dataset['division'][division_index]
         
@@ -322,7 +300,7 @@ def process_division(division_index,
                 
                 raise ValueError('Unsupported temperature units: \'%s\'', temperature_units)
     
-            # use the numpyapply_along_axis() function for computing indices such as PET that take a single time series
+            # use the numpy.apply_along_axis() function for computing indices such as PET that take a single time series
             # array as input (i.e. each division's time series is the initial 1-D array argument to the function we'll apply)
             
             logger.info('\tComputing PET for division %s', division_id)
@@ -337,7 +315,7 @@ def process_division(division_index,
             
             # write the PET values to NetCDF        
             lock.acquire()
-            with netCDF4.Dataset(output_file, 'a') as output_dataset:
+            with netCDF4.Dataset(output_netcdf, 'a') as output_dataset:
                 output_dataset['pet'][division_index, :] = np.reshape(pet_time_series, (1, pet_time_series.size))
                 output_dataset.sync()
             lock.release()
@@ -404,7 +382,7 @@ def process_division(division_index,
     
                     # write the PDSI values to NetCDF
                     lock.acquire()
-                    with netCDF4.Dataset(output_file, 'a') as output_dataset:
+                    with netCDF4.Dataset(output_netcdf, 'a') as output_dataset:
                         output_dataset['pdsi'][division_index, :] = np.reshape(pdsi, (1, pdsi.size))
                         output_dataset['phdi'][division_index, :] = np.reshape(phdi, (1, phdi.size))
                         output_dataset['pmdi'][division_index, :] = np.reshape(pmdi, (1, pmdi.size))
@@ -461,7 +439,7 @@ def process_division(division_index,
     
                     # write the SPI, SPEI, and PNP values to NetCDF        
                     lock.acquire()
-                    with netCDF4.Dataset(output_file, 'a') as output_dataset:
+                    with netCDF4.Dataset(output_netcdf, 'a') as output_dataset:
                         output_dataset[spei_gamma_variable_name][division_index, :] = np.reshape(spei_gamma, (1, spei_gamma.size))
                         output_dataset[spei_pearson_variable_name][division_index, :] = np.reshape(spei_pearson, (1, spei_pearson.size))
                         output_dataset[spi_gamma_variable_name][division_index, :] = np.reshape(spi_gamma, (1, spi_gamma.size))
@@ -469,6 +447,54 @@ def process_division(division_index,
                         output_dataset[pnp_variable_name][division_index, :] = np.reshape(pnp, (1, pnp.size))
                         output_dataset.sync()
                     lock.release()
+
+#-----------------------------------------------------------------------------------------------------------------------
+def process_division(division_index,
+                     input_file,
+                     output_file,
+                     temp_variable_name,
+                     precip_variable_name,
+                     awc_variable_name,
+                     month_scales,
+                     initial_data_year,
+                     calibration_initial_year,
+                     calibration_final_year):
+    """
+    Computes climate indices for a single climate division.
+    
+    :param division_index:
+    :param input_file:  
+    :param output_file:
+    :param temp_variable_name: name of the temperature variable in the input NetCDF  
+    :param precip_variable_name: name of the precipitation variable in the input NetCDF  
+    :param awc_variable_name: name of the available water capacity variable in the input NetCDF  
+    :param month_scales:
+    :param initial_data_year: 
+    :param calibration_initial_year:  
+    :param calibration_final_year:  
+    """
+    # put the arguments into the global namespace
+    global input_netcdf, \
+           output_netcdf, \
+           temp_var_name, \
+           precip_var_name, \
+           awc_var_name, \
+           scale_months, \
+           data_start_year, \
+           calibration_start_year, \
+           calibration_end_year
+           
+    input_netcdf = input_file
+    output_netcdf = output_file
+    temp_var_name = temp_variable_name
+    precip_var_name = precip_variable_name
+    awc_var_name = awc_variable_name
+    scale_months = month_scales
+    data_start_year = initial_data_year
+    calibration_start_year = calibration_initial_year
+    calibration_end_year = calibration_final_year
+    
+    return _compute_and_write_division(division_index)
 
 #-----------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
@@ -536,9 +562,56 @@ if __name__ == '__main__':
         args = parser.parse_args()
 
         # initialize the output NetCDF that will contain the computed indices
-        _initialize_netcdf(args.output_file, args.input_file, args.month_scales)
-        
-        # open the NetCDF files 
+        with netcdf_utils.initialize_dataset_climdivs(args.output_file, 
+                                                      args.input_file,
+                                                      'division') as output_dataset:
+            # use 32-bit NaNs as our default fill/missing value
+            missing_fill_value = np.float32(np.NaN)
+
+            # create a variable for each scaled index
+            pnp_attributes = {'standard_name': variable_name,
+                              'long_name': 'Percent average precipitation, {}-month scale'.format(months),
+                              'valid_min': 0,
+                              'valid_max': 10.0,
+                              'units': 'percent of average'}
+            spi_gamma_attributes = {'standard_name': variable_name,
+                                    'long_name': 'SPI (Gamma), {}-month scale'.format(months),
+                                    'valid_min': -3.09,
+                                    'valid_max': 3.09}
+            spi_pearson_attributes = {'standard_name': variable_name,
+                                      'long_name': 'SPI (Pearson), {}-month scale'.format(months),
+                                      'valid_min': -3.09,
+                                      'valid_max': 3.09}
+            spei_gamma_attributes = {'standard_name': variable_name,
+                                     'long_name': 'SPEI (Gamma), {}-month scale'.format(months),
+                                     'valid_min': -3.09,
+                                     'valid_max': 3.09}
+            spei_pearson_attributes = {'standard_name': variable_name,
+                                       'long_name': 'SPEI (Pearson), {}-month scale'.format(months),
+                                       'valid_min': -3.09,
+                                       'valid_max': 3.09}
+            
+            scaled_indices_attributes = {'pnp': pnp_attributes,
+                                         'spi_gamma': spi_gamma_attributes,
+                                         'spi_pearson': spi_pearson_attributes,
+                                         'spei_gamma': spei_gamma_attributes,
+                                         'spei_pearson': spei_pearson_attributes}
+            
+            for index, variable_attributes in scaled_indices_attributes.getit:
+                
+                for months in args.month_scales:
+                    
+                    variable_name = index + '_{}'.format(str(months).zfill(2))
+                    
+                    # create month scaled variable
+                    data_variable = output_dataset.createVariable(variable_name,
+                                                                  data_dtype,
+                                                                  ('division', 'time',),
+                                                                  fill_value=missing_fill_value, 
+                                                                  zlib=False)
+                    data_variable.setncatts(variable_attributes)
+
+        # open the NetCDF file to get the total number of divisions we'll process 
         with netCDF4.Dataset(args.input_file) as input_dataset:
              
             # get the initial and final year of the input datasets
@@ -548,7 +621,7 @@ if __name__ == '__main__':
             # get the number of divisions in the input dataset(s)
             divisions_count = input_dataset.variables['division'].size
         
-        # create a process Pool, with copies of the shared array going to each pooled/forked process
+        # create a process Pool, initialize each pooled/forked process
         pool = multiprocessing.Pool(processes=1,#multiprocessing.cpu_count(),
                                     initializer=_init_process,
                                     initargs=(args.input_file,
@@ -562,7 +635,7 @@ if __name__ == '__main__':
                                               args.calibration_end_year))
  
         # map the divisions indices as an arguments iterable to the compute function
-        result = pool.map_async(compute_and_write_division, range(divisions_count))
+        result = pool.map_async(_compute_and_write_division, range(divisions_count))
                   
         # get the exception(s) thrown, if any
         result.get()
