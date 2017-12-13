@@ -37,6 +37,12 @@ netcdf_pmdi = ''
 initial_data_year = -1
 calibration_start_year = -1
 calibration_end_year = -1
+spi_gamma_netcdf = ''
+spi_pearson_netcdf = ''
+spei_gamma_netcdf = ''
+spei_pearson_netcdf = ''
+pnp_netcdf = ''
+scale_months = []
 
 #-----------------------------------------------------------------------------------------------------------------------
 # multiprocessing locks we'll use to synchronize I/O writes to NetCDF files, one per each output file
@@ -814,10 +820,10 @@ if __name__ == '__main__':
 #         debug_pet_file = args.output_file_base + '_pet.nc'
         
         # compute the scaled indices (PNP, SPI, and SPEI)
-        for scale_months in args.month_scales:
+        for months in args.month_scales:
  
             # initialize the output NetCDFs for SPI gamma and Pearson for the month scale
-            scaled_netcdfs = _initialize_scaled_netcdfs(args.output_file_base, scale_months, args.precip_file)
+            scaled_netcdfs = _initialize_scaled_netcdfs(args.output_file_base, months, args.precip_file)
      
             # create a process Pool, initialize the global namespace to facilitate multiprocessing
             pool = multiprocessing.Pool(processes=number_of_workers,
@@ -830,7 +836,7 @@ if __name__ == '__main__':
                                                   scaled_netcdfs['spei_gamma'],
                                                   scaled_netcdfs['spei_pearson'],
                                                   scaled_netcdfs['pnp'],
-                                                  scale_months,
+                                                  months,
                                                   data_start_year,
                                                   args.calibration_start_year,
                                                   args.calibration_end_year))
