@@ -53,7 +53,7 @@ def convert_and_move_netcdf(input_and_output_netcdfs):
 #  
 #     # use NCO bindings to make conversion/compression command    
 #     nco = Nco()
-#     nco.ncks(input=input_netcdf,
+#     nco.ncks(input=[input_netcdf, output_netcdf],
 #              output=output_netcdf,
 #              options=['-O', '-4', '-L 4', '-h'])
 #      
