@@ -1023,8 +1023,7 @@ class GridProcessor(object):
         
     #-----------------------------------------------------------------------------------------------------------------------
     def _initialize_scaled_netcdfs(self,
-                                   scale_months, 
-                                   template_netcdf):
+                                   scale_months):
         
         # dictionary of index types to the NetCDF dataset files corresponding to the base index names and 
         # month scales (this is the object we'll build and return from this function)
@@ -1058,15 +1057,13 @@ class GridProcessor(object):
             netcdf_utils.initialize_netcdf_single_variable_grid(netcdf_file, 
                                                                 self.netcdf_precip,
                                                                 variable_name,
-                                                                long_name.format(month_scales),
+                                                                long_name.format(scale_months),
                                                                 valid_min,
                                                                 valid_max)
         
             # add the months scale index's NetCDF to the dictionary for the current index
             netcdfs[index] = netcdf_file
             
-#         return netcdfs
-
         # assign the NetCDF file paths to the corresponding member variables
         self.netcdf_spi_gamma = netcdfs['spi_gamma']
         self.netcdf_spei_gamma = netcdfs['spei_gamma']
@@ -1095,7 +1092,7 @@ class GridProcessor(object):
               
             # get the initial year of the input dataset(s)
             time_units = dataset_precip.variables['time']
-            data_start_year = num2date(time_units[0], time_units.units).year
+            self.data_start_year = num2date(time_units[0], time_units.units).year
   
             # get the number of latitudes in the input dataset(s)
             lat_size = dataset_precip.variables['lat'].size
@@ -1424,7 +1421,7 @@ class GridProcessor(object):
             # open the existing SPI/Gamma NetCDF file for writing, copy the latitude slice into the SPI variable at the indexed latitude position 
             spi_gamma_lock.acquire()
             spi_gamma_dataset = Dataset(self.netcdf_spi_gamma, mode='a')
-            spi_gamma_dataset['spi_gamma'][:, lat_index, :] = spi_gamma_lat_slice
+            spi_gamma_dataset[spi_gamma_variable_name][:, lat_index, :] = spi_gamma_lat_slice
             spi_gamma_dataset.sync()
             spi_gamma_dataset.close()
             spi_gamma_lock.release()
@@ -1432,7 +1429,7 @@ class GridProcessor(object):
             # open the existing SPI/Pearson NetCDF file for writing, copy the latitude slice into the SPI variable at the indexed latitude position 
             spi_pearson_lock.acquire()
             spi_pearson_dataset = Dataset(self.netcdf_spi_pearson, mode='a')
-            spi_pearson_dataset['spi_pearson'][:, lat_index, :] = spi_pearson_lat_slice
+            spi_pearson_dataset[spi_pearson_variable_name][:, lat_index, :] = spi_pearson_lat_slice
             spi_pearson_dataset.sync()
             spi_pearson_dataset.close()
             spi_pearson_lock.release()
@@ -1440,7 +1437,7 @@ class GridProcessor(object):
             # open the existing SPEI/Gamma NetCDF file for writing, copy the latitude slice into the SPEI variable at the indexed latitude position 
             spei_gamma_lock.acquire()
             spei_gamma_dataset = Dataset(self.netcdf_spei_gamma, mode='a')
-            spei_gamma_dataset['spei_gamma'][:, lat_index, :] = spei_gamma_lat_slice
+            spei_gamma_dataset[spei_gamma_variable_name][:, lat_index, :] = spei_gamma_lat_slice
             spei_gamma_dataset.sync()
             spei_gamma_dataset.close()
             spei_gamma_lock.release()
@@ -1448,7 +1445,7 @@ class GridProcessor(object):
             # open the existing SPEI/Pearson NetCDF file for writing, copy the latitude slice into the SPEI variable at the indexed latitude position 
             spei_pearson_lock.acquire()
             spei_pearson_dataset = Dataset(self.netcdf_spei_pearson, mode='a')
-            spei_pearson_dataset['spei_pearson'][:, lat_index, :] = spei_pearson_lat_slice
+            spei_pearson_dataset[spei_pearson_variable_name][:, lat_index, :] = spei_pearson_lat_slice
             spei_pearson_dataset.sync()
             spei_pearson_dataset.close()
             spei_pearson_lock.release()
@@ -1456,7 +1453,7 @@ class GridProcessor(object):
             # open the existing PNP NetCDF file for writing, copy the latitude slice into the PNP variable at the indexed latitude position 
             pnp_lock.acquire()
             pnp_dataset = Dataset(self.netcdf_pnp, mode='a')
-            pnp_dataset['pnp'][:, lat_index, :] = pnp_lat_slice
+            pnp_dataset[pnp_variable_name][:, lat_index, :] = pnp_lat_slice
             pnp_dataset.sync()
             pnp_dataset.close()
             pnp_lock.release()
@@ -1493,19 +1490,13 @@ class GridProcessor(object):
             valid_flag = False
         
         return valid_flag
-            
 
-
-# if __name__ == '__main__':
-#     a = A()
-#     a.run()
-    
 #-----------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
 
-    '''
+    """
     This module can be used to perform climate indices processing on nClimGrid datasets in NetCDF.
-    '''
+    """
 
     try:
 
