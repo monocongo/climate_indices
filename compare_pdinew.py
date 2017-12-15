@@ -1,6 +1,5 @@
 import argparse
 import logging
-import math
 import netCDF4
 import numpy as np
 import pdinew
@@ -17,7 +16,7 @@ python -u <this_script> --input_file C:/home/data/nclimdiv/climdiv-climdv-v1.0.0
 # set up matplotlib to use the Agg backend, in order to remove any dependencies on an X server,
 # for example to get around the ImportError: cannot import name 'QtCore'
 import matplotlib
-#matplotlib.use('Agg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -76,9 +75,6 @@ def main():
             # get the division IDs as a list
             division_ids = list(input_dataset.variables['division'][:])
             
-            # create a dictionary containing division IDs as keys and average differences as values
-            divisions_to_differences = dict.fromkeys(division_ids)
-                               
             # read the temperature, precipitation, latitude and AWC for each division
             for division_index, division_id in enumerate(division_ids):
         
@@ -112,7 +108,6 @@ def main():
                                   
                 #TODO get these values out of the NetCDF, compute from time values, etc.                        
                 data_begin_year = 1895
-                data_end_year = 2017
 
 
 #                 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -199,26 +194,19 @@ def main():
                                                                                                     calibration_begin_year,
                                                                                                     calibration_end_year)
                     
-                # find the differences between the new (Matlab-derived) and previous (Fortran-derived) versions
-                pdsi_diffs = pdinew_PDSI.flatten() - expected_pdsi
-                phdi_diffs = pdinew_PHDI.flatten() - expected_phdi
-                pmdi_diffs = pdinew_PMDI.flatten() - expected_pmdi
-                zindex_diffs = pdinew_Z.flatten() - expected_zindex
-                
                 # dictionary of variable names to corresponding arrays of differences to facilitate looping below
-                varnames_to_arrays = {'pdinew_PDSI': (pdsi_diffs, expected_pdsi, pdinew_PDSI.flatten()),
-                                      'pdinew_PHDI': (phdi_diffs, expected_phdi, pdinew_PHDI),
-                                      'pdinew_PMDI': (pmdi_diffs, expected_pmdi, pdinew_PMDI),
-                                      'pdinew_Z-INDEX': (zindex_diffs, expected_zindex, pdinew_Z.flatten()) }
+                varnames_to_arrays = {'pdinew_PDSI': (expected_pdsi, pdinew_PDSI.flatten()),
+                                      'pdinew_PHDI': (expected_phdi, pdinew_PHDI),
+                                      'pdinew_PMDI': (expected_pmdi, pdinew_PMDI),
+                                      'pdinew_Z-INDEX': (expected_zindex, pdinew_Z.flatten()) }
     
                 # we want to see all zero differences, if any non-zero differences exist then raise an alert
                 for varname, array_tuple in varnames_to_arrays.items():
                         
                     print('Plotting differences for variable: {0}'.format(varname))
 
-                    diffs = array_tuple[0]
-                    expected = array_tuple[1]
-                    actual = array_tuple[2]
+                    expected = array_tuple[0]
+                    actual = array_tuple[1]
                         
                     _plot_diffs(expected,
                                 actual,
@@ -226,7 +214,7 @@ def main():
                                 varname,
                                 args.output_dir)
  
-    except Exception as ex:
+    except Exception:
         logger.exception('Failed to complete', exc_info=True)
         raise
     

@@ -482,7 +482,7 @@ class DivisionsProcessor(object):
 #         # close the pool and wait on all processes to finish
 #         pool.close()
 #         pool.join()
-        
+#        
 #         # compute the scaled indices (PNP, SPI, and SPEI)
 #         for months in self.scale_months:
 #  

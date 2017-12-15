@@ -1,6 +1,5 @@
 from datetime import datetime
 import logging
-import numba
 import numpy as np
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -123,3 +122,11 @@ def reshape_to_divs_years_months(monthly_values):
     # reshape from (months) to (years, 12) in order to have one year of months per row
     return np.reshape(monthly_values, (shape[0], total_years, 12))
             
+#-----------------------------------------------------------------------------------------------------------------------
+def count_zeros_and_non_missings(values):
+    
+    # count the number of zeros and non-missing (non-NaN) values
+    zeros = values.size - np.count_nonzero(values)
+    non_missings = np.count_nonzero(~np.isnan(values))
+
+    return zeros, non_missings
