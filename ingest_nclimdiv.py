@@ -10,7 +10,6 @@ import os
 import pandas as pd
 import urllib
 import utils
-import wget
 
 #-----------------------------------------------------------------------------------------------------------------------
 _DIVISION_VAR_NAME = 'division'
@@ -186,7 +185,7 @@ def _parse_soil_constants(soil_file,
     return divs_to_awc, divs_to_lats, divs_to_bs, divs_to_hs
 
 #-----------------------------------------------------------------------------------------------------------------------
-def _create_netcdf(nclimdiv_netcdf,
+def _create_netcdf(output_netcdf,
                    division_ids,
                    divisional_arrays,
                    divisional_minmax_years,
@@ -203,10 +202,10 @@ def _create_netcdf(nclimdiv_netcdf,
     '''
     This function writes variable values for all climate divisions as a NetCDF.
     
-    :param nclimdiv_netcdf: input NetCDF containing indicator values
+    :param output_netcdf: input NetCDF containing indicator values
     '''
     
-    with Dataset(nclimdiv_netcdf, 'w') as dataset:
+    with Dataset(output_netcdf, 'w') as dataset:
 
         # open the output file for writing, set its dimensions and variables
         dataset.createDimension('time', None)
@@ -223,12 +222,12 @@ def _create_netcdf(nclimdiv_netcdf,
 
         # create a time coordinate variable with an increment per month of the period of record
         chunk_sizes = [total_months]
-        time_variable = dataset.createVariable('time', 'i4', ('time',), chunksizes=chunk_sizes)
-        time_variable.long_name = 'time'
-        time_variable.standard_name = 'time'
-        time_variable.calendar = 'gregorian'
-        time_variable.units = 'days since ' + str(min_year) + '-01-01 00:00:00'
-        time_variable[:] = utils.compute_days(min_year, total_months)
+        time_units = dataset.createVariable('time', 'i4', ('time',), chunksizes=chunk_sizes)
+        time_units.long_name = 'time'
+        time_units.standard_name = 'time'
+        time_units.calendar = 'gregorian'
+        time_units.units = 'days since ' + str(min_year) + '-01-01 00:00:00'
+        time_units[:] = utils.compute_days(min_year, total_months)
 
         # create the division ID coordinate variable
         division_variable = dataset.createVariable(_DIVISION_VAR_NAME, 'i4', (_DIVISION_VAR_NAME,))
@@ -348,7 +347,7 @@ def _create_netcdf(nclimdiv_netcdf,
             h_variable[division_index] = h_value
             
 #-----------------------------------------------------------------------------------------------------------------------
-def ingest_netcdf(nclimdiv_netcdf,
+def ingest_netcdf(input_netcdf,
                   processing_date,
                   temp_var_name,
                   precip_var_name,
@@ -358,7 +357,7 @@ def ingest_netcdf(nclimdiv_netcdf,
         
         # parse the soil constant (available water capacity)
         soil_url = 'https://raw.githubusercontent.com/monocongo/indices_python/master/example_inputs/pdinew.soilconst'
-        soil_file = wget.download(soil_url)
+        soil_file = urllib.request.urlretrieve(soil_url)
         divs_to_awc, divs_to_lats, divs_to_bs, divs_to_hs = _parse_soil_constants(soil_file, awc_var_name)
         
         # remove the soil file
@@ -407,7 +406,7 @@ def ingest_netcdf(nclimdiv_netcdf,
             variable_minmax_years[var_name] = [min_year, max_year]
                           
         # write the values as NetCDF
-        _create_netcdf(nclimdiv_netcdf,
+        _create_netcdf(input_netcdf,
                        division_ids,
                        divisional_arrays,
                        divisional_minmax_years,
@@ -422,7 +421,7 @@ def ingest_netcdf(nclimdiv_netcdf,
                        awc_var_name,
                        p_min_year)
                 
-        print('\nMonthly nClimDiv NetCDF file: {0}'.format(nclimdiv_netcdf))
+        print('\nMonthly nClimDiv NetCDF file: {0}'.format(input_netcdf))
 
     except:
         
