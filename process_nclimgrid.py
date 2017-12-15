@@ -341,9 +341,6 @@ class GridProcessor(object):
 #         pool.close()
 #         pool.join()
         
-#         # DEBUG ONLY -- REMOVE
-#         debug_pet_file = self.output_file_base + '_pet.nc'
-        
         # compute the scaled indices (PNP, SPI, and SPEI)
         for months in self.scale_months:
  
