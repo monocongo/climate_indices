@@ -1,7 +1,6 @@
 import argparse
 from datetime import datetime
 import logging
-import netCDF4
 import netcdf_utils
 import numpy as np
 import os
@@ -83,7 +82,22 @@ def _initialize_dataset(file_path,
         temp_variable.description = 'Mean temperature'
             
     return netcdf
-    
+
+#-----------------------------------------------------------------------------------------------------------------------
+def _get_file(variable,
+              month):    
+
+    if variable == 'precip':
+        wrcc_prefix = 'po'
+    elif variable == 'temp':
+        wrcc_prefix = 'md'
+        
+    url = 'ftp://pubfiles.dri.edu/pub/mcevoy/WWDT_input/{0}n1_{1}_PRISM.nc'.format(wrcc_prefix, month)
+    logger.info('Downloading from %s', url)
+    prism_file = urllib.request.urlretrieve(url)
+    logger.info('\tTemporary input data file: %s', prism_file)
+    return prism_file
+
 #-----------------------------------------------------------------------------------------------------------------------
 def merge_wrcc_prism(precip_file_base, 
                      temp_file_base,
@@ -93,7 +107,7 @@ def merge_wrcc_prism(precip_file_base,
 
         # log some timing info, used later for elapsed time
         start_datetime = datetime.now()
-        logger.info("Start time:    {0}".format(start_datetime, '%x'))
+        logger.info('Start time:    %s', start_datetime)
 
         # open the first precip file as the template to use for output NetCDF initialization
         with _initialize_dataset(output_file,
@@ -109,19 +123,13 @@ def merge_wrcc_prism(precip_file_base,
                 # get the precipitation file if it's not on local disk
                 precip_file = precip_file_base + '_{0}_PRISM.nc'.format(month)
                 if not os.path.isfile(precip_file):
-                    url = 'ftp://pubfiles.dri.edu/pub/mcevoy/WWDT_input/pon1_{0}_PRISM.nc'.format(month)
-                    logger.info('Downloading from {0}'.format(url))
-                    precip_file = urllib.request.urlretrieve(url)
-                    logger.info('\tTemporary input data file: {0}'.format(precip_file))
+                    precip_file = _get_file('precip', month)
                     cleanup_precip = True
 
                 # get the temperature file if it's not on local disk
                 temp_file = temp_file_base + '_{0}_PRISM.nc'.format(month)
                 if not os.path.isfile(temp_file):
-                    url = 'ftp://pubfiles.dri.edu/pub/mcevoy/WWDT_input/mdn1_{0}_PRISM.nc'.format(month)
-                    logger.info('Downloading from {0}'.format(url))
-                    temp_file = urllib.request.urlretrieve(url)
-                    logger.info('\tTemporary input data file: {0}'.format(temp_file))
+                    temp_file = _get_file('temp', month)
                     cleanup_temp = True
 
                 # open the two input NetCDF files, closed automatically on completion of this loop steo                
@@ -133,7 +141,7 @@ def merge_wrcc_prism(precip_file_base,
                     times_temp = temp_dataset.variables['day'][:]
                     if np.allclose(times_precip, times_temp):
 
-                        logger.info('Assigning data for month: {0}'.format(month))
+                        logger.info('Assigning data for month: %s', month)
                                                 
                         # add the times at every 12th time step (month) to correspond to the current calendar month
                         output_dataset.variables['time'][month - 1::12] = times_precip
@@ -151,16 +159,16 @@ def merge_wrcc_prism(precip_file_base,
                 # if we downloaded the files then remove them now        
                 if cleanup_precip:
                     os.remove(precip_file)                  
-                    logger.info('Removed temporary input data file: {0}'.format(precip_file))
+                    logger.info('Removed temporary input data file: %s', precip_file)
                 if cleanup_temp:
                     os.remove(temp_file)
-                    logger.info('Removed temporary input data file: {0}'.format(temp_file))
+                    logger.info('Removed temporary input data file: %s', temp_file)
 
         # report on the elapsed time
         end_datetime = datetime.now()
-        logger.info("End time:      {}".format(end_datetime, '%x'))
+        logger.info("End time:      %s", end_datetime)
         elapsed = end_datetime - start_datetime
-        logger.info("Elapsed time:  {}".format(elapsed, '%x'))
+        logger.info("Elapsed time:  %s", elapsed)
 
     except Exception:
         logger.exception('Failed to complete', exc_info=True)
