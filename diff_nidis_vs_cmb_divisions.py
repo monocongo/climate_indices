@@ -1,17 +1,13 @@
-import compute
-import datetime
+import argparse
 import logging
 import netCDF4
 import netcdf_utils
 import numpy as np
-import sys
-import utils
+import os
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up matplotlib to use the Agg backend, in order to remove any dependencies on an X server
 import matplotlib
-import argparse
-import os
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
@@ -23,16 +19,16 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------------------------------------------------
-def initialize_netcdf(new_netcdf,
+def _initialize_netcdf(new_netcdf,
                       template_netcdf,
-                      vars=None):
+                      variables=None):
     '''
     This function is used to initialize and return a netCDF4.Dataset object.
     
     :param new_netcdf: the file path/name of the new NetCDF Dataset object to be created and returned by this function
     :param template_netcdf: an existing/open NetCDF Dataset object which will be used as a template for the Dataset
                             that will be created and returned by this function
-    :param vars: if present this is a dictionary of variable names (keys) to variable attributes/data of 
+    :param variables: if present this is a dictionary of variable names (keys) to variable attributes/data of 
                  the original/initial variables to be loaded into the NetCDF 
     '''
 
@@ -63,18 +59,18 @@ def initialize_netcdf(new_netcdf,
         data_dtype = netcdf_utils.find_netcdf_datatype(fill_value)
     
         # create the coordinate variables
-        time_variable = new_dataset.createVariable('time', time_dtype, ('time',))
+        time_units = new_dataset.createVariable('time', time_dtype, ('time',))
         division_variable = new_dataset.createVariable('division', divisions_dtype, ('division',))
 
         # set the coordinate variables' attributes and var_names
-        time_variable.setncatts(template_dataset.variables['time'].__dict__)
-        time_variable[:] = template_dataset.variables['time'][:]
+        time_units.setncatts(template_dataset.variables['time'].__dict__)
+        time_units[:] = template_dataset.variables['time'][:]
         division_variable.setncatts(template_dataset.variables['division'].__dict__)
         division_variable[:] = template_dataset.variables['division'][:]
 
         # create a variable for each variable listed in the dictionary of variable names to variable attributes/data
-        if vars is not None:
-            for variable_name, variable in vars.items():
+        if variables is not None:
+            for variable_name, variable in variables.items():
                 
                 variable_attributes = variable[0]
                 var_data = variable[1]
@@ -200,11 +196,11 @@ if __name__ == '__main__':
                                                   divisions_dim_name) as dataset_OUT:
 
         # variable names for variables to diff from the two datasets
-        vars = {'PDSI': ('cmb_pdsi', 'pdsi'),
+        comparison_arrays = {'PDSI': ('cmb_pdsi', 'pdsi'),
                 'PHDI': ('cmb_phdi', 'phdi'),
                 'PMDI': ('cmb_pmdi', 'pmdi'),
                 'Z-Index': ('cmb_zndx', 'zindex')}
-        for index, var_names in vars.items():
+        for index, var_names in comparison_arrays.items():
                     
             # TODO validate that the two variables exist, have compatible dimensions/units, etc., all of which is assumed below
 

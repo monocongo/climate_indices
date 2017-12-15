@@ -19,7 +19,7 @@ _PDSI_MIN = -4.0
 _PDSI_MAX = 4.0
 
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit
+@numba.jit
 def _water_balance(AWC,
                    PET,
                    P):
@@ -985,6 +985,72 @@ def _pmdi(probability,
     return _pmdi
 
 #------------------------------------------------------------------------------------------------------------------
+@numba.jit  # working?
+def _assign_X(k,
+              number_of_months,
+              BT,
+              PX1,
+              PX2,
+              PX3,
+              X):
+    """
+    Assign X values using backtracking.
+    
+    :param k: number of months to backtrack
+    :param number_of_months: ?
+    :param BT: backtracking array 
+    :param PX1: potential X1 values
+    :param PX2: potential X2 values
+    :param PX3: potential X3 values
+    :param X: X values array we'll update as a result of this function
+    """
+    ## ASSIGN X FOR CASES WHERE PX3 AND BT EQUAL ZERO
+    # NOTE: This is a conflicting case that arises where X cannot be
+    # assigned as X1, X2, or X3 in real time. Here 0 < PX1 < 1, 
+    # -1 < PX2 < 0, and PX3 = 0, and it is not obvious which
+    # intermediate index should be assigned to X. Therefore,
+    # backtracking is used here, where BT is set equal to the next
+    # month's BT value and X is assigned to the intermediate index
+    # associated with that BT value.
+    if k > 0:
+        if (PX3[k - 1] == 0) and (BT[k - 1] == 0):
+            r = 0
+            for c in range(k - 1, 0, -1):  # here we loop over the BT array to look for the most previous month step where the value is not zero
+                if BT[c] != 0:
+                    # Backtracking continues in a backstepping procedure up through the most previous month where BT is not equal to zero
+                    r = c + 1    # r is the row number up through which backtracking continues.
+                    break
+
+            # here we loop over the BT array from the previous month (k - 1) through the r index (the most
+            # previous month with BT != 0), at each month assigning to X the value for the month called for
+            # in the BT array, unless that value is 0 in which case the BT value is switched and the corresponding 
+            # X values are assigned (see _assign() in pdinew.f/pdinew.py)
+            for count0 in range(k - 1, r - 1, -1):  
+                BT[count0] = BT[count0 + 1] # Assign BT to next month's BT value.
+                if BT[count0] == 2:
+                    if PX2[count0] == 0:  # If BT = 2, X = PX2 unless PX2 = 0, then X = PX1.
+                        X[count0] = PX1[count0]
+                        BT[count0] = 1  # flip the X we'll choose next step, from X2 to X1
+                    else:
+                        X[count0] = PX2[count0]
+                elif BT[count0] == 1:
+                    if PX1[count0] == 0:  # If BT = 1, X = PX1 unless PX1 = 0, then X = PX2.
+                        X[count0] = PX2[count0] 
+                        BT[count0] = 2  # flip the X we'll choose next step, from X1 to X2
+                    else:
+                        X[count0] = PX1[count0]
+                
+    # In instances where there is no established spell for the last monthly observation, X is initially 
+    # assigned to 0. The code below sets X in the last month to greater of |PX1| or |PX2|. This prevents 
+    # the PHDI from being inappropriately set to 0. 
+    if k == (number_of_months - 1):
+        if (PX3[k] == 0) and (X[k] == 0):
+            if abs(PX1[k]) > abs(PX2[k]):
+                X[k] = PX1[k]
+            else:
+                X[k] = PX2[k]
+
+#------------------------------------------------------------------------------------------------------------------
 #@numba.jit    # not working yet
 def _pdsi_from_zindex(Z):
 
@@ -1089,48 +1155,9 @@ def _pdsi_from_zindex(Z):
         # select a PMDI
         PMDI[k] = _pmdi(Pe, X1, X2, X3)
 
-        ## ASSIGN X FOR CASES WHERE PX3 AND BT EQUAL ZERO
-        # NOTE: This is a conflicting case that arises where X cannot be
-        # assigned as X1, X2, or X3 in real time. Here 0 < PX1 < 1, 
-        # -1 < PX2 < 0, and PX3 = 0, and it is not obvious which
-        # intermediate index should be assigned to X. Therefore,
-        # backtracking is used here, where BT is set equal to the next
-        # month's BT value and X is assigned to the intermediate index
-        # associated with that BT value.
-        if k > 0:
-            if (PX3[k - 1] == 0) and (BT[k - 1] == 0):
-                r = 0
-                for c in range(k - 1, 0, -1):  # here we loop over the BT array to look for the most previous month step where the value is not zero
-                    if BT[c] != 0:
-                        # Backtracking continues in a backstepping procedure up through the most previous month where BT is not equal to zero
-                        r = c + 1    # r is the row number up through which backtracking continues.
-                        break
-
-                for count0 in range(k - 1, r - 1, -1):  # here we loop over the BT array from the previous month (k - 1) through the r index (most previous month with BT != 0), at each month assigning to X the value for the month called for in the BT array, unless that value is 0 in which case the BT value is switched and the corresponding X values are assigned (see _assign() in pdinew.f/pdinew.py)
-                    BT[count0] = BT[count0 + 1] # Assign BT to next month's BT value.
-                    if BT[count0] == 2:
-                        if PX2[count0] == 0:  # If BT = 2, X = PX2 unless PX2 = 0, then X = PX1.
-                            X[count0] = PX1[count0]
-                            BT[count0] = 1  # flip the X we'll choose next step, from X2 to X1
-                        else:
-                            X[count0] = PX2[count0]
-                    elif BT[count0] == 1:
-                        if PX1[count0] == 0:  # If BT = 1, X = PX1 unless PX1 = 0, then X = PX2.
-                            X[count0] = PX2[count0] 
-                            BT[count0] = 2  # flip the X we'll choose next step, from X1 to X2
-                        else:
-                            X[count0] = PX1[count0]
-                    
-        # In instances where there is no established spell for the last monthly observation, X is initially 
-        # assigned to 0. The code below sets X in the last month to greater of |PX1| or |PX2|. This prevents 
-        # the PHDI from being inappropriately set to 0. 
-        if k == (number_of_months - 1):
-            if (PX3[k] == 0) and (X[k] == 0):
-                if abs(PX1[k]) > abs(PX2[k]):
-                    X[k] = PX1[k]
-                else:
-                    X[k] = PX2[k]
-
+        # assign X for cases where PX3 and BT equal 0
+        _assign_X(k, number_of_months, BT, PX1, PX2, PX3, X)
+        
         # round values to four decimal places
         for values in [X1, X2, X3, Pe, V, X, PX1, PX2, PX3, PPe]:
             values = np.around(values, decimals=4)
@@ -1305,20 +1332,20 @@ def _compute_scpdsi(established_index_values,
 
                     # xValues should be a list of doubles
                     new_X, new_X1, new_X2, new_X3 = _choose_X(pdsi_values,
-                                                          established_index_values,
-                                                          wet_index_values,
-                                                          dry_index_values,
-                                                          sczindex_values,
-                                                          wet_index_deque,
-                                                          dry_index_deque,
-                                                          wet_M,
-                                                          wet_B,
-                                                          dry_M,
-                                                          dry_B,
-                                                          new_X, 
-                                                          new_X3, 
-                                                          period, 
-                                                          previous_key)
+                                                              established_index_values,
+                                                              wet_index_values,
+                                                              dry_index_values,
+                                                              sczindex_values,
+                                                              wet_index_deque,
+                                                              dry_index_deque,
+                                                              wet_M,
+                                                              wet_B,
+                                                              dry_M,
+                                                              dry_B,
+                                                              new_X, 
+                                                              new_X3, 
+                                                              period, 
+                                                              previous_key)
 
             wet_index_values[period] = new_X1
             dry_index_values[period] = new_X2
@@ -1498,6 +1525,49 @@ def _backtrack_self_calibrated(pdsi_values,
         pdsi_values[month_index] = num1
 
 #-----------------------------------------------------------------------------------------------------------------------
+def _highest_reasonable_value(summed_values,
+                              sign,
+                              wet_or_dry):
+
+    # Determine the highest or lowest reasonable value that isn't due to a freak anomaly in the data. 
+    # A "freak anomaly" is defined as a value that is either
+    #   1) 25% higher than the 98th percentile
+    #   2) 25% lower than the 2nd percentile
+    reasonable_percentile_index = 0
+    if 'WET' == wet_or_dry:
+
+        reasonable_percentile_index = int(len(summed_values) * 0.98)
+
+    else:  # DRY
+    
+        reasonable_percentile_index = int(len(summed_values) * 0.02)
+    
+    # sort the list of sums into ascending order and get the sum_value value referenced by the safe percentile index
+    summed_values = sorted(summed_values)
+    sum_at_reasonable_percentile = summed_values[reasonable_percentile_index]
+
+    # find the highest reasonable value out of the summed values
+    highest_reasonable_value = 0.0
+    reasonable_tolerance_ratio = 1.25
+    while summed_values:
+
+        sum_value = summed_values.pop()
+        if (sign * sum_value) > 0:
+
+            if (sum_value / sum_at_reasonable_percentile) < reasonable_tolerance_ratio:
+            
+                if (sign * sum_value) > (sign * highest_reasonable_value):
+                
+                    highest_reasonable_value = sum_value
+
+    
+    if 'WET' == wet_or_dry:
+    
+        return highest_reasonable_value
+    
+    return highest_reasonable_value
+
+#-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def _z_sum(interval, 
            wet_or_dry,
@@ -1511,7 +1581,9 @@ def _z_sum(interval,
     z_temporary = deque()
     values_to_sum = deque()
     summed_values = deque()
-    
+
+    # TODO verify that the below isn't misalligning the data by not filling in missing elements with a fill value 
+    # which can be ignored in following loops that may still rely upon an original shape of the data matrix    
     # get only non-NaN Z-index values
     for sczindex in sczindex_values:
     
@@ -1534,7 +1606,6 @@ def _z_sum(interval,
     sum_value = 0.0
     for i in range(interval):
     
-#         if len(z_temporary) == 0:
         if not z_temporary:
            
             i = interval
@@ -1545,19 +1616,25 @@ def _z_sum(interval,
             z = z_temporary.pop()
             remaining_calibration_periods -= 1
             
-            if not np.isnan(z):
-            
-                # add to the sum
-                sum_value += z
-                
-                # add to the array of values we've used for the initial sum
-                values_to_sum.appendleft(z)
-            
-            else:
-
-                # reduce the loop counter so we don't skip a calibration interval period
-                i -= 1
+#             if not np.isnan(z):
+#             
+#                 # add to the sum
+#                 sum_value += z
+#                 
+#                 # add to the array of values we've used for the initial sum
+#                 values_to_sum.appendleft(z)
+#             
+#             else:
+# 
+#                 # reduce the loop counter so we don't skip a calibration interval period
+#                 i -= 1
     
+            # add to the sum
+            sum_value += z
+                
+            # add to the array of values we've used for the initial sum
+            values_to_sum.appendleft(z)
+            
     # if we're dealing with wet conditions then we want to be using positive numbers, and if dry conditions  
     # then we need to be using negative numbers, so we introduce a sign variable to help with this 
     sign = 1
@@ -1568,7 +1645,6 @@ def _z_sum(interval,
     # for each remaining Z value, recalculate the sum of Z values
     largest_sum = sum_value
     summed_values.appendleft(sum_value)
-#     while (len(z_temporary) > 0) and (remaining_calibration_periods > 0):
     while z_temporary and (remaining_calibration_periods > 0):
     
         # take the next Z-index value off the end of the list 
@@ -1577,58 +1653,41 @@ def _z_sum(interval,
         # reduce by one period for each removal
         remaining_calibration_periods -= 1
     
-        if not np.isnan(z):
+#         if not np.isnan(z):
+# 
+#             # come up with a new Z sum for this new group of Z values to sum
+#             
+#             # remove the last value from both the sum_value and the values to sum array
+#             sum_value -= values_to_sum.pop()
+#             
+#             # add to the Z sum, update the bookkeeping lists
+#             sum_value += z
+#             values_to_sum.append(z)
+#             summed_values.append(sum_value)
+#          
 
-            # come up with a new Z sum for this new group of Z values to sum
+        # come up with a new Z sum for this new group of Z values to sum
             
-            # remove the last value from both the sum_value and the values to sum array
-            sum_value -= values_to_sum.pop()
+        # remove the last value from both the sum_value and the values to sum array
+        sum_value -= values_to_sum.pop()
             
-            # add to the Z sum, update the bookkeeping lists
-            sum_value += z
-            values_to_sum.append(z)
-            summed_values.append(sum_value)
+        # add to the Z sum, update the bookkeeping lists
+        sum_value += z
+        values_to_sum.append(z)
+        summed_values.append(sum_value)
          
         # update the largest sum value
         if (sign * sum_value) > (sign * largest_sum):
 
             largest_sum = sum_value
-
-    # Determine the highest or lowest reasonable value that isn't due to a freak anomaly in the data. 
-    # A "freak anomaly" is defined as a value that is either
-    #   1) 25% higher than the 98th percentile
-    #   2) 25% lower than the 2nd percentile
-    reasonable_percentile_index = 0
-    if 'WET' == wet_or_dry:
-
-        reasonable_percentile_index = int(len(summed_values) * 0.98)
-
-    else:  # DRY
-    
-        reasonable_percentile_index = int(len(summed_values) * 0.02)
-    
-    # sort the list of sums into ascending order and get the sum_value value referenced by the safe percentile index
-    summed_values = sorted(summed_values)
-    sum_at_reasonable_percentile = summed_values[reasonable_percentile_index]
-      
-    # find the highest reasonable value out of the summed values
-    highest_reasonable_value = 0.0
-    reasonable_tolerance_ratio = 1.25
-#     while len(summed_values) > 0:
-    while summed_values:
-
-        sum_value = summed_values.pop()
-        if (sign * sum_value) > 0:
-
-            if (sum_value / sum_at_reasonable_percentile) < reasonable_tolerance_ratio:
             
-                if (sign * sum_value) > (sign * highest_reasonable_value):
-                
-                    highest_reasonable_value = sum_value
-    
+        # DRY  
+        return largest_sum
+            
+
     if 'WET' == wet_or_dry:
-    
-        return highest_reasonable_value
+     
+        return _highest_reasonable_value(summed_values, sign, wet_or_dry)
     
     # DRY  
     return largest_sum
@@ -1893,11 +1952,12 @@ def _self_calibrate(pdsi_values,
         
     # adjust the self-calibrated Z-index values, using either the wet or dry ratio
     #TODO replace the below loop with a vectorized equivalent
-    for time_step in range(sczindex_values.size):
+    for time_step, sczindex in enumerate(sczindex_values):
+#     for time_step in range(sczindex_values.size):
     
-        if not np.isnan(sczindex_values[time_step]):
+        if not np.isnan(sczindex):
         
-            if sczindex_values[time_step] >= 0:
+            if sczindex >= 0:
             
                 adjustmentFactor = wet_ratio
             
@@ -1905,7 +1965,7 @@ def _self_calibrate(pdsi_values,
             
                 adjustmentFactor = dry_ratio
 
-            sczindex_values[time_step] = sczindex_values[time_step] * adjustmentFactor
+            sczindex_values[time_step] = sczindex * adjustmentFactor
 
     # allocate arrays which will be populated in the following step
     established_index_values = np.full(pdsi_values.shape, np.NaN)
@@ -2067,16 +2127,22 @@ def pdsi(precip_time_series,
         # if we have input time series (precipitation and PET) with an incomplete 
         # final year then we pad all the time series arrays with NaN values
         pad_months = 12 - (precip_time_series.size % 12)
-        if pad_months > 0:            
-            precip_time_series = np.pad(precip_time_series, (0, pad_months), 'constant', constant_values=(np.nan))
-            pet_time_series = np.pad(pet_time_series, (0, pad_months), 'constant', constant_values=(np.nan))
-            ET = np.pad(ET, (0, pad_months), 'constant', constant_values=(np.nan))
-            PR = np.pad(PR, (0, pad_months), 'constant', constant_values=(np.nan))
-            R = np.pad(R, (0, pad_months), 'constant', constant_values=(np.nan))
-            RO = np.pad(RO, (0, pad_months), 'constant', constant_values=(np.nan))
-            PRO = np.pad(PRO, (0, pad_months), 'constant', constant_values=(np.nan))
-            L = np.pad(L, (0, pad_months), 'constant', constant_values=(np.nan))
-            PL = np.pad(PL, (0, pad_months), 'constant', constant_values=(np.nan))
+        if pad_months > 0:
+            
+            # pad arrays with empty/fill months at end of final year
+            arrays_to_pad = [precip_time_series, pet_time_series, ET, PR, R, RO, PRO, L, PL]
+            for ary in arrays_to_pad:
+                ary = np.pad(ary, (0, pad_months), 'constant', constant_values=(np.nan))
+                
+#             precip_time_series = np.pad(precip_time_series, (0, pad_months), 'constant', constant_values=(np.nan))
+#             pet_time_series = np.pad(pet_time_series, (0, pad_months), 'constant', constant_values=(np.nan))
+#             ET = np.pad(ET, (0, pad_months), 'constant', constant_values=(np.nan))
+#             PR = np.pad(PR, (0, pad_months), 'constant', constant_values=(np.nan))
+#             R = np.pad(R, (0, pad_months), 'constant', constant_values=(np.nan))
+#             RO = np.pad(RO, (0, pad_months), 'constant', constant_values=(np.nan))
+#             PRO = np.pad(PRO, (0, pad_months), 'constant', constant_values=(np.nan))
+#             L = np.pad(L, (0, pad_months), 'constant', constant_values=(np.nan))
+#             PL = np.pad(PL, (0, pad_months), 'constant', constant_values=(np.nan))
                 
         # compute Z-index values
         zindex = _z_index(precip_time_series, 

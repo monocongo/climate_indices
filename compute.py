@@ -1,4 +1,4 @@
-#from lmoments3 import distr
+#import lmoments3
 import logging
 import math
 from math import exp, lgamma, pi, sqrt
@@ -51,15 +51,6 @@ def sum_to_scale(values,
     
     # pad the first (n - 1) elements of the array with NaN values
     return np.hstack(([np.NaN]*(scale - 1), sliding_sums))
-
-#-----------------------------------------------------------------------------------------------------------------------
-def _count_zeros_and_non_missings(values):
-    
-    # count the number of zeros and non-missing (non-NaN) values
-    zeros = values.size - np.count_nonzero(values)
-    non_missings = np.count_nonzero(~np.isnan(values))
-
-    return zeros, non_missings
 
 #-----------------------------------------------------------------------------------------------------------------------
 def _estimate_pearson3_parameters(lmoments):    
@@ -239,7 +230,7 @@ def _pearson3_fitting_values(values,
         calibration_values = values[calibration_begin_index:calibration_end_index, month_index]
 
         # count the number of zeros and valid (non-missing/non-NaN) values
-        number_of_zeros, number_of_non_missing = _count_zeros_and_non_missings(calibration_values)
+        number_of_zeros, number_of_non_missing = utils.count_zeros_and_non_missings(calibration_values)
 
         # make sure we have at least four values that are both non-missing (i.e. non-NaN)
         # and non-zero, otherwise use the entire period of record
@@ -249,7 +240,7 @@ def _pearson3_fitting_values(values,
             calibration_values = values[:, month_index]
             
             # get new counts of the zeros and non-missing values
-            number_of_zeros, number_of_non_missing = _count_zeros_and_non_missings(calibration_values)
+            number_of_zeros, number_of_non_missing = utils.count_zeros_and_non_missings(calibration_values)
             
         # calculate the probability of zero for the calendar month
         probability_of_zero = 0.0
@@ -393,7 +384,7 @@ def _error_function(value):
     return result
 
 #-----------------------------------------------------------------------------------------------------------------------
-@jit(float64[:](float64[:],int32,int32,int32))
+#@jit(float64[:](float64[:],int32,int32,int32))  # needs to be commented out for processing of (only?) climate divisions
 def transform_fitted_pearson(monthly_values,
                              data_start_year,
                              calibration_start_year,
@@ -685,7 +676,7 @@ def _pearson3_fitting_values_new(values,
         calibration_values = values[calibration_begin_index:calibration_end_index, month_index]
 
         # count the number of zeros and valid (non-missing/non-NaN) values
-        number_of_zeros, number_of_non_missing = _count_zeros_and_non_missings(calibration_values)
+        number_of_zeros, number_of_non_missing = utils.count_zeros_and_non_missings(calibration_values)
 
         # make sure we have at least four values that are both non-missing (i.e. non-NaN)
         # and non-zero, otherwise use the entire period of record
@@ -695,7 +686,7 @@ def _pearson3_fitting_values_new(values,
             calibration_values = values[:, month_index]
             
             # get new counts of the zeros and non-missing values
-            number_of_zeros, number_of_non_missing = _count_zeros_and_non_missings(calibration_values)
+            number_of_zeros, number_of_non_missing = utils.count_zeros_and_non_missings(calibration_values)
             
         # calculate the probability of zero for the calendar month
         probability_of_zero = 0.0
@@ -710,7 +701,7 @@ def _pearson3_fitting_values_new(values,
         monthly_fitting_values[1, month_index] = shape
         monthly_fitting_values[2, month_index] = location
         monthly_fitting_values[3, month_index] = scale
-#         paras = distr.pe3.lmom_fit(calibration_values)
+#         paras = lmoments3.distr.pe3.lmom_fit(calibration_values)
 #         monthly_fitting_values[1, month_index] = paras['skew']
 #         monthly_fitting_values[2, month_index] = paras['loc']
 #         monthly_fitting_values[3, month_index] = paras['scale']
