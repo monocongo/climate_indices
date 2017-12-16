@@ -384,7 +384,7 @@ def _error_function(value):
     return result
 
 #-----------------------------------------------------------------------------------------------------------------------
-@jit(float64[:](float64[:],int32,int32,int32))
+#@jit(float64[:](float64[:],int32,int32,int32))  # needs to be commented out for processing of (only?) climate divisions
 def transform_fitted_pearson(monthly_values,
                              data_start_year,
                              calibration_start_year,

@@ -67,20 +67,18 @@ class GridProcessor(object):
         # TODO get the initial year from the precipitation NetCDF, for now use hard-coded value specific to nClimGrid
         self.data_start_year = 1895
         self.initial_data_year = 1895
-        
-#         # multiprocessing locks we'll use to synchronize I/O writes to NetCDF files, one per each output file
-#         self.pet_lock = multiprocessing.Lock()
-#         self.pdsi_lock = multiprocessing.Lock()
-#         self.phdi_lock = multiprocessing.Lock()
-#         self.pmdi_lock = multiprocessing.Lock()
-#         self.zindex_lock = multiprocessing.Lock()
-#         self.scpdsi_lock = multiprocessing.Lock()
-#         self.spi_gamma_lock = multiprocessing.Lock()
-#         self.spi_pearson_lock = multiprocessing.Lock()
-#         self.spei_gamma_lock = multiprocessing.Lock()
-#         self.spei_pearson_lock = multiprocessing.Lock()
-#         self.pnp_lock = multiprocessing.Lock()
 
+        # the number of months used in scaled indices (for example this will be set to 6 for 6-month SPI, SPEI, and PNP)
+        # this will need to be reset before the object is used for computing the scaled indices
+        self.months = -1
+                
+        # place holders for the scaled NetCDFs, these should be created and assigned here for each months scale
+        self.netcdf_spi_gamma = ''
+        self.netcdf_spei_gamma = ''
+        self.netcdf_spi_pearson = ''
+        self.netcdf_spei_pearson = ''
+        self.netcdf_pnp = ''
+        
         # initialize the NetCDFs to be used as output files for the unscaled indices (Palmers and PET)
         self._initialize_unscaled_netcdfs(self.output_file_base,
                                           self.netcdf_precip)
@@ -208,13 +206,6 @@ class GridProcessor(object):
                                                             valid_min,
                                                             valid_max)
     
-#         return {'pet': netcdf_file_pet,
-#                 'pdsi': netcdf_file_pdsi,
-#                 'phdi': netcdf_file_phdi,
-#                 'zindex': netcdf_file_zindex,
-#                 'pmdi': netcdf_file_pmdi,
-#                 'scpdsi': netcdf_file_scpdsi}
-
         # assign the NetCDF file paths to the corresponding member variables
         self.netcdf_pet = netcdf_file_pet
         self.netcdf_pdsi = netcdf_file_pdsi
@@ -233,7 +224,7 @@ class GridProcessor(object):
         
     #-----------------------------------------------------------------------------------------------------------------------
     def _initialize_scaled_netcdfs(self,
-                                   scale_months):
+                                   months_scale):
         
         # dictionary of index types to the NetCDF dataset files corresponding to the base index names and 
         # month scales (this is the object we'll build and return from this function)
@@ -258,7 +249,7 @@ class GridProcessor(object):
                 valid_max = 3.09
     
             # create the variable name from the index and month scale
-            variable_name = index + '_{0}'.format(str(month_scales).zfill(2))
+            variable_name = index + '_{0}'.format(str(months_scale).zfill(2))
     
             # create the NetCDF file path from the 
             netcdf_file = self.output_file_base + '_' + variable_name + '.nc'
@@ -267,7 +258,7 @@ class GridProcessor(object):
             netcdf_utils.initialize_netcdf_single_variable_grid(netcdf_file, 
                                                                 self.netcdf_precip,
                                                                 variable_name,
-                                                                long_name.format(scale_months),
+                                                                long_name.format(months_scale),
                                                                 valid_min,
                                                                 valid_max)
         
@@ -280,6 +271,9 @@ class GridProcessor(object):
         self.netcdf_spi_pearson = netcdfs['spi_pearson']
         self.netcdf_spei_pearson = netcdfs['spei_pearson']
         self.netcdf_pnp = netcdfs['pnp']
+        
+        # set the number of months so we'll know at which months scale the indices NetCDF files should be computed
+        self.months = months_scale
         
     #-----------------------------------------------------------------------------------------------------------------------
     def run(self):
@@ -346,9 +340,6 @@ class GridProcessor(object):
 #         # close the pool and wait on all processes to finish
 #         pool.close()
 #         pool.join()
-        
-#         # DEBUG ONLY -- REMOVE
-#         debug_pet_file = self.output_file_base + '_pet.nc'
         
         # compute the scaled indices (PNP, SPI, and SPEI)
         for months in self.scale_months:
