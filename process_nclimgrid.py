@@ -4,9 +4,9 @@ import indices
 import logging
 import math
 import multiprocessing
+import netCDF4
 import netcdf_utils
 import numpy as np
-from netCDF4 import Dataset, num2date
 
 #-----------------------------------------------------------------------------------------------------------------------
 # static constants
@@ -288,9 +288,9 @@ class GridProcessor(object):
         number_of_workers = 1#multiprocessing.cpu_count()
         
         # open the input NetCDF files for compatibility validation and to get the data's time range 
-        with Dataset(self.netcdf_precip) as dataset_precip, \
-             Dataset(self.netcdf_temperature) as dataset_temp, \
-             Dataset(self.netcdf_soil) as dataset_awc:
+        with netCDF4.Dataset(self.netcdf_precip) as dataset_precip, \
+             netCDF4.Dataset(self.netcdf_temperature) as dataset_temp, \
+             netCDF4.Dataset(self.netcdf_soil) as dataset_awc:
               
             # make sure the datasets are compatible dimensionally
             self._validate_compatibility(dataset_precip,
@@ -302,7 +302,7 @@ class GridProcessor(object):
               
             # get the initial year of the input dataset(s)
             time_units = dataset_precip.variables['time']
-            self.data_start_year = num2date(time_units[0], time_units.units).year
+            self.data_start_year = netCDF4.num2date(time_units[0], time_units.units).year
   
             # get the number of latitudes in the input dataset(s)
             lat_size = dataset_precip.variables['lat'].size
@@ -405,9 +405,9 @@ class GridProcessor(object):
         logger.info('Computing PET and Palmers for latitude index %s', lat_index)
         
         # open the input NetCDFs
-        with Dataset(self.netcdf_precip) as precip_dataset, \
-             Dataset(self.netcdf_temperature) as temp_dataset, \
-             Dataset(self.netcdf_soil) as awc_dataset:
+        with netCDF4.Dataset(self.netcdf_precip) as precip_dataset, \
+             netCDF4.Dataset(self.netcdf_temperature) as temp_dataset, \
+             netCDF4.Dataset(self.netcdf_soil) as awc_dataset:
         
             # read the latitude slice of input temperature values 
             temperature_lat_slice = temp_dataset[self.var_name_temperature][:, lat_index, :]    # assuming (time, lat, lon) orientation
@@ -428,7 +428,7 @@ class GridProcessor(object):
         
             # open the existing PET NetCDF file for writing, copy the latitude slice into the PET variable at the indexed latitude position 
             pet_lock.acquire()
-            pet_dataset = Dataset(self.netcdf_pet, mode='a')
+            pet_dataset = netCDF4.Dataset(self.netcdf_pet, mode='a')
             pet_dataset['pet'][:, lat_index, :] = pet_lat_slice
             pet_dataset.sync()
             pet_dataset.close()
@@ -505,7 +505,7 @@ class GridProcessor(object):
             
             # open the existing PDSI NetCDF file for writing, copy the latitude slice into the PET variable at the indexed latitude position 
             pdsi_lock.acquire()
-            pdsi_dataset = Dataset(self.netcdf_pdsi, mode='a')
+            pdsi_dataset = netCDF4.Dataset(self.netcdf_pdsi, mode='a')
             pdsi_dataset['pdsi'][:, lat_index, :] = pdsi_lat_slice
             pdsi_dataset.sync()
             pdsi_dataset.close()
@@ -513,7 +513,7 @@ class GridProcessor(object):
     
             # open the existing PHDI NetCDF file for writing, copy the latitude slice into the PET variable at the indexed latitude position 
             phdi_lock.acquire()
-            phdi_dataset = Dataset(self.netcdf_phdi, mode='a')
+            phdi_dataset = netCDF4.Dataset(self.netcdf_phdi, mode='a')
             phdi_dataset['phdi'][:, lat_index, :] = phdi_lat_slice
             phdi_dataset.sync()
             phdi_dataset.close()
@@ -521,7 +521,7 @@ class GridProcessor(object):
     
             # open the existing Z-Index NetCDF file for writing, copy the latitude slice into the PET variable at the indexed latitude position 
             zindex_lock.acquire()
-            zindex_dataset = Dataset(self.netcdf_zindex, mode='a')
+            zindex_dataset = netCDF4.Dataset(self.netcdf_zindex, mode='a')
             zindex_dataset['zindex'][:, lat_index, :] = zindex_lat_slice
             zindex_dataset.sync()
             zindex_dataset.close()
@@ -529,7 +529,7 @@ class GridProcessor(object):
     
             # open the existing SCPDSI NetCDF file for writing, copy the latitude slice into the PET variable at the indexed latitude position 
             scpdsi_lock.acquire()
-            scpdsi_dataset = Dataset(self.netcdf_scpdsi, mode='a')
+            scpdsi_dataset = netCDF4.Dataset(self.netcdf_scpdsi, mode='a')
             scpdsi_dataset['scpdsi'][:, lat_index, :] = scpdsi_lat_slice
             scpdsi_dataset.sync()
             scpdsi_dataset.close()
@@ -537,7 +537,7 @@ class GridProcessor(object):
     
             # open the existing PHDI NetCDF file for writing, copy the latitude slice into the PET variable at the indexed latitude position 
             pmdi_lock.acquire()
-            pmdi_dataset = Dataset(self.netcdf_pmdi, mode='a')
+            pmdi_dataset = netCDF4.Dataset(self.netcdf_pmdi, mode='a')
             pmdi_dataset['pmdi'][:, lat_index, :] = pmdi_lat_slice
             pmdi_dataset.sync()
             pmdi_dataset.close()
@@ -554,8 +554,8 @@ class GridProcessor(object):
         logger.info('Computing SPI, SPEI, and PNP for latitude index %s', lat_index)
         
         # open the input NetCDFs
-        with Dataset(self.netcdf_precip) as precip_dataset, \
-             Dataset(self.netcdf_pet) as pet_dataset:
+        with netCDF4.Dataset(self.netcdf_precip) as precip_dataset, \
+             netCDF4.Dataset(self.netcdf_pet) as pet_dataset:
     
             # read the latitude slice of input precipitation and PET values 
             precip_lat_slice = precip_dataset[self.var_name_precip][:, lat_index, :]   # assuming (time, lat, lon) orientation
@@ -628,7 +628,7 @@ class GridProcessor(object):
             
             # open the existing SPI/Gamma NetCDF file for writing, copy the latitude slice into the SPI variable at the indexed latitude position 
             spi_gamma_lock.acquire()
-            spi_gamma_dataset = Dataset(self.netcdf_spi_gamma, mode='a')
+            spi_gamma_dataset = netCDF4.Dataset(self.netcdf_spi_gamma, mode='a')
             spi_gamma_dataset[spi_gamma_variable_name][:, lat_index, :] = spi_gamma_lat_slice
             spi_gamma_dataset.sync()
             spi_gamma_dataset.close()
@@ -636,7 +636,7 @@ class GridProcessor(object):
      
             # open the existing SPI/Pearson NetCDF file for writing, copy the latitude slice into the SPI variable at the indexed latitude position 
             spi_pearson_lock.acquire()
-            spi_pearson_dataset = Dataset(self.netcdf_spi_pearson, mode='a')
+            spi_pearson_dataset = netCDF4.Dataset(self.netcdf_spi_pearson, mode='a')
             spi_pearson_dataset[spi_pearson_variable_name][:, lat_index, :] = spi_pearson_lat_slice
             spi_pearson_dataset.sync()
             spi_pearson_dataset.close()
@@ -644,7 +644,7 @@ class GridProcessor(object):
     
             # open the existing SPEI/Gamma NetCDF file for writing, copy the latitude slice into the SPEI variable at the indexed latitude position 
             spei_gamma_lock.acquire()
-            spei_gamma_dataset = Dataset(self.netcdf_spei_gamma, mode='a')
+            spei_gamma_dataset = netCDF4.Dataset(self.netcdf_spei_gamma, mode='a')
             spei_gamma_dataset[spei_gamma_variable_name][:, lat_index, :] = spei_gamma_lat_slice
             spei_gamma_dataset.sync()
             spei_gamma_dataset.close()
@@ -652,7 +652,7 @@ class GridProcessor(object):
      
             # open the existing SPEI/Pearson NetCDF file for writing, copy the latitude slice into the SPEI variable at the indexed latitude position 
             spei_pearson_lock.acquire()
-            spei_pearson_dataset = Dataset(self.netcdf_spei_pearson, mode='a')
+            spei_pearson_dataset = netCDF4.Dataset(self.netcdf_spei_pearson, mode='a')
             spei_pearson_dataset[spei_pearson_variable_name][:, lat_index, :] = spei_pearson_lat_slice
             spei_pearson_dataset.sync()
             spei_pearson_dataset.close()
@@ -660,7 +660,7 @@ class GridProcessor(object):
     
             # open the existing PNP NetCDF file for writing, copy the latitude slice into the PNP variable at the indexed latitude position 
             pnp_lock.acquire()
-            pnp_dataset = Dataset(self.netcdf_pnp, mode='a')
+            pnp_dataset = netCDF4.Dataset(self.netcdf_pnp, mode='a')
             pnp_dataset[pnp_variable_name][:, lat_index, :] = pnp_lat_slice
             pnp_dataset.sync()
             pnp_dataset.close()
