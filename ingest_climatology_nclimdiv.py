@@ -239,10 +239,14 @@ if __name__ == '__main__':
     3. Run the ingest code from https://github.com/monocongo/indices_python/tree/climdivs_comparison/ingest_climatology_nclimdiv.py
     
     python -u ingest_climatology_nclimdiv.py \
-      --temp_file C:/home/data/nclimdiv/climdiv-tmpcdv-v1.0.0-20170906 \
-      --precip_file C:/home/data/nclimdiv/climdiv-pcpndv-v1.0.0-20170906 \
-      --soil_file C:/home/data/nclimdiv/pdinew.soilconst \
-      --out_file C:/home/data/nclimdiv/climdiv-climdv-v1.0.0-20170906.nc
+        --temp_file C:/home/data/nclimdiv/climdiv-tmpcdv-v1.0.0-20171204.txt \
+        --precip_file C:/home/data/nclimdiv/climdiv-pcpndv-v1.0.0-20171204.txt \ 
+        --pdsi_file C:/home/data/nclimdiv/climdiv-pdsidv-v1.0.0-20171204.txt \
+        --phdi_file C:/home/data/nclimdiv/climdiv-phdidv-v1.0.0-20171204.txt \
+        --pmdi_file C:/home/data/nclimdiv/climdiv-pmdidv-v1.0.0-20171204.txt \
+        --zindex_file C:/home/data/nclimdiv/climdiv-zndxdv-v1.0.0-20171204.txt \
+        --soil_file C:/home/data/nclimdiv/pdinew.soilconst \
+        --out_file C:/home/data/nclimdiv/nclimdiv-v1.0.0-20171204.nc
       
     Use the above result NetCDF file as input to NIDIS/NCEI Palmer code, etc.
     '''
