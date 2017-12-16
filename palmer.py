@@ -1525,6 +1525,49 @@ def _backtrack_self_calibrated(pdsi_values,
         pdsi_values[month_index] = num1
 
 #-----------------------------------------------------------------------------------------------------------------------
+def _highest_reasonable_value(summed_values,
+                              sign,
+                              wet_or_dry):
+
+    # Determine the highest or lowest reasonable value that isn't due to a freak anomaly in the data. 
+    # A "freak anomaly" is defined as a value that is either
+    #   1) 25% higher than the 98th percentile
+    #   2) 25% lower than the 2nd percentile
+    reasonable_percentile_index = 0
+    if 'WET' == wet_or_dry:
+
+        reasonable_percentile_index = int(len(summed_values) * 0.98)
+
+    else:  # DRY
+    
+        reasonable_percentile_index = int(len(summed_values) * 0.02)
+    
+    # sort the list of sums into ascending order and get the sum_value value referenced by the safe percentile index
+    summed_values = sorted(summed_values)
+    sum_at_reasonable_percentile = summed_values[reasonable_percentile_index]
+
+    # find the highest reasonable value out of the summed values
+    highest_reasonable_value = 0.0
+    reasonable_tolerance_ratio = 1.25
+    while summed_values:
+
+        sum_value = summed_values.pop()
+        if (sign * sum_value) > 0:
+
+            if (sum_value / sum_at_reasonable_percentile) < reasonable_tolerance_ratio:
+            
+                if (sign * sum_value) > (sign * highest_reasonable_value):
+                
+                    highest_reasonable_value = sum_value
+
+    
+    if 'WET' == wet_or_dry:
+    
+        return highest_reasonable_value
+    
+    return highest_reasonable_value
+
+#-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def _z_sum(interval, 
            wet_or_dry,
@@ -1538,7 +1581,9 @@ def _z_sum(interval,
     z_temporary = deque()
     values_to_sum = deque()
     summed_values = deque()
-    
+
+    # TODO verify that the below isn't misalligning the data by not filling in missing elements with a fill value 
+    # which can be ignored in following loops that may still rely upon an original shape of the data matrix    
     # get only non-NaN Z-index values
     for sczindex in sczindex_values:
     
@@ -1561,7 +1606,6 @@ def _z_sum(interval,
     sum_value = 0.0
     for i in range(interval):
     
-#         if len(z_temporary) == 0:
         if not z_temporary:
            
             i = interval
@@ -1572,19 +1616,25 @@ def _z_sum(interval,
             z = z_temporary.pop()
             remaining_calibration_periods -= 1
             
-            if not np.isnan(z):
-            
-                # add to the sum
-                sum_value += z
-                
-                # add to the array of values we've used for the initial sum
-                values_to_sum.appendleft(z)
-            
-            else:
-
-                # reduce the loop counter so we don't skip a calibration interval period
-                i -= 1
+#             if not np.isnan(z):
+#             
+#                 # add to the sum
+#                 sum_value += z
+#                 
+#                 # add to the array of values we've used for the initial sum
+#                 values_to_sum.appendleft(z)
+#             
+#             else:
+# 
+#                 # reduce the loop counter so we don't skip a calibration interval period
+#                 i -= 1
     
+            # add to the sum
+            sum_value += z
+                
+            # add to the array of values we've used for the initial sum
+            values_to_sum.appendleft(z)
+            
     # if we're dealing with wet conditions then we want to be using positive numbers, and if dry conditions  
     # then we need to be using negative numbers, so we introduce a sign variable to help with this 
     sign = 1
@@ -1595,7 +1645,6 @@ def _z_sum(interval,
     # for each remaining Z value, recalculate the sum of Z values
     largest_sum = sum_value
     summed_values.appendleft(sum_value)
-#     while (len(z_temporary) > 0) and (remaining_calibration_periods > 0):
     while z_temporary and (remaining_calibration_periods > 0):
     
         # take the next Z-index value off the end of the list 
@@ -1604,58 +1653,41 @@ def _z_sum(interval,
         # reduce by one period for each removal
         remaining_calibration_periods -= 1
     
-        if not np.isnan(z):
+#         if not np.isnan(z):
+# 
+#             # come up with a new Z sum for this new group of Z values to sum
+#             
+#             # remove the last value from both the sum_value and the values to sum array
+#             sum_value -= values_to_sum.pop()
+#             
+#             # add to the Z sum, update the bookkeeping lists
+#             sum_value += z
+#             values_to_sum.append(z)
+#             summed_values.append(sum_value)
+#          
 
-            # come up with a new Z sum for this new group of Z values to sum
+        # come up with a new Z sum for this new group of Z values to sum
             
-            # remove the last value from both the sum_value and the values to sum array
-            sum_value -= values_to_sum.pop()
+        # remove the last value from both the sum_value and the values to sum array
+        sum_value -= values_to_sum.pop()
             
-            # add to the Z sum, update the bookkeeping lists
-            sum_value += z
-            values_to_sum.append(z)
-            summed_values.append(sum_value)
+        # add to the Z sum, update the bookkeeping lists
+        sum_value += z
+        values_to_sum.append(z)
+        summed_values.append(sum_value)
          
         # update the largest sum value
         if (sign * sum_value) > (sign * largest_sum):
 
             largest_sum = sum_value
-
-    # Determine the highest or lowest reasonable value that isn't due to a freak anomaly in the data. 
-    # A "freak anomaly" is defined as a value that is either
-    #   1) 25% higher than the 98th percentile
-    #   2) 25% lower than the 2nd percentile
-    reasonable_percentile_index = 0
-    if 'WET' == wet_or_dry:
-
-        reasonable_percentile_index = int(len(summed_values) * 0.98)
-
-    else:  # DRY
-    
-        reasonable_percentile_index = int(len(summed_values) * 0.02)
-    
-    # sort the list of sums into ascending order and get the sum_value value referenced by the safe percentile index
-    summed_values = sorted(summed_values)
-    sum_at_reasonable_percentile = summed_values[reasonable_percentile_index]
-      
-    # find the highest reasonable value out of the summed values
-    highest_reasonable_value = 0.0
-    reasonable_tolerance_ratio = 1.25
-#     while len(summed_values) > 0:
-    while summed_values:
-
-        sum_value = summed_values.pop()
-        if (sign * sum_value) > 0:
-
-            if (sum_value / sum_at_reasonable_percentile) < reasonable_tolerance_ratio:
             
-                if (sign * sum_value) > (sign * highest_reasonable_value):
-                
-                    highest_reasonable_value = sum_value
-    
+        # DRY  
+        return largest_sum
+            
+
     if 'WET' == wet_or_dry:
-    
-        return highest_reasonable_value
+     
+        return _highest_reasonable_value(summed_values, sign, wet_or_dry)
     
     # DRY  
     return largest_sum
