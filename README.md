@@ -5,7 +5,7 @@
 [![Code Climate](https://img.shields.io/codeclimate/github.com/monocongo/indices_python.svg)](https://codeclimate.com/github.com/monocongo/indices_python)
 [![Dependencies](https://img.shields.io/gemnasium/github.com/monocongo/indices_python.svg)](https://gemnasium.com/github.com/monocongo/indices_python)
 --->
-[![CodeFactor](https://www.codefactor.io/repository/github/monocongo/indices_python/badge/develop)](https://www.codefactor.io/repository/github/monocongo/indices_python/overview/develop)
+[![CodeFactor](https://www.codefactor.io/repository/github/monocongo/indices_python/badge/master)](https://www.codefactor.io/repository/github/monocongo/indices_python/overview/master)
 
 ## Community reference implementation of climate indices in Python 
 
@@ -821,3 +821,36 @@ Please read more on our [license](LICENSE) page.
 
 
 
+
+1
+1
+1
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1
