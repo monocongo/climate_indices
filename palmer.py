@@ -1,4 +1,4 @@
-from collections import deque
+import collections
 import logging
 import math
 import pdinew
@@ -985,7 +985,25 @@ def _pmdi(probability,
     return _pmdi
 
 #------------------------------------------------------------------------------------------------------------------
-@numba.jit  # working?
+def _find_previous_nonzero(backtrack,
+                           k_index):
+    """
+    Finds the previous index in an array where the value is non-zero, starting from a specified index.
+    If no previous value in the array is non-zero then an index to the first element (i.e. 0) is returned.
+    """
+    
+    index = 0
+    for c in range(k_index - 1, 0, -1):  # here we loop over the backtrack array to look for the most previous month step where the value is not zero
+        if backtrack[c] != 0:
+            # Backtracking continues in a backstepping procedure up through the most previous month
+            # where the corresponding backtracking array element is not equal to zero.
+            index = c + 1
+            break
+
+    return index
+
+#------------------------------------------------------------------------------------------------------------------
+@numba.jit
 def _assign_X(k,
               number_of_months,
               BT,
@@ -1013,19 +1031,24 @@ def _assign_X(k,
     # month's BT value and X is assigned to the intermediate index
     # associated with that BT value.
     if k > 0:
+        
         if (PX3[k - 1] == 0) and (BT[k - 1] == 0):
-            r = 0
-            for c in range(k - 1, 0, -1):  # here we loop over the BT array to look for the most previous month step where the value is not zero
-                if BT[c] != 0:
-                    # Backtracking continues in a backstepping procedure up through the most previous month where BT is not equal to zero
-                    r = c + 1    # r is the row number up through which backtracking continues.
-                    break
+
+            # the element (month) index up through which backtracking continues
+            previous_nonzero_index  = _find_previous_nonzero(BT, k)
+        
+#             r = 0
+#             for c in range(k - 1, 0, -1):  # here we loop over the BT array to look for the most previous month step where the value is not zero
+#                 if BT[c] != 0:
+#                     # Backtracking continues in a backstepping procedure up through the most previous month where BT is not equal to zero
+#                     r = c + 1    # r is the row number up through which backtracking continues.
+#                     break
 
             # here we loop over the BT array from the previous month (k - 1) through the r index (the most
             # previous month with BT != 0), at each month assigning to X the value for the month called for
             # in the BT array, unless that value is 0 in which case the BT value is switched and the corresponding 
             # X values are assigned (see _assign() in pdinew.f/pdinew.py)
-            for count0 in range(k - 1, r - 1, -1):  
+            for count0 in range(k - 1, previous_nonzero_index - 1, -1):  
                 BT[count0] = BT[count0 + 1] # Assign BT to next month's BT value.
                 if BT[count0] == 2:
                     if PX2[count0] == 0:  # If BT = 2, X = PX2 unless PX2 = 0, then X = PX1.
@@ -1183,7 +1206,6 @@ def _pdsi_from_zindex(Z):
     # X3 term changes more slowly than the values of the incipient (X1 and
     # X2) terms. The X3 term is the index for the long-term hydrologic
     # moisture condition and is the PHDI.
-#     for s in range(len(PX3)):
     for s, possible_phdi in enumerate(PX3):
         if possible_phdi == 0:
             # For calculation and program advancement purposes, the PX3 term is sometimes set equal to 0. 
@@ -1225,8 +1247,8 @@ def _compute_scpdsi(established_index_values,
     :param tolerance
      '''
     # empty all X lists
-    wet_index_deque = deque([])
-    dry_index_deque = deque([])
+    wet_index_deque = collections.deque([])
+    dry_index_deque = collections.deque([])
 
     # Initializes the book keeping indices used in finding the PDSI
     V = 0.0
@@ -1408,12 +1430,13 @@ def _choose_X(pdsi_values,
     dryc = 1 - (dry_M / (dry_M + dry_B))
 
     zIndex = sczindex_values[month_index]
-    new_X1 = (wetc * previous_wet_index_X1 + zIndex / (wet_M + wet_B))
+    
+    new_X1 = wetc * previous_wet_index_X1 + zIndex / (wet_M + wet_B)
     if new_X1 < 0:
     
         new_X1 = 0.0
     
-    new_X2 = (dryc * previous_dry_index_X2 + zIndex / (dry_M + dry_B))
+    new_X2 = dryc * previous_dry_index_X2 + zIndex / (dry_M + dry_B)
     if new_X2 > 0:
     
         new_X2 = 0.0
@@ -1432,10 +1455,11 @@ def _choose_X(pdsi_values,
     
     else:
     
-        new_X2 = dryc * previous_dry_index_X2 + zIndex / (dry_M + dry_B)
-        if new_X2 > 0:
-        
-            new_X2 = 0.0
+#         # TODO/CONFIRM this has already been accomplished in code above, this is duplicated/unnecessary, no?
+#         new_X2 = dryc * previous_dry_index_X2 + zIndex / (dry_M + dry_B)
+#         if new_X2 > 0:
+#         
+#             new_X2 = 0.0
         
         if (new_X2 <= -0.5) and (new_X3 == 0):
         
@@ -1505,7 +1529,6 @@ def _backtrack_self_calibrated(pdsi_values,
     
     num1 = new_X
 
-#     while (len(wet_index_deque) > 0) and (len(dry_index_deque) > 0):
     while wet_index_deque and dry_index_deque:
     
         if num1 > 0:
@@ -1525,23 +1548,14 @@ def _backtrack_self_calibrated(pdsi_values,
         pdsi_values[month_index] = num1
 
 #-----------------------------------------------------------------------------------------------------------------------
-def _highest_reasonable_value(summed_values,
-                              sign,
-                              wet_or_dry):
+def _highest_reasonable_value(summed_values):
 
-    # Determine the highest or lowest reasonable value that isn't due to a freak anomaly in the data. 
+    # Determine the highest reasonable value that isn't due to a freak anomaly in the data. 
     # A "freak anomaly" is defined as a value that is either
     #   1) 25% higher than the 98th percentile
     #   2) 25% lower than the 2nd percentile
-    reasonable_percentile_index = 0
-    if 'WET' == wet_or_dry:
+    reasonable_percentile_index = int(len(summed_values) * 0.98)
 
-        reasonable_percentile_index = int(len(summed_values) * 0.98)
-
-    else:  # DRY
-    
-        reasonable_percentile_index = int(len(summed_values) * 0.02)
-    
     # sort the list of sums into ascending order and get the sum_value value referenced by the safe percentile index
     summed_values = sorted(summed_values)
     sum_at_reasonable_percentile = summed_values[reasonable_percentile_index]
@@ -1552,18 +1566,13 @@ def _highest_reasonable_value(summed_values,
     while summed_values:
 
         sum_value = summed_values.pop()
-        if (sign * sum_value) > 0:
+        if sum_value > 0:
 
             if (sum_value / sum_at_reasonable_percentile) < reasonable_tolerance_ratio:
             
-                if (sign * sum_value) > (sign * highest_reasonable_value):
+                if sum_value > highest_reasonable_value:
                 
                     highest_reasonable_value = sum_value
-
-    
-    if 'WET' == wet_or_dry:
-    
-        return highest_reasonable_value
     
     return highest_reasonable_value
 
@@ -1578,12 +1587,13 @@ def _z_sum(interval,
            input_start_year):
 
     z = 0.0
-    z_temporary = deque()
-    values_to_sum = deque()
-    summed_values = deque()
+    z_temporary = collections.deque()
+    values_to_sum = collections.deque()
+    summed_values = collections.deque()
 
-    # TODO verify that the below isn't misalligning the data by not filling in missing elements with a fill value 
-    # which can be ignored in following loops that may still rely upon an original shape of the data matrix    
+    # TODO verify that the below isn't mis-aligning the data by not filling in missing elements with a fill value 
+    #      which can be ignored in following loops that may still rely upon an original shape of the data matrix,
+    #      instead this should only be pulling off the final (missing) months of the final year where values do not exist
     # get only non-NaN Z-index values
     for sczindex in sczindex_values:
     
@@ -1615,7 +1625,10 @@ def _z_sum(interval,
             # pull a value off the end of the list
             z = z_temporary.pop()
             remaining_calibration_periods -= 1
-            
+           
+#----------------
+            # TODO/CONFIRM the below conditional is unnecessary since all values of Z_temporary 
+            #              array should be non-NaN (only non-Nan sczindex values were added)  
 #             if not np.isnan(z):
 #             
 #                 # add to the sum
@@ -1628,6 +1641,7 @@ def _z_sum(interval,
 # 
 #                 # reduce the loop counter so we don't skip a calibration interval period
 #                 i -= 1
+#----------------
     
             # add to the sum
             sum_value += z
@@ -1637,58 +1651,55 @@ def _z_sum(interval,
             
     # if we're dealing with wet conditions then we want to be using positive numbers, and if dry conditions  
     # then we need to be using negative numbers, so we introduce a sign variable to help with this 
-    sign = 1
-    if 'DRY' == wet_or_dry:
-
-        sign = -1
-    
-    # for each remaining Z value, recalculate the sum of Z values
-    largest_sum = sum_value
-    summed_values.appendleft(sum_value)
-    while z_temporary and (remaining_calibration_periods > 0):
-    
-        # take the next Z-index value off the end of the list 
-        z = z_temporary.pop()
-
-        # reduce by one period for each removal
-        remaining_calibration_periods -= 1
-    
-#         if not np.isnan(z):
-# 
-#             # come up with a new Z sum for this new group of Z values to sum
-#             
-#             # remove the last value from both the sum_value and the values to sum array
-#             sum_value -= values_to_sum.pop()
-#             
-#             # add to the Z sum, update the bookkeeping lists
-#             sum_value += z
-#             values_to_sum.append(z)
-#             summed_values.append(sum_value)
-#          
-
-        # come up with a new Z sum for this new group of Z values to sum
-            
-        # remove the last value from both the sum_value and the values to sum array
-        sum_value -= values_to_sum.pop()
-            
-        # add to the Z sum, update the bookkeeping lists
-        sum_value += z
-        values_to_sum.append(z)
-        summed_values.append(sum_value)
-         
-        # update the largest sum value
-        if (sign * sum_value) > (sign * largest_sum):
-
-            largest_sum = sum_value
-            
-        # DRY  
-        return largest_sum
-            
-
     if 'WET' == wet_or_dry:
      
-        return _highest_reasonable_value(summed_values, sign, wet_or_dry)
+        largest_sum = _highest_reasonable_value(summed_values, wet_or_dry)
+
+    else:   # DRY
+            
+        sign = -1
     
+        # for each remaining Z value, recalculate the sum of Z values
+        largest_sum = sum_value
+        summed_values.appendleft(sum_value)
+        while z_temporary and (remaining_calibration_periods > 0):
+        
+            # take the next Z-index value off the end of the list 
+            z = z_temporary.pop()
+    
+            # reduce by one period for each removal
+            remaining_calibration_periods -= 1
+        
+            # TODO confirm that the below NaN check is not required, since all values within z_temporary
+            #      should be non-Nan, since only non-Nan sczindex values were added to that array
+    #         if not np.isnan(z):
+    # 
+    #             # come up with a new Z sum for this new group of Z values to sum
+    #             
+    #             # remove the last value from both the sum_value and the values to sum array
+    #             sum_value -= values_to_sum.pop()
+    #             
+    #             # add to the Z sum, update the bookkeeping lists
+    #             sum_value += z
+    #             values_to_sum.append(z)
+    #             summed_values.append(sum_value)
+    #          
+    
+            # come up with a new Z sum for this new group of Z values to sum
+                
+            # remove the last value from both the sum_value and the values to sum array
+            sum_value -= values_to_sum.pop()
+                
+            # add to the Z sum, update the bookkeeping lists
+            sum_value += z
+            values_to_sum.append(z)
+            summed_values.append(sum_value)
+             
+            # update the largest sum value
+            if (sign * sum_value) > (sign * largest_sum):
+    
+                largest_sum = sum_value
+            
     # DRY  
     return largest_sum
 
