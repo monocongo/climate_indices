@@ -296,7 +296,7 @@ class GridProcessor(object):
               
             # get the initial year of the input dataset(s)
             time_units = dataset_precip.variables['time']
-            self.data_start_year = num2date(time_units[0], time_units.units).year
+            self.data_start_year = netCDF4.num2date(time_units[0], time_units.units).year
   
             # get the number of latitudes in the input dataset(s)
             lat_size = dataset_precip.variables['lat'].size
