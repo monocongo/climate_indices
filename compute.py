@@ -480,63 +480,14 @@ def transform_fitted_pearson(monthly_values,
                                                       calibration_start_year,
                                                       calibration_end_year)
     
-    # TODO replace the below nested loop with a ufunc function pulled out from the body 
-    #      of the loop and made ufunc with the numba.vectorize annotation 
     pearson_param_1 = monthly_pearson_values[1]   # first Pearson Type III parameter
     pearson_param_2 = monthly_pearson_values[2]   # second Pearson Type III parameter
     pearson_param_3 = monthly_pearson_values[3]   # third Pearson Type III parameter
     probability_of_zero = monthly_pearson_values[0]
+ 
+    # fit each value using the Pearson Type III fitting universal function in a broadcast fashion    
     fitted_values = _pearson_fit_ufunc(monthly_values, pearson_param_1, pearson_param_2, pearson_param_3, probability_of_zero)
-    
-#     # allocate the array of values we'll return, with all values initialized to the fill value (NaN)
-#     fitted_values = np.full(monthly_values.shape, np.NaN)
-#
-#     # compute Pearson CDF -> probability values -> fitted values for the entire period of record
-#     probability_of_zero = 0.0
-#     probability_value = 0.0
-#     pearson_parameters = np.zeros((3,))
-#     for year_index in range(monthly_values.shape[0]):
-#         for calendar_month_index in range(12):
-# 
-#             pearson_parameters[0] = monthly_pearson_values[1, calendar_month_index]   # first Pearson Type III parameter
-#             pearson_parameters[1] = monthly_pearson_values[2, calendar_month_index]   # second Pearson Type III parameter
-#             pearson_parameters[2] = monthly_pearson_values[3, calendar_month_index]   # third Pearson Type III parameter
-#             probability_of_zero = monthly_pearson_values[0, calendar_month_index]
-#     
-#             # only fit to the distribution if the current month's sum
-#             if not math.isnan(monthly_values[year_index, calendar_month_index]):
-#     
-#                 # get the Pearson Type III cumulative density function value
-#                 pe3_cdf = 0.0
-#                 
-#                 #TODO questions for Trevor/Richard/Deke -- what is the significance of the value 0.0005 below? 
-#                 # Is this a trace precip value or a floor probability value, etc.?
-#                 
-#                 # handle trace amounts as a special case
-#                 if monthly_values[year_index, calendar_month_index] < 0.0005:
-#                 
-#                     if probability_of_zero > 0.0:
-#                     
-#                         pe3_cdf = 0.0
-#                     
-#                     else:
-#                     
-#                         pe3_cdf = 0.0005  # minimum probability
-#                     
-#                 else:
-#                 
-#                     # calculate the CDF value corresponding to the current month's value
-#                     pe3_cdf = _pearson3cdf(monthly_values[year_index, calendar_month_index], pearson_parameters)
-#                                    
-#                 if not math.isnan(pe3_cdf):
-#                 
-#                     # calculate the probability value, clipped between 0 and 1
-#                     probability_value = np.clip((probability_of_zero + ((1.0 - probability_of_zero) * pe3_cdf)), 0.0, 1.0)
-#     
-#                     # the values we'll return are the values at which the probabilities of a normal distribution are less than or equal to
-#                     # the computed probabilities, as determined by the normal distribution's quantile (or inverse cumulative distribution) function  
-#                     fitted_values[year_index, calendar_month_index] = scipy.stats.norm.ppf(probability_value)
-                
+                    
     return fitted_values
 
 #-----------------------------------------------------------------------------------------------------------------------

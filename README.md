@@ -9,14 +9,14 @@
 
 ## Community reference implementation of climate indices in Python 
 
-This project contains Python implementations of various climate indices, which provide a geographical and temporal picture of the severity of precipitation and temperature anomalies. An attempt has been made to provide best-of-breed implementations of various climate indices commonly used for climate and drought monitoring, and to provide a codebase that is available for development by the climate science community, to facilitate the use of climate indices datasets computed in a standardized, validated, and transparent manner.
+This project contains Python implementations of various climate indices, which provide a geographical and temporal picture of the severity of precipitation and temperature anomalies. We attempt to provide best-of-breed implementations of various climate indices commonly used for climate and drought monitoring, to provide a codebase that is available for development by the climate science community, and to facilitate the use of climate indices datasets computed in a standardized, validated, and transparent manner.
 
 
 Currently provided climate indices:
 
 * [SPI, Standard Precipitation Index](https://climatedataguide.ucar.edu/climate-data/standardized-precipitation-index-spi)
 * [SPEI, Standard Precipitation Evapotranspiration Index](https://www.researchgate.net/publication/252361460_The_Standardized_Precipitation-Evapotranspiration_Index_SPEI_a_multiscalar_drought_index)
-* [PET, Potential Evapotranspiration](https://www.ncdc.noaa.gov/monitoring-references/dyk/potential-evapotranspiration): computed using [Thornthwaite's equation](https://en.wikipedia.org/wiki/Potential_evaporation). 
+* [PET, Potential Evapotranspiration](https://www.ncdc.noaa.gov/monitoring-references/dyk/potential-evapotranspiration): computed using [Thornthwaite's equation](https://en.wikipedia.org/wiki/Potential_evaporation) 
 * [PNP, Percentage of Normal Precipitation](http://www.droughtmanagement.info/percent-of-normal-precipitation/)
 * [PDSI, Palmer Drought Severity Index](http://www.droughtmanagement.info/palmer-drought-severity-index-pdsi/): 
 * [scPDSI, Self-calibrated Palmer Drought Severity Index](http://www.droughtmanagement.info/self-calibrated-palmer-drought-severity-index-sc-pdsi/)
@@ -64,7 +64,7 @@ For users who'd prefer to not utilize the above approach using the provided `env
 
 Initially all tests should be run for validation:
 
-`$ python -m unittest tests/test_*.py`
+`$ cd tests; python -m unittest test_*.py`
 
 If you run the above from the main branch and get an error then please send a report and/or add an issue, as all test should pass on the main branch.
 
@@ -846,6 +846,122 @@ Please read more on our [license](LICENSE) page.
 
 
 
+
+
+
+
+
+
+
+1
+1
+
+
+
+
+
+1
+
+
+
+
+
+
+
+
+
+
+
+
+
+1
+1
+
+
+
+1
+1
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1
+
+
+1
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1
+1
+1
+1
+
+
+
+
+
+
+
+
+1
+
+
+
+
+
+1
 
 
 
