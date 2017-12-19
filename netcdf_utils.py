@@ -434,12 +434,13 @@ def add_variable_climgrid(file_path,
             # get the NetCDF datatype applicable to the data array we'll store in the variable
             netcdf_data_type = find_netcdf_datatype(np.NaN)
     
-            # create the variable, set the attributes
+            # create the variable
             variable = dataset.createVariable(variable_name, 
                                               netcdf_data_type, 
                                               ('time', y_dim_name, x_dim_name), 
                                               fill_value=np.NaN)
             
+        # set the attributes
         if variable_attributes is not None:
             variable.setncatts(variable_attributes)
         
