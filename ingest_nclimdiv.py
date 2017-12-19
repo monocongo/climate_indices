@@ -1,13 +1,12 @@
 from datetime import datetime
-import ftplib
-from io import StringIO
+import io
 import logging
 import math
-# import netCDF4
-from netCDF4 import Dataset
+import netCDF4
 import numpy as np
 import os
 import pandas as pd
+import pycurl
 import urllib
 import utils
 
@@ -23,16 +22,18 @@ logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------------------------------------------------
 def _get_processing_date():
-    '''
-    Gets the processing date as specified in the file ftp://ftp.ncdc.noaa.gov/pub/data/cirs/climdiv/procdate.txt
-    '''
-    stringIO = StringIO()
-    ftp = ftplib.FTP('ftp.ncdc.noaa.gov')   
-    ftp.login() 
-    ftp.cwd('pub/data/cirs/climdiv/')             
-    ftp.retrlines('RETR procdate.txt', stringIO.write) 
-    stringIO.seek(0)
-    return stringIO.readline()
+
+    buffer = io.BytesIO()
+    c = pycurl.Curl()  
+    c.setopt(c.URL, 'ftp://ftp.ncdc.noaa.gov/pub/data/cirs/climdiv/procdate.txt')
+    c.setopt(c.WRITEDATA, buffer)
+    c.perform()
+    c.close()
+    
+    body = buffer.getvalue()
+    
+    # body is a byte string, we need to know the encoding in order to decode it
+    return body.decode('iso-8859-1').rstrip()
 
 #-----------------------------------------------------------------------------------------------------------------------
 def _parse_climatology(date,
@@ -205,7 +206,7 @@ def _create_netcdf(output_netcdf,
     :param output_netcdf: input NetCDF containing indicator values
     '''
     
-    with Dataset(output_netcdf, 'w') as dataset:
+    with netCDF4.Dataset(output_netcdf, 'w') as dataset:
 
         # open the output file for writing, set its dimensions and variables
         dataset.createDimension('time', None)
