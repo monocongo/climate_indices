@@ -1253,16 +1253,33 @@ def _pdsi_from_zindex(Z):
     # X3 term changes more slowly than the values of the incipient (X1 and
     # X2) terms. The X3 term is the index for the long-term hydrologic
     # moisture condition and is the PHDI.
-    for s, possible_phdi in enumerate(PX3):
-        if possible_phdi == 0:
-            # For calculation and program advancement purposes, the PX3 term is sometimes set equal to 0. 
-            # In such instances, the PHDI is set equal to X (the PDSI), which accurately reflects the X3 value.
-            PHDI[s] = X[s]
-        else:
-            PHDI[s] = possible_phdi
+#     for s, possible_phdi in enumerate(PX3):
+#         if possible_phdi == 0:
+#             # For calculation and program advancement purposes, the PX3 term is sometimes set equal to 0. 
+#             # In such instances, the PHDI is set equal to X (the PDSI), which accurately reflects the X3 value.
+#             PHDI[s] = X[s]
+#         else:
+#             PHDI[s] = possible_phdi
+    
+    # use universal function to select PHDI from PX3 or X arrays
+    PHDI = _phdi_select_ufunc(PX3, X)
     
     # return the computed variables
     return PDSI, PHDI, PMDI
+
+#-----------------------------------------------------------------------------------------------------------------------
+@numba.vectorize([numba.f8(numba.f8,numba.f8)])
+def _phdi_select_ufunc(px3, x):
+    
+    if px3 == 0:
+        # For calculation and program advancement purposes, the PX3 term is sometimes set equal to 0. 
+        # In such instances, the PHDI is set equal to X (the PDSI), which accurately reflects the X3 value.
+        phdi = x
+    else:
+        phdi = px3
+
+    
+    return phdi
 
 #-----------------------------------------------------------------------------------------------------------------------
 #@numba.jit  # not working yet
