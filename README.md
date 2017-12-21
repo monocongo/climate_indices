@@ -8,10 +8,9 @@
 [![Build Status](https://travis-ci.org/monocongo/indices_python.svg?master)](https://travis-ci.org/monocongo)
 [![Code Climate](https://api.codeclimate.com/v1/badges/b3bfd7b69dabbfc95d19/maintainability)](https://codeclimate.com/github/monocongo/indices_python/maintainability)
 [![Test Coverage](https://img.shields.io/codecov/c/gitlab/github.com/monocongo/indices_python/master.svg)](https://codecov.io/github.com/monocongo/indices_python)
-[![Scrutinizer Code Quality](https://scrutinizer-ci.com/g/monocongo/indices_python/badges/quality-score.png?b=master)](https://scrutinizer-ci.com/g/monocongo/indices_python/?branch=master)
-[![Code Intelligence Status](https://scrutinizer-ci.com/g/monocongo/indices_python/badges/code-intelligence.svg?b=master)](https://scrutinizer-ci.com/code-intelligence)
+[![Scrutinizer Code Quality](https://scrutinizer-ci.com/g/monocongo/badges/badges/quality-score.png?b=master)](https://scrutinizer-ci.com/g/monocongo/badges/?branch=master)
 
-## Community reference implementation of climate indices in Python 
+# Community reference implementation of climate indices in Python 
 
 This project contains Python implementations of various climate indices, which provide a geographical and temporal picture of the severity of precipitation and temperature anomalies. We attempt to provide best-of-breed implementations of various climate indices commonly used for climate and drought monitoring, to provide a codebase that is available for development by the climate science community, and to facilitate the use of climate indices datasets computed in a standardized, validated, and transparent manner.
 
@@ -309,4 +308,5 @@ Please read more on our [license](LICENSE) page.
 
 
 
+1
 1
