@@ -1495,7 +1495,7 @@ def _choose_X(pdsi_values,
         
         else:
         
-            # store WetIndex and DryIndex in their linked lists for possible use later
+            # store wet index and dry index in their linked lists for possible use later
             wet_index_deque.appendleft(new_X1)
             dry_index_deque.appendleft(new_X2)
             new_X = new_X3
@@ -2018,6 +2018,9 @@ def scpdsi(precip_time_series,
     '''
     This function computes the Palmer Drought Severity Index (PDSI), Palmer Hydrological Drought Index (PHDI), 
     Modified Palmer Drought Index (PMDI), and Palmer Z-Index.
+    
+    Some of the original code for self-calibrated Palmer comes from Goddard (co-author with Wells on 2004 scPDSI paper)
+    and is found here: https://github.com/cszang/pdsi
     
     :param precip_time_series: time series of monthly precipitation values, in inches
     :param pet_time_series: time series of monthly PET values, in inches
