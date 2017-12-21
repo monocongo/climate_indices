@@ -18,6 +18,6 @@ install:
   - source activate indices_python
   - python setup.py install
 
-script: nosetests
+script: nosetests --with-coverage
 #  - cd tests
 #  - python -m unittest test_*.py
