@@ -1,14 +1,12 @@
 from datetime import datetime
-import ftplib
-from io import StringIO
+import io
 import logging
 import math
-# import netCDF4
-from netCDF4 import Dataset
+import netCDF4
 import numpy as np
 import os
 import pandas as pd
-import urllib
+import pycurl
 import utils
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -23,16 +21,18 @@ logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------------------------------------------------
 def _get_processing_date():
-    '''
-    Gets the processing date as specified in the file ftp://ftp.ncdc.noaa.gov/pub/data/cirs/climdiv/procdate.txt
-    '''
-    stringIO = StringIO()
-    ftp = ftplib.FTP('ftp.ncdc.noaa.gov')   
-    ftp.login() 
-    ftp.cwd('pub/data/cirs/climdiv/')             
-    ftp.retrlines('RETR procdate.txt', stringIO.write) 
-    stringIO.seek(0)
-    return stringIO.readline()
+
+    buffer = io.BytesIO()
+    c = pycurl.Curl()  
+    c.setopt(c.URL, 'ftp://ftp.ncdc.noaa.gov/pub/data/cirs/climdiv/procdate.txt')
+    c.setopt(c.WRITEDATA, buffer)
+    c.perform()
+    c.close()
+    
+    body = buffer.getvalue()
+    
+    # body is a byte string, we need to know the encoding in order to decode it
+    return body.decode('iso-8859-1').rstrip()
 
 #-----------------------------------------------------------------------------------------------------------------------
 def _parse_climatology(date,
@@ -50,9 +50,11 @@ def _parse_climatology(date,
     else:
         raise ValueError('Invalid p_or_t argument: {}'.format(p_or_t))
         
-    # download the file
-    div_file = urllib.request.urlopen(file_url + 'dv-v1.0.0-{0}'.format(date))
-
+    # use a temporary file that we'll remove once no longer necessary
+    tmp_file = "tmp_climatology_for_ingest_nclimdiv.txt"
+    _retrieve_file(file_url + 'dv-v1.0.0-{0}'.format(date), tmp_file)
+    div_file = open(tmp_file, 'r')
+    
     # use a list of column names to clue in pandas as to the structure of the ASCII rows
     column_names = ['division_year', 'jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
 
@@ -63,6 +65,10 @@ def _parse_climatology(date,
                              names=column_names,
                              dtype={'division_year': str},
                              na_values=fill_value)
+    
+    # get rid of the temporary file used for the climatology data
+    div_file.close()
+    os.remove(tmp_file)
     
     # convert the fill values to NaNs
     #NOTE this may not be necessary, verify this
@@ -156,8 +162,6 @@ def _parse_soil_constants(soil_file,
     # use a list of column names to clue in pandas as to the structure of the ASCII rows
     column_names = ['division_id', awc_var_name, 'B', 'H', 'neg_tan_lat']
     columns_to_use = column_names
-#     column_names = ['division_id', awc_var_name, 'foo', 'bar', 'neg_tan_lat']
-#     columns_to_use = ['division_id', awc_var_name, 'neg_tan_lat']
 
     # read the file into a pandas DataFrame object  
     results_df = pd.read_csv(soil_file, 
@@ -205,7 +209,7 @@ def _create_netcdf(output_netcdf,
     :param output_netcdf: input NetCDF containing indicator values
     '''
     
-    with Dataset(output_netcdf, 'w') as dataset:
+    with netCDF4.Dataset(output_netcdf, 'w') as dataset:
 
         # open the output file for writing, set its dimensions and variables
         dataset.createDimension('time', None)
@@ -345,7 +349,24 @@ def _create_netcdf(output_netcdf,
             lat_variable[division_index] = lat_value
             b_variable[division_index] = b_value
             h_variable[division_index] = h_value
-            
+     
+#-----------------------------------------------------------------------------------------------------------------------
+def _retrieve_file(url,
+                   out_file):
+    """
+    Downloads and writes a file to a specified local file location.
+    
+    :param url: URL to the file we'll download, expected to be a binary file
+    :param out_file: local file location where the file will be written once fetched from the URL  
+    """
+    
+    with open(out_file, 'wb') as f:
+        c = pycurl.Curl()
+        c.setopt(c.URL, url)
+        c.setopt(c.WRITEDATA, f)
+        c.perform()
+        c.close()
+
 #-----------------------------------------------------------------------------------------------------------------------
 def ingest_netcdf(input_netcdf,
                   processing_date,
@@ -357,11 +378,18 @@ def ingest_netcdf(input_netcdf,
         
         # parse the soil constant (available water capacity)
         soil_url = 'https://raw.githubusercontent.com/monocongo/indices_python/master/example_inputs/pdinew.soilconst'
-        soil_file = urllib.request.urlretrieve(soil_url)
+
+        # use a temporary file that we'll remove once no longer necessary
+        tmp_file = "tmp_soil_for_ingest_nclimdiv.txt"
+        _retrieve_file(soil_url, tmp_file)
+        soil_file = open(tmp_file, 'r')
+
+        # parse the soil constant (available water capacity)
         divs_to_awc, divs_to_lats, divs_to_bs, divs_to_hs = _parse_soil_constants(soil_file, awc_var_name)
         
         # remove the soil file
-        os.remove(soil_file)
+        soil_file.close()
+        os.remove(tmp_file)
         
         # parse both the precipitation and the temperature datasets
         p_divs_to_arrays, p_divs_to_minmax_years, p_min_year, p_max_year = _parse_climatology(processing_date, p_or_t='P')
@@ -372,7 +400,6 @@ def ingest_netcdf(input_netcdf,
         if total_months == ((t_max_year - t_min_year + 1) * 12):
             
             # use the intersection set of division IDs (all IDs in both temperature and precipitation)
-#             division_ids = list(set(list(p_divs_to_arrays)).intersection(t_divs_to_arrays))
             division_ids = list(set(list(set(list(p_divs_to_arrays)).intersection(t_divs_to_arrays))).intersection(divs_to_awc))
                                 
         else:
@@ -394,9 +421,11 @@ def ingest_netcdf(input_netcdf,
             #TODO replace this hard coded path with a function parameter, taken from command line
             file_url = 'ftp://ftp.ncdc.noaa.gov/pub/data/cirs/climdiv/climdiv-{0}dv-v1.0.0-{1}'.format(variable, processing_date)
         
-            # download the file
-            div_file = urllib.request.urlopen(file_url)
-
+            # use a temporary file that we'll remove once no longer necessary
+            tmp_file = "tmp_climatology_for_ingest_nclimdiv.txt"
+            _retrieve_file(file_url, tmp_file)
+            div_file = open(tmp_file, 'r')
+    
             var_name = 'cmb_' + variable
             
             # parse the index values into corresponding dictionaries, arrays, etc.
@@ -404,7 +433,11 @@ def ingest_netcdf(input_netcdf,
             divisional_arrays[var_name] = divisional_array
             divisional_minmax_years[var_name] = minmax_years
             variable_minmax_years[var_name] = [min_year, max_year]
-                          
+                                  
+            # remove the climatology file
+            div_file.close()
+            os.remove(tmp_file)
+
         # write the values as NetCDF
         _create_netcdf(input_netcdf,
                        division_ids,
