@@ -340,98 +340,26 @@ def _water_balance(AWC,
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.vectorize([numba.f8(numba.f8,numba.f8),
                   numba.f4(numba.f4,numba.f4)])
-def _cafec_coeff_ufunc_alpha(ET_bar,
-                             PET_bar):
+def _cafec_coeff_ufunc(actual,
+                       potential):
     """
-    Vectorized function for computing the alpha CAFEC coefficient.
+    Vectorized function for computing a CAFEC coefficient.
     
-    :param L_bar: average evapotranspiration from water balance accounting 
-    :param PL_bar: average potential evapotranspiration from water balance accounting
-    :return array of alpha CAFEC coefficients, matching in size to the runoff and potential evapotranspiration input arrays
+    :param actual: average value for a month from water balance accounting 
+    :param potential: average potential value from water balance accounting
+    :return CAFEC coefficient
     """
      
     # calculate alpha
-    if PET_bar == 0:
-        if ET_bar == 0:
-            alpha = 1
+    if potential == 0:
+        if actual == 0:
+            coefficient = 1
         else:
-            alpha = 0
+            coefficient = 0
     else:
-        alpha = ET_bar / PET_bar
+        coefficient = actual / potential
   
-    return alpha
-
-#-----------------------------------------------------------------------------------------------------------------------
-@numba.vectorize([numba.f8(numba.f8,numba.f8),
-                  numba.f4(numba.f4,numba.f4)])
-def _cafec_coeff_ufunc_beta(R_bar,
-                            PR_bar):
-    """
-    Vectorized function for computing the beta CAFEC coefficient.
-    
-    :param L_bar: average recharge from water balance accounting 
-    :param PL_bar: average potential recharge from water balance accounting
-    :return array of beta CAFEC coefficients, matching in size to the runoff and potential recharge input arrays
-    """
-     
-    # calculate beta
-    if PR_bar == 0:
-        if R_bar == 0:
-            beta = 1
-        else:
-            beta = 0
-    else:
-        beta = R_bar / PR_bar
-  
-    return beta
-
-#-----------------------------------------------------------------------------------------------------------------------
-@numba.vectorize([numba.f8(numba.f8,numba.f8),
-                  numba.f4(numba.f4,numba.f4)])
-def _cafec_coeff_ufunc_gamma(RO_bar,
-                             PRO_bar):
-    """
-    Vectorized function for computing the gamma CAFEC coefficient.
-    
-    :param L_bar: average runoff from water balance accounting 
-    :param PL_bar: average potential runoff from water balance accounting
-    :return array of gamma CAFEC coefficients, matching in size to the runoff and potential runoff input arrays
-    """
-
-    # calculate gamma
-    if PRO_bar == 0:
-        if RO_bar == 0:
-            gamma = 1
-        else:
-            gamma = 0
-    else:
-        gamma = RO_bar / PRO_bar
- 
-    return gamma
-
-#-----------------------------------------------------------------------------------------------------------------------
-@numba.vectorize([numba.f8(numba.f8,numba.f8),
-                  numba.f4(numba.f4,numba.f4)])
-def _cafec_coeff_ufunc_delta(L_bar,
-                             PL_bar):
-    """
-    Vectorized function for computing the delta CAFEC coefficient.
-    
-    :param L_bar: average loss from water balance accounting 
-    :param PL_bar: average potential loss from water balance accounting
-    :return array of delta CAFEC coefficients, matching in size to the loss and potential loss input arrays
-    """
-
-    # calculate delta
-    if PL_bar == 0:
-        if L_bar == 0:
-            delta = 1
-        else:
-            delta = 0
-    else:
-        delta = L_bar / PL_bar
- 
-    return delta
+    return coefficient
 
 #-----------------------------------------------------------------------------------------------------------------------
 #@numba.jit    # not working yet 
@@ -510,10 +438,10 @@ def _cafec_coefficients(P,
         RO_bar = np.nanmean(RO, axis=0)
         PRO_bar = np.nanmean(PRO, axis=0)
             
-        alpha = _cafec_coeff_ufunc_alpha(ET_bar, PET_bar)
-        beta = _cafec_coeff_ufunc_beta(R_bar, PR_bar)
-        gamma = _cafec_coeff_ufunc_gamma(RO_bar, PRO_bar)
-        delta = _cafec_coeff_ufunc_delta(L_bar, PL_bar)
+        alpha = _cafec_coeff_ufunc(ET_bar, PET_bar)
+        beta = _cafec_coeff_ufunc(R_bar, PR_bar)
+        gamma = _cafec_coeff_ufunc(RO_bar, PRO_bar)
+        delta = _cafec_coeff_ufunc(L_bar, PL_bar)
         return alpha, beta, gamma, delta
 
 #-----------------------------------------------------------------------------------------------------------------------    
@@ -1031,6 +959,40 @@ def _pmdi(probability,
 
     return _pmdi
 
+#-----------------------------------------------------------------------------------------------------------------------
+# comparable to the case() subroutine in original NCDC pdi.f 
+@numba.vectorize([numba.f8(numba.f8,numba.f8,numba.f8,numba.f8),
+                  numba.f4(numba.f4,numba.f4,numba.f4,numba.f4)])
+def _pmdi_ufunc(probability,
+                X1, 
+                X2, 
+                X3):
+    
+    # the index is near normal and either a dry or wet spell exists, choose the largest absolute value of X1 or X2
+    if X3 == 0:
+        
+        if abs(X2) > abs(X1):
+            pmdi = X2
+        else:
+            pmdi = X1   
+    
+    else:
+        if (probability > 0) and (probability < 100):
+    
+            PRO = probability / 100.0
+            if X3 <= 0:
+                # use the weighted sum of X3 and X1
+                pmdi = ((1.0 - PRO) * X3) + (PRO * X1)
+            
+            else:
+                # use the weighted sum of X3 and X2
+                pmdi = ((1.0 - PRO) * X3) + (PRO * X2)
+        else:
+            # a weather spell is established
+            pmdi = X3
+
+    return pmdi
+
 #------------------------------------------------------------------------------------------------------------------
 def _find_previous_nonzero(backtrack,
                            k_index):
@@ -1519,7 +1481,7 @@ def _choose_X(pdsi_values,
     
     else:
     
-#         # TODO/CONFIRM this has already been accomplished in code above, this is duplicated/unnecessary, no?
+#         # TODO/CONFIRM this has already been accomplished in code above, this is duplicate/unnecessary code, no?
 #         new_X2 = dryc * previous_dry_index_X2 + zIndex / (dry_M + dry_B)
 #         if new_X2 > 0:
 #         
