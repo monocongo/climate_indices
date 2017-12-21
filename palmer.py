@@ -192,33 +192,9 @@ def _water_balance(AWC,
         B[k] = P[k] - PET[k]
         
         ## INTERNAL CALCULATIONS
-        
-        # A >= 0 indicates that there is sufficient moisture in the surface soil layer to satisfy the PET 
-        # requirement for month k. Therefore, there is potential moisture loss from only the surface soil layer.
-        if A[k] >= 0: 
-            PLs[k] = PET[k]         
-            PLu[k] = 0
-            
-        else: 
-            # A < 0 indicates that there is not sufficient moisture in the surface soil layer to satisfy 
-            # the PET requirement for month k. Therefore, there is potential moisture loss from both the surface
-            # and underlying soil layers. The equation for PLu is given in Alley (1984).
-            PLs[k] = Ss0
-            PLu[k] = ((PET[k] - PLs[k]) * Su0) / AWC
-            
-            # Su0 >= PLu indicates that there is sufficient moisture in the underlying soil layer to (along with 
-            # the moisture in the surface soil layer) satisfy the PET requirement for month k; therefore, PLu is
-            # as calculated according to the equation given in Alley (1984).
-            if Su0 >= PLu[k]: 
-                PLu[k] = ((PET[k] - PLs[k]) * Su0) / AWC
-            
-            else:
-                # Su0 < PLu indicates that there is not sufficient moisture in the underlying soil layer to (along with  
-                # the moisture in the surface soil layer) satisfy the PET requirement for month k; therefore, PLu is 
-                # equal to the moisture storage in the underlying soil layer at the beginning of the month.
-                PLu[k] = Su0
-        
-        PL[k] = PLs[k] + PLu[k]
+
+        # calculate potential loss values        
+        PL[k], PLs[k], PLu[k] = _water_balance_potential_loss(A[k], PLs[k], PLu[k], PET[k], Ss0, Su0, AWC)
         
         if B[k] >= 0:
             # B >= 0 indicates that there is sufficient 
@@ -336,7 +312,39 @@ def _water_balance(AWC,
         Su0 = Su[k]
         
     return ET, PR, R, RO, PRO, L, PL 
-          
+    
+#-----------------------------------------------------------------------------------------------------------------------
+def _water_balance_potential_loss(A, PLs, PLu, PET, Ss0, Su0, AWC):
+
+    # A >= 0 indicates that there is sufficient moisture in the surface soil layer to satisfy the PET 
+    # requirement for month k. Therefore, there is potential moisture loss from only the surface soil layer.
+    if A >= 0: 
+        PLs = PET         
+        PLu = 0
+        
+    else: 
+        # A < 0 indicates that there is not sufficient moisture in the surface soil layer to satisfy 
+        # the PET requirement for month k. Therefore, there is potential moisture loss from both the surface
+        # and underlying soil layers. The equation for PLu is given in Alley (1984).
+        PLs = Ss0
+        PLu = ((PET - PLs) * Su0) / AWC
+        
+        # Su0 >= PLu indicates that there is sufficient moisture in the underlying soil layer to (along with 
+        # the moisture in the surface soil layer) satisfy the PET requirement for month k; therefore, PLu is
+        # as calculated according to the equation given in Alley (1984).
+        if Su0 >= PLu: 
+            PLu = ((PET - PLs) * Su0) / AWC
+        
+        else:
+            # Su0 < PLu indicates that there is not sufficient moisture in the underlying soil layer to (along with  
+            # the moisture in the surface soil layer) satisfy the PET requirement for month k; therefore, PLu is 
+            # equal to the moisture storage in the underlying soil layer at the beginning of the month.
+            PLu = Su0
+    
+    PL = PLs + PLu
+    
+    return PL, PLs, PLu
+
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.vectorize([numba.f8(numba.f8,numba.f8),
                   numba.f4(numba.f4,numba.f4)])
@@ -1140,8 +1148,6 @@ def _pdsi_from_zindex(Z):
         # select the PMDI value
         PMDI[k] = _pmdi(Pe, X1, X2, X3)
 
-        # FIXME PV could be undefined at this point if the above loop never assigns to the variable
-
         ## Assign V, Pe, X1, X2, and X3 for use with the next month
         V = PV
         Pe = PPe[k]
@@ -1648,7 +1654,6 @@ def _z_sum(interval,
     # then we need to be using negative numbers, so we introduce a sign variable to help with this 
     if 'WET' == wet_or_dry:
      
-#         largest_sum = _highest_reasonable_value(summed_values)
         largest_sum = _highest_reasonable_value(values_to_sum)
 
     else:   # DRY
