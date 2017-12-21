@@ -1,6 +1,6 @@
 from datetime import datetime
 import logging
-#from nco import Nco
+from nco import Nco
 import netCDF4
 import numpy as np
 import os
@@ -13,53 +13,21 @@ logging.basicConfig(level=logging.INFO,
                     datefmt='%Y-%m-%d  %H:%M:%S')
 logger = logging.getLogger(__name__)
 
-# #-----------------------------------------------------------------------------------------------------------------------
-# def _construct_nco_command(netcdf_operator):
-# 
-#     # set the data directory path appropriate to the current platform
-#     if ((sys.platform == 'linux') or (sys.platform == 'linux2')):
-#         nco_home = '/home/james.adams/anaconda3/bin'
-#         suffix = ''
-# #         # to_null = ' >/dev/null 2>&1'  # use this if NCO error/warning/info messages become problematic
-# #         to_null = ''
-#     else:  # Windows
-#         nco_home = 'C:/nco'
-#         suffix = '.exe --no_tmp_fl'
-# #         # to_null = ' >NUL 2>NUL'  # use this if NCO error/warning/info messages become problematic
-# #         to_null = ''
-# 
-#     # get the proper executable path for the NCO command that'll be used to perform the concatenation operation
-#     normalized_executable_path = os.path.normpath(nco_home)
-#     return os.path.join(os.sep, normalized_executable_path, netcdf_operator) + suffix # + to_null
-# 
 #-----------------------------------------------------------------------------------------------------------------------
 def convert_and_move_netcdf(input_and_output_netcdfs):
     
-    # uncomment the below once NCO is available on all platforms, or when using in an environment with nco and pynco
-    pass
-#     input_netcdf = input_and_output_netcdfs[0]
-#     output_netcdf = input_and_output_netcdfs[1]
-#  
-# #     # get the proper executable path for the NCO command that'll be used to perform the conversion/compression 
-# #     ncks = _construct_nco_command('ncks')
-# # 
-# #     # build and run the command used to convert the file into a compressed NetCDF4 file
-# #     convert_and_compress_command = ncks + ' -O -4 -L 4 -h ' + input_netcdf + ' ' + output_netcdf
-# #     logger.info('Converting the temporary/work NetCDF file [%s] into a compressed NetCDF4 file [$s]', 
-# #                 input_netcdf, 
-# #                 output_netcdf)
-# #     logger.info('NCO conversion/compression command:  %s', convert_and_compress_command)
-# #     subprocess.call(convert_and_compress_command, shell=True)
-#  
-#     # use NCO bindings to make conversion/compression command    
-#     nco = Nco()
-#     nco.ncks(input=[input_netcdf, output_netcdf],
-#              output=output_netcdf,
-#              options=['-O', '-4', '-L 4', '-h'])
-#      
-#     # remove the temporary/work file which will no longer needed
-#     logger.info('Removing the temporary/work file [%s]', input_netcdf)
-#     os.remove(input_netcdf)
+    input_netcdf = input_and_output_netcdfs[0]
+    output_netcdf = input_and_output_netcdfs[1]
+  
+    # use NCO bindings to make conversion/compression command    
+    nco = Nco()
+    nco.ncks(input=[input_netcdf, output_netcdf],
+             output=output_netcdf,
+             options=['-O', '-4', '-L 4', '-h'])
+      
+    # remove the temporary/work file which will no longer needed
+    logger.info('Removing the temporary/work file [%s]', input_netcdf)
+    os.remove(input_netcdf)
 
 #-----------------------------------------------------------------------------------------------------------------------
 def compute_days(initial_year,
