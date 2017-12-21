@@ -3,6 +3,8 @@ channels:
 - conda-forge
 - defaults
 dependencies:
+- coverage 
+- coveralls
 - nco
 - netcdf4
 - nose
@@ -10,6 +12,6 @@ dependencies:
 - numpy
 - pandas
 - pycurl
-- pynco
+#- pynco
 - python=3
 - scipy
