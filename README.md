@@ -7,6 +7,10 @@
 --->
 [![CodeFactor](https://www.codefactor.io/repository/github/monocongo/indices_python/badge/master)](https://www.codefactor.io/repository/github/monocongo/indices_python/overview/master)
 
+[![Coverity](https://scan.coverity.com/projects/14674/badge.svg)](https://scan.coverity.com/projects/monocongo-indices_python)
+
+[![Build status](https://travis-ci.org/monocongo/indices_python.svg?master)](https://travis-ci.org/monocongo)
+
 ## Community reference implementation of climate indices in Python 
 
 This project contains Python implementations of various climate indices, which provide a geographical and temporal picture of the severity of precipitation and temperature anomalies. We attempt to provide best-of-breed implementations of various climate indices commonly used for climate and drought monitoring, to provide a codebase that is available for development by the climate science community, and to facilitate the use of climate indices datasets computed in a standardized, validated, and transparent manner.
