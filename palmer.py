@@ -338,6 +338,30 @@ def _water_balance(AWC,
     return ET, PR, R, RO, PRO, L, PL 
           
 #-----------------------------------------------------------------------------------------------------------------------
+@numba.vectorize([numba.f8(numba.f8,numba.f8),
+                  numba.f4(numba.f4,numba.f4)])
+def _cafec_coeff_ufunc(actual,
+                       potential):
+    """
+    Vectorized function for computing a CAFEC coefficient.
+    
+    :param actual: average value for a month from water balance accounting 
+    :param potential: average potential value from water balance accounting
+    :return CAFEC coefficient
+    """
+     
+    # calculate alpha
+    if potential == 0:
+        if actual == 0:
+            coefficient = 1
+        else:
+            coefficient = 0
+    else:
+        coefficient = actual / potential
+  
+    return coefficient
+
+#-----------------------------------------------------------------------------------------------------------------------
 #@numba.jit    # not working yet 
 def _cafec_coefficients(P,
                         PET,
@@ -382,10 +406,6 @@ def _cafec_coefficients(P,
     '''
     
     # get only the data from within the calibration period
-#     [P, PET, ET, PR, R, PRO, RO, PL, L] = _calibrate_data([P, PET, ET, PR, R, PRO, RO, PL, L],
-#                                                           data_start_year,
-#                                                           calibration_start_year,
-#                                                           calibration_end_year)
     calibrated_arrays = _calibrate_data([P, PET, ET, PR, R, PRO, RO, PL, L],
                                         data_start_year,
                                         calibration_start_year,
@@ -418,56 +438,11 @@ def _cafec_coefficients(P,
         RO_bar = np.nanmean(RO, axis=0)
         PRO_bar = np.nanmean(PRO, axis=0)
             
-        # (calendar) monthly CAFEC coefficients
-        alpha = np.empty((12,))
-        beta = np.empty((12,))
-        gamma = np.empty((12,))
-        delta = np.empty((12,))
-    
-        # compute the alpha, beta, gamma, and delta coefficients for each calendar month
-        for i in range(12):
-            
-            # calculate alpha
-            if PET_bar[i] == 0:
-                if ET_bar[i] == 0:
-                    alpha[i] = 1
-                else:
-                    alpha[i] = 0
-                    #logger.warn('CHECK DATA: PET is less than ET.')
-            else:
-                alpha[i] = ET_bar[i] / PET_bar[i]
-    
-            # calculate beta
-            if PR_bar[i] == 0:
-                if R_bar[i] == 0:
-                    beta[i] = 1
-                else:
-                    beta[i] = 0
-                    #logger.warn('CHECK DATA: PR is less than R.')
-            else:
-                beta[i] = R_bar[i] / PR_bar[i]
-    
-            # calculate gamma
-            if PRO_bar[i] == 0:
-                if RO_bar[i] == 0:
-                    gamma[i] = 1
-                else:
-                    gamma[i] = 0
-                    #logger.warn('CHECK DATA: PRO is less than RO.')
-            else:
-                gamma[i] = RO_bar[i] / PRO_bar[i]
-    
-            # calculate delta
-            if PL_bar[i] == 0:
-                if L_bar[i] == 0:
-                    delta[i] = 1
-                else:
-                    delta[i] = 0
-                    #logger.warn('CHECK DATA: PL is less than L.')
-            else:
-                delta[i] = L_bar[i] / PL_bar[i]
-
-    return alpha, beta, gamma, delta
+        alpha = _cafec_coeff_ufunc(ET_bar, PET_bar)
+        beta = _cafec_coeff_ufunc(R_bar, PR_bar)
+        gamma = _cafec_coeff_ufunc(RO_bar, PRO_bar)
+        delta = _cafec_coeff_ufunc(L_bar, PL_bar)
+        return alpha, beta, gamma, delta
 
 #-----------------------------------------------------------------------------------------------------------------------    
 @numba.jit  # this may not work well on Linux, needed to comment out this on climgrid-dev
@@ -1074,7 +1049,7 @@ def _assign_X(k,
                 X[k] = PX2[k]
 
 #------------------------------------------------------------------------------------------------------------------
-#@numba.jit    # not working yet
+@numba.jit
 def _pdsi_from_zindex(Z):
 
     ## INITIALIZE PDSI AND PHDI CALCULATIONS
@@ -1206,16 +1181,33 @@ def _pdsi_from_zindex(Z):
     # X3 term changes more slowly than the values of the incipient (X1 and
     # X2) terms. The X3 term is the index for the long-term hydrologic
     # moisture condition and is the PHDI.
-    for s, possible_phdi in enumerate(PX3):
-        if possible_phdi == 0:
-            # For calculation and program advancement purposes, the PX3 term is sometimes set equal to 0. 
-            # In such instances, the PHDI is set equal to X (the PDSI), which accurately reflects the X3 value.
-            PHDI[s] = X[s]
-        else:
-            PHDI[s] = possible_phdi
+#     for s, possible_phdi in enumerate(PX3):
+#         if possible_phdi == 0:
+#             # For calculation and program advancement purposes, the PX3 term is sometimes set equal to 0. 
+#             # In such instances, the PHDI is set equal to X (the PDSI), which accurately reflects the X3 value.
+#             PHDI[s] = X[s]
+#         else:
+#             PHDI[s] = possible_phdi
+    
+    # use universal function to select PHDI from PX3 or X arrays
+    PHDI = _phdi_select_ufunc(PX3, X)
     
     # return the computed variables
     return PDSI, PHDI, PMDI
+
+#-----------------------------------------------------------------------------------------------------------------------
+@numba.vectorize([numba.f8(numba.f8,numba.f8)])
+def _phdi_select_ufunc(px3, x):
+    
+    if px3 == 0:
+        # For calculation and program advancement purposes, the PX3 term is sometimes set equal to 0. 
+        # In such instances, the PHDI is set equal to X (the PDSI), which accurately reflects the X3 value.
+        phdi = x
+    else:
+        phdi = px3
+
+    
+    return phdi
 
 #-----------------------------------------------------------------------------------------------------------------------
 #@numba.jit  # not working yet
@@ -1455,7 +1447,7 @@ def _choose_X(pdsi_values,
     
     else:
     
-#         # TODO/CONFIRM this has already been accomplished in code above, this is duplicated/unnecessary, no?
+#         # TODO/CONFIRM this has already been accomplished in code above, this is duplicate/unnecessary code, no?
 #         new_X2 = dryc * previous_dry_index_X2 + zIndex / (dry_M + dry_B)
 #         if new_X2 > 0:
 #         
@@ -1503,7 +1495,7 @@ def _choose_X(pdsi_values,
         
         else:
         
-            # store WetIndex and DryIndex in their linked lists for possible use later
+            # store wet index and dry index in their linked lists for possible use later
             wet_index_deque.appendleft(new_X1)
             dry_index_deque.appendleft(new_X2)
             new_X = new_X3
@@ -1556,6 +1548,10 @@ def _highest_reasonable_value(summed_values):
     #   2) 25% lower than the 2nd percentile
     reasonable_percentile_index = int(len(summed_values) * 0.98)
 
+    # DEBUG ONLY -- REMOVE
+    print('Calling _highest_reasonable_value(), found %s as reasonable_percentile_index', reasonable_percentile_index)
+    print('\tLength of summed values array: %s', len(summed_values))
+    
     # sort the list of sums into ascending order and get the sum_value value referenced by the safe percentile index
     summed_values = sorted(summed_values)
     sum_at_reasonable_percentile = summed_values[reasonable_percentile_index]
@@ -1653,7 +1649,8 @@ def _z_sum(interval,
     # then we need to be using negative numbers, so we introduce a sign variable to help with this 
     if 'WET' == wet_or_dry:
      
-        largest_sum = _highest_reasonable_value(summed_values)
+#         largest_sum = _highest_reasonable_value(summed_values)
+        largest_sum = _highest_reasonable_value(values_to_sum)
 
     else:   # DRY
             
@@ -1700,7 +1697,6 @@ def _z_sum(interval,
     
                 largest_sum = sum_value
             
-    # DRY  
     return largest_sum
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -2022,6 +2018,9 @@ def scpdsi(precip_time_series,
     '''
     This function computes the Palmer Drought Severity Index (PDSI), Palmer Hydrological Drought Index (PHDI), 
     Modified Palmer Drought Index (PMDI), and Palmer Z-Index.
+    
+    Some of the original code for self-calibrated Palmer comes from Goddard (co-author with Wells on 2004 scPDSI paper)
+    and is found here: https://github.com/cszang/pdsi
     
     :param precip_time_series: time series of monthly precipitation values, in inches
     :param pet_time_series: time series of monthly PET values, in inches
