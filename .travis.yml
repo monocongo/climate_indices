@@ -5,11 +5,17 @@ python:
     - 3.6
 
 install: 
+  # download latest miniconda
+  - wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
+  - bash miniconda.sh -b -p $HOME/miniconda
+  - export PATH="$HOME/miniconda/bin:$PATH"
+  - hash -r
   - conda config --set always_yes yes --set changeps1 no
   - conda update -q conda
-  - conda info -a
-  - conda create -q -n test-environment -f dependencies.txt
-  - source activate test-environment
+
+  # environment.yml contains the dependencies, for an environment named 'indices_python' 
+  - conda env create -q -f environment.yml
+  - source activate indices_python
   - python setup.py install
 
 script: nosetests
