@@ -959,40 +959,6 @@ def _pmdi(probability,
 
     return _pmdi
 
-#-----------------------------------------------------------------------------------------------------------------------
-# comparable to the case() subroutine in original NCDC pdi.f 
-@numba.vectorize([numba.f8(numba.f8,numba.f8,numba.f8,numba.f8),
-                  numba.f4(numba.f4,numba.f4,numba.f4,numba.f4)])
-def _pmdi_ufunc(probability,
-                X1, 
-                X2, 
-                X3):
-    
-    # the index is near normal and either a dry or wet spell exists, choose the largest absolute value of X1 or X2
-    if X3 == 0:
-        
-        if abs(X2) > abs(X1):
-            pmdi = X2
-        else:
-            pmdi = X1   
-    
-    else:
-        if (probability > 0) and (probability < 100):
-    
-            PRO = probability / 100.0
-            if X3 <= 0:
-                # use the weighted sum of X3 and X1
-                pmdi = ((1.0 - PRO) * X3) + (PRO * X1)
-            
-            else:
-                # use the weighted sum of X3 and X2
-                pmdi = ((1.0 - PRO) * X3) + (PRO * X2)
-        else:
-            # a weather spell is established
-            pmdi = X3
-
-    return pmdi
-
 #------------------------------------------------------------------------------------------------------------------
 def _find_previous_nonzero(backtrack,
                            k_index):
