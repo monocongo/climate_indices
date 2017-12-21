@@ -8,7 +8,8 @@
 [![Build Status](https://travis-ci.org/monocongo/indices_python.svg?master)](https://travis-ci.org/monocongo)
 [![Code Climate](https://api.codeclimate.com/v1/badges/b3bfd7b69dabbfc95d19/maintainability)](https://codeclimate.com/github/monocongo/indices_python/maintainability)
 [![Test Coverage](https://img.shields.io/codecov/c/gitlab/github.com/monocongo/indices_python/master.svg)](https://codecov.io/github.com/monocongo/indices_python)
-[![Scrutinizer Code Quality](https://scrutinizer-ci.com/g/monocongo/badges/badges/quality-score.png?b=master)](https://scrutinizer-ci.com/g/monocongo/badges/?branch=master)
+[![Scrutinizer Code Quality](https://scrutinizer-ci.com/g/monocongo/indices_python/badges/quality-score.png?b=master)](https://scrutinizer-ci.com/g/monocongo/indices_python/?branch=master)
+[![Code Intelligence Status](https://scrutinizer-ci.com/g/monocongo/indices_python/badges/code-intelligence.svg?b=master)](https://scrutinizer-ci.com/code-intelligence)
 
 ## Community reference implementation of climate indices in Python 
 
