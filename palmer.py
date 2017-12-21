@@ -192,33 +192,9 @@ def _water_balance(AWC,
         B[k] = P[k] - PET[k]
         
         ## INTERNAL CALCULATIONS
-        
-        # A >= 0 indicates that there is sufficient moisture in the surface soil layer to satisfy the PET 
-        # requirement for month k. Therefore, there is potential moisture loss from only the surface soil layer.
-        if A[k] >= 0: 
-            PLs[k] = PET[k]         
-            PLu[k] = 0
-            
-        else: 
-            # A < 0 indicates that there is not sufficient moisture in the surface soil layer to satisfy 
-            # the PET requirement for month k. Therefore, there is potential moisture loss from both the surface
-            # and underlying soil layers. The equation for PLu is given in Alley (1984).
-            PLs[k] = Ss0
-            PLu[k] = ((PET[k] - PLs[k]) * Su0) / AWC
-            
-            # Su0 >= PLu indicates that there is sufficient moisture in the underlying soil layer to (along with 
-            # the moisture in the surface soil layer) satisfy the PET requirement for month k; therefore, PLu is
-            # as calculated according to the equation given in Alley (1984).
-            if Su0 >= PLu[k]: 
-                PLu[k] = ((PET[k] - PLs[k]) * Su0) / AWC
-            
-            else:
-                # Su0 < PLu indicates that there is not sufficient moisture in the underlying soil layer to (along with  
-                # the moisture in the surface soil layer) satisfy the PET requirement for month k; therefore, PLu is 
-                # equal to the moisture storage in the underlying soil layer at the beginning of the month.
-                PLu[k] = Su0
-        
-        PL[k] = PLs[k] + PLu[k]
+
+        # calculate potential loss values        
+        PL[k], PLs[k], PLu[k] = _water_balance_potential_loss(A[k], PLs[k], PLu[k], PET[k], Ss0, Su0, AWC)
         
         if B[k] >= 0:
             # B >= 0 indicates that there is sufficient 
@@ -336,7 +312,39 @@ def _water_balance(AWC,
         Su0 = Su[k]
         
     return ET, PR, R, RO, PRO, L, PL 
-          
+    
+#-----------------------------------------------------------------------------------------------------------------------
+def _water_balance_potential_loss(A, PLs, PLu, PET, Ss0, Su0, AWC):
+
+    # A >= 0 indicates that there is sufficient moisture in the surface soil layer to satisfy the PET 
+    # requirement for month k. Therefore, there is potential moisture loss from only the surface soil layer.
+    if A >= 0: 
+        PLs = PET         
+        PLu = 0
+        
+    else: 
+        # A < 0 indicates that there is not sufficient moisture in the surface soil layer to satisfy 
+        # the PET requirement for month k. Therefore, there is potential moisture loss from both the surface
+        # and underlying soil layers. The equation for PLu is given in Alley (1984).
+        PLs = Ss0
+        PLu = ((PET - PLs) * Su0) / AWC
+        
+        # Su0 >= PLu indicates that there is sufficient moisture in the underlying soil layer to (along with 
+        # the moisture in the surface soil layer) satisfy the PET requirement for month k; therefore, PLu is
+        # as calculated according to the equation given in Alley (1984).
+        if Su0 >= PLu: 
+            PLu = ((PET - PLs) * Su0) / AWC
+        
+        else:
+            # Su0 < PLu indicates that there is not sufficient moisture in the underlying soil layer to (along with  
+            # the moisture in the surface soil layer) satisfy the PET requirement for month k; therefore, PLu is 
+            # equal to the moisture storage in the underlying soil layer at the beginning of the month.
+            PLu = Su0
+    
+    PL = PLs + PLu
+    
+    return PL, PLs, PLu
+
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.vectorize([numba.f8(numba.f8,numba.f8),
                   numba.f4(numba.f4,numba.f4)])
@@ -978,6 +986,33 @@ def _find_previous_nonzero(backtrack,
     return index
 
 #------------------------------------------------------------------------------------------------------------------
+def _assign_X_backtracking(X, 
+                           backtrack, 
+                           preliminary_X1, 
+                           preliminary_X2, 
+                           current_month_index, 
+                           previous_nonzero_index):
+    
+    # here we loop over the backtrack array from the previous month (current_month_index - 1) through the r index 
+    # (the most previous month with backtrack != 0), at each month assigning to X the value for the month called for
+    # in the backtrack array, unless that value is 0 in which case the backtrack value is switched and the corresponding 
+    # X values are assigned (see _assign() in pdinew.f/pdinew.py)
+    for i in range(current_month_index - 1, previous_nonzero_index - 1, -1):  
+        backtrack[i] = backtrack[i + 1] # Assign backtrack to next month's backtrack value.
+        if backtrack[i] == 2:
+            if preliminary_X2[i] == 0:  # If backtrack = 2, X = preliminary_X2 unless preliminary_X2 = 0, then X = preliminary_X1.
+                X[i] = preliminary_X1[i]
+                backtrack[i] = 1  # flip the X we'll choose next step, from X2 to X1
+            else:
+                X[i] = preliminary_X2[i]
+        elif backtrack[i] == 1:
+            if preliminary_X1[i] == 0:  # If backtrack = 1, X = preliminary_X1 unless preliminary_X1 = 0, then X = preliminary_X2.
+                X[i] = preliminary_X2[i] 
+                backtrack[i] = 2  # flip the X we'll choose next step, from X1 to X2
+            else:
+                X[i] = preliminary_X1[i]
+
+#------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def _assign_X(k,
               number_of_months,
@@ -1019,34 +1054,39 @@ def _assign_X(k,
 #                     r = c + 1    # r is the row number up through which backtracking continues.
 #                     break
 
-            # here we loop over the BT array from the previous month (k - 1) through the r index (the most
-            # previous month with BT != 0), at each month assigning to X the value for the month called for
-            # in the BT array, unless that value is 0 in which case the BT value is switched and the corresponding 
-            # X values are assigned (see _assign() in pdinew.f/pdinew.py)
-            for count0 in range(k - 1, previous_nonzero_index - 1, -1):  
-                BT[count0] = BT[count0 + 1] # Assign BT to next month's BT value.
-                if BT[count0] == 2:
-                    if PX2[count0] == 0:  # If BT = 2, X = PX2 unless PX2 = 0, then X = PX1.
-                        X[count0] = PX1[count0]
-                        BT[count0] = 1  # flip the X we'll choose next step, from X2 to X1
-                    else:
-                        X[count0] = PX2[count0]
-                elif BT[count0] == 1:
-                    if PX1[count0] == 0:  # If BT = 1, X = PX1 unless PX1 = 0, then X = PX2.
-                        X[count0] = PX2[count0] 
-                        BT[count0] = 2  # flip the X we'll choose next step, from X1 to X2
-                    else:
-                        X[count0] = PX1[count0]
+            _assign_X_backtracking(X, 
+                                   BT, 
+                                   PX1, 
+                                   PX2, 
+                                   k, 
+                                   previous_nonzero_index)
+#             # here we loop over the BT array from the previous month (k - 1) through the r index (the most
+#             # previous month with BT != 0), at each month assigning to X the value for the month called for
+#             # in the BT array, unless that value is 0 in which case the BT value is switched and the corresponding 
+#             # X values are assigned (see _assign() in pdinew.f/pdinew.py)
+#             for count0 in range(k - 1, previous_nonzero_index - 1, -1):  
+#                 BT[count0] = BT[count0 + 1] # Assign BT to next month's BT value.
+#                 if BT[count0] == 2:
+#                     if PX2[count0] == 0:  # If BT = 2, X = PX2 unless PX2 = 0, then X = PX1.
+#                         X[count0] = PX1[count0]
+#                         BT[count0] = 1  # flip the X we'll choose next step, from X2 to X1
+#                     else:
+#                         X[count0] = PX2[count0]
+#                 elif BT[count0] == 1:
+#                     if PX1[count0] == 0:  # If BT = 1, X = PX1 unless PX1 = 0, then X = PX2.
+#                         X[count0] = PX2[count0] 
+#                         BT[count0] = 2  # flip the X we'll choose next step, from X1 to X2
+#                     else:
+#                         X[count0] = PX1[count0]
                 
     # In instances where there is no established spell for the last monthly observation, X is initially 
     # assigned to 0. The code below sets X in the last month to greater of |PX1| or |PX2|. This prevents 
     # the PHDI from being inappropriately set to 0. 
-    if k == (number_of_months - 1):
-        if (PX3[k] == 0) and (X[k] == 0):
-            if abs(PX1[k]) > abs(PX2[k]):
-                X[k] = PX1[k]
-            else:
-                X[k] = PX2[k]
+    if (k == (number_of_months - 1)) and (PX3[k] == 0) and (X[k] == 0):
+        if abs(PX1[k]) > abs(PX2[k]):
+            X[k] = PX1[k]
+        else:
+            X[k] = PX2[k]
 
 #------------------------------------------------------------------------------------------------------------------
 @numba.jit
@@ -1140,8 +1180,6 @@ def _pdsi_from_zindex(Z):
         
         # select the PMDI value
         PMDI[k] = _pmdi(Pe, X1, X2, X3)
-
-        # FIXME PV could be undefined at this point if the above loop never assigns to the variable
 
         ## Assign V, Pe, X1, X2, and X3 for use with the next month
         V = PV
@@ -1649,7 +1687,6 @@ def _z_sum(interval,
     # then we need to be using negative numbers, so we introduce a sign variable to help with this 
     if 'WET' == wet_or_dry:
      
-#         largest_sum = _highest_reasonable_value(summed_values)
         largest_sum = _highest_reasonable_value(values_to_sum)
 
     else:   # DRY
