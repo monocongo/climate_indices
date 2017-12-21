@@ -1041,12 +1041,11 @@ def _assign_X(k,
     # In instances where there is no established spell for the last monthly observation, X is initially 
     # assigned to 0. The code below sets X in the last month to greater of |PX1| or |PX2|. This prevents 
     # the PHDI from being inappropriately set to 0. 
-    if k == (number_of_months - 1):
-        if (PX3[k] == 0) and (X[k] == 0):
-            if abs(PX1[k]) > abs(PX2[k]):
-                X[k] = PX1[k]
-            else:
-                X[k] = PX2[k]
+    if (k == (number_of_months - 1)) and (PX3[k] == 0) and (X[k] == 0):
+        if abs(PX1[k]) > abs(PX2[k]):
+            X[k] = PX1[k]
+        else:
+            X[k] = PX2[k]
 
 #------------------------------------------------------------------------------------------------------------------
 @numba.jit
