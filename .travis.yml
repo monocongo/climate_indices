@@ -1,8 +1,6 @@
 language: python
 
 python:
-    - 3.3
-    - 3.4
     - 3.5
     - 3.6
 
@@ -14,6 +12,6 @@ install:
   - source activate test-environment
   - python setup.py install
 
-script: 
-  - cd tests
-  - python -m unittest test_*.py
+script: nosetests
+#  - cd tests
+#  - python -m unittest test_*.py
