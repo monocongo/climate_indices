@@ -11,6 +11,8 @@
 
 [![Build status](https://travis-ci.org/monocongo/indices_python.svg?master)](https://travis-ci.org/monocongo)
 
+[![Code Climate](https://api.codeclimate.com/v1/badges/b3bfd7b69dabbfc95d19/maintainability)](https://codeclimate.com/github/monocongo/indices_python/maintainability)
+
 ## Community reference implementation of climate indices in Python 
 
 This project contains Python implementations of various climate indices, which provide a geographical and temporal picture of the severity of precipitation and temperature anomalies. We attempt to provide best-of-breed implementations of various climate indices commonly used for climate and drought monitoring, to provide a codebase that is available for development by the climate science community, and to facilitate the use of climate indices datasets computed in a standardized, validated, and transparent manner.
