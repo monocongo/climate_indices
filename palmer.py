@@ -986,6 +986,33 @@ def _find_previous_nonzero(backtrack,
     return index
 
 #------------------------------------------------------------------------------------------------------------------
+def _assign_X_backtracking(X, 
+                           backtrack, 
+                           preliminary_X1, 
+                           preliminary_X2, 
+                           current_month_index, 
+                           previous_nonzero_index):
+    
+    # here we loop over the backtrack array from the previous month (current_month_index - 1) through the r index 
+    # (the most previous month with backtrack != 0), at each month assigning to X the value for the month called for
+    # in the backtrack array, unless that value is 0 in which case the backtrack value is switched and the corresponding 
+    # X values are assigned (see _assign() in pdinew.f/pdinew.py)
+    for i in range(current_month_index - 1, previous_nonzero_index - 1, -1):  
+        backtrack[i] = backtrack[i + 1] # Assign backtrack to next month's backtrack value.
+        if backtrack[i] == 2:
+            if preliminary_X2[i] == 0:  # If backtrack = 2, X = preliminary_X2 unless preliminary_X2 = 0, then X = preliminary_X1.
+                X[i] = preliminary_X1[i]
+                backtrack[i] = 1  # flip the X we'll choose next step, from X2 to X1
+            else:
+                X[i] = preliminary_X2[i]
+        elif backtrack[i] == 1:
+            if preliminary_X1[i] == 0:  # If backtrack = 1, X = preliminary_X1 unless preliminary_X1 = 0, then X = preliminary_X2.
+                X[i] = preliminary_X2[i] 
+                backtrack[i] = 2  # flip the X we'll choose next step, from X1 to X2
+            else:
+                X[i] = preliminary_X1[i]
+
+#------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def _assign_X(k,
               number_of_months,
@@ -1027,24 +1054,30 @@ def _assign_X(k,
 #                     r = c + 1    # r is the row number up through which backtracking continues.
 #                     break
 
-            # here we loop over the BT array from the previous month (k - 1) through the r index (the most
-            # previous month with BT != 0), at each month assigning to X the value for the month called for
-            # in the BT array, unless that value is 0 in which case the BT value is switched and the corresponding 
-            # X values are assigned (see _assign() in pdinew.f/pdinew.py)
-            for count0 in range(k - 1, previous_nonzero_index - 1, -1):  
-                BT[count0] = BT[count0 + 1] # Assign BT to next month's BT value.
-                if BT[count0] == 2:
-                    if PX2[count0] == 0:  # If BT = 2, X = PX2 unless PX2 = 0, then X = PX1.
-                        X[count0] = PX1[count0]
-                        BT[count0] = 1  # flip the X we'll choose next step, from X2 to X1
-                    else:
-                        X[count0] = PX2[count0]
-                elif BT[count0] == 1:
-                    if PX1[count0] == 0:  # If BT = 1, X = PX1 unless PX1 = 0, then X = PX2.
-                        X[count0] = PX2[count0] 
-                        BT[count0] = 2  # flip the X we'll choose next step, from X1 to X2
-                    else:
-                        X[count0] = PX1[count0]
+            _assign_X_backtracking(X, 
+                                   BT, 
+                                   PX1, 
+                                   PX2, 
+                                   k, 
+                                   previous_nonzero_index)
+#             # here we loop over the BT array from the previous month (k - 1) through the r index (the most
+#             # previous month with BT != 0), at each month assigning to X the value for the month called for
+#             # in the BT array, unless that value is 0 in which case the BT value is switched and the corresponding 
+#             # X values are assigned (see _assign() in pdinew.f/pdinew.py)
+#             for count0 in range(k - 1, previous_nonzero_index - 1, -1):  
+#                 BT[count0] = BT[count0 + 1] # Assign BT to next month's BT value.
+#                 if BT[count0] == 2:
+#                     if PX2[count0] == 0:  # If BT = 2, X = PX2 unless PX2 = 0, then X = PX1.
+#                         X[count0] = PX1[count0]
+#                         BT[count0] = 1  # flip the X we'll choose next step, from X2 to X1
+#                     else:
+#                         X[count0] = PX2[count0]
+#                 elif BT[count0] == 1:
+#                     if PX1[count0] == 0:  # If BT = 1, X = PX1 unless PX1 = 0, then X = PX2.
+#                         X[count0] = PX2[count0] 
+#                         BT[count0] = 2  # flip the X we'll choose next step, from X1 to X2
+#                     else:
+#                         X[count0] = PX1[count0]
                 
     # In instances where there is no established spell for the last monthly observation, X is initially 
     # assigned to 0. The code below sets X in the last month to greater of |PX1| or |PX2|. This prevents 
