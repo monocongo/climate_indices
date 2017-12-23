@@ -11,4 +11,8 @@ filter:
         - tests/*
         - compare/pdi_comparison.py
         - misc/*        
-        - tests/*        
+        
+checks:
+    python:
+        code_rating: true
+        duplicate_code: true
