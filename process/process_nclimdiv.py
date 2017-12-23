@@ -1,10 +1,10 @@
 import argparse
 from datetime import datetime
-import indices
+from indices_python import indices
 import logging
 import multiprocessing
 import netCDF4
-import netcdf_utils
+from indices_python import netcdf_utils
 import numpy as np
 
 #-----------------------------------------------------------------------------------------------------------------------

@@ -368,15 +368,50 @@ def _retrieve_file(url,
         c.close()
 
 #-----------------------------------------------------------------------------------------------------------------------
-def ingest_netcdf(input_netcdf,
-                  processing_date,
-                  temp_var_name,
-                  precip_var_name,
-                  awc_var_name):
+def ingest_netcdf_latest(output_netcdf,
+                         temp_var_name,
+                         precip_var_name,
+                         awc_var_name):
+    """
+    Ingests temperature and precipitation values for nClimDiv datasets. Uses a matching soil constants file 
+    from open source indices_python github repository.
+    
+    :param output_netcdf: file path/name for resulting NetCDF this function will create and return
+    :param temp_var_name: temperature variable name in the output NetCDF
+    :param precip_var_name: precipitation variable name in the output NetCDF
+    :param awc_var_name: available water capacity variable name in the output NetCDF
+    """
+    try:
+
+        # ingest the latest nClimDiv datasets using the processing date specified at the FTP location        
+        _ingest_netcdf(output_netcdf,
+                      _get_processing_date(),
+                      temp_var_name,
+                      precip_var_name,
+                      awc_var_name)
+    except:
         
+        logger.exception('Failed to complete', exc_info=True)
+        raise
+
+#-----------------------------------------------------------------------------------------------------------------------
+def _ingest_netcdf(output_netcdf,
+                   processing_date,
+                   temp_var_name,
+                   precip_var_name,
+                   awc_var_name):
+    """
+    Ingests temperature and precipitation values for nClimDiv datasets. Uses a matching soil constants file 
+    from open source indices_python github repository.
+    
+    :param output_netcdf: file path/name for resulting NetCDF this function will create and return
+    """
     try:
         
-        # parse the soil constant (available water capacity)
+        # get the date string we'll use for file identification
+        processing_date = _get_processing_date()
+    
+#        # parse the soil constant (available water capacity)
         soil_url = 'https://raw.githubusercontent.com/monocongo/indices_python/master/example_inputs/pdinew.soilconst'
 
         # use a temporary file that we'll remove once no longer necessary
@@ -439,7 +474,7 @@ def ingest_netcdf(input_netcdf,
             os.remove(tmp_file)
 
         # write the values as NetCDF
-        _create_netcdf(input_netcdf,
+        _create_netcdf(output_netcdf,
                        division_ids,
                        divisional_arrays,
                        divisional_minmax_years,
@@ -454,7 +489,7 @@ def ingest_netcdf(input_netcdf,
                        awc_var_name,
                        p_min_year)
                 
-        print('\nMonthly nClimDiv NetCDF file: {0}'.format(input_netcdf))
+        print('\nMonthly nClimDiv NetCDF file: {0}'.format(output_netcdf))
 
     except:
         
@@ -479,33 +514,16 @@ if __name__ == '__main__':
 #                             help="Output file path up to the base file name. For example if this value is /abc/base then the ouput " + \
 #                                  "file will be/abc/base_<processing_date>.nc", 
 #                             required=True)
-#         parser.add_argument("--month_scales",
-#                             help="Month scales over which the PNP, SPI, and SPEI values are to be computed",
-#                             type=int,
-#                             nargs = '*',
-#                             choices=range(1, 73),
-#                             required=True)
-#         parser.add_argument("--calibration_start_year",
-#                             help="Initial year of calibration period",
-#                             type=int,
-#                             choices=range(1870, start_datetime.year + 1),
-#                             required=True)
-#         parser.add_argument("--calibration_end_year",
-#                             help="Final year of calibration period",
-#                             type=int,
-#                             choices=range(1870, start_datetime.year + 1),
-#                             required=True)
 #         args = parser.parse_args()
         
         # the NetCDF file we want to write
         nclimdiv_netcdf = '{0}_{1}.nc'.format('C:/home/data/nclimdiv/nclimdiv', processing_date)
 #         nclimdiv_netcdf = '{0}_{1}.nc'.format(args.base_file_path, processing_date)
 
-        ingest_netcdf(nclimdiv_netcdf,
-                      processing_date,
-                      'tavg',
-                      'prcp',
-                      'awc')
+        ingest_netcdf_latest(nclimdiv_netcdf,
+                             'tavg',
+                             'prcp',
+                             'awc')
         
     except:
         logger.exception('Failed to complete', exc_info=True)
