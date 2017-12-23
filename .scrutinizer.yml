@@ -9,3 +9,6 @@ build:
 filter:
     excluded_paths:
         - tests/*
+        - compare/pdi_comparison.py
+        - misc/*        
+        - tests/*        
