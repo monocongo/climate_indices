@@ -1,11 +1,9 @@
 from datetime import datetime
 import logging
-from nco import Nco
 import netCDF4
 import numpy as np
 import os
 import random
-import sys
 
 # set up a basic, global logger
 logging.basicConfig(level=logging.INFO,
@@ -19,15 +17,21 @@ def convert_and_move_netcdf(input_and_output_netcdfs):
     input_netcdf = input_and_output_netcdfs[0]
     output_netcdf = input_and_output_netcdfs[1]
   
-    # use NCO bindings to make conversion/compression command    
-    nco = Nco()
-    nco.ncks(input=[input_netcdf, output_netcdf],
-             output=output_netcdf,
-             options=['-O', '-4', '-L 4', '-h'])
-      
-    # remove the temporary/work file which will no longer needed
-    logger.info('Removing the temporary/work file [%s]', input_netcdf)
-    os.remove(input_netcdf)
+    try:
+        # use NCO bindings to make conversion/compression command    
+        import nco
+        nco = nco.Nco()
+        nco.ncks(input=[input_netcdf, output_netcdf],
+                 output=output_netcdf,
+                 options=['-O', '-4', '-L 4', '-h'])
+          
+        # remove the temporary/work file which will no longer needed
+        logger.info('Removing the temporary/work file [%s]', input_netcdf)
+        os.remove(input_netcdf)
+
+    except ImportError:
+    
+        logger.warning('NCO unavailable, skipping conversion/move')
 
 #-----------------------------------------------------------------------------------------------------------------------
 def compute_days(initial_year,
