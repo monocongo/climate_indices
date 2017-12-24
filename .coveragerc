@@ -19,5 +19,3 @@ omit =
     ingest/*
     process/*
     tests/*
-    
-    # Don't complain if non-runnable code isn't run:

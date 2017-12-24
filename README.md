@@ -11,6 +11,7 @@
 [![CodeFactor](https://www.codefactor.io/repository/github/monocongo/indices_python/badge/master)](https://www.codefactor.io/repository/github/monocongo/indices_python/overview/master)
 [![Coverage Status](https://coveralls.io/repos/github/monocongo/indices_python/badge.svg?branch=master)](https://coveralls.io/github/monocongo/indices_python?branch=master)
 [![Dependency Status](https://gemnasium.com/badges/github.com/monocongo/indices_python.svg)](https://gemnasium.com/github.com/monocongo/indices_python)
+[![Codeship Status for monocongo/indices_python](https://app.codeship.com/projects/0d711e30-ca42-0135-871a-72c36ec6d502/status?branch=master)](https://app.codeship.com/projects/261762)
 
 # Community reference implementation of climate indices in Python 
 

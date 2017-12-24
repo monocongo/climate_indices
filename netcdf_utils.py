@@ -4,6 +4,7 @@ import netCDF4
 import numpy as np
 import os
 import random
+import utils
 
 # set up a basic, global logger
 logging.basicConfig(level=logging.INFO,
@@ -33,46 +34,46 @@ def convert_and_move_netcdf(input_and_output_netcdfs):
     
         logger.warning('NCO unavailable, skipping conversion/move')
 
-#-----------------------------------------------------------------------------------------------------------------------
-def compute_days(initial_year,
-                 initial_month,
-                 total_months,
-                 units_start_year=1800):
-    '''
-    Computes the "number of days" equivalent for regular, incremental monthly time steps given an initial year/month.
-    Useful when using "days since <start_date>" as time units within a NetCDF dataset.
-    
-    :param initial_year: the initial year from which the day values should start, i.e. the first value in the output
-                        array will correspond to the number of days between January of this initial year since January 
-                        of the units start year
-    :param initial_month: the month within the initial year from which the day values should start, with 1: January, 2: February, etc.
-    :param total_months: the total number of monthly increments (time steps measured in days) to be computed
-    :param units_start_year: the start year from which the monthly increments are computed, with time steps measured
-                             in days since January of this starting year 
-    :return: an array of time step increments, measured in days since midnight of January 1st of the units start year
-    :rtype: ndarray of ints 
-    '''
-
-    # compute an offset from which the day values should begin 
-    start_date = datetime(units_start_year, 1, 1)
-
-    # initialize the list of day values we'll build
-    days = np.empty(total_months, dtype=int)
-    
-    # loop over all time steps (months)
-    for i in range(total_months):
-        
-        years = int((i + initial_month - 1) / 12)   # the number of years since the initial year 
-        months = int((i + initial_month - 1) % 12)  # the number of months since January
-        
-        # cook up a datetime object for the current time step (month)
-        current_date = datetime(initial_year + years, 1 + months, 1)
-        
-        # get the number of days since the initial date
-        days[i] = (current_date - start_date).days
-    
-    return days
-
+# #-----------------------------------------------------------------------------------------------------------------------
+# def _compute_days(initial_year,
+#                   total_months,
+#                   initial_month=1,
+#                   units_start_year=1800):
+#     '''
+#     Computes the "number of days" equivalent for regular, incremental monthly time steps given an initial year/month.
+#     Useful when using "days since <start_date>" as time units within a NetCDF dataset.
+#     
+#     :param initial_year: the initial year from which the day values should start, i.e. the first value in the output
+#                         array will correspond to the number of days between January of this initial year since January 
+#                         of the units start year
+#     :param initial_month: the month within the initial year from which the day values should start, with 1: January, 2: February, etc.
+#     :param total_months: the total number of monthly increments (time steps measured in days) to be computed
+#     :param units_start_year: the start year from which the monthly increments are computed, with time steps measured
+#                              in days since January of this starting year 
+#     :return: an array of time step increments, measured in days since midnight of January 1st of the units start year
+#     :rtype: ndarray of ints 
+#     '''
+# 
+#     # compute an offset from which the day values should begin 
+#     start_date = datetime(units_start_year, 1, 1)
+# 
+#     # initialize the list of day values we'll build
+#     days = np.empty(total_months, dtype=int)
+#     
+#     # loop over all time steps (months)
+#     for i in range(total_months):
+#         
+#         years = int((i + initial_month - 1) / 12)   # the number of years since the initial year 
+#         months = int((i + initial_month - 1) % 12)  # the number of months since January
+#         
+#         # cook up a datetime object for the current time step (month)
+#         current_date = datetime(initial_year + years, 1 + months, 1)
+#         
+#         # get the number of days since the initial date
+#         days[i] = (current_date - start_date).days
+#     
+#     return days
+#
 #-----------------------------------------------------------------------------------------------------------------------
 def find_netcdf_datatype(data_object):
     
@@ -145,7 +146,7 @@ def create_dataset_climdivs(file_path,
                                       'standard_name': 'division ID'})
         
         # set the coordinate variables' values
-        time_variable[:] = compute_days(initial_year, 1, total_months, units_start_year)
+        time_variable[:] = utils.compute_days(initial_year, total_months, 1, units_start_year)
         divisions_variable[:] = np.array(sorted(division_ids), dtype=np.dtype(int))
     
 #-----------------------------------------------------------------------------------------------------------------------
