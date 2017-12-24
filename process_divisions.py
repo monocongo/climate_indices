@@ -8,6 +8,7 @@ import netCDF4
 import netcdf_utils
 import numpy as np
 import numba
+import random
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up matplotlib to use the Agg backend, in order to remove any dependencies on an X server
@@ -21,6 +22,11 @@ logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s',
                     datefmt='%Y-%m-%d  %H:%M:%S')
 logger = logging.getLogger(__name__)
+
+#-----------------------------------------------------------------------------------------------------------------------
+# ignore warnings
+import warnings
+warnings.simplefilter('ignore', Warning)
 
 #-----------------------------------------------------------------------------------------------------------------------
 # static constants
@@ -66,8 +72,8 @@ class DivisionsProcessor(object):
         # TODO get the initial year from the precipitation NetCDF, for now use hard-coded value specific to nClimGrid  pylint: disable=fixme
         self.data_start_year = 1895
         
-#         # create and populate the NetCDF we'll use to contain our results of a call to run()
-#         self._initialize_netcdf()
+        # create and populate the NetCDF we'll use to contain our results of a call to run()
+        self._initialize_netcdf()
 
     #-----------------------------------------------------------------------------------------------------------------------
     def _initialize_netcdf(self):
@@ -568,9 +574,8 @@ def _plot_and_save_lines(expected,
     plt.subplots_adjust(left=0.02, right=0.99, top=0.9, bottom=0.1)
     
     # save to file
-    filepath = output_filepath + '_{0}_{1}.png'.format(varname, climdiv_id)
-    logger.info('Saving histogram plot for index %s to file %s', varname, filepath)
-    plt.savefig(filepath, bbox_inches='tight')
+    logger.info('Saving histogram plot for index %s to file %s', varname, output_filepath)
+    plt.savefig(output_filepath, bbox_inches='tight')
 
 #     plt.show()
     plt.close()
@@ -617,12 +622,12 @@ if __name__ == '__main__':
         precip_var_name = 'prcp'
         awc_var_name = 'awc'
         
-#         # perform an ingest of the NCEI nClimDiv datasets for input (temperature  
-#         # and precipitation) plus monthly computed indices for comparison
-#         ingest_nclimdiv.ingest_netcdf_latest(args.out_file,
-#                                              temp_var_name,
-#                                              precip_var_name,
-#                                              awc_var_name)
+        # perform an ingest of the NCEI nClimDiv datasets for input (temperature  
+        # and precipitation) plus monthly computed indices for comparison
+        ingest_nclimdiv.ingest_netcdf_latest(args.out_file,
+                                             temp_var_name,
+                                             precip_var_name,
+                                             awc_var_name)
 
         # perform the processing
         divisions_processor = DivisionsProcessor(args.out_file,
@@ -635,7 +640,7 @@ if __name__ == '__main__':
         divisions_processor.run()
         
         # open the NetCDF files
-        with netCDF4.Dataset(args.out_file) as dataset:
+        with netCDF4.Dataset(args.out_file, 'a') as dataset:
 
             # variable names for variables to diff from the two datasets
             comparison_arrays = {'PDSI': ('cmb_pdsi', 'pdsi'),
@@ -677,7 +682,7 @@ if __name__ == '__main__':
                                              division_id,
                                              histogram_title,
                                              'C:/home/data/nclimdiv/diffs_histogram_{0}_{1}.png'.format(var_names[1], division_id))
-    
+     
                     # plot and save line graphs showing correlation of values and differences
                     _plot_and_save_lines(data_NIDIS,
                                          data_CMB,
@@ -686,8 +691,51 @@ if __name__ == '__main__':
                                          index,
                                          'C:/home/data/nclimdiv/diffs_line_{0}_{1}.png'.format(var_names[1], division_id))
                     
-                # add the variable into the dataset and add the data into the variable
-                netcdf_utils.add_variable_climdivs(args.out_file, index, dataset.variables[var_names[1]].__dict__, diffs)
+                    # add to the differences dictionary with this division ID key 
+                    diffs[division_id] = differences
+                    
+#                 # add the variable into the dataset and add the data into the variable
+#                 netcdf_utils.add_variable_climdivs(args.out_file, index, dataset.variables[var_names[1]].__dict__, diffs)
+
+                # make sure that the variable name isn't already in use
+                diff_variable_name = 'diffs_' + index
+                if diff_variable_name in dataset.variables.keys():
+
+                    variable = dataset.variables[diff_variable_name]
+                    
+                else:
+                    
+                    # get the NetCDF datatype applicable to the data array we'll store in the variable
+                    random_array = random.choice(list(diffs.values()))
+                    netcdf_data_type = netcdf_utils.find_netcdf_datatype(random_array[0])
+                    
+                    # create the variable, set the attributes
+                    variable = dataset.createVariable(diff_variable_name, 
+                                                      netcdf_data_type, 
+                                                      ('division', 'time',), 
+                                                      fill_value=np.NaN)
+#                     variable.setncatts(variable_attributes)
+                
+                # get the total number of time steps
+                times_size = dataset.variables['time'][:].size
+                
+                # loop over each existing division and add the corresponding data array, if one was provided
+                for division_index, division_id in enumerate(list(dataset.variables['division'][:])):
+                    
+                    # make sure we have a data array of monthly values for this division
+                    if division_index in diffs.keys():
+        
+                        # make sure the array has the expected number of time steps 
+                        data_array = diffs[division_index]
+                        if data_array.size == times_size:
+                        
+                            # assign the array into the current division's slot in the variable
+                            variable[division_index, :] = np.reshape(data_array, (1, times_size))
+        
+                        else:
+        
+                            logger.info('Unexpected size of data array for division index {0} -- '.format(division_index) + 
+                                        'expected {0} time steps but the array contains {1}'.format(times_size, data_array.size))
 
         # report on the elapsed time
         end_datetime = datetime.now()
