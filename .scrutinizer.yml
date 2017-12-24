@@ -6,14 +6,7 @@ build:
             tests:
                 before:
                     - export NUMBA_DISABLE_JIT=1
-                override: [py-scrutinizer-run]
-    tests:
-        before:
-            - export NUMBA_DISABLE_JIT=1
-        override: 
-            coverage:
-                config_file: '.coveragerc'
-                format: 'py-cc'       
+                    
 filter:
     excluded_paths:
         - compare/*
