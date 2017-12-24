@@ -10,9 +10,8 @@ build:
     tests:
         before:
             - export NUMBA_DISABLE_JIT=1
-        override: [py-scrutinizer-run]
+        override: 
             coverage:
-                file: '.coverage'
                 config_file: '.coveragerc'
                 format: 'py-cc'       
 filter:
