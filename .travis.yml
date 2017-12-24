@@ -22,8 +22,6 @@ script:
   # run all tests with nose
   - export NUMBA_DISABLE_JIT=1  # disable numba JIT
   - nosetests --with-coverage
-  #  - cd tests
-  #  - python -m unittest test_*.py
 
 after_success:
   # get a code coverage report for coveralls.io integration
