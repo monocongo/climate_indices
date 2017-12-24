@@ -1,8 +1,8 @@
 language: python
 
 python:
-    - 3.5
-    - 3.6
+  - 3.5
+  - 3.6
 
 install: 
   # download latest miniconda
@@ -27,3 +27,7 @@ script:
 after_success:
   # get a code coverage report for coveralls.io integration
   - coveralls
+
+# don't email after every build success/failure (default behavior)
+notifications:
+  email: false
