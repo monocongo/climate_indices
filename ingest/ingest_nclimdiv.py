@@ -385,10 +385,10 @@ def ingest_netcdf_latest(output_netcdf,
 
         # ingest the latest nClimDiv datasets using the processing date specified at the FTP location        
         _ingest_netcdf(output_netcdf,
-                      _get_processing_date(),
-                      temp_var_name,
-                      precip_var_name,
-                      awc_var_name)
+                       _get_processing_date(),
+                       temp_var_name,
+                       precip_var_name,
+                       awc_var_name)
     except:
         
         logger.exception('Failed to complete', exc_info=True)
@@ -408,10 +408,7 @@ def _ingest_netcdf(output_netcdf,
     """
     try:
         
-        # get the date string we'll use for file identification
-        processing_date = _get_processing_date()
-    
-#        # parse the soil constant (available water capacity)
+        # parse the soil constant (available water capacity)
         soil_url = 'https://raw.githubusercontent.com/monocongo/indices_python/master/example_inputs/pdinew.soilconst'
 
         # use a temporary file that we'll remove once no longer necessary
@@ -453,7 +450,7 @@ def _ingest_netcdf(output_netcdf,
         for variable in ['zndx', 'sp01', 'sp02', 'sp03', 'sp06', 'sp12', 'sp24', 'pdsi', 'phdi', 'pmdi']:
             
             # get the relevant US climate divisions ASCII file from NCEI
-            #TODO replace this hard coded path with a function parameter, taken from command line
+            #TODO replace this hard coded path with a function parameter, taken from command line  pylint: disable=fixme
             file_url = 'ftp://ftp.ncdc.noaa.gov/pub/data/cirs/climdiv/climdiv-{0}dv-v1.0.0-{1}'.format(variable, processing_date)
         
             # use a temporary file that we'll remove once no longer necessary

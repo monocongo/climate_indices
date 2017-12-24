@@ -66,8 +66,8 @@ class DivisionsProcessor(object):
         # TODO get the initial year from the precipitation NetCDF, for now use hard-coded value specific to nClimGrid  pylint: disable=fixme
         self.data_start_year = 1895
         
-        # create and populate the NetCDF we'll use to contain our results of a call to run()
-        self._initialize_netcdf()
+#         # create and populate the NetCDF we'll use to contain our results of a call to run()
+#         self._initialize_netcdf()
 
     #-----------------------------------------------------------------------------------------------------------------------
     def _initialize_netcdf(self):
@@ -126,7 +126,7 @@ class DivisionsProcessor(object):
         """
         
         # open the NetCDF files 
-        with netCDF4.Dataset(self.divisions_file) as divisions_dataset:
+        with netCDF4.Dataset(self.divisions_file, 'a') as divisions_dataset:
             
             climdiv_id = divisions_dataset['division'][div_index]
             
@@ -178,9 +178,8 @@ class DivisionsProcessor(object):
                 
                 # write the PET values to NetCDF        
                 lock.acquire()
-                with netCDF4.Dataset(self.divisions_file, 'a') as output_dataset:
-                    output_dataset['pet'][div_index, :] = np.reshape(pet_time_series, (1, pet_time_series.size))
-                    output_dataset.sync()
+                divisions_dataset['pet'][div_index, :] = np.reshape(pet_time_series, (1, pet_time_series.size))
+                divisions_dataset.sync()
                 lock.release()
     
             else:
@@ -245,13 +244,12 @@ class DivisionsProcessor(object):
         
                         # write the PDSI values to NetCDF
                         lock.acquire()
-                        with netCDF4.Dataset(self.divisions_file, 'a') as output_dataset:
-                            output_dataset['pdsi'][div_index, :] = np.reshape(pdsi, (1, pdsi.size))
-                            output_dataset['phdi'][div_index, :] = np.reshape(phdi, (1, phdi.size))
-                            output_dataset['pmdi'][div_index, :] = np.reshape(pmdi, (1, pmdi.size))
-                            output_dataset['scpdsi'][div_index, :] = np.reshape(pdsi, (1, scpdsi.size))
-                            output_dataset['zindex'][div_index, :] = np.reshape(zindex, (1, zindex.size))
-                            output_dataset.sync()
+                        divisions_dataset['pdsi'][div_index, :] = np.reshape(pdsi, (1, pdsi.size))
+                        divisions_dataset['phdi'][div_index, :] = np.reshape(phdi, (1, phdi.size))
+                        divisions_dataset['pmdi'][div_index, :] = np.reshape(pmdi, (1, pmdi.size))
+                        divisions_dataset['scpdsi'][div_index, :] = np.reshape(pdsi, (1, scpdsi.size))
+                        divisions_dataset['zindex'][div_index, :] = np.reshape(zindex, (1, zindex.size))
+                        divisions_dataset.sync()
                         lock.release()
         
                     # process the SPI and SPEI at the specified month scales
@@ -259,7 +257,7 @@ class DivisionsProcessor(object):
                         
                         logger.info('\tComputing SPI/SPEI/PNP at %s-month scale for division %s', months, climdiv_id)
     
-                        #TODO ensure that the precipitation and PET values are using the same units
+                        #TODO ensure that the precipitation and PET values are using the same units  pylint: disable=fixme
                         
                         # compute SPEI/Gamma
                         spei_gamma = indices.spei_gamma(months,
@@ -302,13 +300,12 @@ class DivisionsProcessor(object):
         
                         # write the SPI, SPEI, and PNP values to NetCDF        
                         lock.acquire()
-                        with netCDF4.Dataset(self.divisions_file, 'a') as output_dataset:
-                            output_dataset[spei_gamma_variable_name][div_index, :] =   np.reshape(spei_gamma, (1, spei_gamma.size))
-                            output_dataset[spei_pearson_variable_name][div_index, :] = np.reshape(spei_pearson, (1, spei_pearson.size))
-                            output_dataset[spi_gamma_variable_name][div_index, :] =    np.reshape(spi_gamma, (1, spi_gamma.size))
-                            output_dataset[spi_pearson_variable_name][div_index, :] =  np.reshape(spi_pearson, (1, spi_pearson.size))
-                            output_dataset[pnp_variable_name][div_index, :] =          np.reshape(pnp, (1, pnp.size))
-                            output_dataset.sync()
+                        divisions_dataset[spei_gamma_variable_name][div_index, :] =   np.reshape(spei_gamma, (1, spei_gamma.size))
+                        divisions_dataset[spei_pearson_variable_name][div_index, :] = np.reshape(spei_pearson, (1, spei_pearson.size))
+                        divisions_dataset[spi_gamma_variable_name][div_index, :] =    np.reshape(spi_gamma, (1, spi_gamma.size))
+                        divisions_dataset[spi_pearson_variable_name][div_index, :] =  np.reshape(spi_pearson, (1, spi_pearson.size))
+                        divisions_dataset[pnp_variable_name][div_index, :] =          np.reshape(pnp, (1, pnp.size))
+                        divisions_dataset.sync()
                         lock.release()
 
     #-------------------------------------------------------------------------------------------------------------------
@@ -620,12 +617,12 @@ if __name__ == '__main__':
         precip_var_name = 'prcp'
         awc_var_name = 'awc'
         
-        # perform an ingest of the NCEI nClimDiv datasets for input (temperature  
-        # and precipitation) plus monthly computed indices for comparison
-        ingest_nclimdiv.ingest_netcdf_latest(args.out_file,
-                                             temp_var_name,
-                                             precip_var_name,
-                                             awc_var_name)
+#         # perform an ingest of the NCEI nClimDiv datasets for input (temperature  
+#         # and precipitation) plus monthly computed indices for comparison
+#         ingest_nclimdiv.ingest_netcdf_latest(args.out_file,
+#                                              temp_var_name,
+#                                              precip_var_name,
+#                                              awc_var_name)
 
         # perform the processing
         divisions_processor = DivisionsProcessor(args.out_file,
