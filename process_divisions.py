@@ -694,9 +694,6 @@ if __name__ == '__main__':
                     # add to the differences dictionary with this division ID key 
                     diffs[division_id] = differences
                     
-#                 # add the variable into the dataset and add the data into the variable
-#                 netcdf_utils.add_variable_climdivs(args.out_file, index, dataset.variables[var_names[1]].__dict__, diffs)
-
                 # make sure that the variable name isn't already in use
                 diff_variable_name = 'diffs_' + index
                 if diff_variable_name in dataset.variables.keys():
