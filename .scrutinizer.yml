@@ -1,7 +1,4 @@
 build:
-    dependencies:
-        before:
-            - rm requirements.txt
     nodes:
         analysis:
             project_setup:
@@ -16,7 +13,6 @@ filter:
         - tests/*
         - compare/pdi_comparison.py
         - misc/*
-        - requirements.txt
         
 checks:
     python:
