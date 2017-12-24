@@ -6,7 +6,8 @@ build:
             tests:
                 before:
                     - export NUMBA_DISABLE_JIT=1
-                command: 'nosetests'
+                override:
+                    - nosetests
 filter:
     excluded_paths:
         - compare/*
