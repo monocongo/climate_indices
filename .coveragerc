@@ -1,6 +1,5 @@
 [run]
 branch = True
-source = indices_python
 
 [report]
 exclude_lines =
@@ -9,6 +8,16 @@ exclude_lines =
     raise AssertionError
     raise NotImplementedError
     if __name__ == .__main__.:
+    if 0:
+    if __name__ == .__main__.:
+    
 ignore_errors = True
+
 omit =
+    compare/*
+    example_inputs/*
+    ingest/*
+    process/*
     tests/*
+    
+    # Don't complain if non-runnable code isn't run:
