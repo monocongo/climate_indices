@@ -7,6 +7,8 @@ build:
                 before:
                     - export NUMBA_DISABLE_JIT=1
                 override:
+                    - pip install -f requirements.txt
+                    - pip install nose
                     - nosetests
 filter:
     excluded_paths:
