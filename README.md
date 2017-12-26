@@ -58,13 +58,15 @@ The environment created by the above command can be activated using the followin
 
 `$ source activate indices_reference`
 
-For users who'd prefer to not utilize the above approach using the provided `environment.yml` file, the required module dependencies can instead be installed into an Anaconda environment piecemeal via multiple `conda install` commands:
+Once the *conda Python environment has been activated then subsequent Python commands will run in this environment where the package dependencies for this project are present.
+ 
+For users who'd prefer to not utilize the above approach using the provided `environment.yml` file, the required module dependencies can be installed instead into an Anaconda environment piecemeal via multiple `conda install` commands:
 
-`$ conda create --name <env_name> python=3`
-`$ source activate <env_name>`
-`$ conda install numba`
-`$ conda install scipy`
-`$ conda install netCDF4`
+`$ conda create --name <env_name> python=3` 
+`$ source activate <env_name>` 
+`$ conda install numba` 
+`$ conda install scipy` 
+`$ conda install netCDF4` 
 `$ conda install hdf4=4.2.12` (this ***may*** be required in order to get around a broken HDF dependency [issue](https://github.com/ContinuumIO/anaconda-issues/issues/1360) with the netCDF4 module)
 
 ## Testing
