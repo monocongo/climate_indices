@@ -6,13 +6,14 @@ import logging
 import multiprocessing
 import netCDF4
 import netcdf_utils
-import numpy as np
 import numba
+import numpy as np
 import random
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up matplotlib to use the Agg backend, in order to remove any dependencies on an X server
 import matplotlib
+import pdinew
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
@@ -47,7 +48,8 @@ class DivisionsProcessor(object):
                  var_name_soil,
                  month_scales,
                  calibration_start_year,
-                 calibration_end_year):
+                 calibration_end_year,
+                 use_orig_pe=False):
         
         '''
         Constructor method.
@@ -68,12 +70,13 @@ class DivisionsProcessor(object):
         self.scale_months = month_scales
         self.calibration_start_year = calibration_start_year
         self.calibration_end_year = calibration_end_year        
-
-        # TODO get the initial year from the precipitation NetCDF, for now use hard-coded value specific to nClimGrid  pylint: disable=fixme
+        self.use_orig_pe = use_orig_pe
+        
+        # TODO get the initial year from the precipitation NetCDF, for now use hard-coded value specific to nClimDiv  pylint: disable=fixme
         self.data_start_year = 1895
         
-        # create and populate the NetCDF we'll use to contain our results of a call to run()
-        self._initialize_netcdf()
+#         # create and populate the NetCDF we'll use to contain our results of a call to run()
+#         self._initialize_netcdf()
 
     #-----------------------------------------------------------------------------------------------------------------------
     def _initialize_netcdf(self):
@@ -174,11 +177,26 @@ class DivisionsProcessor(object):
                 
                 logger.info('\tComputing PET for division %s', climdiv_id)
     
-                # compute PET across all longitudes of the latitude slice
-                pet_time_series = indices.pet(temperature, 
-                                              latitude_degrees=latitude, 
-                                              data_start_year=self.data_start_year)
-            
+                # either use the original NCDC method or Thornthwaite method (default) for PET calculation
+                if self.use_orig_pe:
+
+                    # get B and H, originally taken from climate divisions soil constants file
+                    B = divisions_dataset['B'][div_index]
+                    H = divisions_dataset['H'][div_index]
+                    pet_time_series = pdinew.potential_evapotranspiration(temperature,
+                                                                          latitude,
+                                                                          self.data_start_year,
+                                                                          B,
+                                                                          H)
+
+                else:
+
+                    # compute PET across all longitudes of the latitude slice
+                    # Thornthwaite PE
+                    pet_time_series = indices.pet(temperature, 
+                                                  latitude_degrees=latitude, 
+                                                  data_start_year=self.data_start_year)
+                            
                 # the above returns PET in millimeters, note this for further consideration
                 pet_units = 'millimeter'
                 
@@ -615,6 +633,11 @@ if __name__ == '__main__':
                             type=int,
                             choices=range(1870, start_datetime.year + 1),
                             required=True)
+        parser.add_argument("--orig_pe", 
+                            help="Use the original NCDC method for calculating potential evapotranspiration (PE) used in original Fortran", 
+                            type=bool,
+                            default=False,
+                            required=False)
         args = parser.parse_args()
 
         # variable names used within the monthly NetCDF
@@ -622,12 +645,12 @@ if __name__ == '__main__':
         precip_var_name = 'prcp'
         awc_var_name = 'awc'
         
-        # perform an ingest of the NCEI nClimDiv datasets for input (temperature  
-        # and precipitation) plus monthly computed indices for comparison
-        ingest_nclimdiv.ingest_netcdf_latest(args.out_file,
-                                             temp_var_name,
-                                             precip_var_name,
-                                             awc_var_name)
+#         # perform an ingest of the NCEI nClimDiv datasets for input (temperature  
+#         # and precipitation) plus monthly computed indices for comparison
+#         ingest_nclimdiv.ingest_netcdf_latest(args.out_file,
+#                                              temp_var_name,
+#                                              precip_var_name,
+#                                              awc_var_name)
 
         # perform the processing
         divisions_processor = DivisionsProcessor(args.out_file,
@@ -636,7 +659,8 @@ if __name__ == '__main__':
                                                  awc_var_name,
                                                  args.month_scales,
                                                  args.calibration_start_year,
-                                                 args.calibration_end_year)
+                                                 args.calibration_end_year,
+                                                 use_orig_pe=True)
         divisions_processor.run()
         
         # open the NetCDF files
