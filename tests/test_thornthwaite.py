@@ -1,11 +1,8 @@
 import fixtures
 import logging
 import numpy as np
+import thornthwaite
 import unittest
-
-#-----------------------------------------------------------------------------------------------------------------------
-# use a context to add the required modules into the path for the test
-from context import thornthwaite
 
 #-----------------------------------------------------------------------------------------------------------------------
 # disable logging messages

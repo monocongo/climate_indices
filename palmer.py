@@ -8,6 +8,7 @@ import thornthwaite
 import utils
 import warnings
 
+#-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global logger
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s',
@@ -17,6 +18,10 @@ logger = logging.getLogger(__name__)
 #-----------------------------------------------------------------------------------------------------------------------
 _PDSI_MIN = -4.0
 _PDSI_MAX = 4.0
+
+#-----------------------------------------------------------------------------------------------------------------------
+# ignore all warnings
+warnings.simplefilter('ignore', Warning)
 
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
@@ -1993,7 +1998,6 @@ def _self_calibrate(pdsi_values,
     # adjust the self-calibrated Z-index values, using either the wet or dry ratio
     #TODO replace the below loop with a vectorized equivalent
     for time_step, sczindex in enumerate(sczindex_values):
-#     for time_step in range(sczindex_values.size):
     
         if not np.isnan(sczindex):
         
@@ -2013,19 +2017,21 @@ def _self_calibrate(pdsi_values,
     wet_index_values = np.full(pdsi_values.shape, np.NaN)
     dry_index_values = np.full(pdsi_values.shape, np.NaN)
     
+    # compute the duration factors for wet spells
     wet_m, wet_b = _duration_factors(sczindex_values,
                                      calibration_start_year,
                                      calibration_end_year,
                                      input_start_year,
                                      'WET')
+    
+    # compute the duration factors for dry spells
     dry_m, dry_b = _duration_factors(sczindex_values,
                                      calibration_start_year,
                                      calibration_end_year,
                                      input_start_year,
                                      'DRY')
     
-#     logger.debug('wet_m: {0}   wet_b: {1}   dry_m: {2}   dry_b: {3}'.format(wet_m, wet_b, dry_m, dry_b))
-    
+    # perform final scPDSI computations    
     pdsi_values, scpdsi_values, wet_index_values, dry_index_values, established_index_values = \
         _compute_scpdsi(established_index_values,
                         sczindex_values,

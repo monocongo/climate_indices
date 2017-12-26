@@ -1,7 +1,7 @@
 import argparse
 from datetime import datetime
 import ftplib
-import ingest_nclimdiv
+import ingest.ingest_climatology_nclimdiv
 from io import StringIO
 import logging
 import process_nclimdiv

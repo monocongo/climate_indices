@@ -5,10 +5,7 @@ import multiprocessing
 import netCDF4
 import netcdf_utils
 import numpy as np
-import os
-import process_nclimdiv
-import subprocess
-import sys
+import process.process_nclimdiv
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global logger which will write to the console as standard error
@@ -476,7 +473,7 @@ def process_division(division_index,
     
     logger.info('Computing indices for division index %s', division_index)
     
-    process_nclimdiv.process_division(division_index,
+    process.process_nclimdiv.process_division(division_index,
                                       input_file,
                                       output_file,
                                       temp_variable_name,
