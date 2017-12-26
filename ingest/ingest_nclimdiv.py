@@ -231,7 +231,7 @@ def _create_netcdf(output_netcdf,
         time_units.standard_name = 'time'
         time_units.calendar = 'gregorian'
         time_units.units = 'days since ' + str(min_year) + '-01-01 00:00:00'
-        time_units[:] = utils.compute_days(min_year, total_months)
+        time_units[:] = utils.compute_days(min_year, total_months, units_start_year=min_year)
 
         # create the division ID coordinate variable
         division_variable = dataset.createVariable(_DIVISION_VAR_NAME, 'i4', (_DIVISION_VAR_NAME,))

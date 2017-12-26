@@ -8,12 +8,14 @@ import netCDF4
 import netcdf_utils
 import numba
 import numpy as np
+from process import process_nclimdiv
 import random
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up matplotlib to use the Agg backend, in order to remove any dependencies on an X server
 import matplotlib
 import pdinew
+import process
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
@@ -566,13 +568,11 @@ def _plot_and_save_histogram(difference_values,
 def _plot_and_save_lines(expected,
                          actual,
                          difference_values,
+                         rmse,
                          climdiv_id,
                          varname,
                          output_filepath):
 
-    # get the RMSE for the two sets of values
-    error = _rmse(actual, expected)
-    
     # set figure size to (x, y)
     plt.figure(figsize=(30, 6))
     
@@ -585,7 +585,7 @@ def _plot_and_save_lines(expected,
     actual_line, = plt.plot(x, actual, color='yellow', linestyle='--', label='NIDIS (actual)')
     diffs_line, = plt.plot(x, difference_values, color='red', label='Difference')
     plt.legend(handles=[expected_line, actual_line, diffs_line], loc='upper left')
-    plt.title('Comparison for division {0}: {1}     (RMSE: {2})'.format(climdiv_id, varname, error))
+    plt.title('Comparison for division {0}: {1}     (RMSE: {2})'.format(climdiv_id, varname, rmse))
     plt.xlabel("months")
     plt.ylabel("value")
     
@@ -653,15 +653,25 @@ if __name__ == '__main__':
 #                                              awc_var_name)
 
         # perform the processing
-        divisions_processor = DivisionsProcessor(args.out_file,
-                                                 precip_var_name,
-                                                 temp_var_name,
-                                                 awc_var_name,
-                                                 args.month_scales,
-                                                 args.calibration_start_year,
-                                                 args.calibration_end_year,
-                                                 use_orig_pe=True)
-        divisions_processor.run()
+        process.process_nclimdiv(args.out_file,
+                                 precip_var_name,
+                                 temp_var_name,
+                                 awc_var_name,
+                                 args.month_scales,
+                                 args.calibration_start_year,
+                                 args.calibration_end_year,
+                                 use_orig_pe=True)
+        
+#         # perform the processing
+#         divisions_processor = DivisionsProcessor(args.out_file,
+#                                                  precip_var_name,
+#                                                  temp_var_name,
+#                                                  awc_var_name,
+#                                                  args.month_scales,
+#                                                  args.calibration_start_year,
+#                                                  args.calibration_end_year,
+#                                                  use_orig_pe=True)
+#         divisions_processor.run()
         
         # open the NetCDF files
         with netCDF4.Dataset(args.out_file, 'a') as dataset:
@@ -680,22 +690,33 @@ if __name__ == '__main__':
                 # allocate an array for the differences for this variable
                 diffs = {}
                 
-                size = dataset.variables['division'][:].size
-                
                 # common title for plots
                 histogram_title = 'CMB vs. NIDIS: '
      
+                # count the number of divisions we've analyzed in order to get a mean for various statistics such as RMSE
+                divs_analyzed = 0
+                rmse_sum = 0.0
+                
                 for division_index, division_id in enumerate(dataset.variables['division'][:]):
                  
+                    # only process divisions within CONUS, 101 - 4809
+                    if division_id > 4899:
+                        continue
+                    divs_analyzed += 1
+                    
                     logger.info('Computing diffs for climate division ID: %s', division_id)
                     
                     # get the variable var_names for the month, mask the NaNs (data assumed to be in (division, time) dimension order)
                     data_CMB = np.ma.masked_invalid(dataset.variables[var_names[0]][division_index, :], copy=False)
                     data_NIDIS = np.ma.masked_invalid(dataset.variables[var_names[1]][division_index, :], copy=False)
              
-                    # get the difference of the two
+                    # get the difference of the two, add into the differences array at the correct slot for this division
                     differences = data_CMB - data_NIDIS
                     diffs[division_index] = differences
+
+                    # get the RMSE for the two sets of values
+                    error = _rmse(data_NIDIS, data_CMB)
+                    rmse_sum += error
      
                     # plot the differences as a histogram and save to file
                     _plot_and_save_histogram(differences,
@@ -711,13 +732,14 @@ if __name__ == '__main__':
                     _plot_and_save_lines(data_NIDIS,
                                          data_CMB,
                                          differences,
+                                         error,
                                          division_id,
                                          index,
                                          'C:/home/data/nclimdiv/diffs_line_{0}_{1}.png'.format(var_names[1], division_id))
                     
                     # add to the differences dictionary with this division ID key 
                     diffs[division_id] = differences
-                    
+
                 # make sure that the variable name isn't already in use
                 diff_variable_name = 'diffs_' + index
                 if diff_variable_name in dataset.variables.keys():
@@ -758,6 +780,9 @@ if __name__ == '__main__':
                             logger.info('Unexpected size of data array for division index {0} -- '.format(division_index) + 
                                         'expected {0} time steps but the array contains {1}'.format(times_size, data_array.size))
 
+            # report summary statistics
+            print('\nMean RMSE: {0}'.format(rmse_sum / divs_analyzed))
+            
         # report on the elapsed time
         end_datetime = datetime.now()
         logger.info("End time:      %s", end_datetime)
