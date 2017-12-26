@@ -396,7 +396,7 @@ def ingest_netcdf_latest(output_netcdf,
 
 #-----------------------------------------------------------------------------------------------------------------------
 def _ingest_netcdf(output_netcdf,
-                   processing_date,
+                   release_date,
                    temp_var_name,
                    precip_var_name,
                    awc_var_name):
@@ -424,8 +424,8 @@ def _ingest_netcdf(output_netcdf,
         os.remove(tmp_file)
         
         # parse both the precipitation and the temperature datasets
-        p_divs_to_arrays, p_divs_to_minmax_years, p_min_year, p_max_year = _parse_climatology(processing_date, p_or_t='P')
-        t_divs_to_arrays, t_divs_to_minmax_years, t_min_year, t_max_year = _parse_climatology(processing_date, p_or_t='T')
+        p_divs_to_arrays, p_divs_to_minmax_years, p_min_year, p_max_year = _parse_climatology(release_date, p_or_t='P')
+        t_divs_to_arrays, t_divs_to_minmax_years, t_min_year, t_max_year = _parse_climatology(release_date, p_or_t='T')
         
         # determine the number of times and divisions for each (should match?) 
         total_months = (p_max_year - p_min_year + 1) * 12
@@ -451,7 +451,7 @@ def _ingest_netcdf(output_netcdf,
             
             # get the relevant US climate divisions ASCII file from NCEI
             #TODO replace this hard coded path with a function parameter, taken from command line  pylint: disable=fixme
-            file_url = 'ftp://ftp.ncdc.noaa.gov/pub/data/cirs/climdiv/climdiv-{0}dv-v1.0.0-{1}'.format(variable, processing_date)
+            file_url = 'ftp://ftp.ncdc.noaa.gov/pub/data/cirs/climdiv/climdiv-{0}dv-v1.0.0-{1}'.format(variable, release_date)
         
             # use a temporary file that we'll remove once no longer necessary
             tmp_file = "tmp_climatology_for_ingest_nclimdiv.txt"
@@ -500,7 +500,7 @@ if __name__ == '__main__':
 
         # log some timing info, used later for elapsed time
         start_datetime = datetime.now()
-        logger.info("Start time:    {0}".format(start_datetime))
+        logger.info("Start time:    %s", start_datetime)
 
         # get the date string we'll use for file identification
         processing_date = _get_processing_date()
@@ -513,15 +513,22 @@ if __name__ == '__main__':
 #                             required=True)
 #         args = parser.parse_args()
         
-        # the NetCDF file we want to write
-        nclimdiv_netcdf = '{0}_{1}.nc'.format('C:/home/data/nclimdiv/nclimdiv', processing_date)
+        # the NetCDF file to write, result file of this script
 #         nclimdiv_netcdf = '{0}_{1}.nc'.format(args.base_file_path, processing_date)
+        # TESTING ONLY -- REMOVE
+        nclimdiv_netcdf = '{0}_{1}.nc'.format('C:/home/data/nclimdiv/nclimdiv', processing_date)
 
         ingest_netcdf_latest(nclimdiv_netcdf,
                              'tavg',
                              'prcp',
                              'awc')
         
+        # report on the elapsed time
+        end_datetime = datetime.now()
+        logger.info("End time:      %s", end_datetime)
+        elapsed = end_datetime - start_datetime
+        logger.info("Elapsed time:  %s", elapsed)
+
     except:
         logger.exception('Failed to complete', exc_info=True)
         raise

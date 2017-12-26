@@ -8,14 +8,13 @@ import netCDF4
 import netcdf_utils
 import numba
 import numpy as np
-from process import process_nclimdiv
+import pdinew
+from process import process_divisions
 import random
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up matplotlib to use the Agg backend, in order to remove any dependencies on an X server
 import matplotlib
-import pdinew
-import process
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
@@ -645,33 +644,22 @@ if __name__ == '__main__':
         precip_var_name = 'prcp'
         awc_var_name = 'awc'
         
-#         # perform an ingest of the NCEI nClimDiv datasets for input (temperature  
-#         # and precipitation) plus monthly computed indices for comparison
-#         ingest_nclimdiv.ingest_netcdf_latest(args.out_file,
-#                                              temp_var_name,
-#                                              precip_var_name,
-#                                              awc_var_name)
+        # perform an ingest of the NCEI nClimDiv datasets for input (temperature  
+        # and precipitation) plus monthly computed indices for comparison
+        ingest_nclimdiv.ingest_netcdf_latest(args.out_file,
+                                             temp_var_name,
+                                             precip_var_name,
+                                             awc_var_name)
 
-        # perform the processing
-        process.process_nclimdiv(args.out_file,
-                                 precip_var_name,
-                                 temp_var_name,
-                                 awc_var_name,
-                                 args.month_scales,
-                                 args.calibration_start_year,
-                                 args.calibration_end_year,
-                                 use_orig_pe=True)
-        
-#         # perform the processing
-#         divisions_processor = DivisionsProcessor(args.out_file,
-#                                                  precip_var_name,
-#                                                  temp_var_name,
-#                                                  awc_var_name,
-#                                                  args.month_scales,
-#                                                  args.calibration_start_year,
-#                                                  args.calibration_end_year,
-#                                                  use_orig_pe=True)
-#         divisions_processor.run()
+        # perform the processing, using original NCDC PET calculation method
+        process_divisions.process_divisions(args.out_file,
+                                            precip_var_name,
+                                            temp_var_name,
+                                            awc_var_name,
+                                            args.month_scales,
+                                            args.calibration_start_year,
+                                            args.calibration_end_year,
+                                            use_orig_pe=True)
         
         # open the NetCDF files
         with netCDF4.Dataset(args.out_file, 'a') as dataset:
