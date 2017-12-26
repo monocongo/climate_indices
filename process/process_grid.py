@@ -693,10 +693,49 @@ class GridProcessor(object):
         return valid_flag
 
 #-----------------------------------------------------------------------------------------------------------------------
+def process_grid(output_file_base,
+                 precip_file,
+                 temp_file,
+                 awc_file,
+                 precip_var_name,
+                 temp_var_name,
+                 awc_var_name,
+                 month_scales,
+                 calibration_start_year,
+                 calibration_end_year):
+    """
+    Performs indices processing from gridded NetCDF inputs.
+    
+    :param output_file_base:
+    :param precip_file: 
+    :param temp_file: 
+    :param awc_file: 
+    :param precip_var_name:
+    :param temp_var_name:
+    :param awc_var_name:
+    :param month_scales:
+    :param calibration_start_year:
+    :param calibration_end_year:
+    """
+
+    # perform the processing
+    grid_processor = GridProcessor(output_file_base,
+                                   precip_file,
+                                   temp_file,
+                                   awc_file,
+                                   precip_var_name,
+                                   temp_var_name,
+                                   awc_var_name,
+                                   month_scales,
+                                   calibration_start_year,
+                                   calibration_end_year)
+    grid_processor.run()
+
+#-----------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
 
     """
-    This module is used to perform climate indices processing on nClimGrid datasets in NetCDF.
+    This module is used to perform climate indices processing on gridded datasets in NetCDF.
     """
 
     try:
@@ -747,17 +786,16 @@ if __name__ == '__main__':
         args = parser.parse_args()
 
         # perform the processing
-        grid_processor = GridProcessor(args.output_file_base,
-                                       args.precip_file,
-                                       args.temp_file,
-                                       args.awc_file,
-                                       args.precip_var_name,
-                                       args.temp_var_name,
-                                       args.awc_var_name,
-                                       args.month_scales,
-                                       args.calibration_start_year,
-                                       args.calibration_end_year)
-        grid_processor.run()
+        process_grid(args.output_file_base,
+                     args.precip_file,
+                     args.temp_file,
+                     args.awc_file,
+                     args.precip_var_name,
+                     args.temp_var_name,
+                     args.awc_var_name,
+                     args.month_scales,
+                     args.calibration_start_year,
+                     args.calibration_end_year)
 
         # report on the elapsed time
         end_datetime = datetime.now()

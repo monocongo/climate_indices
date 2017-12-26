@@ -473,7 +473,7 @@ def process_division(division_index,
     
     logger.info('Computing indices for division index %s', division_index)
     
-    process.process_nclimdiv.process_division(division_index,
+    process.process_divisions.process_division(division_index,
                                       input_file,
                                       output_file,
                                       temp_variable_name,

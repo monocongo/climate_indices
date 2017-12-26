@@ -4,7 +4,7 @@ import ftplib
 import ingest.ingest_climatology_nclimdiv
 from io import StringIO
 import logging
-import process_nclimdiv
+import process_divisions
 
 #-----------------------------------------------------------------------------------------------------------------------
 _TEMP_VAR_NAME = 'tavg'
@@ -83,7 +83,7 @@ if __name__ == '__main__':
         indices_netcdf = '{0}_{1}_nidis.nc'.format(args.base_file_path, processing_date)
 
         # compute indices for the nClimDiv dataset we just ingested
-        process_nclimdiv.process_nclimdiv(nclimdiv_netcdf, 
+        process_divisions.process_divisions(nclimdiv_netcdf, 
                                           indices_netcdf, 
                                           args.month_scales, 
                                           _TEMP_VAR_NAME,

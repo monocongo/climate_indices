@@ -537,14 +537,14 @@ def _f2c(t):
     return (t-32)*5.0/9
 
 #-----------------------------------------------------------------------------------------------------------------------
-def process_nclimdiv(divisions_file,
-                     precip_var_name,
-                     temp_var_name,
-                     awc_var_name,
-                     month_scales,
-                     calibration_start_year,
-                     calibration_end_year,
-                     use_orig_pe=True):
+def process_divisions(divisions_file,
+                      precip_var_name,
+                      temp_var_name,
+                      awc_var_name,
+                      month_scales,
+                      calibration_start_year,
+                      calibration_end_year,
+                      use_orig_pe=True):
 
     """
     Performs indices processing from climate divisions inputs.
@@ -623,7 +623,7 @@ if __name__ == '__main__':
         args = parser.parse_args()
 
         # perform the processing
-        process_nclimdiv(args.input_file,
+        process_divisions(args.input_file,
                          args.precip_var_name,
                          args.temp_var_name,
                          args.awc_var_name,
