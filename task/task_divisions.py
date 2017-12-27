@@ -95,7 +95,6 @@ def _plot_and_save_lines(expected,             # pragma: no cover
 #-----------------------------------------------------------------------------------------------------------------------
 
 if __name__ == '__main__':
-
     """
     This module is used to perform climate indices processing on nClimGrid datasets in NetCDF.
     """
