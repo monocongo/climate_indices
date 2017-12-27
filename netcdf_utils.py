@@ -463,7 +463,7 @@ def add_variable_climdivs(file_path,
         times_size = dataset.variables['time'][:].size
         
         # loop over each existing division and add the corresponding data array, if one was provided
-        for division_index, division_id in enumerate(list(dataset.variables['division'][:])):
+        for division_index in range(dataset.variables['division'][:].size()):
             
             # make sure we have a data array of monthly values for this division
             if division_index in divisions_to_arrays.keys():
