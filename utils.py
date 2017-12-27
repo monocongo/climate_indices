@@ -1,5 +1,6 @@
 from datetime import datetime
 import logging
+import numba
 import numpy as np
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -8,6 +9,19 @@ logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s %(levelname)s %(message)s',
                     datefmt='%Y-%m-%d  %H:%M:%S')
 logger = logging.getLogger(__name__)
+
+#-----------------------------------------------------------------------------------------------------------------------
+@numba.vectorize([numba.float64(numba.float64),
+                  numba.float32(numba.float32)])
+def f2c(t):
+    '''
+    Converts a temperature value from Fahrenheit to Celsius
+    
+    :param t: temperature value, assumed to be in Fahrenheit
+    :return: the Fahrenheit equivalent of the input Celsius value
+    :rtype: scalar float (when used as a ufunc an array of floats is returned as a result of the call)
+    '''
+    return (t-32)*5.0/9
 
 #-----------------------------------------------------------------------------------------------------------------------
 def compute_days(initial_year,

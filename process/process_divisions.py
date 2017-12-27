@@ -5,9 +5,9 @@ import logging
 import multiprocessing
 import netCDF4
 import netcdf_utils
-import numba
 import numpy as np
 import pdinew
+import utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global logger which will write to the console as standard error
@@ -35,6 +35,7 @@ _VALID_MAX = 10.0
 lock = multiprocessing.Lock()
 
 #-----------------------------------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------------------------------
 class DivisionsProcessor(object):
 
     def __init__(self, 
@@ -46,7 +47,8 @@ class DivisionsProcessor(object):
                  calibration_start_year,
                  calibration_end_year,
                  use_orig_pe=False):
-        """
+        
+        '''
         Constructor method.
         
         :param divisions_file: 
@@ -56,8 +58,7 @@ class DivisionsProcessor(object):
         :param month_scales:
         :param calibration_start_year:
         :param calibration_end_year:   
-        :param use_orig_pe: 
-        """
+        '''
     
         self.divisions_file = divisions_file
         self.var_name_precip = var_name_precip
@@ -71,14 +72,21 @@ class DivisionsProcessor(object):
         # TODO get the initial year from the precipitation NetCDF, for now use hard-coded value specific to nClimDiv  pylint: disable=fixme
         self.data_start_year = 1895
         
+        # TODO get the initial year from the precipitation NetCDF, for now use hard-coded value specific to nClimDiv  pylint: disable=fixme
+        self.data_start_year = 1895
+        
         # create and populate the NetCDF we'll use to contain our results of a call to run()
-        self._initialize_netcdf()
+        self._initialize_netcdf(('division', 'time',))
 
     #-----------------------------------------------------------------------------------------------------------------------
-    def _initialize_netcdf(self):
+    def _initialize_netcdf(self,
+                           dimensions):
         """
         This function is used to initialize and return a netCDF4.Dataset object containing all variables 
         to be computed for a climate divisions climatology.
+        
+        :param dimensions: tuple of dimension names, such as ('division', 'time',) for climate divisions, 
+                           or ('time', 'lat', 'lon',) for grids
         """
      
         # use NaNs as our default fill/missing value
@@ -93,18 +101,13 @@ class DivisionsProcessor(object):
             unscaled_indices = ['pet', 'pdsi', 'phdi', 'pmdi', 'zindex', 'scpdsi']
             for variable_name in unscaled_indices:
                 
-                # bypass this variable if it's already in the file, assuming that the type, dimensions, etc. are OK
-                #TODO revisit this to add more checks for possible mismatches, rectify if possible or just recreate?
-                if variable_name in new_dataset.variables.keys():
-                    continue
-                
                 # get the attributes based on the name
                 variable_attributes = _variable_attributes(variable_name)
 
                 # create variables with scale month
                 data_variable = new_dataset.createVariable(variable_name,
                                                            data_dtype,
-                                                           ('division', 'time',),
+                                                           dimensions,
                                                            fill_value=fill_value, 
                                                            zlib=False)
                 data_variable.setncatts(variable_attributes)
@@ -116,18 +119,13 @@ class DivisionsProcessor(object):
                      
                     variable_name = scaled_index + '_{}'.format(str(months).zfill(2))
                      
-                    # bypass this variable if it's already in the file, assuming that the type, dimensions, etc. are OK
-                    #TODO revisit this to add more checks for possible mismatches, rectify if possible or just recreate?
-                    if variable_name in new_dataset.variables.keys():
-                        continue
-                    
                     # get the attributes based on the name and number of scale months
                     variable_attributes = _variable_attributes(scaled_index, months)
                     
                     # create month scaled variable
                     data_variable = new_dataset.createVariable(variable_name,
                                                                data_dtype,
-                                                               ('division', 'time',),
+                                                               dimensions,
                                                                fill_value=fill_value, 
                                                                zlib=False)
                     data_variable.setncatts(variable_attributes)
@@ -171,8 +169,7 @@ class DivisionsProcessor(object):
                 if temperature_units in ['degree_Fahrenheit', 'degrees Fahrenheit', 'degrees F', 'fahrenheit', 'Fahrenheit', 'F']:
                     
                     # TODO make sure this application of the ufunc is any faster  pylint: disable=fixme
-                    temperature = _f2c(temperature)
-#                     temperature = np.apply_along_axis(self._f2c, 0, temperature)
+                    temperature = utils.f2c(temperature)
     
                 elif temperature_units not in ['degree_Celsius', 'degrees Celsius', 'degrees C', 'celsius', 'Celsius', 'C']:
                     
@@ -527,15 +524,6 @@ def _variable_attributes(index_name,
 
     return variable_attributes
     
-#-----------------------------------------------------------------------------------------------------------------------
-@numba.vectorize([numba.float64(numba.float64),
-                  numba.float32(numba.float32)])
-def _f2c(t):
-    '''
-    Converts a temperature value from Fahrenheit to Celsius
-    '''
-    return (t-32)*5.0/9
-
 #-----------------------------------------------------------------------------------------------------------------------
 def process_divisions(divisions_file,
                       precip_var_name,
