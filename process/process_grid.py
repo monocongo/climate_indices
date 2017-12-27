@@ -39,7 +39,7 @@ import warnings
 warnings.simplefilter('ignore', Warning)
 
 #-----------------------------------------------------------------------------------------------------------------------
-class GridProcessor(object):
+class GridProcessor(object):             # pragma: no cover
 
     def __init__(self,
                  output_file_base,
@@ -686,7 +686,7 @@ class GridProcessor(object):
         return valid_flag
 
 #-----------------------------------------------------------------------------------------------------------------------
-def process_grid(output_file_base,
+def process_grid(output_file_base,     # pragma: no cover
                  precip_file,
                  temp_file,
                  awc_file,

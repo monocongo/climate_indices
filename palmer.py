@@ -1811,7 +1811,7 @@ def _least_squares(x,
 
 #-----------------------------------------------------------------------------------------------------------------------
 #@numba.jit      # working?
-def pdsi_from_climatology(precip_time_series,
+def pdsi_from_climatology(precip_time_series,      # pragma: no cover
                           temp_time_series,
                           awc,
                           latitude,
@@ -1870,7 +1870,7 @@ def pdsi_from_climatology(precip_time_series,
 
 #-----------------------------------------------------------------------------------------------------------------------
 #@numba.jit          # working?
-def scpdsi_from_climatology(precip_time_series,
+def scpdsi_from_climatology(precip_time_series,       # pragma: no cover
                             temp_time_series,
                             awc,
                             latitude,
@@ -2048,7 +2048,7 @@ def _self_calibrate(pdsi_values,
     return sczindex_values, pdsi_values, scpdsi_values
 
 #-----------------------------------------------------------------------------------------------------------------------
-def scpdsi(precip_time_series,
+def scpdsi(precip_time_series,      # pragma: no cover
            pet_time_series,
            awc,
            data_start_year,
@@ -2144,7 +2144,7 @@ def scpdsi(precip_time_series,
         raise
 
 #-----------------------------------------------------------------------------------------------------------------------
-def pdsi(precip_time_series,
+def pdsi(precip_time_series,          # pragma: no cover
          pet_time_series,
          awc,
          data_start_year,

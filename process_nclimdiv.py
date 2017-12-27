@@ -38,7 +38,7 @@ _VALID_MAX = 10.0
 lock = multiprocessing.Lock()
 
 #-----------------------------------------------------------------------------------------------------------------------
-def _plot_and_save_histogram(difference_values,
+def _plot_and_save_histogram(difference_values,          # pragma: no cover
                              number_of_bins,
                              range_lower, 
                              range_upper,
@@ -59,7 +59,7 @@ def _plot_and_save_histogram(difference_values,
     plt.savefig(output_filepath)
 
 #-----------------------------------------------------------------------------------------------------------------------
-def _plot_and_save_lines(expected,
+def _plot_and_save_lines(expected,             # pragma: no cover
                          actual,
                          difference_values,
                          rmse,
