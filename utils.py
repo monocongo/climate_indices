@@ -11,6 +11,17 @@ logging.basicConfig(level=logging.DEBUG,
 logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------------------------------------------------
+def rmse(predictions, targets):
+    """
+    Root mean square error
+    
+    :param predictions: np.ndarray
+    :param targets: np.ndarray
+    :return: np.ndarray
+    """
+    return np.sqrt(((predictions - targets) ** 2).mean())
+
+#-----------------------------------------------------------------------------------------------------------------------
 @numba.vectorize([numba.float64(numba.float64),
                   numba.float32(numba.float32)])
 def f2c(t):
