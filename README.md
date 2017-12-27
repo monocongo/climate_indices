@@ -21,15 +21,15 @@ This project contains Python implementations of various climate indices which pr
 
 Currently provided climate indices:
 
-* [SPI, Standard Precipitation Index](https://climatedataguide.ucar.edu/climate-data/standardized-precipitation-index-spi)
-* [SPEI, Standard Precipitation Evapotranspiration Index](https://www.researchgate.net/publication/252361460_The_Standardized_Precipitation-Evapotranspiration_Index_SPEI_a_multiscalar_drought_index)
-* [PET, Potential Evapotranspiration](https://www.ncdc.noaa.gov/monitoring-references/dyk/potential-evapotranspiration): computed using [Thornthwaite's equation](https://en.wikipedia.org/wiki/Potential_evaporation) 
-* [PNP, Percentage of Normal Precipitation](http://www.droughtmanagement.info/percent-of-normal-precipitation/)
-* [PDSI, Palmer Drought Severity Index](http://www.droughtmanagement.info/palmer-drought-severity-index-pdsi/): 
-* [scPDSI, Self-calibrated Palmer Drought Severity Index](http://www.droughtmanagement.info/self-calibrated-palmer-drought-severity-index-sc-pdsi/)
-* [PHDI, Palmer Hydrological Drought Index](http://www.droughtmanagement.info/palmer-hydrological-drought-index-phdi/)
-* [Z-Index, Palmer moisture anomaly index (Z-index)](http://www.droughtmanagement.info/palmer-z-index/)
-* [PMDI, Palmer Modified Drought Index]() 
+* SPI, [Standard Precipitation Index](https://climatedataguide.ucar.edu/climate-data/standardized-precipitation-index-spi)
+* SPEI, [Standard Precipitation Evapotranspiration Index](https://www.researchgate.net/publication/252361460_The_Standardized_Precipitation-Evapotranspiration_Index_SPEI_a_multiscalar_drought_index)
+* PET, [Potential Evapotranspiration](https://www.ncdc.noaa.gov/monitoring-references/dyk/potential-evapotranspiration): computed using [Thornthwaite's equation](https://en.wikipedia.org/wiki/Potential_evaporation) 
+* PNP, [Percentage of Normal Precipitation](http://www.droughtmanagement.info/percent-of-normal-precipitation/)
+* PDSI, [Palmer Drought Severity Index](http://www.droughtmanagement.info/palmer-drought-severity-index-pdsi/): 
+* scPDSI, [Self-calibrated Palmer Drought Severity Index](http://www.droughtmanagement.info/self-calibrated-palmer-drought-severity-index-sc-pdsi/)
+* PHDI, [Palmer Hydrological Drought Index](http://www.droughtmanagement.info/palmer-hydrological-drought-index-phdi/)
+* Z-Index, [Palmer moisture anomaly index (Z-index)](http://www.droughtmanagement.info/palmer-z-index/)
+* PMDI, [Palmer Modified Drought Index](https://climate.ncsu.edu/climate/climdiv) 
 
 ## Get involved
 We welcome you to use, make suggestions, and contribute to this code. 
