@@ -8,6 +8,7 @@ import thornthwaite
 import utils
 import warnings
 
+#-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global logger
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s',
@@ -17,6 +18,10 @@ logger = logging.getLogger(__name__)
 #-----------------------------------------------------------------------------------------------------------------------
 _PDSI_MIN = -4.0
 _PDSI_MAX = 4.0
+
+#-----------------------------------------------------------------------------------------------------------------------
+# ignore all warnings
+warnings.simplefilter('ignore', Warning)
 
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
@@ -555,7 +560,7 @@ def _climatic_characteristic(alpha,
         D_hat[i] = np.nanmean(np.absolute(d_hat[:, i]))
 
         # Calculate T_hat, a measure of the ratio of "moisture demand" to "moisture supply" for month i
-        #TODO if this value evaluates to a negative number less than -2.8 then the following equation for K_hat 
+        #TODO if this value evaluates to a negative number less than -2.8 then the following equation for K_hat  pylint: disable=fixme
         # will result in a math domain error -- is it valid here to limit this value to -2.8 or greater? 
         T_hat[i] = (PET_bar[i] + R_bar[i] + RO_bar[i]) / (P_bar[i] + L_bar[i])
         
@@ -1089,7 +1094,7 @@ def _assign_X(k,
             X[k] = PX2[k]
 
 #------------------------------------------------------------------------------------------------------------------
-@numba.jit
+#@numba.jit  # commen
 def _pdsi_from_zindex(Z):
 
     ## INITIALIZE PDSI AND PHDI CALCULATIONS
@@ -1124,8 +1129,8 @@ def _pdsi_from_zindex(Z):
     X = np.zeros((number_of_months,))
     PMDI = np.zeros((number_of_months,))
     
-    # Palmer Hydrological Drought Index
-    PHDI = np.zeros((number_of_months,))
+#     # Palmer Hydrological Drought Index
+#     PHDI = np.zeros((number_of_months,))
 
     # loop over all months in the dataset, calculating PDSI and PHDI for each
     for k in range(number_of_months):
@@ -1485,7 +1490,7 @@ def _choose_X(pdsi_values,
     
     else:
     
-#         # TODO/CONFIRM this has already been accomplished in code above, this is duplicate/unnecessary code, no?
+#         # TODO/CONFIRM this has already been accomplished in code above, this is duplicate/unnecessary code, no?  pylint: disable=fixme
 #         new_X2 = dryc * previous_dry_index_X2 + zIndex / (dry_M + dry_B)
 #         if new_X2 > 0:
 #         
@@ -1586,10 +1591,6 @@ def _highest_reasonable_value(summed_values):
     #   2) 25% lower than the 2nd percentile
     reasonable_percentile_index = int(len(summed_values) * 0.98)
 
-    # DEBUG ONLY -- REMOVE
-    print('Calling _highest_reasonable_value(), found %s as reasonable_percentile_index', reasonable_percentile_index)
-    print('\tLength of summed values array: %s', len(summed_values))
-    
     # sort the list of sums into ascending order and get the sum_value value referenced by the safe percentile index
     summed_values = sorted(summed_values)
     sum_at_reasonable_percentile = summed_values[reasonable_percentile_index]
@@ -1625,7 +1626,7 @@ def _z_sum(interval,
     values_to_sum = collections.deque()
     summed_values = collections.deque()
 
-    # TODO verify that the below isn't mis-aligning the data by not filling in missing elements with a fill value 
+    # TODO verify that the below isn't mis-aligning the data by not filling in missing elements with a fill value   pylint: disable=fixme
     #      which can be ignored in following loops that may still rely upon an original shape of the data matrix,
     #      instead this should only be pulling off the final (missing) months of the final year where values do not exist
     # get only non-NaN Z-index values
@@ -1997,7 +1998,6 @@ def _self_calibrate(pdsi_values,
     # adjust the self-calibrated Z-index values, using either the wet or dry ratio
     #TODO replace the below loop with a vectorized equivalent
     for time_step, sczindex in enumerate(sczindex_values):
-#     for time_step in range(sczindex_values.size):
     
         if not np.isnan(sczindex):
         
@@ -2017,19 +2017,21 @@ def _self_calibrate(pdsi_values,
     wet_index_values = np.full(pdsi_values.shape, np.NaN)
     dry_index_values = np.full(pdsi_values.shape, np.NaN)
     
+    # compute the duration factors for wet spells
     wet_m, wet_b = _duration_factors(sczindex_values,
                                      calibration_start_year,
                                      calibration_end_year,
                                      input_start_year,
                                      'WET')
+    
+    # compute the duration factors for dry spells
     dry_m, dry_b = _duration_factors(sczindex_values,
                                      calibration_start_year,
                                      calibration_end_year,
                                      input_start_year,
                                      'DRY')
     
-#     logger.debug('wet_m: {0}   wet_b: {1}   dry_m: {2}   dry_b: {3}'.format(wet_m, wet_b, dry_m, dry_b))
-    
+    # perform final scPDSI computations    
     pdsi_values, scpdsi_values, wet_index_values, dry_index_values, established_index_values = \
         _compute_scpdsi(established_index_values,
                         sczindex_values,

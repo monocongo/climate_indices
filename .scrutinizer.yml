@@ -4,8 +4,23 @@ build:
             project_setup:
                 override: true
             tests:
-                override: [py-scrutinizer-run]
-            
+                before:
+                    - export NUMBA_DISABLE_JIT=1
+                override:
+                    - pip install -f requirements.txt
+                    - pip install nose
+                    - nosetests
 filter:
     excluded_paths:
+        - compare/*
+        - example_inputs/*
+        - ingest/*
+        - misc/*
+        - notebooks/*
+        - process/*
         - tests/*
+        
+checks:
+    python:
+        code_rating: true
+        duplicate_code: true

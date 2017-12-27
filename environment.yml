@@ -12,6 +12,6 @@ dependencies:
 - numpy
 - pandas
 - pycurl
-#- pynco
+- pynco
 - python=3
 - scipy
