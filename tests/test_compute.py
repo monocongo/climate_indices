@@ -1,12 +1,15 @@
-import compute
 import logging
 import numpy as np
-from tests import fixtures
 import unittest
 
-# #-----------------------------------------------------------------------------------------------------------------------
-# # use a context to add the required modules into the path for the test
-# from context import compute
+#FIXME uncomment below once absolute imports issue is worked out, below should be correct based on docs
+# import compute
+# from tests import fixtures
+
+#-----------------------------------------------------------------------------------------------------------------------
+# use a context to add the required modules into the path for the test
+from tests.context import compute
+from tests import fixtures
 
 #-----------------------------------------------------------------------------------------------------------------------
 # disable logging messages

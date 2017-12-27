@@ -1,13 +1,16 @@
-import indices
 import logging
 import math
 import numpy as np
-from tests import fixtures
 import unittest
 
-# #-----------------------------------------------------------------------------------------------------------------------
-# # use a context to add the required modules into the path for the test
-# from context import indices
+#FIXME uncomment below once absolute imports issue is worked out, below should be correct based on docs
+# import indices
+# from tests import fixtures
+
+#-----------------------------------------------------------------------------------------------------------------------
+# use a context to add the required modules into the path for the test
+from tests.context import indices
+from tests import fixtures
 
 #-----------------------------------------------------------------------------------------------------------------------
 # disable logging messages
