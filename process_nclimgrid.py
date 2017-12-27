@@ -1,15 +1,14 @@
 import argparse
 from datetime import datetime
-import indices
-from ingest import ingest_nclimgrid
+from ingest import ingest_nclimgrid, ingest_prism
 import logging
-import math
 import multiprocessing
 import netCDF4
 import netcdf_utils
 import numpy as np
-import numba
+from process import process_grid
 import random
+import utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up matplotlib to use the Agg backend, in order to remove any dependencies on an X server
@@ -39,7 +38,7 @@ _VALID_MAX = 10.0
 lock = multiprocessing.Lock()
 
 #-----------------------------------------------------------------------------------------------------------------------
-def _plot_and_save_histogram(difference_values,
+def _plot_and_save_histogram(difference_values,        # pragma: no cover
                              number_of_bins,
                              range_lower, 
                              range_upper,
@@ -60,7 +59,7 @@ def _plot_and_save_histogram(difference_values,
     plt.savefig(output_filepath)
 
 #-----------------------------------------------------------------------------------------------------------------------
-def _plot_and_save_lines(expected,
+def _plot_and_save_lines(expected,          # pragma: no cover
                          actual,
                          difference_values,
                          grid_name,
@@ -68,7 +67,7 @@ def _plot_and_save_lines(expected,
                          output_filepath):
 
     # get the RMSE for the two sets of values
-    error = _rmse(actual, expected)
+    error = utils.rmse(actual, expected)
     
     # set figure size to (x, y)
     plt.figure(figsize=(30, 6))
@@ -112,7 +111,7 @@ if __name__ == '__main__':
         # parse the command line arguments
         parser = argparse.ArgumentParser()
         parser.add_argument("--grid", 
-                            help="Valid values are \'nclimgrid\' and \prism\'", 
+                            help="Valid values are \'nclimgrid\' and \'prism\'", 
                             required=True)
         parser.add_argument("--source_dir", 
                             help="Base directory under which are directories and files for precipitation and max/min/mean temperature", 
@@ -140,17 +139,16 @@ if __name__ == '__main__':
             ingest_prism.ingest_to_netcdf(args.source_dir, args.output_dir)
             
         # perform the processing
-        grid_processor = GridProcessor(args.output_file_base,
-                                       args.precip_file,
-                                       args.temp_file,
-                                       args.awc_file,
-                                       args.precip_var_name,
-                                       args.temp_var_name,
-                                       args.awc_var_name,
-                                       args.month_scales,
-                                       args.calibration_start_year,
-                                       args.calibration_end_year)
-        grid_processor.run()
+        process_grid.process_grid(args.output_file_base,
+                                  args.precip_file,
+                                  args.temp_file,
+                                  args.awc_file,
+                                  args.precip_var_name,
+                                  args.temp_var_name,
+                                  args.awc_var_name,
+                                  args.month_scales,
+                                  args.calibration_start_year,
+                                  args.calibration_end_year)
 
         # open the NetCDF files
         with netCDF4.Dataset(args.out_file, 'a') as dataset:

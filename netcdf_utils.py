@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------------------------------------------------
-def convert_and_move_netcdf(input_and_output_netcdfs):
+def convert_and_move_netcdf(input_and_output_netcdfs):   # pragma: no cover
     
     input_netcdf = input_and_output_netcdfs[0]
     output_netcdf = input_and_output_netcdfs[1]
@@ -75,7 +75,7 @@ def convert_and_move_netcdf(input_and_output_netcdfs):
 #     return days
 #
 #-----------------------------------------------------------------------------------------------------------------------
-def find_netcdf_datatype(data_object):
+def find_netcdf_datatype(data_object):      # pragma: no cover
     
     if isinstance(data_object, netCDF4.Variable):
 
@@ -110,7 +110,7 @@ def find_netcdf_datatype(data_object):
     return netcdf_datatype
     
 #-----------------------------------------------------------------------------------------------------------------------
-def create_dataset_climdivs(file_path,
+def create_dataset_climdivs(file_path,     # pragma: no cover
                             division_ids,
                             initial_year,
                             total_months):
@@ -150,7 +150,7 @@ def create_dataset_climdivs(file_path,
         divisions_variable[:] = np.array(sorted(division_ids), dtype=np.dtype(int))
     
 #-----------------------------------------------------------------------------------------------------------------------
-def initialize_netcdf_single_variable_grid(file_path,
+def initialize_netcdf_single_variable_grid(file_path,              # pragma: no cover
                                            template_netcdf,
                                            variable_name,
                                            variable_long_name,
@@ -233,7 +233,7 @@ def initialize_netcdf_single_variable_grid(file_path,
         dataset.close()
 
 #-----------------------------------------------------------------------------------------------------------------------
-def initialize_dataset(file_path,
+def initialize_dataset(file_path,           # pragma: no cover
                        template_dataset,
                        x_dim_name,
                        y_dim_name,
@@ -290,7 +290,7 @@ def initialize_dataset(file_path,
     return netcdf
     
 #-----------------------------------------------------------------------------------------------------------------------
-def initialize_dataset_climdivs(file_path,
+def initialize_dataset_climdivs(file_path,            # pragma: no cover
                                 template_dataset,
                                 divisions_dim_name,
                                 data_variable_name=None,
@@ -345,7 +345,7 @@ def initialize_dataset_climdivs(file_path,
     return netcdf
     
 #-----------------------------------------------------------------------------------------------------------------------
-def create_variable_grid(netcdf,
+def create_variable_grid(netcdf,                     # pragma: no cover
                          data_variable_name,
                          data_variable_attributes,
                          data_fill_value=np.NaN):
@@ -589,7 +589,7 @@ def add_variable_climdivs_divs(file_path,
                 variable[division_index] = divisions_to_values[division_id]
             
 #-----------------------------------------------------------------------------------------------------------------------
-def initialize_variable_climdivs(netcdf,
+def initialize_variable_climdivs(netcdf,                   # pragma: no cover
                                  data_variable_name,
                                  data_variable_attributes,
                                  data_fill_value=np.NaN):
