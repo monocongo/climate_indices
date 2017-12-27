@@ -559,7 +559,6 @@ def process_divisions(divisions_file,
         
 #-----------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
-
     """
     This module is used to perform climate indices processing on nClimGrid datasets in NetCDF.
     """
