@@ -17,4 +17,5 @@ omit =
     */example_inputs/*
     */ingest/*
     */process/*
+    */task/*
     */tests/*

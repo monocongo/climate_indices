@@ -184,7 +184,7 @@ if __name__ == '__main__':
                 # compute and plot difference values on a (calendar) monthly basis
                 for month in range(0, 12):
                     
-                    # get the variable var_names for the month, mask the NaNs, data assumed to be in (time, lat, lon) order
+                    # get the variable values for the month, mask the NaNs, data assumed to be in (time, lat, lon) order
                     expected_values = np.ma.masked_invalid(dataset.variables[var_names[0]][month::12, :, :], copy=False)
                     actual_values = np.ma.masked_invalid(dataset.variables[var_names[1]][month::12, :, :], copy=False)
              
