@@ -1,6 +1,5 @@
 from datetime import date, datetime
 from dateutil import relativedelta
-# from glob import glob
 from subprocess import CalledProcessError, check_output
 from zipfile import ZipFile
 import os
@@ -8,7 +7,7 @@ import logging
 import wget
 import re
 import sys
-import glob
+# import glob
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global logger

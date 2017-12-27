@@ -1,11 +1,12 @@
-import fixtures
 import logging
 import numpy as np
+import palmer
+from tests import fixtures
 import unittest
 
-#-----------------------------------------------------------------------------------------------------------------------
-# use a context to add the required modules into the path for the test
-from context import palmer
+# #-----------------------------------------------------------------------------------------------------------------------
+# # use a context to add the required modules into the path for the test
+# from context import palmer
 
 #-----------------------------------------------------------------------------------------------------------------------
 # disable logging messages
