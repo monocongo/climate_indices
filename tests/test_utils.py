@@ -1,10 +1,11 @@
 import logging
 import numpy as np
 import unittest
+import utils
 
-#-----------------------------------------------------------------------------------------------------------------------
-# use a context to add the required modules into the path for the test
-from context import utils
+# #-----------------------------------------------------------------------------------------------------------------------
+# # use a context to add the required modules into the path for the test
+# from context import utils
 
 # disable logging messages
 logging.disable(logging.CRITICAL)

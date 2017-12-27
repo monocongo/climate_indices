@@ -1,11 +1,12 @@
-import fixtures
+import compute
 import logging
 import numpy as np
+from tests import fixtures
 import unittest
 
-#-----------------------------------------------------------------------------------------------------------------------
-# use a context to add the required modules into the path for the test
-from context import compute
+# #-----------------------------------------------------------------------------------------------------------------------
+# # use a context to add the required modules into the path for the test
+# from context import compute
 
 #-----------------------------------------------------------------------------------------------------------------------
 # disable logging messages
