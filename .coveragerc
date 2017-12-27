@@ -7,15 +7,14 @@ exclude_lines =
     pragma: no cover
     raise AssertionError
     raise NotImplementedError
-    if __name__ == .__main__.:
     if 0:
     if __name__ == .__main__.:
     
 ignore_errors = True
 
 omit =
-    compare/*
-    example_inputs/*
-    ingest/*
-    process/*
-    tests/*
+    */compare/*
+    */example_inputs/*
+    */ingest/*
+    */process/*
+    */tests/*
