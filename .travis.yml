@@ -1,8 +1,7 @@
 language: python
 
 python:
-    - 3.5
-    - 3.6
+  - 3.6
 
 install: 
   # download latest miniconda
@@ -20,10 +19,14 @@ install:
 
 script: 
   # run all tests with nose
-  - nosetests --with-coverage
-  #  - cd tests
-  #  - python -m unittest test_*.py
+  - export NUMBA_DISABLE_JIT=1  # disable numba JIT
+  - python -m unittest tests/test_*.py
+#  - nosetests --with-coverage
 
 after_success:
   # get a code coverage report for coveralls.io integration
   - coveralls
+
+# don't email after every build success/failure (default behavior)
+notifications:
+  email: false

@@ -74,7 +74,6 @@ def pdsi_from_climatology(precip_timeseries,
                                                              prodat,
                                                              tldat,
                                                              pldat,
-#                                                              spdat,
                                                              data_begin_year,
                                                              calibration_begin_year,
                                                              calibration_end_year)
@@ -1231,7 +1230,7 @@ def _assign(df,
                      
             # get the 1-D index equivalent to the j/m index for the final arrays 
             # (PDSI, PHDI, etc.) that we'll assign to in the backtracking process
-            ix = df.index_i[n]  # EXPERIMENTAL DEBUG --REMOVE?
+            ix = df.index_i[n]  
              
             # assign the backtracking array's value for the current backtrack month as that month's final PDSI value
             df.PDSI[ix] = df.SX[n] 

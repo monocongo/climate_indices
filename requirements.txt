@@ -1,0 +1,8 @@
+numpy
+matplotlib
+pandas
+scipy
+numba
+nco
+netCDF4
+pycurl
