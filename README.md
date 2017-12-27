@@ -13,7 +13,8 @@
 [![Dependency Status](https://gemnasium.com/badges/github.com/monocongo/indices_python.svg)](https://gemnasium.com/github.com/monocongo/indices_python)
 
 
-# Community reference implementation of climate indices in Python 
+# Community reference climate indices
+##Python implementations
 
 This project contains Python implementations of various climate indices, which provide a geographical and temporal picture of the severity of precipitation and temperature anomalies. We attempt to provide best-of-breed implementations of various climate indices commonly used for climate and drought monitoring, to provide a codebase that is available for development by the climate science community, and to facilitate the use of climate indices datasets computed in a standardized, validated, and transparent manner.
 
@@ -80,7 +81,7 @@ If you run the above from the main branch and get an error then please send a re
 
 There are example climate indices processing scripts provided which compute the full suite of indices for various input dataset types. These process input files in the NetCDF format, and produce output NetCDF files in a corresponding format.
 
-#### nClimGrid 
+### nClimGrid 
 The script `process_nclimgrid.py` is used to compute climate indices from [nClimGrid](https://www.ngdc.noaa.gov/docucomp/page?xml=NOAA/NESDIS/NCDC/Geoportal/iso/xml/C00332.xml&view=getDataView&header=none) input datasets. Usage of this script requires specifying the input file names and corresponding variable names for prcipitation, temperature, and soil constant datasets, as well as the month scales over which the scaled indices (SPI, SPEI, and PAP) are to be computed, plus the base output file name and the initial and final years of the calibration period. 
 
 This script has the following required command line arguments:
@@ -114,7 +115,7 @@ This script has the following required command line arguments:
       --output_file_base nclimgrid_lowres
       --destination_dir /indices`
 
-#### nClimDiv 
+### nClimDiv 
 The script `process_nclimdiv.py` is used to compute climate indices from [nClimDiv](https://www.ncdc.noaa.gov/monitoring-references/maps/us-climate-divisions.php) input datasets. Usage of this script requires specifying the input file name and corresponding variable names for precipitation, temperature, and soil constant datasets, as well as the month scales over which the scaled indices (SPI, SPEI, and PAP) are to be computed, plus the base output file name and the initial and final years of the calibration period. 
 
 This script has the following required command line arguments:
