@@ -19,6 +19,23 @@ class UtilsTestCase(unittest.TestCase):
     """
     
     #----------------------------------------------------------------------------------------
+    def test_rmse(self):
+        """
+        Test for the utils.rmse() function
+        """
+        
+        vals1 = np.array([32, 212, 100, 98.6, 150, -15])
+        vals2 = np.array([35, 216, 90, 88.6, 153, -12])
+        computed_rmse = utils.rmse(vals1, vals2)
+        expected_rmse = 6.364
+                
+        # verify that the function performed as expected
+        self.assertAlmostEqual(computed_rmse, 
+                               expected_rmse, 
+                               msg='Incorrect root mean square error (RMSE)',
+                               delta=0.001)
+        
+    #----------------------------------------------------------------------------------------
     def test_f2c(self):
         """
         Test for the utils.f2c() function

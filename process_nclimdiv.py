@@ -1,16 +1,14 @@
 import argparse
 from datetime import datetime
-import indices
 from ingest import ingest_nclimdiv
 import logging
 import multiprocessing
 import netCDF4
 import netcdf_utils
-import numba
 import numpy as np
-import pdinew
-from process import processor, process_divisions
+from process import process_divisions
 import random
+import utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up matplotlib to use the Agg backend, in order to remove any dependencies on an X server
@@ -38,17 +36,6 @@ _VALID_MAX = 10.0
 #-----------------------------------------------------------------------------------------------------------------------
 # multiprocessing lock we'll use to synchronize I/O writes to NetCDF files, one per each output file
 lock = multiprocessing.Lock()
-
-#-----------------------------------------------------------------------------------------------------------------------
-def _rmse(predictions, targets):
-    """
-    Root mean square error
-    
-    :param predictions: np.ndarray
-    :param targets: np.ndarray
-    :return: np.ndarray
-    """
-    return np.sqrt(((predictions - targets) ** 2).mean())
 
 #-----------------------------------------------------------------------------------------------------------------------
 def _plot_and_save_histogram(difference_values,
@@ -211,7 +198,7 @@ if __name__ == '__main__':
                     diffs[division_index] = differences
 
                     # get the RMSE for the two sets of values
-                    error = _rmse(data_NIDIS, data_CMB)
+                    error = utils.rmse(data_NIDIS, data_CMB)
                     rmse_sum += error
      
                     # plot the differences as a histogram and save to file
