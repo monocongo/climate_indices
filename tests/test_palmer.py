@@ -1,12 +1,17 @@
 import logging
 import numpy as np
-import palmer
-from tests import fixtures
 import unittest
 
-# #-----------------------------------------------------------------------------------------------------------------------
-# # use a context to add the required modules into the path for the test
-# from context import palmer
+#FIXME uncomment below once absolute imports issue is worked out, below should be correct based on docs
+# import palmer
+# from tests import fixtures
+
+#-----------------------------------------------------------------------------------------------------------------------
+# use a context to add the required modules into the path for the test
+# from tests.context import palmer
+# from tests import fixtures
+from tests.context import palmer
+from tests import fixtures
 
 #-----------------------------------------------------------------------------------------------------------------------
 # disable logging messages

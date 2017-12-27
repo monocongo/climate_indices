@@ -1,12 +1,18 @@
 import logging
 import numpy as np
-from tests import fixtures
-import thornthwaite
 import unittest
 
-# #-----------------------------------------------------------------------------------------------------------------------
-# # use a context to add the required modules into the path for the test
-# from context import thornthwaite
+#FIXME uncomment below once absolute imports issue is worked out, below should be correct based on docs
+# import thornthwaite
+# from tests import fixtures
+
+#-----------------------------------------------------------------------------------------------------------------------
+# use a context to add the required modules into the path for the test
+# from tests.context import thornthwaite
+# from tests import fixtures
+from tests.context import thornthwaite
+from tests import fixtures
+
 
 #-----------------------------------------------------------------------------------------------------------------------
 # disable logging messages

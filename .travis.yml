@@ -1,7 +1,6 @@
 language: python
 
 python:
-  - 3.5
   - 3.6
 
 install: 
@@ -21,7 +20,8 @@ install:
 script: 
   # run all tests with nose
   - export NUMBA_DISABLE_JIT=1  # disable numba JIT
-  - nosetests --with-coverage
+  - python -m unittest tests/test_*.py
+#  - nosetests --with-coverage
 
 after_success:
   # get a code coverage report for coveralls.io integration
