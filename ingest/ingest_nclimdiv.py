@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------------------------------------------------
-def _get_processing_date():
+def _get_processing_date():   # pragma: no cover
 
     buffer = io.BytesIO()
     c = pycurl.Curl()  
@@ -35,7 +35,7 @@ def _get_processing_date():
     return body.decode('iso-8859-1').rstrip()
 
 #-----------------------------------------------------------------------------------------------------------------------
-def _parse_climatology(date,
+def _parse_climatology(date,                 # pragma: no cover
                        p_or_t='T'):
 
     # get the relevant ASCII file for US climate divisions from NCEI
@@ -52,7 +52,7 @@ def _parse_climatology(date,
         
     # use a temporary file that we'll remove once no longer necessary
     tmp_file = "tmp_climatology_for_ingest_nclimdiv.txt"
-    _retrieve_file(file_url + 'dv-v1.0.0-{0}'.format(date), tmp_file)
+    utils.retrieve_file(file_url + 'dv-v1.0.0-{0}'.format(date), tmp_file)
     div_file = open(tmp_file, 'r')
     
     # use a list of column names to clue in pandas as to the structure of the ASCII rows
@@ -105,7 +105,7 @@ def _parse_climatology(date,
     return divs_to_arrays, divs_to_minmax_years, division_min_years.min(), division_max_years.max()
 
 #-----------------------------------------------------------------------------------------------------------------------
-def _parse_results(div_file,
+def _parse_results(div_file,                # pragma: no cover
                   intermediates=False):
 
     # read the file into a pandas DataFrame    
@@ -154,7 +154,7 @@ def _parse_results(div_file,
     return divs_to_arrays, divs_to_minmax_years, division_min_years.min(), division_max_years.max()
 
 #-----------------------------------------------------------------------------------------------------------------------
-def _parse_soil_constants(soil_file,
+def _parse_soil_constants(soil_file,         # pragma: no cover
                           awc_var_name):
     '''
     Parse the soil constant file, reading both AWC and latitude values for each division.
@@ -189,7 +189,7 @@ def _parse_soil_constants(soil_file,
     return divs_to_awc, divs_to_lats, divs_to_bs, divs_to_hs
 
 #-----------------------------------------------------------------------------------------------------------------------
-def _create_netcdf(output_netcdf,
+def _create_netcdf(output_netcdf,             # pragma: no cover
                    division_ids,
                    divisional_arrays,
                    divisional_minmax_years,
@@ -351,24 +351,7 @@ def _create_netcdf(output_netcdf,
             h_variable[division_index] = h_value
      
 #-----------------------------------------------------------------------------------------------------------------------
-def _retrieve_file(url,
-                   out_file):
-    """
-    Downloads and writes a file to a specified local file location.
-    
-    :param url: URL to the file we'll download, expected to be a binary file
-    :param out_file: local file location where the file will be written once fetched from the URL  
-    """
-    
-    with open(out_file, 'wb') as f:
-        c = pycurl.Curl()
-        c.setopt(c.URL, url)
-        c.setopt(c.WRITEDATA, f)
-        c.perform()
-        c.close()
-
-#-----------------------------------------------------------------------------------------------------------------------
-def ingest_netcdf_latest(output_netcdf,
+def ingest_netcdf_latest(output_netcdf,        # pragma: no cover
                          temp_var_name,
                          precip_var_name,
                          awc_var_name):
@@ -395,7 +378,7 @@ def ingest_netcdf_latest(output_netcdf,
         raise
 
 #-----------------------------------------------------------------------------------------------------------------------
-def _ingest_netcdf(output_netcdf,
+def _ingest_netcdf(output_netcdf,           # pragma: no cover
                    release_date,
                    temp_var_name,
                    precip_var_name,
@@ -413,7 +396,7 @@ def _ingest_netcdf(output_netcdf,
 
         # use a temporary file that we'll remove once no longer necessary
         tmp_file = "tmp_soil_for_ingest_nclimdiv.txt"
-        _retrieve_file(soil_url, tmp_file)
+        utils.retrieve_file(soil_url, tmp_file)
         soil_file = open(tmp_file, 'r')
 
         # parse the soil constant (available water capacity)
@@ -455,7 +438,7 @@ def _ingest_netcdf(output_netcdf,
         
             # use a temporary file that we'll remove once no longer necessary
             tmp_file = "tmp_climatology_for_ingest_nclimdiv.txt"
-            _retrieve_file(file_url, tmp_file)
+            utils.retrieve_file(file_url, tmp_file)
             div_file = open(tmp_file, 'r')
     
             var_name = 'cmb_' + variable

@@ -7,7 +7,6 @@ import logging
 import wget
 import re
 import sys
-# import glob
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global logger
@@ -17,13 +16,13 @@ logging.basicConfig(level=logging.DEBUG,
 logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------------------------------------------------
-def _add_time_dimension(netcdf_files):
+def _add_time_dimension(netcdf_files):         # pragma: no cover
 
     updated_files = []
 
     for netcdf_file in netcdf_files:
 
-        logger.debug('Adding time record dimension info to ' + netcdf_file)
+        logger.debug('Adding time record dimension info to %s', netcdf_file)
 
         # get the year and month from the file name
         year_index = -9   # TODO customize this to the expected index location, file name dependent
@@ -31,13 +30,13 @@ def _add_time_dimension(netcdf_files):
         year = int(netcdf_file[year_index:year_index+4])
         month = int(netcdf_file[month_index:month_index+2])
 
-        logger.debug('Year: ' + str(year) + '  Month: ' + str(month))
+        logger.debug('Year: %s  Month: %s', year, month)
 
         # get the time value, in our case days since 1800-01-01
         delta = date(year, month, 1) - date(1800, 1, 1)
         days_since_1800 = delta.days
 
-        logger.debug('Days since 1800: ' + str(days_since_1800))
+        logger.debug('Days since 1800: %s', days_since_1800)
 
         # execute a NCO script process on the NetCDF to add a time dimension
         time_dim_processor = 'C:\\nco\\ncap2.exe'  # Windows, laptop PC
@@ -72,7 +71,7 @@ def _add_time_dimension(netcdf_files):
                                    netcdf_file,
                                    tmp1_file])
             print(result)
-            logger.debug('Added the time dimension/variable, new temporary file: ' + tmp1_file)
+            logger.debug('Added the time dimension/variable, new temporary file: %s', tmp1_file)
  
             # call the NCO operator to set time as the record dimension
             result = check_output([record_dim_processor,
@@ -85,7 +84,7 @@ def _add_time_dimension(netcdf_files):
                                    tmp1_file,
                                    tmp2_file])
             print(result) 
-            logger.debug('Set time as the record dimension, new temporary file: ' + tmp2_file)
+            logger.debug('Set time as the record dimension, new temporary file: %s', tmp2_file)
  
             # call the NCO operator to set time as the record dimension for all data variables
             result = check_output([variable_dim_processor,
@@ -99,7 +98,7 @@ def _add_time_dimension(netcdf_files):
                                    netcdf_file])
  
             print(result) 
-            logger.debug('Set time as the record dimension for data variables, result file: ' + netcdf_file)
+            logger.debug('Set time as the record dimension for data variables, result file: %s', netcdf_file)
  
             # remove the temporary files
             os.remove(tmp1_file)
@@ -111,12 +110,12 @@ def _add_time_dimension(netcdf_files):
         except CalledProcessError as e:
  
             # show the error
-            logger.error('NCO error messages: ' + str(e))
+            logger.error('NCO error messages: %s', e)
 
     return updated_files
 
 #-----------------------------------------------------------------------------------------------------------------------
-def _convert_files(zip_files,
+def _convert_files(zip_files,       # pragma: no cover
                    variable_name):
 
     # validate the argument
@@ -158,7 +157,7 @@ def _convert_files(zip_files,
                 # extract the file from the zip file
                 zip_ref.extract(zipped_file)
 
-                logger.debug('\t\tExtracted ' + zipped_file)
+                logger.debug('\t\tExtracted %s', zipped_file)
 
                 # add to the list of BIL files
                 if extension == '.bil':
@@ -177,8 +176,8 @@ def _convert_files(zip_files,
 
             try:
 
-                logger.info('\n\tConverting ' + bil_file + ' to ' + netcdf_file + '\n\n')
-                logger.info('\tGDAL command: \n\n\t{0}'.format(' '.join([translator, options[0], options[1], bil_file, netcdf_file])))
+                logger.info('\n\tConverting %s to %s\n\n', bil_file, netcdf_file)
+                logger.info('\tGDAL command: \n\n\t%s', ' '.join([translator, options[0], options[1], bil_file, netcdf_file]))
 
                 # call the GDAL translator to convert from BIL to NetCDF (this assumes the corresponding *.hdr and *.prj files are in place)
                 result = check_output([translator, options[0], options[1], bil_file, netcdf_file])
@@ -193,7 +192,7 @@ def _convert_files(zip_files,
             except CalledProcessError as e:
 
                 # show the error
-                logger.error('GDAL translator error: ' + e.output)
+                logger.error('GDAL translator error: %s', e.output)
 
             # remove the BIL file and corresponding HDR and PRJ files
             os.remove(base_name + '.bil')
@@ -202,7 +201,7 @@ def _convert_files(zip_files,
     
     # go through all NetCDF files and only keep the monthly files
     monthly_netcdf_files = []
-    regex = re.compile('PRISM_.*_(\d{6})_bil.nc')   # monthly files will have six digits (YYYYMM), whereas the annual files will only contain four (YYYY)
+    regex = re.compile(r'PRISM_.*_(\d{6})_bil.nc')   # monthly files will have six digits (YYYYMM), whereas the annual files will only contain four (YYYY)
     for netcdf_file in netcdf_files:
     
         match = regex.match(netcdf_file)
@@ -223,7 +222,7 @@ def _convert_files(zip_files,
     return monthly_netcdf_files
 
 #-----------------------------------------------------------------------------------------------------------------------
-def _download_var(clim_var,
+def _download_var(clim_var,    # pragma: no cover
                  start_year):
 
     # we'll download from a directory containing the gridded data set for the specified climate variable
@@ -264,14 +263,14 @@ def _download_var(clim_var,
         # complete the URL now that we've specified the date portion appropriately
         url = base_url + year_month
 
-        logger.debug('Downloading for year: ' + str(start.year))
+        logger.debug('Downloading for year: %s', str(start.year))
 
         # download from the location, save as a *.zip file with the same name as the variable
         local_filename = clim_var + '_' + year_month + '.zip'
         filename = wget.download(url, out=local_filename)
         filenames.append(filename)
 
-        logger.debug('\t\tDownloaded ' + filename)
+        logger.debug('\t\tDownloaded %s', filename)
 
         # increment our month counter
         start = start + increment
@@ -279,9 +278,8 @@ def _download_var(clim_var,
     return filenames
 
 #-----------------------------------------------------------------------------------------------------------------------
-def _concatenate(netcdf_files,
-                 output_file,
-                 var_name):
+def _concatenate(netcdf_files,   # pragma: no cover
+                 output_file):
 
     # validate the argument
     if len(netcdf_files) <= 0:
@@ -291,7 +289,8 @@ def _concatenate(netcdf_files,
         raise ValueError(message)
 
     else:      
-        logger.debug('\n\nFiles to be concatenated:  ' + ' '.join([str(netcdf) for netcdf in netcdf_files]) + '\n\n')
+
+        logger.debug('\n\nFiles to be concatenated:  %s\n\n', ' '.join([str(netcdf) for netcdf in netcdf_files]))
 
     # set the path to the NCO executable we'll use to _concatenate the individual files into a single file
     nco_concatenator = 'C:\\nco\\ncrcat.exe'  # Windows
@@ -305,27 +304,26 @@ def _concatenate(netcdf_files,
 
     try:
         # console status message
-        logger.info('Concatenate command:  ' + ' '.join([str(p) for p in process]))
+        logger.info('Concatenate command:  %s', ' '.join([str(p) for p in process]))
          
         # call the NCO concatenator process
         result = check_output(process)
         print(result)
         
         # console status message
-        logger.info('\t\tConcatenated/result file:  ' + output_file)
+        logger.info('\t\tConcatenated/result file:  %s', output_file)
  
         return output_file
     
     except Exception as e:
  
         # show the error
-        logger.error('NCO error: ' + str(e))
+        logger.error('NCO error: %s', str(e))
         raise e
 
 #-----------------------------------------------------------------------------------------------------------------------
-def _build_single_netcdf(netcdf_files,
-                         output_file,
-                         var_name):
+def _build_single_netcdf(netcdf_files,    # pragma: no cover
+                         output_file):
     """
     Build a single NetCDF from a list of monthly NetCDF files.
     
@@ -334,18 +332,18 @@ def _build_single_netcdf(netcdf_files,
     :param var_name: variable for which we are creating the NetCDF
     :return: the output file path/name
     """
-    logger.debug('Building single NetCDF from files: ' + str(netcdf_files))
+    logger.debug('Building single NetCDF from files: %s', str(netcdf_files))
 
     netcdf_files = _add_time_dimension(netcdf_files)    
     
-    netcdf_file = _concatenate(netcdf_files, output_file, var_name)
+    netcdf_file = _concatenate(netcdf_files, output_file)
 
-    logger.debug('\t\tResult: ' + netcdf_file)
+    logger.debug('\t\tResult: %s', netcdf_file)
     
     return output_file
 
 #-----------------------------------------------------------------------------------------------------------------------
-def _rename_variable(netcdf_file, var_name):
+def _rename_variable(netcdf_file, var_name):   # pragma: no cover
     
     nco_util = 'C:\\nco\\ncrename.exe'  # Windows    
     #nco_util = '/usr/bin/ncrename'      # Linux    
@@ -354,7 +352,7 @@ def _rename_variable(netcdf_file, var_name):
      
     try:
  
-        logger.debug('\tVariable rename command:  ' + ' '.join([str(p) for p in process]))
+        logger.debug('\tVariable rename command:  %s', ' '.join([str(p) for p in process]))
          
         # call the NCO command to rename the variable
         result = check_output(process)
@@ -366,10 +364,10 @@ def _rename_variable(netcdf_file, var_name):
     except WindowsError as e:
  
         # show the error
-        logger.error('NCO error: ' + str(e))
+        logger.error('NCO error: %s', str(e))
 
 #-----------------------------------------------------------------------------------------------------------------------
-def _fix_variable_attributes(netcdf_file, 
+def _fix_variable_attributes(netcdf_file,   # pragma: no cover
                              var_name):
     """
     Set attributes for precipitation and temperature variables.
@@ -418,7 +416,7 @@ def _fix_variable_attributes(netcdf_file,
     for process in processes:
         try:
      
-            logger.debug('\tAttribute update command:  ' + ' '.join([str(p) for p in process]))
+            logger.debug('\tAttribute update command:  %s', ' '.join([str(p) for p in process]))
              
             # call the NCO command to change the attribute value
             result = check_output(process)
@@ -430,17 +428,16 @@ def _fix_variable_attributes(netcdf_file,
         except WindowsError as e:
      
             # show the error
-            logger.error('NCO error: ' + str(e))
+            logger.error('NCO error: %s', e)
 
 #-----------------------------------------------------------------------------------------------------------------------
-if __name__ == '__main__':
+def ingest_to_netcdf(output_dir,
+                     clean=False):
 
-    # get the work directory argument, change into that directory
-    work_directory = sys.argv[1]
-    os.chdir(work_directory)
+    # change into the output directory where all downloaded, intermediate, and final files will be located
+    os.chdir(output_dir)
     
-#     for var_name in ['ppt', 'tmean']:
-    for var_name in ['ppt']:
+    for var_name in ['ppt', 'tmean']:
         
         # download the compressed/zip files
         zip_files = _download_var(var_name, 1895)
@@ -455,12 +452,33 @@ if __name__ == '__main__':
 #         netcdf_files = glob.glob('prism_ppt_*.nc')
 
         # combine all the individual NetCDF files into a single NetCDF
-        netcdf_file = _build_single_netcdf(netcdf_files, 'prism_' + var_name + '.nc', var_name)
+        netcdf_file = _build_single_netcdf(netcdf_files, 'prism_' + var_name + '.nc')
     
         # rename the variable
         _rename_variable(netcdf_file, var_name)
         
         # update the variable's attributes
         _fix_variable_attributes(netcdf_file, var_name)
-        
+
+        if var_name == 'ppt':
+            precip_file = netcdf_file
+        elif var_name == 'tmean':
+            temp_file = netcdf_file
+            
         logger.info('\nResult file: %s\n', netcdf_file)
+
+        # clean up the downloaded and intermediate files
+        if clean:
+        
+            for tmp_file in zip_files:
+                os.remove(tmp_file)
+            for tmp_file in netcdf_files:
+                os.remove(tmp_file)
+
+        return precip_file, temp_file
+    
+#-----------------------------------------------------------------------------------------------------------------------
+if __name__ == '__main__':
+
+    output_directory = sys.argv[1]
+    ingest_to_netcdf(output_directory)

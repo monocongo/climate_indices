@@ -16,45 +16,8 @@ logging.basicConfig(level=logging.INFO,
                     datefmt='%Y-%m-%d  %H:%M:%S')
 logger = logging.getLogger(__name__)
 
-# #-----------------------------------------------------------------------------------------------------------------------
-# def _compute_days(initial_year,
-#                   initial_month,
-#                   total_months,
-#                   start_year=1800):
-# 
-#     '''
-#     Computes the "number of days" equivalent of the regular, incremental monthly time steps from an initial year/month.
-#     
-#     :param initial_year: the initial year from which the increments should start
-#     :param initial_month: the initial month from which the increments should start
-#     :param total_months: the total number of monthly increments (time steps measured in days) to be computed
-#     :param start_year: the start year from which the monthly increments (time steps measured in days) to be computed
-#     :return: an array of time step increments, measured in days since midnight of January 1st of the start_year
-#     :rtype: ndarray of ints 
-#     '''
-# 
-#     # compute an offset from which the day values should begin (assuming that we're using "days since <start_date>" as time units) 
-#     start_date = datetime(start_year, 1, 1)
-# 
-#     # initialize the list of day values we'll build
-#     days = np.empty(total_months, dtype=int)
-#     
-#     # loop over all time steps (months)
-#     for i in range(total_months):
-#         
-#         years = int((i + initial_month - 1) / 12)   # the number of years since the initial year 
-#         months = int((i + initial_month - 1) % 12)  # the number of months since January
-#         
-#         # cook up a date for the current time step (month)
-#         current_date = datetime(initial_year + years, 1 + months, 1)
-#         
-#         # leverage the difference between dates operation available with datetime objects
-#         days[i] = (current_date - start_date).days
-#     
-#     return days
-#     
 #-----------------------------------------------------------------------------------------------------------------------
-def _get_coordinate_values(ascii_file):
+def _get_coordinate_values(ascii_file):     # pragma: no cover
 
     '''
     This function takes a nCLimGrid ASCII file for a single month and extracts a list of lat and lon coordinate values 
@@ -92,7 +55,7 @@ def _get_coordinate_values(ascii_file):
     return lat_values, lon_values
 
 #-----------------------------------------------------------------------------------------------------------------------
-def _get_variable_attributes(var_name):
+def _get_variable_attributes(var_name):     # pragma: no cover
 
     '''
     This function builds a dictionary of variable attributes based on the variable name. Four variable names 
@@ -135,7 +98,7 @@ def _get_variable_attributes(var_name):
     return attributes
         
 #-----------------------------------------------------------------------------------------------------------------------
-def _build_netcdf(ascii_files, 
+def _build_netcdf(ascii_files,         # pragma: no cover
                   netcdf_file, 
                   var_name):
 
@@ -274,7 +237,7 @@ def _build_netcdf(ascii_files,
     print('NetCDF file created successfully for variable \"{0}\":  {1}'.format(var_name, netcdf_file))
         
 #-----------------------------------------------------------------------------------------------------------------------
-def _ingest_nclimgrid_dataset(parameters):
+def _ingest_nclimgrid_dataset(parameters):            # pragma: no cover
 
     '''
     This function creates a NetCDF for the full period of record of an nClimGrid dataset.
@@ -301,14 +264,12 @@ def _ingest_nclimgrid_dataset(parameters):
         # get a list of all *.pnt files in the specified directory 
         ascii_files = sorted(glob.glob('/'.join([input_directory, '*.pnt'])))
 
-        # create the file names for the various output NetCDFs we'll create
-        netcdf_file = parameters['out_dir'] + '/nclimgrid_' + parameters['base_start'] + '_' + parameters['base_end'] + '_' + parameters['variable_name'] + '.nc'
-        output_netcdf_file = parameters['output_dir'] + '/nclimgrid_' + parameters['variable_name'] + '.nc'
-
         # create the base period NetCDF
-        _build_netcdf(ascii_files, netcdf_file, parameters['variable_name'])
+        _build_netcdf(ascii_files, parameters['output_file'], parameters['variable_name'])
             
-        print('Completed ingest for variable \"{0}\":  result NetCDF file: {1}'.format(parameters['variable_name'], output_netcdf_file))
+        logger.info('Completed ingest for variable \"%s\":  result NetCDF file: %s', 
+                    parameters['variable_name'],
+                    parameters['output_file'])
     
     except:
         # catch all exceptions
@@ -316,7 +277,7 @@ def _ingest_nclimgrid_dataset(parameters):
         raise
 
 #-----------------------------------------------------------------------------------------------------------------------
-def ingest_to_netcdf(source_dir,
+def ingest_to_netcdf(source_dir,     # pragma: no cover
                      output_dir):
     """
     Ingest ASCII files to NetCDF. Four files created: precipitation, minimum temperature, maximum temperature, 
@@ -326,32 +287,16 @@ def ingest_to_netcdf(source_dir,
     :param output_dir: directory where output files for each variable will be written
     """
      
-#     # REMOVE once we have a method in place where these arguments can be provided outside of this function
-#     source_dir = '/datasets/internal/nclimgrid'
-#     output_dir = '/datasets/processed/nclimgrid/output'
-
-    # get the current year and month, used to determine the start/end points for the base and incremental periods
-    current_month = date.today().month
-
-    '''
-    If we're running this code during January then we'll ingest the "base" period of record, i.e. from January 1895 
-    through December of the year which is two years before the current year, as well as the "incremental" period
-    which includes all months after the base period to the previous month. For this initial monthly run of the year
-    the base period files will be cached in the specified storage directory for use with subsequent monthly runs,
-    eliminating the need to reingest that portion of the dataset, since the base period data is guaranteed to be
-    updated only once a year, at the start of each calendar year.
-    '''
-    
     # create an iterable containing dictionaries of parameters, with one dictionary of parameters per variable, 
     # since there will be a separate ingest process per variable, with each process having its own set of parameters
     variables = ['prcp', 'tavg', 'tmin', 'tmax']
     params_list = []
 
     for variable_name in variables:
+        output_file = output_dir + '/nclimgrid_' + variable_name + '.nc'
         params = {'source_dir': source_dir,
-                  'current_month': current_month,
                   'variable_name': variable_name,
-                  'output_dir': output_dir}
+                  'output_file': output_file}
         params_list.append(params)
 
     # create a process pool, mapping the ingest process to the iterable of parameter lists
@@ -361,6 +306,13 @@ def ingest_to_netcdf(source_dir,
     # get the result exception, if any
     pool.close()
     pool.join()
+    
+    precip_file = output_dir + '/nclimgrid_prcp.nc'
+    tavg_file = output_dir + '/nclimgrid_tavg.nc'
+    tmin_file = output_dir + '/nclimgrid_tmin.nc'
+    tmax_file = output_dir + '/nclimgrid_tmax.nc'
+
+    return precip_file, tavg_file, tmin_file, tmax_file
 
 #-----------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
@@ -379,7 +331,7 @@ if __name__ == '__main__':
 
         # perform ingest to NetCDF using public API
         ingest_to_netcdf(args.source_dir,
-                               args.output_dir)
+                         args.output_dir)
     except:
         # catch all exceptions
         print('Failed to complete')

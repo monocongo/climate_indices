@@ -2,6 +2,7 @@ from datetime import datetime
 import logging
 import numba
 import numpy as np
+import pycurl
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global logger
@@ -9,6 +10,23 @@ logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s %(levelname)s %(message)s',
                     datefmt='%Y-%m-%d  %H:%M:%S')
 logger = logging.getLogger(__name__)
+
+#-----------------------------------------------------------------------------------------------------------------------
+def retrieve_file(url,         # pragma: no cover
+                  out_file):
+    """
+    Downloads and writes a file to a specified local file location.
+    
+    :param url: URL to the file we'll download, expected to be a binary file
+    :param out_file: local file location where the file will be written once fetched from the URL  
+    """
+    
+    with open(out_file, 'wb') as f:
+        c = pycurl.Curl()
+        c.setopt(c.URL, url)
+        c.setopt(c.WRITEDATA, f)
+        c.perform()
+        c.close()
 
 #-----------------------------------------------------------------------------------------------------------------------
 def rmse(predictions, targets):
