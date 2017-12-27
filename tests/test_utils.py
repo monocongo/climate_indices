@@ -14,10 +14,28 @@ logging.disable(logging.CRITICAL)
 
 #-----------------------------------------------------------------------------------------------------------------------
 class UtilsTestCase(unittest.TestCase):
-    '''
+    """
     Tests for `utils.py`.
-    '''
-
+    """
+    
+    #----------------------------------------------------------------------------------------
+    def test_f2c(self):
+        """
+        Test for the utils.f2c() function
+        """
+        
+        fahrenheit = np.array([32, 212, 100, 98.6, 150, -15])
+        computed_celsius = utils.f2c(fahrenheit)
+        expected_celsius = np.array([0, 100, 37.78, 37, 65.56, -26.11])
+                
+        # verify that the function performed as expected
+        np.testing.assert_allclose(computed_celsius, 
+                                   expected_celsius, 
+                                   atol=0.01, 
+                                   equal_nan=True,
+                                   err_msg='Incorrect Fahrenheit to Celsius conversion')
+        
+    #----------------------------------------------------------------------------------------
     def test_reshape_to_years_months(self):
         '''
         Test for the utils.reshape_to_years_months() function

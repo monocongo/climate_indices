@@ -62,11 +62,10 @@ class GridProcessor(object):
         self.var_name_soil = var_name_soil
         self.scale_months = scale_months
         self.calibration_start_year = calibration_start_year
-        self.calibration_end_year = calibration_end_year
-
+        self.calibration_end_year = calibration_end_year        
+        
         # TODO get the initial year from the precipitation NetCDF, for now use hard-coded value specific to nClimGrid
         self.data_start_year = 1895
-        self.initial_data_year = 1895
 
         # the number of months used in scaled indices (for example this will be set to 6 for 6-month SPI, SPEI, and PNP)
         # this will need to be reset before the object is used for computing the scaled indices
@@ -215,10 +214,12 @@ class GridProcessor(object):
         self.netcdf_pmdi = netcdf_file_pmdi
 
     #-----------------------------------------------------------------------------------------------------------------------
-    def _initialize_scale(self,
-                          months):
+    def _set_scaling_months(self,
+                            months):
         """
-        Reset the instance's month scale, as opposed to all the month scales that'll be computed (self.scale_months)
+        Reset the instance's month scale, the scale that'll be used to computed scaled indices (SPI, SPEI, PNP)
+        
+        :param months: the number of months, should correspond to one of the values of self.month_scales 
         """
         self.months = months
 
@@ -348,7 +349,7 @@ class GridProcessor(object):
             self._initialize_scaled_netcdfs(months)
 
             # set the instance's scale size (number of months over which SPI, etc. will be scaled)
-            self._initialize_scale(months)
+            self._set_scaling_months(months)
 
             # map the latitude indices as an arguments iterable to the compute function (reuse the same pool)
             result = pool.map_async(self._process_latitude_spi_spei_pnp, range(lat_size))
@@ -392,10 +393,6 @@ class GridProcessor(object):
 
         :param lat_index: index of the latitude in the NetCDF, valid range is [0..(total # of divisions - 1)]
         """
-
-        # DEBUG ONLY -- REMOVE
-        if lat_index < 10 or lat_index > 15:
-            return
 
         logger.info('Computing PET and Palmers for latitude index %s', lat_index)
 
@@ -461,10 +458,6 @@ class GridProcessor(object):
 
             # compute Palmer indices for each longitude from the latitude slice where we have valid inputs
             for lon_index in range(lon_size):
-
-                # DEBUG ONLY -- REMOVE
-                if lon_index < 1030 or lon_index > 1040:
-                    continue
 
                 logger.info('Computing Palmers for longitude index %s', lon_index)
 
