@@ -1,6 +1,8 @@
 from datetime import datetime
 import logging
+import numba
 import numpy as np
+import pycurl
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global logger
@@ -10,36 +12,117 @@ logging.basicConfig(level=logging.DEBUG,
 logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------------------------------------------------
-def compute_days(initial_year, 
-                 total_months):
+def retrieve_file(url,         # pragma: no cover
+                  out_file):
     """
-    This function computes a series (list) of day values to correspond with the first day of the month for each month 
-    of a time series starting from an initial year.
+    Downloads and writes a file to a specified local file location.
     
-    :param initial_year:
-    :param total_months: total number of months in the time series
-    :return: numpy array of integers corresponding to   
+    :param url: URL to the file we'll download, expected to be a binary file
+    :param out_file: local file location where the file will be written once fetched from the URL  
     """
     
-    # the date from which the returned array of day values are since (i.e. when using "days since <start_date>" as our units for time)    
-    start_date = datetime(initial_year, 1, 1)
+    with open(out_file, 'wb') as f:
+        c = pycurl.Curl()
+        c.setopt(c.URL, url)
+        c.setopt(c.WRITEDATA, f)
+        c.perform()
+        c.close()
+
+#-----------------------------------------------------------------------------------------------------------------------
+def rmse(predictions, targets):
+    """
+    Root mean square error
     
+    :param predictions: np.ndarray
+    :param targets: np.ndarray
+    :return: np.ndarray
+    """
+    return np.sqrt(((predictions - targets) ** 2).mean())
+
+#-----------------------------------------------------------------------------------------------------------------------
+@numba.vectorize([numba.float64(numba.float64),
+                  numba.float32(numba.float32)])
+def f2c(t):
+    '''
+    Converts a temperature value from Fahrenheit to Celsius
+    
+    :param t: temperature value, assumed to be in Fahrenheit
+    :return: the Fahrenheit equivalent of the input Celsius value
+    :rtype: scalar float (when used as a ufunc an array of floats is returned as a result of the call)
+    '''
+    return (t-32)*5.0/9
+
+#-----------------------------------------------------------------------------------------------------------------------
+def compute_days(initial_year,
+                 total_months,
+                 initial_month=1,
+                 units_start_year=1800):
+    '''
+    Computes the "number of days" equivalent for regular, incremental monthly time steps given an initial year/month.
+    Useful when using "days since <start_date>" as time units within a NetCDF dataset.
+    
+    :param initial_year: the initial year from which the day values should start, i.e. the first value in the output
+                        array will correspond to the number of days between January of this initial year since January 
+                        of the units start year
+    :param initial_month: the month within the initial year from which the day values should start, with 1: January, 2: February, etc.
+    :param total_months: the total number of monthly increments (time steps measured in days) to be computed
+    :param units_start_year: the start year from which the monthly increments are computed, with time steps measured
+                             in days since January of this starting year 
+    :return: an array of time step increments, measured in days since midnight of January 1st of the units start year
+    :rtype: ndarray of ints 
+    '''
+
+    # compute an offset from which the day values should begin 
+    start_date = datetime(units_start_year, 1, 1)
+
     # initialize the list of day values we'll build
     days = np.empty(total_months, dtype=int)
     
     # loop over all time steps (months)
     for i in range(total_months):
-        years = int(i / 12)  # the number of years since the initial year 
-        months = int(i % 12) # the number of months since January
         
-        # cook up a date for the current time step (month)
+        years = int((i + initial_month - 1) / 12)   # the number of years since the initial year 
+        months = int((i + initial_month - 1) % 12)  # the number of months since January
+        
+        # cook up a datetime object for the current time step (month)
         current_date = datetime(initial_year + years, 1 + months, 1)
         
-        # leverage the difference between dates operation available with datetime objects
+        # get the number of days since the initial date
         days[i] = (current_date - start_date).days
     
     return days
 
+# #-----------------------------------------------------------------------------------------------------------------------
+# def compute_days(initial_year, 
+#                  total_months):
+#     """
+#     This function computes a series (list) of day values to correspond with the first day of the month for each month 
+#     of a time series starting from an initial year.
+#     
+#     :param initial_year:
+#     :param total_months: total number of months in the time series
+#     :return: numpy array of integers corresponding to   
+#     """
+#     
+#     # the date from which the returned array of day values are since (i.e. when using "days since <start_date>" as our units for time)    
+#     start_date = datetime(initial_year, 1, 1)
+#     
+#     # initialize the list of day values we'll build
+#     days = np.empty(total_months, dtype=int)
+#     
+#     # loop over all time steps (months)
+#     for i in range(total_months):
+#         years = int(i / 12)  # the number of years since the initial year 
+#         months = int(i % 12) # the number of months since January
+#         
+#         # cook up a date for the current time step (month)
+#         current_date = datetime(initial_year + years, 1 + months, 1)
+#         
+#         # leverage the difference between dates operation available with datetime objects
+#         days[i] = (current_date - start_date).days
+#     
+#     return days
+#
 #-----------------------------------------------------------------------------------------------------------------------
 #@numba.jit
 def reshape_to_years_months(monthly_values):
