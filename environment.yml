@@ -7,6 +7,7 @@ dependencies:
 - coveralls
 - nco
 - netcdf4
+- nose
 - numba
 - numpy
 - pandas

@@ -2,7 +2,8 @@ numpy
 matplotlib
 pandas
 scipy
-numba
 nco
+nose
+numba
 netCDF4
 pycurl
