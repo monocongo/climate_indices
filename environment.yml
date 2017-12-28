@@ -1,13 +1,12 @@
 name: indices_python
 channels:
-- conda-forge
 - defaults
+- conda-forge
 dependencies:
 - coverage 
 - coveralls
 - nco
 - netcdf4
-- nose
 - numba
 - numpy
 - pandas
