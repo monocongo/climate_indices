@@ -4,10 +4,11 @@
 [![CodeFactor](https://www.codefactor.io/repository/github/monocongo/indices_python/badge/master)](https://www.codefactor.io/repository/github/monocongo/indices_python/overview/master)
 [![Coverage Status](https://coveralls.io/repos/github/monocongo/indices_python/badge.svg?branch=master)](https://coveralls.io/github/monocongo/indices_python?branch=master)
 [![Dependency Status](https://gemnasium.com/badges/github.com/monocongo/indices_python.svg)](https://gemnasium.com/github.com/monocongo/indices_python)
+<!--
 [![Codeship Status for monocongo/indices_python](https://app.codeship.com/projects/0d711e30-ca42-0135-871a-72c36ec6d502/status?branch=master)](https://app.codeship.com/projects/261762)
+-->
 
 # Community Reference Climate Indices
-## Python implementations
 
 This project contains Python implementations of various climate indices which provide a geographical and temporal picture of the severity of precipitation and temperature anomalies. We attempt to provide best-of-breed implementations of various climate indices commonly used for climate and drought monitoring, to provide a codebase that is available for development by the climate science community, and to facilitate the use of climate indices datasets computed in a standardized, reproducible, and transparent fashion.
 
@@ -30,15 +31,6 @@ These initial Python implementations of these climate indices algorithms is bein
   - to provide transparency into the operational code used for climate monitoring activities at NCEI, and reproducibility for any users of datasets computed from this package
  - to facilitate standardization and consensus on best-of-breed algorithms and accompanying implementations
  - to serve as an example of open source scientific development process, incorporating software engineering principles and programming best practices
-
-## Get involved
-Please use, make suggestions, and contribute to this code. Without diverse participation and community adoption this project will not reach its potential. 
-
-Are you aware of other indices that would be a good addition here? Can you find bottlenecks and help improve performance? Want to take the Pepsi Challenge comparing these implementations against others? Please feel free to fork the code and have at it, and/or contact us to see if we can help.
-
-* Read our [contributing guidelines](https://github.com/monocongo/indices_python/blob/master/CONTRIBUTING.md)
-* File an [issue](https://github.com/monocongo/indices_python/issues), or submit a pull request
-* Send us an [email](mailto:james.adams@noaa.gov)
 
 ## Environment set up
 #### Python
@@ -163,6 +155,15 @@ This script has the following required command line arguments:
       --calibration_start_year 1931 
       --calibration_end_year 1990 
       --output_file nclimdiv_20170404_indices.nc`
+
+## Get involved
+Please use, make suggestions, and contribute to this code. Without diverse participation and community adoption this project will not reach its potential. 
+
+Are you aware of other indices that would be a good addition here? Can you find bottlenecks and help improve performance? Want to take the Pepsi Challenge comparing these implementations against others? Please feel free to fork the code and have at it, and/or contact us to see if we can help.
+
+* Read our [contributing guidelines](https://github.com/monocongo/indices_python/blob/master/CONTRIBUTING.md)
+* File an [issue](https://github.com/monocongo/indices_python/issues), or submit a pull request
+* Send us an [email](mailto:james.adams@noaa.gov)
 
 ## Copyright and licensing
 Please read more on our [license](LICENSE) page.
