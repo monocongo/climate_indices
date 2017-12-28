@@ -159,7 +159,7 @@ This script has the following required command line arguments:
 ## Get involved
 Please use, make suggestions, and contribute to this code. Without diverse participation and community adoption this project will not reach its potential. 
 
-Are you aware of other indices that would be a good addition here? Can you find bottlenecks and help improve performance? Want to take the Pepsi Challenge comparing these implementations against others? Please feel free to fork the code and have at it, and/or contact us to see if we can help.
+Are you aware of other indices that would be a good addition here? Can you find bottlenecks and help improve performance? Want to take the Pepsi Challenge comparing these implementations against others? Please fork the code and have at it, and/or contact us to see if we can help.
 
 * Read our [contributing guidelines](https://github.com/monocongo/indices_python/blob/master/CONTRIBUTING.md)
 * File an [issue](https://github.com/monocongo/indices_python/issues), or submit a pull request
