@@ -2,4 +2,4 @@
 /.pydevproject
 __pycache__/
 *.py[cod]
-/indices_python.egg-info/
+*.egg-info/
