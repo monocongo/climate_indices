@@ -1,4 +1,5 @@
 ﻿
+
 <!---
 [![Coverity](https://scan.coverity.com/projects/14674/badge.svg)](https://scan.coverity.com/projects/monocongo-indices_python)
 [![Test Coverage](https://img.shields.io/codecov/c/gitlab/github.com/monocongo/indices_python/master.svg)](https://codecov.io/github.com/monocongo/indices_python)
@@ -7,31 +8,41 @@
 [![Codeship Status for monocongo/indices_python](https://app.codeship.com/projects/0d711e30-ca42-0135-871a-72c36ec6d502/status?branch=master)](https://app.codeship.com/projects/261762)
 --->
 
-[![Build Status](https://travis-ci.org/monocongo/indices_python.svg?develop)](https://travis-ci.org/monocongo)
-[![CodeFactor](https://www.codefactor.io/repository/github/monocongo/indices_python/badge/develop)](https://www.codefactor.io/repository/github/monocongo/indices_python/overview/develop)
-[![Coverage Status](https://coveralls.io/repos/github/monocongo/indices_python/badge.svg?branch=develop)](https://coveralls.io/github/monocongo/indices_python?branch=develop)
+[![Build Status](https://travis-ci.org/monocongo/indices_python.svg?master)](https://travis-ci.org/monocongo)
+[![CodeFactor](https://www.codefactor.io/repository/github/monocongo/indices_python/badge/master)](https://www.codefactor.io/repository/github/monocongo/indices_python/overview/master)
+[![Coverage Status](https://coveralls.io/repos/github/monocongo/indices_python/badge.svg?branch=master)](https://coveralls.io/github/monocongo/indices_python?branch=master)
 [![Dependency Status](https://gemnasium.com/badges/github.com/monocongo/indices_python.svg)](https://gemnasium.com/github.com/monocongo/indices_python)
 
 
-# Community reference implementation of climate indices in Python 
+# Community Reference Climate Indices
+## Python implementations
 
-This project contains Python implementations of various climate indices, which provide a geographical and temporal picture of the severity of precipitation and temperature anomalies. We attempt to provide best-of-breed implementations of various climate indices commonly used for climate and drought monitoring, to provide a codebase that is available for development by the climate science community, and to facilitate the use of climate indices datasets computed in a standardized, validated, and transparent manner.
+This project contains Python implementations of various climate indices which provide a geographical and temporal picture of the severity of precipitation and temperature anomalies. We attempt to provide best-of-breed implementations of various climate indices commonly used for climate and drought monitoring, to provide a codebase that is available for development by the climate science community, and to facilitate the use of climate indices datasets computed in a standardized, validated, and transparent manner.
 
 
 Currently provided climate indices:
 
-* [SPI, Standard Precipitation Index](https://climatedataguide.ucar.edu/climate-data/standardized-precipitation-index-spi)
-* [SPEI, Standard Precipitation Evapotranspiration Index](https://www.researchgate.net/publication/252361460_The_Standardized_Precipitation-Evapotranspiration_Index_SPEI_a_multiscalar_drought_index)
-* [PET, Potential Evapotranspiration](https://www.ncdc.noaa.gov/monitoring-references/dyk/potential-evapotranspiration): computed using [Thornthwaite's equation](https://en.wikipedia.org/wiki/Potential_evaporation) 
-* [PNP, Percentage of Normal Precipitation](http://www.droughtmanagement.info/percent-of-normal-precipitation/)
-* [PDSI, Palmer Drought Severity Index](http://www.droughtmanagement.info/palmer-drought-severity-index-pdsi/): 
-* [scPDSI, Self-calibrated Palmer Drought Severity Index](http://www.droughtmanagement.info/self-calibrated-palmer-drought-severity-index-sc-pdsi/)
-* [PHDI, Palmer Hydrological Drought Index](http://www.droughtmanagement.info/palmer-hydrological-drought-index-phdi/)
-* [Z-Index, Palmer moisture anomaly index (Z-index)](http://www.droughtmanagement.info/palmer-z-index/)
-* [PMDI, Palmer Modified Drought Index]() 
+* [SPI](https://climatedataguide.ucar.edu/climate-data/standardized-precipitation-index-spi), Standard Precipitation Index
+* [SPEI](https://www.researchgate.net/publication/252361460_The_Standardized_Precipitation-Evapotranspiration_Index_SPEI_a_multiscalar_drought_index), Standard Precipitation Evapotranspiration Index
+* [PET](https://www.ncdc.noaa.gov/monitoring-references/dyk/potential-evapotranspiration), Potential Evapotranspiration: computed using [Thornthwaite's equation](https://en.wikipedia.org/wiki/Potential_evaporation) 
+* [PNP](http://www.droughtmanagement.info/percent-of-normal-precipitation/), Percentage of Normal Precipitation
+* [PDSI](http://www.droughtmanagement.info/palmer-drought-severity-index-pdsi/), Palmer Drought Severity Index
+* [scPDSI](http://www.droughtmanagement.info/self-calibrated-palmer-drought-severity-index-sc-pdsi/), Self-calibrated Palmer Drought Severity Index
+* [PHDI](http://www.droughtmanagement.info/palmer-hydrological-drought-index-phdi/), Palmer Hydrological Drought Index
+* [Z-Index](http://www.droughtmanagement.info/palmer-z-index/), Palmer moisture anomaly index (Z-index)
+* [PMDI](https://climate.ncsu.edu/climate/climdiv), [Palmer Modified Drought Index 
+
+This initial Python implementation of these climate indices algorithms is being developed with the following goals in mind:
+
+ - to provide an open source software package to compute a suite of climate indices commonly used for drought monitoring, with well documented code that is faithful to the literature
+  - to provide transparency into the operational code used for climate monitoring activities at NCEI
+ - to facilitate standardization and consensus on best-of-breed
+   algorithms and accompanying implementations
+ - to serve as an example of open source scientific development process, incorporating software engineering principles and
+   programming best practices
 
 ## Get involved
-We welcome you to use, make suggestions, and contribute to this code. 
+Please use, make suggestions, and contribute to this code. Without diverse participation and community adoption this project will not reach its potential.
 
 * Read our [contributing guidelines](https://github.com/monocongo/indices_python/blob/master/CONTRIBUTING.md)
 * File an [issue](https://github.com/monocongo/indices_python/issues), or submit a pull request
@@ -62,17 +73,36 @@ Once the *conda Python environment has been activated then subsequent Python com
 For users who'd prefer to not utilize the above approach using the provided `environment.yml` file, the required module dependencies can be installed instead into an Anaconda environment piecemeal via multiple `conda install` commands:
 
 `$ conda create --name <env_name> python=3` 
+
 `$ source activate <env_name>` 
+
 `$ conda install numba` 
+
 `$ conda install scipy` 
+
 `$ conda install netCDF4` 
-`$ conda install hdf4=4.2.12` (this ***may*** be required in order to get around a broken HDF dependency [issue](https://github.com/ContinuumIO/anaconda-issues/issues/1360) with the netCDF4 module)
+
+`$ conda install pycurl`
+
+## Getting started
+
+1. clone this repository from the 'develop' branch
+    
+    `$ git clone https://github.com/monocongo/indices_python.git`
+
+2. move into the source directory
+    
+    `$ cd indices_python`
+
+4. (optionally) install the package into the local sitepkgs
+
+    `$ python setup.py install`
 
 ## Testing
 
 Initially all tests should be run for validation:
 
-`$ cd tests; python -m unittest test_*.py`
+`$ python -m tests/unittest test_*.py`
 
 If you run the above from the main branch and get an error then please send a report and/or add an issue, as all test should pass on the main branch.
 
@@ -80,7 +110,7 @@ If you run the above from the main branch and get an error then please send a re
 
 There are example climate indices processing scripts provided which compute the full suite of indices for various input dataset types. These process input files in the NetCDF format, and produce output NetCDF files in a corresponding format.
 
-#### nClimGrid 
+### nClimGrid 
 The script `process_nclimgrid.py` is used to compute climate indices from [nClimGrid](https://www.ngdc.noaa.gov/docucomp/page?xml=NOAA/NESDIS/NCDC/Geoportal/iso/xml/C00332.xml&view=getDataView&header=none) input datasets. Usage of this script requires specifying the input file names and corresponding variable names for prcipitation, temperature, and soil constant datasets, as well as the month scales over which the scaled indices (SPI, SPEI, and PAP) are to be computed, plus the base output file name and the initial and final years of the calibration period. 
 
 This script has the following required command line arguments:
@@ -114,7 +144,7 @@ This script has the following required command line arguments:
       --output_file_base nclimgrid_lowres
       --destination_dir /indices`
 
-#### nClimDiv 
+### nClimDiv 
 The script `process_nclimdiv.py` is used to compute climate indices from [nClimDiv](https://www.ncdc.noaa.gov/monitoring-references/maps/us-climate-divisions.php) input datasets. Usage of this script requires specifying the input file name and corresponding variable names for precipitation, temperature, and soil constant datasets, as well as the month scales over which the scaled indices (SPI, SPEI, and PAP) are to be computed, plus the base output file name and the initial and final years of the calibration period. 
 
 This script has the following required command line arguments:
@@ -144,5 +174,6 @@ This script has the following required command line arguments:
 
 ## Copyright and licensing
 Please read more on our [license](LICENSE) page.
+
 
 
