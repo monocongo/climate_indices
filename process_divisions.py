@@ -9,6 +9,9 @@ import numpy as np
 import pdinew
 import utils
 
+# # possible solution for proper absolute imports?
+# from indices_python import indices, netcdf_utils, pdinew, utils
+
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global logger which will write to the console as standard error
 logging.basicConfig(level=logging.INFO,
@@ -93,7 +96,7 @@ class DivisionsProcessor(object):
         fill_value=np.float32(np.NaN)
      
         # open the NetCDF datasets within a context manager
-        with netCDF4.Dataset(self.divisions_file, 'a') as new_dataset:
+        with netCDF4.Dataset(self.divisions_file, 'a') as dataset:
       
             data_dtype = netcdf_utils.find_netcdf_datatype(fill_value)
          
@@ -101,16 +104,18 @@ class DivisionsProcessor(object):
             unscaled_indices = ['pet', 'pdsi', 'phdi', 'pmdi', 'zindex', 'scpdsi']
             for variable_name in unscaled_indices:
                 
-                # get the attributes based on the name
-                variable_attributes = _variable_attributes(variable_name)
+                if variable_name not in dataset.variables.keys():
 
-                # create variables with scale month
-                data_variable = new_dataset.createVariable(variable_name,
-                                                           data_dtype,
-                                                           dimensions,
-                                                           fill_value=fill_value, 
-                                                           zlib=False)
-                data_variable.setncatts(variable_attributes)
+                    # get the attributes based on the name
+                    variable_attributes = _variable_attributes(variable_name)
+    
+                    # create variables with scale month
+                    data_variable = dataset.createVariable(variable_name,
+                                                               data_dtype,
+                                                               dimensions,
+                                                               fill_value=fill_value, 
+                                                               zlib=False)
+                    data_variable.setncatts(variable_attributes)
      
             # create a variable for each scaled index
             scaled_indices = ['pnp', 'spi_gamma', 'spi_pearson', 'spei_gamma', 'spei_pearson']
@@ -119,16 +124,18 @@ class DivisionsProcessor(object):
                      
                     variable_name = scaled_index + '_{}'.format(str(months).zfill(2))
                      
-                    # get the attributes based on the name and number of scale months
-                    variable_attributes = _variable_attributes(scaled_index, months)
-                    
-                    # create month scaled variable
-                    data_variable = new_dataset.createVariable(variable_name,
-                                                               data_dtype,
-                                                               dimensions,
-                                                               fill_value=fill_value, 
-                                                               zlib=False)
-                    data_variable.setncatts(variable_attributes)
+                    if variable_name not in dataset.variables.keys():
+
+                        # get the attributes based on the name and number of scale months
+                        variable_attributes = _variable_attributes(scaled_index, months)
+                        
+                        # create month scaled variable
+                        data_variable = dataset.createVariable(variable_name,
+                                                                   data_dtype,
+                                                                   dimensions,
+                                                                   fill_value=fill_value, 
+                                                                   zlib=False)
+                        data_variable.setncatts(variable_attributes)
      
     #-----------------------------------------------------------------------------------------------------------------------
     def _compute_and_write_division(self, div_index):
@@ -583,9 +590,6 @@ if __name__ == '__main__':
         parser.add_argument("--awc_var_name", 
                             help="Available water capacity variable name used in the input NetCDF file", 
                             required=False)
-        parser.add_argument("--output_file",
-                            help=" Output file path and name",
-                            required=True)
         parser.add_argument("--month_scales",
                             help="Month scales over which the PNP, SPI, and SPEI values are to be computed",
                             type=int,
@@ -611,13 +615,13 @@ if __name__ == '__main__':
 
         # perform the processing
         process_divisions(args.input_file,
-                         args.precip_var_name,
-                         args.temp_var_name,
-                         args.awc_var_name,
-                         args.month_scales,
-                         args.calibration_start_year,
-                         args.calibration_end_year,
-                         args.orig_pe)
+                          args.precip_var_name,
+                          args.temp_var_name,
+                          args.awc_var_name,
+                          args.month_scales,
+                          args.calibration_start_year,
+                          args.calibration_end_year,
+                          args.orig_pe)
         
         # report on the elapsed time
         end_datetime = datetime.now()
