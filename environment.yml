@@ -12,6 +12,6 @@ dependencies:
 - numpy
 - pandas
 - pycurl
-- pynco
+- pynco   # comment this line out if on Windows until PyNCO is supported for Windows
 - python=3
 - scipy
