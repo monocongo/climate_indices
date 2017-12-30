@@ -1,13 +1,15 @@
-from datetime import datetime
 import io
 import logging
 import math
+import os
+import pycurl
+from datetime import datetime
+
 import netCDF4
 import numpy as np
-import os
 import pandas as pd
-import pycurl
-import utils
+
+from indices_python import utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 _DIVISION_VAR_NAME = 'division'

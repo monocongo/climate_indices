@@ -1,18 +1,19 @@
 import argparse
-from datetime import datetime
-from ingest import ingest_nclimdiv
 import logging
 import multiprocessing
-import netCDF4
-import netcdf_utils
-import numpy as np
-from process import process_divisions
 import random
-import utils
+from datetime import datetime
 
-#-----------------------------------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------------------
 # set up matplotlib to use the Agg backend, in order to remove any dependencies on an X server
 import matplotlib
+import netCDF4
+import numpy as np
+from process import process_divisions
+
+from indices_python import utils, netcdf_utils
+from ingest import ingest_nclimdiv
+
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 

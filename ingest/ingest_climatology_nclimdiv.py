@@ -1,9 +1,11 @@
 import argparse
 import logging
-import netcdf_utils
 import math
-import pandas as pd
 import sys
+
+import pandas as pd
+
+from indices_python import netcdf_utils
 
 '''
 run with arguments like below:

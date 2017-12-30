@@ -1,10 +1,11 @@
 import argparse
 import logging
 import math
+
 import netCDF4
 import numpy as np
-import palmer
-import pdinew
+
+from indices_python import palmer, pdinew
 
 """
 Example usage:
@@ -319,17 +320,17 @@ def _main(input_file,
 
                 # compute the coefficients using the new function   palmer_ET, palmer_PR, palmer_R, palmer_RO, palmer_PRO, palmer_L, palmer_PL
                 palmer_alpha, palmer_beta, palmer_gamma, palmer_delta = palmer._cafec_coefficients(precip_timeseries,
-                                                                                                            pdinew_pedat,
-                                                                                                            pdinew_etdat,
-                                                                                                            pdinew_prdat,
-                                                                                                            pdinew_rdat,
-                                                                                                            pdinew_rodat,
-                                                                                                            pdinew_prodat,
-                                                                                                            pdinew_tldat,
-                                                                                                            pdinew_pldat,
-                                                                                                            data_begin_year,
-                                                                                                            calibration_begin_year,
-                                                                                                            calibration_end_year) 
+                                                                                                   pdinew_pedat,
+                                                                                                   pdinew_etdat,
+                                                                                                   pdinew_prdat,
+                                                                                                   pdinew_rdat,
+                                                                                                   pdinew_rodat,
+                                                                                                   pdinew_prodat,
+                                                                                                   pdinew_tldat,
+                                                                                                   pdinew_pldat,
+                                                                                                   data_begin_year,
+                                                                                                   calibration_begin_year,
+                                                                                                   calibration_end_year)
    
                 # look at the differences between the results of the old and new versions of the coefficients code                
                 alpha_diffs = pdinew_alpha - palmer_alpha
@@ -424,11 +425,11 @@ def _main(input_file,
                                            calibration_end_year)
  
                 # compute the palmer_Z-Index using the original (Fortran derived) version
-                pdinew_Z = pdinew._zindex_from_climatology(pdinew_tdat, 
-                                                           pdinew_pdat, 
-                                                           awc, 
-                                                           neg_tan_lat, 
-                                                           B, 
+                pdinew_Z = pdinew._zindex_from_climatology(pdinew_tdat,
+                                                           pdinew_pdat,
+                                                           awc,
+                                                           neg_tan_lat,
+                                                           B,
                                                            H,
                                                            data_begin_year,
                                                            calibration_begin_year,

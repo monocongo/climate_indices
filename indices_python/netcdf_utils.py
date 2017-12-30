@@ -1,10 +1,12 @@
-from datetime import datetime
 import logging
-import netCDF4
-import numpy as np
 import os
 import random
-import utils
+from datetime import datetime
+
+import netCDF4
+import numpy as np
+
+from indices_python import utils
 
 # set up a basic, global logger
 logging.basicConfig(level=logging.INFO,

@@ -1,10 +1,10 @@
 import argparse
-from datetime import datetime
 import ftplib
-import ingest.ingest_climatology_nclimdiv
-from io import StringIO
 import logging
-import process_divisions
+from datetime import datetime
+from io import StringIO
+
+from indices_python import process_divisions
 
 #-----------------------------------------------------------------------------------------------------------------------
 _TEMP_VAR_NAME = 'tavg'
@@ -83,14 +83,14 @@ if __name__ == '__main__':
         indices_netcdf = '{0}_{1}_nidis.nc'.format(args.base_file_path, processing_date)
 
         # compute indices for the nClimDiv dataset we just ingested
-        process_divisions.process_divisions(nclimdiv_netcdf, 
-                                          indices_netcdf, 
-                                          args.month_scales, 
-                                          _TEMP_VAR_NAME,
-                                          _PRECIP_VAR_NAME,
-                                          _AWC_VAR_NAME,
-                                          args.calibration_start_year, 
-                                          args.calibration_end_year)
+        process_divisions.process_divisions(nclimdiv_netcdf,
+                                            indices_netcdf,
+                                            args.month_scales,
+                                            _TEMP_VAR_NAME,
+                                            _PRECIP_VAR_NAME,
+                                            _AWC_VAR_NAME,
+                                            args.calibration_start_year,
+                                            args.calibration_end_year)
         
         print('\nNIDIS indices file: {0}'.format(indices_netcdf))
         

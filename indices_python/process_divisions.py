@@ -1,13 +1,13 @@
 import argparse
-from datetime import datetime
-import indices
 import logging
 import multiprocessing
+from datetime import datetime
+
 import netCDF4
-import netcdf_utils
 import numpy as np
-import pdinew
-import utils
+from indices_python import pdinew
+
+from indices_python import utils, indices, netcdf_utils
 
 # # possible solution for proper absolute imports?
 # from indices_python import indices, netcdf_utils, pdinew, utils
@@ -203,8 +203,8 @@ class DivisionsProcessor(object):
 
                     # compute PET across all longitudes of the latitude slice
                     # Thornthwaite PE
-                    pet_time_series = indices.pet(temperature, 
-                                                  latitude_degrees=latitude, 
+                    pet_time_series = indices.pet(temperature,
+                                                  latitude_degrees=latitude,
                                                   data_start_year=self.data_start_year)
                             
                 # the above returns PET in millimeters, note this for further consideration
@@ -307,21 +307,21 @@ class DivisionsProcessor(object):
                                                             calibration_year_final=self.calibration_end_year)
                          
                         # compute SPI/Gamma
-                        spi_gamma = indices.spi_gamma(precip_time_series, 
+                        spi_gamma = indices.spi_gamma(precip_time_series,
                                                       months)
                  
                         # compute SPI/Pearson
-                        spi_pearson = indices.spi_pearson(precip_time_series, 
+                        spi_pearson = indices.spi_pearson(precip_time_series,
                                                           months,
                                                           self.data_start_year,
-                                                          self.calibration_start_year, 
+                                                          self.calibration_start_year,
                                                           self.calibration_end_year)        
             
                         # compute PNP
-                        pnp = indices.percentage_of_normal(precip_time_series, 
+                        pnp = indices.percentage_of_normal(precip_time_series,
                                                            months,
                                                            self.data_start_year,
-                                                           self.calibration_start_year, 
+                                                           self.calibration_start_year,
                                                            self.calibration_end_year)        
         
                         # create variable names which should correspond to the appropriate scaled index output variables

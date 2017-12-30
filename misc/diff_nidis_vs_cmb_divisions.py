@@ -1,13 +1,15 @@
 import argparse
 import logging
-import netCDF4
-import netcdf_utils
-import numpy as np
 import os
 
-#-----------------------------------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------------------
 # set up matplotlib to use the Agg backend, in order to remove any dependencies on an X server
 import matplotlib
+import netCDF4
+import numpy as np
+
+from indices_python import netcdf_utils
+
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
@@ -191,9 +193,9 @@ if __name__ == '__main__':
     # open the NetCDF files
     with netCDF4.Dataset(netcdf_file_CMB) as dataset_CMB, \
          netCDF4.Dataset(netcdf_file_NIDIS) as dataset_NIDIS, \
-         netcdf_utils.initialize_dataset_climdivs(netcdf_file_OUT,
-                                                  dataset_CMB,
-                                                  divisions_dim_name) as dataset_OUT:
+            netcdf_utils.initialize_dataset_climdivs(netcdf_file_OUT,
+                                                     dataset_CMB,
+                                                     divisions_dim_name) as dataset_OUT:
 
         # variable names for variables to diff from the two datasets
         comparison_arrays = {'PDSI': ('cmb_pdsi', 'pdsi'),

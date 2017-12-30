@@ -1,12 +1,12 @@
 import collections
 import logging
 import math
-import pdinew
+import warnings
+
 import numba
 import numpy as np
-import thornthwaite
-import utils
-import warnings
+
+from indices_python import utils, thornthwaite, pdinew
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global logger
@@ -1849,16 +1849,16 @@ def pdsi_from_climatology(precip_time_series,      # pragma: no cover
     if B is not None and H is not None:
 
         # compute PET using method from original PDSI Fortran code pdinew.f
-        pet_time_series = pdinew.potential_evapotranspiration(monthly_temps_celsius, 
-                                                               latitude,
-                                                               data_start_year,
-                                                               B,
-                                                               H)
+        pet_time_series = pdinew.potential_evapotranspiration(monthly_temps_celsius,
+                                                              latitude,
+                                                              data_start_year,
+                                                              B,
+                                                              H)
 
     else:
         # compute PET using the Thornthwaite method
-        pet_time_series = thornthwaite.potential_evapotranspiration(monthly_temps_celsius, 
-                                                                    latitude, 
+        pet_time_series = thornthwaite.potential_evapotranspiration(monthly_temps_celsius,
+                                                                    latitude,
                                                                     data_start_year)
 
     return pdsi(precip_time_series,
@@ -1896,8 +1896,8 @@ def scpdsi_from_climatology(precip_time_series,       # pragma: no cover
     monthly_temps_celsius = (temp_time_series - 32) * 5.0 / 9.0
 
     # compute PET
-    pet_time_series = thornthwaite.potential_evapotranspiration(monthly_temps_celsius, 
-                                                                latitude, 
+    pet_time_series = thornthwaite.potential_evapotranspiration(monthly_temps_celsius,
+                                                                latitude,
                                                                 data_start_year)
     return scpdsi(precip_time_series,
                   pet_time_series.flatten(),

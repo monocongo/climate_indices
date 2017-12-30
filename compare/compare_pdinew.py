@@ -1,8 +1,10 @@
 import argparse
 import logging
+
 import netCDF4
 import numpy as np
-import pdinew
+
+from indices_python import pdinew
 
 """
 Example usage:

@@ -1,9 +1,11 @@
 import argparse
 import logging
-import indices
+
 import netCDF4
 import numpy as np
 import scipy
+
+from indices_python import indices
 
 """
 Example usage:

@@ -2,11 +2,13 @@
 import logging
 import math
 from math import exp, lgamma, pi, sqrt
+
 import numba
 import numpy as np
 import scipy.special
 import scipy.stats
-import utils
+
+from indices_python import utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global logger

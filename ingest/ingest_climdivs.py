@@ -1,10 +1,12 @@
 import argparse
 import logging
-import netcdf_utils
-import os
 import math
-import pandas as pd
+import os
 import sys
+
+import pandas as pd
+
+from indices_python import netcdf_utils
 
 # set up a basic, global logger which will write to the console as standard error
 logging.basicConfig(level=logging.INFO,

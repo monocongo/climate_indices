@@ -1,11 +1,13 @@
 import argparse
-from datetime import datetime
 import logging
 import multiprocessing
+from datetime import datetime
+
 import netCDF4
-import netcdf_utils
 import numpy as np
 import process.process_nclimdiv
+
+from indices_python import netcdf_utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global logger which will write to the console as standard error

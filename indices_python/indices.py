@@ -1,9 +1,11 @@
-import compute
 import logging
-from numba import float64, int64, jit
+
 import numpy as np
-import palmer
-import thornthwaite
+from numba import float64, int64, jit
+
+from indices_python import compute
+from indices_python import thornthwaite
+from indices_python import palmer
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 # set up a basic, global logger
@@ -76,7 +78,7 @@ def spi_pearson(precips,
 #                                                                      data_start_year,
 #                                                                      calibration_year_initial,
 #                                                                      calibration_year_final)
-    transformed_fitted_values = compute.transform_fitted_pearson(scaled_precips, 
+    transformed_fitted_values = compute.transform_fitted_pearson(scaled_precips,
                                                                  data_start_year,
                                                                  calibration_year_initial,
                                                                  calibration_year_final)
@@ -287,7 +289,7 @@ def spei_pearson(months_scale,
     scaled_values = compute.sum_to_scale(p_minus_pet, months_scale)
 
     # fit the scaled values to a gamma distribution and transform the values to corresponding normalized sigmas 
-    transformed_fitted_values = compute.transform_fitted_pearson(scaled_values, 
+    transformed_fitted_values = compute.transform_fitted_pearson(scaled_values,
                                                                  data_start_year,
                                                                  calibration_year_initial,
                                                                  calibration_year_final)

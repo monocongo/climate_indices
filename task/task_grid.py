@@ -1,18 +1,19 @@
 import argparse
-from datetime import datetime
-from ingest import ingest_nclimgrid, ingest_prism
 import logging
 import multiprocessing
-import netCDF4
-import netcdf_utils
-import numpy as np
-from process import process_grid
 import random
-import utils
+from datetime import datetime
 
-#-----------------------------------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------------------
 # set up matplotlib to use the Agg backend, in order to remove any dependencies on an X server
 import matplotlib
+import netCDF4
+import numpy as np
+from process import process_grid
+
+from indices_python import utils, netcdf_utils
+from ingest import ingest_nclimgrid, ingest_prism
+
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
@@ -131,7 +132,7 @@ if __name__ == '__main__':
             # and precipitation) plus soil constants (available water capacity)
             precip_file, temp_file, tmin_file, tmax_file = ingest_nclimgrid.ingest_to_netcdf(args.source_dir, args.output_dir)
             awc_file = args.output_dir + '/nclimgrid_soil.nc'
-            utils.retrieve_file('https://github.com/monocongo/indices_python/blob/develop/example_inputs/nclimgrid_soil.nc', 
+            utils.retrieve_file('https://github.com/monocongo/indices_python/blob/develop/example_inputs/nclimgrid_soil.nc',
                                 awc_file)
 
         elif args.grid == 'prism':
@@ -142,7 +143,7 @@ if __name__ == '__main__':
             precip_file = prism_file
             temp_file = prism_file
             awc_file = args.output_dir + '/prism_soil.nc'
-            utils.retrieve_file('https://github.com/monocongo/indices_python/blob/develop/example_inputs/prism_soil.nc', 
+            utils.retrieve_file('https://github.com/monocongo/indices_python/blob/develop/example_inputs/prism_soil.nc',
                                 awc_file)
         
         else:
