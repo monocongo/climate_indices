@@ -1,12 +1,12 @@
 import argparse
 from datetime import datetime
-import indices
 import logging
 import math
 import multiprocessing
 import netCDF4
-import netcdf_utils
 import numpy as np
+
+from indices_python import indices, netcdf_utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # static constants

@@ -1,13 +1,11 @@
 import argparse
 from datetime import datetime
-import indices
 import logging
 import multiprocessing
 import netCDF4
-import netcdf_utils
 import numpy as np
-import pdinew
-import utils
+
+from indices_python import indices, netcdf_utils, pdinew, utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global logger which will write to the console as standard error
@@ -26,16 +24,6 @@ _VALID_MAX = 10.0
 lock = multiprocessing.Lock()
 
 #-----------------------------------------------------------------------------------------------------------------------
-# static constants
-_VALID_MIN = -10.0
-_VALID_MAX = 10.0
-
-#-----------------------------------------------------------------------------------------------------------------------
-# multiprocessing lock we'll use to synchronize I/O writes to NetCDF files, one per each output file
-lock = multiprocessing.Lock()
-
-#-----------------------------------------------------------------------------------------------------------------------
-#-----------------------------------------------------------------------------------------------------------------------
 class DivisionsProcessor(object):
 
     def __init__(self, 
@@ -48,7 +36,7 @@ class DivisionsProcessor(object):
                  calibration_end_year,
                  use_orig_pe=False):
         
-        '''
+        """
         Constructor method.
         
         :param divisions_file: 
@@ -58,7 +46,7 @@ class DivisionsProcessor(object):
         :param month_scales:
         :param calibration_start_year:
         :param calibration_end_year:   
-        '''
+        """
     
         self.divisions_file = divisions_file
         self.var_name_precip = var_name_precip
@@ -68,9 +56,6 @@ class DivisionsProcessor(object):
         self.calibration_start_year = calibration_start_year
         self.calibration_end_year = calibration_end_year        
         self.use_orig_pe = use_orig_pe
-        
-        # TODO get the initial year from the precipitation NetCDF, for now use hard-coded value specific to nClimDiv  pylint: disable=fixme
-        self.data_start_year = 1895
         
         # TODO get the initial year from the precipitation NetCDF, for now use hard-coded value specific to nClimDiv  pylint: disable=fixme
         self.data_start_year = 1895

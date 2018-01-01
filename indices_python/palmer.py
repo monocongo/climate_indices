@@ -1,19 +1,18 @@
 import collections
 import logging
 import math
-import pdinew
 import numba
 import numpy as np
-import thornthwaite
-import utils
 import warnings
 
+from indices_python import pdinew, thornthwaite, utils
+
 #-----------------------------------------------------------------------------------------------------------------------
-# set up a basic, global logger
+# set up a basic, global _logger
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s',
                     datefmt='%Y-%m-%d  %H:%M:%S')
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------------------------------------------------
 _PDSI_MIN = -4.0
@@ -2075,7 +2074,7 @@ def scpdsi(precip_time_series,      # pragma: no cover
         # make sure we have matching precipitation and PET time series
         if precip_time_series.size != pet_time_series.size:
             message = 'Precipitation and PET time series do not match, unequal number or months'
-            logger.error(message)
+            _logger.error(message)
             raise ValueError(message)
                     
         # perform water balance accounting
@@ -2140,7 +2139,7 @@ def scpdsi(precip_time_series,      # pragma: no cover
 
     except:
         # catch all exceptions, log rudimentary error information
-        logger.error('Failed to complete', exc_info=True)
+        _logger.error('Failed to complete', exc_info=True)
         raise
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -2167,7 +2166,7 @@ def pdsi(precip_time_series,          # pragma: no cover
         # make sure we have matching precipitation and PET time series
         if precip_time_series.size != pet_time_series.size:
             message = 'Precipitation and PET time series do not match, unequal number or months'
-            logger.error(message)
+            _logger.error(message)
             raise ValueError(message)
                     
         # perform water balance accounting
@@ -2218,5 +2217,5 @@ def pdsi(precip_time_series,          # pragma: no cover
     
     except:
         # catch all exceptions, log rudimentary error information
-        logger.error('Failed to complete', exc_info=True)
+        _logger.error('Failed to complete', exc_info=True)
         raise

@@ -1,4 +1,5 @@
 from datetime import datetime
+from indices_python import utils
 import io
 import logging
 import math
@@ -7,17 +8,16 @@ import numpy as np
 import os
 import pandas as pd
 import pycurl
-import utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 _DIVISION_VAR_NAME = 'division'
 
 #-----------------------------------------------------------------------------------------------------------------------
-# set up a basic, global logger which will write to the console as standard error
+# set up a basic, global _logger which will write to the console as standard error
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s',
                     datefmt='%Y-%m-%d  %H:%M:%S')
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------------------------------------------------
 def _get_processing_date():   # pragma: no cover
@@ -50,6 +50,8 @@ def _parse_climatology(date,                 # pragma: no cover
     else:
         raise ValueError('Invalid p_or_t argument: {}'.format(p_or_t))
         
+    _logger.info("Parsing climatology (%s) from nClimDiv ASCII file: %s", p_or_t, file_url)
+    
     # use a temporary file that we'll remove once no longer necessary
     tmp_file = "tmp_climatology_for_ingest_nclimdiv.txt"
     utils.retrieve_file(file_url + 'dv-v1.0.0-{0}'.format(date), tmp_file)
@@ -106,8 +108,10 @@ def _parse_climatology(date,                 # pragma: no cover
 
 #-----------------------------------------------------------------------------------------------------------------------
 def _parse_results(div_file,                # pragma: no cover
-                  intermediates=False):
+                   intermediates=False):
 
+    _logger.info("Parsing results from nClimDiv ASCII file: %s", div_file)
+    
     # read the file into a pandas DataFrame    
     if intermediates:
         column_names = ['division_year', 'jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec', 'fill_value']
@@ -159,6 +163,9 @@ def _parse_soil_constants(soil_file,         # pragma: no cover
     '''
     Parse the soil constant file, reading both AWC and latitude values for each division.
     '''
+    
+    _logger.info("Parsing soil constants from AWC file: %s", soil_file)
+    
     # use a list of column names to clue in pandas as to the structure of the ASCII rows
     column_names = ['division_id', awc_var_name, 'B', 'H', 'neg_tan_lat']
     columns_to_use = column_names
@@ -364,6 +371,11 @@ def ingest_netcdf_latest(output_netcdf,        # pragma: no cover
     :param precip_var_name: precipitation variable name in the output NetCDF
     :param awc_var_name: available water capacity variable name in the output NetCDF
     """
+
+    # log some timing info, used later for elapsed time
+    start_datetime = datetime.now()
+    _logger.info("Start time:    %s", start_datetime)
+
     try:
 
         # ingest the latest nClimDiv datasets using the processing date specified at the FTP location        
@@ -374,8 +386,14 @@ def ingest_netcdf_latest(output_netcdf,        # pragma: no cover
                        awc_var_name)
     except:
         
-        logger.exception('Failed to complete', exc_info=True)
+        _logger.exception('Failed to complete', exc_info=True)
         raise
+
+    # report on the elapsed time
+    end_datetime = datetime.now()
+    _logger.info("End time:      %s", end_datetime)
+    elapsed = end_datetime - start_datetime
+    _logger.info("Elapsed time:  %s", elapsed)
 
 #-----------------------------------------------------------------------------------------------------------------------
 def _ingest_netcdf(output_netcdf,           # pragma: no cover
@@ -473,7 +491,7 @@ def _ingest_netcdf(output_netcdf,           # pragma: no cover
 
     except:
         
-        logger.exception('Failed to complete', exc_info=True)
+        _logger.exception('Failed to complete', exc_info=True)
         raise
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -481,13 +499,6 @@ if __name__ == '__main__':
 
     try:
 
-        # log some timing info, used later for elapsed time
-        start_datetime = datetime.now()
-        logger.info("Start time:    %s", start_datetime)
-
-        # get the date string we'll use for file identification
-        processing_date = _get_processing_date()
-    
 #         # parse the command line arguments
 #         parser = argparse.ArgumentParser()
 #         parser.add_argument("--base_file_path", 
@@ -497,22 +508,16 @@ if __name__ == '__main__':
 #         args = parser.parse_args()
         
         # the NetCDF file to write, result file of this script
-#         nclimdiv_netcdf = '{0}_{1}.nc'.format(args.base_file_path, processing_date)
+#         nclimdiv_netcdf = '{0}_{1}.nc'.format(args.base_file_path, _get_processing_date())
         # TESTING ONLY -- REMOVE
-        nclimdiv_netcdf = '{0}_{1}.nc'.format('C:/home/data/nclimdiv/nclimdiv', processing_date)
+        NCLIMDIV_FILE = '{0}_{1}.nc'.format('C:/home/data/nclimdiv/nclimdiv', _get_processing_date())
 
-        ingest_netcdf_latest(nclimdiv_netcdf,
+        ingest_netcdf_latest(NCLIMDIV_FILE,
                              'tavg',
                              'prcp',
                              'awc')
         
-        # report on the elapsed time
-        end_datetime = datetime.now()
-        logger.info("End time:      %s", end_datetime)
-        elapsed = end_datetime - start_datetime
-        logger.info("Elapsed time:  %s", elapsed)
-
     except:
-        logger.exception('Failed to complete', exc_info=True)
+        _logger.exception('Failed to complete', exc_info=True)
         raise
     

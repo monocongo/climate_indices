@@ -1,16 +1,18 @@
 import argparse
 import logging
-import netcdf_utils
 import os
 import math
 import pandas as pd
 import sys
 
-# set up a basic, global logger which will write to the console as standard error
+from indices_python import netcdf_utils
+
+#-----------------------------------------------------------------------------
+# set up a basic, global _logger which will write to the console as standard error
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s',
                     datefmt='%Y-%m-%d  %H:%M:%S')
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------
 def parse_variable(variable_file):
@@ -188,5 +190,5 @@ if __name__ == '__main__':
             
     except:
     
-        logger.exception('Failed to complete: {}'.format(sys.exc_info()))
+        _logger.exception('Failed to complete: {}'.format(sys.exc_info()))
         raise

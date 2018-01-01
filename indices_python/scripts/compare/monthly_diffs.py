@@ -3,8 +3,8 @@ import datetime
 import logging
 import netCDF4
 import numpy as np
-import palmer
-import utils
+
+from indices_python import palmer, utils
 
 """
 Code to perform indices processing on climate divisions datasets in NetCDF format, then computing differences 
