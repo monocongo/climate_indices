@@ -1,14 +1,14 @@
 import argparse
 from datetime import datetime
-from ingest import ingest_nclimdiv
 import logging
 import multiprocessing
 import netCDF4
-import netcdf_utils
 import numpy as np
-from process import process_divisions
 import random
-import utils
+
+from indices_python import netcdf_utils, utils
+from indices_python.scripts.ingest import ingest_nclimdiv
+from indices_python.scripts.process import process_divisions
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up matplotlib to use the Agg backend, in order to remove any dependencies on an X server
@@ -59,13 +59,55 @@ def _plot_and_save_histogram(difference_values,          # pragma: no cover
     plt.savefig(output_filepath)
 
 #-----------------------------------------------------------------------------------------------------------------------
+def _plot_and_save_histogram_divisional(difference_values,          # pragma: no cover
+                                        number_of_bins,
+                                        range_lower, 
+                                        range_upper,
+                                        index_name,
+                                        climdiv_id,
+                                        title,
+                                        output_filepath):
+
+    full_title = title + ': {0}, Division {1}'.format(index_name, climdiv_id)
+    
+    _plot_and_save_histogram(difference_values,          # pragma: no cover
+                             number_of_bins,
+                             range_lower, 
+                             range_upper,
+                             index_name,
+                             month,
+                             full_title,
+                             output_filepath)
+
+#-----------------------------------------------------------------------------------------------------------------------
+def _plot_and_save_histogram_monthly(difference_values,          # pragma: no cover
+                                     number_of_bins,
+                                     range_lower, 
+                                     range_upper,
+                                     index_name,
+                                     month,
+                                     title,
+                                     output_filepath):
+    
+    full_title = title + ': {0}, Month {1}'.format(index_name, month)
+    
+    _plot_and_save_histogram(difference_values,          # pragma: no cover
+                             number_of_bins,
+                             range_lower, 
+                             range_upper,
+                             index_name,
+                             month,
+                             full_title,
+                             output_filepath)
+    
+#-----------------------------------------------------------------------------------------------------------------------
 def _plot_and_save_lines(expected,             # pragma: no cover
                          actual,
                          difference_values,
-                         rmse,
-                         climdiv_id,
+                         title,
                          varname,
-                         output_filepath):
+                         output_filepath,
+                         x_label):
 
     # set figure size to (x, y)
     plt.figure(figsize=(30, 6))
@@ -79,8 +121,8 @@ def _plot_and_save_lines(expected,             # pragma: no cover
     actual_line, = plt.plot(x, actual, color='yellow', linestyle='--', label='NIDIS (actual)')
     diffs_line, = plt.plot(x, difference_values, color='red', label='Difference')
     plt.legend(handles=[expected_line, actual_line, diffs_line], loc='upper left')
-    plt.title('Comparison for division {0}: {1}     (RMSE: {2})'.format(climdiv_id, varname, rmse))
-    plt.xlabel("months")
+    plt.title(title)
+    plt.xlabel(x_label)
     plt.ylabel("value")
     
     plt.subplots_adjust(left=0.02, right=0.99, top=0.9, bottom=0.1)
@@ -93,9 +135,56 @@ def _plot_and_save_lines(expected,             # pragma: no cover
     plt.close()
 
 #-----------------------------------------------------------------------------------------------------------------------
+def _plot_and_save_lines_divisional(expected,             # pragma: no cover
+                                    actual,
+                                    difference_values,
+                                    rmse,
+                                    climdiv_id,
+                                    varname,
+                                    output_filepath):
+
+    title = 'Comparison for division {0}: {1}     (RMSE: {2})'.format(climdiv_id, varname, rmse)
+
+    _plot_and_save_lines(expected,             # pragma: no cover
+                         actual,
+                         difference_values,
+                         title,
+                         varname,
+                         output_filepath,
+                         "months")
+
+#-----------------------------------------------------------------------------------------------------------------------
+def _plot_and_save_lines_monthly(expected,             # pragma: no cover
+                                 actual,
+                                 difference_values,
+                                 rmse,
+                                 month,
+                                 varname,
+                                 output_filepath):
+
+    title = 'Comparison for month {0}: {1}     (RMSE: {2})'.format(month, varname, rmse)
+
+    _plot_and_save_lines(expected,             # pragma: no cover
+                         actual,
+                         difference_values,
+                         title,
+                         varname,
+                         output_filepath,
+                         "years")
+
+#-----------------------------------------------------------------------------------------------------------------------
 
 if __name__ == '__main__':
     """
+    example command line invocation:
+    
+    $ python -u --out_file C:/home/data/nclimdiv/nclimdiv_latest.nc \
+                --month_scales 1 2 3 6 9 12 24 \
+                --calibration_start_year 1931 \
+                --calibration_end_year 1990
+
+    $ python -u task_divisions.py --out_file C:/home/data/nclimdiv/nclimdiv_latest.nc --month_scales 1 2 3 6 9 12 24 --calibration_start_year 1931 --calibration_end_year 1990
+        
     This module is used to perform climate indices processing on nClimGrid datasets in NetCDF.
     """
 
@@ -179,6 +268,44 @@ if __name__ == '__main__':
                 divs_analyzed = 0
                 rmse_sum = 0.0
                 
+                # perform "per calendar month" analysis
+                for i in range(0, 12):
+                    
+                    month = datetime.date(1900, i + 1, 1).strftime('%B')
+                    
+                    print('\tMonth: {0}'.format(month))
+
+                    # get the variable var_names for the month, mask the NaNs (data assumed to be in (division, time) dimension order)
+                    data_CMB = np.ma.masked_invalid(dataset.variables[var_names[0]][:, i::12], copy=False)
+                    data_NIDIS = np.ma.masked_invalid(dataset.variables[var_names[1]][:, i::12], copy=False)
+ 
+                    # get the difference of the two, add into the differences array at the correct slot for this division
+                    differences = data_CMB - data_NIDIS
+
+                    # get the RMSE for the two sets of values
+                    error = utils.rmse(data_NIDIS, data_CMB)
+                    rmse_sum += error
+     
+                    # plot the differences as a histogram and save to file
+                    _plot_and_save_histogram_monthly(differences,
+                                                     80,   # number_of_bins
+                                                     -2,   # lower range
+                                                     2,    # upper range
+                                                     index,
+                                                     month,
+                                                     histogram_title,
+                                                     'C:/home/data/nclimdiv/diffs_histogram_{0}_month{1}.png'.format(var_names[1], i + 1))
+     
+                    # plot and save line graphs showing correlation of values and differences
+                    _plot_and_save_lines_monthly(data_NIDIS,
+                                                 data_CMB,
+                                                 differences,
+                                                 error,
+                                                 month,
+                                                 index,
+                                                 'C:/home/data/nclimdiv/diffs_line_{0}_month{1}.png'.format(var_names[1], division_id))
+ 
+                # perform "per division" analysis
                 for division_index, division_id in enumerate(dataset.variables['division'][:]):
                  
                     # only process divisions within CONUS, 101 - 4809
@@ -201,23 +328,23 @@ if __name__ == '__main__':
                     rmse_sum += error
      
                     # plot the differences as a histogram and save to file
-                    _plot_and_save_histogram(differences,
-                                             80,   # number_of_bins
-                                             -2,   # lower range
-                                             2,    # upper range
-                                             index,
-                                             division_id,
-                                             histogram_title,
-                                             'C:/home/data/nclimdiv/diffs_histogram_{0}_{1}.png'.format(var_names[1], division_id))
+                    _plot_and_save_histogram_divisional(differences,
+                                                        80,   # number_of_bins
+                                                        -2,   # lower range
+                                                        2,    # upper range
+                                                        index,
+                                                        division_id,
+                                                        histogram_title,
+                                                        'C:/home/data/nclimdiv/diffs_histogram_{0}_{1}.png'.format(var_names[1], division_id))
      
                     # plot and save line graphs showing correlation of values and differences
-                    _plot_and_save_lines(data_NIDIS,
-                                         data_CMB,
-                                         differences,
-                                         error,
-                                         division_id,
-                                         index,
-                                         'C:/home/data/nclimdiv/diffs_line_{0}_{1}.png'.format(var_names[1], division_id))
+                    _plot_and_save_lines_divisional(data_NIDIS,
+                                                    data_CMB,
+                                                    differences,
+                                                    error,
+                                                    division_id,
+                                                    index,
+                                                    'C:/home/data/nclimdiv/diffs_line_{0}_{1}.png'.format(var_names[1], division_id))
                     
                     # add to the differences dictionary with this division ID key 
                     diffs[division_id] = differences

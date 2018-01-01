@@ -13,11 +13,11 @@ _AWC_VAR_NAME = 'awc'
 _DIVISION_VAR_NAME = 'division'
 
 #-----------------------------------------------------------------------------------------------------------------------
-# set up a basic, global logger which will write to the console as standard error
+# set up a basic, global _logger which will write to the console as standard error
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s',
                     datefmt='%Y-%m-%d  %H:%M:%S')
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------------------------------------------------
 def _get_processing_date():
@@ -40,7 +40,7 @@ if __name__ == '__main__':
 
         # log some timing info, used later for elapsed time
         start_datetime = datetime.now()
-        logger.info("Start time:    {0}".format(start_datetime, '%x'))
+        _logger.info("Start time:    {0}".format(start_datetime, '%x'))
 
         # get the date string we'll use for file identification
         processing_date = _get_processing_date()
@@ -96,10 +96,10 @@ if __name__ == '__main__':
         
         # report on the elapsed time
         end_datetime = datetime.now()
-        logger.info("End time:      {}".format(end_datetime, '%x'))
+        _logger.info("End time:      {}".format(end_datetime, '%x'))
         elapsed = end_datetime - start_datetime
-        logger.info("Elapsed time:  {}".format(elapsed, '%x'))
+        _logger.info("Elapsed time:  {}".format(elapsed, '%x'))
 
     except:
-        logger.exception('Failed to complete', exc_info=True)
+        _logger.exception('Failed to complete', exc_info=True)
         raise

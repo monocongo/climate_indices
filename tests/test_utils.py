@@ -2,12 +2,7 @@ import logging
 import numpy as np
 import unittest
 
-#FIXME uncomment below once absolute imports issue is worked out, below should be correct based on docs
-# import utils
-
-#-----------------------------------------------------------------------------------------------------------------------
-# use a context to add the required modules into the path for the test
-from tests.context import utils
+from indices_python import utils
 
 # disable logging messages
 logging.disable(logging.CRITICAL)

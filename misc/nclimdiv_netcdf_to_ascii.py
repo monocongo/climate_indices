@@ -6,11 +6,11 @@ import numpy as np
 import numpy.ma as ma
 import pandas as pd
 
-# set up a basic, global logger which will write to the console as standard error
+# set up a basic, global _logger which will write to the console as standard error
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s',
                     datefmt='%Y-%m-%d  %H:%M:%S')
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------
 def create_ascii(input_netcdf_filepath, 
@@ -175,5 +175,5 @@ if __name__ == '__main__':
         
     except:
     
-        logger.exception('Failed to complete: %s', sys.exc_info())
+        _logger.exception('Failed to complete: %s', sys.exc_info())
         raise

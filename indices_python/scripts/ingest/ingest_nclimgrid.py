@@ -1,5 +1,5 @@
 import argparse
-from datetime import date, datetime
+from datetime import datetime
 import glob
 import logging
 import multiprocessing
@@ -7,7 +7,8 @@ import netCDF4
 import numpy as np
 import pandas as pd
 import uuid
-import utils
+
+from indices_python import utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global logger which will write to the console as standard error

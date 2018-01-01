@@ -2,7 +2,8 @@ import argparse
 import logging
 import netCDF4
 import numpy as np
-import palmer
+
+from indices_python import palmer
 
 """
 Example usage:

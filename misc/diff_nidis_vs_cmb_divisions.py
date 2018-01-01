@@ -12,11 +12,11 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 #-----------------------------------------------------------------------------------------------------------------------
-# set up a basic, global logger which will write to the console as standard error
+# set up a basic, global _logger which will write to the console as standard error
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s',
                     datefmt='%Y-%m-%d  %H:%M:%S')
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------------------------------------------------
 def _initialize_netcdf(new_netcdf,
@@ -112,7 +112,7 @@ def _plot_and_save_histograms(diffs,
     plt.xlabel("Value")
     plt.ylabel("Frequency")
     file_name = output_dir + os.sep + 'nclimdiv_diffs_{0}_{1}'.format(index, division_id) + '.png'
-    logger.info('Saving plot for index {0} as file {1}'.format(index, file_name))
+    _logger.info('Saving plot for index {0} as file {1}'.format(index, file_name))
     plt.savefig(file_name)
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -144,7 +144,7 @@ def _plot_and_save_lines(expected,
     plt.subplots_adjust(left=0.02, right=0.99, top=0.9, bottom=0.1)
     
     file_name = output_dir + os.sep + '{0}_div_{1}'.format(varname, division_id) + '.png'
-    logger.info('Saving plot for variable/division {0}/{1} as file {2}'.format(varname, division_id, file_name))
+    _logger.info('Saving plot for variable/division {0}/{1} as file {2}'.format(varname, division_id, file_name))
     plt.savefig(file_name, bbox_inches='tight')
                 
 #     plt.show()
@@ -204,7 +204,7 @@ if __name__ == '__main__':
                     
             # TODO validate that the two variables exist, have compatible dimensions/units, etc., all of which is assumed below
 
-            logger.info('Computing differences on variable {0}'.format(index))
+            _logger.info('Computing differences on variable {0}'.format(index))
             
             # allocate an array for the differences for this variable
             diffs = {}
@@ -216,7 +216,7 @@ if __name__ == '__main__':
  
             for division_index, division_id in enumerate(dataset_CMB.variables['division'][:]):
              
-                logger.info('Computing diffs for climate division ID: {0}'.format(division_id))
+                _logger.info('Computing diffs for climate division ID: {0}'.format(division_id))
                 
                 # get the variable var_names for the month, mask the NaNs (data assumed to be in (division, time) dimension order)
                 data_CMB = np.ma.masked_invalid(dataset_CMB.variables[var_names[0]][division_index, :], copy=False)
@@ -272,5 +272,5 @@ if __name__ == '__main__':
 #                 plt.xlabel("Value")
 #                 plt.ylabel("Frequency")
 #                 file_name = args.output_dir + os.sep + 'diffs_cmb_nidis_{0}_'.format(index) + str(i + 1).zfill(2) + '.png'
-#                 logger.info('Saving plot for month {0} as file {1}'.format(i + 1, file_name))
+#                 _logger.info('Saving plot for month {0} as file {1}'.format(i + 1, file_name))
 #                 plt.savefig(file_name)
