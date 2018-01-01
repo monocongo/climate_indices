@@ -107,7 +107,7 @@ This script has the following required command line arguments:
 | temp_var_name <name> | name of the temperature variable within the input nClimGrid temperature dataset NetCDF |
 | awc_file <file> | input NetCDF file containing a soil constant (available water capacity of the soil) dataset NetCDF, should correspond dimensionally with the input nClimGrid temperature and precipitation datasets |
 | awc_var_name <name> | name of the soil constant (available water capacity of the soil) variable within the input soil constant dataset NetCDF |
-| output_file_base <path> | base file name for all output files, each computed index will have an output file whose name will begin with this base plus the index's abbreviation plus a month scale (if applicable), plus ".nc" as the extension (i.e. for SPI/Gamma at 3-month scale the resulting output file will be named <output_file_base>_spi_gamma_03.nc) |
+| output_file_base <path> | base file name for all output files, each computed index will have an output file whose name will begin with this base plus the index's abbreviation plus a month scale (if applicable), plus ".nc" as the extension (i.e. for SPI/Gamma at 3-month scale the resulting output file will be named \<output_file_base\>_spi_gamma_03.nc) |
 | month_scales <space separated list of ints> | month scales over which the PAP, SPI, and SPEI values are to be computed, valid range is 1-72 months|
 | calibration_start_year <year> | initial year of calibration period |
 | calibration_end_year <year> | final year of calibration period |
