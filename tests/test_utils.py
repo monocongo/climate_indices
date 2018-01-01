@@ -14,6 +14,18 @@ class UtilsTestCase(unittest.TestCase):
     """
     
     #----------------------------------------------------------------------------------------
+    def test_is_data_valid(self):
+        """
+        Test for the utils.is_data_valid() function
+        """
+        
+        valid_array = np.full((12,), 1.0)
+        invalid_array = np.full((12,), np.NaN)
+        self.assertTrue(utils.is_data_valid(valid_array))
+        self.assertFalse(utils.is_data_valid(invalid_array))
+        self.assertFalse(utils.is_data_valid(['bad', 'data']))
+        
+    #----------------------------------------------------------------------------------------
     def test_rmse(self):
         """
         Test for the utils.rmse() function

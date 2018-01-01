@@ -34,7 +34,8 @@ class DivisionsProcessor(object):
                  month_scales,
                  calibration_start_year,
                  calibration_end_year,
-                 use_orig_pe=False):
+                 use_orig_pe=False,
+                 divisions=None):
         
         """
         Constructor method.
@@ -45,7 +46,8 @@ class DivisionsProcessor(object):
         :param var_name_soil: 
         :param month_scales:
         :param calibration_start_year:
-        :param calibration_end_year:   
+        :param calibration_end_year:
+        :param divisions:    
         """
     
         self.divisions_file = divisions_file
@@ -56,6 +58,7 @@ class DivisionsProcessor(object):
         self.calibration_start_year = calibration_start_year
         self.calibration_end_year = calibration_end_year        
         self.use_orig_pe = use_orig_pe
+        self.divisions = divisions
         
         # TODO get the initial year from the precipitation NetCDF, for now use hard-coded value specific to nClimDiv  pylint: disable=fixme
         self.data_start_year = 1895
@@ -86,6 +89,10 @@ class DivisionsProcessor(object):
             unscaled_indices = ['pet', 'pdsi', 'phdi', 'pmdi', 'zindex', 'scpdsi']
             for variable_name in unscaled_indices:
                 
+                # only add the variable if it's not already present
+                if variable_name in new_dataset.variables.keys():
+                    continue
+                
                 # get the attributes based on the name
                 variable_attributes = _variable_attributes(variable_name)
 
@@ -104,6 +111,10 @@ class DivisionsProcessor(object):
                      
                     variable_name = scaled_index + '_{}'.format(str(months).zfill(2))
                      
+                    # only add the variable if it's not already present
+                    if variable_name in new_dataset.variables.keys():
+                        continue
+                
                     # get the attributes based on the name and number of scale months
                     variable_attributes = _variable_attributes(scaled_index, months)
                     
@@ -122,14 +133,18 @@ class DivisionsProcessor(object):
         
         :param div_index: 
         """
+
+        # only process specified divisions
+        if self.divisions is not None and div_index not in self.divisions:
+            return
         
         # open the NetCDF files 
         with netCDF4.Dataset(self.divisions_file, 'a') as divisions_dataset:
             
             climdiv_id = divisions_dataset['division'][div_index]
             
-            # only process divisions within CONUS, 101 - 4809
-            if climdiv_id > 4899:
+            # only process divisions within CONUS, 101 - 4811
+            if climdiv_id > 4811:
                 return
             
             logger.info('Processing indices for division %s', climdiv_id)
@@ -517,18 +532,20 @@ def process_divisions(divisions_file,
                       month_scales,
                       calibration_start_year,
                       calibration_end_year,
-                      use_orig_pe=True):
+                      use_orig_pe=True,
+                      divisions=None):
 
     """
     Performs indices processing from climate divisions inputs.
     
-    :param param: divisions_file
-    :param param: precip_var_name
-    :param param: temp_var_name
-    :param param: awc_var_name
-    :param param: month_scales
-    :param param: calibration_start_year
-    :param param: calibration_end_year
+    :param divisions_file
+    :param precip_var_name
+    :param temp_var_name
+    :param awc_var_name
+    :param month_scales
+    :param calibration_start_year
+    :param calibration_end_year
+    :param divisions: list of divisions to compute, if None (default) then all divisions are included 
     """
 
     # perform the processing
@@ -539,7 +556,8 @@ def process_divisions(divisions_file,
                                              month_scales,
                                              calibration_start_year,
                                              calibration_end_year,
-                                             use_orig_pe)
+                                             use_orig_pe,
+                                             divisions)
     divisions_processor.run()
         
 #-----------------------------------------------------------------------------------------------------------------------
@@ -592,6 +610,12 @@ if __name__ == '__main__':
                             type=bool,
                             default=False,
                             required=False)
+        parser.add_argument("--divisions",
+                            help="Divisions for which the PNP, SPI, and SPEI values are to be computed, useful for specifying a short list of divisions",
+                            type=int,
+                            nargs = '*',
+                            choices=range(101, 4811),
+                            required=False)
         args = parser.parse_args()
 
         # perform the processing
@@ -602,7 +626,8 @@ if __name__ == '__main__':
                          args.month_scales,
                          args.calibration_start_year,
                          args.calibration_end_year,
-                         args.orig_pe)
+                         args.orig_pe,
+                         args.divisions)
         
         # report on the elapsed time
         end_datetime = datetime.now()

@@ -6,7 +6,7 @@ import multiprocessing
 import netCDF4
 import numpy as np
 
-from indices_python import indices, netcdf_utils
+from indices_python import indices, netcdf_utils, utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # static constants
@@ -467,8 +467,8 @@ class GridProcessor(object):             # pragma: no cover
                 awc = awc_lat_slice[lon_index]
 
                 # compute Palmer indices only if we have valid inputs
-                if self._is_data_valid(precip_time_series) and \
-                   self._is_data_valid(pet_time_series) and \
+                if utils.is_data_valid(precip_time_series) and \
+                   utils.is_data_valid(pet_time_series) and \
                    awc is not np.ma.masked and \
                    not math.isnan(awc) and \
                    not math.isclose(awc, awc_fill_value):
@@ -659,31 +659,6 @@ class GridProcessor(object):             # pragma: no cover
             pnp_dataset.sync()
             pnp_dataset.close()
             pnp_lock.release()
-
-    #-------------------------------------------------------------------------------------------------------------------
-    def _is_data_valid(self, data):
-        """
-        Returns whether or not an array is valid, i.e. a supported array type (ndarray or MaskArray) which is not all-NaN.
-
-        :param data: data object, expected as either numpy.ndarry or numpy.ma.MaskArray
-        :return True if array is non-NaN for at least one element and is an array type valid for processing by other modules
-        :rtype: boolean
-        """
-
-        # make sure we're not dealing with all NaN values
-        if np.ma.isMaskedArray(data):
-
-            valid_flag = bool(data.count())
-
-        elif isinstance(data, np.ndarray):
-
-            valid_flag = not np.all(np.isnan(data))
-
-        else:
-            logger.warning('Invalid data type passed for precipitation data')
-            valid_flag = False
-
-        return valid_flag
 
 #-----------------------------------------------------------------------------------------------------------------------
 def process_grid(output_file_base,     # pragma: no cover
