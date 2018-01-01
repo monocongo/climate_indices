@@ -12,6 +12,31 @@ logging.basicConfig(level=logging.DEBUG,
 _logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------------------------------------------------
+def is_data_valid(data):
+    """
+    Returns whether or not an array is valid, i.e. a supported array type (ndarray or MaskArray) which is not all-NaN.
+
+    :param data: data object, expected as either numpy.ndarry or numpy.ma.MaskArray
+    :return True if array is non-NaN for at least one element and is an array type valid for processing by other modules
+    :rtype: boolean
+    """
+
+    # make sure we're not dealing with all NaN values
+    if np.ma.isMaskedArray(data):
+
+        valid_flag = bool(data.count())
+
+    elif isinstance(data, np.ndarray):
+
+        valid_flag = not np.all(np.isnan(data))
+
+    else:
+        _logger.warning('Invalid data type')
+        valid_flag = False
+
+    return valid_flag
+
+#-----------------------------------------------------------------------------------------------------------------------
 def retrieve_file(url,         # pragma: no cover
                   out_file):
     """

@@ -1,5 +1,5 @@
 import argparse
-from datetime import datetime
+import datetime
 import logging
 import multiprocessing
 import netCDF4
@@ -43,14 +43,13 @@ def _plot_and_save_histogram(difference_values,          # pragma: no cover
                              range_lower, 
                              range_upper,
                              index_name,
-                             climdiv_id,
                              title,
                              output_filepath):
     
     # plot a histogram of the differences
     plt.gcf().clear()
     plt.hist(difference_values[:], bins=number_of_bins, range=(range_lower, range_upper))
-    plt.title(title + ': {0}, Division {1}'.format(index_name, climdiv_id))
+    plt.title(title)
     plt.xlabel("Value")
     plt.ylabel("Frequency")
     
@@ -75,7 +74,6 @@ def _plot_and_save_histogram_divisional(difference_values,          # pragma: no
                              range_lower, 
                              range_upper,
                              index_name,
-                             month,
                              full_title,
                              output_filepath)
 
@@ -85,18 +83,17 @@ def _plot_and_save_histogram_monthly(difference_values,          # pragma: no co
                                      range_lower, 
                                      range_upper,
                                      index_name,
-                                     month,
-                                     title,
+                                     month_name,
+                                     plot_title,
                                      output_filepath):
     
-    full_title = title + ': {0}, Month {1}'.format(index_name, month)
+    full_title = plot_title + ': {0}, Month {1}'.format(index_name, month_name)
     
     _plot_and_save_histogram(difference_values,          # pragma: no cover
                              number_of_bins,
                              range_lower, 
                              range_upper,
                              index_name,
-                             month,
                              full_title,
                              output_filepath)
     
@@ -143,7 +140,7 @@ def _plot_and_save_lines_divisional(expected,             # pragma: no cover
                                     varname,
                                     output_filepath):
 
-    title = 'Comparison for division {0}: {1}     (RMSE: {2})'.format(climdiv_id, varname, rmse)
+    title = '{0} comparison for division {1}  (RMSE: {2})'.format(climdiv_id, varname, rmse)
 
     _plot_and_save_lines(expected,             # pragma: no cover
                          actual,
@@ -158,11 +155,11 @@ def _plot_and_save_lines_monthly(expected,             # pragma: no cover
                                  actual,
                                  difference_values,
                                  rmse,
-                                 month,
+                                 month_name,
                                  varname,
                                  output_filepath):
 
-    title = 'Comparison for month {0}: {1}     (RMSE: {2})'.format(month, varname, rmse)
+    title = 'Comparison for month {0}: {1}     (RMSE: {2})'.format(month_name, varname, rmse)
 
     _plot_and_save_lines(expected,             # pragma: no cover
                          actual,
@@ -191,7 +188,7 @@ if __name__ == '__main__':
     try:
 
         # log some timing info, used later for elapsed time
-        start_datetime = datetime.now()
+        start_datetime = datetime.datetime.now()
         logger.info("Start time:    %s", start_datetime)
 
         # parse the command line arguments
@@ -227,13 +224,17 @@ if __name__ == '__main__':
         precip_var_name = 'prcp'
         awc_var_name = 'awc'
         
-        # perform an ingest of the NCEI nClimDiv datasets for input (temperature  
-        # and precipitation) plus monthly computed indices for comparison
-        ingest_nclimdiv.ingest_netcdf_latest(args.out_file,
-                                             temp_var_name,
-                                             precip_var_name,
-                                             awc_var_name)
-
+#         # perform an ingest of the NCEI nClimDiv datasets for input (temperature  
+#         # and precipitation) plus monthly computed indices for comparison
+#         ingest_nclimdiv.ingest_netcdf_latest(args.out_file,
+#                                              temp_var_name,
+#                                              precip_var_name,
+#                                              awc_var_name)
+ 
+        #DEBUG ONLY -- REMOVE
+        divs_to_process = [3405]
+#         divs_to_process = None
+        
         # perform the processing, using original NCDC PET calculation method
         process_divisions.process_divisions(args.out_file,
                                             precip_var_name,
@@ -242,7 +243,8 @@ if __name__ == '__main__':
                                             args.month_scales,
                                             args.calibration_start_year,
                                             args.calibration_end_year,
-                                            use_orig_pe=True)
+                                            use_orig_pe=True,
+                                            divisions=divs_to_process)
         
         # open the NetCDF files
         with netCDF4.Dataset(args.out_file, 'a') as dataset:
@@ -254,10 +256,6 @@ if __name__ == '__main__':
                                  'Z-Index': ('cmb_zndx', 'zindex')}
             for index, var_names in comparison_arrays.items():
                     
-                # TODO validate that the two variables exist, have compatible dimensions/units, etc., all of which is assumed below  pylint: disable=fixme
-
-                logger.info('Computing differences on variable %s', index)
-            
                 # allocate an array for the differences for this variable
                 diffs = {}
                 
@@ -268,49 +266,59 @@ if __name__ == '__main__':
                 divs_analyzed = 0
                 rmse_sum = 0.0
                 
-                # perform "per calendar month" analysis
-                for i in range(0, 12):
-                    
-                    month = datetime.date(1900, i + 1, 1).strftime('%B')
-                    
-                    print('\tMonth: {0}'.format(month))
+                rmse_monthly = np.full((12,), np.NaN)
+                
+                # only do the below monthly comparisons if we're dealing with all divisions
+                if divs_to_process is None:
 
-                    # get the variable var_names for the month, mask the NaNs (data assumed to be in (division, time) dimension order)
-                    data_CMB = np.ma.masked_invalid(dataset.variables[var_names[0]][:, i::12], copy=False)
-                    data_NIDIS = np.ma.masked_invalid(dataset.variables[var_names[1]][:, i::12], copy=False)
- 
-                    # get the difference of the two, add into the differences array at the correct slot for this division
-                    differences = data_CMB - data_NIDIS
-
-                    # get the RMSE for the two sets of values
-                    error = utils.rmse(data_NIDIS, data_CMB)
-                    rmse_sum += error
+                    # TODO validate that the two variables exist, have compatible dimensions/units, etc., all of which is assumed below  pylint: disable=fixme
+    
+                    logger.info('Computing differences on variable %s', index)
+                
+                    # perform "per calendar month" analysis
+                    for i in range(0, 12):
+                        
+                        month = datetime.date(1900, i + 1, 1).strftime('%B')
+                        
+                        print('\tMonth: {0}'.format(month))
+    
+                        # get the variable var_names for the month, mask the NaNs (data assumed to be in (division, time) dimension order)
+                        data_CMB = np.ma.masked_invalid(dataset.variables[var_names[0]][:, i::12], copy=False)
+                        data_NIDIS = np.ma.masked_invalid(dataset.variables[var_names[1]][:, i::12], copy=False)
      
-                    # plot the differences as a histogram and save to file
-                    _plot_and_save_histogram_monthly(differences,
-                                                     80,   # number_of_bins
-                                                     -2,   # lower range
-                                                     2,    # upper range
-                                                     index,
+                        # get the difference of the two, add into the differences array at the correct slot for this division
+                        differences = data_CMB - data_NIDIS
+    
+                        # get the RMSE for the two sets of values
+                        error = utils.rmse(data_NIDIS, data_CMB)
+                        rmse_monthly[i] = error
+         
+                        # plot the differences as a histogram and save to file
+                        _plot_and_save_histogram_monthly(differences,
+                                                         80,   # number_of_bins
+                                                         -2,   # lower range
+                                                         2,    # upper range
+                                                         index,
+                                                         month,
+                                                         histogram_title,
+                                                         'C:/home/data/nclimdiv/diffs_histogram_{0}_month{1}.png'.format(var_names[1], i + 1))
+         
+                        # plot and save line graphs showing correlation of values and differences
+                        _plot_and_save_lines_monthly(data_NIDIS,
+                                                     data_CMB,
+                                                     differences,
+                                                     error,
                                                      month,
-                                                     histogram_title,
-                                                     'C:/home/data/nclimdiv/diffs_histogram_{0}_month{1}.png'.format(var_names[1], i + 1))
-     
-                    # plot and save line graphs showing correlation of values and differences
-                    _plot_and_save_lines_monthly(data_NIDIS,
-                                                 data_CMB,
-                                                 differences,
-                                                 error,
-                                                 month,
-                                                 index,
-                                                 'C:/home/data/nclimdiv/diffs_line_{0}_month{1}.png'.format(var_names[1], division_id))
+                                                     index,
+                                                     'C:/home/data/nclimdiv/diffs_line_{0}_month{1}.png'.format(var_names[1], month))
  
                 # perform "per division" analysis
                 for division_index, division_id in enumerate(dataset.variables['division'][:]):
                  
                     # only process divisions within CONUS, 101 - 4809
-                    if division_id > 4899:
+                    if division_id > 4899 or (divs_to_process is not None and division_id not in divs_to_process):
                         continue
+                    
                     divs_analyzed += 1
                     
                     logger.info('Computing diffs for climate division ID: %s', division_id)
@@ -393,7 +401,7 @@ if __name__ == '__main__':
             print('\nMean RMSE: {0}'.format(rmse_sum / divs_analyzed))
             
         # report on the elapsed time
-        end_datetime = datetime.now()
+        end_datetime = datetime.datetime.now()
         logger.info("End time:      %s", end_datetime)
         elapsed = end_datetime - start_datetime
         logger.info("Elapsed time:  %s", elapsed)
