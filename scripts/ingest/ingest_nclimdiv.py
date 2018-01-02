@@ -1,5 +1,4 @@
 from datetime import datetime
-from indices_python import utils
 import io
 import logging
 import math
@@ -8,6 +7,8 @@ import numpy as np
 import os
 import pandas as pd
 import pycurl
+
+from indices_python import utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 _DIVISION_VAR_NAME = 'division'
