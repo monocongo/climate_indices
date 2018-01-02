@@ -77,7 +77,7 @@ def convert_and_move_netcdf(input_and_output_netcdfs):   # pragma: no cover
 #     return days
 #
 #-----------------------------------------------------------------------------------------------------------------------
-def find_netcdf_datatype(data_object):      # pragma: no cover
+def find_netcdf_datatype(data_object):
     
     if isinstance(data_object, netCDF4.Variable):
 

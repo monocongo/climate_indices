@@ -2,7 +2,6 @@ import logging
 import numpy as np
 import unittest
 
-from tests import fixtures
 from indices_python import netcdf_utils
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -10,7 +9,7 @@ from indices_python import netcdf_utils
 logging.disable(logging.CRITICAL)
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
-class NetcdfUtilsTestCase(fixtures.FixturesTestCase):
+class NetcdfUtilsTestCase(unittest.TestCase):
     '''
     Tests for `netcdf_utils.py`.
     '''
