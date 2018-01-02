@@ -2,8 +2,8 @@ import argparse
 import datetime
 import logging
 
-from indices_python.scripts.ingest import ingest_nclimdiv
-from indices_python.scripts.process import process_divisions
+from scripts.ingest import ingest_nclimdiv
+from scripts.process import process_divisions
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global _logger which will write to the console as standard error
