@@ -1,4 +1,4 @@
-#import lmoments3
+#import lmoments3  """ Use this once it works with a more recent version of numpy """
 import logging
 import math
 from math import exp, lgamma, pi, sqrt
@@ -89,12 +89,12 @@ def _estimate_pearson3_parameters(lmoments):
     # the first Pearson Type III parameter is the same as the first L-moment
     pearson3_parameters[0] = lmoments[0]
     
-    if (T3 <= 1e-6):
+    if T3 <= 1e-6:
         # skewness is effectively zero
         pearson3_parameters[1] = lmoments[1] * sqrt(pi)
 
     else:
-        if (T3 < 0.333333333):
+        if T3 < 0.333333333:
             T = pi * 3 * T3 * T3
             alpha = (1.0 + (C1 * T)) / (T * (1.0 + (T * (C2 + (T * C3)))))
         else:
@@ -106,7 +106,7 @@ def _estimate_pearson3_parameters(lmoments):
         pearson3_parameters[1] = beta * alpha_root
         
         # the sign of the third L-moment determines the sign of the third Pearson Type III parameter
-        if (lmoments[2] < 0):
+        if lmoments[2] < 0:
             pearson3_parameters[2] = -2.0 / alpha_root
         else:
             pearson3_parameters[2] = 2.0 / alpha_root
@@ -133,7 +133,7 @@ def _estimate_lmoments(values):
     
     # we need to have at least four values in order to make a sample L-moments estimation
     number_of_values = np.count_nonzero(~np.isnan(values))
-    if (number_of_values < 4):
+    if number_of_values < 4:
         message = 'Insufficient number of values to perform sample L-moments estimation'
         _logger.warning(message)
         raise ValueError(message)
@@ -175,7 +175,7 @@ def _estimate_lmoments(values):
         k = k - 1
       
     lmoments = np.zeros((3,))  
-    if (sums[1] != 0):
+    if sums[1] != 0:
         lmoments[0] = sums[0]
         lmoments[1] = sums[1]
         lmoments[2] = sums[2] / sums[1]
@@ -339,21 +339,21 @@ def _error_function(value):
     result = 0.0
     if value != 0.0:
 
-        absValue = abs(value)
+        absolute_value = abs(value)
 
-        if absValue > 6.25:
+        if absolute_value > 6.25:
             if value < 0:
                 result = -1.0
             else:
                 result = 1.0
         else:
             exponential = exp(value * value * (-1))
-            sqrtOfTwo = sqrt(2.0)
-            zz = abs(value * sqrtOfTwo)
-            if absValue > 5.0:
+            sqrt_two = sqrt(2.0)
+            zz = abs(value * sqrt_two)
+            if absolute_value > 5.0:
                 # alternative error function calculation for when the input value is in the critical range
-                result = exponential * (sqrtOfTwo / pi) / \
-                                         (absValue + 1 / (zz + 2 / (zz + 3 / (zz + 4 / (zz + 0.65)))))
+                result = exponential * (sqrt_two / pi) / \
+                                         (absolute_value + 1 / (zz + 2 / (zz + 3 / (zz + 4 / (zz + 0.65)))))
 
             else:
                 # coefficients of rational-function approximation

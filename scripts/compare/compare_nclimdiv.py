@@ -225,16 +225,17 @@ if __name__ == '__main__':
         # data type used for variables we'll create (if any) in the NetCDF for diffs        
         netcdf_data_type = netcdf_utils.find_netcdf_datatype(1.0)
 
-#         # perform an ingest of the NCEI nClimDiv datasets for input (temperature  
-#         # and precipitation) plus monthly computed indices for comparison
-#         ingest_nclimdiv.ingest_netcdf_latest(args.out_file,
-#                                              temp_var_name,
-#                                              precip_var_name,
-#                                              awc_var_name)
- 
         #DEBUG ONLY -- REMOVE
         divs_to_process = [405, 1309, 3405]
 #         divs_to_process = None
+
+        # settings for use of either original NCDC method or new Thornthwaite method for PET computation
+        diff_name_prefix = 'diffs_oldpet_'
+        use_original_pet = True
+        output_dir = 'C:/home/data/nclimdiv/diff_plots_oldpe'
+#         use_original_pet = False
+#         diff_name_prefix = 'diffs_newpet_'
+#         output_dir = 'C:/home/data/nclimdiv/diff_plots_newpe'
         
         # perform the processing, using original NCDC PET calculation method, writing results back into input NetCDF
         task_divisions.ingest_and_process_indices(args.out_file, 
@@ -244,7 +245,7 @@ if __name__ == '__main__':
                                                   args.month_scales,
                                                   args.calibration_start_year,
                                                   args.calibration_end_year,
-                                                  use_orig_pe=False)
+                                                  use_orig_pe=use_original_pet)
         
         # open the NetCDF files
         with netCDF4.Dataset(args.out_file, 'a') as dataset:
@@ -310,7 +311,7 @@ if __name__ == '__main__':
 #                                                      'C:/home/data/nclimdiv/diffs_line_{0}_month{1}.png'.format(var_names[1], month))
 
                 # get the NetCDF variable we'll use to populate with difference values for this index, create if does not exist
-                diff_variable_name = 'diffs_' + var_names[1]
+                diff_variable_name = diff_name_prefix + var_names[1]
                 if diff_variable_name in dataset.variables.keys():
                     
                     # variable already exists
@@ -365,7 +366,7 @@ if __name__ == '__main__':
                                                             index,
                                                             division_id,
                                                             histogram_title,
-                                                            'C:/home/data/nclimdiv/diff_plots_newpe/diffs_histogram_{0}_{1}.png'.format(var_names[1], division_id))
+                                                            output_dir + '/diffs_histogram_{0}_{1}.png'.format(var_names[1], division_id))
          
                         # plot and save line graphs showing correlation of values and differences
                         _plot_and_save_lines_divisional(data_NIDIS,
@@ -374,7 +375,7 @@ if __name__ == '__main__':
                                                         error,
                                                         division_id,
                                                         index,
-                                                        'C:/home/data/nclimdiv/diff_plots_newpe/diffs_line_{0}_{1}.png'.format(var_names[1], division_id))
+                                                        output_dir + '/diffs_line_{0}_{1}.png'.format(var_names[1], division_id))
 
             # report summary statistics
             print('\nMean RMSE: {0}'.format(rmse_sum / divs_analyzed))
