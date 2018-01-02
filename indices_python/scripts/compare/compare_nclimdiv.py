@@ -4,11 +4,9 @@ import logging
 import multiprocessing
 import netCDF4
 import numpy as np
-import random
 
 from indices_python import netcdf_utils, utils
-from indices_python.scripts.ingest import ingest_nclimdiv
-from indices_python.scripts.process import process_divisions
+from indices_python.scripts.task import task_divisions
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up matplotlib to use the Agg backend, in order to remove any dependencies on an X server
@@ -223,7 +221,10 @@ if __name__ == '__main__':
         temp_var_name = 'tavg'
         precip_var_name = 'prcp'
         awc_var_name = 'awc'
-        
+
+        # data type used for variables we'll create (if any) in the NetCDF for diffs        
+        netcdf_data_type = netcdf_utils.find_netcdf_datatype(1.0)
+
 #         # perform an ingest of the NCEI nClimDiv datasets for input (temperature  
 #         # and precipitation) plus monthly computed indices for comparison
 #         ingest_nclimdiv.ingest_netcdf_latest(args.out_file,
@@ -236,15 +237,14 @@ if __name__ == '__main__':
 #         divs_to_process = None
         
         # perform the processing, using original NCDC PET calculation method, writing results back into input NetCDF
-        process_divisions.process_divisions(args.out_file,
-                                            precip_var_name,
-                                            temp_var_name,
-                                            awc_var_name,
-                                            args.month_scales,
-                                            args.calibration_start_year,
-                                            args.calibration_end_year,
-                                            use_orig_pe=False,
-                                            divisions=divs_to_process)
+        task_divisions.ingest_and_process_indices(args.out_file, 
+                                                  temp_var_name, 
+                                                  precip_var_name, 
+                                                  awc_var_name, 
+                                                  args.month_scales,
+                                                  args.calibration_start_year,
+                                                  args.calibration_end_year,
+                                                  use_orig_pe=False)
         
         # open the NetCDF files
         with netCDF4.Dataset(args.out_file, 'a') as dataset:
@@ -256,9 +256,6 @@ if __name__ == '__main__':
                                  'Z-Index': ('cmb_zndx', 'zindex')}
             for index, var_names in comparison_arrays.items():
                     
-                # allocate an array for the differences for this variable
-                diffs = {}
-                
                 # common title for plots
                 histogram_title = 'CMB vs. NIDIS: '
      
@@ -321,11 +318,6 @@ if __name__ == '__main__':
                     
                 else:
                     
-                    # get the NetCDF datatype applicable to the data array we'll store in the variable
-#                     random_array = random.choice(list(diffs.values()))
-#                     netcdf_data_type = netcdf_utils.find_netcdf_datatype(random_array[0])
-                    netcdf_data_type = netcdf_utils.find_netcdf_datatype(1.0)
-                    
                     # create the variable, set the attributes
                     variable = dataset.createVariable(diff_variable_name, 
                                                       netcdf_data_type, 
@@ -348,9 +340,8 @@ if __name__ == '__main__':
              
                     # get the difference of the two, add into the differences array at the correct slot for this division
                     differences = data_CMB - data_NIDIS
-                    diffs[division_index] = differences
 
-                    # assign the array into the current division's slot in the NetCDF variable
+                    # assign the array into the current division's slot within the NetCDF variable
                     variable[division_index, :] = np.reshape(differences, (1, differences.size))
                     
                     # only process divisions in the list, if specified
