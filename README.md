@@ -1,6 +1,4 @@
-﻿
-
-[![Build Status](https://travis-ci.org/monocongo/indices_python.svg?master)](https://travis-ci.org/monocongo)
+﻿[![Build Status](https://travis-ci.org/monocongo/indices_python.svg?master)](https://travis-ci.org/monocongo)
 [![CodeFactor](https://www.codefactor.io/repository/github/monocongo/indices_python/badge/master)](https://www.codefactor.io/repository/github/monocongo/indices_python/overview/master)
 [![Coverage Status](https://coveralls.io/repos/github/monocongo/indices_python/badge.svg?branch=master)](https://coveralls.io/github/monocongo/indices_python?branch=master)
 [![Dependency Status](https://gemnasium.com/badges/github.com/monocongo/indices_python.svg)](https://gemnasium.com/github.com/monocongo/indices_python)
@@ -37,15 +35,15 @@ These initial Python implementations of these climate indices algorithms is bein
 #### Access the code
 Clone this repository:
     
-    `$ git clone https://github.com/monocongo/indices_python.git`
+`$ git clone https://github.com/monocongo/indices_python.git`
 
 Move into the source directory:
     
-    `$ cd indices_python`
+`$ cd indices_python`
 
 Checkout the 'develop' branch:
 
-    `$ git checkout -b develop`
+`$ git checkout -b develop`
 
 #### Configure Python environment
 This project's code is written for Python 3. It's recommended that you use an installation of the [Anaconda](https://www.continuum.io/why-anaconda) Python 3 distribution. The below instructions will be Anaconda specific, and initially aimed at Linux users.
@@ -60,31 +58,31 @@ This library and the example processing scripts use the [netCDF4](https://unidat
 
 A new Anaconda [environment](https://conda.io/docs/using/envs.html) containing all required modules can be created through the use of the provided `environment.yml` file, which specifies an environment named **_indices_reference_** containing all required modules:
 
-    `$ conda env create -f environment.yml`
+`$ conda env create -f environment.yml`
 
 Windows users should comment out the entry for PyNCO as it is not available yet for Windows and it conda's environment creation script will fail if it encounters a missing dependency. To do this prepend the line with a hashtag/pound sign at the first column:
 
-    `#  - pynco`
+`#  - pynco`
  
 The environment created by the above command can be activated using the following command:
 
-    `$ source activate indices_python`
+`$ source activate indices_python`
 
 Once the *conda Python environment has been activated then subsequent Python commands will run in this environment where the package dependencies for this project are present.
  
 For users who'd prefer to not utilize the above approach using the provided `environment.yml` file, the required module dependencies can be installed instead into an Anaconda environment piecemeal via multiple `conda install` commands:
 
-    `$ conda create --name <env_name> python=3` 
+`$ conda create --name <env_name> python=3` 
 
-    `$ source activate <env_name>` 
+`$ source activate <env_name>` 
 
-    `$ conda install numba` 
+`$ conda install numba` 
 
-    `$ conda install scipy` 
+`$ conda install scipy` 
 
-    `$ conda install netCDF4` 
+`$ conda install netCDF4` 
 
-    `$ conda install pycurl`
+`$ conda install pycurl`
 
 Optionally install the package into the local site-packages:
 
