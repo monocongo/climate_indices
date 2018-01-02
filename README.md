@@ -86,7 +86,7 @@ For users who'd prefer to not utilize the above approach using the provided `env
 
 Optionally install the package into the local site-packages:
 
-    `$ python setup.py install`
+`$ python setup.py install`
 
 ## Testing
 
