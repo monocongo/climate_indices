@@ -3,13 +3,8 @@ import math
 import numpy as np
 import unittest
 
-#FIXME uncomment below once absolute imports issue is worked out, below should be correct based on docs
-# import indices
-
-#-----------------------------------------------------------------------------------------------------------------------
-# use a context to add the required modules into the path for the test
-from tests.context import indices
 from tests import fixtures
+from indices_python import indices
 
 #-----------------------------------------------------------------------------------------------------------------------
 # disable logging messages

@@ -2,12 +2,7 @@ import logging
 import numpy as np
 import unittest
 
-#FIXME uncomment below once absolute imports issue is worked out, below should be correct based on docs
-# import utils
-
-#-----------------------------------------------------------------------------------------------------------------------
-# use a context to add the required modules into the path for the test
-from tests.context import utils
+from indices_python import utils
 
 # disable logging messages
 logging.disable(logging.CRITICAL)
@@ -18,6 +13,18 @@ class UtilsTestCase(unittest.TestCase):
     Tests for `utils.py`.
     """
     
+    #----------------------------------------------------------------------------------------
+    def test_is_data_valid(self):
+        """
+        Test for the utils.is_data_valid() function
+        """
+        
+        valid_array = np.full((12,), 1.0)
+        invalid_array = np.full((12,), np.NaN)
+        self.assertTrue(utils.is_data_valid(valid_array))
+        self.assertFalse(utils.is_data_valid(invalid_array))
+        self.assertFalse(utils.is_data_valid(['bad', 'data']))
+        
     #----------------------------------------------------------------------------------------
     def test_rmse(self):
         """
