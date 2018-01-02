@@ -183,6 +183,8 @@ class DivisionsProcessor(object):
                 # either use the original NCDC method or Thornthwaite method (default) for PET calculation
                 if self.use_orig_pe:
 
+                    logger.info('\t\tCalculating PET using original NCDC method')
+                    
                     # get B and H, originally taken from climate divisions soil constants file
                     B = divisions_dataset['B'][div_index]
                     H = divisions_dataset['H'][div_index]
@@ -193,6 +195,8 @@ class DivisionsProcessor(object):
                                                                           H)
 
                 else:
+
+                    logger.info('\t\tCalculating PET using Thornthwaite method')
 
                     # compute PET across all longitudes of the latitude slice
                     # Thornthwaite PE
