@@ -7,8 +7,8 @@ import numpy as np
 import random
 
 from indices_python import netcdf_utils, utils
-from indices_python.scripts.ingest import ingest_nclimgrid, ingest_prism
-from indices_python.scripts.process import process_grid
+from scripts.ingest import ingest_nclimgrid, ingest_prism
+from scripts.process import process_grid
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up matplotlib to use the Agg backend, in order to remove any dependencies on an X server

@@ -6,7 +6,7 @@ import netCDF4
 import numpy as np
 
 from indices_python import netcdf_utils, utils
-from indices_python.scripts.task import task_divisions
+from scripts.task import task_divisions
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up matplotlib to use the Agg backend, in order to remove any dependencies on an X server

@@ -11,13 +11,13 @@ build:
                     - python -W ignore -m unittest tests/test_*.py
 filter:
     excluded_paths:
-        - compare/*
         - example_inputs/*
-        - ingest/*
+        - scripts/compare/*
+        - scripts/ingest/*
+        - scripts/process/*
+        - scripts/task/*
         - misc/*
         - notebooks/*
-        - process/*
-        - task/*
         - tests/*
         
 checks:
