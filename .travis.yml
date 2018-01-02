@@ -20,7 +20,7 @@ install:
 script: 
   # run all tests with coverage 
   - export NUMBA_DISABLE_JIT=1  # disable numba JIT
-  - coverage run --source indices_python -W ignore -m unittest tests/test_*.py
+  - coverage run --source indices_python -m unittest tests/test_*.py
 #  - python -W ignore -m unittest tests/test_*.py
 #  - nosetests --with-coverage
 
