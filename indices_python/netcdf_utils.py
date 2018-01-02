@@ -96,7 +96,7 @@ def find_netcdf_datatype(data_object):      # pragma: no cover
     
     elif isinstance(data_object, float):
 
-        netcdf_datatype = 'f4'
+        netcdf_datatype = 'f8'
         
     elif isinstance(data_object, np.float32):
 
@@ -105,6 +105,18 @@ def find_netcdf_datatype(data_object):      # pragma: no cover
     elif isinstance(data_object, np.float64):
 
         netcdf_datatype = 'f8'
+        
+    elif isinstance(data_object, int):
+
+        netcdf_datatype = 'i4'
+        
+    elif isinstance(data_object, np.int16):
+
+        netcdf_datatype = 'i2'
+        
+    elif isinstance(data_object, np.int32):
+
+        netcdf_datatype = 'i4'
         
     else:
         raise ValueError('Unsupported argument type: {}'.format(type(data_object)))
