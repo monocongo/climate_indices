@@ -3,8 +3,8 @@ import logging
 import math
 import netCDF4
 import numpy as np
-import palmer
-import pdinew
+
+from indices_python import palmer, pdinew
 
 """
 Example usage:

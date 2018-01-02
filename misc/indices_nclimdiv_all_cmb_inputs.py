@@ -8,11 +8,11 @@ import numpy as np
 import process.process_nclimdiv
 
 #-----------------------------------------------------------------------------------------------------------------------
-# set up a basic, global logger which will write to the console as standard error
+# set up a basic, global _logger which will write to the console as standard error
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s',
                     datefmt='%Y-%m-%d  %H:%M:%S')
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------------------------------------------------
 # multiprocessing locks we'll use to synchronize I/O writes to NetCDF files, one per each output file
@@ -296,7 +296,7 @@ def compute_and_write_division(division_index):
 #     :param calibration_end_year:   
 #     '''
 #     
-#     logger.info('Computing indices for division index {0}'.format(division_index))
+#     _logger.info('Computing indices for division index {0}'.format(division_index))
 #     
 #     # open the NetCDF file
 #     with netCDF4.Dataset(input_file) as input_dataset:
@@ -347,9 +347,9 @@ def compute_and_write_division(division_index):
 #                        (input_dataset[pet_var_name].getncattr('units') in possible_mm_units):
 #                             pet_time_series = pet_time_series * mm_to_inches_multiplier
 #     
-#     #                 logger.debug('     Division index {0}'.format(lon_index))
+#     #                 _logger.debug('     Division index {0}'.format(lon_index))
 #     
-#                     logger.info('\tComputing PDSI for division index {0}'.format(division_index))
+#                     _logger.info('\tComputing PDSI for division index {0}'.format(division_index))
 # 
 #                     # compute Palmer indices
 #                     palmer_values = indices.scpdsi(precip_time_series,
@@ -392,7 +392,7 @@ def compute_and_write_division(division_index):
 #                         output_dataset.sync()
 #                     lock.release()
 #     
-#                 logger.info('\tComputing SPI/SPEI/PNP for division index {0}'.format(division_index))
+#                 _logger.info('\tComputing SPI/SPEI/PNP for division index {0}'.format(division_index))
 # 
 #                 # process the SPI and SPEI at month scales
 #                 for months in scale_months:
@@ -471,7 +471,7 @@ def process_division(division_index,
     :param calibration_year_final:   
     '''
     
-    logger.info('Computing indices for division index %s', division_index)
+    _logger.info('Computing indices for division index %s', division_index)
     
     process.process_divisions.process_division(division_index,
                                       input_file,
@@ -495,7 +495,7 @@ if __name__ == '__main__':
 
         # log some timing info, used later for elapsed time
         start_datetime = datetime.now()
-        logger.info("Start time:    %s", start_datetime)
+        _logger.info("Start time:    %s", start_datetime)
 
         # parse the command line arguments
         parser = argparse.ArgumentParser()
@@ -589,11 +589,11 @@ if __name__ == '__main__':
               
         # report on the elapsed time
         end_datetime = datetime.now()
-        logger.info("End time:      %s", end_datetime)
+        _logger.info("End time:      %s", end_datetime)
         elapsed = end_datetime - start_datetime
-        logger.info("Elapsed time:  %s", elapsed)
+        _logger.info("Elapsed time:  %s", elapsed)
 
     except Exception as ex:
-        logger.exception('Failed to complete', exc_info=True)
+        _logger.exception('Failed to complete', exc_info=True)
         raise
     

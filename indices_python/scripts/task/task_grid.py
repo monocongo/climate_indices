@@ -1,14 +1,14 @@
 import argparse
 from datetime import datetime
-from ingest import ingest_nclimgrid, ingest_prism
 import logging
 import multiprocessing
 import netCDF4
-import netcdf_utils
 import numpy as np
-from process import process_grid
 import random
-import utils
+
+from indices_python import netcdf_utils, utils
+from indices_python.scripts.ingest import ingest_nclimgrid, ingest_prism
+from indices_python.scripts.process import process_grid
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up matplotlib to use the Agg backend, in order to remove any dependencies on an X server

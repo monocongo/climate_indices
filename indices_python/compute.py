@@ -6,14 +6,15 @@ import numba
 import numpy as np
 import scipy.special
 import scipy.stats
-import utils
+
+from indices_python import utils
 
 #-----------------------------------------------------------------------------------------------------------------------
-# set up a basic, global logger
+# set up a basic, global _logger
 logging.basicConfig(level=logging.WARN,
                     format='%(asctime)s %(levelname)s %(message)s',
                     datefmt='%Y-%m-%d  %H:%M:%S')
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
@@ -79,7 +80,7 @@ def _estimate_pearson3_parameters(lmoments):
     # ensure the validity of the L-moments
     if (lmoments[1] <= 0) or (T3 >= 1):
         message = 'Unable to calculate Pearson Type III parameters due to invalid L-moments'
-        logger.error(message)
+        _logger.error(message)
         raise ValueError(message)
 
     # initialize the output array    
@@ -134,7 +135,7 @@ def _estimate_lmoments(values):
     number_of_values = np.count_nonzero(~np.isnan(values))
     if (number_of_values < 4):
         message = 'Insufficient number of values to perform sample L-moments estimation'
-        logger.warning(message)
+        _logger.warning(message)
         raise ValueError(message)
         
     # sort the values into ascending order
@@ -210,7 +211,7 @@ def _pearson3_fitting_values(values,
     
     # make sure that we have data within the full calibration period, otherwise use the full period of record
     if (calibration_start_year < data_start_year) or (calibration_end_year > data_end_year):
-        logger.info('Insufficient data for the specified calibration period ({0}-{1}), instead using the full period '.format(calibration_start_year, 
+        _logger.info('Insufficient data for the specified calibration period ({0}-{1}), instead using the full period '.format(calibration_start_year, 
                                                                                                                               calibration_end_year) + 
                     'of record ({0}-{1})'.format(data_start_year, 
                                                  data_end_year))
@@ -269,7 +270,7 @@ def _pearson3_fitting_values(values,
 #                 #FIXME/TODO there must be a better way to handle this, and/or is this as irrelevant 
 #                 #as swallowing the error here assumes? Do we get similar results using lmoments3 module?
 #                 #How does the comparable NCSU SPI code (Cumbie et al?) handle this?
-#                 logger.warn('Due to invalid L-moments the Pearson fitting values for month {0} are defaulting to zero'.format(month_index))
+#                 _logger.warn('Due to invalid L-moments the Pearson fitting values for month {0} are defaulting to zero'.format(month_index))
 
     return monthly_fitting_values
 
@@ -292,7 +293,7 @@ def _pearson3cdf(value,
         #FIXME/TODO there must be a better way to handle this, and/or is this as irrelevant 
         #as swallowing the error here assumes? Do we get similar results using lmoments3 module?
         #How does the comparable NCSU SPI code (Cumbie et al?) handle this?
-#         logger.debug("The second Pearson parameter is less than or equal to zero, invalid for the CDF calculation")
+#         _logger.debug("The second Pearson parameter is less than or equal to zero, invalid for the CDF calculation")
         return np.NaN
     
     result = 0
@@ -471,7 +472,7 @@ def transform_fitted_pearson(monthly_values,
      
         # neither a 1-D nor a 2-D array with valid shape was passed in
         message = 'Invalid input array with shape: {0}'.format(monthly_values.shape)
-        logger.error(message)   
+        _logger.error(message)   
         raise ValueError(message)
     
     # compute the values we'll use to fit to the Pearson Type III distribution
@@ -505,7 +506,7 @@ def transform_fitted_gamma(monthly_values):
     
     # if we're passed all missing values then we can't compute anything, return the same array of missing values
     if np.all(np.isnan(monthly_values)):
-#         logger.info('An array of all fill values was passed as the argument, no action taken, returning the same array')
+#         _logger.info('An array of all fill values was passed as the argument, no action taken, returning the same array')
         return monthly_values
         
     # validate (and possibly reshape) the input array
@@ -518,7 +519,7 @@ def transform_fitted_gamma(monthly_values):
      
         # neither a 1-D nor a 2-D array with valid shape was passed in
         message = 'Invalid input array with shape: {0}'.format(monthly_values.shape)
-        logger.error(message)   
+        _logger.error(message)   
         raise ValueError(message)
     
     # find the percentage of zero values for each month
@@ -666,7 +667,7 @@ def _pearson3_fitting_values_new(values,
     
     # make sure that we have data within the full calibration period, otherwise use the full period of record
     if (calibration_start_year < data_start_year) or (calibration_end_year > data_end_year):
-        logger.info('Insufficient data for the specified calibration period ({0}-{1}), instead using the full period '.format(calibration_start_year, 
+        _logger.info('Insufficient data for the specified calibration period ({0}-{1}), instead using the full period '.format(calibration_start_year, 
                                                                                                                               calibration_end_year) + 
                     'of record ({0}-{1})'.format(data_start_year, 
                                                  data_end_year))

@@ -2,7 +2,9 @@ import argparse
 import logging
 import netCDF4
 import numpy as np
-import palmer
+import scipy
+
+from indices_python import indices
 
 """
 Example usage:
@@ -62,10 +64,6 @@ def main():
 
     try:
 
-#         # FOR DEBUG/DEVELOPMENT ONLY -- REMOVE
-#         _limit_counter = 0
-#         _LIMIT = 10
-        
         # parse the command line arguments
         parser = argparse.ArgumentParser()
         parser.add_argument("--input_file", 
@@ -94,54 +92,44 @@ def main():
             # read the temperature, precipitation, latitude and AWC for each division
             for division_index, division_id in enumerate(division_ids):
         
-#                 # DEBUG ONLY -- RMEOVE
-#                 if division_id > 102:
-#                     break
-                
-#                 # FOR DEBUG/DEVELOPMENT ONLY -- REMOVE
+                # FOR DEBUG/DEVELOPMENT ONLY -- REMOVE
                 print('\n\n======================================================================\nDivision ID: {0}\n'.format(division_id))
-#                 if _limit_counter > _LIMIT:
-#                     break
-#                 _limit_counter += 1
                     
                 # get the data for this division
-                precip_timeseries = input_dataset.variables[args.precip_var_name][division_index, :]
                 temp_timeseries = input_dataset.variables[args.temp_var_name][division_index, :]
-                awc = input_dataset.variables[args.awc_var_name][division_index]
                 latitude = input_dataset.variables['lat'][division_index]
-                B = input_dataset.variables['B'][division_index]
-                H = input_dataset.variables['H'][division_index]
 
                 # get the expected/target values from the NetCDF
-                expected_pdsi = input_dataset.variables['pdsi.index'][division_index, :]
-                expected_phdi = input_dataset.variables['phdi.index'][division_index, :]
-                expected_pmdi = input_dataset.variables['pmdi.index'][division_index, :]
-                expected_zindex = input_dataset.variables['z.index'][division_index, :]
+                expected_pet = input_dataset.variables['pedat'][division_index, :]
                 
-                # calibration period years used operationally with pdinew.f
-                calibration_begin_year = 1931
-                calibration_end_year = 1990
- 
                 #TODO get these values out of the NetCDF, compute from time values, etc.                        
                 data_begin_year = 1895
 
+                # convert temperatures from Fahrenheit to Celsius
+                temp_timeseries = scipy.constants.convert_temperature(temp_timeseries, 'Fahrenheit', 'Celsius')
+
                 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-                # compute palmer_PDSI etc. using new palmer_PDSI code translated from Jacobi et al MatLab code
-                palmer_PDSI, palmer_PHDI, palmer_PMDI, palmer_Z = palmer.pdsi_from_climatology(precip_timeseries,
-                                                                                               temp_timeseries,
-                                                                                               awc + 1.0,  # original AWC value is underlying layer only, top layer is one inch so we add it here
-                                                                                               latitude,
-                                                                                               data_begin_year,
-                                                                                               calibration_begin_year,
-                                                                                               calibration_end_year,
-                                                                                               B,
-                                                                                               H)
+                # compute PDSI etc. using new palmer.py PDSI code translated from Jacobi et al MatLab code
+                thornthwaite_pet = indices.pet(temp_timeseries,
+                                               latitude,
+                                               data_begin_year)
+                
+#                 # compute PDSI etc. using original PDSI code translated from NCDC Fortran code, now pdinew.py
+#                 B = input_dataset.variables['B'][division_index]
+#                 H = input_dataset.variables['H'][division_index]
+#                 ncdc_pet = pdinew.potential_evapotranspiration(temp_timeseries,
+#                                                                latitude,
+#                                                                data_begin_year,
+#                                                                B,
+#                                                                H)
  
+                # Thornthwaite function returns values in millimeters, convert to inches for comparison with NCDC values
+                thornthwaite_pet *= 0.0393701
+                
                 # dictionary of variable names to corresponding arrays of differences to facilitate looping below
-                varnames_to_arrays = {'palmer_PDSI': (expected_pdsi, palmer_PDSI.flatten()),
-                                      'palmer_PHDI': (expected_phdi, palmer_PHDI),
-                                      'palmer_PMDI': (expected_pmdi, palmer_PMDI),
-                                      'palmer_Z-INDEX': (expected_zindex, palmer_Z.flatten()) }
+                varnames_to_arrays = {'pet_thornthwaite': (expected_pet, thornthwaite_pet.flatten()) }
+#                 varnames_to_arrays = {'pet_thornthwaite': (expected_pet, thornthwaite_pet.flatten()),
+#                                       'pet_ncdc': (expected_pet, ncdc_pet.flatten()) }
     
                 # we want to see all zero differences, if any non-zero differences exist then raise an alert
                 for varname, array_tuple in varnames_to_arrays.items():
@@ -175,9 +163,9 @@ def plot_diffs(expected,
     # plot the values and differences
     x = np.arange(diffs.size)
     
-    # set the Y-limit to range from -5 to 5, since this is the approximate range of values
+    # set the Y-limit to range from 0 to 8, since this is the approximate range of values
     ax = plt.axes()
-    ax.set_ylim([-5, 5])
+    ax.set_ylim([-4, 8])
 
     # the X values will correspond to a horizontal line axis
     plt.axhline()
@@ -196,7 +184,9 @@ def plot_diffs(expected,
 #     plt.show()
 
     # save the plot to file
-    plt.savefig(output_dir + '/compare_{0}_{1}_origpet.png'.format(varname, division_id))
+    image_file = output_dir + '/compare_{0}_{1}.png'.format(varname, division_id)
+    print('Saving plot image to file: {0}'.format(image_file))
+    plt.savefig(image_file)
     
     plt.close()
 

@@ -20,7 +20,7 @@ install:
 script: 
   # run all tests with nose
   - export NUMBA_DISABLE_JIT=1  # disable numba JIT
-  - python -m unittest tests/test_*.py
+  - python -W ignore -m unittest tests/test_*.py
 #  - nosetests --with-coverage
 
 after_success:

@@ -6,8 +6,9 @@ import numpy as np
 import pandas as pd
 #import profile
 import scipy.constants
-import utils
 import warnings
+
+from indices_python import utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # list the objects that we'll make publicly visible from this module, as interpreted by 'import *'
@@ -34,11 +35,11 @@ _WET = 0
 _DRY = 1
 
 #-----------------------------------------------------------------------------------------------------------------------
-# set up a basic, global logger
+# set up a basic, global _logger
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s',
                     datefmt='%Y-%m-%d  %H:%M:%S')
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 # set numpy's print options so when array values are printed we can control the precision
 np.set_printoptions(formatter={'float': lambda x: "{0:.2f}".format(x)})
@@ -1333,7 +1334,7 @@ def _pe(temperature,
         try:
             DK = math.atan(math.sqrt(1.0 - (DUM * DUM)) / DUM)   
         except ValueError:
-            logger.exception('Failed to complete', exc_info=True)
+            _logger.exception('Failed to complete', exc_info=True)
             raise
             
         if DK < 0.0:

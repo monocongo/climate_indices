@@ -5,11 +5,36 @@ import numpy as np
 import pycurl
 
 #-----------------------------------------------------------------------------------------------------------------------
-# set up a basic, global logger
+# set up a basic, global _logger
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s %(levelname)s %(message)s',
                     datefmt='%Y-%m-%d  %H:%M:%S')
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
+
+#-----------------------------------------------------------------------------------------------------------------------
+def is_data_valid(data):
+    """
+    Returns whether or not an array is valid, i.e. a supported array type (ndarray or MaskArray) which is not all-NaN.
+
+    :param data: data object, expected as either numpy.ndarry or numpy.ma.MaskArray
+    :return True if array is non-NaN for at least one element and is an array type valid for processing by other modules
+    :rtype: boolean
+    """
+
+    # make sure we're not dealing with all NaN values
+    if np.ma.isMaskedArray(data):
+
+        valid_flag = bool(data.count())
+
+    elif isinstance(data, np.ndarray):
+
+        valid_flag = not np.all(np.isnan(data))
+
+    else:
+        _logger.warning('Invalid data type')
+        valid_flag = False
+
+    return valid_flag
 
 #-----------------------------------------------------------------------------------------------------------------------
 def retrieve_file(url,         # pragma: no cover
@@ -140,13 +165,13 @@ def reshape_to_years_months(monthly_values):
             return monthly_values
         else:
             message = 'Values array has an invalid shape (2-D but second dimension not 12): {}'.format(shape)
-            logger.error(message)
+            _logger.error(message)
             raise ValueError(message)
     
     # otherwise make sure that we've been passed in a flat (1-D) array of values    
     elif len(shape) != 1:
         message = 'Values array has an invalid shape (not 1-D or 2-D): {}'.format(shape)
-        logger.error(message)
+        _logger.error(message)
         raise ValueError(message)
 
     # pad the final months of the final year, if necessary
@@ -181,13 +206,13 @@ def reshape_to_divs_years_months(monthly_values):
             return monthly_values
         else:
             message = 'Values array has an invalid shape (3-D but third dimension not 12): {}'.format(shape)
-            logger.error(message)
+            _logger.error(message)
             raise ValueError(message)
     
     # otherwise make sure that we've been passed in a 2-D array of values    
     elif len(shape) != 2:
         message = 'Values array has an invalid shape (not 2-D or 3-D): {}'.format(shape)
-        logger.error(message)
+        _logger.error(message)
         raise ValueError(message)
 
     # pad the final months of the final year, if necessary

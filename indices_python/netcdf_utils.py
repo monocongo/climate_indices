@@ -4,13 +4,15 @@ import netCDF4
 import numpy as np
 import os
 import random
-import utils
 
-# set up a basic, global logger
+from indices_python import utils
+
+#-----------------------------------------------------------------------------------------------------------------------
+# set up a basic, global _logger
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s',
                     datefmt='%Y-%m-%d  %H:%M:%S')
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------------------------------------------------
 def convert_and_move_netcdf(input_and_output_netcdfs):   # pragma: no cover
@@ -27,12 +29,12 @@ def convert_and_move_netcdf(input_and_output_netcdfs):   # pragma: no cover
                  options=['-O', '-4', '-L 4', '-h'])
           
         # remove the temporary/work file which will no longer needed
-        logger.info('Removing the temporary/work file [%s]', input_netcdf)
+        _logger.info('Removing the temporary/work file [%s]', input_netcdf)
         os.remove(input_netcdf)
 
     except ImportError:
     
-        logger.warning('NCO unavailable, skipping conversion/move')
+        _logger.warning('NCO unavailable, skipping conversion/move')
 
 # #-----------------------------------------------------------------------------------------------------------------------
 # def _compute_days(initial_year,
@@ -399,7 +401,7 @@ def add_variable_climgrid(file_path,
             variable = dataset.variables[variable_name]
             
 #             message = 'Variable name \'{0}\' is already being used within the NetCDF file \'{1}\''.format(variable_name, file_path)
-#             logger.error(message)
+#             _logger.error(message)
 #             raise ValueError(message)
             
         else:
@@ -449,7 +451,7 @@ def add_variable_climdivs(file_path,
         if variable_name in dataset.variables.keys():
             
             message = 'Variable name \'{0}\' is already being used within the NetCDF file \'{1}\''.format(variable_name, file_path)
-            logger.error(message)
+            _logger.error(message)
             raise ValueError(message)
             
         # create the variable, set the attributes
@@ -477,7 +479,7 @@ def add_variable_climdivs(file_path,
 
                 else:
 
-                    logger.info('Unexpected size of data array for division index {0} -- '.format(division_index) + 
+                    _logger.info('Unexpected size of data array for division index {0} -- '.format(division_index) + 
                                 'expected {0} time steps but the array contains {1}'.format(times_size, data_array.size))
             
 #-----------------------------------------------------------------------------------------------------------------------
@@ -509,7 +511,7 @@ def add_variable_climdivs_divstime(file_path,
         if variable_name in dataset.variables.keys():
             
             message = 'Variable name \'{0}\' is already being used within the NetCDF file \'{1}\''.format(variable_name, file_path)
-            logger.error(message)
+            _logger.error(message)
             raise ValueError(message)
             
         # create the variable, set the attributes
@@ -537,7 +539,7 @@ def add_variable_climdivs_divstime(file_path,
 
                 else:
 
-                    logger.info('Unexpected size of data array for division ID {0} -- '.format(division_id) + 
+                    _logger.info('Unexpected size of data array for division ID {0} -- '.format(division_id) + 
                                 'expected {0} time steps but the array contains {1}'.format(times_size, data_array.size))
             
 #-----------------------------------------------------------------------------------------------------------------------
@@ -568,7 +570,7 @@ def add_variable_climdivs_divs(file_path,
         if variable_name in dataset.variables.keys():
             
             message = 'Variable name \'{0}\' is already being used within the NetCDF file \'{1}\''.format(variable_name, file_path)
-            logger.error(message)
+            _logger.error(message)
             raise ValueError(message)
             
         # create the variable, set the attributes

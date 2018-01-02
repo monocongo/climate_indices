@@ -27,11 +27,11 @@ from numba import boolean, float64, int64, jit
 import numpy as np
 
 #-----------------------------------------------------------------------------------------------------------------------
-# set up a basic, global logger
+# set up a basic, global _logger
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s %(levelname)s %(message)s',
                     datefmt='%Y-%m-%d  %H:%M:%S')
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------------------------------------------------
 
@@ -229,7 +229,7 @@ def potential_evapotranspiration(monthly_temps_celsius,
     elif (len(data_shape) > 2) or ((len(data_shape) == 2) and (data_shape[1] != 12)):
         
         message = 'Input monthly mean temperatures data array has an invalid shape: {0}.'.format(data_shape)
-        logger.error(message)
+        _logger.error(message)
         raise ValueError(message)
     
     # at this point we assume that our dataset array has shape (years, 12) where 
