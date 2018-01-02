@@ -8,7 +8,7 @@ build:
                     - export NUMBA_DISABLE_JIT=1
                 override:
                     - pip install -r requirements.txt
-                    - python -m unittest tests/test_*.py
+                    - python -W ignore -m unittest tests/test_*.py
 filter:
     excluded_paths:
         - compare/*

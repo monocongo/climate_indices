@@ -13,9 +13,9 @@ exclude_lines =
 ignore_errors = True
 
 omit =
-    */compare/*
     */example_inputs/*
-    */ingest/*
-    */process/*
-    */task/*
-    */tests/*
+    */scripts/compare/*
+    */scripts/ingest/*
+    */scripts/process/*
+    */scripts/task/*
+    */scripts/tests/*
