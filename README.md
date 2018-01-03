@@ -88,6 +88,15 @@ Optionally install the package into the local site-packages:
 
 `$ python setup.py install`
 
+## Project contents
+
+- `indices_python`: main module
+- `tests`: unit tests for main module
+- `scripts/compare`: scripts to compare results of indices processing on grids or climate divisions, comparing against expected/known results (for example nClimDivs from NCEI, PRISM grids from WRCC)
+- `scripts/ingest`: scripts to ingest grid or climate divisions datasets from ASCII to NetCDF
+- `scripts/process`: scripts to process indices computations on either grids or climate divisions datasets
+- `scripts/task`: scripts that perform a combination of ingest and process for either grids or climate divisions datasets, useful as cron jobs for monthly processing
+
 ## Testing
 
 Initially all tests should be run for validation:

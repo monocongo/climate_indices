@@ -6,7 +6,8 @@ import netCDF4
 import numpy as np
 
 from indices_python import netcdf_utils, utils
-from scripts.task import task_divisions
+from scripts.process import process_divisions
+# from scripts.task import task_divisions
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up matplotlib to use the Agg backend, in order to remove any dependencies on an X server
@@ -230,23 +231,31 @@ if __name__ == '__main__':
 #         divs_to_process = None
 
         # settings for use of either original NCDC method or new Thornthwaite method for PET computation
-        diff_name_prefix = 'diffs_oldpet_'
-        use_original_pet = True
-        output_dir = 'C:/home/data/nclimdiv/diff_plots_oldpe'
-#         use_original_pet = False
-#         diff_name_prefix = 'diffs_newpet_'
-#         output_dir = 'C:/home/data/nclimdiv/diff_plots_newpe'
+#         diff_name_prefix = 'diffs_oldpet_'
+#         use_original_pet = True
+#         output_dir = 'C:/home/data/nclimdiv/diff_plots_oldpe'
+#         # perform the processing, using original NCDC PET calculation method, writing results back into input NetCDF
+#         task_divisions.ingest_and_process_indices(args.out_file, 
+#                                                   temp_var_name, 
+#                                                   precip_var_name, 
+#                                                   awc_var_name, 
+#                                                   args.month_scales,
+#                                                   args.calibration_start_year,
+#                                                   args.calibration_end_year,
+#                                                   use_orig_pe=use_original_pet)
         
         # perform the processing, using original NCDC PET calculation method, writing results back into input NetCDF
-        task_divisions.ingest_and_process_indices(args.out_file, 
-                                                  temp_var_name, 
-                                                  precip_var_name, 
-                                                  awc_var_name, 
-                                                  args.month_scales,
-                                                  args.calibration_start_year,
-                                                  args.calibration_end_year,
-                                                  use_orig_pe=use_original_pet)
-        
+        use_original_pet = False
+        diff_name_prefix = 'diffs_newpet_'
+        output_dir = 'C:/home/data/nclimdiv/diff_plots_newpe'        
+        process_divisions.process_divisions(args.out_file,
+                                            precip_var_name,
+                                            temp_var_name,
+                                            awc_var_name,
+                                            args.month_scales,
+                                            args.calibration_start_year,
+                                            args.calibration_end_year,
+                                            use_orig_pe=use_original_pet)
         # open the NetCDF files
         with netCDF4.Dataset(args.out_file, 'a') as dataset:
 
