@@ -126,8 +126,6 @@ def _plot_and_save_lines(expected,             # pragma: no cover
     # save to file
     _logger.info('Saving histogram plot for index %s to file %s', varname, output_filepath)
     plt.savefig(output_filepath, bbox_inches='tight')
-
-#     plt.show()
     plt.close()
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -140,10 +138,8 @@ def _plot_and_save_lines_divisional(expected,             # pragma: no cover
                                     varname,
                                     output_filepath):
 
-    title = '{0} comparison for division {1}  (RMSE: {2},  percent with sign change: {3})'.format(climdiv_id, 
-                                                                                                  varname, 
-                                                                                                  rmse, 
-                                                                                                  percent_sign_change)
+    title = '{0} comparison for division {1}'.format(climdiv_id, varname) + \
+            '  (RMSE: % 5.2f,  percent with sign change: % 6.2f)' % (rmse, percent_sign_change)
 
     _plot_and_save_lines(expected,             # pragma: no cover
                          actual,
@@ -327,7 +323,7 @@ def _divisional_analysis_plots(divs_dataset,
         signchange_variable[division_index] = np.array([percentage_sign_change])
 
         # display the division's RMSE and percentage sign change for the current index
-        print('Division {0}:  {1} RMSE: {2}    % sign change: {3}'.format(division_id, 
+        print('Division {0}:  {1} RMSE: {:5.2f}    % sign change: {3}'.format(division_id, 
                                                                           climate_index_name, 
                                                                           error, 
                                                                           percentage_sign_change))
