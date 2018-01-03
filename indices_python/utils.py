@@ -12,6 +12,33 @@ logging.basicConfig(level=logging.DEBUG,
 _logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------------------------------------------------
+def sign_change(a, b):
+    """
+    Given two same-sized arrays of floats return an array of booleans indicating if a sign change occurs at the 
+    corresponding index.
+    
+    :param a: array of floats
+    :param b: 
+    :return: array of booleans of same size as input arrays
+    """
+    
+    if a.size != b.size:
+        
+        raise ValueError('Mismatched input arrays')
+
+    # use the shape of the first array as the shape of the array we'll return    
+    original_shape = a.shape
+    
+    # get the sign value for each element
+    sign_a = np.sign(a.flatten())
+    sign_b = np.sign(b.flatten())
+    
+    # sign change between the two where values unequal
+    sign_changes = (sign_a != sign_b)
+
+    return np.reshape(sign_changes, original_shape)
+
+#-----------------------------------------------------------------------------------------------------------------------
 def is_data_valid(data):
     """
     Returns whether or not an array is valid, i.e. a supported array type (ndarray or MaskArray) which is not all-NaN.
