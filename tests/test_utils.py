@@ -14,6 +14,32 @@ class UtilsTestCase(unittest.TestCase):
     """
     
     #----------------------------------------------------------------------------------------
+    def test_sign_change(self):
+        """
+        Test for the utils.sign_change() function
+        """
+        
+        a = np.array([1., 2., 3., -4])
+        b = np.array([1., -2., -3., -4])
+        c = utils.sign_change(a, b)
+        np.testing.assert_equal(c, np.array([False, True, True, False]), 'Sign changes not detected as expected')
+        
+        a = np.array([1., 2., 3., -4])
+        b = np.array([[1., -2.], [-3., -4]])
+        c = utils.sign_change(a, b)
+        np.testing.assert_equal(c, np.array([False, True, True, False]), 'Sign changes not detected as expected')
+        
+        # make sure that the function croaks with a ValueError
+        np.testing.assert_raises(ValueError, 
+                                 utils.sign_change, 
+                                 np.array([1., 2., 3., -4]), 
+                                 np.array([1., 2., 3.]))
+        np.testing.assert_raises(ValueError, 
+                                 utils.sign_change, 
+                                 np.array([1., 2., 3.]), 
+                                 np.array([[1., 2.], [3., 4.]]))
+        
+    #----------------------------------------------------------------------------------------
     def test_is_data_valid(self):
         """
         Test for the utils.is_data_valid() function
