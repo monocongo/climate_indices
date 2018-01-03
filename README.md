@@ -1,6 +1,6 @@
 ﻿[![Build Status](https://travis-ci.org/monocongo/indices_python.svg?master)](https://travis-ci.org/monocongo)
 [![CodeFactor](https://www.codefactor.io/repository/github/monocongo/indices_python/badge/master)](https://www.codefactor.io/repository/github/monocongo/indices_python/overview/master)
-[![Coverage Status](https://coveralls.io/repos/github/monocongo/indices_python/badge.svg?branch=master)](https://coveralls.io/github/monocongo/indices_python?branch=master)
+[![Coverage Status](https://coveralls.io/repos/github/monocongo/indices_python/badge.svg)](https://coveralls.io/github/monocongo/indices_python)
 [![Dependency Status](https://gemnasium.com/badges/github.com/monocongo/indices_python.svg)](https://gemnasium.com/github.com/monocongo/indices_python)
 <!--
 [![Codeship Status for monocongo/indices_python](https://app.codeship.com/projects/0d711e30-ca42-0135-871a-72c36ec6d502/status?branch=master)](https://app.codeship.com/projects/261762)
@@ -23,7 +23,7 @@ Currently provided climate indices:
 * [Z-Index](http://www.droughtmanagement.info/palmer-z-index/), Palmer moisture anomaly index (Z-index)
 * [PMDI](https://climate.ncsu.edu/climate/climdiv), Palmer Modified Drought Index 
 
-These initial Python implementations of these climate indices algorithms is being developed with the following goals in mind:
+This Python implementation of the above climate indices algorithms is being developed with the following goals in mind:
 
  - to provide an open source software package to compute a suite of climate indices commonly used for drought monitoring, with well documented code that is faithful to the literature, and which provides scientifically accurate results
   - to provide transparency into the operational code used for climate monitoring activities at NCEI, and reproducibility for any users of datasets computed from this package
