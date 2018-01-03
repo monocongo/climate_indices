@@ -1,6 +1,6 @@
 ﻿[![Build Status](https://travis-ci.org/monocongo/indices_python.svg?master)](https://travis-ci.org/monocongo)
 [![CodeFactor](https://www.codefactor.io/repository/github/monocongo/indices_python/badge/master)](https://www.codefactor.io/repository/github/monocongo/indices_python/overview/master)
-[![Coverage Status](https://coveralls.io/repos/github/monocongo/indices_python/badge.svg?branch=master)](https://coveralls.io/github/monocongo/indices_python?branch=master)
+[![Coverage Status](https://coveralls.io/repos/github/monocongo/indices_python/badge.svg)](https://coveralls.io/github/monocongo/indices_python)
 [![Dependency Status](https://gemnasium.com/badges/github.com/monocongo/indices_python.svg)](https://gemnasium.com/github.com/monocongo/indices_python)
 <!--
 [![Codeship Status for monocongo/indices_python](https://app.codeship.com/projects/0d711e30-ca42-0135-871a-72c36ec6d502/status?branch=master)](https://app.codeship.com/projects/261762)
@@ -23,10 +23,10 @@ Currently provided climate indices:
 * [Z-Index](http://www.droughtmanagement.info/palmer-z-index/), Palmer moisture anomaly index (Z-index)
 * [PMDI](https://climate.ncsu.edu/climate/climdiv), Palmer Modified Drought Index 
 
-These initial Python implementations of these climate indices algorithms is being developed with the following goals in mind:
+This Python implementation of the above climate indices algorithms is being developed with the following goals in mind:
 
- - to provide an open source software package to compute a suite of climate indices commonly used for drought monitoring, with well documented code that is faithful to the literature, and which provides scientifically accurate results
-  - to provide transparency into the operational code used for climate monitoring activities at NCEI, and reproducibility for any users of datasets computed from this package
+ - to provide an open source software package to compute a suite of climate indices commonly used for drought monitoring, with well documented code that is faithful to the literature, and scientifically valid results
+  - to provide transparency into the operational code used for climate monitoring activities at NCEI, and reproducibility for users of datasets computed from this package
  - to facilitate standardization and consensus on best-of-breed algorithms and accompanying implementations
  - to serve as an example of open source scientific development process, incorporating software engineering principles and programming best practices
 
@@ -92,16 +92,22 @@ Optionally install the package into the local site-packages:
 
 Initially all tests should be run for validation:
 
+`$ export NUMBA_DISABLE_JIT=1`
+
 `$ python -m unittest tests/test_*.py`
 
+`$ unset NUMBA_DISABLE_JIT`
+
 If you run the above from the main branch and get an error then please send a report and/or add an issue, as all test should pass on the main branch.
+
+The numba environment variable is set/unset in order to bypass the numba just-in-time compilation process, which reduces testing times.
 
 ## Example indices processing scripts
 
 There are example climate indices processing scripts provided which compute the full suite of indices for various input dataset types. These process input files in the NetCDF format, and produce output NetCDF files in a corresponding format.
 
 ### nClimGrid 
-The script `process_grid.py` is used to compute climate indices from [nClimGrid](https://www.ngdc.noaa.gov/docucomp/page?xml=NOAA/NESDIS/NCDC/Geoportal/iso/xml/C00332.xml&view=getDataView&header=none) input datasets. Usage of this script requires specifying the input file names and corresponding variable names for prcipitation, temperature, and soil constant datasets, as well as the month scales over which the scaled indices (SPI, SPEI, and PAP) are to be computed, plus the base output file name and the initial and final years of the calibration period. 
+The script `process_grid.py` (found under the `scripts/process` subdirectory) is used to compute climate indices from [nClimGrid](https://www.ngdc.noaa.gov/docucomp/page?xml=NOAA/NESDIS/NCDC/Geoportal/iso/xml/C00332.xml&view=getDataView&header=none) input datasets. Usage of this script requires specifying the input file names and corresponding variable names for prcipitation, temperature, and soil constant datasets, as well as the month scales over which the scaled indices (SPI, SPEI, and PAP) are to be computed, plus the base output file name and the initial and final years of the calibration period. 
 
 This script has the following required command line arguments:
 
@@ -133,7 +139,7 @@ This script has the following required command line arguments:
       --output_file_base nclimgrid_lowres
 
 ### nClimDiv 
-The script `process_divisions.py` is used to compute climate indices from [nClimDiv](https://www.ncdc.noaa.gov/monitoring-references/maps/us-climate-divisions.php) input datasets. Usage of this script requires specifying the input file name and corresponding variable names for precipitation, temperature, and soil constant datasets, as well as the month scales over which the scaled indices (SPI, SPEI, and PAP) are to be computed, plus the base output file name and the initial and final years of the calibration period. 
+The script `process_divisions.py` (found under the `scripts/process` subdirectory) is used to compute climate indices from [nClimDiv](https://www.ncdc.noaa.gov/monitoring-references/maps/us-climate-divisions.php) input datasets. Usage of this script requires specifying the input file name and corresponding variable names for precipitation, temperature, and soil constant datasets, as well as the month scales over which the scaled indices (SPI, SPEI, and PAP) are to be computed, plus the base output file name and the initial and final years of the calibration period. 
 
 This script has the following required command line arguments:
 
