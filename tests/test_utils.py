@@ -185,8 +185,8 @@ class UtilsTestCase(unittest.TestCase):
                               [1, 3, 5, 8, 5, 6, 3, 8, 4]])
         
         # make sure that the function croaks with a ValueError whenever it gets a mis-shaped array
-        np.testing.assert_raises(ValueError, utils.reshape_to_years_months, values_2d)
-        np.testing.assert_raises(ValueError, utils.reshape_to_years_months, np.reshape(values_2d, (3, 3, 3)))
+        np.testing.assert_raises(ValueError, utils.reshape_to_divs_years_months, values_2d)
+        np.testing.assert_raises(ValueError, utils.reshape_to_divs_years_months, np.reshape(values_2d, (3, 3, 3)))
         
     #----------------------------------------------------------------------------------------
     def test_rmse(self):
