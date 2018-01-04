@@ -36,6 +36,17 @@ class ComputeTestCase(fixtures.FixturesTestCase):
         np.testing.assert_raises(ValueError, compute._estimate_pearson3_parameters, [1.0, -1.0, 1.0])
                                         
     #----------------------------------------------------------------------------------------
+    def test_pearson3_fitting_values(self):
+        """
+        Test for the compute._pearson3_fitting_values() function
+        """
+        # compute SPI/Pearson at 6-month scale
+        np.testing.assert_raises(ValueError, compute._pearson3_fitting_values, np.array([1.0, 0.0, 0.0]), 1950, 1952, 1970)
+        np.testing.assert_raises(ValueError, compute._pearson3_fitting_values, np.array([1.0, 0.0, 0.0, 1.0, 0.0, 0.0]), 1950, 1952, 1970)
+        np.testing.assert_raises(ValueError, compute._pearson3_fitting_values, np.array([np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN]), 1950, 1952, 1970)
+        np.testing.assert_raises(TypeError, compute._pearson3_fitting_values, None)
+                                        
+    #----------------------------------------------------------------------------------------
     def test_transform_fitted_gamma(self):
         '''
         Test for the compute.transform_fitted_gamma() function
