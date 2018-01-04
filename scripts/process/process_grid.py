@@ -354,7 +354,8 @@ class GridProcessor(object):             # pragma: no cover
             pool = multiprocessing.Pool(processes=number_of_workers)
 
             # map the latitude indices as an arguments iterable to the compute function (reuse the same pool)
-            result = pool.map_async(self._process_latitude_spi_spei_pnp, range(lat_size))
+#             result = pool.map_async(self._process_latitude_spi_spei_pnp, range(lat_size))
+            result = pool.map_async(self._process_latitude_spi, range(lat_size))
 
             # get the exception(s) thrown, if any
             result.get()
@@ -662,6 +663,58 @@ class GridProcessor(object):             # pragma: no cover
             pnp_dataset.close()
             pnp_lock.release()
 
+    #-------------------------------------------------------------------------------------------------------------------
+    def _process_latitude_spi(self, lat_index):
+        '''
+        Processes SPI for a single latitude slice.
+
+        :param lat_index:
+        '''
+
+        logger.info('Computing SPI, SPEI, and PNP for latitude index %s', lat_index)
+
+        # open the input NetCDFs
+        with netCDF4.Dataset(self.netcdf_precip) as precip_dataset:
+
+            # read the latitude slice of input precipitation and PET values
+            precip_lat_slice = precip_dataset[self.var_name_precip][:, lat_index, :]   # assuming (time, lat, lon) orientation
+
+            # compute SPI/Gamma across all longitudes of the latitude slice
+            spi_gamma_lat_slice = np.apply_along_axis(indices.spi_gamma,
+                                                      0,
+                                                      precip_lat_slice,
+                                                      self.months)
+
+            # compute SPI/Pearson across all longitudes of the latitude slice
+            spi_pearson_lat_slice = np.apply_along_axis(indices.spi_pearson,
+                                                        0,
+                                                        precip_lat_slice,
+                                                        self.months,
+                                                        self.data_start_year,
+                                                        self.calibration_start_year,
+                                                        self.calibration_end_year)
+
+            # use the same variable name within both Gamma and Pearson NetCDFs
+            #TODO update this for separate 'spi_gamma_<months>' and 'spi_pearson_<months>' instead
+            spi_gamma_variable_name = 'spi_gamma_' + str(self.months).zfill(2)
+            spi_pearson_variable_name = 'spi_pearson_' + str(self.months).zfill(2)
+
+            # open the existing SPI/Gamma NetCDF file for writing, copy the latitude slice into the SPI variable at the indexed latitude position
+            spi_gamma_lock.acquire()
+            spi_gamma_dataset = netCDF4.Dataset(self.netcdf_spi_gamma, mode='a')
+            spi_gamma_dataset[spi_gamma_variable_name][:, lat_index, :] = spi_gamma_lat_slice
+            spi_gamma_dataset.sync()
+            spi_gamma_dataset.close()
+            spi_gamma_lock.release()
+
+            # open the existing SPI/Pearson NetCDF file for writing, copy the latitude slice into the SPI variable at the indexed latitude position
+            spi_pearson_lock.acquire()
+            spi_pearson_dataset = netCDF4.Dataset(self.netcdf_spi_pearson, mode='a')
+            spi_pearson_dataset[spi_pearson_variable_name][:, lat_index, :] = spi_pearson_lat_slice
+            spi_pearson_dataset.sync()
+            spi_pearson_dataset.close()
+            spi_pearson_lock.release()
+
 #-----------------------------------------------------------------------------------------------------------------------
 def process_grid(output_file_base,     # pragma: no cover
                  precip_file,
@@ -758,7 +811,7 @@ if __name__ == '__main__':
         '''
         Example command line arguments:
         
-        --precip_file C:/home/data/prism/PRISM_from_WRCC_prcp.nc --precip_var_name prcp --temp_file C:/home/data/prism/PRISM_from_WRCC_tavg.nc --temp_var_name tavg --awc_file C:/home/data/prism/shiva_run_20171221/prism_soil.nc --awc_var_name awc --output_file_base C:/home/data/prism/shiva_run_20171221/prism_from_WRCC --month_scales 1 2 3 --calibration_start_year 1931 --calibration_end_year 1990
+        --precip_file /dev/shm/PRISM_from_WRCC_prcp.nc --precip_var_name prcp --temp_file /dev/shm/PRISM_from_WRCC_tavg.nc --temp_var_name tavg --awc_file /dev/shm/prism_soil.nc --awc_var_name awc --output_file_base /dev/shm/prism_from_WRCC --month_scales 1 2 3 --calibration_start_year 1931 --calibration_end_year 1990
         '''
         
         # perform the processing
