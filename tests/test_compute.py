@@ -16,6 +16,26 @@ class ComputeTestCase(fixtures.FixturesTestCase):
     '''
 
     #----------------------------------------------------------------------------------------
+    def test_estimate_lmoments(self):
+        """
+        Test for the compute._estimate_lmoments() function
+        """
+        # compute SPI/Pearson at 6-month scale
+        np.testing.assert_raises(ValueError, compute._estimate_lmoments, [1.0, 0.0, 0.0])
+        np.testing.assert_raises(ValueError, compute._estimate_lmoments, [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN])
+        np.testing.assert_raises(TypeError, compute._estimate_lmoments, None)
+                                        
+    #----------------------------------------------------------------------------------------
+    def test_estimate_pearson3_parameters(self):
+        """
+        Test for the compute._estimate_pearson3_parameters() function
+        """
+        # compute SPI/Pearson at 6-month scale
+        np.testing.assert_raises(ValueError, compute._estimate_pearson3_parameters, [1.0, 0.0, 0.0])
+        np.testing.assert_raises(ValueError, compute._estimate_pearson3_parameters, [1.0, 1.0, 5.0])
+        np.testing.assert_raises(ValueError, compute._estimate_pearson3_parameters, [1.0, -1.0, 1.0])
+                                        
+    #----------------------------------------------------------------------------------------
     def test_transform_fitted_gamma(self):
         '''
         Test for the compute.transform_fitted_gamma() function
