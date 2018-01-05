@@ -2,6 +2,7 @@
 [![CodeFactor](https://www.codefactor.io/repository/github/monocongo/indices_python/badge/master)](https://www.codefactor.io/repository/github/monocongo/indices_python/overview/master)
 [![Coverage Status](https://coveralls.io/repos/github/monocongo/indices_python/badge.svg)](https://coveralls.io/github/monocongo/indices_python)
 [![Dependency Status](https://gemnasium.com/badges/github.com/monocongo/indices_python.svg)](https://gemnasium.com/github.com/monocongo/indices_python)
+[![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
 <!--
 [![Codeship Status for monocongo/indices_python](https://app.codeship.com/projects/0d711e30-ca42-0135-871a-72c36ec6d502/status?branch=master)](https://app.codeship.com/projects/261762)
 -->
@@ -88,6 +89,15 @@ Optionally install the package into the local site-packages:
 
 `$ python setup.py install`
 
+## Project contents
+
+- `indices_python`: main module
+- `tests`: unit tests for main module
+- `scripts/compare`: scripts to compare results of indices processing on grids or climate divisions, comparing against expected/known results (for example nClimDivs from NCEI, PRISM grids from WRCC)
+- `scripts/ingest`: scripts to ingest grid or climate divisions datasets from ASCII to NetCDF
+- `scripts/process`: scripts to process indices computations on either grids or climate divisions datasets
+- `scripts/task`: scripts that perform a combination of ingest and process for either grids or climate divisions datasets, useful as cron jobs for monthly processing
+
 ## Testing
 
 Initially all tests should be run for validation:
@@ -167,7 +177,7 @@ This script has the following required command line arguments:
 ## Get involved
 Please use, make suggestions, and contribute to this code. Without diverse participation and community adoption this project will not reach its potential. 
 
-Are you aware of other indices that would be a good addition here? Can you find bottlenecks and help improve performance? Want to take the Pepsi Challenge comparing these implementations against others? Please fork the code and have at it, and/or contact us to see if we can help.
+Are you aware of other indices that would be a good addition here? Can you find bottlenecks and help improve performance? Can you suggest new ways of comparing these implementations against others (or other criteria) in order to determine best-of-breed? Please fork the code and have at it, and/or contact us to see if we can help.
 
 * Read our [contributing guidelines](https://github.com/monocongo/indices_python/blob/master/CONTRIBUTING.md)
 * File an [issue](https://github.com/monocongo/indices_python/issues), or submit a pull request
