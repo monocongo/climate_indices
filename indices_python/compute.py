@@ -204,8 +204,15 @@ def _pearson3_fitting_values(values,
              returned_array[3] == the third Pearson Type III distribution parameter for each of the 12 calendar months 
     '''
     
-    #TODO validate that the values array has shape == (years x 12)
+    # validate that the values array has shape == (years x 12)
+    if len(values.shape) != 2:
+
+        raise ValueError('Invalid shape of input data array: %s', values.shape)
     
+    elif values.shape[1] != 12:
+        
+        raise ValueError('Invalid shape of input data array: %s', values.shape)
+
     # determine the end year of the values array
     data_end_year = data_start_year + values.shape[0]
     

@@ -16,6 +16,37 @@ class ComputeTestCase(fixtures.FixturesTestCase):
     '''
 
     #----------------------------------------------------------------------------------------
+    def test_estimate_lmoments(self):
+        """
+        Test for the compute._estimate_lmoments() function
+        """
+        # provide some bogus inputs to at least make sure these raise expected errors
+        np.testing.assert_raises(ValueError, compute._estimate_lmoments, [1.0, 0.0, 0.0])
+        np.testing.assert_raises(ValueError, compute._estimate_lmoments, [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN])
+        np.testing.assert_raises(TypeError, compute._estimate_lmoments, None)
+                                        
+    #----------------------------------------------------------------------------------------
+    def test_estimate_pearson3_parameters(self):
+        """
+        Test for the compute._estimate_pearson3_parameters() function
+        """
+        # provide some bogus inputs to at least make sure these raise expected errors
+        np.testing.assert_raises(ValueError, compute._estimate_pearson3_parameters, [1.0, 0.0, 0.0])
+        np.testing.assert_raises(ValueError, compute._estimate_pearson3_parameters, [1.0, 1.0, 5.0])
+        np.testing.assert_raises(ValueError, compute._estimate_pearson3_parameters, [1.0, -1.0, 1.0])
+                                        
+    #----------------------------------------------------------------------------------------
+    def test_pearson3_fitting_values(self):
+        """
+        Test for the compute._pearson3_fitting_values() function
+        """
+        # provide some bogus inputs to at least make sure these raise expected errors
+        np.testing.assert_raises(ValueError, compute._pearson3_fitting_values, np.array([1.0, 0.0, 0.0]), 1950, 1952, 1970)
+        np.testing.assert_raises(ValueError, compute._pearson3_fitting_values, np.array([1.0, 0.0, 0.0, 1.0, 0.0, 0.0]), 1950, 1952, 1970)
+        np.testing.assert_raises(ValueError, compute._pearson3_fitting_values, np.array([np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN]), 1950, 1952, 1970)
+        np.testing.assert_raises(TypeError, compute._pearson3_fitting_values, None)
+                                        
+    #----------------------------------------------------------------------------------------
     def test_transform_fitted_gamma(self):
         '''
         Test for the compute.transform_fitted_gamma() function

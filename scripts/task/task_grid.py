@@ -95,6 +95,57 @@ def _plot_and_save_lines(expected,          # pragma: no cover
     plt.close()
 
 #-----------------------------------------------------------------------------------------------------------------------
+def ingest_and_process_indices(grid_name,
+                               source_dir, 
+                               output_dir,
+                               month_scales,
+                               calibration_start_year=1931,
+                               calibration_end_year=1990):
+
+    # variable names used within the monthly NetCDF
+    temp_var_name = 'tavg'
+    precip_var_name = 'prcp'
+    awc_var_name = 'awc'
+    
+    if grid_name == 'nclimgrid':
+    
+        # perform an ingest of the NCEI nClimGrid datasets for input (temperature  
+        # and precipitation) plus soil constants (available water capacity)
+        precip_file, temp_file, tmin_file, tmax_file = ingest_nclimgrid.ingest_to_netcdf(source_dir, output_dir)
+        awc_file = args.output_dir + '/nclimgrid_soil.nc'
+        utils.retrieve_file('https://github.com/monocongo/indices_python/blob/develop/example_inputs/nclimgrid_soil.nc', 
+                            awc_file)
+    
+    elif grid_name == 'prism':
+        
+        # perform an ingest of the PRISM datasets for input (temperature  
+        # and precipitation) plus soil constants (available water capacity)
+        prism_file = ingest_prism.ingest_to_netcdf(output_dir, True)
+        precip_file = prism_file
+        temp_file = prism_file
+        awc_file = output_dir + '/prism_soil.nc'
+        utils.retrieve_file('https://github.com/monocongo/indices_python/blob/master/example_inputs/prism_soil.nc', 
+                            awc_file)
+    
+    else:
+        
+        error_message = 'Unsupported grid type: {0}'.format(args.grid)
+        logger.error(error_message)
+        raise ValueError(error_message)
+    
+    # perform the processing
+    process_grid.process_grid(output_dir + '/' + grid_name,
+                              precip_file,
+                              temp_file,
+                              awc_file,
+                              precip_var_name,
+                              temp_var_name,
+                              awc_var_name,
+                              month_scales,
+                              calibration_start_year,
+                              calibration_end_year)
+
+#-----------------------------------------------------------------------------------------------------------------------
 
 if __name__ == '__main__':
     """
@@ -120,48 +171,10 @@ if __name__ == '__main__':
                             required=True)
         args = parser.parse_args()
 
-        # variable names used within the monthly NetCDF
-        temp_var_name = 'tavg'
-        precip_var_name = 'prcp'
-        awc_var_name = 'awc'
-
-        if args.grid == 'nclimgrid':
-
-            # perform an ingest of the NCEI nClimGrid datasets for input (temperature  
-            # and precipitation) plus soil constants (available water capacity)
-            precip_file, temp_file, tmin_file, tmax_file = ingest_nclimgrid.ingest_to_netcdf(args.source_dir, args.output_dir)
-            awc_file = args.output_dir + '/nclimgrid_soil.nc'
-            utils.retrieve_file('https://github.com/monocongo/indices_python/blob/develop/example_inputs/nclimgrid_soil.nc', 
-                                awc_file)
-
-        elif args.grid == 'prism':
-            
-            # perform an ingest of the PRISM datasets for input (temperature  
-            # and precipitation) plus soil constants (available water capacity)
-            prism_file = ingest_prism.ingest_to_netcdf(args.output_dir, True)
-            precip_file = prism_file
-            temp_file = prism_file
-            awc_file = args.output_dir + '/prism_soil.nc'
-            utils.retrieve_file('https://github.com/monocongo/indices_python/blob/develop/example_inputs/prism_soil.nc', 
-                                awc_file)
-        
-        else:
-            
-            error_message = 'Unsupported grid type: {0}'.format(args.grid)
-            logger.error(error_message)
-            raise ValueError(error_message)
-        
-        # perform the processing
-        process_grid.process_grid(args.output_file_base,
-                                  args.precip_file,
-                                  args.temp_file,
-                                  args.awc_file,
-                                  args.precip_var_name,
-                                  args.temp_var_name,
-                                  args.awc_var_name,
-                                  args.month_scales,
-                                  args.calibration_start_year,
-                                  args.calibration_end_year)
+        ingest_and_process_indices(args.grid,
+                                   args.source_dir, 
+                                   args.output_dir,
+                                   [1, 2, 3, 6, 9, 12, 24])
 
         # variable names for variables to diff from the two datasets
         comparison_arrays = {'PDSI': ('wrcc_pdsi', 'pdsi'),

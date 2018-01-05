@@ -12,6 +12,33 @@ logging.basicConfig(level=logging.DEBUG,
 _logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------------------------------------------------
+def sign_change(a, b):
+    """
+    Given two same-sized arrays of floats return an array of booleans indicating if a sign change occurs at the 
+    corresponding index.
+    
+    :param a: array of floats
+    :param b: 
+    :return: array of booleans of same size as input arrays
+    """
+    
+    if a.size != b.size:
+        
+        raise ValueError('Mismatched input arrays')
+
+    # use the shape of the first array as the shape of the array we'll return    
+    original_shape = a.shape
+    
+    # get the sign value for each element
+    sign_a = np.sign(a.flatten())
+    sign_b = np.sign(b.flatten())
+    
+    # sign change between the two where values unequal
+    sign_changes = (sign_a != sign_b)
+
+    return np.reshape(sign_changes, original_shape)
+
+#-----------------------------------------------------------------------------------------------------------------------
 def is_data_valid(data):
     """
     Returns whether or not an array is valid, i.e. a supported array type (ndarray or MaskArray) which is not all-NaN.
@@ -192,9 +219,9 @@ def reshape_to_years_months(monthly_values):
 def reshape_to_divs_years_months(monthly_values):
     '''
     :param monthly_values: an 2-D numpy.ndarray of monthly values, assumed to start at January of 
-                           the first year for each division
-    :return: the original monthly values reshaped to 3-D (divisions, years, 12), within each division each row 
-             representing a full year, with shape (years, 12)
+                           the first year for each division, with dimension 0: division, dimension 1: months (0 to total months - 1)
+    :return: the original monthly values reshaped to 3-D (divisions, years, 12), within each division each row maps 
+             to a year, with each column of the row matching to the corresponding calendar month
     :rtype: 3-D numpy.ndarray of floats
     '''
     
@@ -212,6 +239,12 @@ def reshape_to_divs_years_months(monthly_values):
     # otherwise make sure that we've been passed in a 2-D array of values    
     elif len(shape) != 2:
         message = 'Values array has an invalid shape (not 2-D or 3-D): {}'.format(shape)
+        _logger.error(message)
+        raise ValueError(message)
+
+    # otherwise make sure that we've been passed in a 2-D array of values with the final dimension size == 12
+    elif shape[1] != 12:
+        message = 'Values array has an invalid shape (second/final dimension should be 12, but is not): {}'.format(shape)
         _logger.error(message)
         raise ValueError(message)
 
