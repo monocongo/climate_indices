@@ -1,12 +1,11 @@
 import argparse
 from datetime import datetime
 import logging
-import math
 import multiprocessing
 import netCDF4
 import numpy as np
 
-from indices_python import indices, netcdf_utils, utils
+from indices_python import indices, netcdf_utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # static constants
@@ -302,22 +301,22 @@ class GridProcessor(object):             # pragma: no cover
             # get the number of latitudes in the input dataset(s)
             lat_size = dataset_precip.variables['lat'].size
 
-        #--------------------------------------------------------------------------------------------------------------
-        # Create PET and Palmer index NetCDF files, computed from input temperature, precipitation, and soil constant.
-        #--------------------------------------------------------------------------------------------------------------
-
-        # create a process Pool for worker processes to compute PET and Palmer indices, passing arguments to an initializing function
-        pool = multiprocessing.Pool(processes=number_of_workers)
-
-        # map the latitude indices as an arguments iterable to the compute function
-        result = pool.map_async(self._process_latitude_palmer, range(lat_size))
-
-        # get the exception(s) thrown, if any
-        result.get()
-
-        # close the pool and wait on all processes to finish
-        pool.close()
-        pool.join()
+#         #--------------------------------------------------------------------------------------------------------------
+#         # Create PET and Palmer index NetCDF files, computed from input temperature, precipitation, and soil constant.
+#         #--------------------------------------------------------------------------------------------------------------
+# 
+#         # create a process Pool for worker processes to compute PET and Palmer indices, passing arguments to an initializing function
+#         pool = multiprocessing.Pool(processes=number_of_workers)
+# 
+#         # map the latitude indices as an arguments iterable to the compute function
+#         result = pool.map_async(self._process_latitude_palmer, range(lat_size))
+# 
+#         # get the exception(s) thrown, if any
+#         result.get()
+# 
+#         # close the pool and wait on all processes to finish
+#         pool.close()
+#         pool.join()
 
         #----------------------------------------------------------------------------------------------------------
         # Take the PET and Palmer index NetCDF files, compress and move to destination directory.
@@ -351,8 +350,12 @@ class GridProcessor(object):             # pragma: no cover
             # set the instance's scale size (number of months over which SPI, etc. will be scaled)
             self._set_scaling_months(months)
 
+            # create a process Pool for worker processes to compute PET and Palmer indices, passing arguments to an initializing function
+            pool = multiprocessing.Pool(processes=number_of_workers)
+
             # map the latitude indices as an arguments iterable to the compute function (reuse the same pool)
-            result = pool.map_async(self._process_latitude_spi_spei_pnp, range(lat_size))
+#             result = pool.map_async(self._process_latitude_spi_spei_pnp, range(lat_size))
+            result = pool.map_async(self._process_latitude_spi, range(lat_size))
 
             # get the exception(s) thrown, if any
             result.get()
@@ -426,116 +429,116 @@ class GridProcessor(object):             # pragma: no cover
             pet_dataset.close()
             pet_lock.release()
 
-            # determine the dimensionality of the AWC dataset, in case there is a missing time
-            # dimension and/or a switched lat/lon, then get the AWC latitude slice accordingly
-            awc_dims = awc_dataset[self.var_name_soil].dimensions
-            if awc_dims == ('time', 'lat', 'lon'):
-                awc_lat_slice = awc_dataset[self.var_name_soil][:, lat_index, :].flatten() # assuming (time, lat, lon) orientation
-            elif awc_dims == ('lat', 'lon'):
-                awc_lat_slice = awc_dataset[self.var_name_soil][lat_index, :].flatten()    # assuming (lat, lon) orientation
-            elif awc_dims == ('time', 'lon', 'lat'):
-                awc_lat_slice = awc_dataset[self.var_name_soil][:, :, lat_index].flatten() # assuming (time, lon, lat) orientation
-            elif awc_dims == ('lon', 'lat'):
-                awc_lat_slice = awc_dataset[self.var_name_soil][:, lat_index].flatten()    # assuming (lon, lat) orientation
-            else:
-                message = 'Unable to read the soil constant (AWC) values due to unsupported AWC variable dimensions: {0}'.format(awc_dims)
-                logger.error(message)
-                raise ValueError(message)
-
-            # read the latitude slice of input precipitation and available water capacity values
-            precip_lat_slice = precip_dataset[self.var_name_precip][:, lat_index, :]    # assuming (time, lat, lon) orientation
-            awc_fill_value = awc_dataset[self.var_name_soil]._FillValue
-
-            # allocate arrays to contain a latitude slice of Palmer values
-            lon_size = temp_dataset['lon'].size
-            time_size = temp_dataset['time'].size
-            lat_slice_shape = (time_size, 1, lon_size)
-            pdsi_lat_slice = np.full(lat_slice_shape, np.NaN)
-            phdi_lat_slice = np.full(lat_slice_shape, np.NaN)
-            zindex_lat_slice = np.full(lat_slice_shape, np.NaN)
-            scpdsi_lat_slice = np.full(lat_slice_shape, np.NaN)
-            pmdi_lat_slice = np.full(lat_slice_shape, np.NaN)
-
-            # compute Palmer indices for each longitude from the latitude slice where we have valid inputs
-            for lon_index in range(lon_size):
-
-                logger.info('Computing Palmers for longitude index %s', lon_index)
-
-                # get the time series values for this longitude
-                precip_time_series = precip_lat_slice[:, lon_index]
-                pet_time_series = pet_lat_slice[:, lon_index]
-                awc = awc_lat_slice[lon_index]
-
-                # compute Palmer indices only if we have valid inputs
-                if utils.is_data_valid(precip_time_series) and \
-                   utils.is_data_valid(pet_time_series) and \
-                   awc is not np.ma.masked and \
-                   not math.isnan(awc) and \
-                   not math.isclose(awc, awc_fill_value):
-
-                    # put precipitation into inches, if not already
-                    mm_to_inches_multiplier = 0.0393701
-                    possible_mm_units = ['millimeters', 'millimeter', 'mm']
-                    if precip_dataset[self.var_name_precip].units in possible_mm_units:
-                        precip_time_series = precip_time_series * mm_to_inches_multiplier
-
-                    # PET is in mm, convert to inches
-                    pet_time_series = pet_time_series * mm_to_inches_multiplier
-
-                    # compute Palmer indices
-                    palmer_values = indices.scpdsi(precip_time_series,
-                                                   pet_time_series,
-                                                   awc,
-                                                   self.data_start_year,
-                                                   self.calibration_start_year,
-                                                   self.calibration_end_year)
-
-                    # add the values into the slice, first clipping all values to the valid range
-                    scpdsi_lat_slice[:, 0, lon_index] = np.clip(palmer_values[0], _VALID_MIN, _VALID_MAX)
-                    pdsi_lat_slice[:, 0, lon_index] = np.clip(palmer_values[1], _VALID_MIN, _VALID_MAX)
-                    phdi_lat_slice[:, 0, lon_index] = np.clip(palmer_values[2], _VALID_MIN, _VALID_MAX)
-                    pmdi_lat_slice[:, 0, lon_index] = np.clip(palmer_values[3], _VALID_MIN, _VALID_MAX)
-                    zindex_lat_slice[:, 0, lon_index] = palmer_values[4]
-
-            # open the existing PDSI NetCDF file for writing, copy the latitude slice into the PET variable at the indexed latitude position
-            pdsi_lock.acquire()
-            pdsi_dataset = netCDF4.Dataset(self.netcdf_pdsi, mode='a')
-            pdsi_dataset['pdsi'][:, lat_index, :] = pdsi_lat_slice
-            pdsi_dataset.sync()
-            pdsi_dataset.close()
-            pdsi_lock.release()
-
-            # open the existing PHDI NetCDF file for writing, copy the latitude slice into the PET variable at the indexed latitude position
-            phdi_lock.acquire()
-            phdi_dataset = netCDF4.Dataset(self.netcdf_phdi, mode='a')
-            phdi_dataset['phdi'][:, lat_index, :] = phdi_lat_slice
-            phdi_dataset.sync()
-            phdi_dataset.close()
-            phdi_lock.release()
-
-            # open the existing Z-Index NetCDF file for writing, copy the latitude slice into the Z-Index variable at the indexed latitude position
-            zindex_lock.acquire()
-            zindex_dataset = netCDF4.Dataset(self.netcdf_zindex, mode='a')
-            zindex_dataset['zindex'][:, lat_index, :] = zindex_lat_slice
-            zindex_dataset.sync()
-            zindex_dataset.close()
-            zindex_lock.release()
-
-            # open the existing SCPDSI NetCDF file for writing, copy the latitude slice into the scPDSI variable at the indexed latitude position
-            scpdsi_lock.acquire()
-            scpdsi_dataset = netCDF4.Dataset(self.netcdf_scpdsi, mode='a')
-            scpdsi_dataset['scpdsi'][:, lat_index, :] = scpdsi_lat_slice
-            scpdsi_dataset.sync()
-            scpdsi_dataset.close()
-            scpdsi_lock.release()
-
-            # open the existing PMDI NetCDF file for writing, copy the latitude slice into the PMDI variable at the indexed latitude position
-            pmdi_lock.acquire()
-            pmdi_dataset = netCDF4.Dataset(self.netcdf_pmdi, mode='a')
-            pmdi_dataset['pmdi'][:, lat_index, :] = pmdi_lat_slice
-            pmdi_dataset.sync()
-            pmdi_dataset.close()
-            pmdi_lock.release()
+#             # determine the dimensionality of the AWC dataset, in case there is a missing time
+#             # dimension and/or a switched lat/lon, then get the AWC latitude slice accordingly
+#             awc_dims = awc_dataset[self.var_name_soil].dimensions
+#             if awc_dims == ('time', 'lat', 'lon'):
+#                 awc_lat_slice = awc_dataset[self.var_name_soil][:, lat_index, :].flatten() # assuming (time, lat, lon) orientation
+#             elif awc_dims == ('lat', 'lon'):
+#                 awc_lat_slice = awc_dataset[self.var_name_soil][lat_index, :].flatten()    # assuming (lat, lon) orientation
+#             elif awc_dims == ('time', 'lon', 'lat'):
+#                 awc_lat_slice = awc_dataset[self.var_name_soil][:, :, lat_index].flatten() # assuming (time, lon, lat) orientation
+#             elif awc_dims == ('lon', 'lat'):
+#                 awc_lat_slice = awc_dataset[self.var_name_soil][:, lat_index].flatten()    # assuming (lon, lat) orientation
+#             else:
+#                 message = 'Unable to read the soil constant (AWC) values due to unsupported AWC variable dimensions: {0}'.format(awc_dims)
+#                 logger.error(message)
+#                 raise ValueError(message)
+# 
+#             # read the latitude slice of input precipitation and available water capacity values
+#             precip_lat_slice = precip_dataset[self.var_name_precip][:, lat_index, :]    # assuming (time, lat, lon) orientation
+#             awc_fill_value = awc_dataset[self.var_name_soil]._FillValue
+# 
+#             # allocate arrays to contain a latitude slice of Palmer values
+#             lon_size = temp_dataset['lon'].size
+#             time_size = temp_dataset['time'].size
+#             lat_slice_shape = (time_size, 1, lon_size)
+#             pdsi_lat_slice = np.full(lat_slice_shape, np.NaN)
+#             phdi_lat_slice = np.full(lat_slice_shape, np.NaN)
+#             zindex_lat_slice = np.full(lat_slice_shape, np.NaN)
+#             scpdsi_lat_slice = np.full(lat_slice_shape, np.NaN)
+#             pmdi_lat_slice = np.full(lat_slice_shape, np.NaN)
+# 
+#             # compute Palmer indices for each longitude from the latitude slice where we have valid inputs
+#             for lon_index in range(lon_size):
+# 
+#                 logger.info('Computing Palmers for longitude index %s', lon_index)
+# 
+#                 # get the time series values for this longitude
+#                 precip_time_series = precip_lat_slice[:, lon_index]
+#                 pet_time_series = pet_lat_slice[:, lon_index]
+#                 awc = awc_lat_slice[lon_index]
+# 
+#                 # compute Palmer indices only if we have valid inputs
+#                 if utils.is_data_valid(precip_time_series) and \
+#                    utils.is_data_valid(pet_time_series) and \
+#                    awc is not np.ma.masked and \
+#                    not math.isnan(awc) and \
+#                    not math.isclose(awc, awc_fill_value):
+# 
+#                     # put precipitation into inches, if not already
+#                     mm_to_inches_multiplier = 0.0393701
+#                     possible_mm_units = ['millimeters', 'millimeter', 'mm']
+#                     if precip_dataset[self.var_name_precip].units in possible_mm_units:
+#                         precip_time_series = precip_time_series * mm_to_inches_multiplier
+# 
+#                     # PET is in mm, convert to inches
+#                     pet_time_series = pet_time_series * mm_to_inches_multiplier
+# 
+#                     # compute Palmer indices
+#                     palmer_values = indices.scpdsi(precip_time_series,
+#                                                    pet_time_series,
+#                                                    awc,
+#                                                    self.data_start_year,
+#                                                    self.calibration_start_year,
+#                                                    self.calibration_end_year)
+# 
+#                     # add the values into the slice, first clipping all values to the valid range
+#                     scpdsi_lat_slice[:, 0, lon_index] = np.clip(palmer_values[0], _VALID_MIN, _VALID_MAX)
+#                     pdsi_lat_slice[:, 0, lon_index] = np.clip(palmer_values[1], _VALID_MIN, _VALID_MAX)
+#                     phdi_lat_slice[:, 0, lon_index] = np.clip(palmer_values[2], _VALID_MIN, _VALID_MAX)
+#                     pmdi_lat_slice[:, 0, lon_index] = np.clip(palmer_values[3], _VALID_MIN, _VALID_MAX)
+#                     zindex_lat_slice[:, 0, lon_index] = palmer_values[4]
+# 
+#             # open the existing PDSI NetCDF file for writing, copy the latitude slice into the PET variable at the indexed latitude position
+#             pdsi_lock.acquire()
+#             pdsi_dataset = netCDF4.Dataset(self.netcdf_pdsi, mode='a')
+#             pdsi_dataset['pdsi'][:, lat_index, :] = pdsi_lat_slice
+#             pdsi_dataset.sync()
+#             pdsi_dataset.close()
+#             pdsi_lock.release()
+# 
+#             # open the existing PHDI NetCDF file for writing, copy the latitude slice into the PET variable at the indexed latitude position
+#             phdi_lock.acquire()
+#             phdi_dataset = netCDF4.Dataset(self.netcdf_phdi, mode='a')
+#             phdi_dataset['phdi'][:, lat_index, :] = phdi_lat_slice
+#             phdi_dataset.sync()
+#             phdi_dataset.close()
+#             phdi_lock.release()
+# 
+#             # open the existing Z-Index NetCDF file for writing, copy the latitude slice into the Z-Index variable at the indexed latitude position
+#             zindex_lock.acquire()
+#             zindex_dataset = netCDF4.Dataset(self.netcdf_zindex, mode='a')
+#             zindex_dataset['zindex'][:, lat_index, :] = zindex_lat_slice
+#             zindex_dataset.sync()
+#             zindex_dataset.close()
+#             zindex_lock.release()
+# 
+#             # open the existing SCPDSI NetCDF file for writing, copy the latitude slice into the scPDSI variable at the indexed latitude position
+#             scpdsi_lock.acquire()
+#             scpdsi_dataset = netCDF4.Dataset(self.netcdf_scpdsi, mode='a')
+#             scpdsi_dataset['scpdsi'][:, lat_index, :] = scpdsi_lat_slice
+#             scpdsi_dataset.sync()
+#             scpdsi_dataset.close()
+#             scpdsi_lock.release()
+# 
+#             # open the existing PMDI NetCDF file for writing, copy the latitude slice into the PMDI variable at the indexed latitude position
+#             pmdi_lock.acquire()
+#             pmdi_dataset = netCDF4.Dataset(self.netcdf_pmdi, mode='a')
+#             pmdi_dataset['pmdi'][:, lat_index, :] = pmdi_lat_slice
+#             pmdi_dataset.sync()
+#             pmdi_dataset.close()
+#             pmdi_lock.release()
 
     #-------------------------------------------------------------------------------------------------------------------
     def _process_latitude_spi_spei_pnp(self, lat_index):
@@ -660,6 +663,58 @@ class GridProcessor(object):             # pragma: no cover
             pnp_dataset.close()
             pnp_lock.release()
 
+    #-------------------------------------------------------------------------------------------------------------------
+    def _process_latitude_spi(self, lat_index):
+        '''
+        Processes SPI for a single latitude slice.
+
+        :param lat_index:
+        '''
+
+        logger.info('Computing SPI, SPEI, and PNP for latitude index %s', lat_index)
+
+        # open the input NetCDFs
+        with netCDF4.Dataset(self.netcdf_precip) as precip_dataset:
+
+            # read the latitude slice of input precipitation and PET values
+            precip_lat_slice = precip_dataset[self.var_name_precip][:, lat_index, :]   # assuming (time, lat, lon) orientation
+
+            # compute SPI/Gamma across all longitudes of the latitude slice
+            spi_gamma_lat_slice = np.apply_along_axis(indices.spi_gamma,
+                                                      0,
+                                                      precip_lat_slice,
+                                                      self.months)
+
+            # compute SPI/Pearson across all longitudes of the latitude slice
+            spi_pearson_lat_slice = np.apply_along_axis(indices.spi_pearson,
+                                                        0,
+                                                        precip_lat_slice,
+                                                        self.months,
+                                                        self.data_start_year,
+                                                        self.calibration_start_year,
+                                                        self.calibration_end_year)
+
+            # use the same variable name within both Gamma and Pearson NetCDFs
+            #TODO update this for separate 'spi_gamma_<months>' and 'spi_pearson_<months>' instead
+            spi_gamma_variable_name = 'spi_gamma_' + str(self.months).zfill(2)
+            spi_pearson_variable_name = 'spi_pearson_' + str(self.months).zfill(2)
+
+            # open the existing SPI/Gamma NetCDF file for writing, copy the latitude slice into the SPI variable at the indexed latitude position
+            spi_gamma_lock.acquire()
+            spi_gamma_dataset = netCDF4.Dataset(self.netcdf_spi_gamma, mode='a')
+            spi_gamma_dataset[spi_gamma_variable_name][:, lat_index, :] = spi_gamma_lat_slice
+            spi_gamma_dataset.sync()
+            spi_gamma_dataset.close()
+            spi_gamma_lock.release()
+
+            # open the existing SPI/Pearson NetCDF file for writing, copy the latitude slice into the SPI variable at the indexed latitude position
+            spi_pearson_lock.acquire()
+            spi_pearson_dataset = netCDF4.Dataset(self.netcdf_spi_pearson, mode='a')
+            spi_pearson_dataset[spi_pearson_variable_name][:, lat_index, :] = spi_pearson_lat_slice
+            spi_pearson_dataset.sync()
+            spi_pearson_dataset.close()
+            spi_pearson_lock.release()
+
 #-----------------------------------------------------------------------------------------------------------------------
 def process_grid(output_file_base,     # pragma: no cover
                  precip_file,
@@ -752,6 +807,13 @@ if __name__ == '__main__':
                             required=True)
         args = parser.parse_args()
 
+        
+        '''
+        Example command line arguments:
+        
+        --precip_file /dev/shm/PRISM_from_WRCC_prcp.nc --precip_var_name prcp --temp_file /dev/shm/PRISM_from_WRCC_tavg.nc --temp_var_name tavg --awc_file /dev/shm/prism_soil.nc --awc_var_name awc --output_file_base /dev/shm/prism_from_WRCC --month_scales 1 2 3 --calibration_start_year 1931 --calibration_end_year 1990
+        '''
+        
         # perform the processing
         process_grid(args.output_file_base,
                      args.precip_file,
