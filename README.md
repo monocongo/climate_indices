@@ -14,8 +14,8 @@ This project contains Python implementations of various climate indices which pr
 
 Currently provided climate indices:
 
-* [SPI](https://climatedataguide.ucar.edu/climate-data/standardized-precipitation-index-spi), Standard Precipitation Index
-* [SPEI](https://www.researchgate.net/publication/252361460_The_Standardized_Precipitation-Evapotranspiration_Index_SPEI_a_multiscalar_drought_index), Standard Precipitation Evapotranspiration Index
+* [SPI](https://climatedataguide.ucar.edu/climate-data/standardized-precipitation-index-spi), Standardized Precipitation Index
+* [SPEI](https://www.researchgate.net/publication/252361460_The_Standardized_Precipitation-Evapotranspiration_Index_SPEI_a_multiscalar_drought_index), Standardized Precipitation Evapotranspiration Index
 * [PET](https://www.ncdc.noaa.gov/monitoring-references/dyk/potential-evapotranspiration), Potential Evapotranspiration: computed using [Thornthwaite's equation](https://en.wikipedia.org/wiki/Potential_evaporation) 
 * [PNP](http://www.droughtmanagement.info/percent-of-normal-precipitation/), Percentage of Normal Precipitation
 * [PDSI](http://www.droughtmanagement.info/palmer-drought-severity-index-pdsi/), Palmer Drought Severity Index
