@@ -1,10 +1,10 @@
+import io
 import logging
 import numpy as np
-from pathlib import Path
 import unittest
+import unittest.mock
 
 from indices_python import utils
-import os
 
 # disable logging messages
 logging.disable(logging.CRITICAL)
@@ -16,9 +16,32 @@ class UtilsTestCase(unittest.TestCase):
     """
     
     #----------------------------------------------------------------------------------------
+    @unittest.mock.patch('sys.stdout', new_callable=io.StringIO)  # mocks stdout, will be used as first mock_* argument
+    def _assert_print_equal(self, 
+                            values, 
+                            expected_output, 
+                            mock_stdout):
+
+        utils.print_years_months(values)
+        self.assertEqual(mock_stdout.getvalue(), expected_output)
+
+    #----------------------------------------------------------------------------------------
+    def test_print_years_months(self):
+        """
+        Test for the utils.print_years_months() function
+        """
+        
+        #TODO come up with fixture and expected results
+        fixture = np.array([1., 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16])
+        expected = " 1.00,  2.00,  3.00,  4.00,  5.00,  6.00,  7.00,  8.00,  9.00, 10.00, 11.00, 12.00,  \\" + "\n" + \
+                   "13.00, 14.00, 15.00, 16.00,   nan,   nan,   nan,   nan,   nan,   nan,   nan,   nan,  \\" + "\n"
+
+        self._assert_print_equal(fixture, expected)
+        
+    #----------------------------------------------------------------------------------------
     def test_compute_days(self):
         """
-        Test for the utils.f2c() function
+        Test for the utils.compute_days() function
         """
         
         days_array = np.array([0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334])
@@ -35,11 +58,28 @@ class UtilsTestCase(unittest.TestCase):
         '''
         Test for the utils.count_zeros_and_non_missings() function
         '''
-        values = np.array([3, 4, 0, 2, 3.1, 5, np.NaN, 8, 5, 6, 0.0, np.NaN, 5.6, 2])
+        
+        # vanilla use case
+        values_list = [3, 4, 0, 2, 3.1, 5, np.NaN, 8, 5, 6, 0.0, np.NaN, 5.6, 2]
+        values = np.array(values_list)
         zeros, non_missings = utils.count_zeros_and_non_missings(values)
         self.assertEqual(zeros, 2, 'Failed to correctly count zero values')
         self.assertEqual(non_missings, 12, 'Failed to correctly count non-missing values')
-                
+        
+        # test with lists
+        values = values_list
+        zeros, non_missings = utils.count_zeros_and_non_missings(values)
+        self.assertEqual(zeros, 2, 'Failed to correctly count zero values')
+        self.assertEqual(non_missings, 12, 'Failed to correctly count non-missing values')
+        values = [[3, 4, 0, 2, 3.1, 5, np.NaN], [8, 5, 6, 0.0, np.NaN, 5.6, 2]]
+        zeros, non_missings = utils.count_zeros_and_non_missings(values)
+        self.assertEqual(zeros, 2, 'Failed to correctly count zero values')
+        self.assertEqual(non_missings, 12, 'Failed to correctly count non-missing values')
+
+        # using a list that can't be converted into an array should result in a TypeError 
+        values = [1, 2, 3, 0, 'abcxyz']
+        np.testing.assert_raises(TypeError, utils.count_zeros_and_non_missings, values)
+
     #----------------------------------------------------------------------------------------
     def test_f2c(self):
         """
@@ -191,20 +231,20 @@ class UtilsTestCase(unittest.TestCase):
         np.testing.assert_raises(ValueError, utils.reshape_to_divs_years_months, np.reshape(values_2d, (3, 3, 3)))
         
     #----------------------------------------------------------------------------------------
-    def test_retrieve_file(self):
-        """
-        Test for the utils.retrieve_file() function
-        """
-        
-        test_file = 'test_nclimgrid_soil.nc_OK_TO_REMOVE'
-        utils.retrieve_file('https://github.com/monocongo/indices_python/blob/develop/example_inputs/nclimgrid_soil.nc', 
-                            test_file)
-        self.assertTrue(Path(test_file).is_file(), 'File not downloaded from github as expected')
-
-        # clean up
-        if Path(test_file).is_file():
-            os.remove(test_file)
-            
+#     def test_retrieve_file(self):
+#         """
+#         Test for the utils.retrieve_file() function
+#         """
+#         
+#         test_file = 'test_nclimgrid_soil.nc_OK_TO_REMOVE'
+#         utils.retrieve_file('https://github.com/monocongo/indices_python/blob/develop/example_inputs/nclimgrid_soil.nc', 
+#                             test_file)
+#         self.assertTrue(Path(test_file).is_file(), 'File not downloaded from github as expected')
+# 
+#         # clean up
+#         if Path(test_file).is_file():
+#             os.remove(test_file)
+#             
     #----------------------------------------------------------------------------------------
     def test_rmse(self):
         """
