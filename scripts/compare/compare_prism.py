@@ -57,116 +57,39 @@ def _plot_and_save_histogram(difference_values,          # pragma: no cover
     plt.savefig(output_filepath)
 
 #-----------------------------------------------------------------------------------------------------------------------
-def _plot_and_save_histogram_divisional(difference_values,          # pragma: no cover
-                                        number_of_bins,
-                                        range_lower, 
-                                        range_upper,
-                                        climate_index_name,
-                                        climdiv_id,
-                                        title,
-                                        output_filepath):
-
-    full_title = title + ': {0}, Division {1}'.format(climate_index_name, climdiv_id)
-    
-    _plot_and_save_histogram(difference_values,          # pragma: no cover
-                             number_of_bins,
-                             range_lower, 
-                             range_upper,
-                             climate_index_name,
-                             full_title,
-                             output_filepath)
-
-#-----------------------------------------------------------------------------------------------------------------------
-def _plot_and_save_histogram_monthly(difference_values,          # pragma: no cover
-                                     number_of_bins,
-                                     range_lower, 
-                                     range_upper,
-                                     climate_index_name,
-                                     month_name,
-                                     plot_title,
-                                     output_filepath):
-    
-    full_title = plot_title + ': {0}, Month {1}'.format(climate_index_name, month_name)
-    
-    _plot_and_save_histogram(difference_values,          # pragma: no cover
-                             number_of_bins,
-                             range_lower, 
-                             range_upper,
-                             climate_index_name,
-                             full_title,
-                             output_filepath)
-    
-#-----------------------------------------------------------------------------------------------------------------------
 def _plot_and_save_lines(expected,             # pragma: no cover
                          actual,
                          difference_values,
-                         title,
+                         rmserror,
+                         percent_signchange,
                          varname,
-                         output_filepath,
-                         x_label):
+                         output_filepath):
 
     # set figure size to (x, y)
     plt.figure(figsize=(48, 6))
     
+    full_title = '{0} comparison for PRISM'.format(varname) + \
+            '  (RMSE: % 5.2f,  percent with sign change: % 6.2f)' % (rmserror, percent_signchange)
+
     # plot the values and differences
     x = np.arange(difference_values.size)
     ax = plt.axes()
     ax.set_ylim([-5, 5])
     plt.axhline()
-    expected_line, = plt.plot(x, expected, color='blue', label='NCEI (expected)')
+    expected_line, = plt.plot(x, expected, color='blue', label='WRCC (expected)')
     actual_line, = plt.plot(x, actual, color='yellow', linestyle='--', label='NIDIS (actual)')
     diffs_line, = plt.plot(x, difference_values, color='red', label='Difference')
     plt.legend(handles=[expected_line, actual_line, diffs_line], loc='upper left')
-    plt.title(title)
-    plt.xlabel(x_label)
-    plt.ylabel("value")
+    plt.title(full_title)
+    plt.xlabel('months')
+    plt.ylabel('value')
     
     plt.subplots_adjust(left=0.02, right=0.99, top=0.9, bottom=0.1)
     
     # save to file
-    _logger.info('Saving histogram plot for index %s to file %s', varname, output_filepath)
+    _logger.info('Saving line plot for index %s to file %s', varname, output_filepath)
     plt.savefig(output_filepath, bbox_inches='tight')
     plt.close()
-
-#-----------------------------------------------------------------------------------------------------------------------
-def _plot_and_save_lines_divisional(expected,             # pragma: no cover
-                                    actual,
-                                    difference_values,
-                                    rmse,
-                                    percent_sign_change,
-                                    climdiv_id,
-                                    varname,
-                                    output_filepath):
-
-    title = '{0} comparison for division {1}'.format(varname, climdiv_id) + \
-            '  (RMSE: % 5.2f,  percent with sign change: % 6.2f)' % (rmse, percent_sign_change)
-
-    _plot_and_save_lines(expected,             # pragma: no cover
-                         actual,
-                         difference_values,
-                         title,
-                         varname,
-                         output_filepath,
-                         "months")
-
-#-----------------------------------------------------------------------------------------------------------------------
-def _plot_and_save_lines_monthly(expected,             # pragma: no cover
-                                 actual,
-                                 difference_values,
-                                 rmse,
-                                 month_name,
-                                 varname,
-                                 output_filepath):
-
-    title = 'Comparison for month {0}: {1}     (RMSE: {2})'.format(month_name, varname, rmse)
-
-    _plot_and_save_lines(expected,             # pragma: no cover
-                         actual,
-                         difference_values,
-                         title,
-                         varname,
-                         output_filepath,
-                         "years")
 
 #-----------------------------------------------------------------------------------------------------------------------
 def _get_variables(prism_dataset,
@@ -230,7 +153,8 @@ def _summary_analysis_plots(prism_dataset,
                             variable_name_nidis,
                             diff_prefix,
                             rmse_prefix,
-                            signchange_prefix):
+                            signchange_prefix,
+                            output_dir):
     
     # get the variables used for diffs, RMSE, and percentage sign change for this climate index
     diff_variable, rmse_variable, signchange_variable = _get_variables(prism_dataset,
@@ -242,65 +166,54 @@ def _summary_analysis_plots(prism_dataset,
     # common title for plots
     histogram_title = 'WRCC vs. NIDIS: '
     
-    # count the number of divisions we've analyzed in order to get a mean for various statistics such as RMSE
-    divs_analyzed = 0
-    rmse_sum = 0.0
-                
     _logger.info('Computing diffs, RMSE, and percentage sign change for PRISM')
 
     # get the variable var_names for the month, mask the NaNs (data assumed to be in (division, time) dimension order)
-    data_CMB = np.ma.masked_invalid(divs_dataset.variables[variable_names[0]][:, :, :], copy=False)
-    data_NIDIS = np.ma.masked_invalid(divs_dataset.variables[variable_names[1]][:, :, :], copy=False)
+    data_WRCC = np.ma.masked_invalid(prism_dataset.variables[variable_name_wrcc][:, :, :], copy=False)
+    data_NIDIS = np.ma.masked_invalid(prism_dataset.variables[variable_name_nidis][:, :, :], copy=False)
 
     # get the differences, assign the array into the current division's slot within the NetCDF variable
-    differences = data_CMB - data_NIDIS
-    diff_variable[division_index, :] = np.reshape(differences, (1, differences.size))
+    differences = data_WRCC - data_NIDIS
+    diff_variable[:, :, :] = np.reshape(differences, (1, differences.size))
 
     # get the RMSE for the two sets of values, sum for later averaging, and assign into NetCDF variable
-    error = utils.rmse(data_NIDIS, data_CMB)
-    rmse_sum += error
-    rmse_variable[division_index] = np.array([error])
+    error = utils.rmse(data_NIDIS, data_WRCC)
+    rmse_variable[:] = np.array([error])
 
     # compute the percentage sign change
-    sign_changes = utils.sign_change(data_CMB, data_NIDIS)
+    sign_changes = utils.sign_change(data_WRCC, data_NIDIS)
     percentage_sign_change = 100.0 * np.count_nonzero(sign_changes.flatten()) / sign_changes.size
-    signchange_variable[division_index] = np.array([percentage_sign_change])
+    signchange_variable[:] = np.array([percentage_sign_change])
 
+    # compute % change
+    percent_bias = np.nanmean((data_NIDIS - data_WRCC) * 100.0 / data_WRCC)
+        
     # display the division's RMSE and percentage sign change for the current index
-    print('% s RMSE: % 5.2f    percentage sign change: % 5.2f' % (climate_index_name, 
-                                                                  error, 
-                                                                  percentage_sign_change))
+    print('% s RMSE: % 5.2f    percentage sign change: % 4.1f  percent bias: % 4.1f' % (climate_index_name, 
+                                                                                        error, 
+                                                                                        percentage_sign_change,
+                                                                                        percent_bias))
 
-        # only plot divisions in the list, if specified
-        if divs_to_plot is not None and division_id not in divs_to_plot:
+    # plot the differences as a histogram and save to file
+    _plot_and_save_histogram(differences,
+                             80,   # number_of_bins
+                             -2,   # lower range
+                             2,    # upper range
+                             climate_index_name,
+                             histogram_title,
+                             output_dir + '/diffs_histogram_{0}.png'.format(variable_name_nidis))
+    
+    # plot and save line graphs showing correlation of values and differences
+    _plot_and_save_lines(data_NIDIS,
+                         data_WRCC,
+                         differences,
+                         error,
+                         percentage_sign_change,
+                         climate_index_name,
+                         output_dir + '/diffs_line_{0}.png'.format(variable_name_nidis))
 
-            continue
-
-        else:
-
-            # plot the differences as a histogram and save to file
-            _plot_and_save_histogram_divisional(differences,
-                                                80,   # number_of_bins
-                                                -2,   # lower range
-                                                2,    # upper range
-                                                climate_index_name,
-                                                division_id,
-                                                histogram_title,
-                                                output_dir + '/diffs_histogram_{0}_{1}.png'.format(variable_names[1], 
-                                                                                                   division_id))
-
-            # plot and save line graphs showing correlation of values and differences
-            _plot_and_save_lines_divisional(data_NIDIS,
-                                            data_CMB,
-                                            differences,
-                                            error,
-                                            percentage_sign_change,
-                                            division_id,
-                                            climate_index_name,
-                                            output_dir + '/diffs_line_{0}_{1}.png'.format(variable_names[1], 
-                                                                                          division_id))
-        # report summary statistics
-        print('\nTotal Mean RMSE for {0}: {1}'.format(climate_index_name, rmse_sum / divs_analyzed))
+    # report summary statistics
+    print('\nTotal Mean RMSE for {0}: {1}'.format(climate_index_name, error))
 
 #-----------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
@@ -404,7 +317,8 @@ if __name__ == '__main__':
                                         var_names[1],
                                         diff_name_prefix,
                                         rmse_name_prefix,
-                                        signchange_name_prefix)
+                                        signchange_name_prefix,
+                                        output_dir)
 
         # report on the elapsed time
         end_datetime = datetime.datetime.now()
