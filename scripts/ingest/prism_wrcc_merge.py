@@ -1,10 +1,10 @@
 import argparse
 from datetime import datetime
 import logging
+from netCDF4 import Dataset, num2date
 import numpy as np
 import os
-from netCDF4 import Dataset, num2date
-import pycurl
+import urllib
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global logger which will write to the console as standard error
@@ -85,29 +85,12 @@ def _add_variable(dataset,
     variable.description = description
 
 #-----------------------------------------------------------------------------------------------------------------------
-def _retrieve_file(url,
-                   out_file):
-    """
-    Downloads and writes a file to a specified local file location.
-    
-    :param url: URL to the file we'll download, expected to be a binary file
-    :param out_file: local file location where the file will be written once fetched from the URL  
-    """
-    
-    with open(out_file, 'wb') as f:
-        c = pycurl.Curl()
-        c.setopt(c.URL, url)
-        c.setopt(c.WRITEDATA, f)
-        c.perform()
-        c.close()
-
-#-----------------------------------------------------------------------------------------------------------------------
 def _get_file(file_name,
               local_file):
 
     url = 'ftp://pubfiles.dri.edu/pub/mcevoy/WWDT_input/{0}'.format(file_name)
     logger.info('Downloading from %s', url)
-    _retrieve_file(url, local_file)
+    urllib.request.urlretrieve(url, local_file)
     logger.info('\tTemporary input data file: %s', local_file)
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -234,11 +217,11 @@ def ingest_prism_from_wrcc_public_ftp(prism_inputs_dir,
         
         # call the function that performs the merge
         _merge_wrcc_prism(prism_inputs_dir, 
-                         output_file, 
-                         variable_prism[0], 
-                         variable_prism[1], 
-                         variable_prism[2],
-                         variable_wrcc)
+                          output_file, 
+                          variable_prism[0], 
+                          variable_prism[1], 
+                          variable_prism[2],
+                          variable_wrcc)
 
         print('File for {0}:  {1}'.format(variable_prism[2], output_file))
 
