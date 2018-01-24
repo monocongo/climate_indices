@@ -9,5 +9,13 @@ setup(
     author_email='james.adams@noaa.gov',
     description='Community reference implementations of climate indices algorithms in Python. Including Palmers (PDSI, scPDSI,  PHDI, and Z-Index), SPI, SPEI, PET, and PNP.',
     packages=find_packages(exclude=["*.tests", "*.tests.*", "tests.*", "tests"]),
+    install_requires=[
+        "numpy",
+        "numba",
+        "pycurl",
+        "pandas",
+        "scipy",
+        "netcdf4",
+    ],
     keywords="indices climate climate_indices drought drought_indices pdsi spi spei evapotranspiration",
 )
