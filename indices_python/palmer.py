@@ -2229,4 +2229,3 @@ def pdsi(precip_time_series,          # pragma: no cover
         # catch all exceptions, log rudimentary error information
         _logger.error('Failed to complete', exc_info=True)
         raise
-
