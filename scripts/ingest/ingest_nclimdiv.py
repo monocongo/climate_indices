@@ -1,12 +1,11 @@
 from datetime import datetime
-import io
 import logging
 import math
 import netCDF4
 import numpy as np
 import os
 import pandas as pd
-import pycurl
+import urllib.request
 
 from indices_python import utils
 
@@ -23,17 +22,8 @@ _logger = logging.getLogger(__name__)
 #-----------------------------------------------------------------------------------------------------------------------
 def _get_processing_date():   # pragma: no cover
 
-    buffer = io.BytesIO()
-    c = pycurl.Curl()  
-    c.setopt(c.URL, 'ftp://ftp.ncdc.noaa.gov/pub/data/cirs/climdiv/procdate.txt')
-    c.setopt(c.WRITEDATA, buffer)
-    c.perform()
-    c.close()
-    
-    body = buffer.getvalue()
-    
-    # body is a byte string, we need to know the encoding in order to decode it
-    return body.decode('iso-8859-1').rstrip()
+    # get the line of text from the file, remove newline and leading "b" to contain only the date in YYYYMMDD format 
+    return str(urllib.request.urlopen('ftp://ftp.ncdc.noaa.gov/pub/data/cirs/climdiv/procdate.txt').read()[:-1])[2:-1]
 
 #-----------------------------------------------------------------------------------------------------------------------
 def _parse_climatology(date,                 # pragma: no cover
@@ -55,7 +45,7 @@ def _parse_climatology(date,                 # pragma: no cover
     
     # use a temporary file that we'll remove once no longer necessary
     tmp_file = "tmp_climatology_for_ingest_nclimdiv.txt"
-    utils.retrieve_file(file_url + 'dv-v1.0.0-{0}'.format(date), tmp_file)
+    urllib.request.urlretrieve(file_url + 'dv-v1.0.0-{0}'.format(date), tmp_file)
     div_file = open(tmp_file, 'r')
     
     # use a list of column names to clue in pandas as to the structure of the ASCII rows
@@ -415,7 +405,7 @@ def _ingest_netcdf(output_netcdf,           # pragma: no cover
 
         # use a temporary file that we'll remove once no longer necessary
         tmp_file = "tmp_soil_for_ingest_nclimdiv.txt"
-        utils.retrieve_file(soil_url, tmp_file)
+        urllib.request.urlretrieve(soil_url, tmp_file)
         soil_file = open(tmp_file, 'r')
 
         # parse the soil constant (available water capacity)
@@ -457,7 +447,7 @@ def _ingest_netcdf(output_netcdf,           # pragma: no cover
         
             # use a temporary file that we'll remove once no longer necessary
             tmp_file = "tmp_climatology_for_ingest_nclimdiv.txt"
-            utils.retrieve_file(file_url, tmp_file)
+            urllib.request.urlretrieve(file_url, tmp_file)
             div_file = open(tmp_file, 'r')
     
             var_name = 'cmb_' + variable

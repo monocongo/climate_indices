@@ -624,14 +624,14 @@ if __name__ == '__main__':
 
         # perform the processing
         process_divisions(args.input_file,
-                         args.precip_var_name,
-                         args.temp_var_name,
-                         args.awc_var_name,
-                         args.month_scales,
-                         args.calibration_start_year,
-                         args.calibration_end_year,
-                         args.orig_pe,
-                         args.divisions)
+                          args.precip_var_name,
+                          args.temp_var_name,
+                          args.awc_var_name,
+                          args.month_scales,
+                          args.calibration_start_year,
+                          args.calibration_end_year,
+                          args.orig_pe,
+                          args.divisions)
         
         # report on the elapsed time
         end_datetime = datetime.now()
