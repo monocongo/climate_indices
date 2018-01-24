@@ -1181,10 +1181,20 @@ def _pdsi_from_zindex(Z):
             else: # Drought underway
                 
                 PV, PPe, PX1, PX2, PX3, X, BT = _dry_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT)
-        
+
         # select the PMDI value
         PMDI[k] = _pmdi(Pe, X1, X2, X3)
-
+#         #TODO  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#         # DEBUG only -- REMOVE
+#         #
+#         # this is here to remind us to focus on the PMDI appearing to be off my a month, something like this may fix things
+#         #
+#         if k > 0:
+#             PMDI[k - 1] = _pmdi(Pe, X1, X2, X3)  #TODO remove, testing only
+#         else:
+#             PMDI[k] = _pmdi(Pe, X1, X2, X3)
+#         #TODO remove above
+        
         ## Assign V, Pe, X1, X2, and X3 for use with the next month
         V = PV
         Pe = PPe[k]
@@ -2219,3 +2229,4 @@ def pdsi(precip_time_series,          # pragma: no cover
         # catch all exceptions, log rudimentary error information
         _logger.error('Failed to complete', exc_info=True)
         raise
+
