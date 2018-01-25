@@ -5,6 +5,7 @@ import multiprocessing
 import netCDF4
 import numpy as np
 import random
+import urllib
 
 from indices_python import netcdf_utils, utils
 from scripts.ingest import ingest_nclimgrid, ingest_prism
@@ -113,8 +114,8 @@ def ingest_and_process_indices(grid_name,
         # and precipitation) plus soil constants (available water capacity)
         precip_file, temp_file, tmin_file, tmax_file = ingest_nclimgrid.ingest_to_netcdf(source_dir, output_dir)
         awc_file = args.output_dir + '/nclimgrid_soil.nc'
-        utils.retrieve_file('https://github.com/monocongo/indices_python/blob/develop/example_inputs/nclimgrid_soil.nc', 
-                            awc_file)
+        urllib.request.urlretrieve('https://github.com/monocongo/indices_python/blob/develop/example_inputs/nclimgrid_soil.nc', 
+                                   awc_file)
     
     elif grid_name == 'prism':
         
@@ -124,8 +125,8 @@ def ingest_and_process_indices(grid_name,
         precip_file = prism_file
         temp_file = prism_file
         awc_file = output_dir + '/prism_soil.nc'
-        utils.retrieve_file('https://github.com/monocongo/indices_python/blob/master/example_inputs/prism_soil.nc', 
-                            awc_file)
+        urllib.request.urlretrieve('https://github.com/monocongo/indices_python/blob/master/example_inputs/prism_soil.nc', 
+                                   awc_file)
     
     else:
         
