@@ -61,7 +61,7 @@ A new Anaconda [environment](https://conda.io/docs/using/envs.html) containing a
 
 `$ conda env create -f environment.yml`
 
-Windows users should comment out the entry for PyNCO as it is not available yet for Windows and it conda's environment creation script will fail if it encounters a missing dependency. To do this prepend the line with a hashtag/pound sign at the first column:
+Windows users should comment out the entry for PyNCO as it is not available yet for Windows and the conda environment creation script seems to fail if it encounters a missing dependency. To do this simply prepend the line with a hashtag (comment symbol) in the first column:
 
 `#  - pynco`
  

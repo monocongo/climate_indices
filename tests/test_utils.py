@@ -1,6 +1,8 @@
 import io
 import logging
 import numpy as np
+import os
+from pathlib import Path
 import unittest
 import unittest.mock
 
@@ -230,21 +232,6 @@ class UtilsTestCase(unittest.TestCase):
         np.testing.assert_raises(ValueError, utils.reshape_to_divs_years_months, values_2d)
         np.testing.assert_raises(ValueError, utils.reshape_to_divs_years_months, np.reshape(values_2d, (3, 3, 3)))
         
-    #----------------------------------------------------------------------------------------
-#     def test_retrieve_file(self):
-#         """
-#         Test for the utils.retrieve_file() function
-#         """
-#         
-#         test_file = 'test_nclimgrid_soil.nc_OK_TO_REMOVE'
-#         utils.retrieve_file('https://github.com/monocongo/indices_python/blob/develop/example_inputs/nclimgrid_soil.nc', 
-#                             test_file)
-#         self.assertTrue(Path(test_file).is_file(), 'File not downloaded from github as expected')
-# 
-#         # clean up
-#         if Path(test_file).is_file():
-#             os.remove(test_file)
-#             
     #----------------------------------------------------------------------------------------
     def test_rmse(self):
         """
