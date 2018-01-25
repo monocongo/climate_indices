@@ -335,6 +335,16 @@ def _divisional_analysis_plots(divs_dataset,
 
         else:
 
+            # compute % change
+            percent_bias = np.nanmean((data_NIDIS - data_CMB) * 100.0 / data_CMB)
+        
+            # display the division's RMSE and percentage sign change for the current index
+            print('Division % i:  % s RMSE: % 5.2f    percentage sign change: % 5.2f   percent bias: % 5.2f' % (division_id, 
+                                                                                                                climate_index_name, 
+                                                                                                                error, 
+                                                                                                                percentage_sign_change,
+                                                                                                                percent_bias))
+
             # plot the differences as a histogram and save to file
             _plot_and_save_histogram_divisional(differences,
                                                 80,   # number_of_bins
@@ -417,7 +427,8 @@ if __name__ == '__main__':
         awc_var_name = 'awc'
 
         #DEBUG ONLY -- REMOVE
-        divisions_to_plot = [405, 1309, 3405]
+        divisions_to_plot = [4404, 4103]
+#         divisions_to_plot = [405, 1309, 3405]
 #         divisions_to_plot = None
 
         # settings for use of either original NCDC method or new Thornthwaite method for PET computation
