@@ -4,7 +4,7 @@ setup(
     name='indices_python',
     version='0.1.0',
     url='https://github.com/monocongo/indices_python',
-    license='GPL 2.0',
+    license='BSD',
     author='James Adams',
     author_email='james.adams@noaa.gov',
     description=('Community reference implementations of climate indices '
@@ -14,7 +14,6 @@ setup(
     install_requires=[
         "numpy",
         "numba",
-        "pycurl",
         "pandas",
         "scipy",
         "netcdf4",
@@ -30,7 +29,7 @@ setup(
         'Intended Audience :: Developers',
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',
-        'License :: OSI Approved :: GNU Affero General Public License v3',
+        'License :: OSI Approved :: BSD License',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Topic :: Scientific/Engineering :: Atmospheric Science',
