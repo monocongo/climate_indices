@@ -16,10 +16,37 @@ class ComputeTestCase(fixtures.FixturesTestCase):
     '''
 
     #----------------------------------------------------------------------------------------
+    def test_error_function(self):
+        """
+        Test for the compute._error_function() function
+        """
+
+        self.assertEqual(compute._error_function(0.0), 
+                         0.0, 
+                         msg='Failed to accurately compute error function')
+        
+        self.assertEqual(compute._error_function(5.0), 
+                         0.9999999999992313, 
+                         msg='Failed to accurately compute error function')
+
+        self.assertEqual(compute._error_function(-5.0), 
+                         -0.9999999999992313, 
+                         msg='Failed to accurately compute error function')
+
+        self.assertEqual(compute._error_function(0.17), 
+                         0.5949962306009045, 
+                         msg='Failed to accurately compute error function')
+
+        self.assertEqual(compute._error_function(-0.07), 
+                         -0.5394288598854453, 
+                         msg='Failed to accurately compute error function')
+
+    #----------------------------------------------------------------------------------------
     def test_estimate_lmoments(self):
         """
         Test for the compute._estimate_lmoments() function
         """
+        
         # provide some bogus inputs to at least make sure these raise expected errors
         np.testing.assert_raises(ValueError, compute._estimate_lmoments, [1.0, 0.0, 0.0])
         np.testing.assert_raises(ValueError, compute._estimate_lmoments, [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN])
@@ -120,6 +147,36 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                                    err_msg='Failed to accurately compute Pearson Type III fitting values')
 
     #----------------------------------------------------------------------------------------
+    def test_sum_to_scale(self):
+        '''
+        Test for the compute.sum_to_scale() function
+        '''
+
+        # test an input array with no missing values    
+        values = np.array([3, 4, 6, 2, 1, 3, 5, 8, 5])
+        computed_values = compute.sum_to_scale(values, 3)
+        expected_values = np.array([np.NaN, np.NaN, 13, 12, 9, 6, 9, 16, 18])
+        np.testing.assert_allclose(computed_values, 
+                                   expected_values, 
+                                   err_msg='Sliding sums not computed as expected')            
+
+        # test an input array with missing values on the end    
+        values = np.array([3, 4, 6, 2, 1, 3, 5, 8, 5, np.NaN, np.NaN, np.NaN])
+        computed_values = compute.sum_to_scale(values, 3)
+        expected_values = np.array([np.NaN, np.NaN, 13, 12, 9, 6, 9, 16, 18, np.NaN, np.NaN, np.NaN])
+        np.testing.assert_allclose(computed_values, 
+                                   expected_values, 
+                                   err_msg='Sliding sums not computed as expected when missing values appended to end of input array')            
+    
+        # test an input array with missing values within the array    
+        values = np.array([3, 4, 6, 2, 1, 3, 5, np.NaN, 8, 5, 6])
+        computed_values = compute.sum_to_scale(values, 3)
+        expected_values = np.array([np.NaN, np.NaN, 13, 12, 9, 6, 9, np.NaN, np.NaN, np.NaN, 19])
+        np.testing.assert_allclose(computed_values, 
+                                   expected_values, 
+                                   err_msg='Sliding sums not computed as expected when missing values appended to end of input array')            
+    
+    #----------------------------------------------------------------------------------------
     def test_transform_fitted_gamma(self):
         '''
         Test for the compute.transform_fitted_gamma() function
@@ -151,36 +208,6 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                                    atol=0.01,
                                    err_msg='Transformed Pearson Type III fitted values not computed as expected')
         
-    #----------------------------------------------------------------------------------------
-    def test_sum_to_scale(self):
-        '''
-        Test for the compute.sum_to_scale() function
-        '''
-
-        # test an input array with no missing values    
-        values = np.array([3, 4, 6, 2, 1, 3, 5, 8, 5])
-        computed_values = compute.sum_to_scale(values, 3)
-        expected_values = np.array([np.NaN, np.NaN, 13, 12, 9, 6, 9, 16, 18])
-        np.testing.assert_allclose(computed_values, 
-                                   expected_values, 
-                                   err_msg='Sliding sums not computed as expected')            
-
-        # test an input array with missing values on the end    
-        values = np.array([3, 4, 6, 2, 1, 3, 5, 8, 5, np.NaN, np.NaN, np.NaN])
-        computed_values = compute.sum_to_scale(values, 3)
-        expected_values = np.array([np.NaN, np.NaN, 13, 12, 9, 6, 9, 16, 18, np.NaN, np.NaN, np.NaN])
-        np.testing.assert_allclose(computed_values, 
-                                   expected_values, 
-                                   err_msg='Sliding sums not computed as expected when missing values appended to end of input array')            
-    
-        # test an input array with missing values within the array    
-        values = np.array([3, 4, 6, 2, 1, 3, 5, np.NaN, 8, 5, 6])
-        computed_values = compute.sum_to_scale(values, 3)
-        expected_values = np.array([np.NaN, np.NaN, 13, 12, 9, 6, 9, np.NaN, np.NaN, np.NaN, 19])
-        np.testing.assert_allclose(computed_values, 
-                                   expected_values, 
-                                   err_msg='Sliding sums not computed as expected when missing values appended to end of input array')            
-    
 #     #----------------------------------------------------------------------------------------
 #     def test_error_function(self):
 #         '''
