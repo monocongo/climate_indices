@@ -24,7 +24,15 @@ class ComputeTestCase(fixtures.FixturesTestCase):
         np.testing.assert_raises(ValueError, compute._estimate_lmoments, [1.0, 0.0, 0.0])
         np.testing.assert_raises(ValueError, compute._estimate_lmoments, [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN])
         np.testing.assert_raises(TypeError, compute._estimate_lmoments, None)
-                                        
+              
+        values = [0.8, 0.7, 0.6, 0.8, 0.7, 0.6, 0.8, 0.7, 0.6, 0.8, 0.8, 0.7, 0.6, 0.8, 0.7, 0.6, 0.7, 0.6]
+        lmoments_expected = [0.7, 0.0470588235294, -9.43689570931e-15]
+        lmoments_computed = compute._estimate_lmoments(values)
+        np.testing.assert_allclose(lmoments_expected, 
+                                   lmoments_computed,
+                                   atol=0.001, 
+                                   err_msg='Failed to accurately estimate L-moments')
+        
     #----------------------------------------------------------------------------------------
     def test_estimate_pearson3_parameters(self):
         """
@@ -34,7 +42,8 @@ class ComputeTestCase(fixtures.FixturesTestCase):
         np.testing.assert_raises(ValueError, compute._estimate_pearson3_parameters, [1.0, 0.0, 0.0])
         np.testing.assert_raises(ValueError, compute._estimate_pearson3_parameters, [1.0, 1.0, 5.0])
         np.testing.assert_raises(ValueError, compute._estimate_pearson3_parameters, [1.0, -1.0, 1.0])
-                                        
+        np.testing.assert_raises(ValueError, compute._estimate_pearson3_parameters, [1.0, -1.0, 1e-7])
+        
     #----------------------------------------------------------------------------------------
     def test_pearson3_fitting_values(self):
         """
