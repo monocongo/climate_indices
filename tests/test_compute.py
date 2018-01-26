@@ -33,12 +33,24 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                          -0.9999999999992313, 
                          msg='Failed to accurately compute error function')
 
+        self.assertEqual(compute._error_function(5.5), 
+                         0.9999999999999941, 
+                         msg='Failed to accurately compute error function')
+
         self.assertEqual(compute._error_function(0.17), 
                          0.5949962306009045, 
                          msg='Failed to accurately compute error function')
 
         self.assertEqual(compute._error_function(-0.07), 
                          -0.5394288598854453, 
+                         msg='Failed to accurately compute error function')
+
+        self.assertEqual(compute._error_function(50.0), 
+                         1.0, 
+                         msg='Failed to accurately compute error function')
+
+        self.assertEqual(compute._error_function(-50.0), 
+                         -1.0, 
                          msg='Failed to accurately compute error function')
 
     #----------------------------------------------------------------------------------------
@@ -140,6 +152,27 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                                     [45.85372999240245, 47.044683689044724, 48.324170722364769, 67.648293417069695, 122.99461289716399, 186.72172771536472, 154.96859791263938, 170.28928662930332, 196.42544505660646, 156.65434490285244, 58.400078445204926, 39.304991675221316],
                                     [38.873650403487751, 35.293694637792619, 34.315010982762324, 50.246089899974869, 72.614093396123764, 97.561428781577163, 50.629474961599207, 63.070686393124326, 75.262836828223314, 92.461158114814808, 48.751881843917658, 32.829910098364323],
                                     [1.7567209830258725, 1.236465572421074, 1.1665495317869126, 1.1961332793113155, 0.80348157450648583, 0.96098107449522363, 0.18285005633387616, 0.99639419415939923, 0.83383974102177649, 1.237596091853048, 1.8477937169727758, 1.7951017162633573]])
+        np.testing.assert_allclose(computed_values, 
+                                   expected_values, 
+                                   atol=0.001, 
+                                   equal_nan=True, 
+                                   err_msg='Failed to accurately compute Pearson Type III fitting values')
+
+        # add some zeros in order to exercise the parts where it gets a percentage of zeros
+        reshaped_values[0, 1] = 0.0
+        reshaped_values[3, 4] = 0.0
+        reshaped_values[14, 9] = 0.0
+        reshaped_values[2, 5] = 0.0
+        reshaped_values[8, 3] = 0.0
+        reshaped_values[7, 11] = 0.0
+        reshaped_values[3, 9] = 0.0
+        reshaped_values[11, 4] = 0.0
+        reshaped_values[13, 5] = 0.0
+        computed_values = compute._pearson3_fitting_values(reshaped_values, 1950, 1954, 2200)
+        expected_values = np.array([[0.0, 0.008130081300813009, 0.0, 0.0081967213114754103, 0.016393442622950821, 0.016393442622950821, 0.0, 0.0, 0.0, 0.016393442622950821, 0.0, 0.0081967213114754103],
+                                    [45.85372999240245, 46.347934133658548, 48.324170722364769, 67.635750192172154, 121.1711705943935, 184.12836193667619, 154.96859791263938, 170.28928662930332, 196.42544505660646, 153.52549468512296, 58.400078445204926, 38.858758644995909],
+                                    [38.873650403487751, 35.333748953293423, 34.315010982762324, 50.257217545953182, 73.519095805475956, 100.17902892507252, 50.629474961599207, 63.070686393124326, 75.262836828223314, 93.674893334263402, 48.751881843917658, 33.011345617774751],
+                                    [1.7567209830258725, 1.2512959828378094, 1.1665495317869126, 1.1928621421474375, 0.76407610195548825, 0.836464024048587, 0.18285005633387616, 0.99639419415939923, 0.83383974102177649, 1.162401322000489, 1.8477937169727758, 1.8064543865073583]])
         np.testing.assert_allclose(computed_values, 
                                    expected_values, 
                                    atol=0.001, 
