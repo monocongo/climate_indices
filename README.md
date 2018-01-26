@@ -2,7 +2,7 @@
 [![CodeFactor](https://www.codefactor.io/repository/github/monocongo/indices_python/badge/master)](https://www.codefactor.io/repository/github/monocongo/indices_python/overview/master)
 [![Coverage Status](https://coveralls.io/repos/github/monocongo/indices_python/badge.svg)](https://coveralls.io/github/monocongo/indices_python)
 [![Dependency Status](https://gemnasium.com/badges/github.com/monocongo/indices_python.svg)](https://gemnasium.com/github.com/monocongo/indices_python)
-[![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
+[![License](https://img.shields.io/badge/License-BSD%203--Clause-green.svg)](https://opensource.org/licenses/BSD-3-Clause)
 <!--
 [![Codeship Status for monocongo/indices_python](https://app.codeship.com/projects/0d711e30-ca42-0135-871a-72c36ec6d502/status?branch=master)](https://app.codeship.com/projects/261762)
 -->
@@ -61,7 +61,7 @@ A new Anaconda [environment](https://conda.io/docs/using/envs.html) containing a
 
 `$ conda env create -f environment.yml`
 
-Windows users should comment out the entry for PyNCO as it is not available yet for Windows and it conda's environment creation script will fail if it encounters a missing dependency. To do this prepend the line with a hashtag/pound sign at the first column:
+Windows users should comment out the entry for PyNCO as it is not available yet for Windows and the conda environment creation script seems to fail if it encounters a missing dependency. To do this simply prepend the line with a hashtag (comment symbol) in the first column:
 
 `#  - pynco`
  

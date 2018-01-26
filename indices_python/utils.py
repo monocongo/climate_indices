@@ -2,7 +2,6 @@ from datetime import datetime
 import logging
 import numba
 import numpy as np
-import pycurl
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global _logger
@@ -62,23 +61,6 @@ def is_data_valid(data):
         valid_flag = False
 
     return valid_flag
-
-#-----------------------------------------------------------------------------------------------------------------------
-def retrieve_file(url,         # pragma: no cover
-                  out_file):
-    """
-    Downloads and writes a file to a specified local file location.
-    
-    :param url: URL to the file we'll download, expected to be a binary file
-    :param out_file: local file location where the file will be written once fetched from the URL  
-    """
-    
-    with open(out_file, 'wb') as f:
-        c = pycurl.Curl()
-        c.setopt(c.URL, url)
-        c.setopt(c.WRITEDATA, f)
-        c.perform()
-        c.close()
 
 #-----------------------------------------------------------------------------------------------------------------------
 def rmse(predictions, targets):
@@ -144,37 +126,6 @@ def compute_days(initial_year,
     
     return days
 
-# #-----------------------------------------------------------------------------------------------------------------------
-# def compute_days(initial_year, 
-#                  total_months):
-#     """
-#     This function computes a series (list) of day values to correspond with the first day of the month for each month 
-#     of a time series starting from an initial year.
-#     
-#     :param initial_year:
-#     :param total_months: total number of months in the time series
-#     :return: numpy array of integers corresponding to   
-#     """
-#     
-#     # the date from which the returned array of day values are since (i.e. when using "days since <start_date>" as our units for time)    
-#     start_date = datetime(initial_year, 1, 1)
-#     
-#     # initialize the list of day values we'll build
-#     days = np.empty(total_months, dtype=int)
-#     
-#     # loop over all time steps (months)
-#     for i in range(total_months):
-#         years = int(i / 12)  # the number of years since the initial year 
-#         months = int(i % 12) # the number of months since January
-#         
-#         # cook up a date for the current time step (month)
-#         current_date = datetime(initial_year + years, 1 + months, 1)
-#         
-#         # leverage the difference between dates operation available with datetime objects
-#         days[i] = (current_date - start_date).days
-#     
-#     return days
-#
 #-----------------------------------------------------------------------------------------------------------------------
 #@numba.jit
 def reshape_to_years_months(monthly_values):
@@ -252,9 +203,6 @@ def reshape_to_divs_years_months(monthly_values):
     final_year_months = shape[1] % 12
     if final_year_months > 0:
         pad_months = 12 - final_year_months
-#         pad_values = np.full((shape[1], pad_months,), np.NaN)
-#         monthly_values = np.append(monthly_values, pad_values)
-        
         monthly_values = np.pad(monthly_values, [(0, 0), (0, pad_months)], mode='constant', constant_values=np.NaN)
         
     # we should have an ordinal number of years now (ordinally divisible by 12)
@@ -265,9 +213,38 @@ def reshape_to_divs_years_months(monthly_values):
             
 #-----------------------------------------------------------------------------------------------------------------------
 def count_zeros_and_non_missings(values):
+    """
+    Given an input array of values return a count of the zeros and non-missing values.
+    Missing values assumed to be numpy.NaNs.
+    
+    :param values: array like object (numpy array, most likely)
+    :return: two int scalars: 1) the count of zeros, and 2) the count of non-missing values  
+    """
+    
+    # make sure we have a numpy array
+    values = np.array(values)
     
     # count the number of zeros and non-missing (non-NaN) values
     zeros = values.size - np.count_nonzero(values)
     non_missings = np.count_nonzero(~np.isnan(values))
 
     return zeros, non_missings
+
+#-----------------------------------------------------------------------------------------------------------------------
+def print_years_months(values):
+    """
+    Takes an input array of value and prints it as if it were a 2-D array with (years, month) as dimensions, 
+    with one year written per line and missing years listed as NaNs. Designed to accept an array of monthly values,
+    with the initial value corresponding to January of the initial year.
+    
+    Useful for printing a timeseries of values when constructing a test fixture from running code that has results 
+    we'd like to match in an unit test, etc.
+    
+    :param values: 
+    """
+
+    # reshape the array, go over the two dimensions and print
+    values = reshape_to_years_months(values)
+    for i in range(values.shape[0]):
+        year_line = ''.join("%5.2f, " % (v) for v in values[i])
+        print(year_line + ' \\')
