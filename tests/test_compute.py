@@ -3,7 +3,7 @@ import numpy as np
 import unittest
 
 from tests import fixtures
-from indices_python import compute
+from indices_python import compute, utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # disable logging messages
@@ -54,7 +54,18 @@ class ComputeTestCase(fixtures.FixturesTestCase):
         np.testing.assert_raises(ValueError, compute._pearson3_fitting_values, np.array([1.0, 0.0, 0.0, 1.0, 0.0, 0.0]), 1950, 1952, 1970)
         np.testing.assert_raises(ValueError, compute._pearson3_fitting_values, np.array([np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN]), 1950, 1952, 1970)
         np.testing.assert_raises(TypeError, compute._pearson3_fitting_values, None)
-                                        
+            
+        computed_values = compute._pearson3_fitting_values(utils.reshape_to_years_months(self.fixture_precips_mm), 1950, 1952, 1970)
+        expected_values = np.array([[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                                    [48.539987664499996, 53.9852487665, 44.284745065842102, 62.583727384894736, 125.72157689160528, 182.03053042784214, 159.00575657926319, 170.92269736865791, 189.8925781252895, 155.13420024692104, 72.953125000026319, 43.31532689144737],
+                                    [33.781507724523095, 43.572151699968387, 40.368173442404107, 44.05329691434887, 60.10621716019174, 59.343178125457186, 49.228795303727473, 66.775653341386999, 65.362977393206421, 94.467597091088265, 72.63706898364299, 34.250906049301463],
+                                    [0.76530966976335302, 1.2461447518219784, 2.275517179222323, 0.8069305098698194, -0.6783037020197018, 1.022194696224529, 0.40876120732817578, 1.2372551346168916, 0.73881116931924118, 0.91911763257003465, 2.3846715887263725, 1.4700559294571962]])
+        np.testing.assert_allclose(computed_values, 
+                                   expected_values, 
+                                   atol=0.001, 
+                                   equal_nan=True, 
+                                   err_msg='Failed to accurately compute Pearson Type III fitting values')
+
     #----------------------------------------------------------------------------------------
     def test_transform_fitted_gamma(self):
         '''
