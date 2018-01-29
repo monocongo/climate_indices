@@ -1,6 +1,7 @@
 import argparse
 from datetime import datetime
 import logging
+import math
 import multiprocessing
 import netCDF4
 import numpy as np
@@ -424,7 +425,7 @@ class GridProcessor(object):             # pragma: no cover
             # open the existing PET NetCDF file for writing, copy the latitude slice into the PET variable at the indexed latitude position
             pet_lock.acquire()
             pet_dataset = netCDF4.Dataset(self.netcdf_pet, mode='a')
-            pet_dataset['pet'][:, lat_index, :] = pet_lat_slice
+            pet_dataset['pet'][:, lat_index, :] = pet_lat_slice   # this assumes (time, lat, lon), make more general to allow for other dimension orders, etc.
             pet_dataset.sync()
             pet_dataset.close()
             pet_lock.release()
