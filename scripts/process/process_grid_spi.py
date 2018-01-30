@@ -23,8 +23,6 @@ logger = logging.getLogger(__name__)
 # multiprocessing locks we'll use to synchronize I/O writes to NetCDF files, one per each output file
 spi_gamma_lock = multiprocessing.Lock()
 spi_pearson_lock = multiprocessing.Lock()
-spei_gamma_lock = multiprocessing.Lock()
-spei_pearson_lock = multiprocessing.Lock()
 
 # ignore warnings
 import warnings
@@ -82,9 +80,7 @@ class GridProcessor(object):             # pragma: no cover
 
         # dictionary of index types mapped to their corresponding long variable names to be used within their respective NetCDFs
         indicators_to_longnames = {'spi_gamma': 'Standard Precipitation Index (Gamma distribution), {0}-month scale',
-                                   'spi_pearson': 'Standard Precipitation Index (Pearson Type III distribution), {0}-month scale',
-                                   'spei_gamma': 'Standard Precipitation Evapotranspiration Index (Gamma distribution), {0}-month scale',
-                                   'spei_pearson': 'Standard Precipitation Evapotranspiration Index (Pearson Type III distribution), {0}-month scale'}
+                                   'spi_pearson': 'Standard Precipitation Index (Pearson Type III distribution), {0}-month scale'}
 
         # loop over the indices, creating an output NetCDF dataset for each
         for index, long_name in indicators_to_longnames.items():
@@ -108,9 +104,7 @@ class GridProcessor(object):             # pragma: no cover
 
         # assign the NetCDF file paths to the corresponding member variables
         self.netcdf_spi_gamma = netcdfs['spi_gamma']
-        self.netcdf_spei_gamma = netcdfs['spei_gamma']
         self.netcdf_spi_pearson = netcdfs['spi_pearson']
-        self.netcdf_spei_pearson = netcdfs['spei_pearson']
 
         # set the number of months so we'll know at which months scale the indices NetCDF files should be computed
         self.months = months_scale
@@ -155,9 +149,7 @@ class GridProcessor(object):             # pragma: no cover
 
 #             # convert the SPI files to compressed NetCDF4 and move to the destination directory
 #             input_output_netcdfs = [(scaled_netcdfs['spi_gamma'], '/nidis/test/nclimgrid/spi_gamma/' + scaled_netcdfs['spi_gamma']),
-#                                     (scaled_netcdfs['spi_pearson'], '/nidis/test/nclimgrid/spi_pearson/' + scaled_netcdfs['spi_pearson']),
-#                                     (scaled_netcdfs['spei_gamma'], '/nidis/test/nclimgrid/spei_gamma/' + scaled_netcdfs['spei_gamma']),
-#                                     (scaled_netcdfs['spei_pearson'], '/nidis/test/nclimgrid/spei_pearson/' + scaled_netcdfs['spei_pearson'])]
+#                                     (scaled_netcdfs['spi_pearson'], '/nidis/test/nclimgrid/spi_pearson/' + scaled_netcdfs['spi_pearson'])]
 #
 #             pool = multiprocessing.Pool(processes=number_of_workers)
 #
