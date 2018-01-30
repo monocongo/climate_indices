@@ -33,6 +33,10 @@ This Python implementation of the above climate indices algorithms is being deve
 
 ## Getting started
 
+The usage described below shows the indices computation module being used via shell commands to call scripts that perform data management and computation of climate indices from provided inputs. Interaction with the module is assumed to be performed using a bash shell, either on Linux, Windows, or MacOS. 
+
+Windows users will need to install and configure a bash shell in order to follow the usage shown below. Recommended for this are [babun](https://babun.github.io/) or [Cygwin](https://www.cygwin.com/) 
+
 #### Access the code
 Clone this repository:
     
