@@ -12,16 +12,16 @@ install:
   - conda config --set always_yes yes --set changeps1 no
   - conda update -q conda
 
-  # environment.yml contains the dependencies, for an environment named 'indices_python' 
-  - conda env create -q -f environment.yml
+  # create an environment named 'indices_python', activate it, and add the package via PIP 
+  - conda env create -n indices_python
   - source activate indices_python
-  - python setup.py install
+  - pip install .
 
 script: 
   # run all tests with coverage 
   - export NUMBA_DISABLE_JIT=1  # disable numba JIT
-  - coverage run --source=indices_python -m unittest tests/test_*.py
-
+  - coverage run --source=indices_python setup.py test
+  
 after_success:
   # get a code coverage report for coveralls.io integration
   - coveralls
