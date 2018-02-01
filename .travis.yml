@@ -13,7 +13,7 @@ install:
   - conda update -q conda
 
   # create an environment named 'indices_python', activate it, and add the package via PIP 
-  - conda env create -n indices_python
+  - conda create -n indices_python
   - source activate indices_python
   - pip install .
 
