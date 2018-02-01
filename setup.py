@@ -19,6 +19,7 @@ setup(
         "netcdf4",
     ],
     tests_require=[
+        "coverage",
         "nose",
     ],
     test_suite='tests',
