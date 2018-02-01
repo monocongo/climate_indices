@@ -1,9 +1,0 @@
-numpy
-matplotlib
-pandas
-scipy
-nco
-nose
-numba
-netCDF4
-pycurl
