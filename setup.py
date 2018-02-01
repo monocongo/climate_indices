@@ -12,11 +12,12 @@ setup(
                  'PHDI, and Z-Index), SPI, SPEI, PET, and PNP.'),
     packages=['indices_python'],
     install_requires=[
+        "coverage",
+        "netcdf4",
         "numpy",
         "numba",
         "pandas",
         "scipy",
-        "netcdf4",
     ],
     tests_require=[
         "nose",
