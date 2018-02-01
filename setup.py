@@ -12,6 +12,7 @@ setup(
                  'PHDI, and Z-Index), SPI, SPEI, PET, and PNP.'),
     packages=['indices_python'],
     install_requires=[
+        "coverage",
         "numpy",
         "numba",
         "pandas",
