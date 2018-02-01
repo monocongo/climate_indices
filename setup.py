@@ -14,8 +14,8 @@ setup(
     install_requires=[
         "coverage",
         "netcdf4",
-        "numpy",
         "numba",
+        "numpy",
         "pandas",
         "scipy",
     ],
