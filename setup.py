@@ -13,11 +13,11 @@ setup(
     packages=['indices_python'],
     install_requires=[
         "coverage",
-        "numpy",
+        "netcdf4",
         "numba",
+        "numpy",
         "pandas",
         "scipy",
-        "netcdf4",
     ],
     tests_require=[
         "nose",
