@@ -1,5 +1,6 @@
 language: python
 
+# use caching to speed up builds
 cache: pip
 
 python:
