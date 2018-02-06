@@ -113,7 +113,7 @@ class GridProcessor(object):             # pragma: no cover
     def run(self):
 
         # the number of worker processes we'll have in our process pool
-        number_of_workers = 1#multiprocessing.cpu_count()
+        number_of_workers = multiprocessing.cpu_count()   # use single process here instead when debugging
 
         # open the input NetCDF files for compatibility validation and to get the data's time range
         with netCDF4.Dataset(self.netcdf_precip) as dataset_precip:
@@ -175,7 +175,7 @@ class GridProcessor(object):             # pragma: no cover
         :param lat_index:
         '''
 
-        logger.info('Computing SPI for latitude index %s', lat_index)
+        logger.info('Computing SPI/%s-month for latitude index %s', self.months, lat_index)
 
         # open the input NetCDFs
         with netCDF4.Dataset(self.netcdf_precip) as precip_dataset:
