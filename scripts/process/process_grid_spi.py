@@ -175,7 +175,7 @@ class GridProcessor(object):             # pragma: no cover
         :param lat_index:
         '''
 
-        logger.info('Computing SPI for latitude index %s', lat_index)
+        logger.info('Computing SPI/%s-month for latitude index %s', self.months, lat_index)
 
         # open the input NetCDFs
         with netCDF4.Dataset(self.netcdf_precip) as precip_dataset:
