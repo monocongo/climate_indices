@@ -61,31 +61,29 @@ A new Anaconda [environment](https://conda.io/docs/using/envs.html) containing a
 
 `$ conda env create -f environment.yml`
 
+Windows users should comment out the entry for PyNCO as it is not available yet for Windows and the conda environment creation script seems to fail if it encounters a missing dependency. To do this simply prepend the line with a hashtag (comment symbol) in the first column:
+
+`#  - pynco`
+ 
 The environment created by the above command can be activated using the following command:
 
 `$ source activate indices_python`
 
 Once the *conda Python environment has been activated then subsequent Python commands will run in this environment where the package dependencies for this project are present.
-
-Now the indices_python package itself can be added into the environment via pip:
-
-`$ pip install .`
  
-For users who'd prefer to not utilize pip the required module dependencies can be installed instead into an Anaconda environment piecemeal via multiple `conda install` commands:
+For users who'd prefer to not utilize the above approach using the provided `environment.yml` file, the required module dependencies can be installed instead into an Anaconda environment piecemeal via multiple `conda install` commands:
 
 `$ conda create --name <env_name> python=3` 
 
 `$ source activate <env_name>` 
 
-`$ conda install netCDF4` 
-
 `$ conda install numba` 
 
-`$ conda install numpy` 
-
-`$ conda install pandas` 
-
 `$ conda install scipy` 
+
+`$ conda install netCDF4` 
+
+`$ conda install pycurl`
 
 Optionally install the package into the local site-packages:
 
@@ -119,7 +117,7 @@ The numba environment variable is set/unset in order to bypass the numba just-in
 There are example climate indices processing scripts provided which compute the full suite of indices for various input dataset types. These process input files in the NetCDF format, and produce output NetCDF files in a corresponding format.
 
 ### nClimGrid 
-The script `process_grid.py` (found under the `scripts/process` subdirectory) is used to compute climate indices from [nClimGrid](https://www.ngdc.noaa.gov/docucomp/page?xml=NOAA/NESDIS/NCDC/Geoportal/iso/xml/C00332.xml&view=getDataView&header=none) input datasets. Usage of this script requires specifying the input file names and corresponding variable names for precipitation, temperature, and soil constant datasets, as well as the month scales over which the scaled indices (SPI, SPEI, and PAP) are to be computed, plus the base output file name and the initial and final years of the calibration period. 
+The script `process_grid.py` (found under the `scripts/process` subdirectory) is used to compute climate indices from [nClimGrid](https://www.ngdc.noaa.gov/docucomp/page?xml=NOAA/NESDIS/NCDC/Geoportal/iso/xml/C00332.xml&view=getDataView&header=none) input datasets. Usage of this script requires specifying the input file names and corresponding variable names for prcipitation, temperature, and soil constant datasets, as well as the month scales over which the scaled indices (SPI, SPEI, and PAP) are to be computed, plus the base output file name and the initial and final years of the calibration period. 
 
 This script has the following required command line arguments:
 
@@ -186,7 +184,7 @@ Are you aware of other indices that would be a good addition here? Can you find 
 * Send us an [email](mailto:james.adams@noaa.gov)
 
 ## Copyright and licensing
-This is a developmental version of code that is originally developed at NCEI/NOAA, official release version available on [drought.gov](https://www.drought.gov/drought/python-climate-indices). Please read more on our [license](LICENSE) page.
+Please read more on our [license](LICENSE) page.
 
 
 
