@@ -3,6 +3,7 @@
 [![Coverage Status](https://coveralls.io/repos/github/monocongo/indices_python/badge.svg?branch=master)](https://coveralls.io/github/monocongo/indices_python?branch=master)
 [![Dependency Status](https://gemnasium.com/badges/github.com/monocongo/indices_python.svg)](https://gemnasium.com/github.com/monocongo/indices_python)
 [![License](https://img.shields.io/badge/License-BSD%203--Clause-green.svg)](https://opensource.org/licenses/BSD-3-Clause)
+[![Documentation](https://readthedocs.org/projects/indices-python/badge/?version=latest)](http://indices-python.readthedocs.io/en/latest/?badge=latest)
 <!--
 [![Codeship Status for monocongo/indices_python](https://app.codeship.com/projects/0d711e30-ca42-0135-871a-72c36ec6d502/status?branch=master)](https://app.codeship.com/projects/261762)
 -->
