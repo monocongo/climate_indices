@@ -1,5 +1,5 @@
 |Build Status| |CodeFactor| |Coverage Status| |Dependency Status|
-|License|
+|License| |Notebook|
 
 Community Reference Climate Indices
 ===================================
@@ -340,3 +340,6 @@ Please read more on our `license <LICENSE>`__ page.
    :target: https://gemnasium.com/github.com/monocongo/indices_python
 .. |License| image:: https://img.shields.io/badge/License-BSD%203--Clause-green.svg
    :target: https://opensource.org/licenses/BSD-3-Clause
+.. |Notebook| image:: https://mybinder.org/badge.svg 
+   :target: https://mybinder.org/v2/gh/monocongo/indices_python/master?filepath=notebooks%2FPalmer%20Drought%20Index.ipynb
+   
