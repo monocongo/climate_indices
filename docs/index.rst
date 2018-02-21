@@ -7,7 +7,6 @@
    :maxdepth: 2
    :caption: Contents:
 
-
 |Build Status| |CodeFactor| |Coverage Status| |Dependency Status| |License| |Notebook| |Documentation|
 
 Community Reference Climate Indices
