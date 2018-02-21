@@ -253,13 +253,7 @@ This script has the following required command line arguments:
 
 *Example command line invocation*:
 
-``$ nohup python -u process_grid.py --precip_file
-example_inputs/nclimgrid_lowres_prcp.nc --temp_file
-example_inputs/nclimgrid_lowres_tavg.nc --awc_file
-example_inputs/nclimgrid_lowres_soil.nc --precip_var_name prcp
---temp_var_name tavg --awc_var_name awc --month_scales 1 2 3 6 12 24
---calibration_start_year 1931 --calibration_end_year 1990
---output_file_base nclimgrid_lowres``
+``$ nohup python -u process_grid.py --precip_file example_inputs/nclimgrid_lowres_prcp.nc --temp_file example_inputs/nclimgrid_lowres_tavg.nc --awc_file example_inputs/nclimgrid_lowres_soil.nc --precip_var_name prcp --temp_var_name tavg --awc_var_name awc --month_scales 1 2 3 6 12 24 --calibration_start_year 1931 --calibration_end_year 1990 --output_file_base nclimgrid_lowres``
 
 **nClimDiv**
 
@@ -304,10 +298,7 @@ This script has the following required command line arguments:
 
 *Example command line invocation*:
 
-``$ nohup python -u process_divisions.py --input_file
-example_inputs/nclimdiv_20170404.nc --precip_var_name prcp --temp_var_name
-tavg --awc_var_name awc --month_scales 1 2 3 6 12 24
---calibration_start_year 1931 --calibration_end_year 1990``
+``$ nohup python -u process_divisions.py --input_file example_inputs/nclimdiv_20170404.nc --precip_var_name prcp --temp_var_name tavg --awc_var_name awc --month_scales 1 2 3 6 12 24 --calibration_start_year 1931 --calibration_end_year 1990``
 
 Get involved
 ------------
