@@ -155,8 +155,8 @@ man_pages = [
 #  dir menu entry, description, category)
 texinfo_documents = [
     (master_doc, 'indices_python', 'indices_python Documentation',
-     author, 'indices_python', 'One line description of project.',
-     'Miscellaneous'),
+     author, 'indices_python', 'Community reference climate indices implementations in Python',
+     'climate'),
 ]
 
 

@@ -1,5 +1,4 @@
-|Build Status| |CodeFactor| |Coverage Status| |Dependency Status|
-|License| |Notebook| |Documentation|
+|Build Status| |CodeFactor| |Coverage Status| |Dependency Status| |License| |Notebook| |Documentation|
 
 Community Reference Climate Indices
 ===================================
@@ -102,25 +101,24 @@ also useful for the processing scripts, and can optionally be installed
 as a Python module via conda.
 
 A new Anaconda `environment <https://conda.io/docs/using/envs.html>`__
-containing all required modules can be created through the use of the
-provided ``environment.yml`` file, which specifies an environment named
+should be created named
 ***indices_python*** containing all required modules:
 
-``$ conda env create -f environment.yml``
+``$ conda create -n indices_python``
 
 The environment created by the above command can be activated using the
 following command:
 
 ``$ source activate indices_python``
 
-Once the \*conda Python environment has been activated then subsequent
-Python commands will run in this environment where the package
-dependencies for this project are present.
-
 Now the indices_python package itself can be added into the environment
 via pip:
 
 ``$ pip install .``
+
+Once the *conda Python environment has been activated and the module installed 
+then subsequent Python commands will run in this environment where the package 
+dependencies for this project are present.
 
 For users who'd prefer to not utilize pip the required module
 dependencies can be installed instead into an Anaconda environment
@@ -140,14 +138,13 @@ piecemeal via multiple ``conda install`` commands:
 
 ``$ conda install scipy``
 
-Optionally install the package into the local site-packages:
-
 ``$ python setup.py install``
 
 Project contents
 ----------------
 
 -  ``indices_python``: main module
+-  ``docs``: documentation
 -  ``tests``: unit tests for main module
 -  ``scripts/compare``: scripts to compare results of indices processing
    on grids or climate divisions, comparing against expected/known
@@ -246,13 +243,7 @@ This script has the following required command line arguments:
 
 *Example command line invocation*:
 
-``$ nohup python -u process_grid.py --precip_file
-example_inputs/nclimgrid_lowres_prcp.nc --temp_file
-example_inputs/nclimgrid_lowres_tavg.nc --awc_file
-example_inputs/nclimgrid_lowres_soil.nc --precip_var_name prcp
---temp_var_name tavg --awc_var_name awc --month_scales 1 2 3 6 12 24
---calibration_start_year 1931 --calibration_end_year 1990
---output_file_base nclimgrid_lowres``
+``$ nohup python -u process_grid.py --precip_file example_inputs/nclimgrid_lowres_prcp.nc --temp_file example_inputs/nclimgrid_lowres_tavg.nc --awc_file example_inputs/nclimgrid_lowres_soil.nc --precip_var_name prcp --temp_var_name tavg --awc_var_name awc --month_scales 1 2 3 6 12 24 --calibration_start_year 1931 --calibration_end_year 1990 --output_file_base nclimgrid_lowres``
 
 **nClimDiv**
 
@@ -297,10 +288,7 @@ This script has the following required command line arguments:
 
 *Example command line invocation*:
 
-``$ nohup python -u process_divisions.py --input_file
-example_inputs/nclimdiv_20170404.nc --precip_var_name prcp --temp_var_name
-tavg --awc_var_name awc --month_scales 1 2 3 6 12 24
---calibration_start_year 1931 --calibration_end_year 1990``
+``$ nohup python -u process_divisions.py --input_file example_inputs/nclimdiv_20170404.nc --precip_var_name prcp --temp_var_name tavg --awc_var_name awc --month_scales 1 2 3 6 12 24 --calibration_start_year 1931 --calibration_end_year 1990``
 
 Get involved
 ------------
@@ -345,4 +333,3 @@ Please read more on our `license <LICENSE>`__ page.
 .. |Documentation| image:: https://readthedocs.org/projects/indices-python/badge/?version=latest
    :target: http://indices-python.readthedocs.io/en/latest/?badge=latest
    :alt: Documentation Status
-   

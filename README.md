@@ -58,21 +58,21 @@ or
 #### Dependencies
 This library and the example processing scripts use the [netCDF4](https://unidata.github.io/netcdf4-python/), [numpy](http://www.numpy.org/), [scipy](https://www.scipy.org/), and [numba](http://numba.pydata.org/) Python modules. The NetCDF Operators ([NCO](http://nco.sourceforge.net/)) software package is also useful for the processing scripts, and can optionally be installed as a Python module via conda.
 
-A new Anaconda [environment](https://conda.io/docs/using/envs.html) containing all required modules can be created through the use of the provided `environment.yml` file, which specifies an environment named **_indices_python_** containing all required modules:
+A new Anaconda [environment](https://conda.io/docs/using/envs.html) should be created named **_indices_python_**:
 
-`$ conda env create -f environment.yml`
+`$ conda create -n indices_python`
 
-Windows users should comment out the entry for PyNCO as it is not available yet for Windows and the conda environment creation script seems to fail if it encounters a missing dependency. To do this simply prepend the line with a hashtag (comment symbol) in the first column:
-
-`#  - pynco`
- 
 The environment created by the above command can be activated using the following command:
 
 `$ source activate indices_python`
 
-Once the *conda Python environment has been activated then subsequent Python commands will run in this environment where the package dependencies for this project are present.
+Finally install the package into the local site-packages:
+
+`$ pip install .`
+
+Once the *conda Python environment has been activated and the module installed then subsequent Python commands will run in this environment where the package dependencies for this project are present.
  
-For users who'd prefer to not utilize the above approach using the provided `environment.yml` file, the required module dependencies can be installed instead into an Anaconda environment piecemeal via multiple `conda install` commands:
+For users who'd prefer to not utilize the above approach the required module dependencies can be installed instead into an Anaconda environment piecemeal via multiple `conda install` commands:
 
 `$ conda create --name <env_name> python=3` 
 
@@ -86,13 +86,12 @@ For users who'd prefer to not utilize the above approach using the provided `env
 
 `$ conda install pycurl`
 
-Optionally install the package into the local site-packages:
-
 `$ python setup.py install`
 
 ## Project contents
 
 - `indices_python`: main module
+- `docs`: documentation
 - `tests`: unit tests for main module
 - `scripts/compare`: scripts to compare results of indices processing on grids or climate divisions, comparing against expected/known results (for example nClimDivs from NCEI, PRISM grids from WRCC)
 - `scripts/ingest`: scripts to ingest grid or climate divisions datasets from ASCII to NetCDF
