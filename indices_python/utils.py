@@ -1,3 +1,4 @@
+import calendar
 from datetime import datetime
 import logging
 import numba
@@ -211,6 +212,100 @@ def reshape_to_divs_years_months(monthly_values):
     # reshape from (months) to (years, 12) in order to have one year of months per row
     return np.reshape(monthly_values, (shape[0], total_years, 12))
             
+#-----------------------------------------------------------------------------------------------------------------------
+@numba.jit
+def transform_to_366day(original,
+                        year_start,
+                        total_years):
+    '''
+    TODO fully document this function
+    '''
+    # original time series is assumed to be a one-dimensional array of floats corresponding to a number of full years
+    
+    # allocate the new array for 366 daily values per year, including a faux Feb 29 for non-leap years
+    all_leap = np.full((total_years * 366,), np.NaN)
+    
+    # index of the first day of the year within the original and all_leap arrays
+    original_index = 0
+    all_leap_index = 0
+    
+    # loop over each year
+    for year in range(year_start, year_start + total_years):
+        
+        if calendar.isleap(year):
+            
+            # write the next 366 days from the original time series into the all_leap array
+            all_leap[all_leap_index : all_leap_index + 366] = original[original_index : original_index + 366]
+
+            # increment the "start day of the current year" index for the original so the next iteration jumps ahead a full year
+            original_index += 366
+            
+        else:
+
+            # write the first 59 days (Jan 1 through Feb 28) from the original time series into the all_leap array
+            all_leap[all_leap_index : all_leap_index + 59] = original[original_index : original_index + 59]
+
+            # average the Feb 28th and March 1st values as the faux Feb 29th value
+            all_leap[all_leap_index + 59] = (original[original_index + 58] + original[original_index + 59]) / 2
+            
+            # write the remaining days of the year (Mar 1 through Dec 31) from the original into the all_leap array
+            all_leap[all_leap_index + 60: all_leap_index + 366] = original[original_index + 59: original_index + 365]
+
+            # increment the "start day of the current year" index for the original so the next iteration jumps ahead a full year             
+            original_index += 365
+
+        all_leap_index += 366
+
+    return all_leap
+
+#-----------------------------------------------------------------------------------------------------------------------
+@numba.jit
+def transform_to_gregorian(original,
+                           year_start,
+                           total_years):
+    '''
+    TODO fully document this function
+    '''
+    # original time series is assumed to be a one-dimensional array of floats corresponding to a number of full years,
+    # with each year containing 366 days, as if each year is a leap year
+    
+    # find the total number of actual days between the start and end year
+    year_end = year_start + total_years - 1
+    days_actual = (datetime(year_end, 12, 31) - datetime(year_start, 1, 1)).days + 1
+    
+    # allocate the new array we'll write daily values into, including a faux Feb 29 for non-leap years
+    gregorian = np.full((days_actual,), np.NaN)
+    
+    # index of the first day of the year within the original and gregorian arrays
+    original_index = 0
+    gregorian_index = 0
+    
+    # loop over each year
+    for year in range(year_start, year_start + total_years):
+        
+        if calendar.isleap(year):
+            
+            # write the next 366 days from the original time series into the gregorian array
+            gregorian[gregorian_index : gregorian_index + 366] = original[original_index : original_index + 366]
+
+            # increment the "start day of the current year" index for the original so the next iteration jumps ahead a full year
+            gregorian_index += 366
+            
+        else:
+
+            # write the first 59 days (Jan 1 through Feb 28) from the original time series into the gregorian array
+            gregorian[gregorian_index : gregorian_index + 59] = original[original_index : original_index + 59]
+
+            # write the remaining days of the year (Mar 1 through Dec 31) from the original into the gregorian array
+            gregorian[gregorian_index + 59: gregorian_index + 365] = original[original_index + 60: original_index + 366]
+
+            # increment the "start day of the current year" index for the original so the next iteration jumps ahead a full year             
+            gregorian_index += 365
+
+        original_index += 366
+
+    return gregorian
+
 #-----------------------------------------------------------------------------------------------------------------------
 def count_zeros_and_non_missings(values):
     """
