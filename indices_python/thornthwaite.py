@@ -248,7 +248,7 @@ def potential_evapotranspiration(monthly_temps_celsius,
     
     # adjust negative temperature values to zero, since negative values aren't allowed (no evaporation below freezing)
     #TODO this sometimes throws a RuntimeWarning for invalid value, perhaps as a result of a NaN,
-    # somehow use masking and /or NaN precheck to eliminate the cause of this warning
+    # somehow use masking and/or NaN precheck to eliminate the cause of this warning
     monthly_temps_celsius[monthly_temps_celsius < 0] = 0.0
     
     # mean the monthly temperature values over the month axis, giving us 12 monthly means for the period of record
