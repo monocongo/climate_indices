@@ -1,8 +1,9 @@
+from datetime import datetime, timedelta
 import logging
 from numba import float64, int64, jit
 import numpy as np
 
-from indices_python import compute, palmer, thornthwaite
+from indices_python import compute, palmer, thornthwaite, utils
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 # set up a basic, global _logger
@@ -282,7 +283,7 @@ def spei_pearson(months_scale,
     # remember the original length of the input array, in order to facilitate returning an array of the same size
     original_length = precips_mm.size
     
-    # get a sliding sums array, with each month's value scaled by the specified number of months
+    # get a sliding sums array, with each time step's value scaled by the specified number of previous time steps
     scaled_values = compute.sum_to_scale(p_minus_pet, months_scale)
 
     # fit the scaled values to a gamma distribution and transform the values to corresponding normalized sigmas 
@@ -313,8 +314,8 @@ def scpdsi(precip_time_series,
     This function computes the self-calibrated Palmer Drought Severity Index (scPDSI), Palmer Drought Severity Index 
     (PDSI), Palmer Hydrological Drought Index (PHDI), Palmer Modified Drought Index (PMDI), and Palmer Z-Index.
     
-    :param precip_time_series: time series of monthly precipitation values, in inches
-    :param pet_time_series: time series of monthly PET values, in inches
+    :param precip_time_series: time series of precipitation values, in inches
+    :param pet_time_series: time series of PET values, in inches
     :param awc: available water capacity (soil constant), in inches
     :param data_start_year: initial year of the input precipitation and PET datasets, 
                             both of which are assumed to start in January of this year
@@ -362,74 +363,103 @@ def pdsi(precip_time_series,
 #-------------------------------------------------------------------------------------------------------------------------------------------
 #@jit(float64[:](float64[:], int64, int64, int64, int64))
 @jit     # use this under the assumption that this is preferable to explicit specification of signature argument types
-def percentage_of_normal(monthly_values, 
-                         months_scale,
+def percentage_of_normal(values, 
+                         scale,
                          data_start_year,
-                         calibration_start_year=1981,
-                         calibration_end_year=2010):
+                         calibration_start_year,
+                         calibration_end_year,
+                         time_series_type):
     '''
     This function finds the percent of normal values (average of each calendar month over a specified calibration period of years) 
     for a specified months scale. The normal precipitation for each calendar month is computed for the specified months scale, 
     and then each month's scaled value is compared against the corresponding calendar month's average to determine the percentage 
-    of normal. The period that defines the normal is described by the calibration start and end years function arguments. 
+    of normal. The period that defines the normal is described by the calibration start and end years arguments. The period 
+    typically used for US climate monitoring is 1981-2010. 
     
-    :param monthly_values: 1-D numpy array of monthly float values, any length, initial value assumed to be January
-    :param months_scale: integer number of months over which the normal value is computed (eg 3-months, 6-months, etc.)
+    :param values: 1-D numpy array of monthly float values, any length, initial value assumed to be January of the data start year
+                   (January 1st of the start year if daily time series type), see the description of the *time_series_type* argument 
+                   below for further clarification
+    :param scale: integer number of months over which the normal value is computed (eg 3-months, 6-months, etc.)
     :param data_start_year: the initial year of the input monthly values array
     :param calibration_start_year: the initial year of the calibration period over which the normal average for each calendar 
                                    month is computed, defaults to 1981 since normal period for US is typically 1981-2010 
     :param calibration_start_year: the final year of the calibration period over which the normal average for each calendar 
                                    month is computed, defaults to 2010 since normal period for US is typically 1981-2010 
+    :param time_series_type: the type of time series represented by the input data, 'monthly', 'daily', or '366_day'
+                             'monthly': array of monthly values, assumed to span full years, i.e. the first value corresponds
+                             to January of the initial year and the missing final month(s) of the final year (if any) filled
+                             with NaN values, with size == # of years * 12
+                             'daily': array of daily values, with 365 days per year and a value for Feb. 29h during leap years, 
+                             i.e. daily values on a normal Gregorian calendar, assumed to span full years, i.e. the first value
+                             corresponds to January 1st of the initial year and the missing final days of the final year, 
+                             if any, are filled with NaN values, with size == (Dec. 31st of final year - Jan 1st of initial year) + 1
+                             '366_day': array of full years of daily values with 366 days per year, as if each year were a leap year
+                             array size == (# years * 366)
     :return: percent of normal precipitation values corresponding to the input monthly precipitation values array   
     :rtype: numpy.ndarray of type float
     '''
     
-    # do some basic validations to make sure we've been provided with sane calibration limits
+    # make sure we've been provided with sane calibration limits
     if data_start_year > calibration_start_year:
         raise ValueError("Invalid start year arguments (data and/or calibration): calibration start year is before the data start year")
-    elif ((calibration_end_year - calibration_start_year + 1) * 12) > monthly_values.size:
+    elif ((calibration_end_year - calibration_start_year + 1) * 12) > values.size:
         raise ValueError("Invalid calibration period specified: total calibration years exceeds the actual number of years of data")
+    
+    periodicity = 366
+    if time_series_type == 'monthly':
+        periodicity = 12
+    elif time_series_type == 'daily':
+        initial_day = datetime.date(data_start_year, 1, 1)
+        final_day = initial_day + timedelta(days=values.size)
+        total_years = final_day.year - initial_day.year + 1
+        utils.transform_to_366day(values, data_start_year, total_years)
+    elif time_series_type != '366_day':
+        raise ValueError('Invalid time series type argument: %s' %  time_series_type)
     
     # get an array containing a sliding sum on the specified months scale -- i.e. if the months scale is 3 then
     # the first two elements will be np.NaN, since we need 3 elements to get a sum, and then from the third element
     # to the end the value will equal the sum of the corresponding month plus the values of the two previous months
-    months_scale_sums = compute.sum_to_scale(monthly_values, months_scale)
+    scale_sums = compute.sum_to_scale(values, scale)
     
     # extract the months over which we'll compute the normal average for each calendar month
     calibration_years = calibration_end_year - calibration_start_year + 1
-    calibration_start_index = (calibration_start_year - data_start_year) * 12
-    calibration_end_index = calibration_start_index + (calibration_years * 12)
-    calibration_period_sums = months_scale_sums[calibration_start_index:calibration_end_index]
+    calibration_start_index = (calibration_start_year - data_start_year) * periodicity
+    calibration_end_index = calibration_start_index + (calibration_years * periodicity)
+    calibration_period_sums = scale_sums[calibration_start_index:calibration_end_index]
     
-    # for each calendar month in the calibration period, get the average of the scale months sum 
+    # for each time step in the calibration period, get the average of the scale sum 
     # for that calendar month (i.e. average all January sums, then all February sums, etc.) 
-    calendar_month_averages = np.full((12,), np.nan)
+    averages = np.full((periodicity,), np.nan)
     for i in range(12):
-        calendar_month_averages[i] = np.nanmean(calibration_period_sums[i::12])
+        averages[i] = np.nanmean(calibration_period_sums[i::periodicity])
     
     #TODO replace the below loop with a vectorized implementation
-    # for each month of the months_scale_sums array find its corresponding
+    # for each month of the scale_sums array find its corresponding
     # percentage of the months scale average for its respective calendar month
-    percentages_of_normal = np.full(months_scale_sums.shape, np.nan)
-    for i in range(months_scale_sums.size):
+    percentages_of_normal = np.full(scale_sums.shape, np.nan)
+    for i in range(scale_sums.size):
 
         # make sure we don't have a zero divisor
-        if calendar_month_averages[i % 12] > 0.0:
+        if averages[i % periodicity] > 0.0:
             
-            percentages_of_normal[i] = months_scale_sums[i] / calendar_month_averages[i % 12]
+            percentages_of_normal[i] = scale_sums[i] / averages[i % periodicity]
     
+    # if we started with normal daily values that were converted to 366 day years then we'll convert back here 
+    if time_series_type == 'daily':
+        percentages_of_normal = utils.transform_to_gregorian(percentages_of_normal, data_start_year, total_years)
+        
     return percentages_of_normal
     
 #-------------------------------------------------------------------------------------------------------------------------------------------
-@jit     # use this under the assumption that this is preferable to explicit specification of signature argument types
-def pet(temperature_monthly_celsius,
+@jit
+def pet(temperature_celsius,
         latitude_degrees,
         data_start_year):
 
     '''
     This function computes potential evapotranspiration (PET) using Thornthwaite's equation.
     
-    :param temperature_monthly_celsius: an array of monthly average temperature values, in degrees Celsius
+    :param temperature_celsius: an array of average temperature values, in degrees Celsius
     :param latitude_degrees: the latitude of the location, in degrees north, must be within range [-90.0 ... 90.0] (inclusive), otherwise 
                              a ValueError is raised
     :param data_start_year: the initial year of the input dataset
@@ -438,25 +468,25 @@ def pet(temperature_monthly_celsius,
     '''
     
     # make sure we're not dealing with all NaN values
-    if np.ma.isMaskedArray(temperature_monthly_celsius) and temperature_monthly_celsius.count() == 0:
+    if np.ma.isMaskedArray(temperature_celsius) and temperature_celsius.count() == 0:
         
         # we started with all NaNs for the temperature, so just return the same
-        return temperature_monthly_celsius
+        return temperature_celsius
 
     else:
         
         # we were passed a vanilla Numpy array, look for indices where the value == NaN
-        nan_indices = np.isnan(temperature_monthly_celsius)
+        nan_indices = np.isnan(temperature_celsius)
         if np.all(nan_indices):
         
             # we started with all NaNs for the temperature, so just return the same
-            return temperature_monthly_celsius
+            return temperature_celsius
         
     # make sure we're not dealing with a NaN latitude value
     if not np.isnan(latitude_degrees) and (latitude_degrees < 90.0) and (latitude_degrees > -90.0):
         
         # compute and return the PET values using Thornthwaite's equation
-        return thornthwaite.potential_evapotranspiration(temperature_monthly_celsius, latitude_degrees, data_start_year)
+        return thornthwaite.potential_evapotranspiration(temperature_celsius, latitude_degrees, data_start_year)
         
     else:
         message = 'Invalid latitude value: {0} (must be in degrees north, between -90.0 and 90.0 inclusive)'.format(latitude_degrees)
