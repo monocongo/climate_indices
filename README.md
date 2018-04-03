@@ -12,5 +12,7 @@
 This is a developmental/forked version of code that is originally developed and maintained by NIDIS/NCEI/NOAA. The official release version is available at [drought.gov](drought.gov).
 
 ##[__Documentation__](https://indices-python.readthedocs.io/en/latest/)
+
 ##[__License__](LICENSE)
+
 ##[__Disclaimer__](DISCLAIMER)
