@@ -2,7 +2,7 @@ import logging
 import numpy as np
 import unittest
 
-from indices_python import netcdf_utils
+from scripts import netcdf_utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # disable logging messages
