@@ -7,10 +7,11 @@
    :maxdepth: 2
    :caption: Contents:
 
-|Build Status| |CodeFactor| |Coverage Status| |Dependency Status| |License| |Notebook| |Documentation|
 
-Community Reference Climate Indices
-===================================
+|Build Status| |Coverage Status| |Dependency Status| |CodeFactor| |License| 
+
+Community Reference Climate Indices in Python
+=============================================
 
 This project contains Python implementations of various climate indices
 which provide a geographical and temporal picture of the severity of
@@ -21,15 +22,14 @@ available for development by the climate science community, and to
 facilitate the use of climate indices datasets computed in a
 standardized, reproducible, and transparent fashion.
 
-Currently provided climate indices:
+Python implementations of the following climate index algorithms are provided:
 
 -  `SPI <https://climatedataguide.ucar.edu/climate-data/standardized-precipitation-index-spi>`__,
-   Standardized Precipitation Index
+   Standardized Precipitation Index, utilizing either Gamma or Pearson Type III distributions
 -  `SPEI <https://www.researchgate.net/publication/252361460_The_Standardized_Precipitation-Evapotranspiration_Index_SPEI_a_multiscalar_drought_index>`__,
-   Standardized Precipitation Evapotranspiration Index
+   Standardized Precipitation Evapotranspiration Index, utilizing either Gamma or Pearson Type III distributions
 -  `PET <https://www.ncdc.noaa.gov/monitoring-references/dyk/potential-evapotranspiration>`__,
-   Potential Evapotranspiration: computed using `Thornthwaite's
-   equation <https://en.wikipedia.org/wiki/Potential_evaporation>`__
+   Potential Evapotranspiration, utilizing either `Thornthwaite <http://dx.doi.org/10.2307/21073>`_ or `Hargreaves <http://dx.doi.org/10.13031/2013.26773>`_ equations 
 -  `PNP <http://www.droughtmanagement.info/percent-of-normal-precipitation/>`__,
    Percentage of Normal Precipitation
 -  `PDSI <http://www.droughtmanagement.info/palmer-drought-severity-index-pdsi/>`__,
@@ -43,19 +43,19 @@ Currently provided climate indices:
 -  `PMDI <https://climate.ncsu.edu/climate/climdiv>`__, Palmer Modified
    Drought Index
 
-This Python implementation of the above climate indices algorithms is
+This Python implementation of the above climate index algorithms is
 being developed with the following goals in mind:
 
 -  to provide an open source software package to compute a suite of
    climate indices commonly used for drought monitoring, with well
-   documented code that is faithful to the literature, and
-   scientifically valid results
+   documented code that is faithful to the relevant literature and
+   which produces scientifically valid results
+-  to facilitate standardization and consensus on best-of-breed
+   climate index algorithms including compliant implementations
 -  to provide transparency into the operational code used for climate
    monitoring activities at NCEI, and reproducibility for users of
    datasets computed from this package
--  to facilitate standardization and consensus on best-of-breed
-   algorithms and accompanying implementations
--  to serve as an example of open source scientific development process,
+-  to serve as an example of open source scientific development,
    incorporating software engineering principles and programming best
    practices
 
@@ -69,11 +69,11 @@ from provided inputs. Interaction with the module is assumed to be
 performed using a bash shell, either on Linux, Windows, or MacOS.
 
 Windows users will need to install and configure a bash shell in order
-to follow the usage shown below. Recommended for this are
-`babun <https://babun.github.io/>`__ or
-`Cygwin <https://www.cygwin.com/>`__.
+to follow the usage shown below. We recommended either 
+`babun <https://babun.github.io/>`__ or `Cygwin <https://www.cygwin.com/>`__
+for this purpose.
 
-Access the code
+Download the code
 ^^^^^^^^^^^^^^^
 
 Clone this repository:
@@ -84,102 +84,52 @@ Move into the source directory:
 
 ``$ cd indices_python``
 
-Configure Python environment
+Within this directory, there are three primary subdirectories:
+
+-  ``indices_python``: main package
+-  ``tests``: unit tests for the main package
+-  ``scripts``: scripts and supporting utility modules used to perform processing of indices
+computations on climatological datasets (typically grids or climate divisions datasets in NetCDF)
+
+Configure the Python environment
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-This project's code is written for Python 3. It's recommended that you
-use an installation of the
-`Anaconda <https://www.continuum.io/why-anaconda>`__ Python 3
-distribution. The below instructions will be Anaconda specific, and
-initially aimed at Linux users.
+This project's code is written in Python 3. It's recommended to use 
+either the `Miniconda3 <https://conda.io/miniconda.html>`__ (minimal Anaconda) or 
+`Anaconda3 <https://www.continuum.io/downloads>`__ distribution. The below instructions
+will be Anaconda specific (although relevant to any Python `virtualenv <https://virtualenv.pypa.io/en/stable/>`_
+), and assume the use of a bash shell.
 
-For users without an existing Python/Anaconda installation we recommend
-either \* installing the `Miniconda <https://conda.io/miniconda.html>`__
-(minimal Anaconda) distribution or \* installing the full
-`Anaconda <https://www.continuum.io/downloads>`__ distribution
+A new Anaconda `environment <https://conda.io/docs/using/envs.html>`__ can be created using the `conda <https://conda.io/docs/>`_ environment management system that comes packaged with Anaconda. In the following examples, we'll use an environment named *indices_env*
+containing all required modules can be created and populated with all required dependencies through the use of the provided ``setup.py`` file:
 
-Dependencies
-^^^^^^^^^^^^
+``$ conda create -n indices_env``
 
-This library and the example processing scripts use the
-`netCDF4 <https://unidata.github.io/netcdf4-python/>`__,
-`numpy <http://www.numpy.org/>`__, `scipy <https://www.scipy.org/>`__,
-and `numba <http://numba.pydata.org/>`__ Python modules. The NetCDF
-Operators (`NCO <http://nco.sourceforge.net/>`__) software package is
-also useful for the processing scripts, and can optionally be installed
-as a Python module via conda.
+The environment created can be 'activated' using the following command:
 
-A new Anaconda `environment <https://conda.io/docs/using/envs.html>`__
-should be created named
-***indices_python*** containing all required modules:
+``$ source activate indices_env``
 
-``$ conda create -n indices_python``
-
-The environment created by the above command can be activated using the
-following command:
-
-``$ source activate indices_python``
-
-Now the indices_python package itself can be added into the environment
-via pip:
-
-``$ pip install .``
-
-Once the *conda Python environment has been activated and the module installed 
-then subsequent Python commands will run in this environment where the package 
+Once the environment has been activated then subsequent Python commands will run in this environment where the package
 dependencies for this project are present.
 
-For users who'd prefer to not utilize pip the required module
-dependencies can be installed instead into an Anaconda environment
-piecemeal via multiple ``conda install`` commands:
+Now the package can be added to the environment along with all required modules (dependencies) via `pip <https://pip.pypa.io/en/stable/>`_
+:
 
-``$ conda create --name <env_name> python=3``
-
-``$ source activate <env_name>``
-
-``$ conda install netCDF4``
-
-``$ conda install numba``
-
-``$ conda install numpy``
-
-``$ conda install pandas``
-
-``$ conda install scipy``
-
-``$ python setup.py install``
-
-Project contents
-----------------
-
--  ``indices_python``: main module
--  ``docs``: documentation
--  ``tests``: unit tests for main module
--  ``scripts/compare``: scripts to compare results of indices processing
-   on grids or climate divisions, comparing against expected/known
-   results (for example nClimDivs from NCEI, PRISM grids from WRCC)
--  ``scripts/ingest``: scripts to ingest grid or climate divisions
-   datasets from ASCII to NetCDF
--  ``scripts/process``: scripts to process indices computations on
-   either grids or climate divisions datasets
--  ``scripts/task``: scripts that perform a combination of ingest and
-   process for either grids or climate divisions datasets, useful as
-   cron jobs for monthly processing
+``$ pip install .``
 
 Testing
 -------
 
-Initially all tests should be run for validation:
+Initially, all tests should be run for validation:
 
 ``$ export NUMBA_DISABLE_JIT=1``
 
-``$ python -m unittest tests/test_*.py``
+``$ python setup.py test``
 
 ``$ unset NUMBA_DISABLE_JIT``
 
 If you run the above from the main branch and get an error then please
-send a report and/or add an issue, as all test should pass on the main
-branch.
+send a report and/or add an issue, as all tests should pass.
 
 The numba environment variable is set/unset in order to bypass the numba
 just-in-time compilation process, which reduces testing times.
@@ -252,10 +202,13 @@ This script has the following required command line arguments:
 
 *Example command line invocation*:
 
-``$ nohup python -u process_grid.py --precip_file example_inputs/nclimgrid_lowres_prcp.nc 
---temp_file example_inputs/nclimgrid_lowres_tavg.nc --awc_file example_inputs/nclimgrid_lowres_soil.nc 
---precip_var_name prcp --temp_var_name tavg --awc_var_name awc --month_scales 1 2 3 6 12 24 
---calibration_start_year 1931 --calibration_end_year 1990 --output_file_base nclimgrid_lowres``
+``$ nohup python -u process_grid.py --precip_file
+example_inputs/nclimgrid_lowres_prcp.nc --temp_file
+example_inputs/nclimgrid_lowres_tavg.nc --awc_file
+example_inputs/nclimgrid_lowres_soil.nc --precip_var_name prcp
+--temp_var_name tavg --awc_var_name awc --month_scales 1 2 3 6 12 24
+--calibration_start_year 1931 --calibration_end_year 1990
+--output_file_base nclimgrid_lowres``
 
 **nClimDiv**
 
@@ -300,8 +253,9 @@ This script has the following required command line arguments:
 
 *Example command line invocation*:
 
-``$ nohup python -u process_divisions.py --input_file example_inputs/nclimdiv_20170404.nc 
---precip_var_name prcp --temp_var_name tavg --awc_var_name awc --month_scales 1 2 3 6 12 24 
+``$ nohup python -u process_divisions.py --input_file
+example_inputs/nclimdiv_20170404.nc --precip_var_name prcp --temp_var_name
+tavg --awc_var_name awc --month_scales 1 2 3 6 12 24
 --calibration_start_year 1931 --calibration_end_year 1990``
 
 Get involved
@@ -312,7 +266,7 @@ diverse participation and community adoption this project will not reach
 its potential.
 
 Are you aware of other indices that would be a good addition here? Can
-you find bottlenecks and help improve performance? Can you suggest new
+you identify bottlenecks and help optimize performance? Can you suggest new
 ways of comparing these implementations against others (or other
 criteria) in order to determine best-of-breed? Please fork the code and
 have at it, and/or contact us to see if we can help.
@@ -321,7 +275,8 @@ have at it, and/or contact us to see if we can help.
    guidelines <https://github.com/monocongo/indices_python/blob/master/CONTRIBUTING.md>`__
 -  File an
    `issue <https://github.com/monocongo/indices_python/issues>`__, or
-   submit a pull request
+   submit a `pull request <https://github.com/monocongo/indices_python/pulls>`_
+
 -  Send us an `email <mailto:james.adams@noaa.gov>`__
 
 Copyright and licensing
@@ -342,8 +297,4 @@ Please read more on our `license <LICENSE>`__ page.
    :target: https://gemnasium.com/github.com/monocongo/indices_python
 .. |License| image:: https://img.shields.io/badge/License-BSD%203--Clause-green.svg
    :target: https://opensource.org/licenses/BSD-3-Clause
-.. |Notebook| image:: https://mybinder.org/badge.svg 
-   :target: https://mybinder.org/v2/gh/monocongo/indices_python/master?filepath=notebooks%2FPalmer%20Drought%20Index.ipynb
-.. |Documentation| image:: https://readthedocs.org/projects/indices-python/badge/?version=latest
-   :target: http://indices-python.readthedocs.io/en/latest/?badge=latest
-   :alt: Documentation Status
+
