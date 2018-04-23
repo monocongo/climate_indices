@@ -3,9 +3,10 @@ from datetime import datetime
 import logging
 import multiprocessing
 import netCDF4
+import netcdf_utils
 import numpy as np
 
-from indices_python import indices, netcdf_utils, utils
+from indices_python import indices, utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # static constants
@@ -34,8 +35,16 @@ class GridProcessor(object):             # pragma: no cover
     def __init__(self,
                  output_file_base,
                  netcdf_precip,
+                 netcdf_temperature,
+                 netcdf_pet,
+                 netcdf_soil,
                  var_name_precip,
-                 scales,
+                 var_name_temperature,
+                 var_name_pet,
+                 var_name_soil,
+                 scale,
+                 data_start_year,
+                 data_end_year,
                  calibration_start_year,
                  calibration_end_year,
                  index_bundle,
@@ -43,53 +52,88 @@ class GridProcessor(object):             # pragma: no cover
 
         self.output_file_base = output_file_base
         self.netcdf_precip = netcdf_precip
+        self.netcdf_pet = netcdf_pet
+        self.netcdf_temperature = netcdf_temperature
+        self.netcdf_soil = netcdf_soil
         self.var_name_precip = var_name_precip
-        self.scales = scales
+        self.var_name_pet = var_name_pet
+        self.var_name_temperature = var_name_temperature
+        self.var_name_soil = var_name_soil
+        self.scale = scale
         self.calibration_start_year = calibration_start_year
         self.calibration_end_year = calibration_end_year        
         self.index_bundle = index_bundle
         self.time_series_type = time_series_type
         
         #FIXME
-        # TODO get the initial year from the precipitation NetCDF, for now use hard-coded value specific to CMORPH
-        self.data_start_year = 1998
-        self.data_end_year = 2016
+        #TODO get the initial year from the precipitation NetCDF (SPI, PNP) or temperature NetCDF (PET) 
+        # or both (SPEI, Palmers), and if both validate that the two match
+        # for example:
+        # self.data_start_year, self.data_end_year = netcdf_utils.get_data_years(self.netcdf_precip, 
+        #                                                                        self.netcdf_temperature,
+        #                                                                        self.netcdf_pet) 
+        self.data_start_year = data_start_year
+        self.data_end_year = data_end_year
         
-        # the number of days used in scaled indices (for example this will be set to 30 for 30-day SPI, SPEI, and PNP)
-        # this will need to be set each time the grid processor object is used for computing the scaled indices
-        self.scale = scales[0]
+        if self.index_bundle != 'palmers':
 
-        # place holders for the scaled NetCDFs, these will be created and assigned into these variables at each days scale iteration
-        self.netcdf_spi_gamma = ''
-        self.netcdf_spi_pearson = ''
+            # the number of time steps used for scaled indices (for example the will be set to 30 for 30-day SPI, SPEI, and/or PNP)
+            # this will need to be set each time this grid processor object is used for computing the scaled indices
+            self.scale = scale
 
-        self._initialize_scaled_netcdfs(self.scale, time_series_type)
+            # place holders for the scaled NetCDFs, these files will be created 
+            # and assigned to these variables at each scale's computational iteration
+            # (not all of these will be used unless index bundle == 'scaled' which implies all scaled indices
+            self.netcdf_spi_gamma = ''
+            self.netcdf_spi_pearson = ''
+            self.netcdf_spei_gamma = ''
+            self.netcdf_spei_pearson = ''
+            self.netcdf_pnp = ''
+    
+            self._initialize_scaled_netcdfs(self)
+        
+        elif self.index_bundle == 'palmers':
+        
+            # place holders for the scaled NetCDFs, these files will be created 
+            # and assigned to these variables at each scale's computational iteration
+            self.netcdf_pdsi = ''
+            self.netcdf_scpdsi = ''
+            self.netcdf_phdi = ''
+            self.netcdf_pmdi = ''
+            self.netcdf_zindex = ''
+            
+            self._initialize_palmer_netcdfs(self)
+
+        else:
+            
+            raise ValueError('Unsupported index_bundle argument: %s' % index_bundle)
         
     #-----------------------------------------------------------------------------------------------------------------------
-    def _set_scale(self,
-                   scale):
+    def _reset_scale(self,
+                     scale):
         """
-        Reset the instance's scale, the scale that'll be used to computed scaled indices (SPI, SPEI, PNP).
+        Reset the instance's scale, the scale that'll be used to computed scaled indices (SPI, SPEI, and/or PNP).
         
-        :param scale: the number of time steps, should correspond to one of the values of self.day_scales 
+        :param scale: the number of time steps to use as the scale factor when computing scaled indices 
         """
         self.scale = scale
+        self._initialize_scaled_netcdfs(self)
 
     #-----------------------------------------------------------------------------------------------------------------------
-    def _initialize_scaled_netcdfs(self,
-                                   scale,
-                                   time_series_type):
+    def _initialize_scaled_netcdfs(self):
+#                                    scale,
+#                                    time_series_type):
 
         # dictionary of index types to the NetCDF dataset files corresponding to the base index names and
         # day scales (this is the object we'll build and return from this function)
         netcdfs = {}
 
         # make a scale type substring to use within variable long_name attributes
-        scale_type = str(scale) + '-month scale'
-        if time_series_type == 'daily':
-            scale_type = str(scale) + '-day scale'
-        elif time_series_type != 'monthly':
-            raise ValueError('Unsupported time series type argument: %s' % time_series_type)
+        scale_type = str(self.scale) + '-month scale'
+        if self.time_series_type == 'daily':
+            scale_type = str(self.scale) + '-day scale'
+        elif self.time_series_type != 'monthly':
+            raise ValueError('Unsupported time series type argument: %s' % self.time_series_type)
         
         # dictionary of index types (ex. 'spi_gamma', 'spei_pearson', etc.) mapped to their corresponding long 
         # variable names, to be used within the respective NetCDFs as variable long_name attributes
@@ -97,6 +141,17 @@ class GridProcessor(object):             # pragma: no cover
         if self.index_bundle == 'spi':
             names_to_longnames['spi_gamma'] = 'Standardized Precipitation Index (Gamma distribution), ' + scale_type
             names_to_longnames['spi_pearson'] = 'Standardized Precipitation Index (Pearson Type III distribution), ' + scale_type
+        elif self.index_bundle == 'spei':
+            names_to_longnames['spei_gamma'] = 'Standardized Precipitation Evapotranspiration Index (Gamma distribution), ' + scale_type
+            names_to_longnames['spei_pearson'] = 'Standardized Precipitation Evapotranspiration Index (Pearson Type III distribution), ' + scale_type
+        elif self.index_bundle == 'pnp':
+            names_to_longnames['pnp'] = 'Percentage of Normal Precipitation, ' + scale_type
+        if self.index_bundle == 'scaled':
+            names_to_longnames['spi_gamma'] = 'Standardized Precipitation Index (Gamma distribution), ' + scale_type
+            names_to_longnames['spi_pearson'] = 'Standardized Precipitation Index (Pearson Type III distribution), ' + scale_type
+            names_to_longnames['spei_gamma'] = 'Standardized Precipitation Evapotranspiration Index (Gamma distribution), ' + scale_type
+            names_to_longnames['spei_pearson'] = 'Standardized Precipitation Evapotranspiration Index (Pearson Type III distribution), ' + scale_type
+            names_to_longnames['pnp'] = 'Percentage of Normal Precipitation, ' + scale_type
         else:
             raise ValueError('Unsupported index bundle: %s', self.index_bundle)
 
@@ -105,8 +160,8 @@ class GridProcessor(object):             # pragma: no cover
 
             # use a separate valid min/max for PNP than for the other SP* indices
             if index_name == 'pnp':
-                valid_min = np.float32(-10.0)
-                valid_max = np.float32(10.0)
+                valid_min = np.float32(-1000.0)
+                valid_max = np.float32(1000.0)
             else:
                 valid_min = np.float32(-3.09)
                 valid_max = np.float32(3.09)
@@ -118,13 +173,12 @@ class GridProcessor(object):             # pragma: no cover
             netcdf_file = self.output_file_base + '_' + variable_name + '.nc'
 
             # initialize the output NetCDF
-            #TODO merge with the original version of this function in netcdf_utils
-            _initialize_netcdf_single_variable_grid(netcdf_file,
-                                                    self.netcdf_precip,
-                                                    variable_name,
-                                                    long_name.format(scale),
-                                                    valid_min,
-                                                    valid_max)
+            netcdf_utils.initialize_netcdf_single_variable_grid(netcdf_file,
+                                                                self.netcdf_precip,
+                                                                variable_name,
+                                                                long_name.format(scale),
+                                                                valid_min,
+                                                                valid_max)
 
             # add the days scale index's NetCDF to the dictionary for the current index
             netcdfs[index_name] = netcdf_file
@@ -133,6 +187,7 @@ class GridProcessor(object):             # pragma: no cover
         if self.index_bundle == 'spi':
             self.netcdf_spi_gamma = netcdfs['spi_gamma']
             self.netcdf_spi_pearson = netcdfs['spi_pearson']
+        #FIXME finish for other scaled indices
 
         # set the number of days used to scale the indices
         self.scale = scale
@@ -143,47 +198,52 @@ class GridProcessor(object):             # pragma: no cover
         # the number of worker processes we'll have in our process pool
         number_of_workers = multiprocessing.cpu_count()   # use 1 here for debugging
     
-        # open the input NetCDF files for compatibility validation and to get the data's time range
-        with netCDF4.Dataset(self.netcdf_precip) as dataset_precip:
-
-            # get the initial and final years of the input dataset
-            #FIXME (revisit) assumes first time is Jan 1 of initial year and the last time is Dec 31st of the final year
-            time_variable = dataset_precip.variables['time']
-            self.data_start_year = netCDF4.num2date(time_variable[0], time_variable.units).year
-            self.data_end_year = netCDF4.num2date(time_variable[-1], time_variable.units).year
-
-            # get a range list for the latitudes in the input dataset(s)
-            lat_range = range(dataset_precip.variables['lat'].size)
-    
+        # set the data start and end years and get the list of latitude range
+        self.data_start_year, self.data_end_year, lat_size = netcdf_utils.years_and_sizes(self.netcdf_precip)
+                
         # all index combinations/bundles except SPI-only will require PET, so compute it here if temperature provided
-        if self.index_bundle == 'spi':
+        if self.index_bundle in ['spi', 'spei', 'pnp', 'scaled']:
             
-            # create a process Pool for worker processes to compute PET and Palmer indices, passing arguments to an initializing function
-            pool = multiprocessing.Pool(processes=number_of_workers)
+            compute_function = self._process_latitude_scaled
+            
+        elif self.index_bundle == 'pet':
+            
+            compute_function = self._process_latitude_pet
+            
+        elif self.index_bundle == 'pet':
 
-            # map the latitude indices as an arguments iterable to the compute function
-            result = pool.map_async(self._process_latitude_spi, lat_range)
+            compute_function = self._process_latitude_palmers
+            
+        else:
+                        
+            raise ValueError('Unsupported index_bundle argument: %s' % self.index_bundle)
 
-            # get the exception(s) thrown, if any
-            result.get()
-    
-            # close the pool and wait on all processes to finish
-            pool.close()
-            pool.join()
+        # create a process Pool for worker processes to compute PET and Palmer indices, passing arguments to an initializing function
+        pool = multiprocessing.Pool(processes=number_of_workers)
+
+        # map the latitude indices as an arguments iterable to the compute function
+        result = pool.map_async(compute_function, range(lat_size))
+
+        # get the exception(s) thrown, if any
+        result.get()
+
+        # close the pool and wait on all processes to finish
+        pool.close()
+        pool.join()
 
     #-------------------------------------------------------------------------------------------------------------------
-    def _process_latitude_spi(self, lat_index):
+    def _process_latitude_scaled(self, lat_index):
         '''
-        Processes SPI for a single latitude slice at a single days scale.
+        Processes the relevant scaled indices for a single latitude slice at a single scale.
 
-        :param lat_index:
+        :param lat_index: the latitude index of the latitude slice that will be read from NetCDF, computed, and written
         '''
 
         if self.time_series_type == 'daily':
             scale_increment = 'day'
         elif self.time_series_type == 'monthly':
             scale_increment = 'month'
-        logger.info('Computing %s-%s SPI for latitude index %s', self.scale, scale_increment, lat_index)
+        logger.info('Computing %s-%s %s for latitude index %s', self.scale, scale_increment, lat_index)
 
         # open the input NetCDFs
         with netCDF4.Dataset(self.netcdf_precip) as precip_dataset:
@@ -437,96 +497,6 @@ def _process_spi(precip_file,
     logger.info('Output files: {0}\n              {1}'.format(output_file_base + '_spi_gamma_{0}.nc'.format(str(scale).zfill(2)),
                                                               output_file_base + '_spi_pearson_{0}.nc'.format(str(scale).zfill(2))))
     
-# #-----------------------------------------------------------------------------------------------------------------------
-# @numba.jit
-# def _transform_all_leap(original,
-#                         year_start,
-#                         total_years):
-# 
-#     # original time series is assumed to be a one-dimensional array of floats corresponding to a number of full years
-#     
-#     # allocate the new array for 366 daily values per year, including a faux Feb 29 for non-leap years
-#     all_leap = np.full((total_years * 366,), np.NaN)
-#     
-#     # index of the first day of the year within the original and all_leap arrays
-#     original_index = 0
-#     all_leap_index = 0
-#     
-#     # loop over each year
-#     for year in range(year_start, year_start + total_years):
-#         
-#         if calendar.isleap(year):
-#             
-#             # write the next 366 days from the original time series into the all_leap array
-#             all_leap[all_leap_index : all_leap_index + 366] = original[original_index : original_index + 366]
-# 
-#             # increment the "start day of the current year" index for the original so the next iteration jumps ahead a full year
-#             original_index += 366
-#             
-#         else:
-# 
-#             # write the first 59 days (Jan 1 through Feb 28) from the original time series into the all_leap array
-#             all_leap[all_leap_index : all_leap_index + 59] = original[original_index : original_index + 59]
-# 
-#             # average the Feb 28th and March 1st values as the faux Feb 29th value
-#             all_leap[all_leap_index + 59] = (original[original_index + 58] + original[original_index + 59]) / 2
-#             
-#             # write the remaining days of the year (Mar 1 through Dec 31) from the original into the all_leap array
-#             all_leap[all_leap_index + 60: all_leap_index + 366] = original[original_index + 59: original_index + 365]
-# 
-#             # increment the "start day of the current year" index for the original so the next iteration jumps ahead a full year             
-#             original_index += 365
-# 
-#         all_leap_index += 366
-# 
-#     return all_leap
-
-# #-----------------------------------------------------------------------------------------------------------------------
-# @numba.jit
-# def _transform_to_gregorian(original,
-#                             year_start,
-#                             total_years):
-# 
-#     # original time series is assumed to be a one-dimensional array of floats corresponding to a number of full years,
-#     # with each year containing 366 days, as if each year is a leap year
-#     
-#     # find the total number of actual days between the start and end year
-#     year_end = year_start + total_years - 1
-#     days_actual = (datetime(year_end, 12, 31) - datetime(year_start, 1, 1)).days + 1
-#     
-#     # allocate the new array we'll write daily values into, including a faux Feb 29 for non-leap years
-#     gregorian = np.full((days_actual,), np.NaN)
-#     
-#     # index of the first day of the year within the original and gregorian arrays
-#     original_index = 0
-#     gregorian_index = 0
-#     
-#     # loop over each year
-#     for year in range(year_start, year_start + total_years):
-#         
-#         if calendar.isleap(year):
-#             
-#             # write the next 366 days from the original time series into the gregorian array
-#             gregorian[gregorian_index : gregorian_index + 366] = original[original_index : original_index + 366]
-# 
-#             # increment the "start day of the current year" index for the original so the next iteration jumps ahead a full year
-#             gregorian_index += 366
-#             
-#         else:
-# 
-#             # write the first 59 days (Jan 1 through Feb 28) from the original time series into the gregorian array
-#             gregorian[gregorian_index : gregorian_index + 59] = original[original_index : original_index + 59]
-# 
-#             # write the remaining days of the year (Mar 1 through Dec 31) from the original into the gregorian array
-#             gregorian[gregorian_index + 59: gregorian_index + 365] = original[original_index + 60: original_index + 366]
-# 
-#             # increment the "start day of the current year" index for the original so the next iteration jumps ahead a full year             
-#             gregorian_index += 365
-# 
-#         original_index += 366
-# 
-#     return gregorian
-
 #-----------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
     """
@@ -568,7 +538,7 @@ if __name__ == '__main__':
                             required=True)
         parser.add_argument("--index_bundle",
                             help="Indices to compute",
-                            choices=['spi', 'spei', 'scaled', 'palmer', 'full'],
+                            choices=['spi', 'spei', 'pnp', 'scaled', 'pet', 'palmers', 'full'],
                             default='spi',    #TODO use 'full' as the default once all indices are functional
                             required=False)
         parser.add_argument("--time_series_type",
