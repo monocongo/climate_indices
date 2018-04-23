@@ -15,6 +15,31 @@ logging.basicConfig(level=logging.INFO,
 _logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------------------------------------------------
+def years_and_sizes(netcdf_file):
+    """
+    Gets the initial and final years represented by the time variable, and the sizes of the latitude and longitude 
+    coordinate variables.
+    
+    :param netcdf_file: a NetCDF file, assumed to contain the coordinate variables 'time', 'lat', and 'lon'
+    :return: four values -- the years corresponding to the initial and final time values, and the sizes of the latitude 
+             and longitude coordinate variables (i.e. the number of lats and lons, respectively)
+    :rtype: integers
+    """
+    
+    with netCDF4.Dataset(netcdf_file) as dataset:
+
+        # get the initial and final years of the dataset's variable(s)
+        time_variable = dataset.variables['time']
+        start_year = netCDF4.num2date(time_variable[0], time_variable.units).year
+        end_year = netCDF4.num2date(time_variable[-1], time_variable.units).year
+
+        # get the sizes of the latitude and longitude coordinate variables
+        lat_size = dataset.variables['lat'].size
+        lon_size = dataset.variables['lon'].size
+
+    return start_year, end_year, lat_size, lon_size
+
+#-----------------------------------------------------------------------------------------------------------------------
 def convert_and_move_netcdf(input_and_output_netcdfs):   # pragma: no cover
     
     input_netcdf = input_and_output_netcdfs[0]
