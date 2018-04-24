@@ -108,6 +108,9 @@ class GridProcessor(object):             # pragma: no cover
             
             raise ValueError('Unsupported index_bundle argument: %s' % index_bundle)
         
+        # set the data start and end years and get the list of latitude range
+        self.data_start_year, self.data_end_year, lat_size = netcdf_utils.years_and_sizes(self.netcdf_precip)
+                
     #-----------------------------------------------------------------------------------------------------------------------
     def _reset_scale(self,
                      scale):
@@ -198,28 +201,23 @@ class GridProcessor(object):             # pragma: no cover
         # the number of worker processes we'll have in our process pool
         number_of_workers = multiprocessing.cpu_count()   # use 1 here for debugging
     
-        # set the data start and end years and get the list of latitude range
-        self.data_start_year, self.data_end_year, lat_size = netcdf_utils.years_and_sizes(self.netcdf_precip)
-                
-        # all index combinations/bundles except SPI-only will require PET, so compute it here if temperature provided
+        # create a process Pool for worker processes to compute PET and Palmer indices, passing arguments to an initializing function
+        pool = multiprocessing.Pool(processes=number_of_workers)
+
+        # all index combinations/bundles except SPI and PNP will require PET, so compute it here if temperature provided
+        if self.index_bundle in ['pet', 'spei', 'scaled', 'palmers']:
+        
         if self.index_bundle in ['spi', 'spei', 'pnp', 'scaled']:
             
             compute_function = self._process_latitude_scaled
             
-        elif self.index_bundle == 'pet':
-            
-            compute_function = self._process_latitude_pet
-            
-        elif self.index_bundle == 'pet':
+        elif self.index_bundle == 'palmers':
 
             compute_function = self._process_latitude_palmers
             
         else:
                         
             raise ValueError('Unsupported index_bundle argument: %s' % self.index_bundle)
-
-        # create a process Pool for worker processes to compute PET and Palmer indices, passing arguments to an initializing function
-        pool = multiprocessing.Pool(processes=number_of_workers)
 
         # map the latitude indices as an arguments iterable to the compute function
         result = pool.map_async(compute_function, range(lat_size))
