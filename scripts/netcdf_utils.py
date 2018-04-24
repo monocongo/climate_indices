@@ -15,14 +15,12 @@ logging.basicConfig(level=logging.INFO,
 _logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------------------------------------------------
-def years_and_sizes(netcdf_file):
+def initial_and_final_years(netcdf_file):
     """
-    Gets the initial and final years represented by the time variable, and the sizes of the latitude and longitude 
-    coordinate variables.
+    Gets the initial and final years represented by the time dimension/coordinate variable.
     
-    :param netcdf_file: a NetCDF file, assumed to contain the coordinate variables 'time', 'lat', and 'lon'
-    :return: four values -- the years corresponding to the initial and final time values, and the sizes of the latitude 
-             and longitude coordinate variables (i.e. the number of lats and lons, respectively)
+    :param netcdf_file: a NetCDF file, assumed to a coordinate variables named 'time'
+    :return: the years corresponding to the initial and final time values
     :rtype: integers
     """
     
@@ -30,14 +28,29 @@ def years_and_sizes(netcdf_file):
 
         # get the initial and final years of the dataset's variable(s)
         time_variable = dataset.variables['time']
-        start_year = netCDF4.num2date(time_variable[0], time_variable.units).year
-        end_year = netCDF4.num2date(time_variable[-1], time_variable.units).year
+        initial_year = netCDF4.num2date(time_variable[0], time_variable.units).year
+        final_year = netCDF4.num2date(time_variable[-1], time_variable.units).year
+
+    return initial_year, final_year
+
+#-----------------------------------------------------------------------------------------------------------------------
+def lat_and_lon_sizes(netcdf_file):
+    """
+    Gets the sizes of the latitude and longitude dimensions/coordinate variables.
+    
+    :param netcdf_file: a NetCDF file, assumed to contain coordinate variables named 'lat' and 'lon'
+    :return: two values: the sizes of the latitude and longitude coordinate variables 
+             (i.e. the number of lats and lons, respectively)
+    :rtype: integers
+    """
+    
+    with netCDF4.Dataset(netcdf_file) as dataset:
 
         # get the sizes of the latitude and longitude coordinate variables
         lat_size = dataset.variables['lat'].size
         lon_size = dataset.variables['lon'].size
 
-    return start_year, end_year, lat_size, lon_size
+    return lat_size, lon_size
 
 #-----------------------------------------------------------------------------------------------------------------------
 def convert_and_move_netcdf(input_and_output_netcdfs):   # pragma: no cover
@@ -61,46 +74,6 @@ def convert_and_move_netcdf(input_and_output_netcdfs):   # pragma: no cover
     
         _logger.warning('NCO unavailable, skipping conversion/move')
 
-# #-----------------------------------------------------------------------------------------------------------------------
-# def _compute_days(initial_year,
-#                   total_months,
-#                   initial_month=1,
-#                   units_start_year=1800):
-#     '''
-#     Computes the "number of days" equivalent for regular, incremental monthly time steps given an initial year/month.
-#     Useful when using "days since <start_date>" as time units within a NetCDF dataset.
-#     
-#     :param initial_year: the initial year from which the day values should start, i.e. the first value in the output
-#                         array will correspond to the number of days between January of this initial year since January 
-#                         of the units start year
-#     :param initial_month: the month within the initial year from which the day values should start, with 1: January, 2: February, etc.
-#     :param total_months: the total number of monthly increments (time steps measured in days) to be computed
-#     :param units_start_year: the start year from which the monthly increments are computed, with time steps measured
-#                              in days since January of this starting year 
-#     :return: an array of time step increments, measured in days since midnight of January 1st of the units start year
-#     :rtype: ndarray of ints 
-#     '''
-# 
-#     # compute an offset from which the day values should begin 
-#     start_date = datetime(units_start_year, 1, 1)
-# 
-#     # initialize the list of day values we'll build
-#     days = np.empty(total_months, dtype=int)
-#     
-#     # loop over all time steps (months)
-#     for i in range(total_months):
-#         
-#         years = int((i + initial_month - 1) / 12)   # the number of years since the initial year 
-#         months = int((i + initial_month - 1) % 12)  # the number of months since January
-#         
-#         # cook up a datetime object for the current time step (month)
-#         current_date = datetime(initial_year + years, 1 + months, 1)
-#         
-#         # get the number of days since the initial date
-#         days[i] = (current_date - start_date).days
-#     
-#     return days
-#
 #-----------------------------------------------------------------------------------------------------------------------
 def find_netcdf_datatype(data_object):
     
@@ -272,63 +245,6 @@ def initialize_netcdf_single_variable_grid(file_path,              # pragma: no 
         dataset.close()
 
 #-----------------------------------------------------------------------------------------------------------------------
-def initialize_dataset(file_path,           # pragma: no cover
-                       template_dataset,
-                       x_dim_name,
-                       y_dim_name,
-                       data_variable_name=None,
-                       data_variable_attributes=None,
-                       data_fill_value=np.NaN):
-    
-    # make sure the data matches the dimensions
-    y_size = template_dataset.variables[y_dim_name].size
-    x_size = template_dataset.variables[x_dim_name].size
-    
-    # open the output file for writing, set its dimensions and variables
-    netcdf = netCDF4.Dataset(file_path, 'w')
-
-    # copy the global attributes from the template
-    netcdf.setncatts(template_dataset.__dict__)
-        
-    # create the time, x, and y dimensions
-    netcdf.createDimension('time', None)
-    netcdf.createDimension(x_dim_name, x_size)
-    netcdf.createDimension(y_dim_name, y_size)
-    
-    # get the appropriate data types to use for the variables based on the values arrays
-    time_dtype = find_netcdf_datatype(template_dataset.variables['time'])
-    x_dtype = find_netcdf_datatype(template_dataset.variables[x_dim_name])
-    y_dtype = find_netcdf_datatype(template_dataset.variables[y_dim_name])
-    
-    # create the variables
-    time_variable = netcdf.createVariable('time', time_dtype, ('time',))
-    x_variable = netcdf.createVariable(x_dim_name, x_dtype, (x_dim_name,))
-    y_variable = netcdf.createVariable(y_dim_name, y_dtype, (y_dim_name,))
-    
-    # set the variables' attributes
-    time_variable.setncatts(template_dataset.variables['time'].__dict__)
-    x_variable.setncatts(template_dataset.variables[x_dim_name].__dict__)
-    y_variable.setncatts(template_dataset.variables[y_dim_name].__dict__)
-    
-    # set the coordinate variables' values
-    time_variable[:] = template_dataset.variables['time'][:]
-    x_variable[:] = template_dataset.variables[x_dim_name][:]
-    y_variable[:] = template_dataset.variables[y_dim_name][:]
-
-    if data_variable_name is not None:
-        
-        data_dtype = find_netcdf_datatype(data_fill_value)
-        data_variable = netcdf.createVariable(data_variable_name, 
-                                              data_dtype, 
-                                              ('time', x_dim_name, y_dim_name,), 
-                                              fill_value=data_fill_value)        
-        if data_variable_attributes is not None:
-
-            data_variable.setncatts(data_variable_attributes)
-
-    return netcdf
-    
-#-----------------------------------------------------------------------------------------------------------------------
 def initialize_dataset_climdivs(file_path,            # pragma: no cover
                                 template_dataset,
                                 divisions_dim_name,
@@ -383,142 +299,6 @@ def initialize_dataset_climdivs(file_path,            # pragma: no cover
 
     return netcdf
     
-#-----------------------------------------------------------------------------------------------------------------------
-def create_variable_grid(netcdf,                     # pragma: no cover
-                         data_variable_name,
-                         data_variable_attributes,
-                         data_fill_value=np.NaN):
-    
-    #TODO fix these to come from the dataset's dimension attributes?
-    x_dim_name = 'lon'
-    y_dim_name = 'lat'
-    
-    # get the appropriate data types to use for the variables based on the values arrays
-    data_dtype = find_netcdf_datatype(data_fill_value)
-    
-    # create the variable
-    data_variable = netcdf.createVariable(data_variable_name, 
-                                          data_dtype, 
-                                          ('time', x_dim_name, y_dim_name,), 
-                                          fill_value=data_fill_value)
-    
-    # set the variable's attributes
-    data_variable.setncatts(data_variable_attributes)
-
-    return netcdf
-
-#-----------------------------------------------------------------------------------------------------------------------
-def add_variable_climgrid(file_path,
-                          variable_name,
-                          variable_attributes,
-                          variable_array,
-                          y_dim_name='lat', 
-                          x_dim_name='lon'):
-    '''
-    Adds a three-dimensional (time, y_dim, x_dim) variable to an existing climate divisions NetCDF. The variable is created 
-    and populated with the provided data values. 
-    
-    :param file_path: existing NetCDF to which the variable will be added. This NetCDF is assumed to contain 
-                      the dimensions "time", y_dim, and x_dim (corresponding to the arguments) as well as corresponding coordinate variables.
-    :param variable_name: name of the new variable to be added, a variable with this name should not already exist
-    :param variable_attributes: the attributes that should be assigned to the new variable
-    :param variable_array: an array of values, with shape (times, y_dim, x_dim).
-                           The number of elements within the time dimension of the arrays should match with the number  
-                           of time steps of the existing NetCDF being added to (as specified by the time coordinate variable).
-    '''
-    
-    #TODO/FIXME add checks of the array's dimensions to make sure they match with the variable's dimensions, etc.
-    
-    # open the output file in append mode for writing, set its dimensions and coordinate variables
-    with netCDF4.Dataset(file_path, 'a') as dataset:
-
-        # make sure that the variable name isn't already in use
-        if variable_name in dataset.variables.keys():
-            
-            variable = dataset.variables[variable_name]
-            
-#             message = 'Variable name \'{0}\' is already being used within the NetCDF file \'{1}\''.format(variable_name, file_path)
-#             _logger.error(message)
-#             raise ValueError(message)
-            
-        else:
-
-            # get the NetCDF datatype applicable to the data array we'll store in the variable
-            netcdf_data_type = find_netcdf_datatype(np.NaN)
-    
-            # create the variable
-            variable = dataset.createVariable(variable_name, 
-                                              netcdf_data_type, 
-                                              ('time', y_dim_name, x_dim_name), 
-                                              fill_value=np.NaN)
-            
-        # set the attributes
-        if variable_attributes is not None:
-            variable.setncatts(variable_attributes)
-        
-        # assign the array into the variable
-        variable[:, :, :] = variable_array
-            
-#-----------------------------------------------------------------------------------------------------------------------
-def add_variable_climdivs(file_path,
-                          variable_name,
-                          variable_attributes,
-                          divisions_to_arrays):
-    '''
-    Adds a two-dimensional (division, time) variable to an existing climate divisions NetCDF. The variable is created 
-    and populated with the provided data values. 
-    
-    :param file_path: existing NetCDF to which the variable will be added. This NetCDF is assumed to contain 
-                      the dimensions "division" and "time" as well as corresponding coordinate variables.
-    :param variable_name: name of the new variable to be added, a variable with this name should not already exist
-    :param variable_attributes: the attributes that should be assigned to the new variable
-    :param divisions_to_arrays: a dictionary with division indices as keys and corresponding 1-D Numpy arrays as values.
-                               The number of elements within the arrays should match with the number of time steps 
-                               of the existing NetCDF being added to (as specified by the time coordinate variable).
-    '''
-    
-    # get the NetCDF datatype applicable to the data array we'll store in the variable
-    random_array = random.choice(list(divisions_to_arrays.values()))
-    netcdf_data_type = find_netcdf_datatype(random_array[0])
-    
-    # open the output file in append mode for writing, set its dimensions and coordinate variables
-    with netCDF4.Dataset(file_path, 'a') as dataset:
-
-        # make sure that the variable name isn't already in use
-        if variable_name in dataset.variables.keys():
-            
-            message = 'Variable name \'{0}\' is already being used within the NetCDF file \'{1}\''.format(variable_name, file_path)
-            _logger.error(message)
-            raise ValueError(message)
-            
-        # create the variable, set the attributes
-        variable = dataset.createVariable(variable_name, 
-                                          netcdf_data_type, 
-                                          ('division', 'time',), 
-                                          fill_value=np.NaN)
-        variable.setncatts(variable_attributes)
-    
-        # get the total number of time steps
-        times_size = dataset.variables['time'][:].size
-        
-        # loop over each existing division and add the corresponding data array, if one was provided
-        for division_index in range(dataset.variables['division'][:].size()):
-            
-            # make sure we have a data array of monthly values for this division
-            if division_index in divisions_to_arrays.keys():
-
-                # make sure the array has the expected number of time steps 
-                data_array = divisions_to_arrays[division_index]
-                if data_array.size == times_size:
-                
-                    # assign the array into the current division's slot in the variable
-                    variable[division_index, :] = np.reshape(data_array, (1, times_size))
-
-                else:
-
-                    _logger.info('Unexpected size of data array for division index {0} -- '.format(division_index) + 
-                                'expected {0} time steps but the array contains {1}'.format(times_size, data_array.size))
-            
 #-----------------------------------------------------------------------------------------------------------------------
 def add_variable_climdivs_divstime(file_path,
                                    variable_name,
