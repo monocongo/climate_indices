@@ -134,9 +134,6 @@ class GridProcessor(object):             # pragma: no cover
                                                                 0.0,
                                                                 10000.0,
                                                                 'millimeters')
-        else:
-            
-            raise ValueError('Unsupported index_bundle argument: %s' % self.index_bundle)
         
     #-----------------------------------------------------------------------------------------------------------------------
     def _initialize_scaled_netcdfs(self):
@@ -145,7 +142,7 @@ class GridProcessor(object):             # pragma: no cover
         # day scales (this is the object we'll build and return from this function)
         netcdfs = {}
 
-        # make a scale type substring to use within variable long_name attributes
+        # make a scale type substring to use within the variable long_name attributes
         scale_type = str(self.timestep_scale) + '-month scale'
         if self.time_series_type == 'daily':
             if self.index_bundle == 'spi':
@@ -227,12 +224,12 @@ class GridProcessor(object):             # pragma: no cover
         # the number of worker processes we'll have in our process pool
         number_of_workers = multiprocessing.cpu_count()   # use 1 here for debugging
     
-        # create a process Pool for worker processes which will compute indices over an entire latitude slice
-        pool = multiprocessing.Pool(processes=number_of_workers)
-
         # all index combinations/bundles except SPI and PNP will require PET, so compute it here if required
         if (self.netcdf_pet is None) and (self.index_bundle in ['pet', 'spei', 'scaled', 'palmers']):
         
+            # create a process Pool for worker processes which will compute indices over an entire latitude slice
+            pool = multiprocessing.Pool(processes=number_of_workers)
+
             # map the latitude indices as an arguments iterable to the compute function
             result = pool.map_async(self._process_latitude_pet, range(self.lat_size))
     
@@ -252,8 +249,11 @@ class GridProcessor(object):             # pragma: no cover
                     
                     self.timestep_scale = scale
                     
-                    self._initialize_scaled_netcdfs(self)
+                    self._initialize_scaled_netcdfs()
                     
+                    # create a process Pool for worker processes which will compute indices over an entire latitude slice
+                    pool = multiprocessing.Pool(processes=number_of_workers)
+
                     # map the latitude indices as an arguments iterable to the compute function
                     result = pool.map_async(self._process_latitude_scaled, range(self.lat_size))
             
@@ -266,6 +266,9 @@ class GridProcessor(object):             # pragma: no cover
                 
             elif self.index_bundle == 'palmers':
     
+                # create a process Pool for worker processes which will compute indices over an entire latitude slice
+                pool = multiprocessing.Pool(processes=number_of_workers)
+
                 # map the latitude indices as an arguments iterable to the compute function
                 result = pool.map_async(self._process_latitude_palmers, range(self.lat_size))
         
@@ -289,13 +292,7 @@ class GridProcessor(object):             # pragma: no cover
         :param lat_index: the latitude index of the latitude slice that will be read from NetCDF, computed, and written
         '''
 
-        if self.time_series_type == 'daily':
-            scale_increment = 'day'
-        elif self.time_series_type == 'monthly':
-            scale_increment = 'month'
-        _logger.info('Computing %s-%s %s for latitude index %s', self.scale, scale_increment, lat_index)
-
-        # open the input NetCDFs
+        # open the precipitation NetCDF within a context manager
         with netCDF4.Dataset(self.netcdf_precip) as precip_dataset:
 
             # read the latitude slice of input precipitation and PET values
@@ -323,61 +320,68 @@ class GridProcessor(object):             # pragma: no cover
                 precip_lat_slice = precip_lat_slice_all_leap
                 
                         
-            # compute SPI/Gamma across all longitudes of the latitude slice
-            spi_gamma_lat_slice = np.apply_along_axis(indices.spi_gamma,
-                                                      1,
-                                                      precip_lat_slice,
-                                                      self.scale,
-                                                      time_series_type=self.time_series_type)
+            if self.index_bundle in ['spi', 'scaled']:
 
-            # compute SPI/Pearson across all longitudes of the latitude slice
-            spi_pearson_lat_slice = np.apply_along_axis(indices.spi_pearson,
-                                                        1,
-                                                        precip_lat_slice,
-                                                        self.scale,
-                                                        self.data_start_year,
-                                                        self.calibration_start_year,
-                                                        self.calibration_end_year)
+                if self.time_series_type == 'daily':  
+                    scale_increment = 'day'
+                elif self.time_series_type == 'monthly':
+                    scale_increment = 'month'
+                _logger.info('Computing %s-%s %s for latitude index %s', self.timestep_scale, scale_increment, 'SPI', lat_index)
 
-            if self.time_series_type == 'daily':
+                # compute SPI/Gamma across all longitudes of the latitude slice
+                spi_gamma_lat_slice = np.apply_along_axis(indices.spi_gamma,
+                                                          1,
+                                                          precip_lat_slice,
+                                                          self.timestep_scale)
+    
+                # compute SPI/Pearson across all longitudes of the latitude slice
+                spi_pearson_lat_slice = np.apply_along_axis(indices.spi_pearson,
+                                                            1,
+                                                            precip_lat_slice,
+                                                            self.timestep_scale,
+                                                            self.data_start_year,
+                                                            self.calibration_start_year,
+                                                            self.calibration_end_year)
 
-                # at each longitude we have a time series of values with a 366 day per year representation (Feb 29 during non-leap years
-                # is a fill value), loop over these longitudes and transform each corresponding time series back to a normal Gregorian calendar
-                lat_slice_spi_gamma = np.full((total_lons, original_days_count), np.NaN)
-                lat_slice_spi_pearson = np.full((original_days_count, total_lons), np.NaN)
-                for lon_index in range(precip_lat_slice.shape[0]):
-                    
-                    # transform the data so it represents mixed leap and non-leap years, i.e. normal Gregorian calendar
-                    lat_slice_spi_gamma[lon_index, :] = utils.transform_to_gregorian(spi_gamma_lat_slice[lon_index, :],
-                                                                                     self.data_start_year,
-                                                                                     total_years)
-                    lat_slice_spi_pearson[lon_index, :] = utils.transform_to_gregorian(spi_pearson_lat_slice[lon_index, :],
-                                                                                       self.data_start_year,
-                                                                                       total_years)
-
-                # make the lat slices we'll write be these transformed arrays
-                spi_gamma_lat_slice = lat_slice_spi_gamma
-                spi_pearson_lat_slice = lat_slice_spi_pearson
-
-            # use the same variable name within both Gamma and Pearson NetCDFs
-            spi_gamma_variable_name = 'spi_gamma_' + str(self.scale).zfill(2)
-            spi_pearson_variable_name = 'spi_pearson_' + str(self.scale).zfill(2)
-
-            # open the existing SPI/Gamma NetCDF file for writing, copy the latitude slice into the SPI variable at the indexed latitude position
-            spi_gamma_lock.acquire()
-            spi_gamma_dataset = netCDF4.Dataset(self.netcdf_spi_gamma, mode='a')
-            spi_gamma_dataset[spi_gamma_variable_name][lat_index, :, :] = spi_gamma_lat_slice   # (lat, lon, time)
-            spi_gamma_dataset.sync()
-            spi_gamma_dataset.close()
-            spi_gamma_lock.release()
-
-            # open the existing SPI/Pearson NetCDF file for writing, copy the latitude slice into the SPI variable at the indexed latitude position
-            spi_pearson_lock.acquire()
-            spi_pearson_dataset = netCDF4.Dataset(self.netcdf_spi_pearson, mode='a')
-            spi_pearson_dataset[spi_pearson_variable_name][lat_index, :, :] = spi_pearson_lat_slice   # (lat, lon, time)
-            spi_pearson_dataset.sync()
-            spi_pearson_dataset.close()
-            spi_pearson_lock.release()
+                if self.time_series_type == 'daily':
+    
+                    # at each longitude we have a time series of values with a 366 day per year representation (Feb 29 during non-leap years
+                    # is a fill value), loop over these longitudes and transform each corresponding time series back to a normal Gregorian calendar
+                    lat_slice_spi_gamma = np.full((total_lons, original_days_count), np.NaN)
+                    lat_slice_spi_pearson = np.full((total_lons, original_days_count), np.NaN)
+                    for lon_index in range(precip_lat_slice.shape[0]):
+                        
+                        # transform the data so it represents mixed leap and non-leap years, i.e. normal Gregorian calendar
+                        lat_slice_spi_gamma[lon_index, :] = utils.transform_to_gregorian(spi_gamma_lat_slice[lon_index, :],
+                                                                                         self.data_start_year,
+                                                                                         total_years)
+                        lat_slice_spi_pearson[lon_index, :] = utils.transform_to_gregorian(spi_pearson_lat_slice[lon_index, :],
+                                                                                           self.data_start_year,
+                                                                                           total_years)
+    
+                    # make the lat slices we'll write be these transformed arrays
+                    spi_gamma_lat_slice = lat_slice_spi_gamma
+                    spi_pearson_lat_slice = lat_slice_spi_pearson
+    
+                # use the same variable name within both Gamma and Pearson NetCDFs
+                spi_gamma_variable_name = 'spi_gamma_' + str(self.timestep_scale).zfill(2)
+                spi_pearson_variable_name = 'spi_pearson_' + str(self.timestep_scale).zfill(2)
+    
+                # open the existing SPI/Gamma NetCDF file for writing, copy the latitude slice into the SPI variable at the indexed latitude position
+                spi_gamma_lock.acquire()
+                spi_gamma_dataset = netCDF4.Dataset(self.netcdf_spi_gamma, mode='a')
+                spi_gamma_dataset[spi_gamma_variable_name][lat_index, :, :] = spi_gamma_lat_slice   # (lat, lon, time)
+                spi_gamma_dataset.sync()
+                spi_gamma_dataset.close()
+                spi_gamma_lock.release()
+    
+                # open the existing SPI/Pearson NetCDF file for writing, copy the latitude slice into the SPI variable at the indexed latitude position
+                spi_pearson_lock.acquire()
+                spi_pearson_dataset = netCDF4.Dataset(self.netcdf_spi_pearson, mode='a')
+                spi_pearson_dataset[spi_pearson_variable_name][lat_index, :, :] = spi_pearson_lat_slice   # (lat, lon, time)
+                spi_pearson_dataset.sync()
+                spi_pearson_dataset.close()
+                spi_pearson_lock.release()
 
 #-----------------------------------------------------------------------------------------------------------------------
 def _validate_arguments(args):
@@ -394,28 +398,31 @@ def _validate_arguments(args):
     # all indices except PET require a precipitation file
     if args.index_bundle != 'pet':
         
+        # make sure a precipitation file was specified
         if args.netcdf_precip is None:
             msg = 'Missing the required precipitation file'
             _logger.error(msg)
             raise ValueError(msg)
 
+        # make sure a precipitation variable name was specified
+        if args.var_name_precip is None:
+            message = "Missing precipitation variable name"
+            _logger.error(message)
+            raise ValueError(message)
+
         # validate the precipitation file itself        
         with netCDF4.Dataset(args.netcdf_precip) as dataset_precip:
             
             # make sure we have a valid precipitation variable name
-            if args.precip_var_name is None:
-                message = "Missing precipitation variable name"
-                _logger.error(message)
-                raise ValueError(message)
-            elif args.precip_var_name not in dataset_precip.variables:
-                message = "Invalid precipitation variable name: \'%s\' does not exist in precipitation file \'%s\'" % args.precip_var_name, args.netcdf_precip
+            if args.var_name_precip not in dataset_precip.variables:
+                message = "Invalid precipitation variable name: \'%s\' does not exist in precipitation file \'%s\'" % args.var_name_precip, args.netcdf_precip
                 _logger.error(message)
                 raise ValueError(message)
                 
             # verify that the precipitation variable's dimensions are in the expected order
-            dimensions = dataset_precip.variables[args.precip_var_name].dimensions
+            dimensions = dataset_precip.variables[args.var_name_precip].dimensions
             if dimensions != expected_dimensions:
-                message = "Invalid dimensions of the precipitation variable: %s, (expected names and order: %s)" % dimensions, expected_dimensions
+                message = "Invalid dimensions of the precipitation variable: {0}, (expected names and order: {1})".format(dimensions, expected_dimensions)
                 _logger.error(message)
                 raise ValueError(message)
             
@@ -572,17 +579,17 @@ if __name__ == '__main__':
         # parse the command line arguments
         parser = argparse.ArgumentParser()
         parser.add_argument("--netcdf_precip",
-                            help="Precipitation NetCDF file  to be used as input for SPI, SPEI, PNP, and/or Palmer computations",
-                            required=True)
+                            help="Precipitation NetCDF file  to be used as input for SPI, SPEI, PNP, and/or Palmer computations")
         parser.add_argument("--var_name_precip",
-                            help="Precipitation variable name used in the precipitation NetCDF file",
-                            required=True)
+                            help="Precipitation variable name used in the precipitation NetCDF file")
         parser.add_argument("--netcdf_temp",
-                            help="Temperature NetCDF file to be used as input for PET, SPEI, and/or Palmer computations",
-                            required=True)
+                            help="Temperature NetCDF file to be used as input for PET, SPEI, and/or Palmer computations")
         parser.add_argument("--var_name_temp",
-                            help="Temperature variable name used in the temperature NetCDF file",
-                            required=True)
+                            help="Temperature variable name used in the temperature NetCDF file")
+        parser.add_argument("--netcdf_pet",
+                            help="PET NetCDF file to be used as input for SPEI and/or Palmer computations")
+        parser.add_argument("--var_name_pet",
+                            help="PET variable name used in the PET NetCDF file")
         parser.add_argument("--netcdf_awc",
                             help="Available water capacity NetCDF file to be used as input for the Palmer computations",
                             required=False)
@@ -619,9 +626,9 @@ if __name__ == '__main__':
 
         
         '''
-        Example command line arguments for SPI only:
+        Example command line arguments for SPI only using monthly precipitation input:
         
-        --netcdf_precip /tmp/jadams/cmorph_daily_prcp_199801_201707.nc --precip_var_name prcp --output_file_base ~/data/cmorph/spi/cmorph --day_scales 1 2 3 6 9 12 24 --calibration_start_year 1998 --calibration_end_year 2016 --index_bundle spi /tmp/jadams
+        --netcdf_precip /tmp/jadams/cmorph_daily_prcp_199801_201707.nc --var_name_precip prcp --output_file_base ~/data/cmorph/spi/cmorph --scales 1 2 3 6 9 12 24 --calibration_start_year 1998 --calibration_end_year 2016 --index_bundle spi /tmp/jadams --time_series_type monthly
         '''
 
         # validate the command line arguments

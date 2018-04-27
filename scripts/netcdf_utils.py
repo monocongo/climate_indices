@@ -172,7 +172,7 @@ def initialize_netcdf_single_variable_grid(file_path,              # pragma: no 
                                            fill_value=np.float32(np.NaN)):
     '''
     This function is used to initialize and return a netCDF4.Dataset object, containing a single data variable having 
-    dimensions (time, lat, lon). The input data values array is assumed to be a 3-D array with indices corresponding to 
+    dimensions (lat, lon, time). The input data values array is assumed to be a 3-D array with indices corresponding to 
     the variable dimensions. The latitude, longitude, and time values are copied from the template NetCDF, which is 
     assumed to have dimension sizes matching to the axes of the variable values array. Global attributes are also copied 
     from the template NetCDF.
@@ -193,6 +193,7 @@ def initialize_netcdf_single_variable_grid(file_path,              # pragma: no 
         # get the template's dimension sizes
         lat_size = template_dataset.variables['lat'].size
         lon_size = template_dataset.variables['lon'].size
+        time_size = template_dataset.variables['time'].size
     
         # make a basic set of variable attributes
         variable_attributes = {'valid_min' : valid_min,
@@ -205,11 +206,12 @@ def initialize_netcdf_single_variable_grid(file_path,              # pragma: no 
         dataset = netCDF4.Dataset(file_path, 'w')
         
         # copy the global attributes from the input
-        # TODO/FIXME add/modify global attributes to correspond with the actual dataset
-        dataset.setncatts(template_dataset.__dict__)
+        # TODO/FIXME add/modify global attributes to correspond with the actual dataset that 
+        # we'll be writing rather than perfectly reflecting the template
+        #dataset.setncatts(template_dataset.__dict__)
         
         # create the time, x, and y dimensions
-        dataset.createDimension('time', None)
+        dataset.createDimension('time', time_size)
         dataset.createDimension('lat', lat_size)
         dataset.createDimension('lon', lon_size)
     
@@ -219,13 +221,13 @@ def initialize_netcdf_single_variable_grid(file_path,              # pragma: no 
         lon_dtype = find_netcdf_datatype(template_dataset.variables['lon'])
         data_dtype = find_netcdf_datatype(fill_value)
     
-        # create the variables
+        # create the coordinate and data variables
         time_variable = dataset.createVariable('time', time_dtype, ('time',))
         y_variable = dataset.createVariable('lat', lat_dtype, ('lat',))
         x_variable = dataset.createVariable('lon', lon_dtype, ('lon',))
         data_variable = dataset.createVariable(variable_name,
                                                data_dtype,
-                                               ('time', 'lat', 'lon',),
+                                               ('lat', 'lon', 'time'),
                                                fill_value=fill_value, 
                                                zlib=False)
     
