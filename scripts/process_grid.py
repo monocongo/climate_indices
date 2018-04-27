@@ -139,17 +139,21 @@ class GridProcessor(object):             # pragma: no cover
             raise ValueError('Unsupported index_bundle argument: %s' % self.index_bundle)
         
     #-----------------------------------------------------------------------------------------------------------------------
-    def _initialize_scaled_netcdfs(self,
-                                   scale):
+    def _initialize_scaled_netcdfs(self):
 
         # dictionary of index types to the NetCDF dataset files corresponding to the base index names and
         # day scales (this is the object we'll build and return from this function)
         netcdfs = {}
 
         # make a scale type substring to use within variable long_name attributes
-        scale_type = str(self.scale) + '-month scale'
+        scale_type = str(self.timestep_scale) + '-month scale'
         if self.time_series_type == 'daily':
-            scale_type = str(self.scale) + '-day scale'
+            if self.index_bundle == 'spi':
+                scale_type = str(self.timestep_scale) + '-day scale'
+            else:
+                message = 'Incompatible time series type -- only SPI is supported for daily'
+                _logger.error(message)
+                raise ValueError(message)
         elif self.time_series_type != 'monthly':
             raise ValueError('Unsupported time series type argument: %s' % self.time_series_type)
         
@@ -185,7 +189,7 @@ class GridProcessor(object):             # pragma: no cover
                 valid_max = np.float32(3.09)
 
             # create the variable name from the index and day scale
-            variable_name = index_name + '_{0}'.format(str(scale).zfill(2))
+            variable_name = index_name + '_{0}'.format(str(self.timestep_scale).zfill(2))
 
             # create the NetCDF file path from the
             netcdf_file = self.output_file_base + '_' + variable_name + '.nc'
@@ -194,7 +198,7 @@ class GridProcessor(object):             # pragma: no cover
             netcdf_utils.initialize_netcdf_single_variable_grid(netcdf_file,
                                                                 self.netcdf_precip,
                                                                 variable_name,
-                                                                long_name.format(scale),
+                                                                long_name.format(self.timestep_scale),
                                                                 valid_min,
                                                                 valid_max)
 
@@ -216,9 +220,6 @@ class GridProcessor(object):             # pragma: no cover
             self.netcdf_spei_gamma = netcdfs['spei_gamma']
             self.netcdf_spei_pearson = netcdfs['spei_pearson']
             self.netcdf_pnp = netcdfs['pnp']
-
-        # set the number of days used to scale the indices
-        self.scale = scale
 
     #-----------------------------------------------------------------------------------------------------------------------
     def run(self):
@@ -250,6 +251,8 @@ class GridProcessor(object):             # pragma: no cover
                 for scale in self.scales:
                     
                     self.timestep_scale = scale
+                    
+                    self._initialize_scaled_netcdfs(self)
                     
                     # map the latitude indices as an arguments iterable to the compute function
                     result = pool.map_async(self._process_latitude_scaled, range(self.lat_size))
