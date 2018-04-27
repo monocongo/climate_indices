@@ -180,13 +180,12 @@ def initialize_netcdf_single_variable_grid(file_path,              # pragma: no 
     :param file_path: the file path/name of the NetCDF Dataset object returned by this function
     :param template_dataset: an existing/open NetCDF Dataset object which will be used as a template for the Dataset
                              that will be created by this function
-    :param variable_name: the variable name which will be used to identify the main data variable within the Dataset
-    :param variable_long_name: the long name attribute of the main data variable within the Dataset
+    :param variable_name: the variable name which will be used to identify the data variable within the Dataset
+    :param variable_long_name: the long name attribute of the data variable within the Dataset
+    :param valid_min: the minimum value to which the data variable of the resulting Dataset(s) will be clipped
+    :param valid_max: the maximum value to which the data variable of the resulting Dataset(s) will be clipped
     :param variable_units: string specifying the units of the variable 
-    :param valid_min: the minimum value to which the main data variable of the resulting Dataset(s) will be clipped
-    :param valid_max: the maximum value to which the main data variable of the resulting Dataset(s) will be clipped
-    :param fill_value: the fill value to use for main data variable of the resulting Dataset(s)
-    :return: an open netCDF4.Dataset object
+    :param fill_value: the fill value to use for main data variable of the resulting Dataset
     '''
 
     with netCDF4.Dataset(template_netcdf, 'r') as template_dataset:
@@ -240,9 +239,6 @@ def initialize_netcdf_single_variable_grid(file_path,              # pragma: no 
         time_variable[:] = template_dataset.variables['time'][:]
         y_variable[:] = template_dataset.variables['lat'][:]
         x_variable[:] = template_dataset.variables['lon'][:]
-
-        # close the NetCDF
-        dataset.close()
 
 #-----------------------------------------------------------------------------------------------------------------------
 def initialize_dataset_climdivs(file_path,            # pragma: no cover
