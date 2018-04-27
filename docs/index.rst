@@ -277,7 +277,7 @@ have at it, and/or contact us to see if we can help.
    `issue <https://github.com/monocongo/indices_python/issues>`__, or
    submit a `pull request <https://github.com/monocongo/indices_python/pulls>`_
 
--  Send us an `email <mailto:james.adams@noaa.gov>`__
+-  Send us an `email <mailto:monocongo@gmail.com>`__
 
 Copyright and licensing
 -----------------------
