@@ -26,6 +26,8 @@ import math
 from numba import boolean, float64, int64, jit
 import numpy as np
 
+from indices_python import utils
+
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global _logger
 logging.basicConfig(level=logging.DEBUG,
@@ -165,41 +167,6 @@ def _monthly_mean_daylight_hours(latitude_radians,
     return monthly_mean_dlh
 
 #-----------------------------------------------------------------------------------------------------------------------
-def _validate_data(monthly_temps_celsius):
-    
-    data_shape = monthly_temps_celsius.shape
-    if len(data_shape) == 1:
-        
-        # dataset is assumed to represent one long row of months starting with January of the initial year, and we'll 
-        # reshape into (years, 12) where each row is a year with 12 columns of monthly values (Jan, Feb, ..., Dec)
-        
-        # get the number of months left off of the final year
-        final_year_empty_months = 12 - (data_shape[0] % 12)
-        if final_year_empty_months == 12:
-            final_year_empty_months = 0
-        
-        # if any months were left off then we'll pad the final months of the year with NaNs
-        if final_year_empty_months > 0:
-            
-            # make an array of NaNs for each of the remaining months of the final year of the dataset
-            final_year_pad = np.full((final_year_empty_months,), np.nan)
-            
-            # append the pad months to the dataset to complete the final year
-            monthly_temps_celsius = np.concatenate((monthly_temps_celsius, final_year_pad))
-        
-        # reshape the dataset from (months) to (years, 12)
-        total_years = monthly_temps_celsius.size // 12
-        monthly_temps_celsius = np.reshape(monthly_temps_celsius, (total_years, 12))
-                
-    elif (len(data_shape) > 2) or ((len(data_shape) == 2) and (data_shape[1] != 12)):
-        
-        message = 'Input monthly mean temperatures data array has an invalid shape: {0}.'.format(data_shape)
-        _logger.error(message)
-        raise ValueError(message)
-
-    return monthly_temps_celsius
-
-#-----------------------------------------------------------------------------------------------------------------------
 @jit(float64[:](float64[:], float64, int64))
 def potential_evapotranspiration(monthly_temps_celsius, 
                                  latitude_degrees, 
@@ -238,7 +205,7 @@ def potential_evapotranspiration(monthly_temps_celsius,
     original_length = monthly_temps_celsius.size
 
     # validate the input data array
-    monthly_temps_celsius = _validate_data(monthly_temps_celsius)
+    monthly_temps_celsius = utils.reshape_to_years_months(monthly_temps_celsius)
 
     # at this point we assume that our dataset array has shape (years, 12) where 
     # each row is a year with 12 columns of monthly values (Jan, Feb, ..., Dec)
