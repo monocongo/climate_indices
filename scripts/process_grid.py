@@ -51,7 +51,7 @@ class GridProcessor(object):             # pragma: no cover
         self.netcdf_pet = args.netcdf_pet
         self.netcdf_awc = args.netcdf_awc
         self.var_name_precip = args.var_name_precip
-        self.var_name_temperature = args.var_name_temp
+        self.var_name_temp = args.var_name_temp
         self.var_name_pet = args.var_name_pet
         self.var_name_awc = args.var_name_awc
         self.scales = args.scales
@@ -123,17 +123,17 @@ class GridProcessor(object):             # pragma: no cover
             self.netcdf_spei_pearson = ''
             self.netcdf_pnp = ''
 
-        # if we're computing PET, SPEI, and/or Palmers and we've not provided a PET file then it needs to be computed
-        if (self.index_bundle in ['pet', 'spei', 'scaled', 'palmers']) and (self.netcdf_pet is None):
-            
-            self.netcdf_pet = self.output_file_base + '_pet.nc'
-            netcdf_utils.initialize_netcdf_single_variable_grid(self.netcdf_pet,
-                                                                self.netcdf_temp,
-                                                                'pet',
-                                                                'Potential Evapotranspiration',
-                                                                0.0,
-                                                                10000.0,
-                                                                'millimeters')
+#         # if we're computing PET, SPEI, and/or Palmers and we've not provided a PET file then it needs to be computed
+#         if (self.index_bundle in ['pet', 'spei', 'scaled', 'palmers']) and (self.netcdf_pet is None):
+#             
+#             self.netcdf_pet = self.output_file_base + '_pet.nc'
+#             netcdf_utils.initialize_netcdf_single_variable_grid(self.netcdf_pet,
+#                                                                 self.netcdf_temp,
+#                                                                 'pet',
+#                                                                 'Potential Evapotranspiration',
+#                                                                 0.0,
+#                                                                 10000.0,
+#                                                                 'millimeters')
         
     #-----------------------------------------------------------------------------------------------------------------------
     def _initialize_scaled_netcdfs(self):
@@ -227,6 +227,15 @@ class GridProcessor(object):             # pragma: no cover
         # all index combinations/bundles except SPI and PNP will require PET, so compute it here if required
         if (self.netcdf_pet is None) and (self.index_bundle in ['pet', 'spei', 'scaled', 'palmers']):
         
+            self.netcdf_pet = self.output_file_base + '_pet.nc'
+            netcdf_utils.initialize_netcdf_single_variable_grid(self.netcdf_pet,
+                                                                self.netcdf_temp,
+                                                                'pet',
+                                                                'Potential Evapotranspiration',
+                                                                0.0,
+                                                                10000.0,
+                                                                'millimeters')
+
             # create a process Pool for worker processes which will compute indices over an entire latitude slice
             pool = multiprocessing.Pool(processes=number_of_workers)
 
@@ -383,6 +392,85 @@ class GridProcessor(object):             # pragma: no cover
                 spi_pearson_dataset.close()
                 spi_pearson_lock.release()
 
+    #-------------------------------------------------------------------------------------------------------------------
+    def _process_latitude_pet(self, lat_index):
+        '''
+        Processes PET for a single latitude slice.
+
+        :param lat_index: the latitude index of the latitude slice that will be read from NetCDF, computed, and written
+        '''
+
+        _logger.info('Computing %s PET for latitude index %s', self.time_series_type, lat_index)
+
+        # open the temperature NetCDF within a context manager
+        with netCDF4.Dataset(self.netcdf_temp) as temp_dataset:
+
+            # read the latitude slice of input temperature values
+            temp_lat_slice = temp_dataset[self.var_name_temp][lat_index, :, :]   # assuming (lat, lon, time) orientation
+
+            #TODO verify that values are in degrees Celsius, if not then convert
+            
+            # get the actual latitude value (assumed to be in degrees north) for the latitude slice specified by the index
+            latitude_degrees_north = temp_dataset['lat'][lat_index]
+
+            if self.time_series_type == 'daily':
+
+                pass  #placeholder 
+            
+#                 # times are daily, transform to all leap year times (i.e. 366 days per year), so we fill Feb 29th of each non-leap missing
+#                 total_years = self.data_end_year - self.data_start_year + 1   # FIXME move this out of here, only needs to be computed once
+#      
+#                 # allocate an array to hold transformed time series where all years contain 366 days
+#                 original_days_count = temp_lat_slice.shape[1]
+#                 total_lons = temp_lat_slice.shape[0]
+#                 temp_lat_slice_all_leap = np.full((total_lons, total_years * 366), np.NaN)
+#                 
+#                 # at each longitude we have a time series of values, loop over these longitudes and transform each
+#                 # corresponding time series to 366 day years representation (fill Feb 29 during non-leap years)
+#                 for lon_index in range(total_lons):  # TODO work out how to apply this across the lon axis, to eliminate this loop
+#                     
+#                     # transform the data so it represents all years containing 366 days, with Feb 29 containing fill value during non-leap years
+#                     temp_lat_slice_all_leap[lon_index, :] = utils.transform_to_366day(temp_lat_slice[lon_index, :],
+#                                                                                        self.data_start_year,
+#                                                                                        total_years)
+# 
+#                 temp_lat_slice = temp_lat_slice_all_leap
+# 
+#                 # compute PET across all longitudes of the latitude slice
+#                 pet_lat_slice = np.apply_along_axis(indices.pet_daily_hargreaves,
+#                                                     0,
+#                                                     temp_lat_slice,
+#                                                     latitude_degrees=latitude_degrees_north,
+#                                                     data_start_year=self.data_start_year)
+#                 
+#                 # at each longitude we have a time series of values with a 366 day per year representation (Feb 29 during non-leap years
+#                 # is a fill value), loop over these longitudes and transform each corresponding time series back to a normal Gregorian calendar
+#                 lat_slice_pet = np.full((total_lons, original_days_count), np.NaN)
+#                 for lon_index in range(pet_lat_slice.shape[0]):
+#                     
+#                     # transform the data so it represents mixed leap and non-leap years, i.e. normal Gregorian calendar
+#                     lat_slice_pet[lon_index, :] = utils.transform_to_gregorian(pet_lat_slice[lon_index, :],
+#                                                                                self.data_start_year,
+#                                                                                total_years)
+#                 pet_lat_slice = lat_slice_pet
+
+            else:    # monthly
+
+                # compute PET across all longitudes of the latitude slice
+                pet_lat_slice = np.apply_along_axis(indices.pet,
+                                                    1,
+                                                    temp_lat_slice,
+                                                    latitude_degrees=latitude_degrees_north,
+                                                    data_start_year=self.data_start_year)
+
+            # open the existing PET NetCDF file for writing, copy the latitude slice into the PET variable at the indexed latitude position
+            pet_lock.acquire()
+            pet_dataset = netCDF4.Dataset(self.netcdf_pet, mode='a')
+            pet_dataset['pet'][lat_index, :, :] = pet_lat_slice   # this assumes (lat, lon, time), TODO make this more general to allow for other dimension orders, etc.
+            pet_dataset.sync()
+            pet_dataset.close()
+            pet_lock.release()
+
 #-----------------------------------------------------------------------------------------------------------------------
 def _validate_arguments(args):
     """
@@ -438,8 +526,13 @@ def _validate_arguments(args):
             msg = 'Missing the required temperature file argument'
             _logger.error(msg)
             raise ValueError(msg)
-            
-                        
+
+        # don't allow a daily time series type (yet, this will be possible once we have Hargreaves or a daily Thornthwaite)
+        if args.time_series_type == 'daily':
+            msg = 'Invalid time series type argument for PET -- daily not yet supported'
+            _logger.error(msg)
+            raise ValueError(msg)
+                            
     # SPEI and Palmers require either a PET file or a temperature file in order to compute PET  
     if args.index_bundle in ['spei', 'scaled', 'palmers' ]:
         
@@ -564,6 +657,18 @@ def _validate_arguments(args):
                     _logger.error(message)
                     raise ValueError(message)
 
+    if args.index_bundle in ['spi', 'spei', 'scaled', 'pnp' ]:
+        
+        if args.scales is None:
+            message = "Scaled indices (SPI, SPEI, and/or PNP) specified without including one or more time scales (missing --scales argument)"
+            _logger.error(message)
+            raise ValueError(message)
+        
+        if any(n < 0 for n in args.scales):
+            message = "One or more negative scale specified within --scales argument"
+            _logger.error(message)
+            raise ValueError(message)
+    
 #-----------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
     """
@@ -602,8 +707,7 @@ if __name__ == '__main__':
         parser.add_argument("--scales",
                             help="Timestep scales over which the PNP, SPI, and SPEI values are to be computed",
                             type=int,
-                            nargs = '*',
-                            required=True)
+                            nargs = '*')
         parser.add_argument("--calibration_start_year",
                             help="Initial year of the calibration period",
                             type=int,
