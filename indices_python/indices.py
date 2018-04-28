@@ -34,7 +34,7 @@ def spi_gamma(precips,
     original_length = precips.size
     
     # get a sliding sums array, with each month's value scaled by the specified number of months
-    scaled_precips = compute.sum_to_scale(precips, months_scale)
+    scaled_precips = compute.sum_to_scale(precips.flatten(), months_scale)
 
     # fit the scaled values to a gamma distribution and transform the values to corresponding normalized sigmas 
     transformed_fitted_values = compute.transform_fitted_gamma(scaled_precips)
@@ -69,7 +69,7 @@ def spi_pearson(precips,
     original_length = precips.size
     
     # get a sliding sums array, with each month's value scaled by the specified number of months
-    scaled_precips = compute.sum_to_scale(precips, months_scale)
+    scaled_precips = compute.sum_to_scale(precips.flatten(), months_scale)
 
     # fit the scaled values to a Pearson Type III distribution and transform the values to corresponding normalized sigmas 
 #     transformed_fitted_values = compute.transform_fitted_pearson_new(scaled_precips, 
@@ -191,14 +191,14 @@ def spei_gamma(months_scale,
 @jit     # use this under the assumption that this is preferable to explicit specification of signature argument types
 def spei_pearson(months_scale,
                  data_start_year,
+                 calibration_year_initial,
+                 calibration_year_final,
                  precips_mm,
                  pet_mm=None,
                  temps_celsius=None,
-                 latitude_degrees=None,
-                 calibration_year_initial=1981,
-                 calibration_year_final=2010):
+                 latitude_degrees=None):
     '''
-    Compute SPEI fitted to the Pearson Type III distribution.
+    Compute monthly SPEI fitted to the Pearson Type III distribution.
     
     PET values are subtracted from the monthly precipitation values to come up with an array of (P - PET) values, which is 
     then scaled to the specified months scale and finally fitted/transformed to monthly SPEI values corresponding to the
@@ -277,8 +277,14 @@ def spei_pearson(months_scale,
             _logger.error(message)
             raise ValueError(message)
     
+    else:
+
+        message = 'Invalid arguments: both temperature and PET array arguments are None'
+        _logger.error(message)
+        raise ValueError(message)
+        
     # subtract the PET from precipitation, adding an offset to ensure that all values are positive
-    p_minus_pet = (precips_mm - pet_mm) + 1000.0
+    p_minus_pet = (precips_mm.flatten() - pet_mm.flatten()) + 1000.0
         
     # remember the original length of the input array, in order to facilitate returning an array of the same size
     original_length = precips_mm.size
@@ -482,7 +488,7 @@ def pet(temperature_celsius,
             # we started with all NaNs for the temperature, so just return the same
             return temperature_celsius
         
-    # make sure we're not dealing with a NaN latitude value
+    # make sure we're not dealing with a NaN or out-of-range latitude value
     if not np.isnan(latitude_degrees) and (latitude_degrees < 90.0) and (latitude_degrees > -90.0):
         
         # compute and return the PET values using Thornthwaite's equation
