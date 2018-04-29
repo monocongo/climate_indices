@@ -144,10 +144,10 @@ class GridProcessor(object):             # pragma: no cover
         # make a scale type substring to use within the variable long_name attributes
         scale_type = str(self.timestep_scale) + '-month scale'
         if self.time_series_type == 'daily':
-            if self.index_bundle == 'spi':
+            if self.index_bundle in ['spi', 'pnp']:
                 scale_type = str(self.timestep_scale) + '-day scale'
             else:
-                message = 'Incompatible time series type -- only SPI is supported for daily'
+                message = 'Incompatible time series type -- only SPI and PNP are supported for daily time series'
                 _logger.error(message)
                 raise ValueError(message)
         elif self.time_series_type != 'monthly':
@@ -221,7 +221,7 @@ class GridProcessor(object):             # pragma: no cover
     def run(self):
 
         # the number of worker processes we'll have in our process pool
-        number_of_workers = multiprocessing.cpu_count()   # use 1 here for debugging
+        number_of_workers = 1#multiprocessing.cpu_count()   # use 1 here for debugging
     
         # all index combinations/bundles except SPI and PNP will require PET, so compute it here if required
         if (self.netcdf_pet is None) and (self.index_bundle in ['pet', 'spei', 'scaled', 'palmers']):
@@ -327,6 +327,51 @@ class GridProcessor(object):             # pragma: no cover
             # use the all leap daily values as the latitude slice we'll work on
             lat_slice_precip = lat_slice_precip_all_leap
             
+        # compute PNP if specified
+        if self.index_bundle in ['pnp', 'scaled']:
+
+            if self.time_series_type == 'daily':  
+                scale_increment = 'day'
+            elif self.time_series_type == 'monthly':
+                scale_increment = 'month'
+            _logger.info('Computing %s-%s %s for latitude index %s', self.timestep_scale, scale_increment, 'PNP', lat_index)
+
+            # compute PNP across all longitudes of the latitude slice
+            lat_slice_pnp = np.apply_along_axis(indices.percentage_of_normal,
+                                                1,
+                                                lat_slice_precip,
+                                                self.timestep_scale,
+                                                self.data_start_year,
+                                                self.calibration_start_year,
+                                                self.calibration_end_year,
+                                                self.time_series_type)
+
+            if self.time_series_type == 'daily':
+
+                # at each longitude we have a time series of values with a 366 day per year representation (Feb 29 during non-leap years
+                # is a fill value), loop over these longitudes and transform each corresponding time series back to a normal Gregorian calendar
+                lat_slice_pnp_gregorian = np.full((self.lon_size, original_days_count), np.NaN)
+                for lon_index in range(lat_slice_precip.shape[0]):
+                    
+                    # transform the data so it represents mixed leap and non-leap years, i.e. normal Gregorian calendar
+                    lat_slice_pnp_gregorian[lon_index, :] = utils.transform_to_gregorian(lat_slice_pnp[lon_index, :],
+                                                                                         self.data_start_year,
+                                                                                         total_years)
+
+                # use the transformed arrays as the lat slice we'll write to the output NetCDF
+                lat_slice_pnp = lat_slice_pnp_gregorian
+            
+            # use relevant variable name
+            pnp_variable_name = 'pnp_' + str(self.timestep_scale).zfill(2)
+
+            # open the existing PNP NetCDF file for writing, copy the latitude slice into the PNP variable at the indexed latitude position
+            pnp_lock.acquire()
+            pnp_dataset = netCDF4.Dataset(self.netcdf_pnp, mode='a')
+            pnp_dataset[pnp_variable_name][lat_index, :, :] = lat_slice_pnp   # assuming the NetCDF variable has (lat, lon, time) orientation
+            pnp_dataset.sync()
+            pnp_dataset.close()
+            pnp_lock.release()
+
         # compute SPI if specified
         if self.index_bundle in ['spi', 'scaled']:
 
@@ -367,7 +412,7 @@ class GridProcessor(object):             # pragma: no cover
                                                                                        self.data_start_year,
                                                                                        total_years)
 
-                # these transformed arrays as the lat slices we'll write 
+                # use these transformed arrays as the lat slices we'll write to the output NetCDF
                 spi_gamma_lat_slice = lat_slice_spi_gamma
                 spi_pearson_lat_slice = lat_slice_spi_pearson
 
