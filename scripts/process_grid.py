@@ -62,12 +62,11 @@ class GridProcessor(object):             # pragma: no cover
         
         # determine the initial and final data years, and lat/lon sizes
         if self.index_bundle == 'pet':
-            if self.netcdf_pet is not None:
-                data_file = self.netcdf_pet
-            else:
-                data_file = self.netcdf_temp
+            # PET only requires temperature
+            data_file = self.netcdf_temp
         else:
-            data_file = self.netcdf_precip
+            # all other indices require precipitation
+            data_file = self.netcdf_precip            
         self.data_start_year, self.data_end_year = netcdf_utils.initial_and_final_years(data_file)
         self.lat_size, self.lon_size = netcdf_utils.lat_and_lon_sizes(data_file)
         
@@ -115,7 +114,7 @@ class GridProcessor(object):             # pragma: no cover
 
         elif self.index_bundle in ['spi', 'spei', 'pnp', 'scaled']:
         
-            # place holders for the scaled NetCDFs, these files will be created 
+            # place holders for the scaled NetCDFs, these files will be created as needed
             # and assigned to these variables at each scale's computational iteration
             self.netcdf_spi_gamma = ''
             self.netcdf_spi_pearson = ''
@@ -302,95 +301,162 @@ class GridProcessor(object):             # pragma: no cover
         '''
 
         # open the precipitation NetCDF within a context manager
-        with netCDF4.Dataset(self.netcdf_precip) as precip_dataset:
+        with netCDF4.Dataset(self.netcdf_precip) as dataset_precip:
 
-            # read the latitude slice of input precipitation and PET values
-            precip_lat_slice = precip_dataset[self.var_name_precip][lat_index, :, :]   # assuming (lat, lon, time) orientation
+            # read the latitude slice of input precipitation
+            lat_slice_precip = dataset_precip[self.var_name_precip][lat_index, :, :]   # assuming (lat, lon, time) orientation
+
+        if self.time_series_type == 'daily':
+
+            # times are daily, transform to all leap year times (i.e. 366 days per year), so we fill Feb 29th of each non-leap missing
+            total_years = self.data_end_year - self.data_start_year + 1   # FIXME move this out of here, only needs to be computed once
+
+            # allocate an array to hold transformed time series where all years contain 366 days
+            original_days_count = lat_slice_precip.shape[1]
+            lat_slice_precip_all_leap = np.full((self.lon_size, total_years * 366), np.NaN)
+            
+            # at each longitude we have a time series of values, loop over these longitudes and transform each
+            # corresponding time series to 366 day years representation (fill Feb 29 during non-leap years)
+            for lon_index in range(self.lon_size):  # TODO work out how to apply this across the lon axis, to eliminate this loop
+                
+                # transform the data so it represents all years containing 366 days, with Feb 29 containing fill value during non-leap years
+                lat_slice_precip_all_leap[lon_index, :] = utils.transform_to_366day(lat_slice_precip[lon_index, :],
+                                                                                    self.data_start_year,
+                                                                                    total_years)
+
+            # use the all leap daily values as the latitude slice we'll work on
+            lat_slice_precip = lat_slice_precip_all_leap
+            
+        # compute SPI if specified
+        if self.index_bundle in ['spi', 'scaled']:
+
+            if self.time_series_type == 'daily':  
+                scale_increment = 'day'
+            elif self.time_series_type == 'monthly':
+                scale_increment = 'month'
+            _logger.info('Computing %s-%s %s for latitude index %s', self.timestep_scale, scale_increment, 'SPI', lat_index)
+
+            # compute SPI/Gamma across all longitudes of the latitude slice
+            spi_gamma_lat_slice = np.apply_along_axis(indices.spi_gamma,
+                                                      1,
+                                                      lat_slice_precip,
+                                                      self.timestep_scale)
+
+            # compute SPI/Pearson across all longitudes of the latitude slice
+            spi_pearson_lat_slice = np.apply_along_axis(indices.spi_pearson,
+                                                        1,
+                                                        lat_slice_precip,
+                                                        self.timestep_scale,
+                                                        self.data_start_year,
+                                                        self.calibration_start_year,
+                                                        self.calibration_end_year)
 
             if self.time_series_type == 'daily':
 
-                # times are daily, transform to all leap year times (i.e. 366 days per year), so we fill Feb 29th of each non-leap missing
-                total_years = self.data_end_year - self.data_start_year + 1   # FIXME move this out of here, only needs to be computed once
-    
-                # allocate an array to hold transformed time series where all years contain 366 days
-                original_days_count = precip_lat_slice.shape[1]
-                total_lons = precip_lat_slice.shape[0]
-                precip_lat_slice_all_leap = np.full((total_lons, total_years * 366), np.NaN)
-                
-                # at each longitude we have a time series of values, loop over these longitudes and transform each
-                # corresponding time series to 366 day years representation (fill Feb 29 during non-leap years)
-                for lon_index in range(total_lons):  # TODO work out how to apply this across the lon axis, to eliminate this loop
+                # at each longitude we have a time series of values with a 366 day per year representation (Feb 29 during non-leap years
+                # is a fill value), loop over these longitudes and transform each corresponding time series back to a normal Gregorian calendar
+                lat_slice_spi_gamma = np.full((self.lon_size, original_days_count), np.NaN)
+                lat_slice_spi_pearson = np.full((self.lon_size, original_days_count), np.NaN)
+                for lon_index in range(lat_slice_precip.shape[0]):
                     
-                    # transform the data so it represents all years containing 366 days, with Feb 29 containing fill value during non-leap years
-                    precip_lat_slice_all_leap[lon_index, :] = utils.transform_to_366day(precip_lat_slice[lon_index, :],
+                    # transform the data so it represents mixed leap and non-leap years, i.e. normal Gregorian calendar
+                    lat_slice_spi_gamma[lon_index, :] = utils.transform_to_gregorian(spi_gamma_lat_slice[lon_index, :],
+                                                                                     self.data_start_year,
+                                                                                     total_years)
+                    lat_slice_spi_pearson[lon_index, :] = utils.transform_to_gregorian(spi_pearson_lat_slice[lon_index, :],
                                                                                        self.data_start_year,
                                                                                        total_years)
 
-                precip_lat_slice = precip_lat_slice_all_leap
+                # these transformed arrays as the lat slices we'll write 
+                spi_gamma_lat_slice = lat_slice_spi_gamma
+                spi_pearson_lat_slice = lat_slice_spi_pearson
+
+            # use relevant variable names
+            spi_gamma_variable_name = 'spi_gamma_' + str(self.timestep_scale).zfill(2)
+            spi_pearson_variable_name = 'spi_pearson_' + str(self.timestep_scale).zfill(2)
+
+            # open the existing SPI/Gamma NetCDF file for writing, copy the latitude slice into the SPI variable at the indexed latitude position
+            spi_gamma_lock.acquire()
+            spi_gamma_dataset = netCDF4.Dataset(self.netcdf_spi_gamma, mode='a')
+            spi_gamma_dataset[spi_gamma_variable_name][lat_index, :, :] = spi_gamma_lat_slice   # (lat, lon, time)
+            spi_gamma_dataset.sync()
+            spi_gamma_dataset.close()
+            spi_gamma_lock.release()
+
+            # open the existing SPI/Pearson NetCDF file for writing, copy the latitude slice into the SPI variable at the indexed latitude position
+            spi_pearson_lock.acquire()
+            spi_pearson_dataset = netCDF4.Dataset(self.netcdf_spi_pearson, mode='a')
+            spi_pearson_dataset[spi_pearson_variable_name][lat_index, :, :] = spi_pearson_lat_slice   # (lat, lon, time)
+            spi_pearson_dataset.sync()
+            spi_pearson_dataset.close()
+            spi_pearson_lock.release()
+
+        # compute SPEI if specified
+        if self.index_bundle in ['spei', 'scaled']:
+
+            if self.time_series_type == 'daily':
+                message = 'Daily SPEI not yet supported'
+                _logger.error(message)
+                raise ValueError(message)
+#                 scale_increment = 'day'
+            elif self.time_series_type == 'monthly':
+                scale_increment = 'month'
+            _logger.info('Computing %s-%s %s for latitude index %s', self.timestep_scale, scale_increment, 'SPEI', lat_index)
+
+            # open the PET NetCDF within a context manager (this PET file should be present, either provided initially
+            # as a command line argument to the script or computed from temperature earlier in the processing chain)
+            with netCDF4.Dataset(self.netcdf_pet) as dataset_pet:            
                 
-                        
-            if self.index_bundle in ['spi', 'scaled']:
+                # read the latitude slice of input PET
+                lat_slice_pet = dataset_pet['pet'][lat_index, :, :]   # assuming (lat, lon, time) orientation
 
-                if self.time_series_type == 'daily':  
-                    scale_increment = 'day'
-                elif self.time_series_type == 'monthly':
-                    scale_increment = 'month'
-                _logger.info('Computing %s-%s %s for latitude index %s', self.timestep_scale, scale_increment, 'SPI', lat_index)
+            # allocate latitude slices for SPEI output
+            spei_gamma_lat_slice = np.full(lat_slice_precip.shape, np.NaN)
+            spei_pearson_lat_slice = np.full(lat_slice_precip.shape, np.NaN)
 
-                # compute SPI/Gamma across all longitudes of the latitude slice
-                spi_gamma_lat_slice = np.apply_along_axis(indices.spi_gamma,
-                                                          1,
-                                                          precip_lat_slice,
-                                                          self.timestep_scale)
-    
-                # compute SPI/Pearson across all longitudes of the latitude slice
-                spi_pearson_lat_slice = np.apply_along_axis(indices.spi_pearson,
-                                                            1,
-                                                            precip_lat_slice,
-                                                            self.timestep_scale,
-                                                            self.data_start_year,
-                                                            self.calibration_start_year,
-                                                            self.calibration_end_year)
+            # compute SPEI for each longitude from the latitude slice where we have valid inputs
+            for lon_index in range(self.lon_size):
 
-                if self.time_series_type == 'daily':
-    
-                    # at each longitude we have a time series of values with a 366 day per year representation (Feb 29 during non-leap years
-                    # is a fill value), loop over these longitudes and transform each corresponding time series back to a normal Gregorian calendar
-                    lat_slice_spi_gamma = np.full((total_lons, original_days_count), np.NaN)
-                    lat_slice_spi_pearson = np.full((total_lons, original_days_count), np.NaN)
-                    for lon_index in range(precip_lat_slice.shape[0]):
-                        
-                        # transform the data so it represents mixed leap and non-leap years, i.e. normal Gregorian calendar
-                        lat_slice_spi_gamma[lon_index, :] = utils.transform_to_gregorian(spi_gamma_lat_slice[lon_index, :],
-                                                                                         self.data_start_year,
-                                                                                         total_years)
-                        lat_slice_spi_pearson[lon_index, :] = utils.transform_to_gregorian(spi_pearson_lat_slice[lon_index, :],
-                                                                                           self.data_start_year,
-                                                                                           total_years)
-    
-                    # make the lat slices we'll write be these transformed arrays
-                    spi_gamma_lat_slice = lat_slice_spi_gamma
-                    spi_pearson_lat_slice = lat_slice_spi_pearson
-    
-                # use the same variable name within both Gamma and Pearson NetCDFs
-                spi_gamma_variable_name = 'spi_gamma_' + str(self.timestep_scale).zfill(2)
-                spi_pearson_variable_name = 'spi_pearson_' + str(self.timestep_scale).zfill(2)
-    
-                # open the existing SPI/Gamma NetCDF file for writing, copy the latitude slice into the SPI variable at the indexed latitude position
-                spi_gamma_lock.acquire()
-                spi_gamma_dataset = netCDF4.Dataset(self.netcdf_spi_gamma, mode='a')
-                spi_gamma_dataset[spi_gamma_variable_name][lat_index, :, :] = spi_gamma_lat_slice   # (lat, lon, time)
-                spi_gamma_dataset.sync()
-                spi_gamma_dataset.close()
-                spi_gamma_lock.release()
-    
-                # open the existing SPI/Pearson NetCDF file for writing, copy the latitude slice into the SPI variable at the indexed latitude position
-                spi_pearson_lock.acquire()
-                spi_pearson_dataset = netCDF4.Dataset(self.netcdf_spi_pearson, mode='a')
-                spi_pearson_dataset[spi_pearson_variable_name][lat_index, :, :] = spi_pearson_lat_slice   # (lat, lon, time)
-                spi_pearson_dataset.sync()
-                spi_pearson_dataset.close()
-                spi_pearson_lock.release()
+                # get the time series values for this longitude
+                precip_time_series = lat_slice_precip[lon_index, :]
+                pet_time_series = lat_slice_pet[lon_index, :]
+
+                # compute SPEI for the current longitude only if we have valid inputs
+                if (not precip_time_series.mask.all()) and \
+                   (not pet_time_series.mask.all()):
+
+                    # compute SPEI/Gamma
+                    spei_gamma_lat_slice[lon_index, :] = indices.spei_gamma(self.timestep_scale,
+                                                                            precip_time_series,
+                                                                            pet_mm=pet_time_series)
+
+                    # compute SPEI/Pearson
+                    spei_pearson_lat_slice[lon_index, :] = indices.spei_pearson(self.timestep_scale,
+                                                                                self.data_start_year,
+                                                                                self.calibration_start_year,
+                                                                                self.calibration_end_year,
+                                                                                precip_time_series,
+                                                                                pet_mm=pet_time_series)
+
+            # use relevant variable names
+            spei_gamma_variable_name = 'spei_gamma_' + str(self.timestep_scale).zfill(2)
+            spei_pearson_variable_name = 'spei_pearson_' + str(self.timestep_scale).zfill(2)
+
+            # open the existing SPEI/Gamma NetCDF file for writing, copy the latitude slice into the SPEI variable at the indexed latitude position
+            spei_gamma_lock.acquire()
+            spei_gamma_dataset = netCDF4.Dataset(self.netcdf_spei_gamma, mode='a')
+            spei_gamma_dataset[spei_gamma_variable_name][lat_index, :, :] = spei_gamma_lat_slice
+            spei_gamma_dataset.sync()
+            spei_gamma_dataset.close()
+            spei_gamma_lock.release()
+
+            # open the existing SPEI/Pearson NetCDF file for writing, copy the latitude slice into the SPEI variable at the indexed latitude position
+            spei_pearson_lock.acquire()
+            spei_pearson_dataset = netCDF4.Dataset(self.netcdf_spei_pearson, mode='a')
+            spei_pearson_dataset[spei_pearson_variable_name][lat_index, :, :] = spei_pearson_lat_slice
+            spei_pearson_dataset.sync()
+            spei_pearson_dataset.close()
+            spei_pearson_lock.release()
 
     #-------------------------------------------------------------------------------------------------------------------
     def _process_latitude_pet(self, lat_index):
@@ -422,12 +488,11 @@ class GridProcessor(object):             # pragma: no cover
 #      
 #                 # allocate an array to hold transformed time series where all years contain 366 days
 #                 original_days_count = temp_lat_slice.shape[1]
-#                 total_lons = temp_lat_slice.shape[0]
-#                 temp_lat_slice_all_leap = np.full((total_lons, total_years * 366), np.NaN)
+#                 temp_lat_slice_all_leap = np.full((self.lon_size, total_years * 366), np.NaN)
 #                 
 #                 # at each longitude we have a time series of values, loop over these longitudes and transform each
 #                 # corresponding time series to 366 day years representation (fill Feb 29 during non-leap years)
-#                 for lon_index in range(total_lons):  # TODO work out how to apply this across the lon axis, to eliminate this loop
+#                 for lon_index in range(self.lon_size):  # TODO work out how to apply this across the lon axis, to eliminate this loop
 #                     
 #                     # transform the data so it represents all years containing 366 days, with Feb 29 containing fill value during non-leap years
 #                     temp_lat_slice_all_leap[lon_index, :] = utils.transform_to_366day(temp_lat_slice[lon_index, :],
@@ -445,7 +510,7 @@ class GridProcessor(object):             # pragma: no cover
 #                 
 #                 # at each longitude we have a time series of values with a 366 day per year representation (Feb 29 during non-leap years
 #                 # is a fill value), loop over these longitudes and transform each corresponding time series back to a normal Gregorian calendar
-#                 lat_slice_pet = np.full((total_lons, original_days_count), np.NaN)
+#                 lat_slice_pet = np.full((self.lon_size, original_days_count), np.NaN)
 #                 for lon_index in range(pet_lat_slice.shape[0]):
 #                     
 #                     # transform the data so it represents mixed leap and non-leap years, i.e. normal Gregorian calendar
@@ -563,16 +628,16 @@ def _validate_arguments(args):
                     _logger.error(message)
                     raise ValueError(message)
                 
-                # verify that the latitude and longitude coordinate variables match with those of the precipitation dataset
-                if lats_precip != dataset_pet.variables['lat'][:]:
+                # verify that the coordinate variables match with those of the precipitation dataset
+                if not np.array_equal(lats_precip, dataset_pet.variables['lat'][:]):
                     message = "Precipitation and PET variables contain non-matching latitudes"
                     _logger.error(message)
                     raise ValueError(message)
-                elif lons_precip != dataset_pet.variables['lon'][:]:
+                elif not np.array_equal(lons_precip, dataset_pet.variables['lon'][:]):
                     message = "Precipitation and PET variables contain non-matching longitudes"
                     _logger.error(message)
                     raise ValueError(message)
-                elif times_precip != dataset_pet.variables['time'][:]:
+                elif not np.array_equal(times_precip, dataset_pet.variables['time'][:]):
                     message = "Precipitation and PET variables contain non-matching times"
                     _logger.error(message)
                     raise ValueError(message)
@@ -584,39 +649,41 @@ def _validate_arguments(args):
             _logger.error(msg)
             raise ValueError(msg)
 
-        # validate the temperature file        
-        with netCDF4.Dataset(args.netcdf_temp) as dataset_temp:
+        else:
             
-            # make sure we have a valid temperature variable name
-            if args.var_name_temp is None:
-                message = "Missing temperature variable name"
-                _logger.error(message)
-                raise ValueError(message)
-            elif args.var_name_temp not in dataset_temp.variables:
-                message = "Invalid temperature variable name: \'%s\' does not exist in temperature file \'%s\'" % args.var_name_temp, args.netcdf_temp
-                _logger.error(message)
-                raise ValueError(message)
+            # validate the temperature file        
+            with netCDF4.Dataset(args.netcdf_temp) as dataset_temp:
                 
-            # verify that the temperature variable's dimensions are in the expected order
-            dimensions = dataset_temp.variables[args.var_name_temp].dimensions
-            if dimensions != expected_dimensions:
-                message = "Invalid dimensions of the temperature variable: %s, (expected names and order: %s)" % dimensions, expected_dimensions
-                _logger.error(message)
-                raise ValueError(message)
-            
-            # verify that the latitude and longitude coordinate variables match with those of the precipitation dataset
-            if lats_precip != dataset_temp.variables['lat'].size:
-                message = "Precipitation and temperature variables contain non-matching latitudes"
-                _logger.error(message)
-                raise ValueError(message)
-            elif lons_precip != dataset_temp.variables['lon']:
-                message = "Precipitation and temperature variables contain non-matching longitudes"
-                _logger.error(message)
-                raise ValueError(message)
-            elif lons_precip != dataset_temp.variables['time']:
-                message = "Precipitation and temperature variables contain non-matching times"
-                _logger.error(message)
-                raise ValueError(message)
+                # make sure we have a valid temperature variable name
+                if args.var_name_temp is None:
+                    message = "Missing temperature variable name"
+                    _logger.error(message)
+                    raise ValueError(message)
+                elif args.var_name_temp not in dataset_temp.variables:
+                    message = "Invalid temperature variable name: \'%s\' does not exist in temperature file \'%s\'" % args.var_name_temp, args.netcdf_temp
+                    _logger.error(message)
+                    raise ValueError(message)
+                    
+                # verify that the temperature variable's dimensions are in the expected order
+                dimensions = dataset_temp.variables[args.var_name_temp].dimensions
+                if dimensions != expected_dimensions:
+                    message = "Invalid dimensions of the temperature variable: %s, (expected names and order: %s)" % dimensions, expected_dimensions
+                    _logger.error(message)
+                    raise ValueError(message)
+                
+                # verify that the coordinate variables match with those of the precipitation dataset
+                if not np.array_equal(lats_precip, dataset_temp.variables['lat'][:]):
+                    message = "Precipitation and temperature variables contain non-matching latitudes"
+                    _logger.error(message)
+                    raise ValueError(message)
+                elif not np.array_equal(lons_precip, dataset_temp.variables['lon'][:]):
+                    message = "Precipitation and temperature variables contain non-matching longitudes"
+                    _logger.error(message)
+                    raise ValueError(message)
+                elif not np.array_equal(times_precip, dataset_temp.variables['time'][:]):
+                    message = "Precipitation and temperature variables contain non-matching times"
+                    _logger.error(message)
+                    raise ValueError(message)
 
         # Palmers requires an available water capacity file
         if args.index_bundle in ['palmers']:
