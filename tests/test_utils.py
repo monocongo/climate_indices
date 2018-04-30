@@ -3,7 +3,7 @@ import logging
 import numpy as np
 import unittest.mock
 
-from indices_python import utils
+from climate_indices import utils
 
 # disable logging messages
 logging.disable(logging.CRITICAL)

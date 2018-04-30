@@ -4,7 +4,7 @@
 # You can set these variables from the command line.
 SPHINXOPTS    =
 SPHINXBUILD   = sphinx-build
-SPHINXPROJ    = indices_python
+SPHINXPROJ    = climate_indices
 SOURCEDIR     = .
 BUILDDIR      = _build
 
