@@ -8,7 +8,7 @@ import pandas as pd
 import scipy.constants
 import warnings
 
-from indices_python import utils
+from climate_indices import utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # list the objects that we'll make publicly visible from this module, as interpreted by 'import *'

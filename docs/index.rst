@@ -1,4 +1,4 @@
-.. indices_python documentation master file, created by
+.. climate_indices documentation master file, created by
    sphinx-quickstart on Tue Feb 20 16:10:27 2018.
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
@@ -78,18 +78,20 @@ Download the code
 
 Clone this repository:
 
-``$ git clone https://github.com/monocongo/indices_python.git``
+``$ git clone https://github.com/monocongo/climate_indices.git``
 
 Move into the source directory:
 
-``$ cd indices_python``
+``$ cd climate_indices``
 
 Within this directory, there are three primary subdirectories:
 
--  ``indices_python``: main package
+-  ``climate_indices``: main package
 -  ``tests``: unit tests for the main package
 -  ``scripts``: scripts and supporting utility modules used to perform processing of indices
 computations on climatological datasets (typically grids or climate divisions datasets in NetCDF)
+-  ``example_inputs``: example datasets that can be used as inputs to the processing scripts,
+for reference/testing
 
 Configure the Python environment
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -144,7 +146,7 @@ files in a corresponding format.
 
 **nClimGrid**
 
-The script ``process_grid.py`` (found under the ``scripts/process``
+The script ``process_grid.py`` (found under the ``scripts``
 subdirectory) is used to compute climate indices from
 `nClimGrid <https://www.ngdc.noaa.gov/docucomp/page?xml=NOAA/NESDIS/NCDC/Geoportal/iso/xml/C00332.xml&view=getDataView&header=none>`__
 input datasets. Usage of this script requires specifying the input file
@@ -212,7 +214,7 @@ example_inputs/nclimgrid_lowres_soil.nc --precip_var_name prcp
 
 **nClimDiv**
 
-The script ``process_divisions.py`` (found under the ``scripts/process``
+The script ``process_divisions.py`` (found under the ``scripts``
 subdirectory) is used to compute climate indices from
 `nClimDiv <https://www.ncdc.noaa.gov/monitoring-references/maps/us-climate-divisions.php>`__
 input datasets. Usage of this script requires specifying the input file
@@ -272,10 +274,10 @@ criteria) in order to determine best-of-breed? Please fork the code and
 have at it, and/or contact us to see if we can help.
 
 -  Read our `contributing
-   guidelines <https://github.com/monocongo/indices_python/blob/master/CONTRIBUTING.md>`__
+   guidelines <https://github.com/monocongo/climate_indices/blob/master/CONTRIBUTING.md>`__
 -  File an
-   `issue <https://github.com/monocongo/indices_python/issues>`__, or
-   submit a `pull request <https://github.com/monocongo/indices_python/pulls>`_
+   `issue <https://github.com/monocongo/climate_indices/issues>`__, or
+   submit a `pull request <https://github.com/monocongo/climate_indices/pulls>`_
 
 -  Send us an `email <mailto:monocongo@gmail.com>`__
 
@@ -287,14 +289,14 @@ NCEI/NOAA, official release version available on
 `drought.gov <https://www.drought.gov/drought/python-climate-indices>`__.
 Please read more on our `license <LICENSE>`__ page.
 
-.. |Build Status| image:: https://travis-ci.org/monocongo/indices_python.svg?master
+.. |Build Status| image:: https://travis-ci.org/monocongo/climate_indices.svg?master
    :target: https://travis-ci.org/monocongo
-.. |CodeFactor| image:: https://www.codefactor.io/repository/github/monocongo/indices_python/badge/master
-   :target: https://www.codefactor.io/repository/github/monocongo/indices_python/overview/master
-.. |Coverage Status| image:: https://coveralls.io/repos/github/monocongo/indices_python/badge.svg?branch=master
-   :target: https://coveralls.io/github/monocongo/indices_python?branch=master
-.. |Dependency Status| image:: https://gemnasium.com/badges/github.com/monocongo/indices_python.svg
-   :target: https://gemnasium.com/github.com/monocongo/indices_python
+.. |CodeFactor| image:: https://www.codefactor.io/repository/github/monocongo/climate_indices/badge/master
+   :target: https://www.codefactor.io/repository/github/monocongo/climate_indices/overview/master
+.. |Coverage Status| image:: https://coveralls.io/repos/github/monocongo/climate_indices/badge.svg?branch=master
+   :target: https://coveralls.io/github/monocongo/climate_indices?branch=master
+.. |Dependency Status| image:: https://gemnasium.com/badges/github.com/monocongo/climate_indices.svg
+   :target: https://gemnasium.com/github.com/monocongo/climate_indices
 .. |License| image:: https://img.shields.io/badge/License-BSD%203--Clause-green.svg
    :target: https://opensource.org/licenses/BSD-3-Clause
 

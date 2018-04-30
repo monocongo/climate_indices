@@ -2,7 +2,7 @@ import logging
 from numba import float64, int64, jit
 import numpy as np
 
-from indices_python import compute, palmer, thornthwaite
+from climate_indices import compute, palmer, thornthwaite
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 # set up a basic, global _logger

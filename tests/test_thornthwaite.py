@@ -3,7 +3,7 @@ import numpy as np
 import unittest
 
 from tests import fixtures
-from indices_python import thornthwaite
+from climate_indices import thornthwaite
 
 #-----------------------------------------------------------------------------------------------------------------------
 # disable logging messages
