@@ -53,6 +53,43 @@ def lat_and_lon_sizes(netcdf_file):
     return lat_size, lon_size
 
 #-----------------------------------------------------------------------------------------------------------------------
+def variable_units(netcdf_file, 
+                   var_name):
+    '''
+    Gets the units of the named variable from the specified NetCDF dataset.
+    
+    :param netcdf_file: NetCDF dataset file, assumed to contain the named variable
+    :param var_name: name of the variable about for which we'll get the units
+    :return: units used for the variable, or None if none are specified
+    :rtype: string  
+    '''
+    
+    with netCDF4.Dataset(netcdf_file) as dataset:
+
+        # get the units of the named variable
+        units = dataset.variables[var_name].units
+    
+    return units
+ 
+#-----------------------------------------------------------------------------------------------------------------------
+def variable_fillvalue(netcdf_file, 
+                       var_name):
+    '''
+    Gets the fill value of the named variable from the specified NetCDF dataset.
+    
+    :param netcdf_file: NetCDF dataset file, assumed to contain the named variable
+    :param var_name: name of the variable about for which we'll get the units
+    :return: fill value used for the variable, or None if none is specified
+    '''
+    
+    with netCDF4.Dataset(netcdf_file) as dataset:
+
+        # get the fill value of the named variable
+        fill_value = dataset.variables[var_name]._FillValue
+    
+    return fill_value
+
+#-----------------------------------------------------------------------------------------------------------------------
 def convert_and_move_netcdf(input_and_output_netcdfs):   # pragma: no cover
     
     input_netcdf = input_and_output_netcdfs[0]

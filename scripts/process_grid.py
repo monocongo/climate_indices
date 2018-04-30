@@ -1,6 +1,7 @@
 import argparse
 from datetime import datetime
 import logging
+import math
 import multiprocessing
 import netCDF4
 import netcdf_utils
@@ -12,6 +13,9 @@ from indices_python import indices, utils
 # static constants
 _VALID_MIN = -10.0
 _VALID_MAX = 10.0
+_POSSIBLE_MM_UNITS = ['millimeters', 'millimeter', 'mm']
+_POSSIBLE_INCH_UNITS = ['inches', 'inch']
+_MM_TO_INCHES_FACTOR = 0.0393701
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global _logger which will write to the console as standard error
@@ -60,13 +64,24 @@ class GridProcessor(object):             # pragma: no cover
         self.index_bundle = args.index_bundle
         self.time_series_type = args.time_series_type
         
-        # determine the initial and final data years, and lat/lon sizes
+        # determine the initial and final data years, units, and lat/lon sizes
         if self.index_bundle == 'pet':
             # PET only requires temperature
             data_file = self.netcdf_temp
+            self.units_temp = netcdf_utils.variable_units(self.netcdf_temp, self.var_name_temp)
         else:
             # all other indices require precipitation
-            data_file = self.netcdf_precip            
+            data_file = self.netcdf_precip
+            self.units_precip = netcdf_utils.variable_units(self.netcdf_precip, self.var_name_precip)
+            if self.netcdf_pet != None:
+                self.units_pet = netcdf_utils.variable_units(self.netcdf_pet, self.var_name_pet)
+            else:
+                self.units_temp = netcdf_utils.variable_units(self.netcdf_temp, self.var_name_temp)
+            if self.netcdf_awc != None:
+                self.units_awc = netcdf_utils.variable_units(self.netcdf_awc, self.var_name_awc)
+                self.fill_value_awc = netcdf_utils.variable_fillvalue(self.netcdf_awc, self.var_name_awc)
+ 
+                
         self.data_start_year, self.data_end_year = netcdf_utils.initial_and_final_years(data_file)
         self.lat_size, self.lon_size = netcdf_utils.lat_and_lon_sizes(data_file)
         
@@ -122,18 +137,6 @@ class GridProcessor(object):             # pragma: no cover
             self.netcdf_spei_pearson = ''
             self.netcdf_pnp = ''
 
-#         # if we're computing PET, SPEI, and/or Palmers and we've not provided a PET file then it needs to be computed
-#         if (self.index_bundle in ['pet', 'spei', 'scaled', 'palmers']) and (self.netcdf_pet is None):
-#             
-#             self.netcdf_pet = self.output_file_base + '_pet.nc'
-#             netcdf_utils.initialize_netcdf_single_variable_grid(self.netcdf_pet,
-#                                                                 self.netcdf_temp,
-#                                                                 'pet',
-#                                                                 'Potential Evapotranspiration',
-#                                                                 0.0,
-#                                                                 10000.0,
-#                                                                 'millimeters')
-        
     #-----------------------------------------------------------------------------------------------------------------------
     def _initialize_scaled_netcdfs(self):
 
@@ -221,7 +224,7 @@ class GridProcessor(object):             # pragma: no cover
     def run(self):
 
         # the number of worker processes we'll have in our process pool
-        number_of_workers = 1#multiprocessing.cpu_count()   # use 1 here for debugging
+        number_of_workers = multiprocessing.cpu_count()   # use 1 here for debugging
     
         # all index combinations/bundles except SPI and PNP will require PET, so compute it here if required
         if (self.netcdf_pet is None) and (self.index_bundle in ['pet', 'spei', 'scaled', 'palmers']):
@@ -581,6 +584,126 @@ class GridProcessor(object):             # pragma: no cover
             pet_dataset.close()
             pet_lock.release()
 
+    #-------------------------------------------------------------------------------------------------------------------
+    def _process_latitude_palmers(self, lat_index):
+        """
+        Perform computation of Palmer indices on a latitude slice, i.e. all lat/lon locations for a single latitude.
+        Each lat/lon will have its corresponding time series used as input, with a corresponding time series output
+        for each index computed. The full latitude slice (all lons for the indexed lat) of index values will be written
+        into the corresponding NetCDF.
+
+        :param lat_index: index of the latitude in the NetCDF, valid range is [0..(total # of divisions - 1)]
+        """
+
+        _logger.info('Computing Palmers for latitude index %s', lat_index)
+
+        # open the input NetCDFs
+        with netCDF4.Dataset(self.netcdf_precip) as dataset_precip, \
+             netCDF4.Dataset(self.netcdf_pet) as dataset_pet, \
+             netCDF4.Dataset(self.netcdf_awc) as dataset_awc:
+
+            # read the latitude slice of input precipitation and PET values
+            lat_slice_precip = dataset_precip[self.var_name_precip][lat_index, :, :]    # assuming (time, lat, lon) orientation
+            lat_slice_pet = dataset_pet[self.var_name_pet][lat_index, :, :]             # assuming (lat, lon, time) orientation
+
+            # determine the dimensionality of the AWC dataset, in case there is 
+            # a missing time dimension, then get the AWC latitude slice accordingly
+            awc_dims = dataset_awc[self.var_name_awc].dimensions
+            if awc_dims == ('time', 'lat', 'lon'):
+                awc_lat_slice = dataset_awc[self.var_name_awc][lat_index, :, 0].flatten()  # assuming (lat, lon, time) orientation
+            elif awc_dims == ('lat', 'lon'):
+                awc_lat_slice = dataset_awc[self.var_name_awc][lat_index, :].flatten()     # assuming (lat, lon) orientation
+            else:
+                message = 'Unable to read the soil constant (AWC) values due to unsupported variable dimensions: {0}'.format(awc_dims)
+                _logger.error(message)
+                raise ValueError(message)
+ 
+        # allocate arrays to contain a latitude slice of Palmer values
+        pdsi_lat_slice = np.full(lat_slice_precip.shape, np.NaN)
+        phdi_lat_slice = np.full(lat_slice_precip.shape, np.NaN)
+        zindex_lat_slice = np.full(lat_slice_precip.shape, np.NaN)
+        scpdsi_lat_slice = np.full(lat_slice_precip.shape, np.NaN)
+        pmdi_lat_slice = np.full(lat_slice_precip.shape, np.NaN)
+        
+        # compute Palmer indices for each longitude from the latitude slice where we have valid inputs
+        for lon_index in range(self.lon_size):
+        
+            # get the time series values for this longitude
+            precip_time_series = lat_slice_precip[lon_index, :]
+            pet_time_series = lat_slice_pet[lon_index, :]
+            awc = awc_lat_slice[lon_index]
+        
+            # compute Palmer indices only if we have valid inputs
+            if utils.is_data_valid(precip_time_series) and \
+               utils.is_data_valid(pet_time_series) and \
+               awc is not np.ma.masked and \
+               not math.isnan(awc) and \
+               not math.isclose(awc, self.fill_value_awc):
+        
+                # DEBUG ONLY -- REMOVE
+                _logger.debug('Computing Palmers for longitude index %s', lon_index)
+        
+                # put precipitation and PET into inches, if not already
+                if self.units_precip in _POSSIBLE_MM_UNITS:
+                    precip_time_series = precip_time_series * _MM_TO_INCHES_FACTOR
+                if self.units_pet in _POSSIBLE_MM_UNITS:
+                    pet_time_series = pet_time_series * _MM_TO_INCHES_FACTOR
+        
+                # compute Palmer indices
+                palmer_values = indices.scpdsi(precip_time_series,
+                                               pet_time_series,
+                                               awc,
+                                               self.data_start_year,
+                                               self.calibration_start_year,
+                                               self.calibration_end_year)
+        
+                # add the values into the slice, first clipping all values to the valid range
+                scpdsi_lat_slice[lon_index, :] = np.clip(palmer_values[0], _VALID_MIN, _VALID_MAX)
+                pdsi_lat_slice[lon_index, :] = np.clip(palmer_values[1], _VALID_MIN, _VALID_MAX)
+                phdi_lat_slice[lon_index, :] = np.clip(palmer_values[2], _VALID_MIN, _VALID_MAX)
+                pmdi_lat_slice[lon_index, :] = np.clip(palmer_values[3], _VALID_MIN, _VALID_MAX)
+                zindex_lat_slice[lon_index, :] = palmer_values[4]
+        
+        # open the existing PDSI NetCDF file for writing, copy the latitude slice into the PET variable at the indexed latitude position
+        pdsi_lock.acquire()
+        pdsi_dataset = netCDF4.Dataset(self.netcdf_pdsi, mode='a')
+        pdsi_dataset['pdsi'][lat_index, :, :] = pdsi_lat_slice
+        pdsi_dataset.sync()
+        pdsi_dataset.close()
+        pdsi_lock.release()
+        
+        # open the existing PHDI NetCDF file for writing, copy the latitude slice into the PET variable at the indexed latitude position
+        phdi_lock.acquire()
+        phdi_dataset = netCDF4.Dataset(self.netcdf_phdi, mode='a')
+        phdi_dataset['phdi'][lat_index, :, :] = phdi_lat_slice
+        phdi_dataset.sync()
+        phdi_dataset.close()
+        phdi_lock.release()
+        
+        # open the existing Z-Index NetCDF file for writing, copy the latitude slice into the Z-Index variable at the indexed latitude position
+        zindex_lock.acquire()
+        zindex_dataset = netCDF4.Dataset(self.netcdf_zindex, mode='a')
+        zindex_dataset['zindex'][lat_index, :, :] = zindex_lat_slice
+        zindex_dataset.sync()
+        zindex_dataset.close()
+        zindex_lock.release()
+        
+        # open the existing SCPDSI NetCDF file for writing, copy the latitude slice into the scPDSI variable at the indexed latitude position
+        scpdsi_lock.acquire()
+        scpdsi_dataset = netCDF4.Dataset(self.netcdf_scpdsi, mode='a')
+        scpdsi_dataset['scpdsi'][lat_index, :, :] = scpdsi_lat_slice
+        scpdsi_dataset.sync()
+        scpdsi_dataset.close()
+        scpdsi_lock.release()
+        
+        # open the existing PMDI NetCDF file for writing, copy the latitude slice into the PMDI variable at the indexed latitude position
+        pmdi_lock.acquire()
+        pmdi_dataset = netCDF4.Dataset(self.netcdf_pmdi, mode='a')
+        pmdi_dataset['pmdi'][lat_index, :, :] = pmdi_lat_slice
+        pmdi_dataset.sync()
+        pmdi_dataset.close()
+        pmdi_lock.release()
+
 #-----------------------------------------------------------------------------------------------------------------------
 def _validate_arguments(args):
     """
@@ -748,23 +871,23 @@ def _validate_arguments(args):
                     _logger.error(message)
                     raise ValueError(message)
                 elif args.var_name_awc not in dataset_awc.variables:
-                    message = "Invalid AWC variable name: \'%s\' does not exist in AWC file \'%s\'" % args.var_name_awc, args.netcdf_awc
+                    message = "Invalid AWC variable name: \'%s\' does not exist in AWC file \'%s\'", args.var_name_awc, args.netcdf_awc
                     _logger.error(message)
                     raise ValueError(message)
                     
                 # verify that the AWC variable's dimensions are in the expected order
                 dimensions = dataset_awc.variables[args.var_name_awc].dimensions
-                if dimensions != expected_dimensions:
-                    message = "Invalid dimensions of the AWC variable: %s, (expected names and order: %s)" % dimensions, expected_dimensions
+                if (dimensions != ('lat', 'lon')) and (dimensions != expected_dimensions):
+                    message = "Invalid dimensions of the AWC variable: %s, (expected names and order: %s)".format(dimensions, expected_dimensions)
                     _logger.error(message)
                     raise ValueError(message)
                 
                 # verify that the latitude and longitude coordinate variables match with those of the precipitation dataset
-                if lats_precip != dataset_awc.variables['lat'][:]:
+                if not np.array_equal(lats_precip, dataset_awc.variables['lat'][:]):
                     message = "Precipitation and AWC variables contain non-matching latitudes"
                     _logger.error(message)
                     raise ValueError(message)
-                elif lons_precip != dataset_awc.variables['lon'][:]:
+                elif not np.array_equal(lons_precip, dataset_awc.variables['lon'][:]):
                     message = "Precipitation and AWC variables contain non-matching longitudes"
                     _logger.error(message)
                     raise ValueError(message)
