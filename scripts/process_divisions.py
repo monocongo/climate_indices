@@ -5,7 +5,7 @@ import multiprocessing
 import netCDF4
 import numpy as np
 
-from indices_python import indices, netcdf_utils, pdinew, utils
+from climate_indices import indices, netcdf_utils, pdinew, utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global logger which will write to the console as standard error

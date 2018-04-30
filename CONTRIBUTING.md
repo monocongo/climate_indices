@@ -48,7 +48,7 @@ It is critical that you pull upstream changes from develop branch into your fork
 
 To pull in upstream changes:
 
-`git remote add upstream https://github.com/monocongo/indices_python.git`
+`git remote add upstream https://github.com/monocongo/climate_indices.git`
 `git fetch upstream develop`
 
 Check the log to be sure that you actually want the changes, before merging:
@@ -108,7 +108,7 @@ First we pull the code into a local branch:
 
 `git checkout -b <branch-name> <submitter-github-name>`
 
-`git pull git://github.com/<submitter-github-name/indices_python.git develop`
+`git pull git://github.com/<submitter-github-name/climate_indices.git develop`
 
 Then we run the tests:
 

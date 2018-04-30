@@ -15,15 +15,15 @@ install:
   - conda config --set always_yes yes --set changeps1 no
   - conda update -q conda
 
-  # create an environment named 'indices_python', activate it, and add the package via PIP 
-  - conda create -n indices_python
-  - source activate indices_python
+  # create an environment named 'climate_indices', activate it, and add the package via PIP 
+  - conda create -n climate_indices
+  - source activate climate_indices
   - pip install .
 
 script: 
   # run all tests with coverage 
   - export NUMBA_DISABLE_JIT=1  # disable numba JIT
-  - coverage run --source=indices_python setup.py test
+  - coverage run --source=climate_indices setup.py test
   
 after_success:
   # get a code coverage report for coveralls.io integration

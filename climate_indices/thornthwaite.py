@@ -26,7 +26,7 @@ import math
 from numba import boolean, float64, int64, jit
 import numpy as np
 
-from indices_python import utils
+from climate_indices import utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global _logger

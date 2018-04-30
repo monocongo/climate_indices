@@ -1,16 +1,16 @@
 from setuptools import setup
 
 setup(
-    name='indices_python',
+    name='climate_indices',
     version='0.1.0',
-    url='https://github.com/monocongo/indices_python',
+    url='https://github.com/monocongo/climate_indices',
     license='BSD',
     author='James Adams',
-    author_email='james.adams@noaa.gov',
-    description=('Community reference implementations of climate indices '
+    author_email='monocongo@gmail.com',
+    description=('Community reference implementations of climate index '
                  'algorithms in Python. Including Palmers (PDSI, scPDSI,  '
                  'PHDI, and Z-Index), SPI, SPEI, PET, and PNP.'),
-    packages=['indices_python'],
+    packages=['climate_indices'],
     install_requires=[
         "coverage",
         "netcdf4",

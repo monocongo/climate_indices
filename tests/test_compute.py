@@ -3,7 +3,7 @@ import numpy as np
 import unittest
 
 from tests import fixtures
-from indices_python import compute, utils
+from climate_indices import compute, utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # disable logging messages

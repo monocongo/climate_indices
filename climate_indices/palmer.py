@@ -5,7 +5,7 @@ import numba
 import numpy as np
 import warnings
 
-from indices_python import pdinew, thornthwaite, utils
+from climate_indices import pdinew, thornthwaite, utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global _logger
