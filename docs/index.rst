@@ -90,6 +90,8 @@ Within this directory, there are three primary subdirectories:
 -  ``tests``: unit tests for the main package
 -  ``scripts``: scripts and supporting utility modules used to perform processing of indices
 computations on climatological datasets (typically grids or climate divisions datasets in NetCDF)
+-  ``example_inputs``: example datasets that can be used as inputs to the processing scripts,
+for reference/testing
 
 Configure the Python environment
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -144,7 +146,7 @@ files in a corresponding format.
 
 **nClimGrid**
 
-The script ``process_grid.py`` (found under the ``scripts/process``
+The script ``process_grid.py`` (found under the ``scripts``
 subdirectory) is used to compute climate indices from
 `nClimGrid <https://www.ngdc.noaa.gov/docucomp/page?xml=NOAA/NESDIS/NCDC/Geoportal/iso/xml/C00332.xml&view=getDataView&header=none>`__
 input datasets. Usage of this script requires specifying the input file
@@ -212,7 +214,7 @@ example_inputs/nclimgrid_lowres_soil.nc --precip_var_name prcp
 
 **nClimDiv**
 
-The script ``process_divisions.py`` (found under the ``scripts/process``
+The script ``process_divisions.py`` (found under the ``scripts``
 subdirectory) is used to compute climate indices from
 `nClimDiv <https://www.ncdc.noaa.gov/monitoring-references/maps/us-climate-divisions.php>`__
 input datasets. Usage of this script requires specifying the input file

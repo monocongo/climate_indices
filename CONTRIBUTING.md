@@ -68,7 +68,9 @@ Follow these rules and you should succeed without a problem.
 ### Run the tests
 Before you submit a pull request, please run the entire test suite via:
 
-`$ python -m unittest test_*.py`
+`$ export NUMBA_DISABLE_JIT=1`
+`$ python setup.py test`
+`$ unset  NUMBA_DISABLE_JIT`
 
 The first thing the core committers will do is run this command. Any pull request that fails this test suite will be rejected.
 
