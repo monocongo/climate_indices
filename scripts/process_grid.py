@@ -7,7 +7,7 @@ import netCDF4
 import netcdf_utils
 import numpy as np
 
-from indices_python import indices, utils
+from climate_indices import indices, utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # static constants

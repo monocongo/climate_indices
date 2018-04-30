@@ -7,7 +7,7 @@ import numpy as np
 import scipy.special
 import scipy.stats
 
-from indices_python import utils
+from climate_indices import utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global _logger
