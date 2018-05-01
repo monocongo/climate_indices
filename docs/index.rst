@@ -7,20 +7,27 @@
    :maxdepth: 2
    :caption: Contents:
 
+.. |Build Status| image:: https://travis-ci.org/monocongo/climate_indices.svg?master
+   :target: https://travis-ci.org/monocongo
+.. |CodeFactor| image:: https://www.codefactor.io/repository/github/monocongo/climate_indices/badge/master
+   :target: https://www.codefactor.io/repository/github/monocongo/climate_indices/overview/master
+.. |Coverage Status| image:: https://coveralls.io/repos/github/monocongo/climate_indices/badge.svg?branch=master
+   :target: https://coveralls.io/github/monocongo/climate_indices?branch=master
+.. |Dependency Status| image:: https://gemnasium.com/badges/github.com/monocongo/climate_indices.svg
+   :target: https://gemnasium.com/github.com/monocongo/climate_indices
+.. |License| image:: https://img.shields.io/badge/License-BSD%203--Clause-green.svg
+   :target: https://opensource.org/licenses/BSD-3-Clause
+
 
 |Build Status| |Coverage Status| |Dependency Status| |CodeFactor| |License| 
 
 Community Reference Climate Indices in Python
 =============================================
 
-This project contains Python implementations of various climate indices
-which provide a geographical and temporal picture of the severity of
-precipitation and temperature anomalies. We attempt to provide
-best-of-breed implementations of various climate indices commonly used
-for climate and drought monitoring, to provide a codebase that is
-available for development by the climate science community, and to
-facilitate the use of climate indices datasets computed in a
-standardized, reproducible, and transparent fashion.
+This project contains Python implementations of various climate index algorithms which provide a geographical and temporal picture of the severity of precipitation and temperature anomalies.
+
+We attempt to provide best-of-breed implementations of various climate indices commonly used
+for climate and drought monitoring, to provide a codebase that is available for development by the climate science community, and to facilitate the use of climate indices datasets computed in a standardized, reproducible, and transparent fashion.
 
 Python implementations of the following climate index algorithms are provided:
 
@@ -74,7 +81,7 @@ to follow the usage shown below. We recommended either
 for this purpose.
 
 Download the code
-^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^
 
 Clone this repository:
 
@@ -88,13 +95,11 @@ Within this directory, there are three primary subdirectories:
 
 -  ``climate_indices``: main package
 -  ``tests``: unit tests for the main package
--  ``scripts``: scripts and supporting utility modules used to perform processing of indices
-computations on climatological datasets (typically grids or climate divisions datasets in NetCDF)
--  ``example_inputs``: example datasets that can be used as inputs to the processing scripts,
-for reference/testing
+-  ``scripts``: scripts and supporting utility modules used to perform processing of indices computations on climatological datasets (typically grids or climate divisions datasets in NetCDF)
+-  ``example_inputs``: example/reference datasets that can be used as inputs to the processing scripts
 
 Configure the Python environment
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 This project's code is written in Python 3. It's recommended to use 
 either the `Miniconda3 <https://conda.io/miniconda.html>`__ (minimal Anaconda) or 
@@ -133,132 +138,115 @@ Initially, all tests should be run for validation:
 If you run the above from the main branch and get an error then please
 send a report and/or add an issue, as all tests should pass.
 
-The numba environment variable is set/unset in order to bypass the numba
-just-in-time compilation process, which reduces testing times.
+The Numba environment variable is set/unset in order to bypass Numba's
+just-in-time compilation process, which significantly reduces testing times.
 
-Example indices processing scripts
+Indices Processing
 ----------------------------------
 
-There are example climate indices processing scripts provided which
-compute the full suite of indices for various input dataset types. These
-process input files in the NetCDF format, and produce output NetCDF
-files in a corresponding format.
+Included are scripts which compute one or more indices for either gridded or US climate division input dataset types. These are ``process_grid.py`` which is used to compute indices from gridded NetCDF datasets, and ``process_divisions.py`` which is used to compute indices from US climate division NetCDF datasets.
 
-**nClimGrid**
+These Python scripts are written to be run at the command line. For example:
 
-The script ``process_grid.py`` (found under the ``scripts``
-subdirectory) is used to compute climate indices from
-`nClimGrid <https://www.ngdc.noaa.gov/docucomp/page?xml=NOAA/NESDIS/NCDC/Geoportal/iso/xml/C00332.xml&view=getDataView&header=none>`__
-input datasets. Usage of this script requires specifying the input file
-names and corresponding variable names for precipitation, temperature,
-and soil constant datasets, as well as the month scales over which the
-scaled indices (SPI, SPEI, and PAP) are to be computed, plus the base
-output file name and the initial and final years of the calibration
-period.
+``$ python process_grid.py <options>``
 
-This script has the following required command line arguments:
++------------------------+-------------------------------------------------+
+| Option                 | Description                                     |
++========================+=================================================+
+| index_bundle           | Which of the available indices to compute.      |
+|                        | Valid values are 'spi', 'spei', 'pnp', 'scaled',|
+|                        | and 'palmers'. 'scaled' indicates all three     |
+|                        | scaled indices (SPI, SPEI, and PNP) and         |
+|                        | 'palmers' indicates all Palmer indices (PDSI,   |
+|                        | PHDI, PMDI, SCPDSI, and Z-Index).               |
++------------------------+-------------------------------------------------+
+| netcdf_precip          | Input NetCDF file containing a                  |
+|                        | precipitation dataset, required for all         |
+|                        | indices except for PET. Requires the use of     |
+|                        | **var_name_temp** in conjunction so as to       |
+|                        | identify the NetCDF's precipitation variable.   |
++------------------------+-------------------------------------------------+
+| var_name_precip        | Name of the precipitation variable within       |
+|                        | the input precipitation NetCDF.                 |
++------------------------+-------------------------------------------------+
+| netcdf_temp            | Input NetCDF file containing a                  |
+|                        | temperature dataset, required for PET.          |
+|                        | If specified in conjunction with an index       |
+|                        | specification of SPEI or Palmers then PET       |
+|                        | will be computed and written as a side          |
+|                        | effect, since these indices require PET.        |
+|                        | This option is mutually exclusive with          |
+|                        | **netcdf_pet/var_name_pet**, as either          |
+|                        | temperature or PET is required as an input      |
+|                        | (but not both) when computing SPEI and/or       |
+|                        | Palmers. Requires the use of                    |
+|                        | **var_name_temp** in conjunction so as to       |
+|                        | identify the NetCDF's temperature variable.     |
++------------------------+-------------------------------------------------+
+| var_name_temp          | Name of the temperature variable within the     |
+|                        | input temperature NetCDF.                       |
++------------------------+-------------------------------------------------+
+| netcdf_pet             | Input NetCDF file containing a PET dataset,     |
+|                        | required for SPEI and Palmers.                  |
+|                        | This option is mutually exclusive with          |
+|                        | **netcdf_temp/var_name_temp**, as either        |
+|                        | temperature or PET is required as an input      |
+|                        | (but not both) when computing SPEI and/or       |
+|                        | Palmers. Requires the use of                    |
+|                        | **var_name_pet** in conjunction so as to        |
+|                        | identify the NetCDF's PET variable.             |
++------------------------+-------------------------------------------------+
+| var_name_pet           | Name of the PET variable within the input PET   |
+|                        | NetCDF.                                         |
++------------------------+-------------------------------------------------+
+| netcdf_awc             | Input NetCDF file containing an available water |
+|                        | capacity, required for Palmers. Requires the    |                    
+|                        | use of **var_name_awc** in conjunction so as to |
+|                        | identify the NetCDF's AWC variable.             |
++------------------------+-------------------------------------------------+
+| awc_var_name           | Name of the available water capacity variable   |
+|                        | within the input AWC NetCDF.                    |
++------------------------+-------------------------------------------------+
+| output_file_base       | Base file name for all computed output files.   |
+|                        | Each computed index will have an output file    |
+|                        | whose name will begin with this base name plus  |
+|                        | the index's abbreviation plus a month scale     |
+|                        | (if applicable), connected with underscores,    |
+|                        | plus the '.nc' extension. For example           |
+|                        | for SPI at 3-month                              |
+|                        | scale the resulting output files will be        |
+|                        | named **<output_file_base>_spi_gamma_03.nc**    |
+|                        | and **<output_file_base>_spi_pearson_03.nc**.   |
++------------------------+-------------------------------------------------+
+| scales                 | Time step scales over which the PNP, SPI, and   |
+|                        | SPEI values are to be computed. Required when   |
+|                        | the **index_bundle** argument is 'spi', 'spei', |
+|                        | 'pnp', or 'scaled'.                             |
++------------------------+-------------------------------------------------+
+| time_series_type       | Indicator of whether input dataset files        |
+|                        | represent monthly or daily data. Valid values   |
+|                        | are either 'monthly' or 'daily'.                |
++------------------------+-------------------------------------------------+
+| calibration_start_year | Initial year of the calibration period.         |
++------------------------+-------------------------------------------------+
+| calibration_end_year   | Final year of the calibration period            |
+|                        | (inclusive).                                    |
++------------------------+-------------------------------------------------+
 
-+------------------------+---------------------------------------------+
-| Option                 | Description                                 |
-+========================+=============================================+
-| precip_file            | input NetCDF file containing nClimGrid      |
-|                        | precipitation dataset                       |
-+------------------------+---------------------------------------------+
-| precip_var_name        | name of the precipitation variable within   |
-|                        | the input nClimGrid precipitation dataset   |
-|                        | NetCDF                                      |
-+------------------------+---------------------------------------------+
-| temp_file              | input NetCDF file containing nClimGrid      |
-|                        | temperature dataset                         |
-+------------------------+---------------------------------------------+
-| temp_var_name          | name of the temperature variable within the |
-|                        | input nClimGrid temperature dataset NetCDF  |
-+------------------------+---------------------------------------------+
-| awc_file               | input NetCDF file containing a soil         |
-|                        | constant (available water capacity of the   |
-|                        | soil) dataset NetCDF, should correspond     |
-|                        | dimensionally with the input nClimGrid      |
-|                        | temperature and precipitation datasets      |
-+------------------------+---------------------------------------------+
-| awc_var_name           | name of the soil constant (available water  |
-|                        | capacity of the soil) variable within the   |
-|                        | input soil constant dataset NetCDF          |
-+------------------------+---------------------------------------------+
-| output_file_base       | base file name for all output files, each   |
-|                        | computed index will have an output file     |
-|                        | whose name will begin with this base plus   |
-|                        | the index's abbreviation plus a month scale |
-|                        | (if applicable), plus '.nc'
-|                        | extension (i.e. for SPI/Gamma at 3-month    |
-|                        | scale the resulting output file will be     |
-|                        | named <output_file_base>_spi_gamma_03.nc)   |
-+------------------------+---------------------------------------------+
-| month_scales           | month scales over which the PAP, SPI, and   |
-|                        | SPEI values are to be computed, valid range |
-|                        | is 1-72 months                              |
-+------------------------+---------------------------------------------+
-| calibration_start_year | initial year of calibration period          |
-+------------------------+---------------------------------------------+
-| calibration_end_year   | final year of calibration period            |
-+------------------------+---------------------------------------------+
+**Example command line invocations**:
 
-*Example command line invocation*:
+PET monthly:
 
-``$ nohup python -u process_grid.py --precip_file
-example_inputs/nclimgrid_lowres_prcp.nc --temp_file
-example_inputs/nclimgrid_lowres_tavg.nc --awc_file
-example_inputs/nclimgrid_lowres_soil.nc --precip_var_name prcp
---temp_var_name tavg --awc_var_name awc --month_scales 1 2 3 6 12 24
---calibration_start_year 1931 --calibration_end_year 1990
---output_file_base nclimgrid_lowres``
+``$ python process_grid.py --index_bundle pet --netcdf_temp ../example_inputs/nclimgrid_lowres_tavg.nc --var_name_temp tavg --output_file_base C:/home/data/test/nclimgrid_lowres --calibration_start_year 1951 --calibration_end_year 2010 --time_series_type monthly``
 
-**nClimDiv**
+SPI daily:
 
-The script ``process_divisions.py`` (found under the ``scripts``
-subdirectory) is used to compute climate indices from
-`nClimDiv <https://www.ncdc.noaa.gov/monitoring-references/maps/us-climate-divisions.php>`__
-input datasets. Usage of this script requires specifying the input file
-name and corresponding variable names for precipitation, temperature,
-and soil constant datasets, as well as the month scales over which the
-scaled indices (SPI, SPEI, and PAP) are to be computed, plus the base
-output file name and the initial and final years of the calibration
-period.
+``$ python process_grid.py --index_bundle spi --netcdf_precip ../example_inputs/cmorph_lowres_daily_conus_prcp.nc --var_name_precip  prcp --output_file_base /home/data/test/cmorph_lowres_daily_conus --scales 30 90 --calibration_start_year 1998 --calibration_end_year 2016 --time_series_type daily``
 
-This script has the following required command line arguments:
+SPI monthly:
 
-+------------------------+---------------------------------------------+
-| Option                 | Description                                 |
-+========================+=============================================+
-| input_file             | input NetCDF file containing nClimDiv       |
-|                        | temperature, precipitation, and soil        |
-|                        | constant datasets, with output variables    |
-|                        | added or updated for each computed index    |
-+------------------------+---------------------------------------------+
-| precip_var_name        | name of the precipitation variable within   |
-|                        | the input nClimGrid dataset NetCDF          |
-+------------------------+---------------------------------------------+
-| temp_var_name          | name of the temperature variable within the |
-|                        | input dataset NetCDF                        |
-+------------------------+---------------------------------------------+
-| awc_var_name           | name of the soil constant (available water  |
-|                        | capacity of the soil) variable within the   |
-|                        | input dataset NetCDF                        |
-+------------------------+---------------------------------------------+
-| month_scales           | month scales over which the PAP, SPI, and   |
-|                        | SPEI values are to be computed, valid range |
-|                        | is 1-72 months                              |
-+------------------------+---------------------------------------------+
-| calibration_start_year | initial year of calibration period          |
-+------------------------+---------------------------------------------+
-| calibration_end_year   | final year of calibration period            |
-+------------------------+---------------------------------------------+
+``$ python process_grid.py --index_bundle spi --netcdf_precip ../example_inputs/nclimgrid_lowres_prcp.nc --var_name_precip  prcp --output_file_base /home/data/test/nclimgrid_lowres --scales 3 9 --calibration_start_year 1951 --calibration_end_year 2010 --time_series_type monthly``  
 
-*Example command line invocation*:
-
-``$ nohup python -u process_divisions.py --input_file
-example_inputs/nclimdiv_20170404.nc --precip_var_name prcp --temp_var_name
-tavg --awc_var_name awc --month_scales 1 2 3 6 12 24
---calibration_start_year 1931 --calibration_end_year 1990``
 
 Get involved
 ------------
@@ -289,14 +277,4 @@ NCEI/NOAA, official release version available on
 `drought.gov <https://www.drought.gov/drought/python-climate-indices>`__.
 Please read more on our `license <LICENSE>`__ page.
 
-.. |Build Status| image:: https://travis-ci.org/monocongo/climate_indices.svg?master
-   :target: https://travis-ci.org/monocongo
-.. |CodeFactor| image:: https://www.codefactor.io/repository/github/monocongo/climate_indices/badge/master
-   :target: https://www.codefactor.io/repository/github/monocongo/climate_indices/overview/master
-.. |Coverage Status| image:: https://coveralls.io/repos/github/monocongo/climate_indices/badge.svg?branch=master
-   :target: https://coveralls.io/github/monocongo/climate_indices?branch=master
-.. |Dependency Status| image:: https://gemnasium.com/badges/github.com/monocongo/climate_indices.svg
-   :target: https://gemnasium.com/github.com/monocongo/climate_indices
-.. |License| image:: https://img.shields.io/badge/License-BSD%203--Clause-green.svg
-   :target: https://opensource.org/licenses/BSD-3-Clause
 
