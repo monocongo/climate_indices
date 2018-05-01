@@ -153,7 +153,7 @@ These Python scripts are written to be run at the command line. For example:
 +------------------------+-------------------------------------------------+
 | Option                 | Description                                     |
 +========================+=================================================+
-| index_bundle           | Which of the available indices to compute.      |
+| index                  | Which of the available indices to compute.      |
 |                        | Valid values are 'spi', 'spei', 'pnp', 'scaled',|
 |                        | and 'palmers'. 'scaled' indicates all three     |
 |                        | scaled indices (SPI, SPEI, and PNP) and         |
@@ -220,7 +220,7 @@ These Python scripts are written to be run at the command line. For example:
 +------------------------+-------------------------------------------------+
 | scales                 | Time step scales over which the PNP, SPI, and   |
 |                        | SPEI values are to be computed. Required when   |
-|                        | the **index_bundle** argument is 'spi', 'spei', |
+|                        | the **index** argument is 'spi', 'spei',        |
 |                        | 'pnp', or 'scaled'.                             |
 +------------------------+-------------------------------------------------+
 | time_series_type       | Indicator of whether input dataset files        |
@@ -233,20 +233,31 @@ These Python scripts are written to be run at the command line. For example:
 |                        | (inclusive).                                    |
 +------------------------+-------------------------------------------------+
 
-**Example command line invocations**:
+Example Command Line Invocations
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 PET monthly:
+""""""""""""
 
-``$ python process_grid.py --index_bundle pet --netcdf_temp ../example_inputs/nclimgrid_lowres_tavg.nc --var_name_temp tavg --output_file_base C:/home/data/test/nclimgrid_lowres --calibration_start_year 1951 --calibration_end_year 2010 --time_series_type monthly``
+``$ python process_grid.py --index pet --netcdf_temp ../example_inputs/nclimgrid_lowres_tavg.nc --var_name_temp tavg --output_file_base /data/nclimgrid_lowres --calibration_start_year 1951 --calibration_end_year 2010 --time_series_type monthly``
 
-SPI daily:
+The above command will compute PET (potential evapotranspiration) using the Thornthwaite method from an input temperature dataset (in this case, the reduced resolution nClimGrid temperature dataset provided as an example input). The input dataset is monthly data and the calibration period used will be Jan. 1951 through Dec. 2010. The output file will be `/data/nclimgrid_lowres_pet.nc`.
 
-``$ python process_grid.py --index_bundle spi --netcdf_precip ../example_inputs/cmorph_lowres_daily_conus_prcp.nc --var_name_precip  prcp --output_file_base /home/data/test/cmorph_lowres_daily_conus --scales 30 90 --calibration_start_year 1998 --calibration_end_year 2016 --time_series_type daily``
+SPI (both gamma and Pearson III distribution fittings), daily:
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-SPI monthly:
+``$ python process_grid.py --index spi --netcdf_precip ../example_inputs/cmorph_lowres_daily_conus_prcp.nc --var_name_precip  prcp --output_file_base /data/cmorph_lowres_daily_conus --scales 30 90 --calibration_start_year 1998 --calibration_end_year 2016 --time_series_type daily``
 
-``$ python process_grid.py --index_bundle spi --netcdf_precip ../example_inputs/nclimgrid_lowres_prcp.nc --var_name_precip  prcp --output_file_base /home/data/test/nclimgrid_lowres --scales 3 9 --calibration_start_year 1951 --calibration_end_year 2010 --time_series_type monthly``  
+The above command will compute SPI (standardized precipitation index, both gamma and Pearson Type III distributions) from an input precipitation dataset (in this case, the reduced resolution CMORPH precipitation dataset provided in the example inputs directory). The input dataset is daily data and the calibration period used will be Jan. 1st 1998 through Dec. 31st, 2016. The index will be computed at 30-day and 90-day timescales. The output files will be `/data/cmorph_lowres_daily_conus_spi_gamma_30.nc`, `/data/cmorph_lowres_daily_conus_spi_gamma_90.nc`, `/data/cmorph_lowres_daily_conus_spi_pearson_30.nc`, and `/data/cmorph_lowres_daily_conus_spi_pearson_90.nc`, .
 
+SPI (both gamma and Pearson III distribution fittings), monthly:
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+``$ python process_grid.py --index spi --netcdf_precip ../example_inputs/nclimgrid_lowres_prcp.nc --var_name_precip  prcp --output_file_base /data/nclimgrid_lowres --scales 3 9 --calibration_start_year 1951 --calibration_end_year 2010 --time_series_type monthly``  
+
+Palmers, monthly:
+
+``$ python process_grid.py --index palmers --time_series_type monthly --netcdf_precip ../example_inputs/nclimgrid_lowres_prcp.nc --var_name_precip prcp --netcdf_pet ../example_inputs/nclimgrid_lowres_pet.nc --var_name_pet pet --netcdf_awc ../example_inputs/nclimgrid_lowres_soil.nc  --var_name_awc awc --output_file_base /data/nclimgrid_lowres --calibration_start_year 1951 --calibration_end_year 2010``
 
 Get involved
 ------------
