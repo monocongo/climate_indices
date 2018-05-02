@@ -24,10 +24,13 @@
 Community Reference Climate Indices in Python
 =============================================
 
-This project contains Python implementations of various climate index algorithms which provide a geographical and temporal picture of the severity of precipitation and temperature anomalies.
+This project contains Python implementations of various climate index algorithms which provide 
+a geographical and temporal picture of the severity of precipitation and temperature anomalies.
 
 We attempt to provide best-of-breed implementations of various climate indices commonly used
-for climate and drought monitoring, to provide a codebase that is available for development by the climate science community, and to facilitate the use of climate indices datasets computed in a standardized, reproducible, and transparent fashion.
+for climate and drought monitoring, to provide a codebase that is available for development by 
+the climate science community, and to facilitate the use of climate indices datasets computed 
+in a standardized, reproducible, and transparent fashion.
 
 Python implementations of the following climate index algorithms are provided:
 
@@ -36,7 +39,8 @@ Python implementations of the following climate index algorithms are provided:
 -  `SPEI <https://www.researchgate.net/publication/252361460_The_Standardized_Precipitation-Evapotranspiration_Index_SPEI_a_multiscalar_drought_index>`__,
    Standardized Precipitation Evapotranspiration Index, utilizing either Gamma or Pearson Type III distributions
 -  `PET <https://www.ncdc.noaa.gov/monitoring-references/dyk/potential-evapotranspiration>`__,
-   Potential Evapotranspiration, utilizing either `Thornthwaite <http://dx.doi.org/10.2307/21073>`_ or `Hargreaves <http://dx.doi.org/10.13031/2013.26773>`_ equations 
+   Potential Evapotranspiration, utilizing either `Thornthwaite <http://dx.doi.org/10.2307/21073>`_ 
+   or `Hargreaves <http://dx.doi.org/10.13031/2013.26773>`_ equations 
 -  `PNP <http://www.droughtmanagement.info/percent-of-normal-precipitation/>`__,
    Percentage of Normal Precipitation
 -  `PDSI <http://www.droughtmanagement.info/palmer-drought-severity-index-pdsi/>`__,
@@ -95,7 +99,8 @@ Within this directory, there are three primary subdirectories:
 
 -  ``climate_indices``: main package
 -  ``tests``: unit tests for the main package
--  ``scripts``: scripts and supporting utility modules used to perform processing of indices computations on climatological datasets (typically grids or climate divisions datasets in NetCDF)
+-  ``scripts``: scripts and supporting utility modules used to perform processing of indices 
+computations on climatological datasets (typically grids or climate divisions datasets in NetCDF)
 -  ``example_inputs``: example/reference datasets that can be used as inputs to the processing scripts
 
 Configure the Python environment
@@ -107,8 +112,11 @@ either the `Miniconda3 <https://conda.io/miniconda.html>`__ (minimal Anaconda) o
 will be Anaconda specific (although relevant to any Python `virtualenv <https://virtualenv.pypa.io/en/stable/>`_
 ), and assume the use of a bash shell.
 
-A new Anaconda `environment <https://conda.io/docs/using/envs.html>`__ can be created using the `conda <https://conda.io/docs/>`_ environment management system that comes packaged with Anaconda. In the following examples, we'll use an environment named *indices_env*
-containing all required modules can be created and populated with all required dependencies through the use of the provided ``setup.py`` file:
+A new Anaconda `environment <https://conda.io/docs/using/envs.html>`__ can be created 
+using the `conda <https://conda.io/docs/>`_ environment management system that comes packaged 
+with Anaconda. In the following examples, we'll use an environment named *indices_env*
+containing all required modules can be created and populated with all required dependencies through 
+the use of the provided ``setup.py`` file:
 
 ``$ conda create -n indices_env``
 
@@ -116,10 +124,11 @@ The environment created can be 'activated' using the following command:
 
 ``$ source activate indices_env``
 
-Once the environment has been activated then subsequent Python commands will run in this environment where the package
-dependencies for this project are present.
+Once the environment has been activated then subsequent Python commands will run in this environment 
+where the package dependencies for this project are present.
 
-Now the package can be added to the environment along with all required modules (dependencies) via `pip <https://pip.pypa.io/en/stable/>`_
+Now the package can be added to the environment along with all required modules (dependencies) 
+via `pip <https://pip.pypa.io/en/stable/>`_
 :
 
 ``$ pip install .``
@@ -144,7 +153,10 @@ just-in-time compilation process, which significantly reduces testing times.
 Indices Processing
 ----------------------------------
 
-Included are scripts which compute one or more indices for either gridded or US climate division input dataset types. These are ``process_grid.py`` which is used to compute indices from gridded NetCDF datasets, and ``process_divisions.py`` which is used to compute indices from US climate division NetCDF datasets.
+Included are scripts which compute one or more indices for either gridded or US 
+climate division input dataset types. These are ``process_grid.py`` which is used 
+to compute indices from gridded NetCDF datasets, and ``process_divisions.py`` 
+which is used to compute indices from US climate division NetCDF datasets.
 
 These Python scripts are written to be run at the command line. For example:
 
@@ -239,25 +251,83 @@ Example Command Line Invocations
 PET monthly:
 """"""""""""
 
-``$ python process_grid.py --index pet --netcdf_temp ../example_inputs/nclimgrid_lowres_tavg.nc --var_name_temp tavg --output_file_base /data/nclimgrid_lowres --calibration_start_year 1951 --calibration_end_year 2010 --time_series_type monthly``
+``$ python process_grid.py --index pet --netcdf_temp  --time_series_type monthly
+../example_inputs/nclimgrid_lowres_tavg.nc --var_name_temp tavg --output_file_base 
+/data/nclimgrid_lowres --calibration_start_year 1951 --calibration_end_year 2010``
 
-The above command will compute PET (potential evapotranspiration) using the Thornthwaite method from an input temperature dataset (in this case, the reduced resolution nClimGrid temperature dataset provided as an example input). The input dataset is monthly data and the calibration period used will be Jan. 1951 through Dec. 2010. The output file will be `/data/nclimgrid_lowres_pet.nc`.
+The above command will compute PET (potential evapotranspiration) using the 
+Thornthwaite method from an input temperature dataset (in this case, the reduced 
+resolution nClimGrid temperature dataset provided as an example input). The input 
+dataset is monthly data and the calibration period used will be Jan. 1951 through 
+Dec. 2010. The output file will be `/data/nclimgrid_lowres_pet.nc`.
 
 SPI (both gamma and Pearson III distribution fittings), daily:
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-``$ python process_grid.py --index spi --netcdf_precip ../example_inputs/cmorph_lowres_daily_conus_prcp.nc --var_name_precip  prcp --output_file_base /data/cmorph_lowres_daily_conus --scales 30 90 --calibration_start_year 1998 --calibration_end_year 2016 --time_series_type daily``
+``$ python process_grid.py --index spi --netcdf_precip 
+../example_inputs/cmorph_lowres_daily_conus_prcp.nc --var_name_precip 
+prcp --output_file_base /data/cmorph_lowres_daily_conus --scales 30 90 
+--calibration_start_year 1998 --calibration_end_year 2016 --time_series_type daily``
 
-The above command will compute SPI (standardized precipitation index, both gamma and Pearson Type III distributions) from an input precipitation dataset (in this case, the reduced resolution CMORPH precipitation dataset provided in the example inputs directory). The input dataset is daily data and the calibration period used will be Jan. 1st 1998 through Dec. 31st, 2016. The index will be computed at 30-day and 90-day timescales. The output files will be `/data/cmorph_lowres_daily_conus_spi_gamma_30.nc`, `/data/cmorph_lowres_daily_conus_spi_gamma_90.nc`, `/data/cmorph_lowres_daily_conus_spi_pearson_30.nc`, and `/data/cmorph_lowres_daily_conus_spi_pearson_90.nc`, .
+The above command will compute SPI (standardized precipitation index, both gamma 
+and Pearson Type III distributions) from an input precipitation dataset (in this case, 
+the reduced resolution CMORPH precipitation dataset provided in the example inputs 
+directory). The input dataset is daily data and the calibration period used will be 
+Jan. 1st, 1998 through Dec. 31st, 2016. The index will be computed at 30-day and 
+90-day timescales. The output files will be `/data/cmorph_lowres_daily_conus_spi_gamma_30.nc`, 
+`/data/cmorph_lowres_daily_conus_spi_gamma_90.nc`, 
+`/data/cmorph_lowres_daily_conus_spi_pearson_30.nc`, and 
+`/data/cmorph_lowres_daily_conus_spi_pearson_90.nc`.
 
 SPI (both gamma and Pearson III distribution fittings), monthly:
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-``$ python process_grid.py --index spi --netcdf_precip ../example_inputs/nclimgrid_lowres_prcp.nc --var_name_precip  prcp --output_file_base /data/nclimgrid_lowres --scales 3 9 --calibration_start_year 1951 --calibration_end_year 2010 --time_series_type monthly``  
+``$ python process_grid.py --index spi --netcdf_precip ../example_inputs/nclimgrid_lowres_prcp.nc 
+--var_name_precip  prcp --output_file_base /data/nclimgrid_lowres --scales 6 12 
+--calibration_start_year 1951 --calibration_end_year 2010 --time_series_type monthly``  
+
+The above command will compute SPI (standardized precipitation index, both gamma and 
+Pearson Type III distributions) from an input precipitation dataset (in this case, 
+the reduced resolution nClimGrid precipitation dataset provided in the example inputs 
+directory). The input dataset is monthly data and the calibration period used will be 
+Jan. 1951 through Dec. 2010. The index will be computed at 6-month and 12-month timescales. 
+The output files will be `/data/nclimgrid_lowres_spi_gamma_06.nc`, 
+`/data/nclimgrid_lowres_spi_gamma_12.nc`, `/data/nclimgrid_lowres_spi_pearson_06.nc`, 
+and `/data/nclimgrid_lowres_spi_pearson_12.nc`.
+
+SPEI (both gamma and Pearson III distribution fittings), monthly:
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+``$ python process_grid.py --index spei --time_series_type monthly --netcdf_precip 
+../example_inputs/nclimgrid_lowres_prcp.nc --var_name_precip  prcp --netcdf_pet 
+../example_inputs/nclimgrid_lowres_pet.nc --var_name_pet pet --output_file_base 
+/data/nclimgrid_lowres --scales 9 18 --calibration_start_year 1951 --calibration_end_year 2010 ``  
+
+The above command will compute SPEI (standardized precipitation evapotranspiration index, 
+both gamma and Pearson Type III distributions) from input precipitation and potential 
+evapotranspiration datasets (in this case, the reduced resolution nClimGrid precipitation 
+and PET datasets provided in the example inputs directory). The input datasets are monthly 
+data and the calibration period used will be Jan. 1951 through Dec. 2010. The index will be 
+computed at 9-month and 18-month timescales. The output files will be 
+`/data/nclimgrid_lowres_spi_gamma_09.nc`, `/data/nclimgrid_lowres_spi_gamma_18.nc`, 
+`/data/nclimgrid_lowres_spi_pearson_09.nc`, and `/data/nclimgrid_lowres_spi_pearson_18.nc`.
 
 Palmers, monthly:
+""""""""""""""""""""""""""""""""
+``$ python process_grid.py --index palmers --time_series_type monthly --netcdf_precip 
+../example_inputs/nclimgrid_lowres_prcp.nc --var_name_precip prcp --netcdf_pet 
+../example_inputs/nclimgrid_lowres_pet.nc --var_name_pet pet --netcdf_awc 
+../example_inputs/nclimgrid_lowres_soil.nc  --var_name_awc awc --output_file_base 
+/data/nclimgrid_lowres --calibration_start_year 1951 --calibration_end_year 2010``
 
-``$ python process_grid.py --index palmers --time_series_type monthly --netcdf_precip ../example_inputs/nclimgrid_lowres_prcp.nc --var_name_precip prcp --netcdf_pet ../example_inputs/nclimgrid_lowres_pet.nc --var_name_pet pet --netcdf_awc ../example_inputs/nclimgrid_lowres_soil.nc  --var_name_awc awc --output_file_base /data/nclimgrid_lowres --calibration_start_year 1951 --calibration_end_year 2010``
+The above command will compute the Palmer drought indices: PDSI (original Palmer Drought Severity Index), 
+PHDI (Palmer Hydrological Drought Index), PMDI (Palmer Modified Drought Index), Z-Index (Palmer Z-Index), 
+and SCPDSI (Self-calibrated Palmer Drought Severity Index) from input precipitation, potential 
+evapotranspiration, and available water capacity datasets (in this case, the reduced resolution nClimGrid 
+precipitation, PET, and AWC datasets provided in the example inputs directory). The input datasets are monthly 
+data and the calibration period used will be Jan. 1951 through Dec. 2010. The output files will be 
+`/data/nclimgrid_lowres_pdsi.nc`, `/data/nclimgrid_lowres_phdi.nc`, 
+`/data/nclimgrid_lowres_pmdi.nc`, `/data/nclimgrid_lowres_scpdsi.nc`, and `/data/nclimgrid_lowres_zindex.nc`.
 
 Get involved
 ------------
