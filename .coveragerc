@@ -16,3 +16,4 @@ omit =
     example_inputs/*
     scripts/*
     tests/*
+    
