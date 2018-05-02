@@ -19,7 +19,7 @@
    :target: https://opensource.org/licenses/BSD-3-Clause
 
 
-|Build Status| |Coverage Status| |Dependency Status| |CodeFactor| |License| 
+|Build Status| |Coverage Status| |Dependency Status| |License| 
 
 Community Reference Climate Indices in Python
 =============================================
