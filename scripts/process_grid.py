@@ -871,14 +871,16 @@ def _validate_arguments(args):
                     _logger.error(message)
                     raise ValueError(message)
                 elif args.var_name_awc not in dataset_awc.variables:
-                    message = "Invalid AWC variable name: \'%s\' does not exist in AWC file \'%s\'", args.var_name_awc, args.netcdf_awc
+                    message = "Invalid AWC variable name: \'{0}\' does not exist in AWC file \'{1}\'".format(args.var_name_awc, 
+                                                                                                             args.netcdf_awc)
                     _logger.error(message)
                     raise ValueError(message)
                     
                 # verify that the AWC variable's dimensions are in the expected order
                 dimensions = dataset_awc.variables[args.var_name_awc].dimensions
                 if (dimensions != ('lat', 'lon')) and (dimensions != expected_dimensions):
-                    message = "Invalid dimensions of the AWC variable: %s, (expected names and order: %s)".format(dimensions, expected_dimensions)
+                    message = "Invalid dimensions of the AWC variable: {0}, expected the following names/order: {1}".format(dimensions, 
+                                                                                                                            expected_dimensions)
                     _logger.error(message)
                     raise ValueError(message)
                 
