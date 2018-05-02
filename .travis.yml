@@ -21,10 +21,10 @@ install:
   - pip install .
 
 script:
-  # run all tests with coverage 
+  # run all tests with coverage
   - export NUMBA_DISABLE_JIT=1  # disable numba JIT
   - coverage run --source=climate_indices setup.py test
-  
+
 after_success:
   # get a code coverage report for coveralls.io integration
   - coveralls
