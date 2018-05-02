@@ -7,7 +7,7 @@ import numpy as np
 import scipy.special
 import scipy.stats
 
-from indices_python import utils
+from climate_indices import utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global _logger
@@ -506,8 +506,9 @@ def transform_fitted_gamma(monthly_values):
 
     :param monthly_values: an array of monthly values, either 1-D or 2-D with each row representing 
                            a year containing twelve columns representing the respective calendar months
-    :return: 2-D array of monthly values, corresponding in size and shape of the input array if the input is 2-D, or if the input array  
-             is 1-D then an equivalent 2-D array with NaN values used to fill the missing months of the final year, if any
+    :return: 2-D array of monthly values, corresponding in size and shape of the input array if the input is 2-D,
+             or if the input array is 1-D then an equivalent 2-D array with NaN values used to fill the missing months
+             of the final year, if any
     :rtype: numpy.ndarray of floats
     '''
     

@@ -48,7 +48,7 @@ It is critical that you pull upstream changes from develop branch into your fork
 
 To pull in upstream changes:
 
-`git remote add upstream https://github.com/monocongo/indices_python.git`
+`git remote add upstream https://github.com/monocongo/climate_indices.git`
 `git fetch upstream develop`
 
 Check the log to be sure that you actually want the changes, before merging:
@@ -68,7 +68,9 @@ Follow these rules and you should succeed without a problem.
 ### Run the tests
 Before you submit a pull request, please run the entire test suite via:
 
-`$ python -m unittest test_*.py`
+`$ export NUMBA_DISABLE_JIT=1`
+`$ python setup.py test`
+`$ unset  NUMBA_DISABLE_JIT`
 
 The first thing the core committers will do is run this command. Any pull request that fails this test suite will be rejected.
 
@@ -108,7 +110,7 @@ First we pull the code into a local branch:
 
 `git checkout -b <branch-name> <submitter-github-name>`
 
-`git pull git://github.com/<submitter-github-name/indices_python.git develop`
+`git pull git://github.com/<submitter-github-name/climate_indices.git develop`
 
 Then we run the tests:
 

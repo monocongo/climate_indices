@@ -1,9 +1,8 @@
-from datetime import datetime, timedelta
 import logging
 from numba import float64, int64, jit
 import numpy as np
 
-from indices_python import compute, palmer, thornthwaite, utils
+from climate_indices import compute, palmer, thornthwaite
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 # set up a basic, global _logger
@@ -34,7 +33,7 @@ def spi_gamma(precips,
     original_length = precips.size
     
     # get a sliding sums array, with each month's value scaled by the specified number of months
-    scaled_precips = compute.sum_to_scale(precips, months_scale)
+    scaled_precips = compute.sum_to_scale(precips.flatten(), months_scale)
 
     # fit the scaled values to a gamma distribution and transform the values to corresponding normalized sigmas 
     transformed_fitted_values = compute.transform_fitted_gamma(scaled_precips)
@@ -46,8 +45,7 @@ def spi_gamma(precips,
     return spi[0:original_length]
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
-#@jit(float64[:](float64[:], int64, int64, int64, int64))
-@jit     # use this under the assumption that this is preferable to explicit specification of signature argument types
+@jit
 def spi_pearson(precips, 
                 months_scale,
                 data_start_year,
@@ -69,7 +67,7 @@ def spi_pearson(precips,
     original_length = precips.size
     
     # get a sliding sums array, with each month's value scaled by the specified number of months
-    scaled_precips = compute.sum_to_scale(precips, months_scale)
+    scaled_precips = compute.sum_to_scale(precips.flatten(), months_scale)
 
     # fit the scaled values to a Pearson Type III distribution and transform the values to corresponding normalized sigmas 
 #     transformed_fitted_values = compute.transform_fitted_pearson_new(scaled_precips, 
@@ -88,8 +86,7 @@ def spi_pearson(precips,
     return spi[0:original_length]
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
-#@jit(float64[:](int64, float64[:], float64[:], float64[:], int64, float64))  # uncomment/enable in production
-@jit     # use this under the assumption that this is preferable to explicit specification of signature argument types
+@jit
 def spei_gamma(months_scale,
                precips_mm,
                pet_mm=None,
@@ -187,18 +184,17 @@ def spei_gamma(months_scale,
     return spei[0:original_length]
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
-#@jit(float64[:](int64, int64, float64[:], float64[:], float64[:], float64, int64, int64))
-@jit     # use this under the assumption that this is preferable to explicit specification of signature argument types
+@jit
 def spei_pearson(months_scale,
                  data_start_year,
+                 calibration_year_initial,
+                 calibration_year_final,
                  precips_mm,
                  pet_mm=None,
                  temps_celsius=None,
-                 latitude_degrees=None,
-                 calibration_year_initial=1981,
-                 calibration_year_final=2010):
+                 latitude_degrees=None):
     '''
-    Compute SPEI fitted to the Pearson Type III distribution.
+    Compute monthly SPEI fitted to the Pearson Type III distribution.
     
     PET values are subtracted from the monthly precipitation values to come up with an array of (P - PET) values, which is 
     then scaled to the specified months scale and finally fitted/transformed to monthly SPEI values corresponding to the
@@ -277,8 +273,14 @@ def spei_pearson(months_scale,
             _logger.error(message)
             raise ValueError(message)
     
+    else:
+
+        message = 'Invalid arguments: both temperature and PET array arguments are None'
+        _logger.error(message)
+        raise ValueError(message)
+        
     # subtract the PET from precipitation, adding an offset to ensure that all values are positive
-    p_minus_pet = (precips_mm - pet_mm) + 1000.0
+    p_minus_pet = (precips_mm.flatten() - pet_mm.flatten()) + 1000.0
         
     # remember the original length of the input array, in order to facilitate returning an array of the same size
     original_length = precips_mm.size
@@ -361,8 +363,7 @@ def pdsi(precip_time_series,
                        calibration_end_year)
     
 #-------------------------------------------------------------------------------------------------------------------------------------------
-#@jit(float64[:](float64[:], int64, int64, int64, int64))
-@jit     # use this under the assumption that this is preferable to explicit specification of signature argument types
+#@jit     
 def percentage_of_normal(values, 
                          scale,
                          data_start_year,
@@ -398,6 +399,10 @@ def percentage_of_normal(values,
     :return: percent of normal precipitation values corresponding to the input monthly precipitation values array   
     :rtype: numpy.ndarray of type float
     '''
+
+    # bypass processing if all values are masked    
+    if np.ma.is_masked(values) and values.mask.all():
+        return values
     
     # make sure we've been provided with sane calibration limits
     if data_start_year > calibration_start_year:
@@ -405,23 +410,17 @@ def percentage_of_normal(values,
     elif ((calibration_end_year - calibration_start_year + 1) * 12) > values.size:
         raise ValueError("Invalid calibration period specified: total calibration years exceeds the actual number of years of data")
     
-    periodicity = 366
-    if time_series_type == 'monthly':
-        periodicity = 12
-    elif time_series_type == 'daily':
-        initial_day = datetime.date(data_start_year, 1, 1)
-        final_day = initial_day + timedelta(days=values.size)
-        total_years = final_day.year - initial_day.year + 1
-        utils.transform_to_366day(values, data_start_year, total_years)
-    elif time_series_type != '366_day':
-        raise ValueError('Invalid time series type argument: %s' %  time_series_type)
+    # if doing monthly then we'll use 12 periods, corresponding to calendar months, otherwise assume all years w/366 days
+    periodicity = 12
+    if time_series_type == 'daily':
+        periodicity = 366
     
     # get an array containing a sliding sum on the specified months scale -- i.e. if the months scale is 3 then
     # the first two elements will be np.NaN, since we need 3 elements to get a sum, and then from the third element
     # to the end the value will equal the sum of the corresponding month plus the values of the two previous months
     scale_sums = compute.sum_to_scale(values, scale)
     
-    # extract the months over which we'll compute the normal average for each calendar month
+    # extract the timesteps over which we'll compute the normal average for each time step of the year
     calibration_years = calibration_end_year - calibration_start_year + 1
     calibration_start_index = (calibration_start_year - data_start_year) * periodicity
     calibration_end_index = calibration_start_index + (calibration_years * periodicity)
@@ -430,7 +429,7 @@ def percentage_of_normal(values,
     # for each time step in the calibration period, get the average of the scale sum 
     # for that calendar month (i.e. average all January sums, then all February sums, etc.) 
     averages = np.full((periodicity,), np.nan)
-    for i in range(12):
+    for i in range(periodicity):
         averages[i] = np.nanmean(calibration_period_sums[i::periodicity])
     
     #TODO replace the below loop with a vectorized implementation
@@ -444,10 +443,6 @@ def percentage_of_normal(values,
             
             percentages_of_normal[i] = scale_sums[i] / averages[i % periodicity]
     
-    # if we started with normal daily values that were converted to 366 day years then we'll convert back here 
-    if time_series_type == 'daily':
-        percentages_of_normal = utils.transform_to_gregorian(percentages_of_normal, data_start_year, total_years)
-        
     return percentages_of_normal
     
 #-------------------------------------------------------------------------------------------------------------------------------------------
@@ -482,7 +477,7 @@ def pet(temperature_celsius,
             # we started with all NaNs for the temperature, so just return the same
             return temperature_celsius
         
-    # make sure we're not dealing with a NaN latitude value
+    # make sure we're not dealing with a NaN or out-of-range latitude value
     if not np.isnan(latitude_degrees) and (latitude_degrees < 90.0) and (latitude_degrees > -90.0):
         
         # compute and return the PET values using Thornthwaite's equation
