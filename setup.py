@@ -19,9 +19,9 @@ setup(
         "pandas",
         "scipy",
     ],
-    tests_require=[
-        "nose",
-    ],
+#     tests_require=[
+#         "nose",
+#     ],
     test_suite='tests',
     keywords=('indices climate climate_indices drought drought_indices pdsi '
               'spi spei evapotranspiration'),
