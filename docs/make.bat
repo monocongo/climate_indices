@@ -9,7 +9,7 @@ if "%SPHINXBUILD%" == "" (
 )
 set SOURCEDIR=.
 set BUILDDIR=_build
-set SPHINXPROJ=indices_python
+set SPHINXPROJ=climate_indices
 
 if "%1" == "" goto help
 

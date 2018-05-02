@@ -3,7 +3,7 @@ import numpy as np
 import unittest
 
 from tests import fixtures
-from indices_python import thornthwaite
+from climate_indices import thornthwaite
 
 #-----------------------------------------------------------------------------------------------------------------------
 # disable logging messages
@@ -23,11 +23,13 @@ class ThornthwaiteTestCase(fixtures.FixturesTestCase):
                                                                  self.fixture_initial_data_year)
                                          
         # make sure that PET is being computed as expected
-        self.assertTrue(np.allclose(computed_pet, self.fixture_pet_mm), 
+        self.assertTrue(np.allclose(computed_pet, 
+                                    self.fixture_pet_mm.flatten(), 
+                                    equal_nan=True), 
                         'PET values not computed as expected')
         
         # make sure that a 3-D array raises an error
-        reshaped_temps = np.reshape(self.fixture_temps_celsius[0:1400], (14, 5, 20))
+        reshaped_temps = np.reshape(self.fixture_temps_celsius[0:1400], (123, 2, 6))
         self.assertRaises(ValueError, 
                           thornthwaite.potential_evapotranspiration, 
                           reshaped_temps, 

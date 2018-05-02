@@ -1,12 +1,9 @@
 import io
 import logging
 import numpy as np
-import os
-from pathlib import Path
-import unittest
 import unittest.mock
 
-from indices_python import utils
+from climate_indices import utils
 
 # disable logging messages
 logging.disable(logging.CRITICAL)
@@ -249,6 +246,20 @@ class UtilsTestCase(unittest.TestCase):
                                expected_rmse, 
                                msg='Incorrect root mean square error (RMSE)',
                                delta=0.001)
+        
+    #----------------------------------------------------------------------------------------
+    def test_transform_to_gregorian(self):
+        '''
+        Test for the utils.transform_to_gregorian() function
+        '''
+        #TODO
+        
+    #----------------------------------------------------------------------------------------
+    def test_transform_to_366day(self):
+        '''
+        Test for the utils.transform_to_366day() function
+        '''
+        #TODO
         
 #--------------------------------------------------------------------------------------------
 if __name__ == '__main__':
