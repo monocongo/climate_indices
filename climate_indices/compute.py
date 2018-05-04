@@ -500,11 +500,11 @@ def transform_fitted_pearson(monthly_values,
 
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def transform_fitted_gamma(monthly_values):
+def transform_fitted_gamma(values):
     '''
     TODO explain this    
 
-    :param monthly_values: an array of monthly values, either 1-D or 2-D with each row representing 
+    :param values: an array of values, either 1-D or 2-D with each row representing 
                            a year containing twelve columns representing the respective calendar months
     :return: 2-D array of monthly values, corresponding in size and shape of the input array if the input is 2-D,
              or if the input array is 1-D then an equivalent 2-D array with NaN values used to fill the missing months
@@ -513,42 +513,42 @@ def transform_fitted_gamma(monthly_values):
     '''
     
     # if we're passed all missing values then we can't compute anything, return the same array of missing values
-    if np.all(np.isnan(monthly_values)):
+    if np.all(np.isnan(values)):
 #         _logger.info('An array of all fill values was passed as the argument, no action taken, returning the same array')
-        return monthly_values
+        return values
         
     # validate (and possibly reshape) the input array
-    if len(monthly_values.shape) == 1:
+    if len(values.shape) == 1:
         
         # we've been passed a 1-D array with shape (months), reshape it to 2-D with shape (years, 12)
-        monthly_values = utils.reshape_to_years_months(monthly_values)
+        values = utils.reshape_to_years_months(values)
     
-    elif (len(monthly_values.shape) != 2) or monthly_values.shape[1] != 12:
+    elif (len(values.shape) != 2) or values.shape[1] != 12:
      
         # neither a 1-D nor a 2-D array with valid shape was passed in
-        message = 'Invalid input array with shape: {0}'.format(monthly_values.shape)
+        message = 'Invalid input array with shape: {0}'.format(values.shape)
         _logger.error(message)   
         raise ValueError(message)
     
     # find the percentage of zero values for each month
-    zeros = (monthly_values == 0).sum(axis=0)
-    probabilities_of_zero = zeros / monthly_values.shape[0]
+    zeros = (values == 0).sum(axis=0)
+    probabilities_of_zero = zeros / values.shape[0]
     
     # replace zeros with NaNs
-    monthly_values[monthly_values == 0] = np.NaN
+    values[values == 0] = np.NaN
     
     # compute the gamma distribution's shape and scale parameters, alpha and beta
     #TODO explain this better
-    means = np.nanmean(monthly_values, axis=0)
+    means = np.nanmean(values, axis=0)
     log_means = np.log(means)
-    logs = np.log(monthly_values)
+    logs = np.log(values)
     mean_logs = np.nanmean(logs, axis=0)
     A = log_means - mean_logs
     alphas = (1 + np.sqrt(1 + 4 * A / 3)) / (4 * A)
     betas = means / alphas
     
     # find the gamma probability values using the gamma CDF
-    gamma_probabilities = scipy.stats.gamma.cdf(monthly_values, a=alphas, scale=betas)
+    gamma_probabilities = scipy.stats.gamma.cdf(values, a=alphas, scale=betas)
 
     #TODO explain this
     # (normalize including the probability of zero, putting into the range [0..1]?)    
