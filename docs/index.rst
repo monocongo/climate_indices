@@ -58,7 +58,7 @@ with the following goals in mind:
    documented code that is faithful to the relevant literature and
    which produces scientifically verifiable results
 -  to provide the climate monitoring and research community a central, open 
-   location for collaboration and participation 
+   location for participation and collaboration 
 -  to facilitate standardization and consensus on best-of-breed
    climate index algorithms and compliant implementations
 -  to provide transparency into the operational code used for climate
