@@ -250,7 +250,7 @@ Example Command Line Invocations
 PET monthly:
 """"""""""""
 
-``$ python process_grid.py --index pet --netcdf_temp  --time_series_type monthly
+``$ python process_grid.py --index pet --time_series_type monthly --netcdf_temp  
 ../example_inputs/nclimgrid_lowres_tavg.nc --var_name_temp tavg --output_file_base 
 /data/nclimgrid_lowres --calibration_start_year 1951 --calibration_end_year 2010``
 
@@ -263,10 +263,10 @@ Dec. 2010. The output file will be `/data/nclimgrid_lowres_pet.nc`.
 SPI (both gamma and Pearson III distribution fittings), daily:
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-``$ python process_grid.py --index spi --netcdf_precip 
+``$ python process_grid.py --index spi  --time_series_type daily --netcdf_precip 
 ../example_inputs/cmorph_lowres_daily_conus_prcp.nc --var_name_precip 
 prcp --output_file_base /data/cmorph_lowres_daily_conus --scales 30 90 
---calibration_start_year 1998 --calibration_end_year 2016 --time_series_type daily``
+--calibration_start_year 1998 --calibration_end_year 2016``
 
 The above command will compute SPI (standardized precipitation index, both gamma 
 and Pearson Type III distributions) from an input precipitation dataset (in this case, 
@@ -281,9 +281,10 @@ Jan. 1st, 1998 through Dec. 31st, 2016. The index will be computed at 30-day and
 SPI (both gamma and Pearson III distribution fittings), monthly:
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-``$ python process_grid.py --index spi --netcdf_precip ../example_inputs/nclimgrid_lowres_prcp.nc 
---var_name_precip  prcp --output_file_base /data/nclimgrid_lowres --scales 6 12 
---calibration_start_year 1951 --calibration_end_year 2010 --time_series_type monthly``  
+``$ python process_grid.py --index spi --time_series_type monthly --netcdf_precip 
+../example_inputs/nclimgrid_lowres_prcp.nc --var_name_precip  prcp 
+--output_file_base /data/nclimgrid_lowres --scales 6 12 
+--calibration_start_year 1951 --calibration_end_year 2010``  
 
 The above command will compute SPI (standardized precipitation index, both gamma and 
 Pearson Type III distributions) from an input precipitation dataset (in this case, 
@@ -302,7 +303,10 @@ SPEI (both gamma and Pearson III distribution fittings), monthly:
 /data/nclimgrid_lowres --scales 9 18 --calibration_start_year 1951 --calibration_end_year 2010``  
 
 The above command will compute SPEI (standardized precipitation evapotranspiration index, 
-both gamma and Pearson Type III distributions) from input precipitation and potential evapotranspiration datasets (in this case, the reduced resolution nClimGrid precipitation and PET datasets provided in the example inputs directory). The input datasets are monthly data and the calibration period used will be Jan. 1951 through Dec. 2010. The index will be computed at 9-month and 18-month timescales. The output files will be 
+both gamma and Pearson Type III distributions) from input precipitation and potential evapotranspiration datasets 
+(in this case, the reduced resolution nClimGrid precipitation and PET datasets provided in the example inputs directory). 
+The input datasets are monthly data and the calibration period used will be Jan. 1951 through Dec. 2010. The index 
+datasets will be computed at 9-month and 18-month timescales. The output files will be 
 `/data/nclimgrid_lowres_spi_gamma_09.nc`, `/data/nclimgrid_lowres_spi_gamma_18.nc`, 
 `/data/nclimgrid_lowres_spi_pearson_09.nc`, and `/data/nclimgrid_lowres_spi_pearson_18.nc`.
 
