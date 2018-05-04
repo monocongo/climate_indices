@@ -12,7 +12,6 @@ setup(
                  'PHDI, and Z-Index), SPI, SPEI, PET, and PNP.'),
     packages=['climate_indices'],
     install_requires=[
-        "coverage",
         "netcdf4",
         "numba",
         "numpy",
