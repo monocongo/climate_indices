@@ -14,6 +14,7 @@
 .. |Coverage| image:: https://coveralls.io/repos/github/monocongo/climate_indices/badge.svg?branch=master
    :target: https://coveralls.io/github/monocongo/climate_indices?branch=master
 .. |Dependencies| image:: https://gemnasium.com/badges/github.com/monocongo/climate_indices.svg
+
    :target: https://gemnasium.com/github.com/monocongo/climate_indices
 .. |License| image:: https://img.shields.io/badge/License-BSD%203--Clause-green.svg
    :target: https://opensource.org/licenses/BSD-3-Clause
@@ -95,7 +96,7 @@ Within this directory, there are six subdirectories:
 -  ``climate_indices``: main computational package
 -  ``tests``: unit tests for the main package
 -  ``scripts``: scripts and supporting utility modules used to perform processing of indices 
-computations on climatological datasets (typically grids or US climate divisions datasets in NetCDF)
+computations on climatological datasets (typically grids or US climate division datasets in NetCDF)
 -  ``example_inputs``: example/reference datasets that can be used as inputs to the processing scripts
 -  ``notebooks``: Jupyter Notebooks describing the internals of the computational modules
 -  ``docs``: documentation files
