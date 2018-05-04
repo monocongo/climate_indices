@@ -7,28 +7,38 @@ python:
   - 3.6
 
 install:
-  # download latest miniconda
-  - wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
-  - bash miniconda.sh -b -p $HOME/miniconda
-  - export PATH="$HOME/miniconda/bin:$PATH"
-  - hash -r
-  - conda config --set always_yes yes --set changeps1 no
-  - conda update -q conda
+#  # download latest miniconda
+#  - wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
+#  - bash miniconda.sh -b -p $HOME/miniconda
+#  - export PATH="$HOME/miniconda/bin:$PATH"
+#  - hash -r
+#  - conda config --set always_yes yes --set changeps1 no
+#  - conda update -q conda
+#
+#  # create an environment named 'climate_indices', activate it, and add the package via PIP 
+#  - conda create -n climate_indices
+#  - source activate climate_indices
 
-  # create an environment named 'climate_indices', activate it, and add the package via PIP 
-  - conda create -n climate_indices
-  - source activate climate_indices
+  # install the core climate_indices package
   - pip install .
-
+  
+  # install packages required for code coverage 
+  - pip install coverage
+  - pip install coveralls
+  
+env:
+  # disable Numba just-in-time compilation since this is time consuming and unnecessary for testing
+  - NUMBA_DISABLE_JIT=1
+  
 script:
   # run all tests with coverage
-  - export NUMBA_DISABLE_JIT=1  # disable numba JIT
+#  - export NUMBA_DISABLE_JIT=1  # disable numba JIT
   - coverage run --source=climate_indices setup.py test
 
 after_success:
-  # get a code coverage report for coveralls.io integration
+  # produce a code coverage report for coveralls.io integration
   - coveralls
 
-# don't email after every build success/failure (default behavior)
+# don't email after every build success/failure
 notifications:
   email: false
