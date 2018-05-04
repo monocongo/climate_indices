@@ -61,11 +61,11 @@ class GridProcessor(object):             # pragma: no cover
         self.scales = args.scales
         self.calibration_start_year = args.calibration_start_year
         self.calibration_end_year = args.calibration_end_year        
-        self.index_bundle = args.index_bundle
+        self.index = args.index
         self.time_series_type = args.time_series_type
         
         # determine the initial and final data years, units, and lat/lon sizes
-        if self.index_bundle == 'pet':
+        if self.index == 'pet':
             # PET only requires temperature
             data_file = self.netcdf_temp
             self.units_temp = netcdf_utils.variable_units(self.netcdf_temp, self.var_name_temp)
@@ -86,7 +86,7 @@ class GridProcessor(object):             # pragma: no cover
         self.lat_size, self.lon_size = netcdf_utils.lat_and_lon_sizes(data_file)
         
         # initialize the NetCDF files used for Palmers output, scaled indices will have corresponding files initialized at each scale run
-        if self.index_bundle == 'palmers':
+        if self.index == 'palmers':
         
             # place holders for the scaled NetCDFs, these files will be created 
             # and assigned to these variables at each scale's computational iteration
@@ -127,7 +127,7 @@ class GridProcessor(object):             # pragma: no cover
                                                                 _VALID_MIN,
                                                                 _VALID_MAX)
 
-        elif self.index_bundle in ['spi', 'spei', 'pnp', 'scaled']:
+        elif self.index in ['spi', 'spei', 'pnp', 'scaled']:
         
             # place holders for the scaled NetCDFs, these files will be created as needed
             # and assigned to these variables at each scale's computational iteration
@@ -147,7 +147,7 @@ class GridProcessor(object):             # pragma: no cover
         # make a scale type substring to use within the variable long_name attributes
         scale_type = str(self.timestep_scale) + '-month scale'
         if self.time_series_type == 'daily':
-            if self.index_bundle in ['spi', 'pnp']:
+            if self.index in ['spi', 'pnp']:
                 scale_type = str(self.timestep_scale) + '-day scale'
             else:
                 message = 'Incompatible time series type -- only SPI and PNP are supported for daily time series'
@@ -159,22 +159,22 @@ class GridProcessor(object):             # pragma: no cover
         # dictionary of index types (ex. 'spi_gamma', 'spei_pearson', etc.) mapped to their corresponding long 
         # variable names, to be used within the respective NetCDFs as variable long_name attributes
         names_to_longnames = {}            
-        if self.index_bundle == 'spi':
+        if self.index == 'spi':
             names_to_longnames['spi_gamma'] = 'Standardized Precipitation Index (Gamma distribution), ' + scale_type
             names_to_longnames['spi_pearson'] = 'Standardized Precipitation Index (Pearson Type III distribution), ' + scale_type
-        elif self.index_bundle == 'spei':
+        elif self.index == 'spei':
             names_to_longnames['spei_gamma'] = 'Standardized Precipitation Evapotranspiration Index (Gamma distribution), ' + scale_type
             names_to_longnames['spei_pearson'] = 'Standardized Precipitation Evapotranspiration Index (Pearson Type III distribution), ' + scale_type
-        elif self.index_bundle == 'pnp':
+        elif self.index == 'pnp':
             names_to_longnames['pnp'] = 'Percentage of Normal Precipitation, ' + scale_type
-        elif self.index_bundle == 'scaled':
+        elif self.index == 'scaled':
             names_to_longnames['spi_gamma'] = 'Standardized Precipitation Index (Gamma distribution), ' + scale_type
             names_to_longnames['spi_pearson'] = 'Standardized Precipitation Index (Pearson Type III distribution), ' + scale_type
             names_to_longnames['spei_gamma'] = 'Standardized Precipitation Evapotranspiration Index (Gamma distribution), ' + scale_type
             names_to_longnames['spei_pearson'] = 'Standardized Precipitation Evapotranspiration Index (Pearson Type III distribution), ' + scale_type
             names_to_longnames['pnp'] = 'Percentage of Normal Precipitation, ' + scale_type
         else:
-            raise ValueError('Unsupported index bundle: %s', self.index_bundle)
+            raise ValueError('Unsupported index: %s', self.index)
 
         # loop over the indices, creating an output NetCDF dataset for each
         for index_name, long_name in names_to_longnames.items():
@@ -205,15 +205,15 @@ class GridProcessor(object):             # pragma: no cover
             netcdfs[index_name] = netcdf_file
 
         # assign the NetCDF file paths to the corresponding member variables
-        if self.index_bundle == 'spi':
+        if self.index == 'spi':
             self.netcdf_spi_gamma = netcdfs['spi_gamma']
             self.netcdf_spi_pearson = netcdfs['spi_pearson']
-        elif self.index_bundle == 'spei':
+        elif self.index == 'spei':
             self.netcdf_spei_gamma = netcdfs['spei_gamma']
             self.netcdf_spei_pearson = netcdfs['spei_pearson']
-        elif self.index_bundle == 'pnp':
+        elif self.index == 'pnp':
             self.netcdf_pnp = netcdfs['pnp']
-        elif self.index_bundle == 'scaled':
+        elif self.index == 'scaled':
             self.netcdf_spi_gamma = netcdfs['spi_gamma']
             self.netcdf_spi_pearson = netcdfs['spi_pearson']
             self.netcdf_spei_gamma = netcdfs['spei_gamma']
@@ -227,7 +227,7 @@ class GridProcessor(object):             # pragma: no cover
         number_of_workers = multiprocessing.cpu_count()   # use 1 here for debugging
     
         # all index combinations/bundles except SPI and PNP will require PET, so compute it here if required
-        if (self.netcdf_pet is None) and (self.index_bundle in ['pet', 'spei', 'scaled', 'palmers']):
+        if (self.netcdf_pet is None) and (self.index in ['pet', 'spei', 'scaled', 'palmers']):
         
             self.netcdf_pet = self.output_file_base + '_pet.nc'
             netcdf_utils.initialize_netcdf_single_variable_grid(self.netcdf_pet,
@@ -252,9 +252,9 @@ class GridProcessor(object):             # pragma: no cover
             pool.join()
 
         # compute indices other than PET if requested
-        if self.index_bundle != 'pet':
+        if self.index != 'pet':
             
-            if self.index_bundle in ['spi', 'spei', 'pnp', 'scaled']:
+            if self.index in ['spi', 'spei', 'pnp', 'scaled']:
                 
                 for scale in self.scales:
                     
@@ -275,7 +275,7 @@ class GridProcessor(object):             # pragma: no cover
                     pool.close()
                     pool.join()
                 
-            elif self.index_bundle == 'palmers':
+            elif self.index == 'palmers':
     
                 # create a process Pool for worker processes which will compute indices over an entire latitude slice
                 pool = multiprocessing.Pool(processes=number_of_workers)
@@ -292,7 +292,7 @@ class GridProcessor(object):             # pragma: no cover
                 
             else:
                             
-                raise ValueError('Unsupported index_bundle argument: %s' % self.index_bundle)
+                raise ValueError('Unsupported index argument: %s' % self.index)
     
 
     #-------------------------------------------------------------------------------------------------------------------
@@ -331,7 +331,7 @@ class GridProcessor(object):             # pragma: no cover
             lat_slice_precip = lat_slice_precip_all_leap
             
         # compute PNP if specified
-        if self.index_bundle in ['pnp', 'scaled']:
+        if self.index in ['pnp', 'scaled']:
 
             if self.time_series_type == 'daily':  
                 scale_increment = 'day'
@@ -376,7 +376,7 @@ class GridProcessor(object):             # pragma: no cover
             pnp_lock.release()
 
         # compute SPI if specified
-        if self.index_bundle in ['spi', 'scaled']:
+        if self.index in ['spi', 'scaled']:
 
             if self.time_series_type == 'daily':  
                 scale_increment = 'day'
@@ -440,7 +440,7 @@ class GridProcessor(object):             # pragma: no cover
             spi_pearson_lock.release()
 
         # compute SPEI if specified
-        if self.index_bundle in ['spei', 'scaled']:
+        if self.index in ['spei', 'scaled']:
 
             if self.time_series_type == 'daily':
                 message = 'Daily SPEI not yet supported'
@@ -717,7 +717,7 @@ def _validate_arguments(args):
     expected_dimensions = ('lat', 'lon', 'time')
     
     # all indices except PET require a precipitation file
-    if args.index_bundle != 'pet':
+    if args.index != 'pet':
         
         # make sure a precipitation file was specified
         if args.netcdf_precip is None:
@@ -767,7 +767,7 @@ def _validate_arguments(args):
             raise ValueError(msg)
                             
     # SPEI and Palmers require either a PET file or a temperature file in order to compute PET  
-    if args.index_bundle in ['spei', 'scaled', 'palmers' ]:
+    if args.index in ['spei', 'scaled', 'palmers' ]:
         
         if args.netcdf_temp is None: 
             
@@ -854,7 +854,7 @@ def _validate_arguments(args):
                     raise ValueError(message)
 
         # Palmers requires an available water capacity file
-        if args.index_bundle in ['palmers']:
+        if args.index in ['palmers']:
         
             if args.netcdf_awc is None: 
                 
@@ -871,16 +871,14 @@ def _validate_arguments(args):
                     _logger.error(message)
                     raise ValueError(message)
                 elif args.var_name_awc not in dataset_awc.variables:
-                    message = "Invalid AWC variable name: \'{0}\' does not exist in AWC file \'{1}\'".format(args.var_name_awc, 
-                                                                                                             args.netcdf_awc)
+                    message = "Invalid AWC variable name: \'%s\' does not exist in AWC file \'%s\'", args.var_name_awc, args.netcdf_awc
                     _logger.error(message)
                     raise ValueError(message)
                     
                 # verify that the AWC variable's dimensions are in the expected order
                 dimensions = dataset_awc.variables[args.var_name_awc].dimensions
                 if (dimensions != ('lat', 'lon')) and (dimensions != expected_dimensions):
-                    message = "Invalid dimensions of the AWC variable: {0}, expected the following names/order: {1}".format(dimensions, 
-                                                                                                                            expected_dimensions)
+                    message = "Invalid dimensions of the AWC variable: %s, (expected names and order: %s)".format(dimensions, expected_dimensions)
                     _logger.error(message)
                     raise ValueError(message)
                 
@@ -894,7 +892,7 @@ def _validate_arguments(args):
                     _logger.error(message)
                     raise ValueError(message)
 
-    if args.index_bundle in ['spi', 'spei', 'scaled', 'pnp' ]:
+    if args.index in ['spi', 'spei', 'scaled', 'pnp' ]:
         
         if args.scales is None:
             message = "Scaled indices (SPI, SPEI, and/or PNP) specified without including one or more time scales (missing --scales argument)"
@@ -954,7 +952,7 @@ if __name__ == '__main__':
                             type=int,
                             choices=range(1870, start_datetime.year + 1),
                             required=True)
-        parser.add_argument("--index_bundle",
+        parser.add_argument("--index",
                             help="Indices to compute",
                             choices=['spi', 'spei', 'pnp', 'scaled', 'pet', 'palmers'],
                             default='spi',    #TODO use 'full' as the default once all indices are functional
@@ -969,7 +967,7 @@ if __name__ == '__main__':
         '''
         Example command line arguments for SPI only using monthly precipitation input:
         
-        --netcdf_precip /tmp/jadams/cmorph_daily_prcp_199801_201707.nc --var_name_precip prcp --output_file_base ~/data/cmorph/spi/cmorph --scales 1 2 3 6 9 12 24 --calibration_start_year 1998 --calibration_end_year 2016 --index_bundle spi /tmp/jadams --time_series_type monthly
+        --netcdf_precip /tmp/jadams/cmorph_daily_prcp_199801_201707.nc --var_name_precip prcp --output_file_base ~/data/cmorph/spi/cmorph --scales 1 2 3 6 9 12 24 --calibration_start_year 1998 --calibration_end_year 2016 --index spi /tmp/jadams --time_series_type monthly
         '''
 
         # validate the command line arguments
