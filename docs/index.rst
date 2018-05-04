@@ -7,42 +7,36 @@
    :maxdepth: 2
    :caption: Contents:
 
-.. |Build Status| image:: https://travis-ci.org/monocongo/climate_indices.svg?master
+.. |Build| image:: https://travis-ci.org/monocongo/climate_indices.svg?master
    :target: https://travis-ci.org/monocongo
 .. |CodeFactor| image:: https://www.codefactor.io/repository/github/monocongo/climate_indices/badge/master
    :target: https://www.codefactor.io/repository/github/monocongo/climate_indices/overview/master
-.. |Coverage Status| image:: https://coveralls.io/repos/github/monocongo/climate_indices/badge.svg?branch=master
+.. |Coverage| image:: https://coveralls.io/repos/github/monocongo/climate_indices/badge.svg?branch=master
    :target: https://coveralls.io/github/monocongo/climate_indices?branch=master
-.. |Dependency Status| image:: https://gemnasium.com/badges/github.com/monocongo/climate_indices.svg
+.. |Dependencies| image:: https://gemnasium.com/badges/github.com/monocongo/climate_indices.svg
    :target: https://gemnasium.com/github.com/monocongo/climate_indices
 .. |License| image:: https://img.shields.io/badge/License-BSD%203--Clause-green.svg
    :target: https://opensource.org/licenses/BSD-3-Clause
 
 
-|Build Status| |Coverage Status| |Dependency Status| |License| 
+|Build| |Coverage| |CodeFactor| |License| 
 
-Community Reference Climate Indices in Python
+Climate Indices in Python
 =============================================
 
 This project contains Python implementations of various climate index algorithms which provide 
-a geographical and temporal picture of the severity of precipitation and temperature anomalies.
+a geographical and temporal picture of the severity of precipitation and temperature anomalies
+useful for climate monitoring and research.
 
-We attempt to provide best-of-breed implementations of various climate indices commonly used
-for climate and drought monitoring, to provide a codebase that is available for development by 
-the climate science community, and to facilitate the use of climate indices datasets computed 
-in a standardized, reproducible, and transparent fashion.
-
-Python implementations of the following climate index algorithms are provided:
+The following indices are provided:
 
 -  `SPI <https://climatedataguide.ucar.edu/climate-data/standardized-precipitation-index-spi>`__,
-   Standardized Precipitation Index, utilizing either Gamma or Pearson Type III distributions
+   Standardized Precipitation Index, utilizing both gamma and Pearson Type III distributions
 -  `SPEI <https://www.researchgate.net/publication/252361460_The_Standardized_Precipitation-Evapotranspiration_Index_SPEI_a_multiscalar_drought_index>`__,
-   Standardized Precipitation Evapotranspiration Index, utilizing either Gamma or Pearson Type III distributions
+   Standardized Precipitation Evapotranspiration Index, utilizing both gamma and Pearson Type III distributions
 -  `PET <https://www.ncdc.noaa.gov/monitoring-references/dyk/potential-evapotranspiration>`__,
    Potential Evapotranspiration, utilizing either `Thornthwaite <http://dx.doi.org/10.2307/21073>`_ 
    or `Hargreaves <http://dx.doi.org/10.13031/2013.26773>`_ equations 
--  `PNP <http://www.droughtmanagement.info/percent-of-normal-precipitation/>`__,
-   Percentage of Normal Precipitation
 -  `PDSI <http://www.droughtmanagement.info/palmer-drought-severity-index-pdsi/>`__,
    Palmer Drought Severity Index
 -  `scPDSI <http://www.droughtmanagement.info/self-calibrated-palmer-drought-severity-index-sc-pdsi/>`__,
@@ -53,30 +47,31 @@ Python implementations of the following climate index algorithms are provided:
    Palmer moisture anomaly index (Z-index)
 -  `PMDI <https://climate.ncsu.edu/climate/climdiv>`__, Palmer Modified
    Drought Index
+-  `PNP <http://www.droughtmanagement.info/percent-of-normal-precipitation/>`__,
+   Percentage of Normal Precipitation
 
-This Python implementation of the above climate index algorithms is
-being developed with the following goals in mind:
+This Python implementation of the above climate index algorithms is being developed 
+with the following goals in mind:
 
 -  to provide an open source software package to compute a suite of
-   climate indices commonly used for drought monitoring, with well
+   climate indices commonly used for climate monitoring, with well
    documented code that is faithful to the relevant literature and
-   which produces scientifically valid results
+   which produces scientifically verifiable results
+-  to provide the climate monitoring and research community a central, open 
+   location for collaboration and participation 
 -  to facilitate standardization and consensus on best-of-breed
-   climate index algorithms including compliant implementations
+   climate index algorithms and compliant implementations
 -  to provide transparency into the operational code used for climate
-   monitoring activities at NCEI, and reproducibility for users of
-   datasets computed from this package
--  to serve as an example of open source scientific development,
-   incorporating software engineering principles and programming best
-   practices
+   monitoring activities at NCEI/NOAA, and consequent reproducibility 
+   of published datasets computed from this package
+-  to incorporate modern software engineering principles and programming 
+   best practices
+
 
 Getting started
 ---------------
 
-The configuration and usage described below shows the indices
-computation module being installed and used via shell commands calling
-scripts that perform data management and computation of climate indices
-from provided inputs. Interaction with the module is assumed to be
+The installation and configuration described below is 
 performed using a bash shell, either on Linux, Windows, or MacOS.
 
 Windows users will need to install and configure a bash shell in order
@@ -95,13 +90,15 @@ Move into the source directory:
 
 ``$ cd climate_indices``
 
-Within this directory, there are three primary subdirectories:
+Within this directory, there are six subdirectories:
 
--  ``climate_indices``: main package
+-  ``climate_indices``: main computational package
 -  ``tests``: unit tests for the main package
 -  ``scripts``: scripts and supporting utility modules used to perform processing of indices 
-computations on climatological datasets (typically grids or climate divisions datasets in NetCDF)
+computations on climatological datasets (typically grids or US climate divisions datasets in NetCDF)
 -  ``example_inputs``: example/reference datasets that can be used as inputs to the processing scripts
+-  ``notebooks``: Jupyter Notebooks describing the internals of the computational modules
+-  ``docs``: documentation files
 
 Configure the Python environment
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -114,8 +111,9 @@ will be Anaconda specific (although relevant to any Python `virtualenv <https://
 
 A new Anaconda `environment <https://conda.io/docs/using/envs.html>`__ can be created 
 using the `conda <https://conda.io/docs/>`_ environment management system that comes packaged 
-with Anaconda. In the following examples, we'll use an environment named *indices_env*
-containing all required modules can be created and populated with all required dependencies through 
+with Anaconda. In the following examples, we'll use an environment named *indices_env* 
+(any environment name can be used instead of *indices_env*) 
+which will be created and populated with all required dependencies through 
 the use of the provided ``setup.py`` file:
 
 ``$ conda create -n indices_env``
@@ -153,14 +151,15 @@ just-in-time compilation process, which significantly reduces testing times.
 Indices Processing
 ----------------------------------
 
-Included are scripts which compute one or more indices for either gridded or US 
-climate division input dataset types. These are ``process_grid.py`` which is used 
+Included are scripts which interact with the core computational package to compute 
+one or more climate indices. These are ``process_grid.py`` which is used 
 to compute indices from gridded NetCDF datasets, and ``process_divisions.py`` 
 which is used to compute indices from US climate division NetCDF datasets.
 
-These Python scripts are written to be run at the command line. For example:
+These Python scripts are written to be run via bash shell commands, i.e.
 
 ``$ python process_grid.py <options>``
+
 
 +------------------------+-------------------------------------------------+
 | Option                 | Description                                     |
