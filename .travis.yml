@@ -26,13 +26,12 @@ install:
   - pip install coverage
   - pip install coveralls
   
-env:
-  # disable Numba just-in-time compilation since this is time consuming and unnecessary for testing
-  - NUMBA_DISABLE_JIT=1
+#env:
+#  # disable Numba just-in-time compilation since this is time consuming and unnecessary for testing
+#  - NUMBA_DISABLE_JIT=1
   
 script:
   # run all tests with coverage
-#  - export NUMBA_DISABLE_JIT=1  # disable numba JIT
   - coverage run --source=climate_indices setup.py test
 
 after_success:
