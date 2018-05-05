@@ -312,7 +312,7 @@ class GridProcessor(object):             # pragma: no cover
         if self.time_series_type == 'daily':
 
             # times are daily, transform to all leap year times (i.e. 366 days per year), so we fill Feb 29th of each non-leap missing
-            total_years = self.data_end_year - self.data_start_year + 1   # FIXME move this out of here, only needs to be computed once
+            total_years = self.data_end_year - self.data_start_year + 1   # FIXME move this out of here, should only need to be computed once
 
             # allocate an array to hold transformed time series where all years contain 366 days
             original_days_count = lat_slice_precip.shape[1]
@@ -358,8 +358,7 @@ class GridProcessor(object):             # pragma: no cover
                     
                     # transform the data so it represents mixed leap and non-leap years, i.e. normal Gregorian calendar
                     lat_slice_pnp_gregorian[lon_index, :] = utils.transform_to_gregorian(lat_slice_pnp[lon_index, :],
-                                                                                         self.data_start_year,
-                                                                                         total_years)
+                                                                                         self.data_start_year)
 
                 # use the transformed arrays as the lat slice we'll write to the output NetCDF
                 lat_slice_pnp = lat_slice_pnp_gregorian
@@ -409,11 +408,9 @@ class GridProcessor(object):             # pragma: no cover
                     
                     # transform the data so it represents mixed leap and non-leap years, i.e. normal Gregorian calendar
                     lat_slice_spi_gamma[lon_index, :] = utils.transform_to_gregorian(spi_gamma_lat_slice[lon_index, :],
-                                                                                     self.data_start_year,
-                                                                                     total_years)
+                                                                                     self.data_start_year)
                     lat_slice_spi_pearson[lon_index, :] = utils.transform_to_gregorian(spi_pearson_lat_slice[lon_index, :],
-                                                                                       self.data_start_year,
-                                                                                       total_years)
+                                                                                       self.data_start_year)
 
                 # use these transformed arrays as the lat slices we'll write to the output NetCDF
                 spi_gamma_lat_slice = lat_slice_spi_gamma
@@ -563,8 +560,7 @@ class GridProcessor(object):             # pragma: no cover
 #                     
 #                     # transform the data so it represents mixed leap and non-leap years, i.e. normal Gregorian calendar
 #                     lat_slice_pet[lon_index, :] = utils.transform_to_gregorian(pet_lat_slice[lon_index, :],
-#                                                                                self.data_start_year,
-#                                                                                total_years)
+#                                                                                self.data_start_year)
 #                 pet_lat_slice = lat_slice_pet
 
             else:    # monthly
