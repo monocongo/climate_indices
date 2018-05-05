@@ -87,6 +87,39 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                    atol=0.01,
                                    err_msg='SPEI/Pearson values for {0}-month scale not computed as expected'.format(month_scale))
         
+    #----------------------------------------------------------------------------------------
+    def test_spei_gamma_6month(self):
+        
+        # compute SPEI/gamma at 6-month scale
+        months_scale = 6
+        computed_spei = indices.spei_gamma(months_scale, 
+                                           precips_mm=self.fixture_precips_mm, 
+                                           pet_mm=None, 
+                                           temps_celsius=self.fixture_temps_celsius, 
+                                           data_start_year=self.fixture_initial_data_year, 
+                                           latitude_degrees=self.fixture_latitude_degrees)
+
+#         for year in range(123):
+#             start = year * 12
+#             print('{0:0.5f}, {1:0.5f}, {2:0.5f}, {3:0.5f}, {4:0.5f}, {5:0.5f}, {6:0.5f}, {7:0.5f}, {8:0.5f}, {9:0.5f}, {10:0.5f}, {11:0.5f}, '.format(computed_spei[start],
+#                                                                                                                                                       computed_spei[start+1],
+#                                                                                                                                                       computed_spei[start+2],
+#                                                                                                                                                       computed_spei[start+3],
+#                                                                                                                                                       computed_spei[start+4],
+#                                                                                                                                                       computed_spei[start+5],
+#                                                                                                                                                       computed_spei[start+6],
+#                                                                                                                                                       computed_spei[start+7],
+#                                                                                                                                                       computed_spei[start+8],
+#                                                                                                                                                       computed_spei[start+9],
+#                                                                                                                                                       computed_spei[start+10],
+#                                                                                                                                                       computed_spei[start+11]))
+#         
+        # make sure SPI/gamma is being computed as expected
+        np.testing.assert_allclose(computed_spei, 
+                                   self.fixture_spei_6_month_gamma, 
+                                   atol=0.01,
+                                   err_msg='SPEI/Gamma values for {0}-month scale not computed as expected'.format(months_scale))
+        
 #--------------------------------------------------------------------------------------------
 if __name__ == '__main__':
     unittest.main()
