@@ -3,9 +3,11 @@ from datetime import datetime
 import logging
 import multiprocessing
 import netCDF4
+import netcdf_utils
 import numpy as np
+import scipy.constants
 
-from climate_indices import indices, netcdf_utils, pdinew, utils
+from climate_indices import indices, pdinew
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global logger which will write to the console as standard error
@@ -169,7 +171,7 @@ class DivisionsProcessor(object):
                 if temperature_units in ['degree_Fahrenheit', 'degrees Fahrenheit', 'degrees F', 'fahrenheit', 'Fahrenheit', 'F']:
                     
                     # TODO make sure this application of the ufunc is any faster  pylint: disable=fixme
-                    temperature = utils.f2c(temperature)
+                    temperature = scipy.constants.convert_temperature(temperature, 'F', 'C')
     
                 elif temperature_units not in ['degree_Celsius', 'degrees Celsius', 'degrees C', 'celsius', 'Celsius', 'C']:
                     
