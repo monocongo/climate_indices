@@ -81,7 +81,7 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                              temps_celsius=self.fixture_temps_celsius,
                                              latitude_degrees=self.fixture_latitude_degrees)
         
-        # make sure SPI/Gamma is being computed as expected
+        # make sure SPEI/Pearson is being computed as expected
         np.testing.assert_allclose(computed_spei, 
                                    self.fixture_spei_6_month_pearson3, 
                                    atol=0.01,
@@ -99,7 +99,7 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                            data_start_year=self.fixture_initial_data_year, 
                                            latitude_degrees=self.fixture_latitude_degrees)
 
-        # make sure SPI/gamma is being computed as expected
+        # make sure SPEI/gamma is being computed as expected
         np.testing.assert_allclose(computed_spei, 
                                    self.fixture_spei_6_month_gamma, 
                                    atol=0.01,
