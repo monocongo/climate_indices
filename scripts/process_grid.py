@@ -64,26 +64,67 @@ class GridProcessor(object):             # pragma: no cover
         self.index = args.index
         self.time_series_type = args.time_series_type
         
-        # determine the initial and final data years, units, and lat/lon sizes
+        # determine the file to use for coordinate specs (years range and lat/lon sizes), get relevant units
         if self.index == 'pet':
+            
             # PET only requires temperature
-            data_file = self.netcdf_temp
-            self.units_temp = netcdf_utils.variable_units(self.netcdf_temp, self.var_name_temp)
-        else:
-            # all other indices require precipitation
-            data_file = self.netcdf_precip
-            self.units_precip = netcdf_utils.variable_units(self.netcdf_precip, self.var_name_precip)
-            if self.netcdf_pet != None:
-                self.units_pet = netcdf_utils.variable_units(self.netcdf_pet, self.var_name_pet)
-            else:
-                self.units_temp = netcdf_utils.variable_units(self.netcdf_temp, self.var_name_temp)
-            if self.netcdf_awc != None:
-                self.units_awc = netcdf_utils.variable_units(self.netcdf_awc, self.var_name_awc)
-                self.fill_value_awc = netcdf_utils.variable_fillvalue(self.netcdf_awc, self.var_name_awc)
- 
+            if self.netcdf_temp != None:
                 
-        self.data_start_year, self.data_end_year = netcdf_utils.initial_and_final_years(data_file)
-        self.lat_size, self.lon_size = netcdf_utils.lat_and_lon_sizes(data_file)
+                # a PET file was not provided and we'll compute PET from temperature
+                self.units_temp = netcdf_utils.variable_units(self.netcdf_temp, self.var_name_temp)
+
+                # use the temperature file as the file that specifies the coordinate specs
+                coordinate_specs_file = self.netcdf_temp
+                
+            else:
+                message = 'A temperature file was not specified, required for PET computation'
+                _logger.error(message)
+                raise ValueError(message)
+            
+        else:
+
+            # all other indices require precipitation
+            if self.netcdf_precip != None:
+
+                self.units_precip = netcdf_utils.variable_units(self.netcdf_precip, self.var_name_precip)
+            
+            else:
+                message = 'A precipitation file was not specified, required for all indices except PET'
+                _logger.error(message)
+                raise ValueError(message)
+
+            # use the precipitation file as the file that specifies the coordinate specs
+            coordinate_specs_file = self.netcdf_precip
+
+            # SPI and PNP only require precipitation
+            if self.index not in ['spi', 'pnp']:
+                
+                # PET needs to be either provided or computed from temperature
+                if self.netcdf_pet != None:
+                    # a PET file was provided
+                    self.units_pet = netcdf_utils.variable_units(self.netcdf_pet, self.var_name_pet)
+                elif self.netcdf_temp != None:
+                    # a PET file was not provided and we'll compute PET from temperature
+                    self.units_temp = netcdf_utils.variable_units(self.netcdf_temp, self.var_name_temp)
+                else:
+                    message = 'Neither a PET nor a temperature file was specified, required for all indices except SPI and PNP'
+                    _logger.error(message)
+                    raise ValueError(message)
+                    
+                # AWC is only required for Palmers
+                if self.index == 'palmers':
+                    
+                    if self.netcdf_awc != None:
+                        self.units_awc = netcdf_utils.variable_units(self.netcdf_awc, self.var_name_awc)
+                        self.fill_value_awc = netcdf_utils.variable_fillvalue(self.netcdf_awc, self.var_name_awc)
+                    else:
+                        message = 'No AWC file was specified, required for Palmers indices'
+                        _logger.error(message)
+                        raise ValueError(message)
+                        
+        # get the coordinate related specs (time range, lat and lon sizes)
+        self.data_start_year, self.data_end_year = netcdf_utils.initial_and_final_years(coordinate_specs_file)
+        self.lat_size, self.lon_size = netcdf_utils.lat_and_lon_sizes(coordinate_specs_file)
         
         # initialize the NetCDF files used for Palmers output, scaled indices will have corresponding files initialized at each scale run
         if self.index == 'palmers':
