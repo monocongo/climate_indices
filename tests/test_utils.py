@@ -80,21 +80,6 @@ class UtilsTestCase(unittest.TestCase):
         np.testing.assert_raises(TypeError, utils.count_zeros_and_non_missings, values)
 
     #----------------------------------------------------------------------------------------
-    def test_f2c(self):
-        """
-        Test for the utils.f2c() function
-        """
-                
-        # verify that the function performs as expected
-        fahrenheit_array = np.array([np.NaN, 32, 212, 100, 72, 98.6, 150, -15])
-        celsius_array = np.array([np.NaN, 0, 100, 37.78, 22.22, 37, 65.56, -26.11])
-        np.testing.assert_allclose(celsius_array, 
-                                   utils.f2c(fahrenheit_array), 
-                                   atol=0.01, 
-                                   equal_nan=True,
-                                   err_msg='Incorrect Fahrenheit to Celsius conversion')
-        
-    #----------------------------------------------------------------------------------------
     def test_is_data_valid(self):
         """
         Test for the utils.is_data_valid() function
@@ -252,15 +237,84 @@ class UtilsTestCase(unittest.TestCase):
         '''
         Test for the utils.transform_to_gregorian() function
         '''
-        #TODO
+        
+        # an array of 366 values, representing a year with 366 days, such as a leap year
+        values_366 = np.array(range(366))
+        
+        # an array of 365 values, representing a year with 365 days, with the value for all days after Feb 28th matching to those in the 366 day array 
+        values_365 = np.array(range(365))
+        values_365[59:] = [x + 1 for x in values_365[59:]]
+        
+        # exercise the function with the 366 day year array, using a non-leap year argument (1971) 
+        values_365_computed = utils.transform_to_gregorian(values_366, 1971)
+        
+        np.testing.assert_equal(values_365_computed, 
+                                values_365, 
+                                'Not transforming the 1-D array of 366 days into a corresponding 365 day array as expected')
+        
+        # exercise the function with the 366 day year array, using a leap year argument (1972)
+        values_366_computed = utils.transform_to_gregorian(values_366, 1972)
+        
+        np.testing.assert_equal(values_366_computed, 
+                                values_366, 
+                                'Not transforming the 1-D array of 366 days into a corresponding 366 day array as expected')
+        
+        # make sure that the function croaks with a ValueError whenever it gets invalid array arguments
+        np.testing.assert_raises(ValueError, utils.transform_to_gregorian, values_365, 1972)
+        np.testing.assert_raises(ValueError, utils.transform_to_gregorian, np.ones((2, 10)), 1972)
+
+        # make sure that the function croaks with a ValueError whenever it gets invalid year arguments
+        np.testing.assert_raises(ValueError, utils.transform_to_gregorian, values_366, -1972)
+        np.testing.assert_raises(TypeError, utils.transform_to_gregorian, values_366, 45.7)
+        np.testing.assert_raises(TypeError, utils.transform_to_gregorian, values_366, "obviously wrong")
         
     #----------------------------------------------------------------------------------------
     def test_transform_to_366day(self):
         '''
         Test for the utils.transform_to_366day() function
         '''
-        #TODO
         
+        # an array of 366 values, representing a year with 366 days, such as a leap year
+        values_366 = np.array(range(366))
+        
+        # an array of 366 values, representing a year with 366 days, as a non-leap year 
+        # with the Feb 29th value an average of the Feb. 28th and Mar. 1st values
+        values_366_faux_feb29 = np.array(range(366), dtype=np.float)
+        values_366_faux_feb29[59] = 58.5
+        values_366_faux_feb29[60:] = [x - 1 for x in values_366_faux_feb29[60:]]
+        
+        # an array of 365 values, representing a year with 365 days
+        values_365 = np.array(range(365))
+        
+        # exercise the function with the 366 day year array, using a non-leap year argument (1971) 
+        values_366_computed = utils.transform_to_366day(values_365, 1971, 1)
+        
+        np.testing.assert_equal(values_366_computed, 
+                                values_366_faux_feb29, 
+                                'Not transforming the 1-D array of 365 days into a corresponding ' + 
+                                '366 day array as expected')
+        
+        # exercise the function with the 366 day year array, using a leap year argument (1972)
+        values_366_computed = utils.transform_to_366day(values_366, 1972, 1)
+        
+        np.testing.assert_equal(values_366_computed, 
+                                values_366, 
+                                'Not transforming the 1-D array of 366 days into a corresponding 366 day array as expected')
+        
+        # make sure that the function croaks with a ValueError whenever it gets invalid array arguments
+        np.testing.assert_raises(ValueError, utils.transform_to_366day, values_365[:50], 1972, 1)
+        np.testing.assert_raises(ValueError, utils.transform_to_366day, np.ones((2, 10)), 1972, 1)
+
+        # make sure that the function croaks with a ValueError whenever it gets invalid year arguments
+        np.testing.assert_raises(ValueError, utils.transform_to_366day, values_365, -1972, 1)
+        np.testing.assert_raises(TypeError, utils.transform_to_366day, values_365, 45.7, 1)
+        np.testing.assert_raises(TypeError, utils.transform_to_366day, values_365, "obviously wrong", 1)
+
+        # make sure that the function croaks with a ValueError whenever it gets invalid total years arguments
+        np.testing.assert_raises(ValueError, utils.transform_to_366day, values_365, 1972, -5)
+        np.testing.assert_raises(TypeError, utils.transform_to_366day, values_365, 1972, 4.9)
+        np.testing.assert_raises(ValueError, utils.transform_to_366day, values_365, 1972, 24)
+    
 #--------------------------------------------------------------------------------------------
 if __name__ == '__main__':
     unittest.main()

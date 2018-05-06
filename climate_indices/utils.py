@@ -75,19 +75,6 @@ def rmse(predictions, targets):
     return np.sqrt(((predictions - targets) ** 2).mean())
 
 #-----------------------------------------------------------------------------------------------------------------------
-@numba.vectorize([numba.float64(numba.float64),
-                  numba.float32(numba.float32)])
-def f2c(t):
-    '''
-    Converts a temperature value from Fahrenheit to Celsius
-    
-    :param t: temperature value, assumed to be in Fahrenheit
-    :return: the Fahrenheit equivalent of the input Celsius value
-    :rtype: scalar float (when used as a ufunc an array of floats is returned as a result of the call)
-    '''
-    return (t-32)*5.0/9
-
-#-----------------------------------------------------------------------------------------------------------------------
 def compute_days(initial_year,
                  total_months,
                  initial_month=1,
@@ -128,7 +115,7 @@ def compute_days(initial_year,
     return days
 
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit
+@numba.jit
 def reshape_to_years_months(monthly_values):
     '''
     :param monthly_values: an 1-D numpy.ndarray of monthly values, assumed to start at January
@@ -167,7 +154,7 @@ def reshape_to_years_months(monthly_values):
     return np.reshape(monthly_values, (total_years, 12))
             
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit
+@numba.jit
 def reshape_to_divs_years_months(monthly_values):
     '''
     :param monthly_values: an 2-D numpy.ndarray of monthly values, assumed to start at January of 
@@ -200,11 +187,19 @@ def reshape_to_divs_years_months(monthly_values):
         _logger.error(message)
         raise ValueError(message)
 
-    # pad the final months of the final year, if necessary
-    final_year_months = shape[1] % 12
-    if final_year_months > 0:
-        pad_months = 12 - final_year_months
-        monthly_values = np.pad(monthly_values, [(0, 0), (0, pad_months)], mode='constant', constant_values=np.NaN)
+#NOTE the below end of final year padding isn't possible since the above enforces a final 
+#     dimension size of 12 to model calendar months of the year
+#TODO refactor this function so it can accommodate the below padding, in case there are times 
+#     when an array of values is passed in where there's a need for padding such as when passed
+#     a 1-D array of monthly values for single division, or a 2-D array representing either 
+#     (divisions, months) or (divisions, days)
+#.........................
+#     # pad the final months of the final year, if necessary
+#     final_year_months = shape[1] % 12
+#     if final_year_months > 0:
+#         pad_months = 12 - final_year_months
+#         monthly_values = np.pad(monthly_values, [(0, 0), (0, pad_months)], mode='constant', constant_values=np.NaN)
+#.........................
         
     # we should have an ordinal number of years now (ordinally divisible by 12)
     total_years = int(monthly_values.shape[1] / 12)
@@ -218,10 +213,31 @@ def transform_to_366day(original,
                         year_start,
                         total_years):
     '''
-    TODO fully document this function
+    Takes an array of daily values with only actual leap years represented as 366 day years and converts it to
+    an array of daily values represented as containing full 366 day years as if each year is a leap year with 
+    fill/faux values for the Feb. 29th of each non-leap year.
+    
+    For example if provided an input array representing two years, we expect/assume that it will contain 
+    730 elements if neither of the years represented are leap years (as indicated by the year start argument), 
+    or 731 elements if either of the two years is a leap year (i.e. a year with 366 days). The resulting/transformed
+    array will contain 732 elements -- 366 for the leap year plus 366 for the non-leap year, with the element
+    that corresponds to Feb. 29th in the non-leap year having a value that's an average of the Feb 28th 
+    and Mar. 1st values.  
+    
+    :param original: 1-D array of daily values
+    :param year_start: the year corresponding to the initial year of the input array, used to determine
+                       whether or not each increment of daily values represents an actual leap year
+    :param total_years: the total number of years represented by the input array
+    :return: 1-D array of values with size (total_years * 366) 
     '''
     # original time series is assumed to be a one-dimensional array of floats corresponding to a number of full years
     
+    # validate the arguments
+    if len(original.shape) > 1:
+        message = 'Invalid input array: only 1-D arrays are supported'
+        _logger.error(message)
+        raise ValueError(message)
+
     # allocate the new array for 366 daily values per year, including a faux Feb 29 for non-leap years
     all_leap = np.full((total_years * 366,), np.NaN)
     
@@ -261,15 +277,43 @@ def transform_to_366day(original,
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def transform_to_gregorian(original,
-                           year_start,
-                           total_years):
+                           year_start):
     '''
-    TODO fully document this function
+    Takes an array of daily values represented as full 366 day years (as if each year is a leap year with 
+    fill/faux values for the Feb. 29th of each non-leap year) and converts it to an array of daily values 
+    with only actual leap years represented as 366 day years.
+    
+    For example if provided an input array representing two years, we expect/assume that it will contain 
+    732 elements corresponding to two years with 366 days. Two possible transformation results are possible:
+    
+    1) If the start year or the following year is a leap year then the resulting/transformed array
+    will contain 731 elements (366 for the leap year plus 365 for the non-leap year), with the element
+    that corresponded to Feb. 29th in the non-leap year removed.  
+    
+    2) If both years represented are non-leap years, as determined by the starting year argument, then the
+    resulting/transformed array will contain 730 elements (365 days for both non-leap years), with the 
+    elements that corresponded to Feb. 29th removed.
+    
+    :param original: 1-D array of daily values, total size should be a multiple of 366
+    :param year_start: the year corresponding to the initial year (first 366 values) of the input array, 
+                       used to determine whether or not each 366 increment of daily values represents 
+                       an actual leap year
     '''
     # original time series is assumed to be a one-dimensional array of floats corresponding to a number of full years,
     # with each year containing 366 days, as if each year is a leap year
     
+    # validate the arguments
+    if len(original.shape) > 1:
+        message = 'Invalid input array: only 1-D arrays are supported'
+        _logger.error(message)
+        raise ValueError(message)
+    if original.size % 366 != 0:
+        message = 'Invalid input array: only 1-D arrays containing multiples of 366 days are supported'
+        _logger.error(message)
+        raise ValueError(message)
+            
     # find the total number of actual days between the start and end year
+    total_years = int(original.size / 366)
     year_end = year_start + total_years - 1
     days_actual = (datetime(year_end, 12, 31) - datetime(year_start, 1, 1)).days + 1
     
