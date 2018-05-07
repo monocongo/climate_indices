@@ -515,11 +515,13 @@ class GridProcessor(object):             # pragma: no cover
 
                     # compute SPEI/Gamma
                     spei_gamma_lat_slice[lon_index, :] = indices.spei_gamma(self.timestep_scale,
+                                                                            self.time_series_type,
                                                                             precip_time_series,
                                                                             pet_mm=pet_time_series)
                
                     # compute SPEI/Pearson
                     spei_pearson_lat_slice[lon_index, :] = indices.spei_pearson(self.timestep_scale,
+                                                                                self.time_series_type,
                                                                                 self.data_start_year,
                                                                                 self.calibration_start_year,
                                                                                 self.calibration_end_year,
