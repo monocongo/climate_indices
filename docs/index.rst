@@ -58,10 +58,10 @@ with the following goals in mind:
    climate indices commonly used for climate monitoring, with well
    documented code that is faithful to the relevant literature and
    which produces scientifically verifiable results
--  to provide the climate monitoring and research community a central, open 
-   location for participation and collaboration 
+-  to provide a central, open location for participation and collaboration 
+   among researchers, developers, and users of climate indices
 -  to facilitate standardization and consensus on best-of-breed
-   climate index algorithms and compliant implementations
+   climate index algorithms and corresponding compliant implementations in Python
 -  to provide transparency into the operational code used for climate
    monitoring activities at NCEI/NOAA, and consequent reproducibility 
    of published datasets computed from this package

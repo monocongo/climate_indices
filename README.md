@@ -2,11 +2,7 @@
 [![Coverage Status](https://coveralls.io/repos/github/monocongo/climate_indices/badge.svg?branch=master)](https://coveralls.io/github/monocongo/climate_indices?branch=master)
 [![CodeFactor](https://www.codefactor.io/repository/github/monocongo/climate_indices/badge/master)](https://www.codefactor.io/repository/github/monocongo/climate_indices/overview/master)
 [![License](https://img.shields.io/badge/License-BSD%203--Clause-green.svg)](https://opensource.org/licenses/BSD-3-Clause)
-<!--
-[![Dependency Status](https://gemnasium.com/badges/github.com/monocongo/climate_indices.svg)](https://gemnasium.com/github.com/monocongo/climate_indices)
-[![Codeship Status for monocongo/climate_indices](https://app.codeship.com/projects/0d711e30-ca42-0135-871a-72c36ec6d502/status?branch=master)](https://app.codeship.com/projects/261762)
-[![Documentation](https://readthedocs.org/projects/indices-python/badge/?version=latest)](http://indices-python.readthedocs.io/en/latest/?badge=latest)
--->
+
 # Climate Indices in Python
 
 This project contains Python implementations of various climate index algorithms which provide 
@@ -42,10 +38,10 @@ with the following goals in mind:
    climate indices commonly used for climate monitoring, with well
    documented code that is faithful to the relevant literature and
    which produces scientifically verifiable results
--  to provide the climate monitoring and research community a central, open 
-   location for participation and collaboration
+-  to provide a central, open location for participation and collaboration 
+   among researchers, developers, and users of climate indices
 -  to facilitate standardization and consensus on best-of-breed
-   climate index algorithms and compliant implementations
+   climate index algorithms and corresponding compliant implementations in Python
 -  to provide transparency into the operational code used for climate
    monitoring activities at NCEI/NOAA, and consequent reproducibility 
    of published datasets computed from this package
@@ -57,6 +53,6 @@ This is a developmental/forked version of code that is originally developed and
 maintained by NIDIS/NCEI/NOAA. The official release version is available at 
 [drought.gov](drought.gov).
 
-* [__Documentation__](https://indices-python.readthedocs.io/en/latest/)
+* [__Documentation__](https://climate-indices.readthedocs.io/en/latest/)
 * [__License__](LICENSE)
 * [__Disclaimer__](DISCLAIMER)
