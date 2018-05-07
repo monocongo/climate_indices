@@ -21,7 +21,7 @@ class IndicesTestCase(fixtures.FixturesTestCase):
         # compute PET from the monthly temperatures, latitude, and initial years above
         computed_pet = indices.pet(self.fixture_temps_celsius,
                                    self.fixture_latitude_degrees, 
-                                   self.fixture_initial_data_year)
+                                   self.fixture_data_start_year)
                                          
         # make sure PET is being computed as expected
         np.testing.assert_allclose(computed_pet, 
@@ -34,7 +34,12 @@ class IndicesTestCase(fixtures.FixturesTestCase):
         
         # compute SPI/gamma at 1-month scale
         month_scale = 1
-        computed_spi = indices.spi_gamma(self.fixture_precips_mm, month_scale, 'monthly')
+        computed_spi = indices.spi_gamma(self.fixture_precips_mm, 
+                                         month_scale,
+                                         self.fixture_data_start_year, 
+                                         self.fixture_data_start_year, 
+                                         self.fixture_data_end_year, 
+                                         'monthly')
                                          
         # make sure SPI/gamma is being computed as expected
         np.testing.assert_allclose(computed_spi, 
@@ -47,7 +52,12 @@ class IndicesTestCase(fixtures.FixturesTestCase):
         
         # compute SPI/gamma at 6-month scale
         month_scale = 6
-        computed_spi = indices.spi_gamma(self.fixture_precips_mm.flatten(), month_scale, 'monthly')
+        computed_spi = indices.spi_gamma(self.fixture_precips_mm.flatten(), 
+                                         month_scale,
+                                         self.fixture_data_start_year, 
+                                         self.fixture_data_start_year, 
+                                         self.fixture_data_end_year, 
+                                         'monthly')
                                          
         # make sure SPI/gamma is being computed as expected
         np.testing.assert_allclose(computed_spi, 
@@ -100,10 +110,12 @@ class IndicesTestCase(fixtures.FixturesTestCase):
         months_scale = 6
         computed_spei = indices.spei_gamma(months_scale,
                                            'monthly', 
+                                           data_start_year=self.fixture_data_start_year,
+                                           calibration_year_initial=self.fixture_data_start_year,
+                                           calibration_year_final=self.fixture_data_end_year,
                                            precips_mm=self.fixture_precips_mm, 
                                            pet_mm=None, 
                                            temps_celsius=self.fixture_temps_celsius, 
-                                           data_start_year=self.fixture_initial_data_year, 
                                            latitude_degrees=self.fixture_latitude_degrees)
 
         # make sure SPEI/gamma is being computed as expected
