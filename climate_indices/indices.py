@@ -205,8 +205,8 @@ def spei_gamma(scale,
 
         elif time_series_type != 'monthly':
             # our PET currently uses a monthly version of Thornthwaite's equation and therefore's only valid for monthly 
-            message = 'Unsupported time series type: \'{0}\' -- only monthly time series is supported when ' + \
-                      'providing temperature and latitude inputs'.format(time_series_type) 
+            message = 'Unsupported time series type: \'{0}\' '.format(time_series_type) + \
+                      '-- only monthly time series is supported when providing temperature and latitude inputs' 
             _logger.error(message)
             raise ValueError(message)
 
@@ -328,8 +328,8 @@ def spei_pearson(scale,
 
         elif time_series_type != 'monthly':
             # our PET currently uses a monthly version of Thornthwaite's equation and therefore's only valid for monthly 
-            message = 'Unsupported time series type: \'{0}\' -- only monthly time series is supported when ' + \
-                      'providing temperature and latitude inputs'.format(time_series_type) 
+            message = 'Unsupported time series type: \'{0}\' -- '.format(time_series_type) + \
+                      'only monthly time series is supported when providing temperature and latitude inputs'
             _logger.error(message)
             raise ValueError(message)
 
