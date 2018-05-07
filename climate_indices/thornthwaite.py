@@ -205,7 +205,7 @@ def potential_evapotranspiration(monthly_temps_celsius,
     original_length = monthly_temps_celsius.size
 
     # validate the input data array
-    monthly_temps_celsius = utils.reshape_to_years_months(monthly_temps_celsius)
+    monthly_temps_celsius = utils.reshape_to_2d(monthly_temps_celsius, 12)
 
     # at this point we assume that our dataset array has shape (years, 12) where 
     # each row is a year with 12 columns of monthly values (Jan, Feb, ..., Dec)
