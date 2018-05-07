@@ -185,10 +185,10 @@ def _estimate_lmoments(values):
     
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def _pearson3_fitting_values(values, 
-                             data_start_year, 
-                             calibration_start_year,
-                             calibration_end_year):
+def _pearson3_fitting_values(values):#, 
+#                              data_start_year, 
+#                              calibration_start_year,
+#                              calibration_end_year):
     '''
     This function computes the probability of zero and Pearson Type III distribution parameters 
     corresponding to an array of values.
@@ -222,42 +222,49 @@ def _pearson3_fitting_values(values,
             _logger.error(message)
             raise ValueError()
 
-    # determine the end year of the values array
-    data_end_year = data_start_year + values.shape[0]
+#     # determine the end year of the values array
+#     data_end_year = data_start_year + values.shape[0]
+#     
+#     # make sure that we have data within the full calibration period, otherwise use the full period of record
+#     if (calibration_start_year < data_start_year) or (calibration_end_year > data_end_year):
+#         _logger.info('Insufficient data for the specified calibration period ({0}-{1}), instead using the full period '.format(calibration_start_year, 
+#                                                                                                                               calibration_end_year) + 
+#                     'of record ({0}-{1})'.format(data_start_year, 
+#                                                  data_end_year))
+#         calibration_start_year = data_start_year
+#         calibration_end_year = data_end_year
+# 
+#     # get the year axis indices corresponding to the calibration start and end years
+#     calibration_begin_index = (calibration_start_year - data_start_year)
+#     calibration_end_index = (calibration_end_year - data_start_year) + 1
     
-    # make sure that we have data within the full calibration period, otherwise use the full period of record
-    if (calibration_start_year < data_start_year) or (calibration_end_year > data_end_year):
-        _logger.info('Insufficient data for the specified calibration period ({0}-{1}), instead using the full period '.format(calibration_start_year, 
-                                                                                                                              calibration_end_year) + 
-                    'of record ({0}-{1})'.format(data_start_year, 
-                                                 data_end_year))
-        calibration_start_year = data_start_year
-        calibration_end_year = data_end_year
-
-    # get the year axis indices corresponding to the calibration start and end years
-    calibration_begin_index = (calibration_start_year - data_start_year)
-    calibration_end_index = (calibration_end_year - data_start_year) + 1
-    
-    # now we'll use these sums to compute the probability of zero and Pearson parameters for each calendar time step
+    # the values we'll compute and return
     fitting_values = np.zeros((4, time_steps_per_year))
-    #TODO vectorize the below loop?
+
+    # compute the probability of zero and Pearson parameters for each calendar time step
+    #TODO vectorize the below loop? create a @numba.vectorize() ufunc for application over the second axis of the values
     for time_step_index in range(time_steps_per_year):
     
-        # get the values for the current calendar time step that fall within the calibration years period
-        calibration_values = values[calibration_begin_index:calibration_end_index, time_step_index]
+#         # get the values for the current calendar time step that fall within the calibration years period
+#         calibration_values = values[calibration_begin_index:calibration_end_index, time_step_index]
+        time_step_values = values[:, time_step_index]
 
         # count the number of zeros and valid (non-missing/non-NaN) values
-        number_of_zeros, number_of_non_missing = utils.count_zeros_and_non_missings(calibration_values)
+#         number_of_zeros, number_of_non_missing = utils.count_zeros_and_non_missings(calibration_values)
+        number_of_zeros, number_of_non_missing = utils.count_zeros_and_non_missings(time_step_values)
 
         # make sure we have at least four values that are both non-missing (i.e. non-NaN)
         # and non-zero, otherwise use the entire period of record
         if (number_of_non_missing - number_of_zeros) < 4:
-            
-            # update the array of calibration values for the calendar time step to include the full period of record
-            calibration_values = values[:, time_step_index]
-            
-            # get new counts of the zeros and non-missing values
-            number_of_zeros, number_of_non_missing = utils.count_zeros_and_non_missings(calibration_values)
+             
+            # we can't proceed, bail out using zeros
+            return fitting_values
+         
+#             # update the array of calibration values for the calendar time step to include the full period of record
+#             calibration_values = values[:, time_step_index]
+#             
+#             # get new counts of the zeros and non-missing values
+#             number_of_zeros, number_of_non_missing = utils.count_zeros_and_non_missings(calibration_values)
             
         # calculate the probability of zero for the calendar time step
         probability_of_zero = 0.0
@@ -269,7 +276,8 @@ def _pearson3_fitting_values(values,
         if (number_of_non_missing - number_of_zeros) > 3:
 
             # estimate the L-moments of the calibration values
-            lmoments = _estimate_lmoments(calibration_values)
+#             lmoments = _estimate_lmoments(calibration_values)
+            lmoments = _estimate_lmoments(time_step_values)
 
             # if we have valid L-moments then we can proceed, otherwise 
             # the fitting values for the time step will be all zeros
@@ -511,11 +519,30 @@ def transform_fitted_pearson(values,
         _logger.error(message)   
         raise ValueError(message)
     
+    # determine the end year of the values array
+    data_end_year = data_start_year + values.shape[0]
+    
+    # make sure that we have data within the full calibration period, otherwise use the full period of record
+    if (calibration_start_year < data_start_year) or (calibration_end_year > data_end_year):
+        _logger.info('Insufficient data for the specified calibration period ({0}-{1}), instead using the full period '.format(calibration_start_year, 
+                                                                                                                              calibration_end_year) + 
+                    'of record ({0}-{1})'.format(data_start_year, 
+                                                 data_end_year))
+        calibration_start_year = data_start_year
+        calibration_end_year = data_end_year
+
+    # get the year axis indices corresponding to the calibration start and end years
+    calibration_begin_index = (calibration_start_year - data_start_year)
+    calibration_end_index = (calibration_end_year - data_start_year) + 1
+    
+    # get the values for the current calendar time step that fall within the calibration years period
+    calibration_values = values[calibration_begin_index:calibration_end_index, :]
+
     # compute the values we'll use to fit to the Pearson Type III distribution
-    pearson_values = _pearson3_fitting_values(values, 
-                                              data_start_year,
-                                              calibration_start_year,
-                                              calibration_end_year)
+    pearson_values = _pearson3_fitting_values(calibration_values)#, 
+#                                               data_start_year,
+#                                               calibration_start_year,
+#                                               calibration_end_year)
     
     pearson_param_1 = pearson_values[1]   # first Pearson Type III parameter
     pearson_param_2 = pearson_values[2]   # second Pearson Type III parameter
@@ -530,6 +557,9 @@ def transform_fitted_pearson(values,
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def transform_fitted_gamma(values,
+                           data_start_year,
+                           calibration_start_year,
+                           calibration_end_year,
                            time_series_type):
     '''
     Fit values to a gamma distribution and transform the values to corresponding normalized sigmas. 
@@ -537,6 +567,9 @@ def transform_fitted_gamma(values,
     :param values: 2-D array of values, with each row typically representing a year containing
                    twelve columns representing the respective calendar months, or 366 days per column
                    as if all years were leap years
+    :param data_start_year: the initial year of the input values array
+    :param calibration_start_year: the initial year to use for the calibration period 
+    :param calibration_end_year: the final year to use for the calibration period 
     :param time_series_type: the type of time series represented by the input data, valid values are 'monthly' or 'daily'
                              'monthly': array of monthly values, assumed to span full years, i.e. the first value 
                              corresponds to January of the initial year and any missing final months of the final 
@@ -580,9 +613,28 @@ def transform_fitted_gamma(values,
     # replace zeros with NaNs
     values[values == 0] = np.NaN
     
+    # determine the end year of the values array
+    data_end_year = data_start_year + values.shape[0]
+    
+    # make sure that we have data within the full calibration period, otherwise use the full period of record
+    if (calibration_start_year < data_start_year) or (calibration_end_year > data_end_year):
+        _logger.info('Insufficient data for the specified calibration period ({0}-{1}), instead using the full period '.format(calibration_start_year, 
+                                                                                                                              calibration_end_year) + 
+                    'of record ({0}-{1})'.format(data_start_year, 
+                                                 data_end_year))
+        calibration_start_year = data_start_year
+        calibration_end_year = data_end_year
+
+    # get the year axis indices corresponding to the calibration start and end years
+    calibration_begin_index = (calibration_start_year - data_start_year)
+    calibration_end_index = (calibration_end_year - data_start_year) + 1
+    
+    # get the values for the current calendar time step that fall within the calibration years period
+    calibration_values = values[calibration_begin_index:calibration_end_index, :]
+
     # compute the gamma distribution's shape and scale parameters, alpha and beta
     #TODO explain this better
-    means = np.nanmean(values, axis=0)
+    means = np.nanmean(calibration_values, axis=0)
     log_means = np.log(means)
     logs = np.log(values)
     mean_logs = np.nanmean(logs, axis=0)
