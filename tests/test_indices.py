@@ -34,7 +34,7 @@ class IndicesTestCase(fixtures.FixturesTestCase):
         
         # compute SPI/gamma at 1-month scale
         month_scale = 1
-        computed_spi = indices.spi_gamma(self.fixture_precips_mm, month_scale)
+        computed_spi = indices.spi_gamma(self.fixture_precips_mm, month_scale, 'monthly')
                                          
         # make sure SPI/gamma is being computed as expected
         np.testing.assert_allclose(computed_spi, 
@@ -47,7 +47,7 @@ class IndicesTestCase(fixtures.FixturesTestCase):
         
         # compute SPI/gamma at 6-month scale
         month_scale = 6
-        computed_spi = indices.spi_gamma(self.fixture_precips_mm, month_scale)
+        computed_spi = indices.spi_gamma(self.fixture_precips_mm.flatten(), month_scale, 'monthly')
                                          
         # make sure SPI/gamma is being computed as expected
         np.testing.assert_allclose(computed_spi, 
@@ -60,7 +60,12 @@ class IndicesTestCase(fixtures.FixturesTestCase):
         
         # compute SPI/Pearson at 6-month scale
         month_scale = 6
-        computed_spi = indices.spi_pearson(self.fixture_precips_mm, month_scale, 1895, 1981, 2010)
+        computed_spi = indices.spi_pearson(self.fixture_precips_mm.flatten(), 
+                                           month_scale, 
+                                           1895, 
+                                           1981, 
+                                           2010,
+                                           'monthly')
                                          
         # make sure SPI/Pearson is being computed as expected
         np.testing.assert_allclose(computed_spi, 

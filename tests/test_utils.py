@@ -118,40 +118,98 @@ class UtilsTestCase(unittest.TestCase):
                                  np.array([1., 2., 3.]), 
                                  np.array([[1., 2.], [3., 4.]]))
         
+#     #----------------------------------------------------------------------------------------
+#     def test_reshape_to_years_months(self):
+#         '''
+#         Test for the utils.reshape_to_years_months() function
+#         '''
+#         
+#         # an array of monthly values
+#         values_1d = np.array([3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2, 1, 3, 5, 8, 5, 6])
+#         
+#         # the expected rearrangement of the above values from 1-D to 2-D
+#         values_2d_expected = np.array([[3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4], 
+#                                        [6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2], 
+#                                        [1, 3, 5, 8, 5, 6, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN]])
+#         
+#         # exercise the function
+#         values_2d_reshaped = utils.reshape_to_years_months(values_1d)
+#         
+#         # verify that the function performed as expected
+#         np.testing.assert_equal(values_2d_expected, 
+#                                 values_2d_reshaped, 
+#                                 'Not rearranging the 1-D array months into 2-D year increments as expected')
+#         
+#         # a 3-D array that should be returned as-is
+#         values_3d = np.array([[3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4], 
+#                               [6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2], 
+#                               [1, 3, 5, 8, 5, 6, 3, 5, 1, 2, 8, 4]])
+#         
+#         # exercise the function
+#         values_3d_reshaped = utils.reshape_to_years_months(values_3d)
+#         
+#         # verify that the function performed as expected
+#         np.testing.assert_equal(values_3d, 
+#                                 values_3d_reshaped, 
+#                                 'Not returning a valid 2-D array as expected')
+#         
+#         # a 2-D array that's in an invalid shape for the function
+#         values_2d = np.array([[3, 4, 6, 2, 1, 3, 5, 3, 4], 
+#                               [6, 2, 1, 3, 5, 8, 5, 6, 2], 
+#                               [1, 3, 5, 8, 5, 6, 3, 8, 4]])
+#         
+#         # make sure that the function croaks with a ValueError when expected
+#         np.testing.assert_raises(ValueError, utils.reshape_to_years_months, values_2d)
+#         np.testing.assert_raises(ValueError, utils.reshape_to_years_months, np.reshape(values_2d, (3, 3, 3)))
+#         
     #----------------------------------------------------------------------------------------
-    def test_reshape_to_years_months(self):
+    def test_reshape_to_2d(self):
         '''
-        Test for the utils.reshape_to_years_months() function
+        Test for the utils.reshape_to_2d() function
         '''
         
         # an array of monthly values
         values_1d = np.array([3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2, 1, 3, 5, 8, 5, 6])
         
-        # the expected rearrangement of the above values from 1-D to 2-D
-        values_2d_expected = np.array([[3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4], 
-                                       [6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2], 
-                                       [1, 3, 5, 8, 5, 6, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN]])
+        # the expected rearrangement of the above values from 1-D to 2-D if using 12 as the second axis size
+        values_2d_by_12_expected = np.array([[3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4], 
+                                             [6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2], 
+                                             [1, 3, 5, 8, 5, 6, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN]])
         
         # exercise the function
-        values_2d_reshaped = utils.reshape_to_years_months(values_1d)
+        values_2d_reshaped = utils.reshape_to_2d(values_1d, 12)
         
         # verify that the function performed as expected
-        np.testing.assert_equal(values_2d_expected, 
+        np.testing.assert_equal(values_2d_by_12_expected, 
                                 values_2d_reshaped, 
-                                'Not rearranging the 1-D array months into 2-D year increments as expected')
+                                'Not rearranging the 1-D array into 2-D year increments of 12 as expected')
         
-        # a 3-D array that should be returned as-is
-        values_3d = np.array([[3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4], 
+        # the expected rearrangement of the above values from 1-D to 2-D if using 8 as the second axis size
+        values_2d_by_8_expected = np.array([[3, 4, 6, 2, 1, 3, 5, 8], 
+                                            [5, 6, 3, 4, 6, 2, 1, 3], 
+                                            [5, 8, 5, 6, 3, 4, 6, 2], 
+                                            [1, 3, 5, 8, 5, 6, np.NaN, np.NaN]])
+
+        # exercise the function
+        values_2d_reshaped = utils.reshape_to_2d(values_1d, 8)
+        
+        # verify that the function performed as expected
+        np.testing.assert_equal(values_2d_by_8_expected, 
+                                values_2d_reshaped, 
+                                'Not rearranging the 1-D array into 2-D increments of 8 as expected')
+        
+        # a 3-D array that should be returned as-is if using 12 as the second axis size
+        values_2d = np.array([[3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4], 
                               [6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2], 
                               [1, 3, 5, 8, 5, 6, 3, 5, 1, 2, 8, 4]])
         
         # exercise the function
-        values_3d_reshaped = utils.reshape_to_years_months(values_3d)
+        values_2d_reshaped = utils.reshape_to_2d(values_2d, 12)
         
         # verify that the function performed as expected
-        np.testing.assert_equal(values_3d, 
-                                values_3d_reshaped, 
-                                'Not returning a valid 2-D array as expected')
+        np.testing.assert_equal(values_2d, 
+                                values_2d_reshaped, 
+                                'Not returning an already valid 2-D array as expected')
         
         # a 2-D array that's in an invalid shape for the function
         values_2d = np.array([[3, 4, 6, 2, 1, 3, 5, 3, 4], 
@@ -159,8 +217,8 @@ class UtilsTestCase(unittest.TestCase):
                               [1, 3, 5, 8, 5, 6, 3, 8, 4]])
         
         # make sure that the function croaks with a ValueError when expected
-        np.testing.assert_raises(ValueError, utils.reshape_to_years_months, values_2d)
-        np.testing.assert_raises(ValueError, utils.reshape_to_years_months, np.reshape(values_2d, (3, 3, 3)))
+        np.testing.assert_raises(ValueError, utils.reshape_to_2d, values_2d, 12)
+        np.testing.assert_raises(ValueError, utils.reshape_to_2d, values_2d.reshape((3, 3, 3)), 6)
         
     #----------------------------------------------------------------------------------------
     def test_reshape_to_divs_years_months(self):

@@ -428,7 +428,8 @@ class GridProcessor(object):             # pragma: no cover
             spi_gamma_lat_slice = np.apply_along_axis(indices.spi_gamma,
                                                       1,
                                                       lat_slice_precip,
-                                                      self.timestep_scale)
+                                                      self.timestep_scale,
+                                                      self.time_series_type)
 
             # compute SPI/Pearson across all longitudes of the latitude slice
             spi_pearson_lat_slice = np.apply_along_axis(indices.spi_pearson,
@@ -437,7 +438,8 @@ class GridProcessor(object):             # pragma: no cover
                                                         self.timestep_scale,
                                                         self.data_start_year,
                                                         self.calibration_start_year,
-                                                        self.calibration_end_year)
+                                                        self.calibration_end_year,
+                                                        self.time_series_type)
 
             if self.time_series_type == 'daily':
 
@@ -515,7 +517,7 @@ class GridProcessor(object):             # pragma: no cover
                     spei_gamma_lat_slice[lon_index, :] = indices.spei_gamma(self.timestep_scale,
                                                                             precip_time_series,
                                                                             pet_mm=pet_time_series)
-
+               
                     # compute SPEI/Pearson
                     spei_pearson_lat_slice[lon_index, :] = indices.spei_pearson(self.timestep_scale,
                                                                                 self.data_start_year,
@@ -523,7 +525,7 @@ class GridProcessor(object):             # pragma: no cover
                                                                                 self.calibration_end_year,
                                                                                 precip_time_series,
                                                                                 pet_mm=pet_time_series)
-
+                 
             # use relevant variable names
             spei_gamma_variable_name = 'spei_gamma_' + str(self.timestep_scale).zfill(2)
             spei_pearson_variable_name = 'spei_pearson_' + str(self.timestep_scale).zfill(2)

@@ -124,7 +124,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
         np.testing.assert_raises(ValueError, compute._pearson3_fitting_values, np.array([np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN]), 1950, 1952, 1970)
         np.testing.assert_raises(TypeError, compute._pearson3_fitting_values, None)
             
-#         reshaped_values = utils.reshape_to_years_months(self.fixture_precips_mm)
+#         reshaped_values = utils.reshape_to_2d(self.fixture_precips_mm, 12)
 #         computed_values = compute._pearson3_fitting_values(reshaped_values, 1950, 1952, 1970)
         computed_values = compute._pearson3_fitting_values(self.fixture_precips_mm, 1950, 1952, 1970)
         expected_values = np.array([[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
@@ -235,7 +235,8 @@ class ComputeTestCase(fixtures.FixturesTestCase):
         computed_values = compute.transform_fitted_pearson(self.fixture_precips_mm, 
                                                            1895,
                                                            1981,
-                                                           2010)
+                                                           2010,
+                                                           'monthly')
                                          
         # make sure the values are being computed as expected
         np.testing.assert_allclose(computed_values, 
