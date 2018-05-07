@@ -429,6 +429,9 @@ class GridProcessor(object):             # pragma: no cover
                                                       1,
                                                       lat_slice_precip,
                                                       self.timestep_scale,
+                                                      self.data_start_year,
+                                                      self.calibration_start_year,
+                                                      self.calibration_end_year,
                                                       self.time_series_type)
 
             # compute SPI/Pearson across all longitudes of the latitude slice
@@ -516,6 +519,9 @@ class GridProcessor(object):             # pragma: no cover
                     # compute SPEI/Gamma
                     spei_gamma_lat_slice[lon_index, :] = indices.spei_gamma(self.timestep_scale,
                                                                             self.time_series_type,
+                                                                            self.data_start_year,
+                                                                            self.calibration_start_year,
+                                                                            self.calibration_end_year,
                                                                             precip_time_series,
                                                                             pet_mm=pet_time_series)
                

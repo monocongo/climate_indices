@@ -8,9 +8,15 @@ logging.disable(logging.CRITICAL)
 #-------------------------------------------------------------------------------------------------------------------------------------------
 class FixturesTestCase(unittest.TestCase):
 
-    # initialize an array of precipitation values
+    # start and end year of the precipitation, temperature, and PET datasets
+    fixture_data_start_year = 1895
+    fixture_data_end_year = 2017
 
-    # initialize an array of monthly precipitation observations (122 years and 2 months, Jan 1895 through Feb 2017)
+    # latitude value used for computing the fixture datasets (PET, Palmers)
+    fixture_latitude_degrees = 25.2292
+        
+
+    # array of monthly precipitation observations (122 years and 2 months, Jan 1895 through Feb 2017)
     fixture_precips_mm = np.array(
         [[ 37.3095703125, 85.7001953125, 28.0400390625, 129.400390625, 189.330078125, 146.099609375, 141.169921875, 170.290039063, 149.459960938, 141.919921875, 91.669921875, 29.66015625], \
          [ 63.259765625, 54.9697265625, 28.58984375, 12.7001953125, 89.240234375, 325.719726563, 137.51953125, 122.889648438, 157.030273438, 85.509765625, 88.169921875, 27.330078125], \
@@ -136,7 +142,7 @@ class FixturesTestCase(unittest.TestCase):
          [ 142.169921875, 55.7197265625, 45.1103515625, 33.8095703125, 99.6796875, 164.169921875, 96.6796875, 194.830078125, 141.259765625, 121.040039063, 11.3203125, 32.41015625], \
          [ 34.8896484375, 29.4599609375, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ]])
 
-    # initialize an array of expected SPI/gamma values (at 1-month scale) corresponding to the input array of precipitation values
+    # array of expected SPI/gamma values (at 1-month scale) corresponding to the input array of precipitation values (full period of record as calibration period)
     fixture_transformed_gamma = np.array(
         [ [0.0269261753998, 1.05366328957, -0.386771122501, 1.15292908542, 0.948669169315, -0.261359890123, -0.163136989545, 0.12004322861, -0.558579836534, 0.0249385877191, 0.882960392341, -0.0726065029934], \
           [0.6866894432, 0.471519124486, -0.365621048157, -1.31792288211, -0.276262375404, 1.32216128873, -0.23876434331, -0.738692736854, -0.439063535109, -0.757026195636, 0.825134507555, -0.165031994217], \
@@ -262,7 +268,7 @@ class FixturesTestCase(unittest.TestCase):
           [1.97331069847, 0.487980941052, 0.16944326923, -0.479183080698, -0.114636500518, -0.0567198985763, -1.19660668395, 0.502240385404, -0.692798415444, -0.234219604707, -1.39958407667, 0.0302826250921], \
           [-0.0489758279722, -0.212121189472, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN] ])
         
-    # initialize an array of expected SPI/Pearson3 values at 6-month scale corresponding to the input array of precipitation values
+    # array of expected SPI/Pearson3 values at 6-month scale corresponding to the input array of precipitation values
     fixture_transformed_pearson3 = np.array(
         [ [0.207575563962, 0.891472366179, -1.00922952101, 1.6391167868, 1.44792196375, -0.286418872701, 0.116741312905, -0.0596514411755, -0.685648026181, 0.447044252343, 0.735170581984, -0.072222809394], \
          [0.724333615467, 0.393733685862, -0.988154960072, -1.27760052346, -0.1728092956, 1.11642624969, 0.0491679239984, -1.05195738633, -0.544508959748, -0.266910852317, 0.684934159863, -0.159359162222], \
@@ -388,10 +394,7 @@ class FixturesTestCase(unittest.TestCase):
          [1.69788135272, 0.407888998498, -0.408004835557, -0.523429338106, 0.00492069766551, -0.112960527545, -0.894426175186, 0.309923952877, -0.849070546489, 0.214937088911, -1.6499790112, 0.0238953042084], \
          [0.14644073154, -0.200863345231, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN] ])
 
-    fixture_initial_data_year = 1895
-    fixture_latitude_degrees = 25.2292
-        
-    # initialize an array of monthly temperature observations (122 years and 2 months, Jan 1895 through Feb 2017)
+    # array of monthly temperature observations (122 years and 2 months, Jan 1895 through Feb 2017)
     fixture_temps_celsius = np.array(
         [[ 19.650390625, 15.66015625, 21.1103515625, 22.2802734375, 25.5595703125, 27.009765625, 27.73046875, 27.83984375, 27.16015625, 24.51953125, 22.259765625, 18.3701171875], \
          [ 17.0498046875, 17.9296875, 20.5, 23.0703125, 25.330078125, 27.1103515625, 27.5, 28.2802734375, 27.009765625, 24.33984375, 24.58984375, 18.58984375], \
@@ -517,7 +520,7 @@ class FixturesTestCase(unittest.TestCase):
          [ 19.7998046875, 19.900390625, 24.2900390625, 24.4599609375, 26.5, 28.650390625, 29.3203125, 29.01953125, 28.6396484375, 26.580078125, 23.169921875, 24.2998046875], \
          [ 21.0595703125, 22.3798828125, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN] ])
 
-    # initialize an array of PET values corresponding to the above monthly temperature observations, latitude, and initial year
+    # array of PET values corresponding to the above monthly temperature observations, latitude, and initial year
     fixture_pet_mm = np.array(
         [ [ 51.4528292999, 24.9829418803, 70.9155712234, 85.5725510116, 139.11249103, 162.079128774, 178.994770539, 173.714448362, 147.425865169, 105.695535216, 72.7273694435, 41.51324644], \
           [ 33.8624496097, 38.5963817846, 65.1792535189, 95.0039859854, 135.629503137, 163.895561956, 174.485214783, 181.627995811, 144.732450102, 103.216327333, 97.3804913621, 42.9852233553], \
@@ -643,7 +646,7 @@ class FixturesTestCase(unittest.TestCase):
           [ 52.6143519467, 52.4825827444, 107.456179572, 112.876523845, 154.932986939, 192.878063161, 210.762057473, 195.979100346, 172.012143603, 133.794753501, 81.723342221, 94.6544035536], \
           [ 63.1032276015, 71.5514172987, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ]])
 
-    # initialize an array of expected SPI/gamma values at 1-month scale corresponding to the fixture precipitation values 
+    # array of expected SPI/gamma values at 1-month scale corresponding to the fixture precipitation values when using full period (1895 - 2017) as calibration period 
     fixture_spi_1_month_gamma = np.array(
         [ 0.0269261754002, 1.05366328957, -0.386771122501, 1.15292908542, 0.948669169317, -0.261359890122, -0.16313698954, 0.120043228605, -0.558579836538, 0.0249385877211, 0.882960392342, -0.0726065029932, \
           0.686689443201, 0.471519124487, -0.365621048157, -1.31792288211, -0.276262375403, 1.32216128873, -0.238764343306, -0.73869273686, -0.439063535113, -0.757026195635, 0.825134507555, -0.165031994217, \
@@ -769,7 +772,7 @@ class FixturesTestCase(unittest.TestCase):
           1.97331069847, 0.487980941052, 0.16944326923, -0.479183080697, -0.114636500517, -0.0567198985744, -1.19660668394, 0.502240385407, -0.69279841544, -0.234219604712, -1.39958407667, 0.0302826250924, \
           -0.0489758279718, -0.212121189472, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ])
 
-    # initialize an array of expected SPI/gamma values at 6-month scale corresponding to the fixture precipitation values 
+    # array of expected SPI/gamma values at 6-month scale corresponding to the fixture precipitation values (full period of record as calibration period)
     fixture_spi_6_month_gamma = np.array(
         [ np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, 0.656108097182, 0.627886213919, 0.382608720573, 0.211570963222, -0.20001105126, -0.405801859489, -0.27512605032, \
           -0.064820303961, 0.00767727976002, 0.212957522072, -0.0795632931615, -0.686949446822, 0.429504483247, 0.213566572417, -0.129754935307, -0.229380986693, -0.310923852523, 0.0288602315302, -1.02643255469, \
@@ -895,7 +898,7 @@ class FixturesTestCase(unittest.TestCase):
           1.74464244702, 1.63597199307, 1.49394557926, 1.81645316844, 1.4499384823, 0.2362389686, -0.799471807399, -0.651006075687, -0.907907651423, -0.882623055721, -1.09097517206, -1.18515555108, \
           -0.865341823441, -1.21636145299, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ])
 
-    # initialize an array of expected SPI/Pearson values at 6-month scale corresponding to the fixture array of precipitation values
+    # array of expected SPI/Pearson values at 6-month scale corresponding to the fixture array of precipitation values
     # and using a calibration period of 1981 - 2010
     fixture_spi_6_month_pearson3 = np.array(
         [ np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, 0.700770796933, 0.760562407541, 0.396188979217, 0.145364504129, -0.0660125105321, -0.409718134124, -0.156060458797, \
@@ -1022,7 +1025,7 @@ class FixturesTestCase(unittest.TestCase):
           1.74385778988, 1.69645148442, 1.44148783763, 1.52761250431, 1.53638820908, 0.289048900118, -0.76862637623, -0.67766241568, -0.938602007879, -0.746631580559, -1.12869504376, -1.46714147325, \
           -0.846728946775, -0.992371133098, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ])
 
-    # initialize an array of expected SPEI/Pearson values at 6-month scale corresponding to the fixture array of 
+    # array of expected SPEI/Pearson values at 6-month scale corresponding to the fixture array of 
     # precipitation values and temperature values, and using a calibration period of 1981 - 2010 (the default)
     fixture_spei_6_month_pearson3 = np.array(
         [ np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, 1.03095889214, 1.18838027726, 0.7066367187, 0.519164981942, 0.275305590697, 0.000766516231251, 0.382458238128, \
@@ -1149,7 +1152,7 @@ class FixturesTestCase(unittest.TestCase):
           0.940923845868, 0.949923062188, 0.645383139235, 0.839658959056, 0.891698545261, -0.140764644831, -1.70131670288, -1.46901821363, -1.46597755875, -1.28096885417, -1.67559248075, -3.09, \
           -1.45389374976, -1.48425557666, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ])
 
-    # initialize an array of expected SPEI/gamma values at 6-month scale corresponding to the fixture array of 
+    # array of expected SPEI/gamma values at 6-month scale corresponding to the fixture array of 
     # precipitation values and temperature values, and using a calibration period of 1981 - 2010 (the default)
     fixture_spei_6_month_gamma = np.array(
         [ np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, 0.71824, 0.70785, 0.33452, 0.16317, -0.22781, -0.38073, -0.16792, 
