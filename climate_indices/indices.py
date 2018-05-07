@@ -20,6 +20,9 @@ _FITTED_INDEX_VALID_MAX = 3.09
 @numba.jit
 def spi_gamma(precips, 
               scale,
+              data_start_year,
+              calibration_year_initial,
+              calibration_year_final,
               time_series_type):
     '''
     Computes SPI using a fitting to the gamma distribution.
@@ -28,6 +31,9 @@ def spi_gamma(precips,
                     to January of the initial year if the time series type is monthly, or January 1st of the initial
                     year if daily
     :param scale: number of time steps over which the values should be scaled before the index is computed
+    :param data_start_year: the initial year of the input precipitation dataset
+    :param calibration_year_initial: initial year of the calibration period
+    :param calibration_year_final: final year of the calibration period
     :param time_series_type: the type of time series represented by the input data, valid values are 'monthly' or 'daily'
                              'monthly': array of monthly values, assumed to span full years, i.e. the first value 
                              corresponds to January of the initial year and any missing final months of the final year 
@@ -59,7 +65,11 @@ def spi_gamma(precips,
         raise ValueError('Invalid time series type argument: %s' % time_series_type)
     
     # fit the scaled values to a gamma distribution and transform the values to corresponding normalized sigmas 
-    transformed_fitted_values = compute.transform_fitted_gamma(scaled_precips, time_series_type)
+    transformed_fitted_values = compute.transform_fitted_gamma(scaled_precips, 
+                                                               data_start_year,
+                                                               calibration_year_initial,
+                                                               calibration_year_final,
+                                                               time_series_type)
 
     # clip values to within the valid range, reshape the array back to 1-D
     spi = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
@@ -72,8 +82,8 @@ def spi_gamma(precips,
 def spi_pearson(precips, 
                 scale,
                 data_start_year,
-                calibration_year_initial,#=1981,
-                calibration_year_final,#=2010,
+                calibration_year_initial,
+                calibration_year_final,
                 time_series_type):
     '''
     Computes SPI using a fitting to the Pearson Type III distribution.
@@ -83,7 +93,7 @@ def spi_pearson(precips,
     :param scale: number of time steps over which the values should be scaled before the index is computed
     :param data_start_year: the initial year of the input precipitation dataset
     :param calibration_year_initial: initial year of the calibration period
-    :param calibration_year_initial: final year of the calibration period
+    :param calibration_year_final: final year of the calibration period
     :param time_series_type: the type of time series represented by the input data, valid values are 'monthly' or 'daily'
                              'monthly': array of monthly values, assumed to span full years, i.e. the first value 
                              corresponds to January of the initial year and any missing final months of the final 
@@ -135,10 +145,12 @@ def spi_pearson(precips,
 @numba.jit
 def spei_gamma(scale,
                time_series_type,
+               data_start_year,
+               calibration_year_initial,
+               calibration_year_final,
                precips_mm,
                pet_mm=None,
                temps_celsius=None,
-               data_start_year=None,
                latitude_degrees=None):
     '''
     Compute SPEI fitted to the gamma distribution.
@@ -152,9 +164,8 @@ def spei_gamma(scale,
     In this case an input array of PET values should not be specified and if so will result in an error being 
     raised indicating invalid arguments.
     
-    If an input array of PET values is provided then an input array of temperature values should not be specified 
-    (nor should the latitude and data start year arguments), and if so will result in an error being raised indicating 
-    invalid arguments.
+    If an input array of PET values is provided then neither an input array of temperature values nor a latitude 
+    should be specified, and if so will result in an error being raised indicating invalid arguments.
         
     :param scale: the number of months over which the values should be scaled before computing the indicator
     :param time_series_type: the type of time series represented by the input data, valid values are 'monthly' or 'daily'
@@ -171,9 +182,7 @@ def spei_gamma(scale,
     :param temps_celsius: an array of monthly average temperature values, in degrees Celsius, should be of the same size 
                           (and shape?) as the input precipitation array, must be unspecified or None if using an array 
                           of PET values as input
-    :param data_start_year: the initial year of the input datasets (assumes that the two inputs cover the same period),
-                            must be unspecified or None if using PET values as an input, and must be specified if using 
-                            an array of temperatures as input
+    :param data_start_year: the initial year of the input datasets (assumes that the two inputs cover the same period)
     :param latitude_degrees: the latitude of the location, in degrees north, must be unspecified or None if using 
                              an array of PET values as an input, and must be specified if using an array of temperatures 
                              as input, valid range is -90.0 to 90.0 (inclusive)
@@ -216,9 +225,8 @@ def spei_gamma(scale,
     elif pet_mm is not None:
         
         # make sure there's no confusion by not allowing a user to specify unnecessary parameters 
-        if (latitude_degrees is not None) or (data_start_year is not None):
-            message = 'Extraneous arguments: since PET is provided as an input then both latitude ' + \
-                      'and the data start year must be absent, and one or both of these argument is present.'
+        if latitude_degrees is not None:
+            message = 'Invalid argument: since PET is provided as an input then latitude must be absent'
             _logger.error(message)
             raise ValueError(message)
             
@@ -238,7 +246,11 @@ def spei_gamma(scale,
     scaled_values = compute.sum_to_scale(p_minus_pet, scale)
 
     # fit the scaled values to a gamma distribution and transform the values to corresponding normalized sigmas 
-    transformed_fitted_values = compute.transform_fitted_gamma(scaled_values, time_series_type)
+    transformed_fitted_values = compute.transform_fitted_gamma(scaled_values,
+                                                               data_start_year, 
+                                                               calibration_year_initial,
+                                                               calibration_year_final,
+                                                               time_series_type)
         
     # clip values to within the valid range, reshape the array back to 1-D
     spei = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
