@@ -201,11 +201,12 @@ def _pearson3_fitting_values(values,
     :param data_start_year: the initial year of the input values array
     :param calibration_start_year: the initial year to use for the calibration period 
     :param calibration_end_year: the final year to use for the calibration period 
-    :return: a 2-D array of fitting values for the Pearson Type III distribution, with shape (4, 12) for monthly and (4, 366) for daily
-             returned_array[0] == probability of zero for each of the 12 calendar months 
-             returned_array[1] == the first Pearson Type III distribution parameter for each of the 12 calendar months 
-             returned_array[2] == the second Pearson Type III distribution parameter for each of the 12 calendar months 
-             returned_array[3] == the third Pearson Type III distribution parameter for each of the 12 calendar months 
+    :return: a 2-D array of fitting values for the Pearson Type III distribution, with shape (4, 12) for monthly 
+             or (4, 366) for daily
+             returned_array[0] == probability of zero for each of the calendar time steps 
+             returned_array[1] == the first Pearson Type III distribution parameter for each of the calendar time steps 
+             returned_array[2] == the second Pearson Type III distribution parameter for each of the calendar time steps 
+             returned_array[3] == the third Pearson Type III distribution parameter for each of the calendar time steps 
     '''
     
     # validate that the values array has shape: (years, 12) for monthly or (years, 366) for daily
@@ -215,10 +216,11 @@ def _pearson3_fitting_values(values,
     
     else:
         
-        second_dim_size = values.shape[1]
-        if (second_dim_size != 12) and (second_dim_size != 366):
-        
-            raise ValueError('Invalid shape of input data array: %s', values.shape)
+        time_steps_per_year = values.shape[1]
+        if (time_steps_per_year != 12) and (time_steps_per_year != 366):
+            message = 'Invalid shape of input data array: {0}'.format(values.shape)
+            _logger.error(message)
+            raise ValueError()
 
     # determine the end year of the values array
     data_end_year = data_start_year + values.shape[0]
@@ -236,13 +238,13 @@ def _pearson3_fitting_values(values,
     calibration_begin_index = (calibration_start_year - data_start_year)
     calibration_end_index = (calibration_end_year - data_start_year) + 1
     
-    # now we'll use these sums to come up with the probability of zero and Pearson parameters for each calendar month
-    fitting_values = np.zeros((4, second_dim_size))
+    # now we'll use these sums to compute the probability of zero and Pearson parameters for each calendar time step
+    fitting_values = np.zeros((4, time_steps_per_year))
     #TODO vectorize the below loop?
-    for ix in range(second_dim_size):
+    for time_step_index in range(time_steps_per_year):
     
-        # get the values for the current calendar month that fall within the calibration years period
-        calibration_values = values[calibration_begin_index:calibration_end_index, ix]
+        # get the values for the current calendar time step that fall within the calibration years period
+        calibration_values = values[calibration_begin_index:calibration_end_index, time_step_index]
 
         # count the number of zeros and valid (non-missing/non-NaN) values
         number_of_zeros, number_of_non_missing = utils.count_zeros_and_non_missings(calibration_values)
@@ -251,13 +253,13 @@ def _pearson3_fitting_values(values,
         # and non-zero, otherwise use the entire period of record
         if (number_of_non_missing - number_of_zeros) < 4:
             
-            # update the array of calibration values for the calendar month to include the full period of record
-            calibration_values = values[:, ix]
+            # update the array of calibration values for the calendar time step to include the full period of record
+            calibration_values = values[:, time_step_index]
             
             # get new counts of the zeros and non-missing values
             number_of_zeros, number_of_non_missing = utils.count_zeros_and_non_missings(calibration_values)
             
-        # calculate the probability of zero for the calendar month
+        # calculate the probability of zero for the calendar time step
         probability_of_zero = 0.0
         if number_of_zeros > 0:
 
@@ -269,22 +271,23 @@ def _pearson3_fitting_values(values,
             # estimate the L-moments of the calibration values
             lmoments = _estimate_lmoments(calibration_values)
 
-            # if we have valid L-moments then we can proceed, otherwise the fitting values for the month will be all zeros
+            # if we have valid L-moments then we can proceed, otherwise 
+            # the fitting values for the time step will be all zeros
             if (lmoments[1] > 0.0) and (abs(lmoments[2]) < 1.0):
                 
-                # get the Pearson Type III parameters for the month, based on the L-moments
+                # get the Pearson Type III parameters for the time step, based on the L-moments
                 pearson_parameters = _estimate_pearson3_parameters(lmoments)
 
-                fitting_values[0, ix] = probability_of_zero
-                fitting_values[1, ix] = pearson_parameters[0]
-                fitting_values[2, ix] = pearson_parameters[1]
-                fitting_values[3, ix] = pearson_parameters[2]
+                fitting_values[0, time_step_index] = probability_of_zero
+                fitting_values[1, time_step_index] = pearson_parameters[0]
+                fitting_values[2, time_step_index] = pearson_parameters[1]
+                fitting_values[3, time_step_index] = pearson_parameters[2]
 
 #             else:
 #                 #FIXME/TODO there must be a better way to handle this, and/or is this as irrelevant 
 #                 #as swallowing the error here assumes? Do we get similar results using lmoments3 module?
 #                 #How does the comparable NCSU SPI code (Cumbie et al?) handle this?
-#                 _logger.warn('Due to invalid L-moments the Pearson fitting values for month {0} are defaulting to zero'.format(ix))
+#                 _logger.warn('Due to invalid L-moments the Pearson fitting values for time step {0} are defaulting to zero'.format(time_step_index))
 
     return fitting_values
 
@@ -411,15 +414,15 @@ def _pearson_fit_ufunc(value_to_fit,
     as described by the Pearson Type III parameters and probability of zero arguments.
     
     :param value_to_fit: a value to fit within the Pearson Type III distribution described by the parameters
-    :param pearson_param_1: first Pearson Type III parameter for the calendar month or day corresponding to the value's actual month or day
-    :param pearson_param_2: second Pearson Type III parameter for the calendar month or day corresponding to the value's actual month or day
-    :param pearson_param_3: third Pearson Type III parameter for the calendar month corresponding to the value's actual month or day
-    :param probability_of_zero: probability  
+    :param pearson_param_1: first Pearson Type III parameter
+    :param pearson_param_2: second Pearson Type III parameter
+    :param pearson_param_3: third Pearson Type III parameter 
+    :param probability_of_zero: probability that the value is zero
     """
     
     fitted_value = np.NaN
     
-    # only fit to the distribution if the current month's sum
+    # only fit to the distribution if the value is valid/not missing
     if not math.isnan(value_to_fit):
 
         # get the Pearson Type III cumulative density function value
@@ -441,7 +444,7 @@ def _pearson_fit_ufunc(value_to_fit,
             
         else:
         
-            # calculate the CDF value corresponding to the current month's value
+            # calculate the CDF value corresponding to the value
             pe3_cdf = _pearson3cdf(value_to_fit, [pearson_param_1, pearson_param_2, pearson_param_3])
                            
         if not math.isnan(pe3_cdf):
@@ -449,8 +452,9 @@ def _pearson_fit_ufunc(value_to_fit,
             # calculate the probability value, clipped between 0 and 1
             probability_value = np.clip((probability_of_zero + ((1.0 - probability_of_zero) * pe3_cdf)), 0.0, 1.0)
 
-            # the values we'll return are the values at which the probabilities of a normal distribution are less than or equal to
-            # the computed probabilities, as determined by the normal distribution's quantile (or inverse cumulative distribution) function  
+            # the values we'll return are the values at which the probabilities of a normal distribution are 
+            # less than or equal to the computed probabilities, as determined by the normal distribution's 
+            # quantile (or inverse cumulative distribution) function  
             fitted_value = scipy.stats.norm.ppf(probability_value)
 
     return fitted_value
@@ -471,7 +475,13 @@ def transform_fitted_pearson(values,
     :param data_start_year: the initial year of the input values array
     :param calibration_start_year: the initial year to use for the calibration period 
     :param calibration_end_year: the final year to use for the calibration period 
-    :param time_series_type: 'monthly' or 'daily' 
+    :param time_series_type: the type of time series represented by the input data, valid values are 'monthly' or 'daily'
+                             'monthly': array of monthly values, assumed to span full years, i.e. the first value 
+                             corresponds to January of the initial year and any missing final months of the final 
+                             year filled with NaN values, with size == # of years * 12
+                             'daily': array of full years of daily values with 366 days per year, as if each year were 
+                             a leap year and any missing final months of the final year filled with NaN values, 
+                             with array size == (# years * 366)
     :return: 2-D array of transformed/fitted values, corresponding in size and shape of the input array
     :rtype: numpy.ndarray of floats
     '''
@@ -519,23 +529,51 @@ def transform_fitted_pearson(values,
 
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def transform_fitted_gamma(values):
+def transform_fitted_gamma(values,
+                           time_series_type):
     '''
     Fit values to a gamma distribution and transform the values to corresponding normalized sigmas. 
 
     :param values: 2-D array of values, with each row typically representing a year containing
                    twelve columns representing the respective calendar months, or 366 days per column
                    as if all years were leap years
+    :param time_series_type: the type of time series represented by the input data, valid values are 'monthly' or 'daily'
+                             'monthly': array of monthly values, assumed to span full years, i.e. the first value 
+                             corresponds to January of the initial year and any missing final months of the final 
+                             year filled with NaN values, with size == # of years * 12
+                             'daily': array of full years of daily values with 366 days per year, as if each year were 
+                             a leap year and any missing final months of the final year filled with NaN values, 
+                             with array size == (# years * 366)
     :return: 2-D array of transformed/fitted values, corresponding in size and shape of the input array
     :rtype: numpy.ndarray of floats
     '''
     
     # if we're passed all missing values then we can't compute anything, return the same array of missing values
     if np.all(np.isnan(values)):
-#         _logger.info('An array of all fill values was passed as the argument, no action taken, returning the same array')
         return values
         
-    # find the percentage of zero values for each month
+    # validate (and possibly reshape) the input array
+    if len(values.shape) == 1:
+        
+        if time_series_type == 'monthly': 
+            # we've been passed a 1-D array with shape (months), reshape it to 2-D with shape (years, 12)
+            values = utils.reshape_to_2d(values, 12)
+     
+        elif time_series_type == 'daily':
+            # we've been passed a 1-D array with shape (days), reshape it to 2-D with shape (years, 366)
+            values = utils.reshape_to_2d(values, 366)
+            
+        else:
+            raise ValueError('Unsupported time series type: %s', time_series_type)
+    
+    elif (len(values.shape) != 2) or ((values.shape[1] != 12 and values.shape[1] != 366)):
+     
+        # neither a 1-D nor a 2-D array with valid shape was passed in
+        message = 'Invalid input array with shape: {0}'.format(values.shape)
+        _logger.error(message)   
+        raise ValueError(message)
+    
+    # find the percentage of zero values for each time step
     zeros = (values == 0).sum(axis=0)
     probabilities_of_zero = zeros / values.shape[0]
     

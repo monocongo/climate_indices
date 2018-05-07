@@ -17,28 +17,35 @@ _FITTED_INDEX_VALID_MIN = -3.09
 _FITTED_INDEX_VALID_MAX = 3.09
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
-#@numba.jit
+@numba.jit
 def spi_gamma(precips, 
               scale,
               time_series_type):
     '''
     Computes SPI using a fitting to the gamma distribution.
     
-    :param precips: 1-D numpy array of precipitation values, in any units, first value assumed to correspond to January of 
-                    the initial year if the time series type is monthly, or January 1st of the initial year if daily
+    :param precips: 1-D numpy array of precipitation values, in any units, first value assumed to correspond 
+                    to January of the initial year if the time series type is monthly, or January 1st of the initial
+                    year if daily
     :param scale: number of time steps over which the values should be scaled before the index is computed
-    :param time_series_type: string, valid options are 'monthly' or 'daily'
-    :return monthly SPI values fitted to the gamma distribution at the specified time scale, unitless
+    :param time_series_type: the type of time series represented by the input data, valid values are 'monthly' or 'daily'
+                             'monthly': array of monthly values, assumed to span full years, i.e. the first value 
+                             corresponds to January of the initial year and any missing final months of the final year 
+                             filled with NaN values, with size == # of years * 12
+                             'daily': array of full years of daily values with 366 days per year, as if each year were  
+                             a leap year and any missing final months of the final year filled with NaN values, 
+                             with array size == (# years * 366)
+    :return SPI values fitted to the gamma distribution at the specified time step scale, unitless
     :rtype: 1-D numpy.ndarray of floats of the same length as the input array of precipitation values
     '''
 
     # remember the original length of the array, in order to facilitate returning an array of the same size
     original_length = precips.size
     
-    # get a sliding sums array, with each month's value scaled by the specified number of months
+    # get a sliding sums array, with each time step's value scaled by the specified number of time steps
     scaled_precips = compute.sum_to_scale(precips, scale)
 
-    # reshape precipitation values to (years, 12) for monthly, or to (years, 366) for daily (representing all years as leap)
+    # reshape precipitation values to (years, 12) for monthly, or to (years, 366) for daily
     if time_series_type == 'monthly':
         
         scaled_precips = utils.reshape_to_2d(scaled_precips, 12)
@@ -52,7 +59,7 @@ def spi_gamma(precips,
         raise ValueError('Invalid time series type argument: %s' % time_series_type)
     
     # fit the scaled values to a gamma distribution and transform the values to corresponding normalized sigmas 
-    transformed_fitted_values = compute.transform_fitted_gamma(scaled_precips)
+    transformed_fitted_values = compute.transform_fitted_gamma(scaled_precips, time_series_type)
 
     # clip values to within the valid range, reshape the array back to 1-D
     spi = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
@@ -69,15 +76,21 @@ def spi_pearson(precips,
                 calibration_year_final,#=2010,
                 time_series_type):
     '''
-    Computes monthly SPI using a fitting to the Pearson Type III distribution.
+    Computes SPI using a fitting to the Pearson Type III distribution.
     
-    :param precips: 1-D numpy array of precipitation values, in any units, first value assumed to correspond to January of 
-                    the initial year if the time series type is monthly, or January 1st of the initial year if daily
+    :param precips: 1-D numpy array of precipitation values, in any units, first value assumed to correspond to January
+                    of the initial year if the time series type is monthly, or January 1st of the initial year if daily
     :param scale: number of time steps over which the values should be scaled before the index is computed
     :param data_start_year: the initial year of the input precipitation dataset
     :param calibration_year_initial: initial year of the calibration period
     :param calibration_year_initial: final year of the calibration period
-    :param time_series_type: string, valid options are 'monthly' or 'daily'
+    :param time_series_type: the type of time series represented by the input data, valid values are 'monthly' or 'daily'
+                             'monthly': array of monthly values, assumed to span full years, i.e. the first value 
+                             corresponds to January of the initial year and any missing final months of the final 
+                             year filled with NaN values, with size == # of years * 12
+                             'daily': array of full years of daily values with 366 days per year, as if each year were 
+                             a leap year and any missing final months of the final year filled with NaN values, 
+                             with array size == (# years * 366)
     :return SPI values fitted to the Pearson Type III distribution at the specified time scale, unitless
     :rtype: 1-D numpy.ndarray of floats of the same length as the input array of precipitation values
     '''
@@ -85,7 +98,7 @@ def spi_pearson(precips,
     # remember the original length of the array, in order to facilitate returning an array of the same size
     original_length = precips.size
     
-    # get a sliding sums array, with each month's value scaled by the specified number of months
+    # get a sliding sums array, with each time step's value scaled by the specified number of time steps
     scaled_precips = compute.sum_to_scale(precips, scale)
 
     # reshape precipitation values to (years, 12) for monthly, or to (years, 366) for daily (representing all years as leap)
@@ -120,7 +133,8 @@ def spi_pearson(precips,
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def spei_gamma(months_scale,
+def spei_gamma(scale,
+               time_series_type,
                precips_mm,
                pet_mm=None,
                temps_celsius=None,
@@ -129,35 +143,44 @@ def spei_gamma(months_scale,
     '''
     Compute SPEI fitted to the gamma distribution.
     
-    PET values are subtracted from the monthly precipitation values to come up with an array of (P - PET) values, which is 
-    then scaled to the specified months scale and finally fitted/transformed to monthly SPEI values corresponding to the
-    input monthly precipitation time series.
+    PET values are subtracted from the precipitation values to come up with an array of (P - PET) values, which is 
+    then scaled to the specified months scale and finally fitted/transformed to SPEI values corresponding to the
+    input precipitation time series.
 
-    If an input array of temperature values is provided then PET values are computed internally using the input temperature
-    array, data start year, and latitude value (all three of which are required in combination). In this case an input array 
-    of PET values should not be specified and if so will result in an error being raised indicating invalid arguments.
+    If an input array of temperature values is provided then PET values are computed internally using the input 
+    temperature array, data start year, and latitude value (all three of which are required in combination). 
+    In this case an input array of PET values should not be specified and if so will result in an error being 
+    raised indicating invalid arguments.
     
-    If an input array of PET values is provided then an input array of temperature values should not be specified (nor the latitude 
-    and data start year arguments), and if so will result in an error being raised indicating invalid arguments.
+    If an input array of PET values is provided then an input array of temperature values should not be specified 
+    (nor should the latitude and data start year arguments), and if so will result in an error being raised indicating 
+    invalid arguments.
         
+    :param scale: the number of months over which the values should be scaled before computing the indicator
+    :param time_series_type: the type of time series represented by the input data, valid values are 'monthly' or 'daily'
+                             'monthly': array of monthly values, assumed to span full years, i.e. the first value 
+                             corresponds to January of the initial year and any missing final months of the final year 
+                             filled with NaN values, with size == # of years * 12
+                             'daily': array of full years of daily values with 366 days per year, as if each year were 
+                             a leap year and any missing final months of the final year filled with NaN values, 
+                             with array size == (# years * 366)
     :param precips_mm: an array of monthly total precipitation values, in millimeters, should be of the same size 
                        (and shape?) as the input temperature array
-    :param pet_mm: an array of monthly PET values, in millimeters, should be of the same size (and shape?) as 
-                   the input precipitation array, must be unspecified or None if using an array of temperature values as input
+    :param pet_mm: an array of monthly PET values, in millimeters, should be of the same size (and shape?) as the input 
+                   precipitation array, must be unspecified or None if using an array of temperature values as input
     :param temps_celsius: an array of monthly average temperature values, in degrees Celsius, should be of the same size 
                           (and shape?) as the input precipitation array, must be unspecified or None if using an array 
                           of PET values as input
     :param data_start_year: the initial year of the input datasets (assumes that the two inputs cover the same period),
                             must be unspecified or None if using PET values as an input, and must be specified if using 
                             an array of temperatures as input
-    :param latitude_degrees: the latitude of the location, in degrees north, must be unspecified or None if using an array 
-                             of PET values as an input, and must be specified if using an array of temperatures as input,
-                             valid range is -90 to 90, inclusive
-    :param months_scale: the number of months over which the values should be scaled before computing the indicator
+    :param latitude_degrees: the latitude of the location, in degrees north, must be unspecified or None if using 
+                             an array of PET values as an input, and must be specified if using an array of temperatures 
+                             as input, valid range is -90.0 to 90.0 (inclusive)
     :return: an array of SPEI values
     :rtype: numpy.ndarray of type float, of the same size and shape as the input temperature and precipitation arrays
     '''
-    
+                    
     # validate the function's argument combinations
     if temps_celsius is not None:
         
@@ -177,6 +200,13 @@ def spei_gamma(months_scale,
         # validate that the two input arrays are compatible
         elif precips_mm.size != temps_celsius.size:
             message = 'Incompatible precipitation and temperature arrays'
+            _logger.error(message)
+            raise ValueError(message)
+
+        elif time_series_type != 'monthly':
+            # our PET currently uses a monthly version of Thornthwaite's equation and therefore's only valid for monthly 
+            message = 'Unsupported time series type: \'{0}\' -- only monthly time series is supported when ' + \
+                      'providing temperature and latitude inputs'.format(time_series_type) 
             _logger.error(message)
             raise ValueError(message)
 
@@ -204,11 +234,11 @@ def spei_gamma(months_scale,
     # remember the original length of the input array, in order to facilitate returning an array of the same size
     original_length = precips_mm.size
     
-    # get a sliding sums array, with each month's value scaled by the specified number of months
-    scaled_values = compute.sum_to_scale(p_minus_pet, months_scale)
+    # get a sliding sums array, with each element's value scaled by the specified number of time steps
+    scaled_values = compute.sum_to_scale(p_minus_pet, scale)
 
     # fit the scaled values to a gamma distribution and transform the values to corresponding normalized sigmas 
-    transformed_fitted_values = compute.transform_fitted_gamma(scaled_values)
+    transformed_fitted_values = compute.transform_fitted_gamma(scaled_values, time_series_type)
         
     # clip values to within the valid range, reshape the array back to 1-D
     spei = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
@@ -218,7 +248,8 @@ def spei_gamma(months_scale,
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def spei_pearson(months_scale,
+def spei_pearson(scale,
+                 time_series_type,
                  data_start_year,
                  calibration_year_initial,
                  calibration_year_final,
@@ -227,35 +258,48 @@ def spei_pearson(months_scale,
                  temps_celsius=None,
                  latitude_degrees=None):
     '''
-    Compute monthly SPEI fitted to the Pearson Type III distribution.
+    Compute SPEI fitted to the Pearson Type III distribution.
     
-    PET values are subtracted from the monthly precipitation values to come up with an array of (P - PET) values, which is 
-    then scaled to the specified months scale and finally fitted/transformed to monthly SPEI values corresponding to the
-    input monthly precipitation time series.
+    PET values are subtracted from the precipitation values to come up with an array of (P - PET) values, which is 
+    then scaled to the specified time steps scale and finally fitted/transformed to SPEI values corresponding to the
+    input precipitation time series.
 
-    If an input array of temperature values is provided then PET values are computed internally using the input temperature
-    array, data start year, and latitude value (all three of which are required in combination). In this case an input array 
-    of PET values should not be specified and if so will result in an error being raised indicating invalid arguments.
+    If an input array of temperature values is provided then PET values are computed internally using the input 
+    temperature array, data start year, and latitude value (all three of which are required in combination). In this 
+    case an input array of PET values should not be specified and if so will result in an error being raised indicating 
+    invalid arguments.
     
-    If an input array of PET values is provided then an input array of temperature values should not be specified (nor the latitude 
-    and data start year arguments), and if so will result in an error being raised indicating invalid arguments.
+    If an input array of PET values is provided then an input array of temperature values should not be specified 
+    (nor should be the latitude or data start year arguments), and if so will result in an error being raised 
+    indicating invalid arguments.
         
-    :param months_scale: the number of months over which the values should be scaled before computing the index
-    :param precips_mm: an array of monthly total precipitation values, in millimeters, should be of the same size 
-                       (and shape?) as the input temperature array
-    :param pet_mm: an array of monthly PET values, in millimeters, should be of the same size (and shape?) as 
-                   the input precipitation array, must be unspecified or None if using an array of temperature values as input
-    :param temps_celsius: an array of monthly average temperature values, in degrees Celsius, should be of the same size 
-                          (and shape?) as the input precipitation array, must be unspecified or None if using an array 
-                          of PET values as input
+    :param scale: the number of time steps over which the values should be scaled before computing the index
+    :param time_series_type: the type of time series represented by the input data, valid values are 'monthly' or 'daily'
+                             **NOTE** only monthly time series type is currently supported if providing temperature  
+                             inputs rather than PET due to the current reliance on a monthly Thornthwaite PET for 
+                             internal PET computation
+                             'monthly': array of monthly values, assumed to span full years, i.e. the first value 
+                             corresponds to January of the initial year and any missing final months of the final year 
+                             filled with NaN values, with size == # of years * 12
+                             'daily': array of full years of daily values with 366 days per year, as if each year were 
+                             a leap year and any missing final months of the final year filled with NaN values, 
+                             with array size == (# years * 366)
     :param data_start_year: the initial year of the input datasets (assumes that the two inputs cover the same period),
                             must be unspecified or None if using PET values as an input, and must be specified if using 
                             an array of temperatures as input
-    :param latitude_degrees: the latitude of the location, in degrees north, must be unspecified or None if using an array 
-                             of PET values as an input, and must be specified if using an array of temperatures as input,
-                             valid range is -90 to 90, inclusive
     :param calibration_start_year: initial year of the calibration period 
     :param calibration_end_year: final year of the calibration period 
+    :param precips_mm: an array of monthly total precipitation values, in millimeters, should be of the same size 
+                       (and shape?) as the input temperature array
+    :param pet_mm: an array of monthly PET values, in millimeters, should be of the same size (and shape?) as 
+                   the input precipitation array, must be unspecified or None if using an array of temperature values 
+                   as input
+    :param temps_celsius: an array of monthly average temperature values, in degrees Celsius, should be of the same size 
+                          (and shape?) as the input precipitation array, must be unspecified or None if using an array 
+                          of PET values as input
+    :param latitude_degrees: the latitude of the location, in degrees north, must be unspecified or None if using 
+                             an array of PET values as an input, and must be specified if using an array of temperatures 
+                             as input, valid range is -90.0 to 90.0 (inclusive)
     :return: an array of SPEI values
     :rtype: numpy.ndarray of type float, of the same size and shape as the input temperature and precipitation arrays
     '''
@@ -282,6 +326,13 @@ def spei_pearson(months_scale,
             _logger.error(message)
             raise ValueError(message)
 
+        elif time_series_type != 'monthly':
+            # our PET currently uses a monthly version of Thornthwaite's equation and therefore's only valid for monthly 
+            message = 'Unsupported time series type: \'{0}\' -- only monthly time series is supported when ' + \
+                      'providing temperature and latitude inputs'.format(time_series_type) 
+            _logger.error(message)
+            raise ValueError(message)
+
         # compute PET
         pet_mm = pet(temps_celsius, latitude_degrees, data_start_year)
 
@@ -289,7 +340,8 @@ def spei_pearson(months_scale,
         
         # since we have PET as input we shouldn't have temperature as an input
         if temps_celsius is not None:
-            message = 'Incompatible arguments: either temperature or PET arrays can be specified as arguments, but not both.' 
+            message = 'Incompatible arguments: either temperature or PET arrays can be specified as arguments, ' + \
+                      'but not both.' 
             _logger.error(message)
             raise ValueError(message)
         
@@ -308,7 +360,7 @@ def spei_pearson(months_scale,
     
     else:
 
-        message = 'Invalid arguments: both temperature and PET array arguments are None'
+        message = 'Invalid arguments: both temperature and PET array arguments are missing'
         _logger.error(message)
         raise ValueError(message)
         
@@ -319,14 +371,14 @@ def spei_pearson(months_scale,
     original_length = precips_mm.size
     
     # get a sliding sums array, with each time step's value scaled by the specified number of previous time steps
-    scaled_values = compute.sum_to_scale(p_minus_pet, months_scale)
+    scaled_values = compute.sum_to_scale(p_minus_pet, scale)
 
     # fit the scaled values to a gamma distribution and transform the values to corresponding normalized sigmas 
     transformed_fitted_values = compute.transform_fitted_pearson(scaled_values, 
                                                                  data_start_year,
                                                                  calibration_year_initial,
                                                                  calibration_year_final,
-                                                                 'monthly')  #FIXME only supported for monthly, add daily support (#102, #96)
+                                                                 time_series_type)
 #     transformed_fitted_values = compute.transform_fitted_pearson_new(scaled_values, 
 #                                                                      data_start_year,
 #                                                                      calibration_year_initial,
@@ -342,7 +394,7 @@ def spei_pearson(months_scale,
 # head start for issue #133
 #-------------------------------------------------------------------------------------------------------------------------------------------
 # @numba.jit
-# def spei(months_scale,
+# def spei(scale,
 #          distribution,
 #          data_start_year,
 #          calibration_year_initial,
@@ -358,19 +410,20 @@ def spei_pearson(months_scale,
 #     then scaled to the specified time steps scale and finally fitted/transformed to SPEI values corresponding to the
 #     input precipitation time series.
 # 
-#     If an input array of temperature values is provided then PET values are computed internally using the input temperature
-#     array, data start year, and latitude value (all three of which are required in combination). In this case an input array 
+#     If an input array of temperature values is provided then PET values are computed internally using the input 
+#     temperature array, data start year, and latitude value (all three of which are required in combination). In this case an input array 
 #     of PET values should not be specified and if so will result in an error being raised indicating invalid arguments.
 #     
 #     If an input array of PET values is provided then an input array of temperature values should not be specified, nor should
 #     be the latitude or data start year arguments, and if so will result in an error being raised indicating invalid arguments.
 #         
-#     :param months_scale: the number of months over which the values should be scaled before computing the index
+#     :param scale: the number of time steps over which the values should be scaled before computing the index
 #     :param distribution: either 'gamma' or 'pearson3'
-#     :param precips_mm: an array of monthly total precipitation values, in millimeters, should be of the same size 
+#     :param precips_mm: an array of cumulative precipitation values, in millimeters, should be of the same size 
 #                        (and shape?) as the input temperature array
-#     :param pet_mm: an array of monthly PET values, in millimeters, should be of the same size (and shape?) as 
-#                    the input precipitation array, must be unspecified or None if using an array of temperature values as input
+#     :param pet_mm: an array of PET values, in millimeters, should be of the same size (and shape?) as 
+#                    the input precipitation array, must be unspecified or None if using an array of temperature values 
+#                    as input
 #     :param temps_celsius: an array of monthly average temperature values, in degrees Celsius, should be of the same size 
 #                           (and shape?) as the input precipitation array, must be unspecified or None if using an array 
 #                           of PET values as input
@@ -440,7 +493,7 @@ def spei_pearson(months_scale,
 #     original_length = precips_mm.size
 #     
 #     # get a sliding sums array, with each time step's value scaled by the specified number of previous time steps
-#     scaled_values = compute.sum_to_scale(p_minus_pet, months_scale)
+#     scaled_values = compute.sum_to_scale(p_minus_pet, scale)
 # 
 #     # fit the scaled values to the specified distribution and transform the values to corresponding normalized sigmas 
 #     if distribution == 'gamma':
@@ -524,7 +577,7 @@ def pdsi(precip_time_series,
                        calibration_end_year)
     
 #-------------------------------------------------------------------------------------------------------------------------------------------
-#@numba.jit     
+@numba.jit     
 def percentage_of_normal(values, 
                          scale,
                          data_start_year,
@@ -532,32 +585,30 @@ def percentage_of_normal(values,
                          calibration_end_year,
                          time_series_type):
     '''
-    This function finds the percent of normal values (average of each calendar month over a specified calibration period of years) 
-    for a specified months scale. The normal precipitation for each calendar month is computed for the specified months scale, 
-    and then each month's scaled value is compared against the corresponding calendar month's average to determine the percentage 
-    of normal. The period that defines the normal is described by the calibration start and end years arguments. The period 
-    typically used for US climate monitoring is 1981-2010. 
+    This function finds the percent of normal values (average of each calendar month or day over a specified 
+    calibration period of years) for a specified time steps scale. The normal precipitation for each calendar time step 
+    is computed for the specified time steps scale, and then each time step's scaled value is compared against the 
+    corresponding calendar time step's average to determine the percentage of normal. The period that defines the 
+    normal is described by the calibration start and end years arguments. The calibration period typically used  
+    for US climate monitoring is 1981-2010. 
     
-    :param values: 1-D numpy array of monthly float values, any length, initial value assumed to be January of the data start year
-                   (January 1st of the start year if daily time series type), see the description of the *time_series_type* argument 
-                   below for further clarification
+    :param values: 1-D numpy array of precipitation values, any length, initial value assumed to be January of the data 
+                   start year (January 1st of the start year if daily time series type), see the description of the 
+                   *time_series_type* argument below for further clarification
     :param scale: integer number of months over which the normal value is computed (eg 3-months, 6-months, etc.)
     :param data_start_year: the initial year of the input monthly values array
-    :param calibration_start_year: the initial year of the calibration period over which the normal average for each calendar 
-                                   month is computed, defaults to 1981 since normal period for US is typically 1981-2010 
-    :param calibration_start_year: the final year of the calibration period over which the normal average for each calendar 
-                                   month is computed, defaults to 2010 since normal period for US is typically 1981-2010 
-    :param time_series_type: the type of time series represented by the input data, 'monthly', 'daily', or '366_day'
-                             'monthly': array of monthly values, assumed to span full years, i.e. the first value corresponds
-                             to January of the initial year and the missing final month(s) of the final year (if any) filled
-                             with NaN values, with size == # of years * 12
-                             'daily': array of daily values, with 365 days per year and a value for Feb. 29h during leap years, 
-                             i.e. daily values on a normal Gregorian calendar, assumed to span full years, i.e. the first value
-                             corresponds to January 1st of the initial year and the missing final days of the final year, 
-                             if any, are filled with NaN values, with size == (Dec. 31st of final year - Jan 1st of initial year) + 1
-                             '366_day': array of full years of daily values with 366 days per year, as if each year were a leap year
-                             array size == (# years * 366)
-    :return: percent of normal precipitation values corresponding to the input monthly precipitation values array   
+    :param calibration_start_year: the initial year of the calibration period over which the normal average for each  
+                                   calendar time step is computed 
+    :param calibration_start_year: the final year of the calibration period over which the normal average for each 
+                                   calendar time step is computed 
+    :param time_series_type: the type of time series represented by the input data, valid values are 'monthly' or 'daily'
+                             'monthly': array of monthly values, assumed to span full years, i.e. the first value 
+                             corresponds to January of the initial year and any missing final months of the final year 
+                             filled with NaN values, with size == # of years * 12
+                             'daily': array of full years of daily values with 366 days per year, as if each year were 
+                             a leap year and any missing final months of the final year filled with NaN values, 
+                             with array size == (# years * 366)
+    :return: percent of normal precipitation values corresponding to the scaled precipitation values array   
     :rtype: numpy.ndarray of type float
     '''
 
@@ -567,18 +618,20 @@ def percentage_of_normal(values,
     
     # make sure we've been provided with sane calibration limits
     if data_start_year > calibration_start_year:
-        raise ValueError("Invalid start year arguments (data and/or calibration): calibration start year is before the data start year")
+        raise ValueError('Invalid start year arguments (data and/or calibration): calibration start year ' + \
+                         'is before the data start year')
     elif ((calibration_end_year - calibration_start_year + 1) * 12) > values.size:
-        raise ValueError("Invalid calibration period specified: total calibration years exceeds the actual number of years of data")
+        raise ValueError('Invalid calibration period specified: total calibration years exceeds the actual ' + \
+                         'number of years of data')
     
-    # if doing monthly then we'll use 12 periods, corresponding to calendar months, otherwise assume all years w/366 days
+    # if doing monthly then we'll use 12 periods, corresponding to calendar months, otherwise assume years w/366 days
     periodicity = 12
     if time_series_type == 'daily':
         periodicity = 366
     
-    # get an array containing a sliding sum on the specified months scale -- i.e. if the months scale is 3 then
-    # the first two elements will be np.NaN, since we need 3 elements to get a sum, and then from the third element
-    # to the end the value will equal the sum of the corresponding month plus the values of the two previous months
+    # get an array containing a sliding sum on the specified time step scale -- i.e. if the scale is 3 then the first 
+    # two elements will be np.NaN, since we need 3 elements to get a sum, and then from the third element to the end 
+    # the values will equal the sum of the corresponding time step plus the values of the two previous time steps
     scale_sums = compute.sum_to_scale(values, scale)
     
     # extract the timesteps over which we'll compute the normal average for each time step of the year
@@ -588,14 +641,14 @@ def percentage_of_normal(values,
     calibration_period_sums = scale_sums[calibration_start_index:calibration_end_index]
     
     # for each time step in the calibration period, get the average of the scale sum 
-    # for that calendar month (i.e. average all January sums, then all February sums, etc.) 
+    # for that calendar time step (i.e. average all January sums, then all February sums, etc.) 
     averages = np.full((periodicity,), np.nan)
     for i in range(periodicity):
         averages[i] = np.nanmean(calibration_period_sums[i::periodicity])
     
     #TODO replace the below loop with a vectorized implementation
-    # for each month of the scale_sums array find its corresponding
-    # percentage of the months scale average for its respective calendar month
+    # for each time step of the scale_sums array find its corresponding
+    # percentage of the time steps scale average for its respective calendar time step
     percentages_of_normal = np.full(scale_sums.shape, np.nan)
     for i in range(scale_sums.size):
 
@@ -619,7 +672,7 @@ def pet(temperature_celsius,
     :param latitude_degrees: the latitude of the location, in degrees north, must be within range [-90.0 ... 90.0] (inclusive), otherwise 
                              a ValueError is raised
     :param data_start_year: the initial year of the input dataset
-    :return: an array of PET values, of the same size and shape as the input temperature values array, in millimeters/month
+    :return: an array of PET values, of the same size and shape as the input temperature values array, in millimeters/time step
     :rtype: 1-D numpy.ndarray of floats
     '''
     

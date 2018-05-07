@@ -424,7 +424,7 @@ def print_years_months(values):
     """
 
     # reshape the array, go over the two dimensions and print
-    values = reshape_to_years_months(values)
+    values = reshape_to_2d(values, 12)
     for i in range(values.shape[0]):
         year_line = ''.join("%5.2f, " % (v) for v in values[i])
         print(year_line + ' \\')
