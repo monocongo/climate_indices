@@ -475,7 +475,7 @@ def _calibrate_data(arrays,
     # for each array pull out the calibration period
     calibration_arrays = []
     for data_array in arrays:
-        data_array = utils.reshape_to_years_months(data_array)
+        data_array = utils.reshape_to_2d(data_array, 12)
     
         # get calibration period arrays
         if (calibration_start_year > data_start_year) or (calibration_end_year < data_end_year):
@@ -632,15 +632,15 @@ def _z_index(P,
 #     arrays_to_reshape = [PET, ET, PR, PL, R, RO, RO, PRO, L, P]
 #     for ary in arrays_to_reshape:
 #         ary = utils.reshape_to_years_months(ary)
-    PET = utils.reshape_to_years_months(PET)
-    ET = utils.reshape_to_years_months(ET)
-    PR = utils.reshape_to_years_months(PR)
-    PL = utils.reshape_to_years_months(PL)
-    R = utils.reshape_to_years_months(R)
-    RO = utils.reshape_to_years_months(RO)
-    PRO = utils.reshape_to_years_months(PRO)
-    L = utils.reshape_to_years_months(L)
-    P = utils.reshape_to_years_months(P)
+    PET = utils.reshape_to_2d(PET, 12)
+    ET = utils.reshape_to_2d(ET, 12)
+    PR = utils.reshape_to_2d(PR, 12)
+    PL = utils.reshape_to_2d(PL, 12)
+    R = utils.reshape_to_2d(R, 12)
+    RO = utils.reshape_to_2d(RO, 12)
+    PRO = utils.reshape_to_2d(PRO, 12)
+    L = utils.reshape_to_2d(L, 12)
+    P = utils.reshape_to_2d(P, 12)
 
     # get the CAFEC coefficients
     alpha, beta, gamma, delta = _cafec_coefficients(P, 

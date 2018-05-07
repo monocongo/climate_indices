@@ -34,7 +34,7 @@ class IndicesTestCase(fixtures.FixturesTestCase):
         
         # compute SPI/gamma at 1-month scale
         month_scale = 1
-        computed_spi = indices.spi_gamma(self.fixture_precips_mm, month_scale)
+        computed_spi = indices.spi_gamma(self.fixture_precips_mm, month_scale, 'monthly')
                                          
         # make sure SPI/gamma is being computed as expected
         np.testing.assert_allclose(computed_spi, 
@@ -47,7 +47,7 @@ class IndicesTestCase(fixtures.FixturesTestCase):
         
         # compute SPI/gamma at 6-month scale
         month_scale = 6
-        computed_spi = indices.spi_gamma(self.fixture_precips_mm, month_scale)
+        computed_spi = indices.spi_gamma(self.fixture_precips_mm.flatten(), month_scale, 'monthly')
                                          
         # make sure SPI/gamma is being computed as expected
         np.testing.assert_allclose(computed_spi, 
@@ -60,7 +60,12 @@ class IndicesTestCase(fixtures.FixturesTestCase):
         
         # compute SPI/Pearson at 6-month scale
         month_scale = 6
-        computed_spi = indices.spi_pearson(self.fixture_precips_mm, month_scale, 1895, 1981, 2010)
+        computed_spi = indices.spi_pearson(self.fixture_precips_mm.flatten(), 
+                                           month_scale, 
+                                           1895, 
+                                           1981, 
+                                           2010,
+                                           'monthly')
                                          
         # make sure SPI/Pearson is being computed as expected
         np.testing.assert_allclose(computed_spi, 
@@ -74,6 +79,7 @@ class IndicesTestCase(fixtures.FixturesTestCase):
         # compute SPEI/Pearson at 6-month scale, using precipitation and temperatures as input 
         month_scale = 6
         computed_spei = indices.spei_pearson(month_scale,
+                                             'monthly',
                                              data_start_year=1895,
                                              calibration_year_initial=1981,
                                              calibration_year_final=2010,
@@ -92,7 +98,8 @@ class IndicesTestCase(fixtures.FixturesTestCase):
         
         # compute SPEI/gamma at 6-month scale
         months_scale = 6
-        computed_spei = indices.spei_gamma(months_scale, 
+        computed_spei = indices.spei_gamma(months_scale,
+                                           'monthly', 
                                            precips_mm=self.fixture_precips_mm, 
                                            pet_mm=None, 
                                            temps_celsius=self.fixture_temps_celsius, 
