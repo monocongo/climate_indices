@@ -160,15 +160,15 @@ def _cafec_coefficients(P,
     
     # the potential (PET, ET, PR, PL) and actual (R, RO, S, L, P) water balance arrays are reshaped as 2-D arrays  
     # (matrices) such that the rows of each matrix represent years and the columns represent calendar months
-    PET = utils.reshape_to_years_months(PET)
-    ET = utils.reshape_to_years_months(ET)
-    PR = utils.reshape_to_years_months(PR)
-    PL = utils.reshape_to_years_months(PL)
-    R = utils.reshape_to_years_months(R)
-    RO = utils.reshape_to_years_months(RO)
-    PRO = utils.reshape_to_years_months(PRO)
-    L = utils.reshape_to_years_months(L)
-    P = utils.reshape_to_years_months(P)
+    PET = utils.reshape_to_2d(PET, 12)
+    ET = utils.reshape_to_2d(ET, 12)
+    PR = utils.reshape_to_2d(PR, 12)
+    PL = utils.reshape_to_2d(PL, 12)
+    R = utils.reshape_to_2d(R, 12)
+    RO = utils.reshape_to_2d(RO, 12)
+    PRO = utils.reshape_to_2d(PRO, 12)
+    L = utils.reshape_to_2d(L, 12)
+    P = utils.reshape_to_2d(P, 12)
         
     # ALPHA, BETA, GAMMA, DELTA CALCULATIONS
     # A calibration period is used to calculate alpha, beta, gamma, and 
@@ -364,8 +364,8 @@ def _water_balance(T,
     
     # reshape the precipitation array from 1-D (assumed to be total months) to (years, 12) with the second  
     # dimension being calendar months, and the final/missing monthly values of the final year padded with NaNs
-    T = utils.reshape_to_years_months(T)
-    P = utils.reshape_to_years_months(P)
+    T = utils.reshape_to_2d(T, 12)
+    P = utils.reshape_to_2d(P, 12)
     total_years = P.shape[0]
     
     WCTOP = 1.0
@@ -542,7 +542,7 @@ def _zindex(alpha,
     '''
     
     # reshape the precipitation array, expected to have 1-D shape, to 2-D shape (years, 12)
-    P = utils.reshape_to_years_months(P)
+    P = utils.reshape_to_2d(P, 12)
     
     # allocate the Z-Index and P-hat arrays we'll build and return
     Z = np.full(P.shape, np.NaN)

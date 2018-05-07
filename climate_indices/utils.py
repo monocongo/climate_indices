@@ -116,19 +116,21 @@ def compute_days(initial_year,
 
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def reshape_to_years_months(monthly_values):
+def reshape_to_2d(values,
+                  second_axis_length):
     '''
-    :param monthly_values: an 1-D numpy.ndarray of monthly values, assumed to start at January
-    :return: the original monthly values reshaped to 2-D, with each row representing a full year, with shape (years, 12)
+    :param values: an 1-D numpy.ndarray of values
+    :param second_axis_length: 
+    :return: the original values reshaped to 2-D, with shape (int(original length / second axis length), second axis length)
     :rtype: 2-D numpy.ndarray of floats
     '''
     
     # if we've been passed a 2-D array with valid shape then let it pass through
-    shape = monthly_values.shape
+    shape = values.shape
     if len(shape) == 2:
-        if shape[1] == 12:
+        if shape[1] == second_axis_length:
             # data is already in the shape we want, return it unaltered
-            return monthly_values
+            return values
         else:
             message = 'Values array has an invalid shape (2-D but second dimension not 12): {}'.format(shape)
             _logger.error(message)
@@ -136,22 +138,22 @@ def reshape_to_years_months(monthly_values):
     
     # otherwise make sure that we've been passed in a flat (1-D) array of values    
     elif len(shape) != 1:
-        message = 'Values array has an invalid shape (not 1-D or 2-D): {}'.format(shape)
+        message = 'Values array has an invalid shape (not 1-D or 2-D): {0}'.format(shape)
         _logger.error(message)
         raise ValueError(message)
 
-    # pad the final months of the final year, if necessary
-    final_year_months = shape[0] % 12
+    # pad the end of the original array in order to have an ordinal increment, if necessary
+    final_year_months = shape[0] % second_axis_length
     if final_year_months > 0:
-        pad_months = 12 - final_year_months
+        pad_months = second_axis_length - final_year_months
         pad_values = np.full((pad_months,), np.NaN)
-        monthly_values = np.append(monthly_values, pad_values)
+        values = np.append(values, pad_values)
         
-    # we should have an ordinal number of years now (ordinally divisible by 12)
-    total_years = int(monthly_values.shape[0] / 12)
+    # we should have an ordinal number of years now (ordinally divisible by second_axis_length)
+    increments = int(values.shape[0] / second_axis_length)
     
     # reshape from (months) to (years, 12) in order to have one year of months per row
-    return np.reshape(monthly_values, (total_years, 12))
+    return np.reshape(values, (increments, second_axis_length))
             
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
@@ -213,9 +215,9 @@ def transform_to_366day(original,
                         year_start,
                         total_years):
     '''
-    Takes an array of daily values with only actual leap years represented as 366 day years and converts it to
-    an array of daily values represented as containing full 366 day years as if each year is a leap year with 
-    fill/faux values for the Feb. 29th of each non-leap year.
+    Takes an array of daily values with only actual leap years represented as 366 day years (non-leap years with 365 days)
+    and converts it to an array of daily values represented as containing full 366 day years as if each year is a leap year
+    with computed/faux values for the Feb. 29th of each non-leap year.
     
     For example if provided an input array representing two years, we expect/assume that it will contain 
     730 elements if neither of the years represented are leap years (as indicated by the year start argument), 
@@ -383,7 +385,7 @@ def print_years_months(values):
     """
 
     # reshape the array, go over the two dimensions and print
-    values = reshape_to_years_months(values)
+    values = reshape_to_2d(values, 12)
     for i in range(values.shape[0]):
         year_line = ''.join("%5.2f, " % (v) for v in values[i])
         print(year_line + ' \\')
