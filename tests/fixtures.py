@@ -9,8 +9,12 @@ logging.disable(logging.CRITICAL)
 class FixturesTestCase(unittest.TestCase):
 
     # start and end year of the precipitation, temperature, and PET datasets
-    fixture_data_start_year = 1895
-    fixture_data_end_year = 2017
+    fixture_data_year_start = 1895
+    fixture_data_year_end = 2017
+
+    # start and end year of the calibration period used for SPI/SPEI Pearson calculations
+    fixture_calibration_year_start = 1981
+    fixture_calibration_year_end = 2010
 
     # latitude value used for computing the fixture datasets (PET, Palmers)
     fixture_latitude_degrees = 25.2292

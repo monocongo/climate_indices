@@ -236,6 +236,12 @@ def spei_gamma(scale,
             _logger.error(message)
             raise ValueError(message)
 
+    else:
+        
+        message = 'Neither temperature nor PET array was specified, one or the other is required for SPEI'
+        _logger.error(message)
+        raise ValueError(message)
+
     # subtract the PET from precipitation, adding an offset to ensure that all values are positive
     p_minus_pet = (precips_mm.flatten() - pet_mm.flatten()) + 1000.0
         
@@ -372,9 +378,10 @@ def spei_pearson(scale,
     
     else:
 
-        message = 'Invalid arguments: both temperature and PET array arguments are missing'
+        message = 'Neither temperature nor PET array was specified, one or the other is required for SPEI'
         _logger.error(message)
         raise ValueError(message)
+
         
     # subtract the PET from precipitation, adding an offset to ensure that all values are positive
     p_minus_pet = (precips_mm.flatten() - pet_mm.flatten()) + 1000.0

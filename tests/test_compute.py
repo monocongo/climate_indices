@@ -197,9 +197,9 @@ class ComputeTestCase(fixtures.FixturesTestCase):
         # compute sigmas of transformed (normalized) values fitted to a gamma distribution,
         # using the full period of record as the calibration period
         computed_values = compute.transform_fitted_gamma(self.fixture_precips_mm, 
-                                                         self.fixture_data_start_year,
-                                                         self.fixture_data_start_year,
-                                                         self.fixture_data_end_year,
+                                                         self.fixture_data_year_start,
+                                                         self.fixture_data_year_start,
+                                                         self.fixture_data_year_end,
                                                          'monthly')
                                           
         # make sure the values are being computed as expected
