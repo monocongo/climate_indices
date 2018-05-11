@@ -133,7 +133,15 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                            self.fixture_calibration_year_start_monthly, 
                                            self.fixture_calibration_year_end_monthly,
                                            'monthly')
-                                         
+        
+        # make sure we can compute from daily values without raising an error                                 
+        indices.spi_pearson(self.fixture_precips_mm_daily.flatten(), 
+                            60, 
+                            self.fixture_data_year_start_daily, 
+                            self.fixture_calibration_year_start_daily, 
+                            self.fixture_calibration_year_end_daily,
+                            'daily')
+
         # make sure SPI/Pearson is being computed as expected
         np.testing.assert_allclose(computed_spi, 
                                    self.fixture_spi_6_month_pearson3, 
