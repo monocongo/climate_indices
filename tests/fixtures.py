@@ -25,7 +25,7 @@ class FixturesTestCase(unittest.TestCase):
     fixture_latitude_degrees = 25.2292
         
     # array of daily from CMORPH 1998 - 2017, lat/lon indices: 0/7
-    fixture_precips_mm_daily = np.array([ 
+    fixture_precips_mm_daily = np.array([ \
         [0.00,  0.00,  2.36,  9.45,  0.00,  0.74,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
@@ -63,8 +63,7 @@ class FixturesTestCase(unittest.TestCase):
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.67,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00 ], \
-        [ 
-         0.00,  0.00,  0.00,  0.00,  0.36,  0.00,  0.00,  0.00,  0.00,  0.00,  \
+        [0.00,  0.00,  0.00,  0.00,  0.36,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.21,  0.00,  0.00,  0.00,  \
          0.05,  0.00,  0.00,  0.00,  0.00,  0.00,  0.42,  2.41,  0.00,  0.00,  \
@@ -101,8 +100,7 @@ class FixturesTestCase(unittest.TestCase):
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00 ], \
-        [ 
-         0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
+        [0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.18,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
@@ -139,8 +137,7 @@ class FixturesTestCase(unittest.TestCase):
          0.00,  0.00,  0.00,  0.00,  0.00,  2.17,  9.12,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.93 ], \
-        [ 
-         1.87,  8.66, 10.89,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
+        [1.87,  8.66, 10.89,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.18,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
@@ -177,8 +174,7 @@ class FixturesTestCase(unittest.TestCase):
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00 ], \
-        [ 
-         0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
+        [0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.15,  0.72,  \
          0.00,  0.00,  1.33, 14.58, 28.09,  8.69,  0.00,  0.00,  0.00,  0.00,  \
@@ -215,8 +211,7 @@ class FixturesTestCase(unittest.TestCase):
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00 ], \
-        [ 
-         0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
+        [0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  3.62,  0.19,  0.00,  0.00,  0.00,  \
@@ -252,7 +247,7 @@ class FixturesTestCase(unittest.TestCase):
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
-         0.00,  0.00,  0.00,  0.00,  0.00,  0.00 ],
+         0.00,  0.00,  0.00,  0.00,  0.00,  0.00], \
         [0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.22,  0.00,  0.00,  0.00,  \
          0.00,  0.00, 35.17, 19.41,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
@@ -290,8 +285,7 @@ class FixturesTestCase(unittest.TestCase):
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00, 43.57, 44.36, 10.88,  0.00 ], \
-        [ 
-         4.51, 12.37, 29.11,  1.67,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
+        [4.51, 12.37, 29.11,  1.67,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00, 10.54, 15.37,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  2.82,  1.06,  \
@@ -328,8 +322,7 @@ class FixturesTestCase(unittest.TestCase):
          0.00,  0.00,  0.00,  0.00,  0.00,  1.01,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00 ], \
-        [ 
-         0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.29,  0.00,  0.00,  0.00,  \
+        [0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.29,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.65,  0.13,  0.00,  0.00,  0.22,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00, 31.86,  0.16,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
@@ -366,8 +359,7 @@ class FixturesTestCase(unittest.TestCase):
          0.00, 17.26,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00 ], \
-        [  
-         0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
+        [0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.39,  0.00,  0.00,  1.81,  0.16,  0.88,  5.14, 54.90,  7.08,  0.00,  \
          0.00,  0.07,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.37,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
@@ -404,8 +396,7 @@ class FixturesTestCase(unittest.TestCase):
          0.00,  0.00,  0.00,  0.41,  4.59,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.05,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00 ], \
-        [ 
-         0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
+        [0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.29,  0.06,  0.55,  2.37,  0.32,  4.38,  2.20,  0.22,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
@@ -442,8 +433,7 @@ class FixturesTestCase(unittest.TestCase):
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00 ], \
-        [ 
-         0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
+        [0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00, 14.62,  0.08,  0.00,  \
          0.00,  1.82,  0.00,  0.00,  0.00,  0.00,  0.18,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
@@ -480,8 +470,7 @@ class FixturesTestCase(unittest.TestCase):
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.08,  0.00,  0.00,  0.00 ], \
-        [ 
-         0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
+        [0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.07,  0.14,  0.00,  0.00,  0.23,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.30,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
@@ -518,8 +507,7 @@ class FixturesTestCase(unittest.TestCase):
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00 ], \
-        [ 
-         0.00,  0.00,  0.00,  0.00,  0.00,  0.31,  0.19,  0.00,  0.00,  0.00,  \
+        [0.00,  0.00,  0.00,  0.00,  0.00,  0.31,  0.19,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  1.18,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
@@ -556,8 +544,7 @@ class FixturesTestCase(unittest.TestCase):
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00 ], \
-        [ 
-         0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
+        [0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.65,  5.38,  \
@@ -594,8 +581,7 @@ class FixturesTestCase(unittest.TestCase):
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.06,  \
          0.00,  0.00,  0.00,  0.00,  0.03,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.28,  0.00 ], \
-        [ 
-         0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
+        [0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.01,  0.00,  0.00,  0.45,  2.04,  0.03,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
@@ -632,8 +618,7 @@ class FixturesTestCase(unittest.TestCase):
          0.02,  0.00,  0.00,  0.00,  0.00, 10.53,  6.12,  0.70,  0.20,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00 ], \
-        [ 
-         0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
+        [0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.14,  0.00,  0.00,  1.00,  1.80,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
@@ -670,8 +655,7 @@ class FixturesTestCase(unittest.TestCase):
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00 ], \
-        [
-         0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
+        [0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  2.62,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  1.77,  0.21,  0.00,  0.00,  0.01,  5.32,  \
          0.65,  0.27,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
@@ -708,8 +692,7 @@ class FixturesTestCase(unittest.TestCase):
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.28,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.65,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00 ], \
-        [ 
-         0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
+        [0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
@@ -746,8 +729,7 @@ class FixturesTestCase(unittest.TestCase):
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.09,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00 ], \
-        [ 
-         0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
+        [0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.93,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
@@ -757,12 +739,12 @@ class FixturesTestCase(unittest.TestCase):
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  \
          0.00,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,  \
-          np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,  \
-          np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,  \
-          np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,  \
-          np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,  \
-          np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,  \
-          np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,  \
+         np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,  \
+         np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,  \
+         np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,  \
+         np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,  \
+         np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,  \
+         np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,  \
           np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,  \
           np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,  \
           np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,   np.NaN,  \
@@ -824,7 +806,7 @@ class FixturesTestCase(unittest.TestCase):
          np.NaN, np.NaN,  1.106,  0.775, np.NaN, np.NaN,  0.897, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.981, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ], 
+         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
         [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  0.680, np.NaN, np.NaN, np.NaN,  \
@@ -861,7 +843,7 @@ class FixturesTestCase(unittest.TestCase):
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ], 
+         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
         [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
@@ -898,7 +880,7 @@ class FixturesTestCase(unittest.TestCase):
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.119,  1.805, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ], 
+         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
         [1.378,  1.378,  1.449, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  0.954, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
@@ -935,7 +917,7 @@ class FixturesTestCase(unittest.TestCase):
          np.NaN, np.NaN, np.NaN, np.NaN,  0.729, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ], 
+         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
         [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.688,  1.377,  \
@@ -972,7 +954,7 @@ class FixturesTestCase(unittest.TestCase):
          np.NaN, np.NaN, np.NaN, np.NaN,  1.010, np.NaN,  1.829,  1.978, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ], 
+         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
         [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
@@ -1009,7 +991,7 @@ class FixturesTestCase(unittest.TestCase):
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ], 
+         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
         [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.334, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN,  2.142,  2.166, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
@@ -1046,7 +1028,7 @@ class FixturesTestCase(unittest.TestCase):
          1.144, np.NaN,  0.755,  0.848, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN,  1.984, np.NaN,  1.974, np.NaN ], 
+         np.NaN, np.NaN,  1.984, np.NaN,  1.974, np.NaN], \
         [2.147,  2.148,  2.121,  1.377, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN,  2.364,  2.306, np.NaN, np.NaN, np.NaN, np.NaN,  \
@@ -1083,7 +1065,7 @@ class FixturesTestCase(unittest.TestCase):
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  0.962, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ], 
+         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
         [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  2.209, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN,  1.372,  1.118, np.NaN, np.NaN,  0.972, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  2.357,  1.089, np.NaN, np.NaN,  \
@@ -1120,7 +1102,7 @@ class FixturesTestCase(unittest.TestCase):
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ], 
+         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
         [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN,  1.343, np.NaN, np.NaN,  2.059,  2.146,  1.976, np.NaN,  \
          np.NaN,  0.994, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
@@ -1157,7 +1139,7 @@ class FixturesTestCase(unittest.TestCase):
          np.NaN, np.NaN,  1.065,  1.445,  1.822,  0.922, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ], 
+         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
         [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN,  1.251,  1.378,  1.920,  1.110,  0.982,  1.185,  1.882,  1.934, np.NaN,  \
@@ -1194,7 +1176,7 @@ class FixturesTestCase(unittest.TestCase):
          1.980, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ], 
+         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
         [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.378,  1.130, np.NaN,  \
          np.NaN,  2.269, np.NaN, np.NaN, np.NaN, np.NaN,  0.670, np.NaN, np.NaN, np.NaN,  \
@@ -1231,7 +1213,7 @@ class FixturesTestCase(unittest.TestCase):
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN,  1.127, np.NaN, np.NaN, np.NaN ], 
+         np.NaN, np.NaN,  1.127, np.NaN, np.NaN, np.NaN], \
         [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN,  0.994,  2.147, np.NaN, np.NaN,  0.946, np.NaN, np.NaN, np.NaN, np.NaN,  \
@@ -1268,7 +1250,7 @@ class FixturesTestCase(unittest.TestCase):
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ], 
+         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
         [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.378,  1.133, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  0.873, np.NaN, np.NaN, np.NaN,  \
@@ -1305,7 +1287,7 @@ class FixturesTestCase(unittest.TestCase):
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ], 
+         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
         [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
@@ -1342,7 +1324,7 @@ class FixturesTestCase(unittest.TestCase):
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN,  1.139, np.NaN ], 
+         np.NaN, np.NaN, np.NaN, np.NaN,  1.139, np.NaN], \
         [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN,  1.682,  1.059,  0.803, np.NaN, np.NaN, np.NaN, np.NaN,  \
@@ -1379,7 +1361,7 @@ class FixturesTestCase(unittest.TestCase):
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.286,  1.560,  1.132, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  2.102,  1.555, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ], 
+         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
         [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN,  1.091, np.NaN, np.NaN,  0.847,  1.738, np.NaN, np.NaN,  \
@@ -1416,7 +1398,7 @@ class FixturesTestCase(unittest.TestCase):
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ], 
+         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
         [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.608, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN,  1.019,  0.937, np.NaN, np.NaN,  1.090,  2.144,  \
@@ -1453,7 +1435,7 @@ class FixturesTestCase(unittest.TestCase):
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  0.900, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.145, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ], 
+         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
         [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
@@ -1490,7 +1472,7 @@ class FixturesTestCase(unittest.TestCase):
          np.NaN, np.NaN,  2.138,  1.993,  1.573,  2.008, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ], 
+         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
         [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.351, np.NaN,  \
          np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
@@ -1656,6 +1638,132 @@ class FixturesTestCase(unittest.TestCase):
          [ 142.169921875, 55.7197265625, 45.1103515625, 33.8095703125, 99.6796875, 164.169921875, 96.6796875, 194.830078125, 141.259765625, 121.040039063, 11.3203125, 32.41015625], \
          [ 34.8896484375, 29.4599609375, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ]])
 
+    # PNP values calculated at 6-month scale corresponding to the monthly precipitation array
+    fixture_pnp_6month = np.array(
+        [ np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  1.199,  1.171,  1.071,  1.038,  0.978,  0.910,  0.941,  \
+          0.971,  0.999,  1.031,  0.855,  0.772,  1.118,  1.055,  0.954,  0.948,  0.957,  0.993,  0.803,  \
+          0.755,  0.869,  0.831,  1.010,  0.822,  0.825,  1.033,  0.980,  1.156,  1.141,  1.171,  1.255,  \
+          1.116,  1.088,  0.676,  0.408,  0.356,  0.397,  0.615,  0.883,  0.990,  1.178,  1.258,  1.428,  \
+          1.514,  1.623,  1.654,  1.508,  1.279,  1.192,  1.112,  0.901,  0.979,  1.021,  1.044,  1.023,  \
+          1.041,  1.173,  1.359,  1.324,  1.664,  1.508,  1.420,  1.237,  1.044,  1.002,  0.890,  0.912,  \
+          0.872,  0.928,  1.055,  1.007,  1.161,  1.222,  1.197,  1.285,  1.204,  1.112,  1.044,  0.950,  \
+          0.897,  0.818,  0.729,  0.859,  0.855,  0.792,  0.809,  0.647,  0.755,  0.975,  1.012,  1.075,  \
+          1.241,  1.561,  1.895,  1.402,  1.302,  1.123,  1.026,  0.888,  0.849,  0.832,  0.906,  0.915,  \
+          0.931,  0.980,  0.833,  0.992,  0.932,  1.090,  0.972,  0.906,  0.845,  1.060,  1.075,  0.984,  \
+          0.985,  1.012,  1.180,  0.765,  0.902,  0.808,  1.025,  1.112,  1.069,  1.002,  0.884,  1.092,  \
+          1.043,  0.997,  1.054,  1.072,  1.467,  1.274,  1.211,  1.227,  1.061,  1.073,  0.943,  0.797,  \
+          0.693,  0.465,  0.438,  0.292,  0.763,  0.842,  0.878,  0.891,  0.953,  0.908,  0.766,  0.796,  \
+          0.800,  0.779,  0.604,  0.694,  0.785,  0.739,  0.751,  0.878,  1.107,  1.141,  1.133,  1.164,  \
+          1.216,  1.132,  0.728,  0.706,  0.959,  1.039,  1.081,  1.211,  1.122,  1.072,  0.959,  0.941,  \
+          0.873,  0.669,  0.652,  0.470,  0.716,  0.788,  0.788,  0.823,  0.871,  1.133,  1.061,  1.043,  \
+          1.060,  1.015,  0.933,  0.375,  0.824,  0.790,  0.971,  1.012,  1.009,  0.976,  1.038,  1.150,  \
+          1.185,  1.302,  1.524,  1.816,  1.574,  1.341,  1.135,  0.985,  0.979,  1.020,  1.110,  1.141,  \
+          1.228,  1.431,  1.533,  1.511,  1.183,  1.103,  0.965,  0.895,  0.856,  0.744,  0.796,  0.768,  \
+          0.837,  0.873,  0.874,  1.443,  1.178,  1.000,  1.174,  1.044,  1.087,  1.010,  1.024,  1.204,  \
+          1.123,  1.364,  1.392,  1.270,  1.229,  1.249,  1.234,  1.030,  1.032,  1.055,  1.022,  0.886,  \
+          0.777,  0.873,  0.724,  0.761,  0.848,  1.023,  1.144,  1.019,  0.958,  1.080,  1.072,  0.982,  \
+          0.860,  0.905,  1.167,  0.778,  0.692,  0.763,  0.861,  0.896,  0.981,  0.986,  0.956,  0.965,  \
+          0.949,  0.919,  0.665,  0.752,  0.897,  0.973,  0.953,  0.909,  0.872,  0.851,  0.824,  0.796,  \
+          0.782,  0.900,  1.023,  0.932,  1.206,  1.210,  1.102,  1.104,  0.951,  0.882,  0.800,  0.688,  \
+          0.703,  0.562,  0.542,  0.803,  1.397,  1.072,  1.217,  1.015,  1.118,  1.052,  0.891,  1.038,  \
+          0.863,  1.076,  1.056,  0.961,  0.883,  0.630,  0.704,  0.645,  0.483,  0.832,  0.768,  0.881,  \
+          0.876,  0.924,  1.126,  0.408,  0.878,  0.969,  1.031,  1.110,  1.275,  1.612,  1.551,  1.644,  \
+          1.676,  1.729,  1.579,  0.807,  0.945,  0.971,  1.062,  1.065,  1.063,  0.974,  0.850,  0.778,  \
+          0.813,  0.808,  0.699,  0.875,  1.050,  0.865,  0.848,  0.835,  0.842,  0.888,  0.826,  0.918,  \
+          0.973,  0.973,  1.167,  0.959,  1.443,  1.278,  1.053,  1.140,  0.934,  0.820,  0.707,  0.789,  \
+          0.966,  0.769,  0.892,  1.233,  1.108,  0.993,  0.981,  1.196,  1.369,  1.338,  1.361,  1.356,  \
+          1.254,  1.147,  0.780,  0.741,  0.585,  0.578,  0.695,  0.627,  0.677,  0.762,  0.808,  0.869,  \
+          0.791,  0.865,  0.867,  0.543,  0.716,  0.745,  0.871,  1.003,  1.088,  1.093,  1.047,  1.137,  \
+          1.106,  0.942,  0.722,  0.715,  0.956,  0.870,  0.908,  0.910,  1.008,  1.186,  1.122,  1.221,  \
+          1.308,  1.436,  1.459,  1.203,  1.366,  1.498,  1.319,  1.177,  1.022,  1.023,  0.943,  0.743,  \
+          0.900,  0.972,  1.269,  1.465,  1.471,  1.060,  0.800,  0.718,  0.751,  0.680,  0.664,  0.753,  \
+          0.854,  0.926,  0.741,  0.617,  1.231,  1.254,  1.074,  1.175,  1.098,  1.215,  1.065,  1.023,  \
+          1.103,  0.950,  1.139,  1.148,  1.164,  0.958,  1.059,  1.132,  0.962,  1.147,  1.084,  1.194,  \
+          1.152,  1.111,  1.387,  0.715,  1.683,  1.479,  1.349,  1.254,  1.263,  1.168,  0.781,  0.740,  \
+          0.702,  0.634,  0.295,  0.498,  0.664,  0.845,  0.967,  0.943,  1.170,  1.111,  1.164,  1.158,  \
+          1.184,  1.443,  1.292,  1.217,  1.290,  1.537,  1.556,  1.519,  1.337,  1.381,  1.330,  1.176,  \
+          1.049,  0.911,  1.075,  0.904,  1.030,  0.973,  1.014,  0.965,  1.011,  1.045,  0.962,  0.976,  \
+          0.954,  0.904,  0.591,  0.361,  0.585,  0.600,  0.711,  0.624,  0.635,  0.681,  0.628,  0.631,  \
+          0.565,  0.662,  0.682,  0.701,  0.816,  0.776,  0.889,  0.864,  0.827,  0.968,  0.916,  1.020,  \
+          0.936,  1.013,  1.198,  0.818,  0.823,  0.677,  0.821,  0.853,  1.135,  1.084,  1.091,  1.260,  \
+          1.289,  1.506,  1.214,  1.834,  1.676,  1.320,  1.337,  1.031,  0.927,  0.793,  0.920,  0.986,  \
+          0.864,  1.038,  1.109,  1.535,  1.336,  1.386,  1.183,  1.035,  0.955,  0.766,  0.753,  0.656,  \
+          0.724,  0.737,  0.750,  0.766,  0.810,  0.541,  0.700,  0.769,  0.784,  0.974,  1.074,  1.190,  \
+          1.167,  1.165,  1.240,  0.764,  0.708,  0.581,  0.788,  0.820,  0.834,  0.926,  0.804,  0.916,  \
+          0.806,  0.772,  0.664,  0.409,  0.440,  0.376,  0.448,  0.632,  0.825,  0.938,  0.982,  1.148,  \
+          1.148,  1.101,  0.949,  0.660,  0.965,  0.954,  1.072,  1.010,  0.961,  0.945,  0.902,  0.942,  \
+          0.865,  0.977,  1.022,  1.138,  1.099,  1.305,  1.430,  1.402,  1.312,  1.537,  1.555,  1.515,  \
+          1.488,  1.433,  1.634,  1.128,  1.029,  0.746,  0.776,  0.926,  1.121,  1.196,  1.179,  1.337,  \
+          1.301,  1.213,  0.834,  0.602,  0.866,  0.886,  1.199,  1.221,  1.228,  1.320,  1.353,  1.471,  \
+          1.295,  1.325,  1.288,  0.918,  0.762,  0.492,  0.709,  0.776,  0.759,  0.927,  0.899,  1.121,  \
+          1.019,  1.017,  1.063,  0.938,  0.888,  0.600,  0.757,  0.812,  0.810,  0.741,  0.740,  0.837,  \
+          0.726,  0.683,  0.796,  0.690,  0.787,  0.733,  0.881,  0.845,  0.746,  0.947,  0.923,  0.992,  \
+          1.053,  1.124,  1.309,  0.824,  0.797,  1.148,  1.120,  1.085,  1.164,  1.238,  1.293,  1.175,  \
+          1.083,  1.161,  1.130,  1.253,  1.568,  1.457,  1.450,  1.287,  1.221,  1.052,  0.954,  0.890,  \
+          0.795,  0.726,  0.497,  0.529,  0.540,  0.957,  1.052,  0.993,  1.020,  0.970,  0.932,  0.781,  \
+          0.672,  0.685,  0.462,  0.456,  0.476,  0.398,  0.426,  0.481,  0.621,  0.688,  0.687,  0.735,  \
+          0.752,  0.899,  0.844,  0.798,  1.150,  0.927,  1.037,  0.966,  0.957,  0.980,  0.893,  1.080,  \
+          1.257,  1.286,  1.663,  1.606,  2.131,  1.769,  1.529,  1.408,  1.152,  1.168,  0.945,  0.999,  \
+          0.887,  0.918,  1.164,  1.110,  1.508,  1.344,  1.456,  1.336,  1.293,  1.466,  1.420,  1.406,  \
+          1.292,  1.425,  1.309,  1.236,  1.468,  1.320,  1.401,  1.331,  1.547,  1.449,  1.308,  1.335,  \
+          1.356,  1.397,  0.949,  0.615,  0.863,  0.779,  0.641,  0.626,  0.579,  0.650,  0.513,  0.503,  \
+          0.573,  0.545,  0.684,  0.663,  0.613,  0.941,  0.925,  0.996,  0.998,  0.941,  1.043,  0.918,  \
+          0.884,  0.884,  0.688,  0.666,  0.748,  0.810,  0.755,  0.726,  0.982,  0.986,  0.959,  1.027,  \
+          1.102,  1.178,  0.805,  1.046,  0.952,  1.152,  1.152,  1.042,  1.057,  1.077,  1.096,  0.953,  \
+          0.948,  1.104,  1.067,  0.766,  0.634,  0.616,  0.617,  0.498,  0.701,  0.929,  0.981,  1.033,  \
+          1.202,  1.433,  1.333,  0.904,  1.181,  1.663,  1.596,  1.423,  1.426,  1.406,  1.284,  0.991,  \
+          0.900,  0.954,  0.765,  0.527,  0.565,  1.062,  0.971,  0.887,  0.968,  1.115,  1.155,  0.984,  \
+          1.034,  1.230,  1.111,  0.737,  1.663,  1.847,  1.743,  1.520,  1.569,  1.738,  1.408,  1.168,  \
+          1.280,  1.454,  1.370,  1.117,  1.440,  1.968,  1.699,  1.537,  1.500,  1.616,  1.513,  1.202,  \
+          1.287,  1.415,  1.443,  0.785,  1.122,  1.110,  1.083,  0.926,  0.862,  0.968,  0.820,  0.746,  \
+          0.631,  0.659,  0.551,  0.185,  0.355,  0.548,  0.558,  0.621,  0.691,  0.825,  0.824,  0.884,  \
+          0.951,  1.045,  1.108,  1.198,  1.439,  1.345,  1.379,  1.199,  1.216,  1.104,  1.065,  0.997,  \
+          0.957,  1.090,  0.991,  0.970,  0.759,  0.977,  0.950,  1.140,  1.110,  1.108,  1.121,  1.117,  \
+          1.132,  0.792,  0.647,  0.569,  0.731,  0.658,  0.767,  0.803,  0.805,  0.814,  0.795,  0.785,  \
+          0.675,  0.646,  0.586,  0.456,  0.749,  0.889,  0.958,  0.942,  0.978,  1.029,  0.915,  0.849,  \
+          0.799,  0.873,  0.752,  0.796,  1.201,  1.235,  1.137,  1.222,  1.225,  1.122,  1.022,  0.970,  \
+          1.072,  0.867,  0.721,  0.763,  1.107,  0.964,  0.912,  0.898,  1.031,  0.991,  0.909,  1.003,  \
+          1.066,  1.219,  1.154,  1.493,  1.470,  1.306,  1.178,  1.078,  1.043,  1.063,  1.005,  1.006,  \
+          1.076,  1.027,  0.937,  1.141,  1.244,  0.974,  1.004,  0.960,  1.087,  0.979,  0.920,  1.074,  \
+          1.068,  1.208,  1.033,  1.099,  1.130,  1.023,  1.085,  1.045,  1.029,  0.966,  1.120,  1.126,  \
+          1.033,  1.204,  1.294,  1.197,  0.746,  0.700,  0.778,  1.036,  1.194,  1.167,  1.202,  1.302,  \
+          1.330,  0.937,  0.660,  1.220,  1.511,  1.575,  1.434,  1.326,  1.176,  1.009,  0.984,  0.847,  \
+          1.181,  1.570,  2.012,  2.331,  1.840,  1.784,  1.315,  1.059,  0.975,  0.946,  1.028,  0.975,  \
+          0.975,  0.967,  1.019,  1.023,  1.152,  0.879,  1.020,  0.984,  0.949,  0.880,  0.799,  0.821,  \
+          0.683,  0.585,  0.486,  0.636,  0.741,  0.670,  0.926,  0.889,  0.860,  0.876,  0.869,  1.008,  \
+          0.902,  1.005,  1.208,  1.145,  0.940,  0.831,  0.750,  0.765,  0.662,  0.641,  0.709,  0.808,  \
+          0.882,  0.883,  1.166,  1.239,  1.291,  0.759,  0.672,  0.627,  0.674,  0.778,  0.793,  0.959,  \
+          1.066,  1.205,  1.024,  0.861,  0.896,  1.174,  1.346,  1.482,  1.341,  1.295,  1.215,  1.042,  \
+          0.820,  0.462,  0.492,  0.508,  0.464,  0.519,  0.639,  0.716,  0.688,  0.665,  0.696,  0.730,  \
+          0.641,  0.545,  0.525,  0.611,  0.881,  0.840,  0.857,  0.924,  0.886,  0.871,  0.784,  0.786,  \
+          0.846,  0.762,  0.867,  0.912,  1.166,  1.161,  1.097,  1.084,  1.077,  1.159,  1.041,  1.032,  \
+          1.031,  1.057,  0.995,  0.788,  0.717,  1.399,  1.294,  1.247,  1.189,  1.088,  1.320,  0.964,  \
+          1.189,  1.228,  1.340,  1.612,  1.204,  1.057,  0.840,  0.813,  0.747,  0.831,  0.779,  0.796,  \
+          0.833,  1.006,  1.108,  1.092,  1.208,  0.997,  0.898,  0.786,  0.938,  0.937,  1.046,  1.255,  \
+          1.372,  1.452,  1.410,  1.495,  1.203,  1.350,  1.320,  1.408,  1.313,  1.399,  1.363,  1.204,  \
+          1.197,  1.036,  1.097,  0.676,  1.006,  1.168,  1.033,  1.041,  0.999,  1.121,  1.010,  0.892,  \
+          1.024,  1.009,  1.078,  0.748,  0.972,  1.394,  1.301,  1.265,  1.239,  1.164,  1.139,  1.058,  \
+          1.060,  1.297,  1.530,  1.655,  1.550,  0.895,  0.898,  0.726,  0.849,  0.862,  1.007,  1.190,  \
+          1.296,  1.362,  1.002,  1.079,  0.755,  0.885,  0.787,  0.921,  1.046,  1.321,  1.327,  1.357,  \
+          1.431,  1.478,  1.458,  0.866,  0.712,  0.853,  0.851,  0.909,  0.855,  0.936,  0.960,  0.948,  \
+          0.948,  0.802,  0.909,  0.695,  0.895,  0.779,  0.975,  1.127,  1.174,  1.266,  1.248,  1.395,  \
+          1.357,  1.380,  1.242,  0.814,  1.013,  1.282,  1.388,  1.168,  1.093,  1.045,  0.982,  0.798,  \
+          0.592,  0.606,  0.823,  1.086,  1.461,  1.225,  1.120,  1.140,  1.095,  1.000,  0.938,  0.956,  \
+          1.084,  1.119,  0.869,  1.023,  0.655,  0.458,  0.635,  0.675,  0.737,  0.756,  0.795,  0.924,  \
+          0.777,  0.629,  0.604,  0.466,  0.492,  0.920,  0.929,  1.117,  1.150,  1.131,  1.138,  1.015,  \
+          1.009,  0.867,  0.557,  0.499,  0.651,  0.644,  0.915,  0.929,  1.010,  0.945,  0.924,  1.020,  \
+          0.880,  0.898,  0.736,  1.130,  1.239,  1.302,  1.290,  1.053,  1.091,  1.067,  0.999,  0.893,  \
+          0.806,  0.968,  0.931,  0.822,  0.762,  0.731,  0.806,  0.926,  0.874,  0.857,  0.887,  0.887,  \
+          0.834,  0.587,  0.486,  0.270,  0.690,  0.887,  0.924,  0.931,  0.982,  0.929,  0.899,  0.905,  \
+          0.922,  1.095,  1.072,  1.502,  1.186,  0.881,  0.960,  0.927,  1.139,  1.058,  1.119,  1.234,  \
+          1.321,  1.240,  0.834,  0.871,  0.739,  0.697,  0.700,  0.961,  1.036,  1.241,  1.268,  1.380,  \
+          1.345,  1.270,  1.147,  1.081,  1.563,  1.430,  1.470,  1.430,  1.347,  1.158,  0.967,  0.950,  \
+          0.852,  0.685,  0.625,  0.806,  1.336,  1.199,  1.323,  1.163,  1.138,  0.982,  0.942,  0.982,  \
+          0.910,  1.038,  1.086,  1.170,  0.781,  0.804,  0.864,  0.776,  0.728,  0.763,  0.772,  0.741,  \
+          0.620,  0.677,  0.685,  0.983,  0.863,  0.853,  0.974,  0.997,  1.065,  0.921,  1.033,  1.279,  \
+          1.427,  1.522,  1.541,  1.721,  1.568,  1.052,  0.806,  0.845,  0.819,  0.852,  0.790,  0.776,  \
+          0.805,  0.697,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN, ])
+    
     # 30-day PNP values corresponding to the daily precipitation array
     fixture_pnp_30day = np.array([
         [ 
@@ -1695,7 +1803,7 @@ class FixturesTestCase(unittest.TestCase):
          0.000,  0.000,  0.409,  0.388,  0.329,  0.327,  0.310,  0.304,  0.304,  0.304,  \
          0.304,  0.290,  0.290,  0.289,  0.287,  0.276,  0.265,  0.317,  0.318,  0.320,  \
          0.320,  0.320,  0.320,  0.320,  0.398,  0.455,  0.468,  0.484,  0.490,  0.502,  \
-         0.536,  0.536,  0.099,  0.064,  0.077,  0.077 ],
+         0.536,  0.536,  0.099,  0.064,  0.077,  0.077], \
         [ 
          0.072,  0.066,  0.054,  0.054,  0.083,  0.090,  0.090,  0.090,  0.092,  0.098,  \
          0.107,  0.107,  0.089,  0.081,  0.081,  0.080,  0.078,  0.060,  0.059,  0.021,  \
@@ -1733,7 +1841,7 @@ class FixturesTestCase(unittest.TestCase):
          0.086,  0.086,  0.080,  0.069,  0.059,  0.058,  0.054,  0.054,  0.053,  0.053,  \
          0.053,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  \
          0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  \
-         0.000,  0.000,  0.000,  0.000,  0.000,  0.000 ],
+         0.000,  0.000,  0.000,  0.000,  0.000,  0.000], \
         [ 
          0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  \
          0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  \
@@ -1771,7 +1879,7 @@ class FixturesTestCase(unittest.TestCase):
          0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  \
          0.000,  0.000,  0.000,  0.000,  0.000,  0.113,  0.565,  0.677,  0.678,  0.682,  \
          0.684,  0.684,  0.684,  0.684,  0.849,  0.863,  0.886,  0.916,  0.929,  0.952,  \
-         1.015,  1.015,  0.946,  0.969,  1.174,  1.277 ],
+         1.015,  1.015,  0.946,  0.969,  1.174,  1.277], \
         [ 
          1.521,  2.250,  2.731,  2.715,  2.711,  2.933,  2.923,  2.929,  2.996,  3.006,  \
          2.321,  2.331,  1.932,  1.753,  1.752,  1.745,  1.699,  1.316,  1.286,  1.292,  \
@@ -1809,7 +1917,7 @@ class FixturesTestCase(unittest.TestCase):
          0.007,  0.007,  0.007,  0.006,  0.079,  0.078,  0.073,  0.072,  0.072,  0.072,  \
          0.072,  0.068,  0.068,  0.068,  0.068,  0.065,  0.063,  0.075,  0.075,  0.076,  \
          0.076,  0.076,  0.071,  0.071,  0.088,  0.089,  0.092,  0.095,  0.096,  0.099,  \
-         0.105,  0.105,  0.098,  0.100,  0.000,  0.000 ],
+         0.105,  0.105,  0.098,  0.100,  0.000,  0.000], \
         [ 
          0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  \
          0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  \
@@ -1847,7 +1955,7 @@ class FixturesTestCase(unittest.TestCase):
          0.000,  0.000,  0.000,  0.000,  0.401,  0.399,  1.162,  1.475,  1.473,  1.472,  \
          1.472,  1.402,  1.402,  1.401,  1.389,  1.337,  1.283,  1.537,  1.538,  1.548,  \
          1.551,  1.551,  1.552,  1.552,  1.927,  1.958,  2.011,  2.078,  2.108,  2.160,  \
-         2.304,  2.304,  2.147,  2.200,  2.003,  2.012 ],
+         2.304,  2.304,  2.147,  2.200,  2.003,  2.012], \
         [ 
          0.622,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  \
          0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  \
@@ -1885,7 +1993,7 @@ class FixturesTestCase(unittest.TestCase):
          0.179,  0.179,  0.166,  0.144,  0.122,  0.122,  0.114,  0.112,  0.112,  0.111,  \
          0.111,  0.106,  0.106,  0.106,  0.105,  0.101,  0.097,  0.116,  0.111,  0.000,  \
          0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  \
-         0.000,  0.000,  0.000,  0.000,  0.000,  0.000 ],
+         0.000,  0.000,  0.000,  0.000,  0.000,  0.000], \
         [ 
          0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.019,  0.019,  0.020,  0.021,  \
          0.023,  0.023,  3.059,  4.298,  4.295,  4.279,  4.133,  3.201,  3.128,  3.142,  \
@@ -1923,7 +2031,7 @@ class FixturesTestCase(unittest.TestCase):
          0.285,  0.285,  0.353,  0.382,  0.325,  0.323,  0.301,  0.296,  0.311,  0.332,  \
          0.332,  0.316,  0.316,  0.316,  0.313,  0.302,  0.289,  0.347,  0.347,  0.349,  \
          0.350,  0.350,  0.350,  0.350,  0.435,  0.442,  0.454,  0.469,  0.475,  0.487,  \
-         0.252,  0.252,  3.799,  7.604, 10.343, 10.389 ],
+         0.252,  0.252,  3.799,  7.604, 10.343, 10.389], \
         [ 
         11.220, 11.504, 11.784, 11.820, 11.802, 12.771, 12.728, 12.753, 13.043, 13.992,  \
         15.213, 15.275, 12.662, 11.487, 11.479, 11.438, 11.047,  8.555,  8.361,  8.397,  \
@@ -1961,7 +2069,7 @@ class FixturesTestCase(unittest.TestCase):
          0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  \
          0.000,  0.000,  0.000,  0.000,  0.000,  0.053,  0.051,  0.061,  0.061,  0.061,  \
          0.061,  0.061,  0.061,  0.061,  0.076,  0.077,  0.079,  0.082,  0.083,  0.085,  \
-         0.091,  0.091,  0.085,  0.087,  0.105,  0.106 ],
+         0.091,  0.091,  0.085,  0.087,  0.105,  0.106], \
         [ 
          0.109,  0.100,  0.082,  0.082,  0.081,  0.088,  0.113,  0.113,  0.116,  0.028,  \
          0.030,  0.030,  0.081,  0.084,  0.084,  0.084,  0.097,  0.075,  0.074,  0.074,  \
@@ -1999,7 +2107,7 @@ class FixturesTestCase(unittest.TestCase):
          0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  \
          0.000,  0.945,  0.945,  0.944,  0.936,  0.901,  0.864,  1.035,  1.036,  1.043,  \
          1.045,  1.045,  1.045,  1.045,  1.298,  1.319,  1.355,  1.400,  1.420,  1.455,  \
-         1.552,  1.552,  1.447,  1.482,  1.795,  1.803 ],
+         1.552,  1.552,  1.447,  1.482,  1.795,  1.803], \
         [ 
          1.863,  1.707,  1.401,  1.393,  1.391,  0.000,  0.000,  0.000,  0.000,  0.000,  \
          0.041,  0.041,  0.034,  0.173,  0.185,  0.253,  0.632,  3.696,  4.017,  4.034,  \
@@ -2023,7 +2131,7 @@ class FixturesTestCase(unittest.TestCase):
          0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  \
          0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  1.101,  1.133,  1.131,  \
          1.135,  1.135,  1.121,  1.103,  1.109,  1.154,  1.228,  1.240,  1.414,  1.418,  \
-         1.201,  1.199,  1.202,  1.213,  1.278,  1.474,  1.495,  1.769,  1.790,  1.924,  \
+         1.201,  1.199,  1.202,  1.213,  1.278,  1.474,  1.495,  1.769,  1.790,  1.924,  
          2.129,  2.158,  1.953,  1.953,  1.968,  2.358,  1.330,  0.191,  0.151,  0.148,  \
          0.146,  0.105,  0.104,  0.105,  0.099,  0.093,  0.084,  0.078,  0.056,  0.052,  \
          0.055,  0.045,  0.042,  0.039,  0.039,  0.039,  0.035,  0.035,  0.032,  0.032,  \
@@ -2037,7 +2145,7 @@ class FixturesTestCase(unittest.TestCase):
          0.020,  0.020,  0.389,  1.374,  2.687,  2.684,  2.507,  2.465,  2.463,  2.460,  \
          2.460,  2.345,  2.345,  2.364,  2.593,  2.496,  2.389,  2.861,  2.865,  2.876,  \
          2.883,  2.886,  2.886,  2.886,  3.584,  3.642,  3.741,  3.867,  3.921,  4.018,  \
-         4.286,  4.286,  3.632,  2.523,  0.546,  0.528 ],
+         4.286,  4.286,  3.632,  2.523,  0.546,  0.528], \
         [ 
          0.545,  0.499,  0.410,  0.408,  0.407,  0.440,  0.439,  0.404,  0.004,  0.005,  \
          0.005,  0.005,  0.004,  0.004,  0.004,  0.000,  0.000,  0.000,  0.000,  0.000,  \
@@ -2075,7 +2183,7 @@ class FixturesTestCase(unittest.TestCase):
          1.025,  1.025,  0.949,  0.824,  0.700,  0.696,  0.650,  0.639,  0.638,  0.638,  \
          0.638,  0.608,  0.608,  0.607,  0.602,  0.579,  0.556,  0.666,  0.666,  0.670,  \
          0.672,  0.672,  0.672,  0.672,  0.835,  0.848,  0.871,  0.901,  0.913,  0.936,  \
-         0.000,  0.000,  0.000,  0.000,  0.000,  0.000 ],
+         0.000,  0.000,  0.000,  0.000,  0.000,  0.000], \
         [ 
          0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  \
          0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.854,  0.839,  0.843,  \
@@ -2113,7 +2221,7 @@ class FixturesTestCase(unittest.TestCase):
          0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  \
          0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  \
          0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  \
-         0.000,  0.000,  0.007,  0.007,  0.008,  0.008 ],
+         0.000,  0.000,  0.007,  0.007,  0.008,  0.008], \
         [ 
          0.009,  0.008,  0.006,  0.006,  0.006,  0.007,  0.007,  0.007,  0.007,  0.008,  \
          0.008,  0.008,  0.007,  0.006,  0.006,  0.006,  0.006,  0.005,  0.005,  0.005,  \
@@ -2151,7 +2259,7 @@ class FixturesTestCase(unittest.TestCase):
          0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  \
          0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  \
          0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  \
-         0.000,  0.000,  0.000,  0.000,  0.000,  0.000 ],
+         0.000,  0.000,  0.000,  0.000,  0.000,  0.000], \
         [ 
          0.000,  0.000,  0.000,  0.000,  0.000,  0.027,  0.043,  0.044,  0.045,  0.048,  \
          0.052,  0.052,  0.043,  0.039,  0.039,  0.039,  0.038,  0.029,  0.029,  0.029,  \
@@ -2189,7 +2297,7 @@ class FixturesTestCase(unittest.TestCase):
          6.557,  6.557,  6.071,  5.273,  4.475,  4.449,  4.156,  4.087,  4.084,  4.079,  \
          4.079,  3.887,  3.887,  3.883,  3.850,  3.705,  3.555,  0.455,  0.428,  0.430,  \
          0.431,  0.431,  0.431,  0.431,  0.535,  0.544,  0.559,  0.578,  0.460,  0.000,  \
-         0.000,  0.000,  0.000,  0.000,  0.000,  0.000 ],
+         0.000,  0.000,  0.000,  0.000,  0.000,  0.000], \
         [ 
          0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  \
          0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  \
@@ -2227,7 +2335,7 @@ class FixturesTestCase(unittest.TestCase):
          0.047,  0.047,  0.044,  0.038,  0.032,  0.032,  0.030,  0.029,  0.029,  0.029,  \
          0.029,  0.028,  0.028,  0.028,  0.028,  0.027,  0.026,  0.031,  0.031,  0.034,  \
          0.035,  0.035,  0.035,  0.035,  0.016,  0.007,  0.007,  0.007,  0.007,  0.008,  \
-         0.008,  0.008,  0.008,  0.008,  0.038,  0.039 ],
+         0.008,  0.008,  0.008,  0.008,  0.038,  0.039], \
         [ 
          0.040,  0.037,  0.030,  0.030,  0.030,  0.032,  0.032,  0.032,  0.033,  0.035,  \
          0.038,  0.039,  0.032,  0.024,  0.024,  0.024,  0.023,  0.018,  0.016,  0.016,  \
@@ -2265,7 +2373,7 @@ class FixturesTestCase(unittest.TestCase):
          2.952,  2.952,  1.727,  0.308,  0.001,  0.033,  0.488,  0.481,  0.481,  0.480,  \
          0.481,  0.459,  0.459,  0.458,  0.454,  0.987,  1.253,  1.543,  1.557,  1.566,  \
          1.570,  1.570,  1.570,  1.570,  1.949,  1.981,  2.035,  2.103,  2.132,  2.185,  \
-         2.331,  2.331,  2.172,  2.226,  2.696,  2.655 ],
+         2.331,  2.331,  2.172,  2.226,  2.696,  2.655], \
         [ 
          1.900,  1.738,  1.426,  1.418,  1.414,  1.530,  1.525,  1.528,  1.563,  0.671,  \
          0.093,  0.021,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  \
@@ -2303,7 +2411,7 @@ class FixturesTestCase(unittest.TestCase):
          0.182,  0.182,  0.168,  0.146,  0.124,  0.123,  0.115,  0.097,  0.097,  0.097,  \
          0.097,  0.092,  0.092,  0.091,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  \
          0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  \
-         0.000,  0.000,  0.000,  0.000,  0.000,  0.000 ],
+         0.000,  0.000,  0.000,  0.000,  0.000,  0.000], \
         [ 
          0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  \
          0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.198,  0.153,  0.150,  0.150,  \
@@ -2341,7 +2449,7 @@ class FixturesTestCase(unittest.TestCase):
          0.955,  0.955,  0.884,  0.768,  0.652,  0.648,  0.605,  0.595,  0.595,  0.594,  \
          0.594,  0.566,  0.566,  0.565,  0.561,  0.540,  0.532,  0.637,  0.638,  0.641,  \
          0.595,  0.595,  0.595,  0.595,  0.738,  0.800,  0.822,  0.214,  0.077,  0.078,  \
-         0.084,  0.084,  0.078,  0.080,  0.097,  0.097 ],
+         0.084,  0.084,  0.078,  0.080,  0.097,  0.097], \
         [ 
          0.100,  0.092,  0.075,  0.075,  0.075,  0.081,  0.081,  0.081,  0.083,  0.089,  \
          0.068,  0.068,  0.056,  0.051,  0.051,  0.051,  0.049,  0.038,  0.037,  0.000,  \
@@ -2379,7 +2487,7 @@ class FixturesTestCase(unittest.TestCase):
          6.705,  6.705,  7.755,  9.280,  9.016,  9.029,  8.434,  8.294,  8.287,  8.278,  \
          8.278,  7.888,  7.888,  7.879,  7.813,  7.519,  7.214,  8.643,  8.652,  8.704,  \
          8.726,  8.725,  8.727,  8.727,  6.272,  5.976,  5.619,  5.807,  5.889,  6.035,  \
-         6.437,  6.437,  4.482,  1.650,  0.116,  0.009 ],
+         6.437,  6.437,  4.482,  1.650,  0.116,  0.009], \
         [ 
          0.010,  0.009,  0.007,  0.007,  0.007,  0.008,  0.008,  0.008,  0.008,  0.009,  \
          0.009,  0.009,  0.008,  0.007,  0.007,  0.007,  0.007,  0.005,  0.058,  0.058,  \
@@ -2498,7 +2606,7 @@ class FixturesTestCase(unittest.TestCase):
         -0.008, -0.008, -0.169, -0.165, -0.227, -0.297, -0.368, -0.368, -0.369, -0.370,  \
         -0.370,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
-         np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN ],
+         np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN], \
         [
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
@@ -2536,7 +2644,7 @@ class FixturesTestCase(unittest.TestCase):
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN, -0.366,  0.157,  0.237,  0.239,  0.259,  \
          0.262,  0.262,  0.263,  0.263,  0.345,  0.365,  0.374,  0.411,  0.439,  0.484,  \
-         0.567,  0.567,  0.555,  0.577,  0.698,  0.760 ],
+         0.567,  0.567,  0.555,  0.577,  0.698,  0.760], \
         [
          0.838,  1.051,  1.157,  1.154,  1.152,  1.203,  1.205,  1.207,  1.227,  1.232,  \
          1.103,  1.109,  1.014,  0.968,  0.967,  0.965,  0.928,  0.790,  0.765,  0.787,  \
@@ -2574,7 +2682,7 @@ class FixturesTestCase(unittest.TestCase):
         -0.248, -0.248, -0.411, -0.402, -0.175, -0.246, -0.320, -0.320, -0.321, -0.322,  \
         -0.322, -0.382, -0.382, -0.382, -0.295, -0.482, -0.523, -0.503, -0.501, -0.409,  \
         -0.408, -0.408, -0.417, -0.417, -0.422, -0.405, -0.408, -0.376, -0.344, -0.228,  \
-        -0.087, -0.087, -0.120, -0.098,  np.NaN,  np.NaN ],
+        -0.087, -0.087, -0.120, -0.098,  np.NaN,  np.NaN], \
         [
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
@@ -2612,7 +2720,7 @@ class FixturesTestCase(unittest.TestCase):
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  0.236,  0.173,  0.607,  0.751,  0.750,  0.749,  \
          0.749,  0.699,  0.699,  0.698,  0.692,  0.668,  0.628,  0.752,  0.753,  0.751,  \
          0.753,  0.753,  0.754,  0.754,  0.912,  0.926,  0.948,  0.976,  0.989,  0.996,  \
-         1.038,  1.038,  1.007,  1.026,  0.972,  0.988 ],
+         1.038,  1.038,  1.007,  1.026,  0.972,  0.988], \
         [
          0.487,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
@@ -2650,7 +2758,7 @@ class FixturesTestCase(unittest.TestCase):
          0.124,  0.124, -0.028, -0.032, -0.086, -0.158, -0.236, -0.236, -0.237, -0.239,  \
         -0.239, -0.303, -0.303, -0.303, -0.227, -0.392, -0.436, -0.409, -0.417,  np.NaN,  \
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
-         np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN ],
+         np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN], \
         [
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN, -0.054, -0.053, -0.007,  0.017,  \
         -0.047, -0.033,  1.239,  1.435,  1.435,  1.417,  1.414,  1.264,  1.249,  1.240,  \
@@ -2688,7 +2796,7 @@ class FixturesTestCase(unittest.TestCase):
          0.229,  0.229,  0.170,  0.220,  0.168,  0.102,  0.021,  0.019,  0.034,  0.054,  \
          0.054, -0.014, -0.014, -0.014,  0.027, -0.076, -0.124, -0.069, -0.066, -0.025,  \
         -0.023, -0.023, -0.021, -0.021,  0.019,  0.040,  0.043,  0.083,  0.116,  0.188,  \
-         0.085,  0.085,  1.433,  2.102,  2.379,  2.325 ],
+         0.085,  0.085,  1.433,  2.102,  2.379,  2.325], \
         [
          2.345,  2.253,  2.253,  2.256,  2.260,  2.296,  2.361,  2.362,  2.333,  2.388,  \
          2.534,  2.522,  2.300,  2.212,  2.212,  2.175,  2.230,  2.051,  2.052,  1.996,  \
@@ -2726,7 +2834,7 @@ class FixturesTestCase(unittest.TestCase):
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN, -0.519, -0.559, -0.542, -0.539, -0.442,  \
         -0.440, -0.440, -0.439, -0.439, -0.446, -0.429, -0.433, -0.402, -0.371, -0.252,  \
-        -0.110, -0.110, -0.145, -0.124,  0.007,  0.050 ],
+        -0.110, -0.110, -0.145, -0.124,  0.007,  0.050], \
         [
          0.073,  0.171,  0.164,  0.164,  0.159,  0.209,  0.179,  0.180,  0.230,  0.047,  \
         -0.012,  0.001,  0.174,  0.169,  0.169,  0.213,  0.137, -0.001, -0.033,  0.052,  \
@@ -2764,7 +2872,7 @@ class FixturesTestCase(unittest.TestCase):
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
          np.NaN,  0.462,  0.462,  0.462,  0.468,  0.425,  0.380,  0.482,  0.484,  0.491,  \
          0.494,  0.494,  0.495,  0.495,  0.612,  0.630,  0.645,  0.678,  0.699,  0.726,  \
-         0.789,  0.789,  0.769,  0.790,  0.910,  0.929 ],
+         0.789,  0.789,  0.769,  0.790,  0.910,  0.929], \
         [
          0.938,  0.921,  0.850,  0.849,  0.845,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
          0.027,  0.041,  0.055,  0.294,  0.307,  0.400,  0.559,  1.359,  1.421,  1.402,  \
@@ -2802,9 +2910,8 @@ class FixturesTestCase(unittest.TestCase):
         -0.176, -0.176,  0.201,  0.748,  1.173,  1.174,  1.125,  1.112,  1.111,  1.110,  \
          1.110,  1.074,  1.074,  1.081,  1.140,  1.143,  1.110,  1.280,  1.281,  1.262,  \
          1.264,  1.265,  1.264,  1.264,  1.505,  1.512,  1.548,  1.565,  1.560,  1.534,  \
-         1.535,  1.535,  1.395,  1.118,  0.400,  0.425 ],
-        [
-         0.445,  0.496,  0.464,  0.464,  0.458,  0.514,  0.469,  0.448, -0.132, -0.113,  \
+         1.535,  1.535,  1.395,  1.118,  0.400,  0.425], \
+        [0.445,  0.496,  0.464,  0.464,  0.458,  0.514,  0.469,  0.448, -0.132, -0.113,  \
         -0.194, -0.182, -0.132, -0.147, -0.147,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
          np.NaN, -0.211, -0.202, -0.166,  0.045,  0.054,  0.172,  0.270,  0.300,  0.252,  \
          0.257,  0.292,  0.385,  0.388,  0.344,  0.304,  0.294,  0.269,  0.247,  0.213,  \
@@ -2840,7 +2947,7 @@ class FixturesTestCase(unittest.TestCase):
          0.649,  0.649,  0.548,  0.503,  0.442,  0.390,  0.314,  0.309,  0.308,  0.306,  \
          0.306,  0.242,  0.242,  0.242,  0.262,  0.196,  0.148,  0.228,  0.231,  0.251,  \
          0.253,  0.253,  0.255,  0.255,  0.336,  0.355,  0.365,  0.402,  0.429,  0.475,  \
-         np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN ],
+         np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN], \
         [
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  0.613,  0.588,  0.622,  \
@@ -2878,7 +2985,7 @@ class FixturesTestCase(unittest.TestCase):
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
-         np.NaN,  np.NaN, -0.404, -0.392, -0.253, -0.223 ],
+         np.NaN,  np.NaN, -0.404, -0.392, -0.253, -0.223], \
         [
         -0.205, -0.077, -0.073, -0.072, -0.077, -0.040, -0.140, -0.139, -0.097, -0.077,  \
         -0.153, -0.140, -0.098, -0.114, -0.115, -0.039, -0.165, -0.307, -0.331, -0.214,  \
@@ -2916,7 +3023,7 @@ class FixturesTestCase(unittest.TestCase):
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
-         np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN ],
+         np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN], \
         [
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  0.069,  0.038,  0.039,  0.088,  0.113,  \
          0.062,  0.076,  0.086,  0.064,  0.063,  0.117,  0.004, -0.136, -0.166, -0.067,  \
@@ -2954,7 +3061,7 @@ class FixturesTestCase(unittest.TestCase):
          1.862,  1.862,  1.885,  1.722,  1.576,  1.604,  1.573,  1.555,  1.555,  1.554,  \
          1.554,  1.537,  1.537,  1.535,  1.498,  1.516,  1.493,  0.044,  0.020,  0.054,  \
          0.056,  0.056,  0.058,  0.058,  0.109,  0.131,  0.135,  0.174,  0.103,  np.NaN,  \
-         np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN ],
+         np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN], \
         [
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
@@ -2992,7 +3099,7 @@ class FixturesTestCase(unittest.TestCase):
         -0.090, -0.090, -0.255, -0.247, -0.317, -0.384, -0.447, -0.447, -0.447, -0.449,  \
         -0.449, -0.498, -0.498, -0.497, -0.390, -0.617, -0.650, -0.640, -0.638, -0.512,  \
         -0.510, -0.510, -0.509, -0.509, -0.598, -0.627, -0.629, -0.617, -0.603, -0.459,  \
-        -0.311, -0.311, -0.397, -0.385, -0.129, -0.090 ],
+        -0.311, -0.311, -0.397, -0.385, -0.129, -0.090], \
         [
         -0.068,  0.046,  0.046,  0.046,  0.041,  0.086,  0.002,  0.003,  0.051,  0.075,  \
          0.020,  0.033,  0.049,  0.009,  0.008,  0.068, -0.050, -0.190, -0.229, -0.124,  \
@@ -3030,7 +3137,7 @@ class FixturesTestCase(unittest.TestCase):
          1.216,  1.216,  0.867,  0.156, -0.598, -0.381,  0.193,  0.191,  0.190,  0.188,  \
          0.189,  0.122,  0.122,  0.122,  0.152,  0.477,  0.612,  0.755,  0.762,  0.759,  \
          0.762,  0.762,  0.762,  0.762,  0.922,  0.936,  0.958,  0.986,  0.998,  1.005,  \
-         1.046,  1.046,  1.015,  1.034,  1.155,  1.150 ],
+         1.046,  1.046,  1.015,  1.034,  1.155,  1.150], \
         [
          0.948,  0.929,  0.858,  0.856,  0.851,  0.906,  0.890,  0.891,  0.923,  0.640,  \
          0.156, -0.044,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
@@ -3068,7 +3175,7 @@ class FixturesTestCase(unittest.TestCase):
          0.127,  0.127, -0.025, -0.028, -0.083, -0.154, -0.232, -0.265, -0.266, -0.268,  \
         -0.268, -0.331, -0.331, -0.333,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
-         np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN ],
+         np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN ], \
         [
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  \
          np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  np.NaN,  0.266,  0.130,  0.098,  0.171,  \
@@ -3106,7 +3213,7 @@ class FixturesTestCase(unittest.TestCase):
          0.619,  0.619,  0.515,  0.473,  0.413,  0.360,  0.283,  0.278,  0.277,  0.275,  \
          0.275,  0.210,  0.210,  0.210,  0.233,  0.162,  0.128,  0.205,  0.208,  0.230,  \
          0.195,  0.195,  0.196,  0.196,  0.268,  0.323,  0.332, -0.189, -0.385, -0.264,  \
-        -0.122, -0.122, -0.159, -0.138, -0.006,  0.036 ],
+        -0.122, -0.122, -0.159, -0.138, -0.006,  0.036], \
         [
          0.060,  0.159,  0.153,  0.153,  0.147,  0.198,  0.125,  0.126,  0.175,  0.203,  \
          0.102,  0.116,  0.121,  0.098,  0.097,  0.148,  0.037, -0.102, -0.133,  np.NaN,  \
@@ -3144,7 +3251,7 @@ class FixturesTestCase(unittest.TestCase):
          1.884,  1.884,  2.161,  2.344,  2.301,  2.396,  2.397,  2.370,  2.370,  2.370,  \
          2.370,  2.387,  2.387,  2.385,  2.326,  2.369,  2.362,  2.657,  2.654,  2.615,  \
          2.616,  2.616,  2.613,  2.613,  2.202,  2.112,  2.042,  2.049,  2.029,  1.979,  \
-         1.949,  1.949,  1.577,  0.850,  0.025, -0.215 ],
+         1.949,  1.949,  1.577,  0.850,  0.025, -0.215], \
         [
         -0.197, -0.070, -0.066, -0.065, -0.070, -0.033, -0.131, -0.130, -0.088, -0.067,  \
         -0.142, -0.129, -0.089, -0.105, -0.106, -0.031, -0.156, -0.299, -0.070,  0.019,  \
