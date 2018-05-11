@@ -196,6 +196,32 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                  temps_celsius=None, 
                                  latitude_degrees=self.fixture_latitude_degrees)
         
+        # having both temperature and PET input array arguments should raise a ValueError
+        np.testing.assert_raises(ValueError, 
+                                 indices.spei_gamma, 
+                                 6,
+                                 'monthly', 
+                                 data_start_year=self.fixture_data_year_start_monthly,
+                                 calibration_year_initial=self.fixture_data_year_start_monthly,
+                                 calibration_year_final=self.fixture_data_year_end_monthly,
+                                 precips_mm=self.fixture_precips_mm_monthly, 
+                                 pet_mm=self.fixture_pet_mm, 
+                                 temps_celsius=self.fixture_temps_celsius, 
+                                 latitude_degrees=self.fixture_latitude_degrees)
+        
+        # having temperature without corresponding latitude argument should raise a ValueError
+        np.testing.assert_raises(ValueError, 
+                                 indices.spei_gamma, 
+                                 6,
+                                 'monthly', 
+                                 data_start_year=self.fixture_data_year_start_monthly,
+                                 calibration_year_initial=self.fixture_data_year_start_monthly,
+                                 calibration_year_final=self.fixture_data_year_end_monthly,
+                                 precips_mm=self.fixture_precips_mm_monthly, 
+                                 pet_mm=self.fixture_pet_mm, 
+                                 temps_celsius=self.fixture_temps_celsius, 
+                                 latitude_degrees=None)
+        
 #--------------------------------------------------------------------------------------------
 if __name__ == '__main__':
     unittest.main()
