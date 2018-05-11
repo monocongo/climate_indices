@@ -48,12 +48,12 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                    err_msg='PNP values not computed as expected')
                               
         # make sure we can compute PNP from the daily values without raising an error 
-        computed_pnp = indices.percentage_of_normal(self.fixture_precips_mm_daily.flatten(),
-                                                    30, 
-                                                    self.fixture_data_year_start_daily,
-                                                    self.fixture_calibration_year_start_daily, 
-                                                    self.fixture_calibration_year_end_daily, 
-                                                    'daily')
+        indices.percentage_of_normal(self.fixture_precips_mm_daily.flatten(),
+                                     30, 
+                                     self.fixture_data_year_start_daily,
+                                     self.fixture_calibration_year_start_daily, 
+                                     self.fixture_calibration_year_end_daily, 
+                                     'daily')
                 
         # invalid time series type argument should raise a ValueError
         np.testing.assert_raises(ValueError, 

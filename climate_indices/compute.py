@@ -502,7 +502,7 @@ def transform_fitted_pearson(values,
     # validate (and possibly reshape) the input array
     if len(values.shape) == 1:
         
-        if time_series_type == None:    
+        if time_series_type is None:    
             message = '1-D input array requires a corresponding time series type argument, none provided'
             _logger.error(message)
             raise ValueError(message)
@@ -596,7 +596,7 @@ def transform_fitted_gamma(values,
     # validate (and possibly reshape) the input array
     if len(values.shape) == 1:
         
-        if time_series_type == None:    
+        if time_series_type is None:    
             message = '1-D input array requires a corresponding time series type argument, none provided'
             _logger.error(message)
             raise ValueError(message)
