@@ -1,7 +1,6 @@
-import io
 import logging
 import numpy as np
-import unittest.mock
+import unittest
 
 from climate_indices import utils
 
@@ -14,29 +13,6 @@ class UtilsTestCase(unittest.TestCase):
     Tests for `utils.py`.
     """
     
-    #----------------------------------------------------------------------------------------
-    @unittest.mock.patch('sys.stdout', new_callable=io.StringIO)  # mocks stdout, will be used as first mock_* argument
-    def _assert_print_equal(self, 
-                            values, 
-                            expected_output, 
-                            mock_stdout):
-
-        utils.print_years_months(values)
-        self.assertEqual(mock_stdout.getvalue(), expected_output)
-
-    #----------------------------------------------------------------------------------------
-    def test_print_years_months(self):
-        """
-        Test for the utils.print_years_months() function
-        """
-        
-        #TODO come up with fixture and expected results
-        fixture = np.array([1., 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16])
-        expected = " 1.00,  2.00,  3.00,  4.00,  5.00,  6.00,  7.00,  8.00,  9.00, 10.00, 11.00, 12.00,  \\" + "\n" + \
-                   "13.00, 14.00, 15.00, 16.00,   nan,   nan,   nan,   nan,   nan,   nan,   nan,   nan,  \\" + "\n"
-
-        self._assert_print_equal(fixture, expected)
-        
     #----------------------------------------------------------------------------------------
     def test_compute_days(self):
         """
