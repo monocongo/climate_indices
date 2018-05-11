@@ -211,8 +211,9 @@ def _pearson3_fitting_values(values):#,
     
     # validate that the values array has shape: (years, 12) for monthly or (years, 366) for daily
     if len(values.shape) != 2:
-
-        raise ValueError('Invalid shape of input data array: %s', values.shape)
+        message = 'Invalid shape of input data array: {0}'.format(values.shape)
+        _logger.error(message)
+        raise ValueError(message)
     
     else:
         
@@ -220,7 +221,7 @@ def _pearson3_fitting_values(values):#,
         if (time_steps_per_year != 12) and (time_steps_per_year != 366):
             message = 'Invalid shape of input data array: {0}'.format(values.shape)
             _logger.error(message)
-            raise ValueError()
+            raise ValueError(message)
 
 #     # determine the end year of the values array
 #     data_end_year = data_start_year + values.shape[0]
@@ -501,7 +502,12 @@ def transform_fitted_pearson(values,
     # validate (and possibly reshape) the input array
     if len(values.shape) == 1:
         
-        if time_series_type == 'monthly': 
+        if time_series_type is None:    
+            message = '1-D input array requires a corresponding time series type argument, none provided'
+            _logger.error(message)
+            raise ValueError(message)
+
+        elif time_series_type == 'monthly': 
             # we've been passed a 1-D array with shape (months), reshape it to 2-D with shape (years, 12)
             values = utils.reshape_to_2d(values, 12)
      
@@ -510,7 +516,9 @@ def transform_fitted_pearson(values,
             values = utils.reshape_to_2d(values, 366)
             
         else:
-            raise ValueError('Unsupported time series type: %s', time_series_type)
+            message = 'Unsupported time series type argument: \'{0}\''.format(time_series_type)
+            _logger.error(message)
+            raise ValueError(message)
         
     elif (len(values.shape) != 2) or ((values.shape[1] != 12) and (values.shape[1] != 366)):
       
@@ -560,7 +568,7 @@ def transform_fitted_gamma(values,
                            data_start_year,
                            calibration_start_year,
                            calibration_end_year,
-                           time_series_type):
+                           time_series_type=None):
     '''
     Fit values to a gamma distribution and transform the values to corresponding normalized sigmas. 
 
@@ -588,7 +596,12 @@ def transform_fitted_gamma(values,
     # validate (and possibly reshape) the input array
     if len(values.shape) == 1:
         
-        if time_series_type == 'monthly': 
+        if time_series_type is None:    
+            message = '1-D input array requires a corresponding time series type argument, none provided'
+            _logger.error(message)
+            raise ValueError(message)
+
+        elif time_series_type == 'monthly': 
             # we've been passed a 1-D array with shape (months), reshape it to 2-D with shape (years, 12)
             values = utils.reshape_to_2d(values, 12)
      
@@ -597,7 +610,9 @@ def transform_fitted_gamma(values,
             values = utils.reshape_to_2d(values, 366)
             
         else:
-            raise ValueError('Unsupported time series type: %s', time_series_type)
+            message = 'Unsupported time series type argument: \'{0}\''.format(time_series_type)
+            _logger.error(message)
+            raise ValueError(message)
     
     elif (len(values.shape) != 2) or ((values.shape[1] != 12 and values.shape[1] != 366)):
      
