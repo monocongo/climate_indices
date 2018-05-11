@@ -72,6 +72,16 @@ class PalmerTestCase(fixtures.FixturesTestCase):
                                    err_msg='Not computing the K as expected')        
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def test_cafec_coeff_ufunc(self):
+        '''
+        Test for the palmer._cafec_coeff_ufunc() function
+        '''
+        
+        np.testing.assert_equal(palmer._cafec_coeff_ufunc(0, 0), 1)
+        np.testing.assert_equal(palmer._cafec_coeff_ufunc(5, 0), 0)
+        np.testing.assert_equal(palmer._cafec_coeff_ufunc(5, 10), 0.5)
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def test_cafec_coefficients(self):
         '''
         Test for the palmer._cafec_coefficients() function
