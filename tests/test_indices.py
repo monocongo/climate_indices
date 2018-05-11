@@ -247,13 +247,6 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                              temps_celsius=self.fixture_temps_celsius, 
                                              latitude_degrees=self.fixture_latitude_degrees)
 
-        # reshape the array, go over the two dimensions and print
-        import climate_indices.utils
-        values = climate_indices.utils.reshape_to_2d(computed_spei, 12)
-        for i in range(values.shape[0]):
-            year_line = ''.join("%6.3f, " % (v) for v in values[i])
-            print('          ' + year_line + ' \\')
-
         # make sure SPEI/gamma is being computed as expected
         np.testing.assert_allclose(computed_spei, 
                                    self.fixture_spei_6_month_pearson3, 
