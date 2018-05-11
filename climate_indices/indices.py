@@ -45,6 +45,15 @@ def spi_gamma(precips,
     :rtype: 1-D numpy.ndarray of floats of the same length as the input array of precipitation values
     '''
 
+    # we expect to operate upon a 1-D array, so if we've been passed a 2-D array we flatten it, otherwise raise an error
+    shape = precips.shape
+    if len(shape) == 2:
+        precips = precips.flatten()
+    elif len(shape) != 1:
+        message = 'Invalid shape of input array: {0}'.format(shape)
+        _logger.error(message)
+        raise ValueError(message)
+        
     # remember the original length of the array, in order to facilitate returning an array of the same size
     original_length = precips.size
     
@@ -236,6 +245,12 @@ def spei_gamma(scale,
             _logger.error(message)
             raise ValueError(message)
 
+    else:
+        
+        message = 'Neither temperature nor PET array was specified, one or the other is required for SPEI'
+        _logger.error(message)
+        raise ValueError(message)
+
     # subtract the PET from precipitation, adding an offset to ensure that all values are positive
     p_minus_pet = (precips_mm.flatten() - pet_mm.flatten()) + 1000.0
         
@@ -372,9 +387,10 @@ def spei_pearson(scale,
     
     else:
 
-        message = 'Invalid arguments: both temperature and PET array arguments are missing'
+        message = 'Neither temperature nor PET array was specified, one or the other is required for SPEI'
         _logger.error(message)
         raise ValueError(message)
+
         
     # subtract the PET from precipitation, adding an offset to ensure that all values are positive
     p_minus_pet = (precips_mm.flatten() - pet_mm.flatten()) + 1000.0
@@ -624,6 +640,16 @@ def percentage_of_normal(values,
     :rtype: numpy.ndarray of type float
     '''
 
+    # if doing monthly then we'll use 12 periods, corresponding to calendar months, if daily assume years w/366 days
+    if time_series_type == 'monthly':
+        periodicity = 12
+    elif time_series_type == 'daily':
+        periodicity = 366
+    else:
+        message = 'Invalid time series type argument: \'{0}\''.format(time_series_type)
+        _logger.error(message)
+        raise ValueError(message)
+    
     # bypass processing if all values are masked    
     if np.ma.is_masked(values) and values.mask.all():
         return values
@@ -635,12 +661,7 @@ def percentage_of_normal(values,
     elif ((calibration_end_year - calibration_start_year + 1) * 12) > values.size:
         raise ValueError('Invalid calibration period specified: total calibration years exceeds the actual ' + \
                          'number of years of data')
-    
-    # if doing monthly then we'll use 12 periods, corresponding to calendar months, otherwise assume years w/366 days
-    periodicity = 12
-    if time_series_type == 'daily':
-        periodicity = 366
-    
+        
     # get an array containing a sliding sum on the specified time step scale -- i.e. if the scale is 3 then the first 
     # two elements will be np.NaN, since we need 3 elements to get a sum, and then from the third element to the end 
     # the values will equal the sum of the corresponding time step plus the values of the two previous time steps
