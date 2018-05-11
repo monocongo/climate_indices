@@ -20,7 +20,6 @@ sys.path.insert(0, os.path.abspath('../climate_indices'))
 # -- Project information -----------------------------------------------------
 
 project = 'climate_indices'
-copyright = '2018, James Adams'
 author = 'James Adams'
 
 # The short X.Y version
