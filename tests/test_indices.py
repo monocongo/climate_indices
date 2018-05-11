@@ -222,6 +222,107 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                  temps_celsius=self.fixture_temps_celsius, 
                                  latitude_degrees=None)
         
+        # having both precipitation and PET input array arguments with incongruent dimensions should raise a ValueError
+        np.testing.assert_raises(ValueError, 
+                                 indices.spei_gamma, 
+                                 6,
+                                 'monthly', 
+                                 data_start_year=self.fixture_data_year_start_monthly,
+                                 calibration_year_initial=self.fixture_data_year_start_monthly,
+                                 calibration_year_final=self.fixture_data_year_end_monthly,
+                                 precips_mm=self.fixture_precips_mm_monthly, 
+                                 pet_mm=np.array((200, 200), dtype=float))
+        
+    #----------------------------------------------------------------------------------------
+    def test_spei_pearson(self):
+        
+        # compute SPEI/gamma at 6-month scale
+        computed_spei = indices.spei_pearson(6,
+                                             'monthly', 
+                                             data_start_year=self.fixture_data_year_start_monthly,
+                                             calibration_year_initial=self.fixture_data_year_start_monthly,
+                                             calibration_year_final=self.fixture_data_year_end_monthly,
+                                             precips_mm=self.fixture_precips_mm_monthly, 
+                                             pet_mm=None, 
+                                             temps_celsius=self.fixture_temps_celsius, 
+                                             latitude_degrees=self.fixture_latitude_degrees)
+
+        # reshape the array, go over the two dimensions and print
+        import climate_indices.utils
+        values = climate_indices.utils.reshape_to_2d(computed_spei, 12)
+        for i in range(values.shape[0]):
+            year_line = ''.join("%6.3f, " % (v) for v in values[i])
+            print('          ' + year_line + ' \\')
+
+        # make sure SPEI/gamma is being computed as expected
+        np.testing.assert_allclose(computed_spei, 
+                                   self.fixture_spei_6_month_pearson3, 
+                                   atol=0.01,
+                                   err_msg='SPEI/Pearson values for 6-month scale not computed as expected')
+        
+        # invalid time series type argument should raise a ValueError
+        np.testing.assert_raises(ValueError, 
+                                 indices.spei_pearson, 
+                                 6,
+                                 'unsupported_value', 
+                                 data_start_year=self.fixture_data_year_start_monthly,
+                                 calibration_year_initial=self.fixture_data_year_start_monthly,
+                                 calibration_year_final=self.fixture_data_year_end_monthly,
+                                 precips_mm=self.fixture_precips_mm_monthly, 
+                                 pet_mm=None, 
+                                 temps_celsius=self.fixture_temps_celsius, 
+                                 latitude_degrees=self.fixture_latitude_degrees)
+        
+        # missing temperature and PET arguments should raise a ValueError
+        np.testing.assert_raises(ValueError, 
+                                 indices.spei_pearson, 
+                                 6,
+                                 'monthly', 
+                                 data_start_year=self.fixture_data_year_start_monthly,
+                                 calibration_year_initial=self.fixture_data_year_start_monthly,
+                                 calibration_year_final=self.fixture_data_year_end_monthly,
+                                 precips_mm=self.fixture_precips_mm_monthly, 
+                                 pet_mm=None, 
+                                 temps_celsius=None, 
+                                 latitude_degrees=self.fixture_latitude_degrees)
+        
+        # having both temperature and PET input array arguments should raise a ValueError
+        np.testing.assert_raises(ValueError, 
+                                 indices.spei_pearson, 
+                                 6,
+                                 'monthly', 
+                                 data_start_year=self.fixture_data_year_start_monthly,
+                                 calibration_year_initial=self.fixture_data_year_start_monthly,
+                                 calibration_year_final=self.fixture_data_year_end_monthly,
+                                 precips_mm=self.fixture_precips_mm_monthly, 
+                                 pet_mm=self.fixture_pet_mm, 
+                                 temps_celsius=self.fixture_temps_celsius, 
+                                 latitude_degrees=self.fixture_latitude_degrees)
+        
+        # having temperature without corresponding latitude argument should raise a ValueError
+        np.testing.assert_raises(ValueError, 
+                                 indices.spei_pearson, 
+                                 6,
+                                 'monthly', 
+                                 data_start_year=self.fixture_data_year_start_monthly,
+                                 calibration_year_initial=self.fixture_data_year_start_monthly,
+                                 calibration_year_final=self.fixture_data_year_end_monthly,
+                                 precips_mm=self.fixture_precips_mm_monthly, 
+                                 pet_mm=self.fixture_pet_mm, 
+                                 temps_celsius=self.fixture_temps_celsius, 
+                                 latitude_degrees=None)
+        
+        # having both precipitation and PET input array arguments with incongruent dimensions should raise a ValueError
+        np.testing.assert_raises(ValueError, 
+                                 indices.spei_pearson, 
+                                 6,
+                                 'monthly', 
+                                 data_start_year=self.fixture_data_year_start_monthly,
+                                 calibration_year_initial=self.fixture_data_year_start_monthly,
+                                 calibration_year_final=self.fixture_data_year_end_monthly,
+                                 precips_mm=self.fixture_precips_mm_monthly, 
+                                 pet_mm=np.array((200, 200), dtype=float))
+        
 #--------------------------------------------------------------------------------------------
 if __name__ == '__main__':
     unittest.main()
