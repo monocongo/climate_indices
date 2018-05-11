@@ -125,7 +125,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
         np.testing.assert_raises(AttributeError, compute._pearson3_fitting_values, None)
             
         # try using a subset of the precipitation dataset (1897 - 1915, year indices 2 - 20)
-        computed_values = compute._pearson3_fitting_values(self.fixture_precips_mm[2:21, :])
+        computed_values = compute._pearson3_fitting_values(self.fixture_precips_mm_monthly[2:21, :])
         expected_values = np.array([[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                                     [48.539987664499996, 53.9852487665, 44.284745065842102, 62.583727384894736, 125.72157689160528, 182.03053042784214, 159.00575657926319, 170.92269736865791, 189.8925781252895, 155.13420024692104, 72.953125000026319, 43.31532689144737],
                                     [33.781507724523095, 43.572151699968387, 40.368173442404107, 44.05329691434887, 60.10621716019174, 59.343178125457186, 49.228795303727473, 66.775653341386999, 65.362977393206421, 94.467597091088265, 72.63706898364299, 34.250906049301463],
@@ -137,7 +137,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                                    err_msg='Failed to accurately compute Pearson Type III fitting values')
 
         # add some zeros in order to exercise the parts where it gets a percentage of zeros
-        precips_mm = np.array(self.fixture_precips_mm, copy=True)
+        precips_mm = np.array(self.fixture_precips_mm_monthly, copy=True)
         precips_mm[0, 1] = 0.0
         precips_mm[3, 4] = 0.0
         precips_mm[14, 9] = 0.0
@@ -196,34 +196,67 @@ class ComputeTestCase(fixtures.FixturesTestCase):
         
         # compute sigmas of transformed (normalized) values fitted to a gamma distribution,
         # using the full period of record as the calibration period
-        computed_values = compute.transform_fitted_gamma(self.fixture_precips_mm, 
-                                                         self.fixture_data_start_year,
-                                                         self.fixture_data_start_year,
-                                                         self.fixture_data_end_year,
+        computed_values = compute.transform_fitted_gamma(self.fixture_precips_mm_monthly, 
+                                                         self.fixture_data_year_start_monthly,
+                                                         self.fixture_data_year_start_monthly,
+                                                         self.fixture_data_year_end_monthly,
                                                          'monthly')
                                           
         # make sure the values are being computed as expected
         np.testing.assert_allclose(computed_values, 
-                                   self.fixture_transformed_gamma,
-                                   err_msg='Transformed gamma fitted values not computed as expected')            
+                                   self.fixture_transformed_gamma_monthly,
+                                   err_msg='Transformed gamma fitted monthly values not computed as expected')            
          
+         
+        # compute sigmas of transformed (normalized) values fitted to a gamma distribution,
+        # using the full period of record as the calibration period
+        computed_values = compute.transform_fitted_gamma(self.fixture_precips_mm_daily, 
+                                                         self.fixture_data_year_start_daily,
+                                                         self.fixture_calibration_year_start_daily,
+                                                         self.fixture_calibration_year_end_daily,
+                                                         'daily')
+
+        # make sure the values are being computed as expected
+        np.testing.assert_allclose(computed_values, 
+                                   self.fixture_transformed_gamma_daily,
+                                   atol=0.001,
+                                   equal_nan=True,
+                                   err_msg='Transformed gamma fitted daily values not computed as expected')            
+         
+        # if we provide a 1-D array then we need to provide a corresponding time series type, make sure we can't use an invalid type
+        flat_array = self.fixture_precips_mm_monthly.flatten()
+        np.testing.assert_raises(ValueError, 
+                                 compute.transform_fitted_gamma, 
+                                 flat_array, 
+                                 self.fixture_data_year_start_monthly,
+                                 self.fixture_calibration_year_start_monthly,
+                                 self.fixture_calibration_year_end_monthly,
+                                 'invalid_value')
+        np.testing.assert_raises(ValueError, 
+                                 compute.transform_fitted_gamma, 
+                                 flat_array, 
+                                 self.fixture_data_year_start_monthly,
+                                 self.fixture_calibration_year_start_monthly,
+                                 self.fixture_calibration_year_end_monthly,
+                                 None)
+        np.testing.assert_raises(ValueError, 
+                                 compute.transform_fitted_gamma, 
+                                 flat_array, 
+                                 self.fixture_data_year_start_monthly,
+                                 self.fixture_calibration_year_start_monthly,
+                                 self.fixture_calibration_year_end_monthly)
+
     #----------------------------------------------------------------------------------------
     def test_transform_fitted_pearson(self):
         '''
         Test for the compute.transform_fitted_pearson() function
         '''
         
-#         # get array indices corresponding to a calibration period of 1981 - 2010
-#         year_index_start = 1981 - self.fixture_data_start_year + 1
-#         year_index_end = 2010 - self.fixture_data_start_year + 1
-#         
-#         values = self.fixture_precips_mm[year_index_start:year_index_end + 1, :]
-        
         # compute sigmas of transformed (normalized) values fitted to a gamma distribution
-        computed_values = compute.transform_fitted_pearson(self.fixture_precips_mm, 
-                                                           1895,
-                                                           1981,
-                                                           2010,
+        computed_values = compute.transform_fitted_pearson(self.fixture_precips_mm_monthly, 
+                                                           self.fixture_data_year_start_monthly,
+                                                           self.fixture_calibration_year_start_monthly,
+                                                           self.fixture_calibration_year_end_monthly,
                                                            'monthly')
                                          
         # make sure the values are being computed as expected
