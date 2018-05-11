@@ -45,6 +45,15 @@ def spi_gamma(precips,
     :rtype: 1-D numpy.ndarray of floats of the same length as the input array of precipitation values
     '''
 
+    # we expect to operate upon a 1-D array, so if we've been passed a 2-D array we flatten it, otherwise raise an error
+    shape = precips.shape
+    if len(shape) == 2:
+        precips = precips.flatten()
+    elif len(shape) != 1:
+        message = 'Invalid shape of input array: {0}'.format(shape)
+        _logger.error(message)
+        raise ValueError(message)
+        
     # remember the original length of the array, in order to facilitate returning an array of the same size
     original_length = precips.size
     

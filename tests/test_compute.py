@@ -252,12 +252,6 @@ class ComputeTestCase(fixtures.FixturesTestCase):
         Test for the compute.transform_fitted_pearson() function
         '''
         
-#         # get array indices corresponding to a calibration period of 1981 - 2010
-#         year_index_start = 1981 - self.fixture_data_start_year + 1
-#         year_index_end = 2010 - self.fixture_data_start_year + 1
-#         
-#         values = self.fixture_precips_mm[year_index_start:year_index_end + 1, :]
-        
         # compute sigmas of transformed (normalized) values fitted to a gamma distribution
         computed_values = compute.transform_fitted_pearson(self.fixture_precips_mm_monthly, 
                                                            self.fixture_data_year_start_monthly,

@@ -4,7 +4,6 @@ import unittest
 
 from tests import fixtures
 from climate_indices import indices
-import math
 
 #-----------------------------------------------------------------------------------------------------------------------
 # disable logging messages
@@ -32,31 +31,30 @@ class IndicesTestCase(fixtures.FixturesTestCase):
         
     #----------------------------------------------------------------------------------------
     def test_pnp(self):
-        
+                
         # compute PNP from the daily precipitation array
+        computed_pnp_6month = indices.percentage_of_normal(self.fixture_precips_mm_monthly.flatten(),
+                                                           6, 
+                                                           self.fixture_data_year_start_monthly,
+                                                           self.fixture_calibration_year_start_monthly, 
+                                                           self.fixture_calibration_year_end_monthly, 
+                                                           'monthly')
+
+        # make sure PNP is being computed as expected
+        np.testing.assert_allclose(self.fixture_pnp_6month,
+                                   computed_pnp_6month, 
+                                   atol=0.001,
+                                   equal_nan=True,
+                                   err_msg='PNP values not computed as expected')
+                              
+        # make sure we can compute PNP from the daily values without raising an error 
         computed_pnp = indices.percentage_of_normal(self.fixture_precips_mm_daily.flatten(),
                                                     30, 
                                                     self.fixture_data_year_start_daily,
                                                     self.fixture_calibration_year_start_daily, 
                                                     self.fixture_calibration_year_end_daily, 
                                                     'daily')
-                                         
-        #REMOVE for test development only
-        flat_30day_pnp = self.fixture_pnp_30day.flatten()
-        for i in range(flat_30day_pnp.size):
-            computed = computed_pnp[i]
-            fixture = flat_30day_pnp[i]
-            if (not math.isnan(computed) and not math.isnan(fixture)) and \
-                (computed != fixture) and (math.fabs(computed - fixture) > 0.01):
-                print('Computed:  {0}\nFixture:  {1}'.format(computed, fixture))
- 
-        # make sure PNP is being computed as expected
-        np.testing.assert_allclose(computed_pnp, 
-                                   self.fixture_pnp_30day.flatten(),
-                                   atol=0.001,
-                                   equal_nan=True,
-                                   err_msg='PNP values not computed as expected')
-        
+                
         # invalid time series type argument should raise a ValueError
         np.testing.assert_raises(ValueError, 
                                  indices.percentage_of_normal,
@@ -97,28 +95,14 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                    atol=0.001,
                                    err_msg='SPI/Gamma values for 6-month scale not computed as expected')
 
-        computed_spi = indices.spi_gamma(self.fixture_precips_mm_daily.flatten(), 
+        # make sure we can also call the function with daily data
+        computed_spi = indices.spi_gamma(self.fixture_precips_mm_daily, 
                                          30,
                                          self.fixture_data_year_start_daily, 
                                          self.fixture_calibration_year_start_daily, 
                                          self.fixture_calibration_year_end_daily, 
                                          'daily')
                                 
-        #REMOVE for test development only
-        flat_30day_spi = self.fixture_spi_gamma_30day.flatten()
-        for i in range(flat_30day_spi.size):
-            computed = computed_spi[i]
-            fixture = flat_30day_spi[i]
-            if (not math.isnan(computed) and not math.isnan(fixture)) and \
-                (computed != fixture) and (math.fabs(computed - fixture) > 0.01):
-                print('Computed:  {0}\nFixture:  {1}'.format(computed, fixture))
-                       
-        # make sure SPI/gamma is being computed as expected
-        np.testing.assert_allclose(computed_spi, 
-                                   self.fixture_spi_gamma_30day.flatten(), 
-                                   atol=0.001,
-                                   err_msg='SPI/Gamma values for 30-day scale not computed as expected')
-
         # invalid time series type argument should raise a ValueError
         np.testing.assert_raises(ValueError, 
                                  indices.spi_gamma, 
@@ -128,6 +112,16 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                  self.fixture_data_year_start_monthly, 
                                  self.fixture_data_year_end_monthly, 
                                  'unsupported_value')
+        
+        # input array argument that's neither 1-D nor 2-D should raise a ValueError
+        np.testing.assert_raises(ValueError, 
+                                 indices.spi_gamma, 
+                                 np.array(np.zeros((4, 4, 8))), 
+                                 6,
+                                 self.fixture_data_year_start_monthly, 
+                                 self.fixture_data_year_start_monthly, 
+                                 self.fixture_data_year_end_monthly, 
+                                 'daily')
         
     #----------------------------------------------------------------------------------------
     def test_spi_pearson(self):
