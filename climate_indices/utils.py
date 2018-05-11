@@ -370,22 +370,3 @@ def count_zeros_and_non_missings(values):
     non_missings = np.count_nonzero(~np.isnan(values))
 
     return zeros, non_missings
-
-#-----------------------------------------------------------------------------------------------------------------------
-def print_years_months(values):
-    """
-    Takes an input array of value and prints it as if it were a 2-D array with (years, month) as dimensions, 
-    with one year written per line and missing years listed as NaNs. Designed to accept an array of monthly values,
-    with the initial value corresponding to January of the initial year.
-    
-    Useful for printing a timeseries of values when constructing a test fixture from running code that has results 
-    we'd like to match in an unit test, etc.
-    
-    :param values: 
-    """
-
-    # reshape the array, go over the two dimensions and print
-    values = reshape_to_2d(values, 12)
-    for i in range(values.shape[0]):
-        year_line = ''.join("%5.2f, " % (v) for v in values[i])
-        print(year_line + ' \\')

@@ -631,6 +631,16 @@ def percentage_of_normal(values,
     :rtype: numpy.ndarray of type float
     '''
 
+    # if doing monthly then we'll use 12 periods, corresponding to calendar months, if daily assume years w/366 days
+    if time_series_type == 'monthly':
+        periodicity = 12
+    elif time_series_type == 'daily':
+        periodicity = 366
+    else:
+        message = 'Invalid time series type argument: \'{0}\''.format(time_series_type)
+        _logger.error(message)
+        raise ValueError(message)
+    
     # bypass processing if all values are masked    
     if np.ma.is_masked(values) and values.mask.all():
         return values
@@ -642,12 +652,7 @@ def percentage_of_normal(values,
     elif ((calibration_end_year - calibration_start_year + 1) * 12) > values.size:
         raise ValueError('Invalid calibration period specified: total calibration years exceeds the actual ' + \
                          'number of years of data')
-    
-    # if doing monthly then we'll use 12 periods, corresponding to calendar months, otherwise assume years w/366 days
-    periodicity = 12
-    if time_series_type == 'daily':
-        periodicity = 366
-    
+        
     # get an array containing a sliding sum on the specified time step scale -- i.e. if the scale is 3 then the first 
     # two elements will be np.NaN, since we need 3 elements to get a sum, and then from the third element to the end 
     # the values will equal the sum of the corresponding time step plus the values of the two previous time steps
