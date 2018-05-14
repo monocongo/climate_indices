@@ -15,6 +15,63 @@ class PalmerTestCase(fixtures.FixturesTestCase):
     Tests for `palmer.py`.
     '''
 
+    #----------------------------------------------------------------------------------------
+    def test_pdsi(self):
+        
+        pdsi, phdi, pmdi, zindex = palmer.pdsi(self.fixture_precips_mm_monthly, 
+                           self.fixture_pet_mm,
+                           self.fixture_awc_inches, 
+                           self.fixture_data_year_start_monthly, 
+                           self.fixture_calibration_year_start_monthly, 
+                           self.fixture_calibration_year_end_monthly)
+        
+        np.testing.assert_allclose(pdsi, 
+                                   self.fixture_palmer_pdsi_monthly, 
+                                   atol=0.001, 
+                                   equal_nan=True, 
+                                   err_msg='PDSI not computed as expected from monthly inputs')
+    
+        np.testing.assert_allclose(phdi, 
+                                   self.fixture_palmer_phdi_monthly, 
+                                   atol=0.001, 
+                                   equal_nan=True, 
+                                   err_msg='PHDI not computed as expected from monthly inputs')
+    
+        np.testing.assert_allclose(pmdi, 
+                                   self.fixture_palmer_pmdi_monthly, 
+                                   atol=0.001, 
+                                   equal_nan=True, 
+                                   err_msg='PMDI not computed as expected from monthly inputs')
+    
+        np.testing.assert_allclose(zindex, 
+                                   self.fixture_palmer_zindex_monthly, 
+                                   atol=0.001, 
+                                   equal_nan=True, 
+                                   err_msg='Z-Index not computed as expected from monthly inputs')
+    
+    #----------------------------------------------------------------------------------------
+    def test_pdsi_from_zindex(self):
+        
+        pdsi, phdi, pmdi = palmer._pdsi_from_zindex(self.fixture_palmer_zindex_monthly)
+        
+        np.testing.assert_allclose(pdsi, 
+                                   self.fixture_palmer_pdsi_monthly, 
+                                   atol=0.001, 
+                                   equal_nan=True, 
+                                   err_msg='PDSI not computed as expected from monthly Z-Index fixture')
+    
+        np.testing.assert_allclose(phdi, 
+                                   self.fixture_palmer_phdi_monthly, 
+                                   atol=0.01, 
+                                   equal_nan=True, 
+                                   err_msg='PHDI not computed as expected from monthly Z-Index fixture')
+    
+        np.testing.assert_allclose(pmdi, 
+                                   self.fixture_palmer_pmdi_monthly, 
+                                   atol=0.01, 
+                                   equal_nan=True, 
+                                   err_msg='PMDI not computed as expected from monthly Z-Index fixture')
+    
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def test_z_index(self):
         '''
@@ -71,6 +128,48 @@ class PalmerTestCase(fixtures.FixturesTestCase):
                                    atol=0.01,
                                    err_msg='Not computing the K as expected')        
 
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def test_cafec_compute_X(self):
+        '''
+        Test for the palmer._compute_X() function
+        '''
+        
+        # simulate computation of X at an initial step (with all zeros for intermediate value arrays)
+        Z = self.fixture_palmer_zindex_monthly
+        k = 0
+        PPe = np.zeros(Z.shape)
+        X1 = 0.0
+        X2 = 0.0
+        PX1 = np.zeros(Z.shape)
+        PX2 = np.zeros(Z.shape)
+        PX3 = np.zeros(Z.shape)
+        X = np.zeros(Z.shape)
+        BT = np.zeros(Z.shape)        
+        PX1, PX2, PX3, X, BT = palmer._compute_X(Z, k, PPe, X1, X2, PX1, PX2, PX3, X, BT)
+        self.assertEqual(PX1[0], 0.0, 'PX1 value not computed as expected at initial step')
+        self.assertEqual(PX2[0], -0.34, 'PX2 value not computed as expected at initial step')
+        self.assertEqual(PX3[0], 0.0, 'PX3 value not computed as expected at initial step')
+        self.assertEqual(X[0], -0.34, 'X value not computed as expected at initial step')
+        self.assertEqual(BT[0], 2, 'Backtrack value not computed as expected at initial step')
+        
+        k = 0
+        PPe = np.zeros(Z.shape)
+        X1 = 0.0
+        X2 = 0.0
+        PX1 = np.zeros(Z.shape)
+        PX2 = np.zeros(Z.shape)
+        PX3 = np.zeros(Z.shape)
+        X = np.zeros(Z.shape)
+        BT = np.zeros(Z.shape)        
+        PX1, PX2, PX3, X, BT = palmer._compute_X(Z, k, PPe, X1, X2, PX1, PX2, PX3, X, BT)
+        self.assertEqual(PX1[0], 0.0, 'PX1 value not computed as expected at initial step')
+        self.assertEqual(PX2[0], -0.34, 'PX2 value not computed as expected at initial step')
+        self.assertEqual(PX3[0], 0.0, 'PX3 value not computed as expected at initial step')
+        self.assertEqual(X[0], -0.34, 'X value not computed as expected at initial step')
+        self.assertEqual(BT[0], 2, 'Backtrack value not computed as expected at initial step')
+        
+        pass
+     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def test_cafec_coeff_ufunc(self):
         '''
@@ -143,11 +242,6 @@ class PalmerTestCase(fixtures.FixturesTestCase):
             actual = lst[1]
             expected = lst[2]
             
-            close_indices = np.isclose(actual, expected, atol=0.1, equal_nan=True)
-            for i in range(actual.size):
-                if not close_indices[i]:
-                    print('Index:  {0}\n\tExpected:  {1}\n\tActual:  {2}'.format(i, expected[i], actual[i]))
-                    
             np.testing.assert_allclose(actual, 
                                        expected, 
                                        atol=0.01,

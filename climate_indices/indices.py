@@ -594,7 +594,7 @@ def pdsi(precip_time_series,
                             both of which are assumed to start in January of this year
     :param calibration_start_year: initial year of the calibration period 
     :param calibration_end_year: final year of the calibration period 
-    :return: three numpy arrays containing PDSI, PHDI, and Z-Index values respectively 
+    :return: four numpy arrays containing PDSI, PHDI, PMDI, and Z-Index values respectively 
     '''
     
     return palmer.pdsi(precip_time_series,
