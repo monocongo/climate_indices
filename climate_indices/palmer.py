@@ -1093,7 +1093,7 @@ def _assign_X(k,
             X[k] = PX2[k]
 
 #------------------------------------------------------------------------------------------------------------------
-#@numba.jit  # commen
+#@numba.jit
 def _pdsi_from_zindex(Z):
 
     ## INITIALIZE PDSI AND PHDI CALCULATIONS
@@ -1136,6 +1136,8 @@ def _pdsi_from_zindex(Z):
         
 #         # DEBUGGING ONLY -- REMOVE
 #         print('k: {0}'.format(k))
+        if k == 300:
+            pass
         
         if (Pe == 100) or (Pe == 0):   # no abatement underway
             
@@ -2192,16 +2194,6 @@ def pdsi(precip_time_series,          # pragma: no cover
             for ary in arrays_to_pad:
                 ary = np.pad(ary, (0, pad_months), 'constant', constant_values=(np.nan))
                 
-#             precip_time_series = np.pad(precip_time_series, (0, pad_months), 'constant', constant_values=(np.nan))
-#             pet_time_series = np.pad(pet_time_series, (0, pad_months), 'constant', constant_values=(np.nan))
-#             ET = np.pad(ET, (0, pad_months), 'constant', constant_values=(np.nan))
-#             PR = np.pad(PR, (0, pad_months), 'constant', constant_values=(np.nan))
-#             R = np.pad(R, (0, pad_months), 'constant', constant_values=(np.nan))
-#             RO = np.pad(RO, (0, pad_months), 'constant', constant_values=(np.nan))
-#             PRO = np.pad(PRO, (0, pad_months), 'constant', constant_values=(np.nan))
-#             L = np.pad(L, (0, pad_months), 'constant', constant_values=(np.nan))
-#             PL = np.pad(PL, (0, pad_months), 'constant', constant_values=(np.nan))
-                
         # compute Z-index values
         zindex = _z_index(precip_time_series, 
                           pet_time_series, 
@@ -2219,7 +2211,7 @@ def pdsi(precip_time_series,          # pragma: no cover
         # trim off the padded months from the Z-index array
         if pad_months > 0:
             zindex = zindex[0:-pad_months]
-            
+        
         # compute PDSI and other associated variables
         PDSI, PHDI, PMDI = _pdsi_from_zindex(zindex)
         

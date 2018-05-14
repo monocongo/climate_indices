@@ -16,6 +16,22 @@ class IndicesTestCase(fixtures.FixturesTestCase):
     '''
 
     #----------------------------------------------------------------------------------------
+    def test_pdsi(self):
+        
+        pdsi, phdi, pmdi, zindex = indices.pdsi(self.fixture_precips_mm_monthly, 
+                                                self.fixture_pet_mm,
+                                                self.fixture_awc_inches, 
+                                                self.fixture_data_year_start_monthly, 
+                                                self.fixture_calibration_year_start_monthly, 
+                                                self.fixture_calibration_year_end_monthly)
+        
+        np.testing.assert_allclose(pdsi, 
+                                   self.fixture_palmer_pdsi_monthly, 
+                                   atol=0.001, 
+                                   equal_nan=True, 
+                                   err_msg='PDSI not computed as expected for monthly inputs')
+
+    #----------------------------------------------------------------------------------------
     def test_pet(self):
         
         # compute PET from the monthly temperatures, latitude, and initial years above
