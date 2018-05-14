@@ -712,7 +712,7 @@ def pet(temperature_celsius,
     # make sure we're not dealing with all NaN values
     if np.ma.isMaskedArray(temperature_celsius) and temperature_celsius.count() == 0:
         
-        # we started with all NaNs for the temperature, so just return the same
+        # we started with all NaNs for the temperature, so just return the same as PET
         return temperature_celsius
 
     else:
@@ -725,7 +725,8 @@ def pet(temperature_celsius,
             return temperature_celsius
         
     # make sure we're not dealing with a NaN or out-of-range latitude value
-    if not np.isnan(latitude_degrees) and (latitude_degrees < 90.0) and (latitude_degrees > -90.0):
+    if latitude_degrees is not None and not np.isnan(latitude_degrees) and \
+        (latitude_degrees < 90.0) and (latitude_degrees > -90.0):
         
         # compute and return the PET values using Thornthwaite's equation
         return thornthwaite.potential_evapotranspiration(temperature_celsius, latitude_degrees, data_start_year)

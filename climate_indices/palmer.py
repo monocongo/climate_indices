@@ -457,7 +457,7 @@ def _cafec_coefficients(P,
         return alpha, beta, gamma, delta
 
 #-----------------------------------------------------------------------------------------------------------------------    
-@numba.jit  # this may not work well on Linux, needed to comment out this on climgrid-dev
+@numba.jit
 def _calibrate_data(arrays,
                     data_start_year,
                     calibration_start_year,
