@@ -152,33 +152,58 @@ class PalmerTestCase(fixtures.FixturesTestCase):
         self.assertEqual(X[0], -0.34, 'X value not computed as expected at initial step')
         self.assertEqual(BT[0], 2, 'Backtrack value not computed as expected at initial step')
         
-        k = 0
-        PPe = np.zeros(Z.shape)
-        X1 = 0.0
-        X2 = 0.0
-        PX1 = np.zeros(Z.shape)
-        PX2 = np.zeros(Z.shape)
-        PX3 = np.zeros(Z.shape)
-        X = np.zeros(Z.shape)
-        BT = np.zeros(Z.shape)        
-        PX1, PX2, PX3, X, BT = palmer._compute_X(Z, k, PPe, X1, X2, PX1, PX2, PX3, X, BT)
-        self.assertEqual(PX1[0], 0.0, 'PX1 value not computed as expected at initial step')
-        self.assertEqual(PX2[0], -0.34, 'PX2 value not computed as expected at initial step')
-        self.assertEqual(PX3[0], 0.0, 'PX3 value not computed as expected at initial step')
-        self.assertEqual(X[0], -0.34, 'X value not computed as expected at initial step')
-        self.assertEqual(BT[0], 2, 'Backtrack value not computed as expected at initial step')
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def test_scpdsi(self):
+        '''
+        Test for the palmer.scpdsi() function
+        '''
         
-        pass
-     
+        scpdsi, pdsi, phdi, pmdi, zindex = palmer.scpdsi(self.fixture_precips_mm_monthly, 
+                                                 self.fixture_pet_mm,
+                                                 self.fixture_awc_inches, 
+                                                 self.fixture_data_year_start_monthly, 
+                                                 self.fixture_calibration_year_start_monthly, 
+                                                 self.fixture_calibration_year_end_monthly)
+        
+        np.testing.assert_allclose(scpdsi, 
+                                   self.fixture_palmer_scpdsi_monthly, 
+                                   atol=0.001, 
+                                   equal_nan=True, 
+                                   err_msg='PDSI not computed as expected from monthly inputs')
+    
+#         np.testing.assert_allclose(pdsi, 
+#                                    self.fixture_palmer_pdsi_monthly, 
+#                                    atol=0.001, 
+#                                    equal_nan=True, 
+#                                    err_msg='PDSI not computed as expected from monthly inputs')
+    
+        np.testing.assert_allclose(phdi, 
+                                   self.fixture_palmer_scphdi_monthly, 
+                                   atol=0.001, 
+                                   equal_nan=True, 
+                                   err_msg='PHDI not computed as expected from monthly inputs')
+    
+        np.testing.assert_allclose(pmdi, 
+                                   self.fixture_palmer_scpmdi_monthly, 
+                                   atol=0.001, 
+                                   equal_nan=True, 
+                                   err_msg='PMDI not computed as expected from monthly inputs')
+    
+        np.testing.assert_allclose(zindex, 
+                                   self.fixture_palmer_sczindex_monthly, 
+                                   atol=0.001, 
+                                   equal_nan=True, 
+                                   err_msg='Z-Index not computed as expected from monthly inputs')
+        
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def test_cafec_coeff_ufunc(self):
         '''
-        Test for the palmer._cafec_coeff_ufunc() function
+        Test for the palmer._dry_spell_abatement() function
         '''
         
-        np.testing.assert_equal(palmer._cafec_coeff_ufunc(0, 0), 1)
-        np.testing.assert_equal(palmer._cafec_coeff_ufunc(5, 0), 0)
-        np.testing.assert_equal(palmer._cafec_coeff_ufunc(5, 10), 0.5)
+        self.assertEqual(palmer._cafec_coeff_ufunc(0, 0), 1)
+        self.assertEqual(palmer._cafec_coeff_ufunc(5, 0), 0)
+        self.assertEqual(palmer._cafec_coeff_ufunc(5, 10), 0.5)
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def test_cafec_coefficients(self):
@@ -218,6 +243,15 @@ class PalmerTestCase(fixtures.FixturesTestCase):
                                        atol=0.01,
                                        err_msg='Not computing the {0} as expected'.format(name))        
 
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def test_phdi_select_ufunc(self):
+        '''
+        Test for the palmer._phdi_select_ufunc() function
+        '''
+        
+        self.assertEqual(palmer._phdi_select_ufunc(0, 5), 5)
+        self.assertEqual(palmer._phdi_select_ufunc(8, 5), 8)
+        
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def test_water_balance(self):
         '''

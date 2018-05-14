@@ -1128,16 +1128,8 @@ def _pdsi_from_zindex(Z):
     X = np.zeros((number_of_months,))
     PMDI = np.zeros((number_of_months,))
     
-#     # Palmer Hydrological Drought Index
-#     PHDI = np.zeros((number_of_months,))
-
     # loop over all months in the dataset, calculating PDSI and PHDI for each
     for k in range(number_of_months):
-        
-#         # DEBUGGING ONLY -- REMOVE
-#         print('k: {0}'.format(k))
-        if k == 300:
-            pass
         
         if (Pe == 100) or (Pe == 0):   # no abatement underway
             
@@ -1189,7 +1181,8 @@ def _pdsi_from_zindex(Z):
 #         #TODO  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #         # DEBUG only -- REMOVE
 #         #
-#         # this is here to remind us to focus on the PMDI appearing to be off my a month, something like this may fix things
+#         # this is left here to remind us to focus on the PMDI appearing to be 
+          # off my a month, something like this may fix things
 #         #
 #         if k > 0:
 #             PMDI[k - 1] = _pmdi(Pe, X1, X2, X3)  #TODO remove, testing only
@@ -1243,7 +1236,8 @@ def _pdsi_from_zindex(Z):
 #         else:
 #             PHDI[s] = possible_phdi
     
-    # use universal function to select PHDI from PX3 or X arrays
+    # Palmer Hydrological Drought Index
+    # use universal function to select PHDI from either the PX3 or X arrays
     PHDI = _phdi_select_ufunc(PX3, X)
     
     # return the computed variables
@@ -2079,9 +2073,9 @@ def scpdsi(precip_time_series,      # pragma: no cover
                             both of which are assumed to start in January of this year
     :param calibration_start_year: initial year of the calibration period 
     :param calibration_end_year: final year of the calibration period 
-    :return: numpy arrays, respectively containing SCPDSI, PHDI, and Z-Index values  
-    SCPDSI, PDSI, PHDI, PMDI, Z-Index, ET, PR, R, RO, PRO, L, PL
+    :return: five numpy arrays, respectively containing SCPDSI, PDSI, PHDI, PMDI, and Z-Index values  
     '''
+
     try:
         # make sure we have matching precipitation and PET time series
         if precip_time_series.size != pet_time_series.size:
@@ -2147,6 +2141,15 @@ def scpdsi(precip_time_series,      # pragma: no cover
         # recompute PDSI and other associated variables
         SCPDSI, PHDI, PMDI = _pdsi_from_zindex(zindex)
         
+#         #----------------------------------
+#         # REMOVE - DEBUG ONLY
+#         print("Self-calibrated PMDI")            
+#         values = utils.reshape_to_2d(PMDI, 12)
+#         for i in range(values.shape[0]):
+#             year_line = ''.join("%6.3f, " % (v) for v in values[i])
+#             print('        ' + year_line + ' \\')
+#         #----------------------------------
+
         return [SCPDSI, final_PDSI, PHDI, PMDI, zindex]
 
     except:
