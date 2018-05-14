@@ -16,19 +16,75 @@ class IndicesTestCase(fixtures.FixturesTestCase):
     '''
 
     #----------------------------------------------------------------------------------------
+    def test_pdsi(self):
+        
+        # the indices.pdsi() function is a wrapper for palmer.pdsi(), so we'll 
+        # just confirm that this function can be called without raising an error and 
+        # the compute.pdsi() function itself being tested within test_palmer.py
+        indices.pdsi(self.fixture_precips_mm_monthly, 
+                                                self.fixture_pet_mm,
+                                                self.fixture_awc_inches, 
+                                                self.fixture_data_year_start_monthly, 
+                                                self.fixture_calibration_year_start_monthly, 
+                                                self.fixture_calibration_year_end_monthly)
+        
+    #----------------------------------------------------------------------------------------
     def test_pet(self):
         
-        # compute PET from the monthly temperatures, latitude, and initial years above
+        # confirm that an input array of all NaNs for temperature results in the same array returned
+        all_nan_temps = np.full(self.fixture_temps_celsius.shape, np.NaN)
+        computed_pet = indices.pet(all_nan_temps,
+                                   self.fixture_latitude_degrees, 
+                                   self.fixture_data_year_start_monthly)
+        np.testing.assert_equal(computed_pet, 
+                                all_nan_temps,
+                                'All-NaN input array does not result in the expected all-NaN result')
+        
+        # confirm that a masked input array of all NaNs for temperature results in the same masked array returned
+        masked_all_nan_temps = np.ma.array(all_nan_temps)
+        computed_pet = indices.pet(masked_all_nan_temps,
+                                   self.fixture_latitude_degrees, 
+                                   self.fixture_data_year_start_monthly)
+        np.testing.assert_equal(computed_pet, 
+                                masked_all_nan_temps,
+                                'All-NaN masked input array does not result in the expected all-NaN masked result')
+        
+        # confirm that a missing/None latitude value raises an error
+        np.testing.assert_raises(ValueError, 
+                                 indices.pet, 
+                                 self.fixture_temps_celsius, 
+                                 None, 
+                                 self.fixture_data_year_start_monthly)
+        
+        # confirm that a missing/None latitude value raises an error
+        np.testing.assert_raises(ValueError, 
+                                 indices.pet, 
+                                 self.fixture_temps_celsius, 
+                                 np.NaN, 
+                                 self.fixture_data_year_start_monthly)
+        
+        # confirm that an invalid latitude value raises an error
+        self.assertRaises(ValueError, 
+                          indices.pet, 
+                          self.fixture_temps_celsius, 
+                          91.0,   # latitude > 90 is invalid 
+                          self.fixture_data_year_start_monthly)
+
+        # confirm that an invalid latitude value raises an error
+        np.testing.assert_raises(ValueError, 
+                                 indices.pet, 
+                                 self.fixture_temps_celsius, 
+                                 -91.0,   # latitude < -90 is invalid 
+                                 self.fixture_data_year_start_monthly)
+
+        # compute PET from the monthly temperatures, latitude, and initial years -- if this runs without 
+        # error then this test passes, as the underlying method(s) being used to compute PET will be tested 
+        # in the relevant test_compute.py or test_thornthwaite.py codes
         computed_pet = indices.pet(self.fixture_temps_celsius,
                                    self.fixture_latitude_degrees, 
                                    self.fixture_data_year_start_monthly)
                                          
-        # make sure PET is being computed as expected
-        np.testing.assert_allclose(computed_pet, 
-                                   self.fixture_pet_mm.flatten(),
-                                   atol=0.01,
-                                   err_msg='PET values not computed as expected')
-        
+                                         
     #----------------------------------------------------------------------------------------
     def test_pnp(self):
                 
@@ -40,14 +96,14 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                                            self.fixture_calibration_year_end_monthly, 
                                                            'monthly')
 
-        # make sure PNP is being computed as expected
+        # confirm PNP is being computed as expected
         np.testing.assert_allclose(self.fixture_pnp_6month,
                                    computed_pnp_6month, 
                                    atol=0.001,
                                    equal_nan=True,
                                    err_msg='PNP values not computed as expected')
                               
-        # make sure we can compute PNP from the daily values without raising an error 
+        # confirm we can compute PNP from the daily values without raising an error 
         indices.percentage_of_normal(self.fixture_precips_mm_daily.flatten(),
                                      30, 
                                      self.fixture_data_year_start_daily,
@@ -76,7 +132,7 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                          self.fixture_data_year_end_monthly, 
                                          'monthly')
                                          
-        # make sure SPI/gamma is being computed as expected
+        # confirm SPI/gamma is being computed as expected
         np.testing.assert_allclose(computed_spi, 
                                    self.fixture_spi_1_month_gamma, 
                                    atol=0.001,
@@ -89,13 +145,13 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                          self.fixture_data_year_end_monthly, 
                                          'monthly')
                                          
-        # make sure SPI/gamma is being computed as expected
+        # confirm SPI/gamma is being computed as expected
         np.testing.assert_allclose(computed_spi, 
                                    self.fixture_spi_6_month_gamma, 
                                    atol=0.001,
                                    err_msg='SPI/Gamma values for 6-month scale not computed as expected')
 
-        # make sure we can also call the function with daily data
+        # confirm we can also call the function with daily data
         computed_spi = indices.spi_gamma(self.fixture_precips_mm_daily, 
                                          30,
                                          self.fixture_data_year_start_daily, 
@@ -134,7 +190,7 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                            self.fixture_calibration_year_end_monthly,
                                            'monthly')
         
-        # make sure we can compute from daily values without raising an error                                 
+        # confirm we can compute from daily values without raising an error                                 
         indices.spi_pearson(self.fixture_precips_mm_daily.flatten(), 
                             60, 
                             self.fixture_data_year_start_daily, 
@@ -142,7 +198,7 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                             self.fixture_calibration_year_end_daily,
                             'daily')
 
-        # make sure SPI/Pearson is being computed as expected
+        # confirm SPI/Pearson is being computed as expected
         np.testing.assert_allclose(computed_spi, 
                                    self.fixture_spi_6_month_pearson3, 
                                    atol=0.01, 
@@ -172,7 +228,7 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                            temps_celsius=self.fixture_temps_celsius, 
                                            latitude_degrees=self.fixture_latitude_degrees)
 
-        # make sure SPEI/gamma is being computed as expected
+        # confirm SPEI/gamma is being computed as expected
         np.testing.assert_allclose(computed_spei, 
                                    self.fixture_spei_6_month_gamma, 
                                    atol=0.01,
@@ -255,7 +311,7 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                              temps_celsius=self.fixture_temps_celsius, 
                                              latitude_degrees=self.fixture_latitude_degrees)
 
-        # make sure SPEI/gamma is being computed as expected
+        # confirm SPEI/gamma is being computed as expected
         np.testing.assert_allclose(computed_spei, 
                                    self.fixture_spei_6_month_pearson3, 
                                    atol=0.01,
