@@ -1,4 +1,5 @@
 import logging
+import math
 import numpy as np
 import unittest
 
@@ -53,6 +54,10 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                          -1.0, 
                          msg='Failed to accurately compute error function')
 
+        self.assertEqual(compute._error_function(-2.0), 
+                         -0.9976611325094764, 
+                         msg='Failed to accurately compute error function')
+
     #----------------------------------------------------------------------------------------
     def test_estimate_lmoments(self):
         """
@@ -89,27 +94,40 @@ class ComputeTestCase(fixtures.FixturesTestCase):
         Test for the compute._pearson3cdf() function
         """
 
-        np.testing.assert_allclose(compute._pearson3cdf(5.0, [1.0, -1.0, 0.0]), 
-                                   np.NaN, 
-                                   atol=0.01, 
-                                   equal_nan=True, 
-                                   err_msg='Failed to accurately compute Pearson Type III CDF')
+        self.assertTrue(math.isnan(compute._pearson3cdf(5.0, [1.0, -1.0, 0.0])), 
+                        msg='Failed to accurately compute Pearson Type III CDF')
 
         self.assertEqual(compute._pearson3cdf(5.0, [1.0, 1.0, 1e-7]), 
                          0.9999841643790834, 
                          msg='Failed to accurately compute Pearson Type III CDF')
-        
+         
         self.assertEqual(compute._pearson3cdf(7.7, [1.0, 501.0, 0.0]), 
                          0.752667498611228, 
                          msg='Failed to accurately compute Pearson Type III CDF')
-        
+         
         self.assertEqual(compute._pearson3cdf(7.7, [1.0, 501.0, -10.0]), 
                          0.10519432662999628, 
                          msg='Failed to accurately compute Pearson Type III CDF')
-        
+         
         self.assertEqual(compute._pearson3cdf(1e-6, [441.0, 501.0, 30.0]), 
                          0.0005,  # value corresponding to trace value
                          msg='Failed to accurately compute Pearson Type III CDF')
+
+    #----------------------------------------------------------------------------------------
+    def test_pearson_fit_ufunc(self):
+        """
+        Test for the compute._pearson_fit_ufunc() function
+        """
+
+        self.assertTrue(math.isnan(compute._pearson_fit_ufunc(np.NaN, 1.0, -1.0, 0.0, 0.0)), 
+                        msg='Failed to accurately compute error function')
+
+        self.assertTrue(math.isnan(compute._pearson_fit_ufunc(5.0, 1.0, -1.0, 0.0, 0.0)), 
+                        msg='Failed to accurately compute error function')
+
+        self.assertEqual(compute._pearson_fit_ufunc(7.7, 1.0, 501.0, 0.0, 0.07), 
+                         0.7387835329883602, 
+                         msg='Failed to accurately compute error function')
 
     #----------------------------------------------------------------------------------------
     def test_pearson3_fitting_values(self):
@@ -201,8 +219,6 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                                                          self.fixture_data_year_start_monthly,
                                                          self.fixture_data_year_end_monthly,
                                                          'monthly')
-                                          
-        # make sure the values are being computed as expected
         np.testing.assert_allclose(computed_values, 
                                    self.fixture_transformed_gamma_monthly,
                                    err_msg='Transformed gamma fitted monthly values not computed as expected')            
@@ -210,19 +226,30 @@ class ComputeTestCase(fixtures.FixturesTestCase):
          
         # compute sigmas of transformed (normalized) values fitted to a gamma distribution,
         # using the full period of record as the calibration period
-        computed_values = compute.transform_fitted_gamma(self.fixture_precips_mm_daily, 
+        computed_values = compute.transform_fitted_gamma(self.fixture_precips_mm_daily.flatten(),
                                                          self.fixture_data_year_start_daily,
                                                          self.fixture_calibration_year_start_daily,
                                                          self.fixture_calibration_year_end_daily,
                                                          'daily')
-
-        # make sure the values are being computed as expected
-        np.testing.assert_allclose(computed_values, 
+        np.testing.assert_allclose(computed_values,
                                    self.fixture_transformed_gamma_daily,
                                    atol=0.001,
                                    equal_nan=True,
                                    err_msg='Transformed gamma fitted daily values not computed as expected')            
          
+        # confirm that we can call with a calibration period outside of valid range 
+        # and as a result use the full period of record as the calibration period instead
+        computed_values = compute.transform_fitted_gamma(self.fixture_precips_mm_monthly, 
+                                                         self.fixture_data_year_start_monthly,
+                                                         1500,
+                                                         2500,
+                                                         'monthly')
+        np.testing.assert_allclose(computed_values.flatten(), 
+                                   self.fixture_transformed_gamma_monthly,
+                                   atol=0.001,
+                                   equal_nan=True,
+                                   err_msg='Transformed Pearson Type III fitted values not computed as expected')
+
         # if we provide a 1-D array then we need to provide a corresponding time series type, make sure we can't use an invalid type
         flat_array = self.fixture_precips_mm_monthly.flatten()
         np.testing.assert_raises(ValueError, 
@@ -252,19 +279,74 @@ class ComputeTestCase(fixtures.FixturesTestCase):
         Test for the compute.transform_fitted_pearson() function
         '''
         
-        # compute sigmas of transformed (normalized) values fitted to a gamma distribution
+        # compute sigmas of transformed (normalized) values fitted to a Pearson Type III distribution
         computed_values = compute.transform_fitted_pearson(self.fixture_precips_mm_monthly, 
                                                            self.fixture_data_year_start_monthly,
                                                            self.fixture_calibration_year_start_monthly,
                                                            self.fixture_calibration_year_end_monthly,
                                                            'monthly')
-                                         
-        # make sure the values are being computed as expected
         np.testing.assert_allclose(computed_values, 
                                    self.fixture_transformed_pearson3,
-                                   atol=0.01,
+                                   atol=0.001,
                                    err_msg='Transformed Pearson Type III fitted values not computed as expected')
         
+        # confirm that an input array of all NaNs will return the same array
+        all_nans = np.full(self.fixture_precips_mm_monthly.shape, np.NaN)
+        computed_values = compute.transform_fitted_pearson(all_nans, 
+                                                           self.fixture_data_year_start_monthly,
+                                                           self.fixture_calibration_year_start_monthly,
+                                                           self.fixture_calibration_year_end_monthly,
+                                                           'monthly')
+        np.testing.assert_allclose(computed_values, 
+                                   all_nans,
+                                   equal_nan=True,
+                                   err_msg='Transformed Pearson Type III fitted values not computed as expected')
+        
+        # confirm that we can call with a calibration period outside of valid range 
+        # and as a result use the full period of record as the calibration period instead
+        computed_values = compute.transform_fitted_pearson(self.fixture_precips_mm_monthly, 
+                                                           self.fixture_data_year_start_monthly,
+                                                           1500,
+                                                           2500,
+                                                           'monthly')
+        np.testing.assert_allclose(computed_values.flatten(), 
+                                   self.fixture_transformed_pearson3_monthly_fullperiod,
+                                   atol=0.001,
+                                   equal_nan=True,
+                                   err_msg='Transformed Pearson Type III fitted values not computed as expected')
+        
+        # confirm that we can call with daily values and not raise an error
+        compute.transform_fitted_pearson(self.fixture_precips_mm_daily, 
+                                         self.fixture_data_year_start_daily,
+                                         self.fixture_calibration_year_start_daily,
+                                         self.fixture_calibration_year_end_daily,
+                                         'daily')
+                                         
+        # confirm that we get expected errors when using invalid time series type arguments
+        self.assertRaises(ValueError,
+                          compute.transform_fitted_pearson,
+                          self.fixture_precips_mm_monthly.flatten(), 
+                          self.fixture_data_year_start_monthly,
+                          self.fixture_calibration_year_start_monthly,
+                          self.fixture_calibration_year_end_monthly,
+                          None)
+        self.assertRaises(ValueError,
+                          compute.transform_fitted_pearson,
+                          self.fixture_precips_mm_monthly.flatten(), 
+                          self.fixture_data_year_start_monthly,
+                          self.fixture_calibration_year_start_monthly,
+                          self.fixture_calibration_year_end_monthly,
+                          'unsupported_type')
+
+        # confirm that an input array which is not 1-D or 2-D will raise an error
+        self.assertRaises(ValueError,
+                          compute.transform_fitted_pearson,
+                          np.zeros((9, 8, 7, 6), dtype=float),
+                          self.fixture_data_year_start_daily,
+                          self.fixture_calibration_year_start_daily,
+                          self.fixture_calibration_year_end_daily,
+                          'monthly')
+
 #     #----------------------------------------------------------------------------------------
 #     def test_error_function(self):
 #         '''
