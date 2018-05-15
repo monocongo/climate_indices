@@ -39,7 +39,7 @@ with the following goals in mind:
    documented code that is faithful to the relevant literature and
    which produces scientifically verifiable results
 -  to provide a central, open location for participation and collaboration 
-   among researchers, developers, and users of climate indices
+   for researchers, developers, and users of climate indices
 -  to facilitate standardization and consensus on best-of-breed
    climate index algorithms and corresponding compliant implementations in Python
 -  to provide transparency into the operational code used for climate

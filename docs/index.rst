@@ -59,7 +59,7 @@ with the following goals in mind:
    documented code that is faithful to the relevant literature and
    which produces scientifically verifiable results
 -  to provide a central, open location for participation and collaboration 
-   among researchers, developers, and users of climate indices
+   for researchers, developers, and users of climate indices
 -  to facilitate standardization and consensus on best-of-breed
    climate index algorithms and corresponding compliant implementations in Python
 -  to provide transparency into the operational code used for climate
@@ -247,7 +247,7 @@ These Python scripts are written to be run via bash shell commands, i.e.
 Example Command Line Invocations
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-PET monthly:
+PET monthly
 """"""""""""
 
 ``$ python process_grid.py --index pet --time_series_type monthly --netcdf_temp  
@@ -260,8 +260,8 @@ resolution nClimGrid temperature dataset provided as an example input). The inpu
 dataset is monthly data and the calibration period used will be Jan. 1951 through 
 Dec. 2010. The output file will be `/data/nclimgrid_lowres_pet.nc`.
 
-SPI (both gamma and Pearson III distribution fittings), daily:
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+SPI daily
+""""""""""
 
 ``$ python process_grid.py --index spi  --time_series_type daily --netcdf_precip 
 ../example_inputs/cmorph_lowres_daily_conus_prcp.nc --var_name_precip 
@@ -278,8 +278,8 @@ Jan. 1st, 1998 through Dec. 31st, 2016. The index will be computed at 30-day and
 `/data/cmorph_lowres_daily_conus_spi_pearson_30.nc`, and 
 `/data/cmorph_lowres_daily_conus_spi_pearson_90.nc`.
 
-SPI (both gamma and Pearson III distribution fittings), monthly:
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+SPI monthly
+""""""""""""
 
 ``$ python process_grid.py --index spi --time_series_type monthly --netcdf_precip 
 ../example_inputs/nclimgrid_lowres_prcp.nc --var_name_precip  prcp 
@@ -294,8 +294,8 @@ The output files will be `/data/nclimgrid_lowres_spi_gamma_06.nc`,
 `/data/nclimgrid_lowres_spi_gamma_12.nc`, `/data/nclimgrid_lowres_spi_pearson_06.nc`, 
 and `/data/nclimgrid_lowres_spi_pearson_12.nc`.
 
-SPEI (both gamma and Pearson III distribution fittings), monthly:
-"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+SPEI monthly
+"""""""""""""
 
 ``$ python process_grid.py --index spei --time_series_type monthly --netcdf_precip 
 ../example_inputs/nclimgrid_lowres_prcp.nc --var_name_precip  prcp --netcdf_pet 
@@ -310,8 +310,8 @@ datasets will be computed at 9-month and 18-month timescales. The output files w
 `/data/nclimgrid_lowres_spi_gamma_09.nc`, `/data/nclimgrid_lowres_spi_gamma_18.nc`, 
 `/data/nclimgrid_lowres_spi_pearson_09.nc`, and `/data/nclimgrid_lowres_spi_pearson_18.nc`.
 
-Palmers, monthly:
-""""""""""""""""""""""""""""""""
+Palmers monthly
+""""""""""""""""
 ``$ python process_grid.py --index palmers --time_series_type monthly --netcdf_precip 
 ../example_inputs/nclimgrid_lowres_prcp.nc --var_name_precip prcp --netcdf_pet 
 ../example_inputs/nclimgrid_lowres_pet.nc --var_name_pet pet --netcdf_awc 
@@ -328,7 +328,7 @@ data and the calibration period used will be Jan. 1951 through Dec. 2010. The ou
 `/data/nclimgrid_lowres_pmdi.nc`, `/data/nclimgrid_lowres_scpdsi.nc`, and `/data/nclimgrid_lowres_zindex.nc`.
 
 Get involved
-------------
+-------------
 
 Please use, make suggestions, and contribute to this code. Without
 diverse participation and community adoption this project will not reach
