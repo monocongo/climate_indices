@@ -5,7 +5,7 @@ import numba
 import numpy as np
 import warnings
 
-from climate_indices import pdinew, thornthwaite, utils
+from climate_indices import utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global _logger
@@ -1051,37 +1051,12 @@ def _assign_X(k,
             # the element (month) index up through which backtracking continues
             previous_nonzero_index  = _find_previous_nonzero(BT, k)
         
-#             r = 0
-#             for c in range(k - 1, 0, -1):  # here we loop over the BT array to look for the most previous month step where the value is not zero
-#                 if BT[c] != 0:
-#                     # Backtracking continues in a backstepping procedure up through the most previous month where BT is not equal to zero
-#                     r = c + 1    # r is the row number up through which backtracking continues.
-#                     break
-
             _assign_X_backtracking(X, 
                                    BT, 
                                    PX1, 
                                    PX2, 
                                    k, 
                                    previous_nonzero_index)
-#             # here we loop over the BT array from the previous month (k - 1) through the r index (the most
-#             # previous month with BT != 0), at each month assigning to X the value for the month called for
-#             # in the BT array, unless that value is 0 in which case the BT value is switched and the corresponding 
-#             # X values are assigned (see _assign() in pdinew.f/pdinew.py)
-#             for count0 in range(k - 1, previous_nonzero_index - 1, -1):  
-#                 BT[count0] = BT[count0 + 1] # Assign BT to next month's BT value.
-#                 if BT[count0] == 2:
-#                     if PX2[count0] == 0:  # If BT = 2, X = PX2 unless PX2 = 0, then X = PX1.
-#                         X[count0] = PX1[count0]
-#                         BT[count0] = 1  # flip the X we'll choose next step, from X2 to X1
-#                     else:
-#                         X[count0] = PX2[count0]
-#                 elif BT[count0] == 1:
-#                     if PX1[count0] == 0:  # If BT = 1, X = PX1 unless PX1 = 0, then X = PX2.
-#                         X[count0] = PX2[count0] 
-#                         BT[count0] = 2  # flip the X we'll choose next step, from X1 to X2
-#                     else:
-#                         X[count0] = PX1[count0]
                 
     # In instances where there is no established spell for the last monthly observation, X is initially 
     # assigned to 0. The code below sets X in the last month to greater of |PX1| or |PX2|. This prevents 
@@ -1813,103 +1788,6 @@ def _least_squares(x,
     leastSquaresIntercept = max_value - leastSquaresSlope * x[max_i]
     
     return leastSquaresSlope, leastSquaresIntercept
-
-#-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit      # working?
-def pdsi_from_climatology(precip_time_series,      # pragma: no cover
-                          temp_time_series,
-                          awc,
-                          latitude,
-                          data_start_year,
-                          calibration_start_year,
-                          calibration_end_year,
-                          B=None,
-                          H=None):
-
-    '''
-    This function computes the Palmer Drought Severity Index (PDSI), Palmer Hydrological Drought Index (PHDI), 
-    and Palmer Z-Index.
-    
-    The PET values used in the calculation can be computed using Thornthwaite's method (default) or the original 
-    method used historically by NCDC (enabled by providing both B and H arguments).
-    
-    :param precip_time_series: time series of monthly precipitation values, in inches
-    :param temperature_time_series: time series of monthly temperature values, in degrees Fahrenheit
-    :param awc: available water capacity (soil constant), in inches
-    :param latitude: latitude, in degrees north 
-    :param data_start_year: initial year of the input precipitation and temperature datasets, 
-                            both of which are assumed to start in January of this year
-    :param calibration_start_year: initial year of the calibration period 
-    :param calibration_end_year: final year of the calibration period 
-    :param B: PET related constant read from the soil constants file for stations and/or climate divisions,
-              if present along with the H argument then the original NCDC method for computing PET will be used 
-    :param H: PET related constant read from the soil constants file for stations and/or climate divisions,
-              if present along with the B argument then the original NCDC method for computing PET will be used 
-    :return: four numpy arrays containing PDSI, PHDI, PMDI, and Z-Index values respectively 
-    '''
-
-    # convert monthly temperatures from Fahrenheit to Celsius
-    monthly_temps_celsius = (temp_time_series - 32) * 5.0 / 9.0
-
-    if B is not None and H is not None:
-
-        # compute PET using method from original PDSI Fortran code pdinew.f
-        pet_time_series = pdinew.potential_evapotranspiration(monthly_temps_celsius, 
-                                                               latitude,
-                                                               data_start_year,
-                                                               B,
-                                                               H)
-
-    else:
-        # compute PET using the Thornthwaite method
-        pet_time_series = thornthwaite.potential_evapotranspiration(monthly_temps_celsius, 
-                                                                    latitude, 
-                                                                    data_start_year)
-
-    return pdsi(precip_time_series,
-                pet_time_series.flatten(),
-                awc,
-                data_start_year,
-                calibration_start_year,
-                calibration_end_year)
-
-#-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit          # working?
-def scpdsi_from_climatology(precip_time_series,       # pragma: no cover
-                            temp_time_series,
-                            awc,
-                            latitude,
-                            data_start_year,
-                            calibration_start_year,
-                            calibration_end_year):
-    """
-    This function computes the Self-calibrated Palmer Drought Severity Index (SCPDSI), Palmer Hydrological 
-    Drought Index (PHDI), and Palmer Z-Index.
-    
-    :param precip_time_series: time series of monthly precipitation values, in inches
-    :param temp_time_series: time series of monthly temperature values, in degrees Fahrenheit
-    :param awc: available water capacity (soil constant), in inches
-    :param latitude: latitude, in degrees north 
-    :param data_start_year: initial year of the input precipitation and temperature datasets, 
-                            both of which are assumed to start in January of this year
-    :param calibration_start_year: initial year of the calibration period 
-    :param calibration_end_year: final year of the calibration period 
-    :return: five numpy arrays of floats containing SCPDSI, PDSI, PHDI, PMDI, and Z-Index values respectively 
-    """
-
-    # convert monthly temperatures from Fahrenheit to Celsius
-    monthly_temps_celsius = (temp_time_series - 32) * 5.0 / 9.0
-
-    # compute PET
-    pet_time_series = thornthwaite.potential_evapotranspiration(monthly_temps_celsius, 
-                                                                latitude, 
-                                                                data_start_year)
-    return scpdsi(precip_time_series,
-                  pet_time_series.flatten(),
-                  awc,
-                  data_start_year,
-                  calibration_start_year,
-                  calibration_end_year)
 
 #-----------------------------------------------------------------------------------------------------------------------
 #@numba.jit    # not working yet
