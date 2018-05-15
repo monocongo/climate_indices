@@ -651,7 +651,7 @@ def transform_fitted_gamma(values,
     #TODO explain this better
     means = np.nanmean(calibration_values, axis=0)
     log_means = np.log(means)
-    logs = np.log(values)
+    logs = np.log(calibration_values)
     mean_logs = np.nanmean(logs, axis=0)
     A = log_means - mean_logs
     alphas = (1 + np.sqrt(1 + 4 * A / 3)) / (4 * A)
