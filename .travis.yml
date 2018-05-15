@@ -9,11 +9,11 @@ python:
 install:
   # install the core climate_indices package
   - pip install .
-  
-  # install packages required for test coverage and reporting via Coveralls 
+
+  # install packages required for test coverage and reporting via Coveralls
   - pip install coverage
   - pip install coveralls
-  
+
 script:
   # run all tests with coverage
   - coverage run --source=climate_indices setup.py test
