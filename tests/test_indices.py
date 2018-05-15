@@ -22,11 +22,24 @@ class IndicesTestCase(fixtures.FixturesTestCase):
         # just confirm that this function can be called without raising an error and 
         # the compute.pdsi() function itself being tested within test_palmer.py
         indices.pdsi(self.fixture_precips_mm_monthly, 
-                                                self.fixture_pet_mm,
-                                                self.fixture_awc_inches, 
-                                                self.fixture_data_year_start_monthly, 
-                                                self.fixture_calibration_year_start_monthly, 
-                                                self.fixture_calibration_year_end_monthly)
+                     self.fixture_pet_mm,
+                     self.fixture_awc_inches, 
+                     self.fixture_data_year_start_monthly, 
+                     self.fixture_calibration_year_start_monthly, 
+                     self.fixture_calibration_year_end_monthly)
+        
+    #----------------------------------------------------------------------------------------
+    def test_scpdsi(self):
+        
+        # the indices.scpdsi() function is a wrapper for palmer.pdsi(), so we'll 
+        # just confirm that this function can be called without raising an error and 
+        # the compute.pdsi() function itself being tested within test_palmer.py
+        indices.scpdsi(self.fixture_precips_mm_monthly, 
+                       self.fixture_pet_mm,
+                       self.fixture_awc_inches, 
+                       self.fixture_data_year_start_monthly, 
+                       self.fixture_calibration_year_start_monthly, 
+                       self.fixture_calibration_year_end_monthly)
         
     #----------------------------------------------------------------------------------------
     def test_pet(self):
