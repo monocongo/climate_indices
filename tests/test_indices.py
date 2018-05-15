@@ -22,11 +22,24 @@ class IndicesTestCase(fixtures.FixturesTestCase):
         # just confirm that this function can be called without raising an error and 
         # the compute.pdsi() function itself being tested within test_palmer.py
         indices.pdsi(self.fixture_precips_mm_monthly, 
-                                                self.fixture_pet_mm,
-                                                self.fixture_awc_inches, 
-                                                self.fixture_data_year_start_monthly, 
-                                                self.fixture_calibration_year_start_monthly, 
-                                                self.fixture_calibration_year_end_monthly)
+                     self.fixture_pet_mm,
+                     self.fixture_awc_inches, 
+                     self.fixture_data_year_start_monthly, 
+                     self.fixture_calibration_year_start_monthly, 
+                     self.fixture_calibration_year_end_monthly)
+        
+    #----------------------------------------------------------------------------------------
+    def test_scpdsi(self):
+        
+        # the indices.scpdsi() function is a wrapper for palmer.pdsi(), so we'll 
+        # just confirm that this function can be called without raising an error and 
+        # the compute.pdsi() function itself being tested within test_palmer.py
+        indices.scpdsi(self.fixture_precips_mm_monthly, 
+                       self.fixture_pet_mm,
+                       self.fixture_awc_inches, 
+                       self.fixture_data_year_start_monthly, 
+                       self.fixture_calibration_year_start_monthly, 
+                       self.fixture_calibration_year_end_monthly)
         
     #----------------------------------------------------------------------------------------
     def test_pet(self):
@@ -273,6 +286,17 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                  temps_celsius=self.fixture_temps_celsius, 
                                  latitude_degrees=self.fixture_latitude_degrees)
         
+        # having both precipitation and PET input array arguments with incongruent sizes should raise a ValueError
+        np.testing.assert_raises(ValueError, 
+                                 indices.spei_gamma, 
+                                 6,
+                                 'monthly', 
+                                 data_start_year=self.fixture_data_year_start_monthly,
+                                 calibration_year_initial=self.fixture_data_year_start_monthly,
+                                 calibration_year_final=self.fixture_data_year_end_monthly,
+                                 precips_mm=self.fixture_precips_mm_monthly, 
+                                 pet_mm=np.zeros((self.fixture_precips_mm_monthly.size + 100, )))
+                                 
         # having temperature without corresponding latitude argument should raise a ValueError
         np.testing.assert_raises(ValueError, 
                                  indices.spei_gamma, 
@@ -282,7 +306,6 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                  calibration_year_initial=self.fixture_data_year_start_monthly,
                                  calibration_year_final=self.fixture_data_year_end_monthly,
                                  precips_mm=self.fixture_precips_mm_monthly, 
-                                 pet_mm=self.fixture_pet_mm, 
                                  temps_celsius=self.fixture_temps_celsius, 
                                  latitude_degrees=None)
         
@@ -296,6 +319,19 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                  calibration_year_final=self.fixture_data_year_end_monthly,
                                  precips_mm=self.fixture_precips_mm_monthly, 
                                  pet_mm=np.array((200, 200), dtype=float))
+        
+        # providing PET with a corresponding latitude argument should raise a ValueError
+        np.testing.assert_raises(ValueError, 
+                                 indices.spei_gamma, 
+                                 6,
+                                 'monthly', 
+                                 data_start_year=self.fixture_data_year_start_monthly,
+                                 calibration_year_initial=self.fixture_data_year_start_monthly,
+                                 calibration_year_final=self.fixture_data_year_end_monthly,
+                                 precips_mm=self.fixture_precips_mm_monthly, 
+                                 pet_mm=self.fixture_pet_mm, 
+                                 temps_celsius=self.fixture_temps_celsius, 
+                                 latitude_degrees=40.0)
         
     #----------------------------------------------------------------------------------------
     def test_spei_pearson(self):
@@ -380,6 +416,31 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                  precips_mm=self.fixture_precips_mm_monthly, 
                                  pet_mm=np.array((200, 200), dtype=float))
         
+        # having temperature without corresponding latitude argument should raise a ValueError
+        np.testing.assert_raises(ValueError, 
+                                 indices.spei_pearson, 
+                                 6,
+                                 'monthly', 
+                                 data_start_year=self.fixture_data_year_start_monthly,
+                                 calibration_year_initial=self.fixture_data_year_start_monthly,
+                                 calibration_year_final=self.fixture_data_year_end_monthly,
+                                 precips_mm=self.fixture_precips_mm_monthly, 
+                                 temps_celsius=self.fixture_temps_celsius, 
+                                 latitude_degrees=None)
+        
+        # providing PET with a corresponding latitude argument should raise a ValueError
+        np.testing.assert_raises(ValueError, 
+                                 indices.spei_pearson, 
+                                 6,
+                                 'monthly', 
+                                 data_start_year=self.fixture_data_year_start_monthly,
+                                 calibration_year_initial=self.fixture_data_year_start_monthly,
+                                 calibration_year_final=self.fixture_data_year_end_monthly,
+                                 precips_mm=self.fixture_precips_mm_monthly, 
+                                 pet_mm=self.fixture_pet_mm, 
+                                 temps_celsius=self.fixture_temps_celsius, 
+                                 latitude_degrees=40.0)
+
 #--------------------------------------------------------------------------------------------
 if __name__ == '__main__':
     unittest.main()
