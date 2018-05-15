@@ -773,746 +773,747 @@ class FixturesTestCase(unittest.TestCase):
 
     # array of gamma transformed/fitted values corresponding to the daily precipitation values array above 
     fixture_transformed_gamma_daily = np.array([ 
-        [np.NaN, np.NaN,  1.108,  2.145, np.NaN,  2.147, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN,  1.373, np.NaN, np.NaN,  1.377,  1.123, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.378, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.975, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN,  1.144, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.975,  \
-         1.974, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.981,  \
-         1.976, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  0.750, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.262, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN,  1.106,  0.775, np.NaN, np.NaN,  0.897, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.981, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
-        [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  0.680, np.NaN, np.NaN, np.NaN,  \
-         1.376, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  2.147,  2.145, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.300, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN,  2.063, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN,  1.975,  1.214, np.NaN, np.NaN, np.NaN, np.NaN,  1.137,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.145,  1.836, np.NaN,  1.124, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN,  1.375,  2.331,  0.900,  1.145, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN,  1.681,  0.709, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  0.902,  0.846, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
-        [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN,  1.378, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  2.165,  2.149, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.145, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN,  0.702,  1.610,  1.981, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN,  0.733, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN,  0.873, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.811,  0.805, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.119,  1.805, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
-        [1.378,  1.378,  1.449, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  0.954, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN,  1.341,  1.097, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.378, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN,  1.975, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.138, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN,  1.145, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN,  0.729, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
-        [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.688,  1.377,  \
-         np.NaN, np.NaN,  2.248, np.NaN,  2.142,  2.147, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  2.218, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.731, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN,  0.685,  0.669, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         1.381,  1.145,  2.204,  0.936, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN,  1.010, np.NaN,  1.829,  1.978, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
-        [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.378,  1.378, np.NaN, np.NaN, np.NaN,  \
-         1.429,  1.120,  2.070,  2.142, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN,  1.144,  1.145, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.701, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.980,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  0.957, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN,  0.760, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.156, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.144,  1.975,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
-        [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.334, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN,  2.142,  2.166, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN,  1.377, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN,  2.034, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.283,  0.929, np.NaN,  1.016, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         1.997,  2.096,  0.751, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  2.127, np.NaN,  \
-         np.NaN, np.NaN, np.NaN,  1.134, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         1.144, np.NaN,  0.755,  0.848, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN,  1.984, np.NaN,  1.974, np.NaN], \
-        [2.147,  2.148,  2.121,  1.377, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN,  2.364,  2.306, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  2.176,  1.377,  \
-         2.135,  2.168,  1.529, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.409,  2.143, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  0.949, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  0.962, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
-        [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  2.209, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN,  1.372,  1.118, np.NaN, np.NaN,  0.972, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  2.357,  1.089, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.725,  1.143, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.980, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.144,  \
-         1.143, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.221, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN,  0.412, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN,  0.890, np.NaN,  0.645, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN,  1.981, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.517, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
-        [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN,  1.343, np.NaN, np.NaN,  2.059,  2.146,  1.976, np.NaN,  \
-         np.NaN,  0.994, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN,  1.237, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.378, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.144, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.981, np.NaN,  0.697, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  2.105, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN,  1.138, np.NaN,  0.956, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.142,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN,  1.065,  1.445,  1.822,  0.922, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
-        [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN,  1.251,  1.378,  1.920,  1.110,  0.982,  1.185,  1.882,  1.934, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.142, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN,  0.942, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN,  1.144, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.141, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         1.140, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN,  1.981,  1.981, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  0.717,  0.681, np.NaN,  2.070,  \
-         2.004,  1.076,  1.089, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN,  1.740, np.NaN, np.NaN, np.NaN, np.NaN,  0.995, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.145, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN,  2.002, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         1.980, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
-        [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.378,  1.130, np.NaN,  \
-         np.NaN,  2.269, np.NaN, np.NaN, np.NaN, np.NaN,  0.670, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  0.949, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN,  0.913,  0.880, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         0.993,  0.954, np.NaN, np.NaN,  0.872, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN,  1.975,  2.090,  2.066,  1.143, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  0.943,  1.133, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN,  1.127, np.NaN, np.NaN, np.NaN], \
-        [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN,  0.994,  2.147, np.NaN, np.NaN,  0.946, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN,  1.176, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         1.098, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.119, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN,  1.147, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN,  1.975, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN,  1.143, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         1.490, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.140,  \
-         0.757, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.161,  1.087, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
-        [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.378,  1.133, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  0.873, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  2.147, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN,  1.141, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  0.734, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  0.675, np.NaN, np.NaN, np.NaN,  \
-         0.933, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.012, np.NaN,  \
-         np.NaN,  0.604, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN,  1.144, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.979, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.145, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
-        [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.359,  2.146,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  2.147, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.981, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN,  0.744,  2.128, np.NaN, np.NaN, np.NaN,  2.038,  0.900, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.975,  2.066,  1.144,  \
-         0.733, np.NaN,  0.677, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.981, np.NaN,  \
-         np.NaN, np.NaN,  1.981, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.109,  1.978, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN,  1.080,  1.139, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN,  1.139, np.NaN], \
-        [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN,  1.682,  1.059,  0.803, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.114, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN,  0.918, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.732,  1.265,  0.955,  0.948,  \
-         0.602,  1.035,  0.757, np.NaN,  2.004,  0.400, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         0.904,  0.475,  0.593, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  2.057, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN,  1.977, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN,  0.934, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.286,  1.560,  1.132, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  2.102,  1.555, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
-        [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN,  1.091, np.NaN, np.NaN,  0.847,  1.738, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN,  1.373, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN,  1.142, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN,  1.980, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  0.662,  2.146,  2.084, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  2.089,  1.974,  \
-         1.375,  0.483,  0.633, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.014, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN,  2.190,  1.138, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.976, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
-        [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.608, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN,  1.019,  0.937, np.NaN, np.NaN,  1.090,  2.144,  \
-         2.143,  2.148, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN,  2.145, np.NaN, np.NaN, np.NaN, np.NaN,  1.369, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN,  1.981, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.976, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.246,  1.646, np.NaN, np.NaN,  \
-         2.028,  2.223,  0.792, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN,  0.785,  1.790,  1.190, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN,  1.420, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.981, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  0.900, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.145, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
-        [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN,  1.142, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN,  1.976, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.135,  \
-         0.733,  2.111,  0.990, np.NaN,  1.291,  1.621, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN,  2.049,  1.974, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN,  2.138,  1.993,  1.573,  2.008, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN], \
-        [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  1.351, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN,  \
-         np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ]
+        [np.NaN,    np.NaN,  1.108,  2.145,    np.NaN,  2.147,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.373,    np.NaN,    np.NaN,  1.377,  1.123,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.378,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.975,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,  1.144,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.975,  \
+         1.974,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.981,  \
+         1.976,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  0.750,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.262,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,  1.106,  0.775,    np.NaN,    np.NaN,  0.897,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.981,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN ], \
+        [ np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  0.680,    np.NaN,    np.NaN,    np.NaN,  \
+         1.376,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  2.147,  2.145,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.300,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,  2.063,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,  1.975,  1.214,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.137,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.145,  1.836,    np.NaN,  1.124,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,  1.375,  2.331,  0.900,  1.145,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,  1.681,  0.709,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  0.902,  0.846,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN ], \
+        [ np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,  1.378,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  2.165,  2.149,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.145,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,  0.702,  1.610,  1.981,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,  0.733,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,  0.873,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.811,  0.805,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.119,  1.805,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN ], \
+        [ 1.378,  1.378,  1.449,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  0.954,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,  1.341,  1.097,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.378,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,  1.975,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.138,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,  1.145,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,  0.729,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN ], \
+        [ np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.688,  1.377,  \
+           np.NaN,    np.NaN,  2.248,    np.NaN,  2.142,  2.147,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  2.218,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.731,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,  0.685,  0.669,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+         1.381,  1.145,  2.204,  0.936,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.010,    np.NaN,  1.829,  1.978,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN ], \
+        [ np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.378,  1.378,    np.NaN,    np.NaN,    np.NaN,  \
+         1.429,  1.120,  2.070,  2.142,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,  1.144,  1.145,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.701,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.980,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  0.957,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,  0.760,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.156,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.144,  1.975,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN ], \
+        [ np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.334,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,  2.142,  2.166,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,  1.377,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,  2.034,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.283,  0.929,    np.NaN,  1.016,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+         1.997,  2.096,  0.751,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  2.127,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,  1.134,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+         1.144,    np.NaN,  0.755,  0.848,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,  1.984,    np.NaN,  1.974,    np.NaN ], \
+        [ 2.147,  2.148,  2.121,  1.377,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,  2.364,  2.306,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  2.176,  1.377,  \
+         2.135,  2.168,  1.529,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.409,  2.143,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  0.949,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  0.962,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN ], \
+        [ np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  2.209,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,  1.372,  1.118,    np.NaN,    np.NaN,  0.972,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  2.357,  1.089,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.725,  1.143,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.980,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.144,  \
+         1.143,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.221,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,  0.412,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,  0.890,    np.NaN,  0.645,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,  1.981,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.517,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN ], \
+        [ np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,  1.343,    np.NaN,    np.NaN,  2.059,  2.146,  1.976,    np.NaN,  \
+           np.NaN,  0.994,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,  1.237,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.378,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.144,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.981,    np.NaN,  0.697,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  2.105,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.138,    np.NaN,  0.956,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.142,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,  1.065,  1.445,  1.822,  0.922,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN ], \
+        [ np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,  1.251,  1.378,  1.920,  1.110,  0.982,  1.185,  1.882,  1.934,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.142,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,  0.942,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,  1.144,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.141,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+         1.140,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,  1.981,  1.981,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  0.717,  0.681,    np.NaN,  2.070,  \
+         2.004,  1.076,  1.089,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,  1.740,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  0.995,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.145,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,  2.002,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+         1.980,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN ], \
+        [ np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.378,  1.136,    np.NaN,  \
+           np.NaN,  2.269,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  0.670,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  0.949,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,  0.913,  0.880,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+         0.993,  0.954,    np.NaN,    np.NaN,  0.872,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.975,  2.090,  2.066,  1.143,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  0.943,  1.133,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,  1.127,    np.NaN,    np.NaN,    np.NaN ], \
+        [ np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,  0.994,  2.147,    np.NaN,    np.NaN,  0.946,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,  1.176,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+         1.098,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.119,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,  1.147,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.975,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,  1.143,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+         1.490,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.140,  \
+         0.757,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.161,  1.087,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN ], \
+        [ np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.378,  1.133,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  0.873,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  2.147,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,  1.141,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  0.734,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  0.675,    np.NaN,    np.NaN,    np.NaN,  \
+         0.933,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.012,    np.NaN,  \
+           np.NaN,  0.604,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,  1.144,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.979,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.145,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN ], \
+        [ np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.359,  2.146,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  2.147,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.981,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,  0.744,  2.128,    np.NaN,    np.NaN,    np.NaN,  2.038,  0.900,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.975,  2.066,  1.144,  \
+         0.733,    np.NaN,  0.677,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.981,    np.NaN,  \
+           np.NaN,    np.NaN,  1.981,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.109,  1.978,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.080,  1.139,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.139,    np.NaN ], \
+        [ np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,  1.682,  1.059,  0.803,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.114,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,  0.918,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.732,  1.265,  0.955,  0.948,  \
+         0.602,  1.035,  0.757,    np.NaN,  2.004,  0.400,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+         0.904,  0.475,  0.593,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  2.057,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,  1.977,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,  0.934,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.286,  1.560,  1.132,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  2.102,  1.555,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN ], \
+        [ np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,  1.091,    np.NaN,    np.NaN,  0.847,  1.738,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,  1.373,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.142,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,  1.980,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  0.662,  2.146,  2.084,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  2.089,  1.974,  \
+         1.375,  0.483,  0.633,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.014,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,  2.190,  1.138,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.976,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN ], \
+        [ np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.608,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.019,  0.937,    np.NaN,    np.NaN,  1.090,  2.144,  \
+         2.143,  2.148,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,  2.145,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.369,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,  1.981,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.976,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.246,  1.646,    np.NaN,    np.NaN,  \
+         2.028,  2.223,  0.792,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,  0.785,  1.790,  1.190,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.420,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.981,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  0.900,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.145,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN ], \
+        [ np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,  1.142,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,  1.976,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.135,  \
+         0.733,  2.111,  0.990,    np.NaN,  1.291,  1.621,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,  2.049,  1.974,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,  2.138,  1.993,  1.573,  2.008,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN ], \
+        [ 
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  1.359,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,  \
+           np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN,    np.NaN ]
         ])
     
     # array of monthly precipitation observations (122 years and 2 months, Jan 1895 through Feb 2017)
@@ -3547,6 +3548,132 @@ class FixturesTestCase(unittest.TestCase):
          [1.69788135272, 0.407888998498, -0.408004835557, -0.523429338106, 0.00492069766551, -0.112960527545, -0.894426175186, 0.309923952877, -0.849070546489, 0.214937088911, -1.6499790112, 0.0238953042084], \
          [0.14644073154, -0.200863345231, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN] ])
 
+    # array of expected transformed/fitted values corresponding to the input array of monthly precipitation values, 
+    # with calibration period corresponding to the full period of record
+    fixture_transformed_pearson3_monthly_fullperiod = np.array([
+        0.688,  0.420, -0.454, -1.295, -0.361,  1.342, -0.318, -0.701, -0.425, -0.726,  0.824, -0.104,  \
+        -0.489,  1.039, -0.569,  0.555, -0.994, -0.180,  1.500,  0.354,  1.507,  0.150, -0.130,  0.329,  \
+        -1.259, -0.812, -1.279, -1.141, -1.383, -0.666,  0.576,  1.786,  0.570,  1.157,  0.446,  0.689,  \
+         1.188,  2.302, -0.541,  0.788, -1.436,  0.344,  0.173, -0.162,  0.476,  0.703, -1.132, -0.024,  \
+         0.775,  1.004,  2.092,  0.807,  0.845,  0.335,  0.244, -0.422, -0.673, -0.054, -0.113,  1.320,  \
+         0.249,  0.267,  0.706, -0.292,  0.200,  1.106, -0.029,  1.540, -0.145, -1.766, -0.632,  0.869,  \
+        -0.661,  1.664, -0.367, -0.651, -1.038, -0.118, -0.919, -1.144,  0.415,  1.380,  0.101,  0.704,  \
+         1.414,  1.524,  2.118, -1.843, -0.897, -0.101,  0.126, -0.290,  0.583, -1.648,  0.948, -0.005,  \
+         0.909,  0.127,  0.022, -0.489, -0.086,  0.783, -0.839, -0.605, -1.158,  1.426,  0.748, -0.512,  \
+        -1.141, -1.241,  0.137,  0.492,  0.579, -0.777,  1.370,  0.793, -0.310, -0.626, -1.386,  2.056,  \
+         0.986,  0.281,  0.346, -0.855,  0.946,  0.820,  0.307,  0.951, -2.021, -0.377, -0.441, -3.291,  \
+        -0.718, -1.093, -1.634, -0.692,  1.159, -0.130, -0.595, -0.319, -0.004, -1.395, -0.002,  0.931,  \
+         0.241, -0.589, -1.199, -0.420, -0.202, -0.109, -0.561,  0.880,  1.685,  0.105,  0.155, -0.929,  \
+         0.101, -1.065, -0.480,  0.601,  0.669,  0.292,  0.307,  1.323, -1.099, -0.248, -0.734,  0.281,  \
+        -0.323, -0.224, -0.721, -1.279,  0.174,  0.145, -0.979,  0.110, -0.073,  1.579, -0.963, -1.242,  \
+        -1.289, -1.959, -1.175,  0.355,  0.977, -0.649,  0.888,  0.060, -0.509, -0.312,  2.185,  0.447,  \
+         1.364,  0.700,  0.667,  0.824,  0.897, -0.055, -0.857, -1.045,  0.183,  0.715,  2.325, -0.424,  \
+         0.408,  0.317,  0.205,  0.704,  0.617, -0.121, -1.593, -0.544, -0.715, -1.527,  1.901, -0.634,  \
+         0.224, -0.100, -0.684,  1.764,  0.258, -0.816,  1.829, -1.292,  0.297,  0.382,  1.100,  1.364,  \
+         0.843,  0.921, -0.159, -0.487,  0.285,  1.040,  0.665, -1.504, -0.028, -0.105,  0.447, -0.243,  \
+        -0.441, -0.045, -1.457,  0.631,  0.110,  0.697,  0.899, -1.245, -1.549,  1.229,  0.614, -1.048,  \
+        -0.736, -1.288,  0.981,  0.146, -0.696, -0.203,  0.001, -0.128,  1.124, -0.019, -2.546, -0.869,  \
+         0.208, -1.270,  0.448,  1.057, -0.465,  0.187, -0.508, -1.086, -0.508,  0.226, -0.544,  0.364,  \
+         0.024,  0.654,  0.982, -0.003,  0.556,  0.557, -1.269,  0.817, -1.508, -1.305,  0.080, -0.465,  \
+        -0.151,  0.193, -1.014,  0.836,  1.934, -1.461,  1.415, -2.863,  0.794, -0.267,  1.007,  0.389,  \
+        -2.007,  0.491,  1.363, -1.314, -0.138, -1.845, -0.820, -1.017, -3.230,  1.934, -1.203, -0.567,  \
+        -0.677, -0.854, -1.962,  0.183,  1.032,  0.282, -0.001,  0.822,  1.356,  2.469,  0.719,  0.091,  \
+        -2.176, -0.732, -1.113,  0.988,  0.576,  0.202,  0.069,  0.110, -0.342, -0.493, -1.976, -1.796,  \
+         1.306,  0.418, -1.273,  0.924, -0.209, -1.373,  0.439,  0.011, -0.799,  0.734, -1.628, -0.731,  \
+         1.566, -0.334,  1.016,  0.092,  1.233, -0.224, -0.943,  1.099, -2.683, -2.860,  0.718,  1.673,  \
+         1.891, -1.573, -1.758,  0.182, -0.574,  0.453,  1.541,  1.755,  1.568, -0.097,  0.108, -2.289,  \
+        -0.304,  0.863, -0.487,  0.110, -1.783, -1.052,  0.062, -0.829, -0.371,  0.550, -0.382, -0.864,  \
+        -0.870,  0.292,  0.124, -0.871, -0.035, -0.392,  0.261,  1.431,  0.928, -0.460, -0.455,  0.495,  \
+        -0.254, -0.240,  0.228, -0.170,  0.347, -0.257, -0.301, -0.034,  0.949,  1.345, -0.188,  0.653,  \
+         0.793,  0.301,  1.022,  0.842,  0.297,  1.370, -0.896, -0.680, -1.285,  0.391, -0.626,  0.045,  \
+         1.820,  0.027,  1.340,  1.488, -0.613, -1.895, -1.454, -1.592,  0.528, -0.054, -0.251, -0.924,  \
+         0.856, -1.101, -0.397, -0.387,  1.832,  0.410, -1.355,  1.046, -0.938,  0.873,  0.921, -0.661,  \
+        -0.019, -1.514,  0.866,  1.500,  0.327, -1.075,  0.771,  0.666, -1.899,  2.015, -0.179, -1.427,  \
+         0.168, -0.408,  0.055,  0.391,  2.930, -0.121, -0.883, -0.349,  0.538, -0.971, -1.558, -1.154,  \
+        -1.444, -1.225, -1.405,  1.046, -0.411,  0.332,  0.281, -0.689,  1.726,  0.025,  0.928, -0.390,  \
+         0.707,  1.426,  1.213, -0.810,  0.622,  1.481,  1.467,  1.624, -0.668,  0.238,  0.412, -0.292,  \
+        -0.401,  0.842,  1.097, -0.737,  0.336, -0.218, -0.135,  0.230,  0.916, -0.098, -0.627, -0.712,  \
+        -0.163, -0.745, -0.982, -1.274,  0.051, -0.720,  0.106, -3.715, -1.191, -0.482, -0.038, -0.509,  \
+         0.372, -0.451, -0.293,  0.050, -0.089, -0.577,  0.840, -0.568, -1.050,  1.067, -0.609,  0.866,  \
+         0.000,  0.128,  0.473, -0.307, -0.989, -0.712,  0.739,  0.320,  2.436, -0.951, -0.808,  1.152,  \
+         0.994,  1.770,  1.618,  1.975, -1.639, -0.246,  1.332, -2.119, -0.312, -0.132,  1.130,  0.821,  \
+         0.127,  0.311,  0.341,  1.955, -0.378,  1.074, -2.097, -1.217, -0.924, -0.939,  0.100,  1.580,  \
+        -0.141, -1.145, -0.258, -0.796, -0.366, -1.104,  0.569, -0.024, -0.445,  1.149,  1.546, -1.024,  \
+         0.227, -1.885, -0.404, -1.005,  0.490, -1.697,  1.427, -0.506, -0.417,  0.305, -3.291, -0.563,  \
+         0.619, -1.514, -1.239, -0.523, -1.505, -1.751, -0.221,  0.666,  1.028,  0.645, -0.279, -0.023,  \
+        -0.459, -0.494,  0.628, -0.403,  0.677,  0.006,  0.725, -0.651, -0.335, -0.645,  0.876,  0.915,  \
+         0.194,  0.743,  0.247, -0.006,  0.015,  1.431,  1.813,  1.137, -0.270,  1.825,  0.625,  1.013,  \
+         0.909, -1.055,  0.390,  0.486, -0.570, -1.196,  0.290,  1.012,  1.859,  0.901, -0.959, -0.343,  \
+        -1.825, -1.207,  0.136,  0.725,  0.262, -0.073,  2.441,  0.465,  0.489,  1.197,  1.196,  0.525,  \
+        -0.751, -0.264, -0.322,  0.013, -0.369, -2.442,  0.890,  0.300, -0.961,  1.218, -0.438,  0.780,  \
+        -0.813,  0.032, -1.474,  1.566, -1.214, -1.895,  0.374,  0.393, -1.061,  0.087, -1.162, -1.559,  \
+        -1.024,  0.654,  0.843, -0.039, -0.655, -0.902,  0.448, -0.038, -1.387,  1.419, -1.135, -1.009,  \
+         1.517,  0.390, -0.488, -0.175, -1.429,  1.252,  1.119,  0.325,  0.795,  0.628, -0.169, -0.221,  \
+        -0.244,  0.922,  1.055,  1.621,  0.978,  0.371,  0.325, -0.136,  0.253, -0.784,  0.411, -0.913,  \
+        -0.876, -1.303, -0.941,  0.007, -0.436,  1.221,  0.296, -1.042, -0.074, -0.827, -1.197,  0.604,  \
+        -0.841, -0.528, -2.033, -0.283, -1.337, -1.153, -1.705, -0.678,  0.100,  0.156, -1.559, -0.743,  \
+        -1.521,  1.412,  0.281,  0.402,  0.644, -1.277,  0.275,  0.451, -0.090,  0.300,  0.047,  1.304,  \
+         2.240, -0.148,  2.353, -0.650,  1.930,  0.523,  0.973, -0.124, -0.927, -0.162, -0.124,  1.895,  \
+        -0.337,  0.280,  1.435, -0.797,  1.267,  0.899,  1.442, -0.034,  0.807,  1.285,  1.292,  0.299,  \
+        -1.441,  0.414, -1.047,  1.677,  1.553,  0.176,  0.703,  0.507,  2.158,  0.423,  0.425, -1.285,  \
+         0.714, -0.225, -0.413, -1.807,  0.773, -0.937, -1.996, -1.024, -2.080, -0.367, -0.652, -1.058,  \
+         0.464, -0.839,  0.470, -0.062, -1.533,  0.939, -0.311,  0.560,  0.185, -1.037,  0.810, -0.636,  \
+        -0.561,  0.957, -1.771, -1.263,  0.339, -0.094, -1.785, -0.019,  1.633, -0.747,  0.667,  0.990,  \
+        -1.099,  0.324, -0.473,  0.892, -0.543,  1.269, -0.528, -0.631,  0.027,  0.622,  0.266,  0.258,  \
+        -0.372,  1.025, -0.560, -0.816, -1.395, -0.534, -1.373, -2.047,  1.073,  1.367,  0.089, -0.704,  \
+         1.194, -0.065,  0.092,  0.030,  0.816,  2.116,  1.235, -0.634,  0.756, -0.009, -1.229, -0.396,  \
+         0.497, -0.183,  0.074, -1.593, -1.164,  1.601, -0.973, -1.163,  0.684,  0.749, -0.082,  0.683,  \
+         0.034,  0.749, -0.435, -1.272,  2.848,  1.868,  0.094, -0.369,  1.172,  1.294, -0.369, -3.291,  \
+         1.484,  0.543,  0.464,  0.837,  0.893,  2.412, -0.185,  0.160,  0.690,  1.538, -0.403, -0.304,  \
+         0.918,  0.663,  0.593, -1.849,  0.816,  0.175,  0.345, -1.412, -0.767,  0.261, -2.825, -1.750,  \
+        -0.723, -0.534, -1.669, -1.731, -0.623, -0.141, -1.555, -0.214, -0.463,  0.439, -0.056,  1.201,  \
+        -0.122,  0.776, -0.069,  1.247,  0.699,  0.752,  0.671, -0.715,  0.481, -0.382,  0.868,  0.161,  \
+         0.570,  0.649, -0.122, -0.614, -1.123,  0.860, -0.282,  2.114, -0.210, -0.402, -0.977,  1.389,  \
+        -0.076, -1.623, -1.459, -0.517, -0.289, -0.084,  0.249, -0.448, -1.006, -0.515,  0.069,  0.133,  \
+        -1.055, -0.373, -1.164, -1.184,  0.702,  0.488, -0.193, -0.225, -0.117, -0.092, -0.573, -0.030,  \
+        -0.468,  0.967, -1.162,  0.656,  1.041,  0.583, -1.392,  1.732,  0.027, -0.865,  0.419,  0.150,  \
+         0.455,  0.129, -1.094, -0.389,  1.204, -0.472, -0.728, -0.033,  0.892, -0.960,  1.013,  0.913,  \
+         0.501,  1.321,  0.766,  0.830,  0.379,  0.339, -0.939,  0.353,  0.056,  0.579,  0.118,  0.635,  \
+         0.371, -1.119, -0.956,  2.015,  0.138, -0.839,  0.240, -0.875,  0.957,  0.312, -0.316,  1.256,  \
+         0.387,  0.179, -0.243,  1.023, -0.516,  0.290,  0.718,  0.065, -0.265, -0.150,  1.950,  0.091,  \
+        -1.067,  1.669,  0.011, -1.683, -0.811, -0.571, -0.466,  2.782,  1.581, -1.211,  0.180, -0.661,  \
+        -0.939, -0.392,  1.254,  2.040,  1.030,  0.996, -1.404, -0.303, -0.612, -0.251,  1.451, -0.254,  \
+         2.703,  2.752,  1.600,  0.491, -1.354,  0.971, -0.858,  0.286, -0.021, -0.199,  0.649,  1.203,  \
+        -1.216,  0.091,  0.890, -0.121,  0.570, -0.685,  0.607, -0.090, -0.036, -1.443,  0.143, -1.214,  \
+        -1.508, -1.157,  0.660,  0.164, -0.062, -1.117,  1.475, -0.993, -0.309,  0.021,  0.540,  0.815,  \
+         0.539,  0.102,  1.593, -0.536, -1.378, -0.270, -1.305, -0.047, -0.942, -1.206,  0.592,  1.794,  \
+         0.525, -0.030,  1.767, -1.712,  0.259, -2.063, -1.548, -1.350,  0.796,  0.125,  1.227,  0.461,  \
+         0.410, -0.429, -0.924, -0.867,  0.590,  1.337,  2.247,  1.883, -1.469, -0.976, -0.169, -1.886,  \
+        -0.622, -1.111,  0.265, -0.353, -1.278, -0.832, -0.177, -0.045, -0.942, -1.065, -0.035, -0.243,  \
+        -1.281, -0.705,  0.118,  0.023,  0.610, -0.381, -1.008,  0.420, -0.672, -0.434,  0.096, -0.436,  \
+         0.656, -0.373,  1.020,  0.030,  0.721,  0.253, -0.281,  0.142,  0.533,  0.735, -0.941, -0.015,  \
+        -0.146,  0.132,  0.551,  0.338, -1.760,  2.388, -0.942,  0.394, -0.005, -1.249,  2.001, -0.826,  \
+         2.065,  0.179,  0.663, -0.069, -0.238, -0.580, -0.472, -0.345, -1.041,  0.508, -0.912, -0.619,  \
+         0.847,  1.745, -0.512,  0.841, -0.262, -0.995, -0.860, -0.017,  1.032,  0.326,  1.717,  1.467,  \
+         0.580, -0.839,  0.550,  0.747, -0.117,  1.535,  0.435,  1.378, -0.159,  1.206, -0.763, -0.345,  \
+         0.288, -0.858,  0.527, -0.043,  0.635,  0.829, -1.520,  0.060, -0.228,  0.980, -0.886, -0.843,  \
+         0.920, -0.814,  0.572,  0.004,  0.142,  1.711,  0.109,  0.132,  0.398, -1.002,  0.323,  2.173,  \
+         0.387,  2.227,  2.018, -1.634, -0.603, -1.957, -0.242, -0.252,  1.756, -0.896,  1.853, -0.010,  \
+         1.133, -1.444, -0.717, -0.643, -0.282,  0.412, -0.739,  0.788,  0.932,  1.851,  0.188,  0.055,  \
+        -0.348,  0.187,  0.454,  0.271, -1.588,  0.420, -0.878,  0.679, -0.752,  0.699, -1.269,  0.747,  \
+        -1.057, -1.890,  0.823,  0.319, -0.082, -0.430,  1.088,  1.200,  1.042,  0.990,  0.014,  0.727,  \
+         0.127,  0.948, -0.249, -1.185,  0.401,  1.506,  1.517, -1.204, -0.850, -1.626,  0.056,  0.755,  \
+        -0.913, -0.336,  2.035,  0.310,  1.247, -0.134, -1.677,  0.563,  0.866, -1.302,  1.300, -0.037,  \
+         0.583,  0.777, -1.441, -0.256, -1.596, -2.349,  1.141,  0.411, -0.397, -0.289, -0.335, -1.698,  \
+        -0.589, -1.665,  0.623, -0.760, -0.912,  1.157, -0.730,  1.462,  0.802, -0.693, -0.720,  0.059,  \
+        -1.396,  0.550, -1.210, -0.689, -0.303, -0.508,  1.613,  0.539,  0.373, -1.832, -0.143,  0.834,  \
+         0.138,  1.132, -0.395,  1.003,  0.018,  1.017,  0.203, -1.737,  0.335,  0.318, -1.296,  0.539,  \
+        -0.965,  0.607,  0.695,  0.186, -1.763, -0.251, -0.422,  1.367, -0.520, -0.360, -1.148, -0.862,  \
+        -1.802, -0.766, -0.313, -1.648,  0.789,  0.481, -0.740, -0.176,  0.300, -2.550,  1.176,  1.349,  \
+        -0.037,  1.700,  0.331,  0.570, -1.077, -0.724,  0.350,  0.918,  1.969, -0.690,  0.468, -0.058,  \
+         1.325, -1.620,  0.093, -0.366, -1.104, -0.612,  0.372,  1.713,  0.758,  1.478, -0.532, -0.917,  \
+        -1.652,  0.886, -0.463,  2.139,  1.438,  0.126,  0.404,  1.169, -0.449, -0.250, -0.970, -0.354,  \
+        -1.155,  0.051, -0.059,  1.267,  1.429, -0.170,  1.032, -1.213, -0.070, -1.180,  1.723,  0.382,  \
+         0.548,  0.226,  0.539, -1.240, -0.852,  0.021,  0.411, -1.259, -0.930, -0.536, -0.098,  0.024,  \
+        -0.720,  0.198, -0.058,  1.449, -1.483, -0.146,  0.461,  0.560,  0.687, -0.798,  0.987,  2.724,  \
+         1.891,  0.440,  0.101, -0.586, -0.200, -0.078, -1.164,  0.531, -0.681, -0.209, -1.431,  0.082,  \
+        -0.007, -0.348,  np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN ])
+    
     # array of monthly temperature observations (122 years and 2 months, Jan 1895 through Feb 2017)
     fixture_temps_celsius = np.array(
         [[ 19.650390625, 15.66015625, 21.1103515625, 22.2802734375, 25.5595703125, 27.009765625, 27.73046875, 27.83984375, 27.16015625, 24.51953125, 22.259765625, 18.3701171875], \
