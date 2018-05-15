@@ -1157,7 +1157,7 @@ def _pdsi_from_zindex(Z):
 #         # DEBUG only -- REMOVE
 #         #
 #         # this is left here to remind us to focus on the PMDI appearing to be 
-#          # off my a month, something like this may fix things
+#         # off by a month, something like this may fix things
 #         #
 #         if k > 0:
 #             PMDI[k - 1] = _pmdi(Pe, X1, X2, X3)  #TODO remove, testing only

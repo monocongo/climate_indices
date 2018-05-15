@@ -687,9 +687,6 @@ class GridProcessor(object):             # pragma: no cover
                not math.isnan(awc) and \
                not math.isclose(awc, self.fill_value_awc):
         
-                # DEBUG ONLY -- REMOVE
-                _logger.debug('Computing Palmers for longitude index %s', lon_index)
-        
                 # put precipitation and PET into inches, if not already
                 if self.units_precip in _POSSIBLE_MM_UNITS:
                     precip_time_series = precip_time_series * _MM_TO_INCHES_FACTOR
