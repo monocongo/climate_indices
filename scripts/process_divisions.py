@@ -7,7 +7,7 @@ import netcdf_utils
 import numpy as np
 import scipy.constants
 
-from climate_indices import indices, pdinew
+from climate_indices import indices
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global logger which will write to the console as standard error
@@ -36,7 +36,6 @@ class DivisionsProcessor(object):
                  month_scales,
                  calibration_start_year,
                  calibration_end_year,
-                 use_orig_pe=False,
                  divisions=None):
         
         """
@@ -59,7 +58,6 @@ class DivisionsProcessor(object):
         self.scale_months = month_scales
         self.calibration_start_year = calibration_start_year
         self.calibration_end_year = calibration_end_year        
-        self.use_orig_pe = use_orig_pe
         self.divisions = divisions
         
         # TODO get the initial year from the precipitation NetCDF, for now use hard-coded value specific to nClimDiv  pylint: disable=fixme
@@ -182,29 +180,13 @@ class DivisionsProcessor(object):
                 
                 logger.info('\tComputing PET for division %s', climdiv_id)
     
-                # either use the original NCDC method or Thornthwaite method (default) for PET calculation
-                if self.use_orig_pe:
+                logger.info('\t\tCalculating PET using Thornthwaite method')
 
-                    logger.info('\t\tCalculating PET using original NCDC method')
-                    
-                    # get B and H, originally taken from climate divisions soil constants file
-                    B = divisions_dataset['B'][div_index]
-                    H = divisions_dataset['H'][div_index]
-                    pet_time_series = pdinew.potential_evapotranspiration(temperature,
-                                                                          latitude,
-                                                                          self.data_start_year,
-                                                                          B,
-                                                                          H)
-
-                else:
-
-                    logger.info('\t\tCalculating PET using Thornthwaite method')
-
-                    # compute PET across all longitudes of the latitude slice
-                    # Thornthwaite PE
-                    pet_time_series = indices.pet(temperature, 
-                                                  latitude_degrees=latitude, 
-                                                  data_start_year=self.data_start_year)
+                # compute PET across all longitudes of the latitude slice
+                # Thornthwaite PE
+                pet_time_series = indices.pet(temperature, 
+                                              latitude_degrees=latitude, 
+                                              data_start_year=self.data_start_year)
                             
                 # the above returns PET in millimeters, note this for further consideration
                 pet_units = 'millimeter'
@@ -538,7 +520,6 @@ def process_divisions(divisions_file,
                       month_scales,
                       calibration_start_year,
                       calibration_end_year,
-                      use_orig_pe=True,
                       divisions=None):
 
     """
@@ -562,7 +543,6 @@ def process_divisions(divisions_file,
                                              month_scales,
                                              calibration_start_year,
                                              calibration_end_year,
-                                             use_orig_pe,
                                              divisions)
     divisions_processor.run()
         
