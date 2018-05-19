@@ -486,7 +486,9 @@ def transform_fitted_pearson(values,
     '''
     
     # if we're passed all missing values then we can't compute anything, return the same array of missing values
-    if np.all(np.isnan(values)):
+    if np.ma.is_masked(values) and values.mask.all():
+        return values
+    elif np.all(np.isnan(values)):
         return values
         
     # validate (and possibly reshape) the input array
@@ -577,7 +579,9 @@ def transform_fitted_gamma(values,
     '''
     
     # if we're passed all missing values then we can't compute anything, return the same array of missing values
-    if np.all(np.isnan(values)):
+    if np.ma.is_masked(values) and values.mask.all():
+        return values
+    elif np.all(np.isnan(values)):
         return values
         
     # validate (and possibly reshape) the input array

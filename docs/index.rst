@@ -171,9 +171,9 @@ These Python scripts are written to be run via bash shell commands, i.e.
 |                        | 'palmers' indicates all Palmer indices (PDSI,   |
 |                        | PHDI, PMDI, SCPDSI, and Z-Index).               |
 +------------------------+-------------------------------------------------+
-| time_series_type       | Whether input dataset files                     |
-|                        | represent monthly or daily data. Valid values   |
-|                        | are either 'monthly' or 'daily'.                |
+| periodicity            | The periodicity of the input dataset files.     |
+|                        | Valid values are 'monthly' and 'daily'.         |
+|                        | Note: only SPI and PNP support daily inputs.    |
 +------------------------+-------------------------------------------------+
 | netcdf_precip          | Input NetCDF file containing a                  |
 |                        | precipitation dataset, required for all         |
@@ -250,7 +250,7 @@ Example Command Line Invocations
 PET monthly
 """"""""""""
 
-``$ python process_grid.py --index pet --time_series_type monthly --netcdf_temp  
+``$ python process_grid.py --index pet --periodicity monthly --netcdf_temp  
 ../example_inputs/nclimgrid_lowres_tavg.nc --var_name_temp tavg --output_file_base 
 /data/nclimgrid_lowres --calibration_start_year 1951 --calibration_end_year 2010``
 
@@ -263,7 +263,7 @@ Dec. 2010. The output file will be `/data/nclimgrid_lowres_pet.nc`.
 SPI daily
 """"""""""
 
-``$ python process_grid.py --index spi  --time_series_type daily --netcdf_precip 
+``$ python process_grid.py --index spi  --periodicity daily --netcdf_precip 
 ../example_inputs/cmorph_lowres_daily_conus_prcp.nc --var_name_precip 
 prcp --output_file_base /data/cmorph_lowres_daily_conus --scales 30 90 
 --calibration_start_year 1998 --calibration_end_year 2016``
@@ -281,7 +281,7 @@ Jan. 1st, 1998 through Dec. 31st, 2016. The index will be computed at 30-day and
 SPI monthly
 """"""""""""
 
-``$ python process_grid.py --index spi --time_series_type monthly --netcdf_precip 
+``$ python process_grid.py --index spi --periodicity monthly --netcdf_precip 
 ../example_inputs/nclimgrid_lowres_prcp.nc --var_name_precip  prcp 
 --output_file_base /data/nclimgrid_lowres --scales 6 12 
 --calibration_start_year 1951 --calibration_end_year 2010``  
@@ -297,7 +297,7 @@ and `/data/nclimgrid_lowres_spi_pearson_12.nc`.
 SPEI monthly
 """""""""""""
 
-``$ python process_grid.py --index spei --time_series_type monthly --netcdf_precip 
+``$ python process_grid.py --index spei --periodicity monthly --netcdf_precip 
 ../example_inputs/nclimgrid_lowres_prcp.nc --var_name_precip  prcp --netcdf_pet 
 ../example_inputs/nclimgrid_lowres_pet.nc --var_name_pet pet --output_file_base 
 /data/nclimgrid_lowres --scales 9 18 --calibration_start_year 1951 --calibration_end_year 2010``  
@@ -312,7 +312,7 @@ datasets will be computed at 9-month and 18-month timescales. The output files w
 
 Palmers monthly
 """"""""""""""""
-``$ python process_grid.py --index palmers --time_series_type monthly --netcdf_precip 
+``$ python process_grid.py --index palmers --periodicity monthly --netcdf_precip 
 ../example_inputs/nclimgrid_lowres_prcp.nc --var_name_precip prcp --netcdf_pet 
 ../example_inputs/nclimgrid_lowres_pet.nc --var_name_pet pet --netcdf_awc 
 ../example_inputs/nclimgrid_lowres_soil.nc  --var_name_awc awc --output_file_base 

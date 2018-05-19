@@ -66,6 +66,12 @@ def spi(precips,
         _logger.error(message)
         raise ValueError(message)
         
+    # if we're passed all missing values then we can't compute anything, return the same array of missing values
+    if np.ma.is_masked(precips) and precips.mask.all():
+        return precips
+    elif np.all(np.isnan(precips)):
+        return precips
+        
     # remember the original length of the array, in order to facilitate returning an array of the same size
     original_length = precips.size
     
@@ -160,6 +166,12 @@ def spei(scale,
     :rtype: numpy.ndarray of type float, of the same size and shape as the input temperature and precipitation arrays
     '''
                     
+    # if we're passed all missing values then we can't compute anything, return the same array of missing values
+    if np.ma.is_masked(precips_mm) and precips_mm.mask.all():
+        return precips_mm
+    elif np.all(np.isnan(precips_mm)):
+        return precips_mm
+
     # validate the function's argument combinations
     if temps_celsius is not None:
         

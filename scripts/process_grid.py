@@ -7,7 +7,7 @@ import netCDF4
 import netcdf_utils
 import numpy as np
 
-from climate_indices import indices, utils
+from climate_indices import indices, utils, compute
 
 #-----------------------------------------------------------------------------------------------------------------------
 # static constants
@@ -62,8 +62,11 @@ class GridProcessor(object):             # pragma: no cover
         self.calibration_start_year = args.calibration_start_year
         self.calibration_end_year = args.calibration_end_year        
         self.index = args.index
-        self.time_series_type = args.time_series_type
-        
+        if args.periodicity == 'monthly':
+            self.periodicity = compute.Periodicity.monthly
+        elif args.periodicity == 'daily':
+            self.periodicity = compute.Periodicity.daily
+            
         # determine the file to use for coordinate specs (years range and lat/lon sizes), get relevant units
         if self.index == 'pet':
             
@@ -187,15 +190,15 @@ class GridProcessor(object):             # pragma: no cover
 
         # make a scale type substring to use within the variable long_name attributes
         scale_type = str(self.timestep_scale) + '-month scale'
-        if self.time_series_type == 'daily':
+        if self.periodicity is compute.Periodicity.daily:
             if self.index in ['spi', 'pnp']:
                 scale_type = str(self.timestep_scale) + '-day scale'
             else:
-                message = 'Incompatible time series type -- only SPI and PNP are supported for daily time series'
+                message = 'Incompatible periodicity -- only SPI and PNP are supported for daily time series'
                 _logger.error(message)
                 raise ValueError(message)
-        elif self.time_series_type != 'monthly':
-            raise ValueError('Unsupported time series type argument: %s' % self.time_series_type)
+        elif self.periodicity is not compute.Periodicity.monthly:
+            raise ValueError('Unsupported periodicity argument: %s' % self.time_series_type)
         
         # dictionary of index types (ex. 'spi_gamma', 'spei_pearson', etc.) mapped to their corresponding long 
         # variable names, to be used within the respective NetCDFs as variable long_name attributes
@@ -350,7 +353,7 @@ class GridProcessor(object):             # pragma: no cover
             # read the latitude slice of input precipitation
             lat_slice_precip = dataset_precip[self.var_name_precip][lat_index, :, :]   # assuming (lat, lon, time) orientation
 
-        if self.time_series_type == 'daily':
+        if self.periodicity is compute.Periodicity.daily:
 
             # times are daily, transform to all leap year times (i.e. 366 days per year), so we fill Feb 29th of each non-leap missing
             total_years = self.data_end_year - self.data_start_year + 1   # FIXME move this out of here, should only need to be computed once
@@ -374,9 +377,9 @@ class GridProcessor(object):             # pragma: no cover
         # compute PNP if specified
         if self.index in ['pnp', 'scaled']:
 
-            if self.time_series_type == 'daily':  
+            if self.periodicity is compute.Periodicity.daily:  
                 scale_increment = 'day'
-            elif self.time_series_type == 'monthly':
+            elif self.periodicity is compute.Periodicity.monthly:
                 scale_increment = 'month'
             _logger.info('Computing %s-%s %s for latitude index %s', self.timestep_scale, scale_increment, 'PNP', lat_index)
 
@@ -390,7 +393,7 @@ class GridProcessor(object):             # pragma: no cover
                                                 self.calibration_end_year,
                                                 self.time_series_type)
 
-            if self.time_series_type == 'daily':
+            if self.periodicity is compute.Periodicity.daily:
 
                 # at each longitude we have a time series of values with a 366 day per year representation (Feb 29 during non-leap years
                 # is a fill value), loop over these longitudes and transform each corresponding time series back to a normal Gregorian calendar
@@ -418,33 +421,38 @@ class GridProcessor(object):             # pragma: no cover
         # compute SPI if specified
         if self.index in ['spi', 'scaled']:
 
-            if self.time_series_type == 'daily':  
+            if self.periodicity is compute.Periodicity.daily:  
                 scale_increment = 'day'
-            elif self.time_series_type == 'monthly':
+            elif self.periodicity is compute.Periodicity.monthly:
                 scale_increment = 'month'
-            _logger.info('Computing %s-%s %s for latitude index %s', self.timestep_scale, scale_increment, 'SPI', lat_index)
+            _logger.info('Computing {scale}-{incr} {index} for latitude index {lat}'.format(scale=self.timestep_scale, 
+                                                                                            incr=scale_increment, 
+                                                                                            index='SPI', 
+                                                                                            lat=lat_index))
 
             # compute SPI/Gamma across all longitudes of the latitude slice
-            spi_gamma_lat_slice = np.apply_along_axis(indices.spi_gamma,
+            spi_gamma_lat_slice = np.apply_along_axis(indices.spi,
                                                       1,
                                                       lat_slice_precip,
                                                       self.timestep_scale,
+                                                      indices.Distribution.gamma,
                                                       self.data_start_year,
                                                       self.calibration_start_year,
                                                       self.calibration_end_year,
-                                                      self.time_series_type)
+                                                      self.periodicity)
 
             # compute SPI/Pearson across all longitudes of the latitude slice
-            spi_pearson_lat_slice = np.apply_along_axis(indices.spi_pearson,
+            spi_pearson_lat_slice = np.apply_along_axis(indices.spi,
                                                         1,
                                                         lat_slice_precip,
                                                         self.timestep_scale,
+                                                        indices.Distribution.pearson_type3,
                                                         self.data_start_year,
                                                         self.calibration_start_year,
                                                         self.calibration_end_year,
-                                                        self.time_series_type)
+                                                        self.periodicity)
 
-            if self.time_series_type == 'daily':
+            if self.periodicity is compute.Periodicity.daily:
 
                 # at each longitude we have a time series of values with a 366 day per year representation (Feb 29 during non-leap years
                 # is a fill value), loop over these longitudes and transform each corresponding time series back to a normal Gregorian calendar
@@ -485,12 +493,11 @@ class GridProcessor(object):             # pragma: no cover
         # compute SPEI if specified
         if self.index in ['spei', 'scaled']:
 
-            if self.time_series_type == 'daily':
+            if self.periodicity is compute.Periodicity.daily:
                 message = 'Daily SPEI not yet supported'
                 _logger.error(message)
                 raise ValueError(message)
-#                 scale_increment = 'day'
-            elif self.time_series_type == 'monthly':
+            elif self.periodicity is compute.Periodicity.monthly:
                 scale_increment = 'month'
             _logger.info('Computing %s-%s %s for latitude index %s', self.timestep_scale, scale_increment, 'SPEI', lat_index)
 
@@ -517,22 +524,24 @@ class GridProcessor(object):             # pragma: no cover
                    (not pet_time_series.mask.all()):
 
                     # compute SPEI/Gamma
-                    spei_gamma_lat_slice[lon_index, :] = indices.spei_gamma(self.timestep_scale,
-                                                                            self.time_series_type,
-                                                                            self.data_start_year,
-                                                                            self.calibration_start_year,
-                                                                            self.calibration_end_year,
-                                                                            precip_time_series,
-                                                                            pet_mm=pet_time_series)
+                    spei_gamma_lat_slice[lon_index, :] = indices.spei(self.timestep_scale,
+                                                                      indices.Distribution.gamma,
+                                                                      self.periodicity,
+                                                                      self.data_start_year,
+                                                                      self.calibration_start_year,
+                                                                      self.calibration_end_year,
+                                                                      precip_time_series,
+                                                                      pet_mm=pet_time_series)
                
                     # compute SPEI/Pearson
-                    spei_pearson_lat_slice[lon_index, :] = indices.spei_pearson(self.timestep_scale,
-                                                                                self.time_series_type,
-                                                                                self.data_start_year,
-                                                                                self.calibration_start_year,
-                                                                                self.calibration_end_year,
-                                                                                precip_time_series,
-                                                                                pet_mm=pet_time_series)
+                    spei_pearson_lat_slice[lon_index, :] = indices.spei(self.timestep_scale,
+                                                                        indices.Distribution.pearson_type3,
+                                                                        self.periodicity,
+                                                                        self.data_start_year,
+                                                                        self.calibration_start_year,
+                                                                        self.calibration_end_year,
+                                                                        precip_time_series,
+                                                                        pet_mm=pet_time_series)
                  
             # use relevant variable names
             spei_gamma_variable_name = 'spei_gamma_' + str(self.timestep_scale).zfill(2)
@@ -562,7 +571,7 @@ class GridProcessor(object):             # pragma: no cover
         :param lat_index: the latitude index of the latitude slice that will be read from NetCDF, computed, and written
         '''
 
-        _logger.info('Computing %s PET for latitude index %s', self.time_series_type, lat_index)
+        _logger.info('Computing %s PET for latitude index %s', self.periodicity, lat_index)
 
         # open the temperature NetCDF within a context manager
         with netCDF4.Dataset(self.netcdf_temp) as temp_dataset:
@@ -575,7 +584,7 @@ class GridProcessor(object):             # pragma: no cover
             # get the actual latitude value (assumed to be in degrees north) for the latitude slice specified by the index
             latitude_degrees_north = temp_dataset['lat'][lat_index]
 
-            if self.time_series_type == 'daily':
+            if self.periodicity is compute.Periodicity.daily:
 
                 pass  #placeholder 
             
@@ -804,9 +813,10 @@ def _validate_arguments(args):
             _logger.error(msg)
             raise ValueError(msg)
 
-        # don't allow a daily time series type (yet, this will be possible once we have Hargreaves or a daily Thornthwaite)
-        if args.time_series_type == 'daily':
-            msg = 'Invalid time series type argument for PET -- daily not yet supported'
+        # don't allow a daily periodicity (yet, this will be possible once we have Hargreaves or a daily Thornthwaite)
+        if args.periodicity != 'monthly':
+            msg = "Invalid periodicity argument for PET: " + \
+                "'{period}' -- only monthly is supported".format(period=args.periodicity)
             _logger.error(msg)
             raise ValueError(msg)
                             
@@ -829,14 +839,16 @@ def _validate_arguments(args):
                     _logger.error(message)
                     raise ValueError(message)
                 elif args.var_name_pet not in dataset_pet.variables:
-                    message = "Invalid PET variable name: \'%s\' does not exist in PET file \'%s\'" % args.var_name_pet, args.netcdf_pet
+                    message = "Invalid PET variable name: '{var_name}' ".format(var_name=args.var_name_pet) + \
+                              "does not exist in PET file '{file}'".format(file=args.netcdf_pet)
                     _logger.error(message)
                     raise ValueError(message)
                     
                 # verify that the PET variable's dimensions are in the expected order
                 dimensions = dataset_pet.variables[args.var_name_pet].dimensions
                 if dimensions != expected_dimensions:
-                    message = "Invalid dimensions of the PET variable: %s, (expected names and order: %s)" % dimensions, expected_dimensions
+                    message = "Invalid dimensions of the PET variable: {dims}, ".format(dims=dimensions) + \
+                              "(expected names and order: {dims})".format(dims=expected_dimensions)
                     _logger.error(message)
                     raise ValueError(message)
                 
@@ -1001,7 +1013,7 @@ if __name__ == '__main__':
                             choices=['spi', 'spei', 'pnp', 'scaled', 'pet', 'palmers'],
                             default='spi',    #TODO use 'full' as the default once all indices are functional
                             required=False)
-        parser.add_argument("--time_series_type",
+        parser.add_argument("--periodicity",
                             help="Process input as either monthly or daily values",
                             choices=['monthly', 'daily'],
                             required=True)
@@ -1011,7 +1023,7 @@ if __name__ == '__main__':
         '''
         Example command line arguments for SPI only using monthly precipitation input:
         
-        --netcdf_precip /tmp/jadams/cmorph_daily_prcp_199801_201707.nc --var_name_precip prcp --output_file_base ~/data/cmorph/spi/cmorph --scales 1 2 3 6 9 12 24 --calibration_start_year 1998 --calibration_end_year 2016 --index spi /tmp/jadams --time_series_type monthly
+        --netcdf_precip /tmp/jadams/cmorph_daily_prcp_199801_201707.nc --var_name_precip prcp --output_file_base ~/data/cmorph/spi/cmorph --scales 1 2 3 6 9 12 24 --calibration_start_year 1998 --calibration_end_year 2016 --index spi /tmp/jadams --periodicity monthly
         '''
 
         # validate the command line arguments
