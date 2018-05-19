@@ -613,7 +613,7 @@ def percentage_of_normal(values,
                          calibration_end_year,
                          time_series_type):
     '''
-    This function finds the percent of normal values (average of each calendar month or day over a specified 
+    This function finds the percentage of normal precipitation (average of each calendar month or day over a specified 
     calibration period of years) for a specified time steps scale. The normal precipitation for each calendar time step 
     is computed for the specified time steps scale, and then each time step's scaled value is compared against the 
     corresponding calendar time step's average to determine the percentage of normal. The period that defines the 
@@ -640,6 +640,10 @@ def percentage_of_normal(values,
     :rtype: numpy.ndarray of type float
     '''
 
+    # bypass processing if all values are masked    
+    if np.ma.is_masked(values) and values.mask.all():
+        return values
+    
     # if doing monthly then we'll use 12 periods, corresponding to calendar months, if daily assume years w/366 days
     if time_series_type == 'monthly':
         periodicity = 12
@@ -649,10 +653,6 @@ def percentage_of_normal(values,
         message = 'Invalid time series type argument: \'{0}\''.format(time_series_type)
         _logger.error(message)
         raise ValueError(message)
-    
-    # bypass processing if all values are masked    
-    if np.ma.is_masked(values) and values.mask.all():
-        return values
     
     # make sure we've been provided with sane calibration limits
     if data_start_year > calibration_start_year:
@@ -667,31 +667,116 @@ def percentage_of_normal(values,
     # the values will equal the sum of the corresponding time step plus the values of the two previous time steps
     scale_sums = compute.sum_to_scale(values, scale)
     
-    # extract the timesteps over which we'll compute the normal average for each time step of the year
+    # reshape into a 2-D array with the first axis representing years, 
+    # i.e. (years, 12) for monthly, or (years, 366) for daily  
+    scale_sums = utils.reshape_to_2d(scale_sums, periodicity)
+    
+    # extract the time steps over which we'll compute the normal average for each time step of the year
     calibration_years = calibration_end_year - calibration_start_year + 1
-    calibration_start_index = (calibration_start_year - data_start_year) * periodicity
-    calibration_end_index = calibration_start_index + (calibration_years * periodicity)
+    calibration_start_index = calibration_start_year - data_start_year
+    calibration_end_index = calibration_start_index + calibration_years
     calibration_period_sums = scale_sums[calibration_start_index:calibration_end_index]
     
-    # for each time step in the calibration period, get the average of the scale sum 
-    # for that calendar time step (i.e. average all January sums, then all February sums, etc.) 
-    averages = np.full((periodicity,), np.nan)
-    for i in range(periodicity):
-        averages[i] = np.nanmean(calibration_period_sums[i::periodicity])
+    # for each time step in the calibration period, get the average of the scaled sums 
+    # for that time step (i.e. average all January sums, then all February sums, etc.) 
+    averages = np.nanmean(calibration_period_sums, axis=0)
     
-    #TODO replace the below loop with a vectorized implementation
-    # for each time step of the scale_sums array find its corresponding
-    # percentage of the time steps scale average for its respective calendar time step
-    percentages_of_normal = np.full(scale_sums.shape, np.nan)
-    for i in range(scale_sums.size):
-
-        # make sure we don't have a zero divisor
-        if averages[i % periodicity] > 0.0:
-            
-            percentages_of_normal[i] = scale_sums[i] / averages[i % periodicity]
+    # reshape the averages from 1-D to 2-D so it's in proper shape for the broadcasting we'll do below
+    averages = np.reshape(averages, (1, averages.size))
     
-    return percentages_of_normal
+    # divide each value by it's corresponding time step average
+    percentages_of_normal = scale_sums / averages
+        
+    return percentages_of_normal.flatten()
     
+# #-------------------------------------------------------------------------------------------------------------------------------------------
+# @numba.jit     
+# def previous_percentage_of_normal(values, 
+#                                   scale,
+#                                   data_start_year,
+#                                   calibration_start_year,
+#                                   calibration_end_year,
+#                                   time_series_type):
+#     '''
+#     This function finds the percent of normal values (average of each calendar month or day over a specified 
+#     calibration period of years) for a specified time steps scale. The normal precipitation for each calendar time step 
+#     is computed for the specified time steps scale, and then each time step's scaled value is compared against the 
+#     corresponding calendar time step's average to determine the percentage of normal. The period that defines the 
+#     normal is described by the calibration start and end years arguments. The calibration period typically used  
+#     for US climate monitoring is 1981-2010. 
+#     
+#     :param values: 1-D numpy array of precipitation values, any length, initial value assumed to be January of the data 
+#                    start year (January 1st of the start year if daily time series type), see the description of the 
+#                    *time_series_type* argument below for further clarification
+#     :param scale: integer number of months over which the normal value is computed (eg 3-months, 6-months, etc.)
+#     :param data_start_year: the initial year of the input monthly values array
+#     :param calibration_start_year: the initial year of the calibration period over which the normal average for each  
+#                                    calendar time step is computed 
+#     :param calibration_start_year: the final year of the calibration period over which the normal average for each 
+#                                    calendar time step is computed 
+#     :param time_series_type: the type of time series represented by the input data, valid values are 'monthly' or 'daily'
+#                              'monthly': array of monthly values, assumed to span full years, i.e. the first value 
+#                              corresponds to January of the initial year and any missing final months of the final year 
+#                              filled with NaN values, with size == # of years * 12
+#                              'daily': array of full years of daily values with 366 days per year, as if each year were 
+#                              a leap year and any missing final months of the final year filled with NaN values, 
+#                              with array size == (# years * 366)
+#     :return: percent of normal precipitation values corresponding to the scaled precipitation values array   
+#     :rtype: numpy.ndarray of type float
+#     '''
+# 
+#     # if doing monthly then we'll use 12 periods, corresponding to calendar months, if daily assume years w/366 days
+#     if time_series_type == 'monthly':
+#         periodicity = 12
+#     elif time_series_type == 'daily':
+#         periodicity = 366
+#     else:
+#         message = 'Invalid time series type argument: \'{0}\''.format(time_series_type)
+#         _logger.error(message)
+#         raise ValueError(message)
+#     
+#     # bypass processing if all values are masked    
+#     if np.ma.is_masked(values) and values.mask.all():
+#         return values
+#     
+#     # make sure we've been provided with sane calibration limits
+#     if data_start_year > calibration_start_year:
+#         raise ValueError('Invalid start year arguments (data and/or calibration): calibration start year ' + \
+#                          'is before the data start year')
+#     elif ((calibration_end_year - calibration_start_year + 1) * 12) > values.size:
+#         raise ValueError('Invalid calibration period specified: total calibration years exceeds the actual ' + \
+#                          'number of years of data')
+#         
+#     # get an array containing a sliding sum on the specified time step scale -- i.e. if the scale is 3 then the first 
+#     # two elements will be np.NaN, since we need 3 elements to get a sum, and then from the third element to the end 
+#     # the values will equal the sum of the corresponding time step plus the values of the two previous time steps
+#     scale_sums = compute.sum_to_scale(values, scale)
+#     
+#     # extract the timesteps over which we'll compute the normal average for each time step of the year
+#     calibration_years = calibration_end_year - calibration_start_year + 1
+#     calibration_start_index = (calibration_start_year - data_start_year) * periodicity
+#     calibration_end_index = calibration_start_index + (calibration_years * periodicity)
+#     calibration_period_sums = scale_sums[calibration_start_index:calibration_end_index]
+#     
+#     # for each time step in the calibration period, get the average of the scale sum 
+#     # for that calendar time step (i.e. average all January sums, then all February sums, etc.) 
+#     averages = np.full((periodicity,), np.nan)
+#     for i in range(periodicity):
+#         averages[i] = np.nanmean(calibration_period_sums[i::periodicity])
+#     
+#     #TODO replace the below loop with a vectorized implementation
+#     # for each time step of the scale_sums array find its corresponding
+#     # percentage of the time steps scale average for its respective calendar time step
+#     percentages_of_normal = np.full(scale_sums.shape, np.nan)
+#     for i in range(scale_sums.size):
+# 
+#         # make sure we don't have a zero divisor
+#         if averages[i % periodicity] > 0.0:
+#             
+#             percentages_of_normal[i] = scale_sums[i] / averages[i % periodicity]
+#     
+#     return percentages_of_normal
+#     
 #-------------------------------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def pet(temperature_celsius,
