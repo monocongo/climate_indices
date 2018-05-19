@@ -1,8 +1,17 @@
 import logging
 import numba
 import numpy as np
+from enum import Enum
 
 from climate_indices import compute, palmer, thornthwaite, utils
+
+#-------------------------------------------------------------------------------------------------------------------------------------------
+class Distribution(Enum):
+    """
+    Enumeration type for distribution fittings used for SPI and SPEI.
+    """
+    pearson_type3 = 'Pearson Type III'
+    gamma = 'gamma'
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 # set up a basic, global _logger
@@ -18,29 +27,32 @@ _FITTED_INDEX_VALID_MAX = 3.09
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def spi_gamma(precips, 
-              scale,
-              data_start_year,
-              calibration_year_initial,
-              calibration_year_final,
-              time_series_type):
+def spi(precips, 
+        scale,
+        distribution,
+        data_start_year,
+        calibration_year_initial,
+        calibration_year_final,
+        periodicity):
     '''
-    Computes SPI using a fitting to the gamma distribution.
+    Computes SPI (Standardized Precipitation Index).
     
     :param precips: 1-D numpy array of precipitation values, in any units, first value assumed to correspond 
-                    to January of the initial year if the time series type is monthly, or January 1st of the initial
+                    to January of the initial year if the periodicity is monthly, or January 1st of the initial
                     year if daily
     :param scale: number of time steps over which the values should be scaled before the index is computed
+    :param distribution: distribution type to be used for the internal fitting/transform computation
     :param data_start_year: the initial year of the input precipitation dataset
     :param calibration_year_initial: initial year of the calibration period
     :param calibration_year_final: final year of the calibration period
-    :param time_series_type: the type of time series represented by the input data, valid values are 'monthly' or 'daily'
-                             'monthly': array of monthly values, assumed to span full years, i.e. the first value 
-                             corresponds to January of the initial year and any missing final months of the final year 
-                             filled with NaN values, with size == # of years * 12
-                             'daily': array of full years of daily values with 366 days per year, as if each year were  
-                             a leap year and any missing final months of the final year filled with NaN values, 
-                             with array size == (# years * 366)
+    :param periodicity: the periodicity of the time series represented by the input data, valid/supported values are 
+                        Periodicity.monthly and Periodicity.daily
+                        'monthly' indicates an array of monthly values, assumed to span full years, i.e. the first 
+                        value corresponds to January of the initial year and any missing final months of the final 
+                        year filled with NaN values, with size == # of years * 12
+                        'daily' indicates an array of full years of daily values with 366 days per year, as if each
+                        year were a leap year and any missing final months of the final year filled with NaN values, 
+                        with array size == (# years * 366)
     :return SPI values fitted to the gamma distribution at the specified time step scale, unitless
     :rtype: 1-D numpy.ndarray of floats of the same length as the input array of precipitation values
     '''
@@ -50,7 +62,7 @@ def spi_gamma(precips,
     if len(shape) == 2:
         precips = precips.flatten()
     elif len(shape) != 1:
-        message = 'Invalid shape of input array: {0}'.format(shape)
+        message = 'Invalid shape of input array: {0} -- only 1-D and 2-D arrays are supported'.format(shape)
         _logger.error(message)
         raise ValueError(message)
         
@@ -61,99 +73,181 @@ def spi_gamma(precips,
     scaled_precips = compute.sum_to_scale(precips, scale)
 
     # reshape precipitation values to (years, 12) for monthly, or to (years, 366) for daily
-    if time_series_type == 'monthly':
+    if periodicity is compute.Periodicity.monthly:
         
         scaled_precips = utils.reshape_to_2d(scaled_precips, 12)
 
-    elif time_series_type == 'daily':
+    elif periodicity is compute.Periodicity.daily:
         
         scaled_precips = utils.reshape_to_2d(scaled_precips, 366)
         
     else:
         
-        raise ValueError('Invalid time series type argument: %s' % time_series_type)
+        raise ValueError('Invalid periodicity argument: %s' % periodicity)
     
-    # fit the scaled values to a gamma distribution and transform the values to corresponding normalized sigmas 
-    transformed_fitted_values = compute.transform_fitted_gamma(scaled_precips, 
-                                                               data_start_year,
-                                                               calibration_year_initial,
-                                                               calibration_year_final,
-                                                               time_series_type)
-
+    if distribution is Distribution.gamma:
+        
+        # fit the scaled values to a gamma distribution and transform to corresponding normalized sigmas 
+        transformed_fitted_values = compute.transform_fitted_gamma(scaled_precips, 
+                                                                   data_start_year,
+                                                                   calibration_year_initial,
+                                                                   calibration_year_final,
+                                                                   periodicity)
+    elif distribution is Distribution.pearson_type3:
+        
+        # fit the scaled values to a Pearson Type III distribution and transform to corresponding normalized sigmas 
+        transformed_fitted_values = compute.transform_fitted_pearson(scaled_precips, 
+                                                                     data_start_year,
+                                                                     calibration_year_initial,
+                                                                     calibration_year_final,
+                                                                     periodicity)
+        
     # clip values to within the valid range, reshape the array back to 1-D
     spi = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
     
     # return the original size array 
     return spi[0:original_length]
 
-#-------------------------------------------------------------------------------------------------------------------------------------------
-@numba.jit
-def spi_pearson(precips, 
-                scale,
-                data_start_year,
-                calibration_year_initial,
-                calibration_year_final,
-                time_series_type):
-    '''
-    Computes SPI using a fitting to the Pearson Type III distribution.
-    
-    :param precips: 1-D numpy array of precipitation values, in any units, first value assumed to correspond to January
-                    of the initial year if the time series type is monthly, or January 1st of the initial year if daily
-    :param scale: number of time steps over which the values should be scaled before the index is computed
-    :param data_start_year: the initial year of the input precipitation dataset
-    :param calibration_year_initial: initial year of the calibration period
-    :param calibration_year_final: final year of the calibration period
-    :param time_series_type: the type of time series represented by the input data, valid values are 'monthly' or 'daily'
-                             'monthly': array of monthly values, assumed to span full years, i.e. the first value 
-                             corresponds to January of the initial year and any missing final months of the final 
-                             year filled with NaN values, with size == # of years * 12
-                             'daily': array of full years of daily values with 366 days per year, as if each year were 
-                             a leap year and any missing final months of the final year filled with NaN values, 
-                             with array size == (# years * 366)
-    :return SPI values fitted to the Pearson Type III distribution at the specified time scale, unitless
-    :rtype: 1-D numpy.ndarray of floats of the same length as the input array of precipitation values
-    '''
-
-    # remember the original length of the array, in order to facilitate returning an array of the same size
-    original_length = precips.size
-    
-    # get a sliding sums array, with each time step's value scaled by the specified number of time steps
-    scaled_precips = compute.sum_to_scale(precips, scale)
-
-    # reshape precipitation values to (years, 12) for monthly, or to (years, 366) for daily (representing all years as leap)
-    if time_series_type == 'monthly':
-        
-        scaled_precips = utils.reshape_to_2d(scaled_precips, 12)
-
-    elif time_series_type == 'daily':
-        
-        scaled_precips = utils.reshape_to_2d(scaled_precips, 366)
-        
-    else:
-        
-        raise ValueError('Invalid time series type argument: %s' % time_series_type)
-    
-    # fit the scaled values to a Pearson Type III distribution and transform the values to corresponding normalized sigmas 
-#     transformed_fitted_values = compute.transform_fitted_pearson_new(scaled_precips, 
-#                                                                      data_start_year,
-#                                                                      calibration_year_initial,
-#                                                                      calibration_year_final)
-    transformed_fitted_values = compute.transform_fitted_pearson(scaled_precips, 
-                                                                 data_start_year,
-                                                                 calibration_year_initial,
-                                                                 calibration_year_final,
-                                                                 time_series_type)
-        
-    # clip values to within the valid range, reshape the array back to 1-D
-    spi = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
-    
-    # return the original size array 
-    return spi[0:original_length]
+# #-------------------------------------------------------------------------------------------------------------------------------------------
+# @numba.jit
+# def spi_gamma(precips, 
+#               scale,
+#               data_start_year,
+#               calibration_year_initial,
+#               calibration_year_final,
+#               periodicity):
+#     '''
+#     Computes SPI using a fitting to the gamma distribution.
+#     
+#     :param precips: 1-D numpy array of precipitation values, in any units, first value assumed to correspond 
+#                     to January of the initial year if the periodicity is monthly, or January 1st of the initial
+#                     year if daily
+#     :param scale: number of time steps over which the values should be scaled before the index is computed
+#     :param data_start_year: the initial year of the input precipitation dataset
+#     :param calibration_year_initial: initial year of the calibration period
+#     :param calibration_year_final: final year of the calibration period
+#     :param periodicity: the periodicity of the time series represented by the input data, valid/supported values are 
+#                         Periodicity.monthly and Periodicity.daily
+#                         'monthly' indicates an array of monthly values, assumed to span full years, i.e. the first 
+#                         value corresponds to January of the initial year and any missing final months of the final 
+#                         year filled with NaN values, with size == # of years * 12
+#                         'daily' indicates an array of full years of daily values with 366 days per year, as if each
+#                         year were a leap year and any missing final months of the final year filled with NaN values, 
+#                         with array size == (# years * 366)
+#     :return SPI values fitted to the gamma distribution at the specified time step scale, unitless
+#     :rtype: 1-D numpy.ndarray of floats of the same length as the input array of precipitation values
+#     '''
+# 
+#     # we expect to operate upon a 1-D array, so if we've been passed a 2-D array we flatten it, otherwise raise an error
+#     shape = precips.shape
+#     if len(shape) == 2:
+#         precips = precips.flatten()
+#     elif len(shape) != 1:
+#         message = 'Invalid shape of input array: {0}'.format(shape)
+#         _logger.error(message)
+#         raise ValueError(message)
+#         
+#     # remember the original length of the array, in order to facilitate returning an array of the same size
+#     original_length = precips.size
+#     
+#     # get a sliding sums array, with each time step's value scaled by the specified number of time steps
+#     scaled_precips = compute.sum_to_scale(precips, scale)
+# 
+#     # reshape precipitation values to (years, 12) for monthly, or to (years, 366) for daily
+#     if periodicity == 'monthly':
+#         
+#         scaled_precips = utils.reshape_to_2d(scaled_precips, 12)
+# 
+#     elif periodicity == 'daily':
+#         
+#         scaled_precips = utils.reshape_to_2d(scaled_precips, 366)
+#         
+#     else:
+#         
+#         raise ValueError('Invalid periodicity argument: %s' % periodicity)
+#     
+#     # fit the scaled values to a gamma distribution and transform the values to corresponding normalized sigmas 
+#     transformed_fitted_values = compute.transform_fitted_gamma(scaled_precips, 
+#                                                                data_start_year,
+#                                                                calibration_year_initial,
+#                                                                calibration_year_final,
+#                                                                periodicity)
+# 
+#     # clip values to within the valid range, reshape the array back to 1-D
+#     spi = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
+#     
+#     # return the original size array 
+#     return spi[0:original_length]
+# 
+# #-------------------------------------------------------------------------------------------------------------------------------------------
+# @numba.jit
+# def spi_pearson(precips, 
+#                 scale,
+#                 data_start_year,
+#                 calibration_year_initial,
+#                 calibration_year_final,
+#                 periodicity):
+#     '''
+#     Computes SPI using a fitting to the Pearson Type III distribution.
+#     
+#     :param precips: 1-D numpy array of precipitation values, in any units, first value assumed to correspond to January
+#                     of the initial year if the periodicity is monthly, or January 1st of the initial year if daily
+#     :param scale: number of time steps over which the values should be scaled before the index is computed
+#     :param data_start_year: the initial year of the input precipitation dataset
+#     :param calibration_year_initial: initial year of the calibration period
+#     :param calibration_year_final: final year of the calibration period
+#     :param periodicity: the periodicity of the time series represented by the input data, valid/supported values are 
+#                         Periodicity.monthly and Periodicity.daily
+#                         'monthly' indicates an array of monthly values, assumed to span full years, i.e. the first 
+#                         value corresponds to January of the initial year and any missing final months of the final 
+#                         year filled with NaN values, with size == # of years * 12
+#                         'daily' indicates an array of full years of daily values with 366 days per year, as if each
+#                         year were a leap year and any missing final months of the final year filled with NaN values, 
+#                         with array size == (# years * 366)
+#     :return SPI values fitted to the Pearson Type III distribution at the specified time scale, unitless
+#     :rtype: 1-D numpy.ndarray of floats of the same length as the input array of precipitation values
+#     '''
+# 
+#     # remember the original length of the array, in order to facilitate returning an array of the same size
+#     original_length = precips.size
+#     
+#     # get a sliding sums array, with each time step's value scaled by the specified number of time steps
+#     scaled_precips = compute.sum_to_scale(precips, scale)
+# 
+#     # reshape precipitation values to (years, 12) for monthly, or to (years, 366) for daily (representing all years as leap)
+#     if periodicity == 'monthly':
+#         
+#         scaled_precips = utils.reshape_to_2d(scaled_precips, 12)
+# 
+#     elif periodicity == 'daily':
+#         
+#         scaled_precips = utils.reshape_to_2d(scaled_precips, 366)
+#         
+#     else:
+#         
+#         raise ValueError('Invalid periodicity argument: %s' % periodicity)
+#     
+#     # fit the scaled values to a Pearson Type III distribution and transform the values to corresponding normalized sigmas 
+# #     transformed_fitted_values = compute.transform_fitted_pearson_new(scaled_precips, 
+# #                                                                      data_start_year,
+# #                                                                      calibration_year_initial,
+# #                                                                      calibration_year_final)
+#     transformed_fitted_values = compute.transform_fitted_pearson(scaled_precips, 
+#                                                                  data_start_year,
+#                                                                  calibration_year_initial,
+#                                                                  calibration_year_final,
+#                                                                  periodicity)
+#         
+#     # clip values to within the valid range, reshape the array back to 1-D
+#     spi = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
+#     
+#     # return the original size array 
+#     return spi[0:original_length]
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def spei_gamma(scale,
-               time_series_type,
+               periodicity,
                data_start_year,
                calibration_year_initial,
                calibration_year_final,
@@ -177,13 +271,14 @@ def spei_gamma(scale,
     should be specified, and if so will result in an error being raised indicating invalid arguments.
         
     :param scale: the number of months over which the values should be scaled before computing the indicator
-    :param time_series_type: the type of time series represented by the input data, valid values are 'monthly' or 'daily'
-                             'monthly': array of monthly values, assumed to span full years, i.e. the first value 
-                             corresponds to January of the initial year and any missing final months of the final year 
-                             filled with NaN values, with size == # of years * 12
-                             'daily': array of full years of daily values with 366 days per year, as if each year were 
-                             a leap year and any missing final months of the final year filled with NaN values, 
-                             with array size == (# years * 366)
+    :param periodicity: the periodicity of the time series represented by the input data, valid/supported values are 
+                        Periodicity.monthly and Periodicity.daily
+                        'monthly' indicates an array of monthly values, assumed to span full years, i.e. the first 
+                        value corresponds to January of the initial year and any missing final months of the final 
+                        year filled with NaN values, with size == # of years * 12
+                        'daily' indicates an array of full years of daily values with 366 days per year, as if each
+                        year were a leap year and any missing final months of the final year filled with NaN values, 
+                        with array size == (# years * 366)
     :param precips_mm: an array of monthly total precipitation values, in millimeters, should be of the same size 
                        (and shape?) as the input temperature array
     :param pet_mm: an array of monthly PET values, in millimeters, should be of the same size (and shape?) as the input 
@@ -221,9 +316,9 @@ def spei_gamma(scale,
             _logger.error(message)
             raise ValueError(message)
 
-        elif time_series_type != 'monthly':
+        elif periodicity is not compute.Periodicity.monthly:
             # our PET currently uses a monthly version of Thornthwaite's equation and therefore's only valid for monthly 
-            message = 'Unsupported time series type: \'{0}\' '.format(time_series_type) + \
+            message = 'Unsupported periodicity: \'{0}\' '.format(periodicity) + \
                       '-- only monthly time series is supported when providing temperature and latitude inputs' 
             _logger.error(message)
             raise ValueError(message)
@@ -265,7 +360,7 @@ def spei_gamma(scale,
                                                                data_start_year, 
                                                                calibration_year_initial,
                                                                calibration_year_final,
-                                                               time_series_type)
+                                                               periodicity)
         
     # clip values to within the valid range, reshape the array back to 1-D
     spei = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
@@ -276,7 +371,7 @@ def spei_gamma(scale,
 #-------------------------------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def spei_pearson(scale,
-                 time_series_type,
+                 periodicity,
                  data_start_year,
                  calibration_year_initial,
                  calibration_year_final,
@@ -301,16 +396,14 @@ def spei_pearson(scale,
     indicating invalid arguments.
         
     :param scale: the number of time steps over which the values should be scaled before computing the index
-    :param time_series_type: the type of time series represented by the input data, valid values are 'monthly' or 'daily'
-                             **NOTE** only monthly time series type is currently supported if providing temperature  
-                             inputs rather than PET due to the current reliance on a monthly Thornthwaite PET for 
-                             internal PET computation
-                             'monthly': array of monthly values, assumed to span full years, i.e. the first value 
-                             corresponds to January of the initial year and any missing final months of the final year 
-                             filled with NaN values, with size == # of years * 12
-                             'daily': array of full years of daily values with 366 days per year, as if each year were 
-                             a leap year and any missing final months of the final year filled with NaN values, 
-                             with array size == (# years * 366)
+    :param periodicity: the periodicity of the time series represented by the input data, valid/supported values are 
+                        Periodicity.monthly and Periodicity.daily
+                        'monthly' indicates an array of monthly values, assumed to span full years, i.e. the first 
+                        value corresponds to January of the initial year and any missing final months of the final 
+                        year filled with NaN values, with size == # of years * 12
+                        'daily' indicates an array of full years of daily values with 366 days per year, as if each
+                        year were a leap year and any missing final months of the final year filled with NaN values, 
+                        with array size == (# years * 366)
     :param data_start_year: the initial year of the input datasets (assumes that the two inputs cover the same period),
                             must be unspecified or None if using PET values as an input, and must be specified if using 
                             an array of temperatures as input
@@ -353,9 +446,9 @@ def spei_pearson(scale,
             _logger.error(message)
             raise ValueError(message)
 
-        elif time_series_type != 'monthly':
+        elif periodicity is not compute.Periodicity.monthly:
             # our PET currently uses a monthly version of Thornthwaite's equation and therefore's only valid for monthly 
-            message = 'Unsupported time series type: \'{0}\' -- '.format(time_series_type) + \
+            message = 'Unsupported periodicity: \'{0}\' -- '.format(periodicity) + \
                       'only monthly time series is supported when providing temperature and latitude inputs'
             _logger.error(message)
             raise ValueError(message)
@@ -406,7 +499,7 @@ def spei_pearson(scale,
                                                                  data_start_year,
                                                                  calibration_year_initial,
                                                                  calibration_year_final,
-                                                                 time_series_type)
+                                                                 periodicity)
 #     transformed_fitted_values = compute.transform_fitted_pearson_new(scaled_values, 
 #                                                                      data_start_year,
 #                                                                      calibration_year_initial,
@@ -611,7 +704,7 @@ def percentage_of_normal(values,
                          data_start_year,
                          calibration_start_year,
                          calibration_end_year,
-                         time_series_type):
+                         periodicity):
     '''
     This function finds the percent of normal values (average of each calendar month or day over a specified 
     calibration period of years) for a specified time steps scale. The normal precipitation for each calendar time step 
@@ -621,34 +714,35 @@ def percentage_of_normal(values,
     for US climate monitoring is 1981-2010. 
     
     :param values: 1-D numpy array of precipitation values, any length, initial value assumed to be January of the data 
-                   start year (January 1st of the start year if daily time series type), see the description of the 
-                   *time_series_type* argument below for further clarification
+                   start year (January 1st of the start year if daily periodicity), see the description of the 
+                   *periodicity* argument below for further clarification
     :param scale: integer number of months over which the normal value is computed (eg 3-months, 6-months, etc.)
     :param data_start_year: the initial year of the input monthly values array
     :param calibration_start_year: the initial year of the calibration period over which the normal average for each  
                                    calendar time step is computed 
     :param calibration_start_year: the final year of the calibration period over which the normal average for each 
                                    calendar time step is computed 
-    :param time_series_type: the type of time series represented by the input data, valid values are 'monthly' or 'daily'
-                             'monthly': array of monthly values, assumed to span full years, i.e. the first value 
-                             corresponds to January of the initial year and any missing final months of the final year 
-                             filled with NaN values, with size == # of years * 12
-                             'daily': array of full years of daily values with 366 days per year, as if each year were 
-                             a leap year and any missing final months of the final year filled with NaN values, 
-                             with array size == (# years * 366)
+    :param periodicity: the periodicity of the time series represented by the input data, valid/supported values are 
+                        Periodicity.monthly and Periodicity.daily
+                        'monthly' indicates an array of monthly values, assumed to span full years, i.e. the first 
+                        value corresponds to January of the initial year and any missing final months of the final 
+                        year filled with NaN values, with size == # of years * 12
+                        'daily' indicates an array of full years of daily values with 366 days per year, as if each
+                        year were a leap year and any missing final months of the final year filled with NaN values, 
+                        with array size == (# years * 366)
     :return: percent of normal precipitation values corresponding to the scaled precipitation values array   
     :rtype: numpy.ndarray of type float
     '''
 
-    # if doing monthly then we'll use 12 periods, corresponding to calendar months, if daily assume years w/366 days
-    if time_series_type == 'monthly':
-        periodicity = 12
-    elif time_series_type == 'daily':
-        periodicity = 366
-    else:
-        message = 'Invalid time series type argument: \'{0}\''.format(time_series_type)
-        _logger.error(message)
-        raise ValueError(message)
+#     # if doing monthly then we'll use 12 periods, corresponding to calendar months, if daily assume years w/366 days
+#     if periodicity is compute.Periodicity.monthly:
+#         periodicity = 12
+#     elif periodicity is compute.Periodicity.daily:
+#         periodicity = 366
+#     else:
+#         message = 'Invalid periodicity argument: \'{0}\''.format(periodicity)
+#         _logger.error(message)
+#         raise ValueError(message)
     
     # bypass processing if all values are masked    
     if np.ma.is_masked(values) and values.mask.all():
@@ -669,15 +763,15 @@ def percentage_of_normal(values,
     
     # extract the timesteps over which we'll compute the normal average for each time step of the year
     calibration_years = calibration_end_year - calibration_start_year + 1
-    calibration_start_index = (calibration_start_year - data_start_year) * periodicity
-    calibration_end_index = calibration_start_index + (calibration_years * periodicity)
+    calibration_start_index = (calibration_start_year - data_start_year) * periodicity.value
+    calibration_end_index = calibration_start_index + (calibration_years * periodicity.value)
     calibration_period_sums = scale_sums[calibration_start_index:calibration_end_index]
     
     # for each time step in the calibration period, get the average of the scale sum 
     # for that calendar time step (i.e. average all January sums, then all February sums, etc.) 
-    averages = np.full((periodicity,), np.nan)
-    for i in range(periodicity):
-        averages[i] = np.nanmean(calibration_period_sums[i::periodicity])
+    averages = np.full((periodicity.value,), np.nan)
+    for i in range(periodicity.value):
+        averages[i] = np.nanmean(calibration_period_sums[i::periodicity.value])
     
     #TODO replace the below loop with a vectorized implementation
     # for each time step of the scale_sums array find its corresponding
@@ -686,9 +780,10 @@ def percentage_of_normal(values,
     for i in range(scale_sums.size):
 
         # make sure we don't have a zero divisor
-        if averages[i % periodicity] > 0.0:
+        divisor = averages[i % periodicity.value]
+        if divisor > 0.0:
             
-            percentages_of_normal[i] = scale_sums[i] / averages[i % periodicity]
+            percentages_of_normal[i] = scale_sums[i] / divisor
     
     return percentages_of_normal
     
