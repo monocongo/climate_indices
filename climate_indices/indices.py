@@ -46,7 +46,7 @@ def spi(precips,
     :param calibration_year_initial: initial year of the calibration period
     :param calibration_year_final: final year of the calibration period
     :param periodicity: the periodicity of the time series represented by the input data, valid/supported values are 
-                        Periodicity.monthly and Periodicity.daily
+                        'monthly' and 'daily'
                         'monthly' indicates an array of monthly values, assumed to span full years, i.e. the first 
                         value corresponds to January of the initial year and any missing final months of the final 
                         year filled with NaN values, with size == # of years * 12
@@ -79,11 +79,11 @@ def spi(precips,
     scaled_precips = compute.sum_to_scale(precips, scale)
 
     # reshape precipitation values to (years, 12) for monthly, or to (years, 366) for daily
-    if periodicity is compute.Periodicity.monthly:
+    if periodicity == 'monthly':
         
         scaled_precips = utils.reshape_to_2d(scaled_precips, 12)
 
-    elif periodicity is compute.Periodicity.daily:
+    elif periodicity == 'daily':
         
         scaled_precips = utils.reshape_to_2d(scaled_precips, 366)
         
@@ -144,7 +144,7 @@ def spei(scale,
     :param scale: the number of months over which the values should be scaled before computing the indicator
     :param distribution: distribution type to be used for the internal fitting/transform computation
     :param periodicity: the periodicity of the time series represented by the input data, valid/supported values are 
-                        Periodicity.monthly and Periodicity.daily
+                        'monthly' and 'daily'
                         'monthly' indicates an array of monthly values, assumed to span full years, i.e. the first 
                         value corresponds to January of the initial year and any missing final months of the final 
                         year filled with NaN values, with size == # of years * 12
@@ -194,7 +194,7 @@ def spei(scale,
             _logger.error(message)
             raise ValueError(message)
 
-        elif periodicity is not compute.Periodicity.monthly:
+        elif periodicity != 'monthly':
             # our PET currently uses a monthly version of Thornthwaite's equation and therefore's only valid for monthly 
             message = 'Unsupported periodicity: \'{0}\' '.format(periodicity) + \
                       '-- only monthly time series is supported when providing temperature and latitude inputs' 
@@ -341,7 +341,7 @@ def percentage_of_normal(values,
     :param calibration_start_year: the final year of the calibration period over which the normal average for each 
                                    calendar time step is computed 
     :param periodicity: the periodicity of the time series represented by the input data, valid/supported values are 
-                        Periodicity.monthly and Periodicity.daily
+                        'monthly' and 'daily'
                         'monthly' indicates an array of monthly values, assumed to span full years, i.e. the first 
                         value corresponds to January of the initial year and any missing final months of the final 
                         year filled with NaN values, with size == # of years * 12
@@ -352,15 +352,15 @@ def percentage_of_normal(values,
     :rtype: numpy.ndarray of type float
     '''
 
-#     # if doing monthly then we'll use 12 periods, corresponding to calendar months, if daily assume years w/366 days
-#     if periodicity is compute.Periodicity.monthly:
-#         periodicity = 12
-#     elif periodicity is compute.Periodicity.daily:
-#         periodicity = 366
-#     else:
-#         message = 'Invalid periodicity argument: \'{0}\''.format(periodicity)
-#         _logger.error(message)
-#         raise ValueError(message)
+    # if doing monthly then we'll use 12 periods, corresponding to calendar months, if daily assume years w/366 days
+    if periodicity == 'monthly':
+        periodicity = 12
+    elif periodicity == 'daily':
+        periodicity = 366
+    else:
+        message = 'Invalid periodicity argument: \'{0}\''.format(periodicity)
+        _logger.error(message)
+        raise ValueError(message)
     
     # bypass processing if all values are masked    
     if np.ma.is_masked(values) and values.mask.all():
@@ -381,15 +381,15 @@ def percentage_of_normal(values,
     
     # extract the timesteps over which we'll compute the normal average for each time step of the year
     calibration_years = calibration_end_year - calibration_start_year + 1
-    calibration_start_index = (calibration_start_year - data_start_year) * periodicity.value
-    calibration_end_index = calibration_start_index + (calibration_years * periodicity.value)
+    calibration_start_index = (calibration_start_year - data_start_year) * periodicity
+    calibration_end_index = calibration_start_index + (calibration_years * periodicity)
     calibration_period_sums = scale_sums[calibration_start_index:calibration_end_index]
     
     # for each time step in the calibration period, get the average of the scale sum 
     # for that calendar time step (i.e. average all January sums, then all February sums, etc.) 
-    averages = np.full((periodicity.value,), np.nan)
-    for i in range(periodicity.value):
-        averages[i] = np.nanmean(calibration_period_sums[i::periodicity.value])
+    averages = np.full((periodicity,), np.nan)
+    for i in range(periodicity):
+        averages[i] = np.nanmean(calibration_period_sums[i::periodicity])
     
     #TODO replace the below loop with a vectorized implementation
     # for each time step of the scale_sums array find its corresponding
@@ -398,7 +398,7 @@ def percentage_of_normal(values,
     for i in range(scale_sums.size):
 
         # make sure we don't have a zero divisor
-        divisor = averages[i % periodicity.value]
+        divisor = averages[i % periodicity]
         if divisor > 0.0:
             
             percentages_of_normal[i] = scale_sums[i] / divisor
