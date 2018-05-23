@@ -1,4 +1,5 @@
 #import lmoments3  """ Use this once it works with a more recent version of numpy """
+from enum import Enum
 import logging
 import math
 from math import exp, lgamma, pi, sqrt
@@ -8,6 +9,22 @@ import scipy.special
 import scipy.stats
 
 from climate_indices import utils
+
+#-------------------------------------------------------------------------------------------------------------------------------------------
+class Periodicity(Enum):
+    """
+    Enumeration type for specifying dataset periodicity.
+    
+    'monthly' indicates an array of monthly values, assumed to span full years, i.e. the first value 
+    corresponds to January of the initial year and any missing final months of the final year 
+    filled with NaN values, with size == # of years * 12
+    
+    'daily' indicates an array of full years of daily values with 366 days per year, as if each year were 
+    a leap year and any missing final months of the final year filled with NaN values, 
+    with array size == (# years * 366)
+    """
+    monthly = 12
+    daily = 366
 
 #-----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global _logger
@@ -185,11 +202,8 @@ def _estimate_lmoments(values):
     
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def _pearson3_fitting_values(values):#, 
-#                              data_start_year, 
-#                              calibration_start_year,
-#                              calibration_end_year):
-    '''
+def _pearson3_fitting_values(values):
+    """
     This function computes the probability of zero and Pearson Type III distribution parameters 
     corresponding to an array of values.
     
@@ -207,7 +221,7 @@ def _pearson3_fitting_values(values):#,
              returned_array[1] == the first Pearson Type III distribution parameter for each of the calendar time steps 
              returned_array[2] == the second Pearson Type III distribution parameter for each of the calendar time steps 
              returned_array[3] == the third Pearson Type III distribution parameter for each of the calendar time steps 
-    '''
+    """
     
     # validate that the values array has shape: (years, 12) for monthly or (years, 366) for daily
     if len(values.shape) != 2:
@@ -223,22 +237,6 @@ def _pearson3_fitting_values(values):#,
             _logger.error(message)
             raise ValueError(message)
 
-#     # determine the end year of the values array
-#     data_end_year = data_start_year + values.shape[0]
-#     
-#     # make sure that we have data within the full calibration period, otherwise use the full period of record
-#     if (calibration_start_year < data_start_year) or (calibration_end_year > data_end_year):
-#         _logger.info('Insufficient data for the specified calibration period ({0}-{1}), instead using the full period '.format(calibration_start_year, 
-#                                                                                                                               calibration_end_year) + 
-#                     'of record ({0}-{1})'.format(data_start_year, 
-#                                                  data_end_year))
-#         calibration_start_year = data_start_year
-#         calibration_end_year = data_end_year
-# 
-#     # get the year axis indices corresponding to the calibration start and end years
-#     calibration_begin_index = (calibration_start_year - data_start_year)
-#     calibration_end_index = (calibration_end_year - data_start_year) + 1
-    
     # the values we'll compute and return
     fitting_values = np.zeros((4, time_steps_per_year))
 
@@ -246,12 +244,10 @@ def _pearson3_fitting_values(values):#,
     #TODO vectorize the below loop? create a @numba.vectorize() ufunc for application over the second axis of the values
     for time_step_index in range(time_steps_per_year):
     
-#         # get the values for the current calendar time step that fall within the calibration years period
-#         calibration_values = values[calibration_begin_index:calibration_end_index, time_step_index]
+        # get the values for the current calendar time step
         time_step_values = values[:, time_step_index]
 
         # count the number of zeros and valid (non-missing/non-NaN) values
-#         number_of_zeros, number_of_non_missing = utils.count_zeros_and_non_missings(calibration_values)
         number_of_zeros, number_of_non_missing = utils.count_zeros_and_non_missings(time_step_values)
 
         # make sure we have at least four values that are both non-missing (i.e. non-NaN)
@@ -261,12 +257,6 @@ def _pearson3_fitting_values(values):#,
             # we can't proceed, bail out using zeros
             return fitting_values
          
-#             # update the array of calibration values for the calendar time step to include the full period of record
-#             calibration_values = values[:, time_step_index]
-#             
-#             # get new counts of the zeros and non-missing values
-#             number_of_zeros, number_of_non_missing = utils.count_zeros_and_non_missings(calibration_values)
-            
         # calculate the probability of zero for the calendar time step
         probability_of_zero = 0.0
         if number_of_zeros > 0:
@@ -277,7 +267,6 @@ def _pearson3_fitting_values(values):#,
         if (number_of_non_missing - number_of_zeros) > 3:
 
             # estimate the L-moments of the calibration values
-#             lmoments = _estimate_lmoments(calibration_values)
             lmoments = _estimate_lmoments(time_step_values)
 
             # if we have valid L-moments then we can proceed, otherwise 
@@ -474,7 +463,7 @@ def transform_fitted_pearson(values,
                              data_start_year,
                              calibration_start_year,
                              calibration_end_year,
-                             time_series_type):
+                             periodicity):
     '''
     Fit values to a Pearson Type III distribution and transform the values to corresponding normalized sigmas. 
     
@@ -484,39 +473,42 @@ def transform_fitted_pearson(values,
     :param data_start_year: the initial year of the input values array
     :param calibration_start_year: the initial year to use for the calibration period 
     :param calibration_end_year: the final year to use for the calibration period 
-    :param time_series_type: the type of time series represented by the input data, valid values are 'monthly' or 'daily'
-                             'monthly': array of monthly values, assumed to span full years, i.e. the first value 
-                             corresponds to January of the initial year and any missing final months of the final 
-                             year filled with NaN values, with size == # of years * 12
-                             'daily': array of full years of daily values with 366 days per year, as if each year were 
-                             a leap year and any missing final months of the final year filled with NaN values, 
-                             with array size == (# years * 366)
+    :param periodicity: the periodicity of the time series represented by the input data, valid/supported values are 
+                        'monthly' and 'daily'
+                        'monthly' indicates an array of monthly values, assumed to span full years, i.e. the first 
+                        value corresponds to January of the initial year and any missing final months of the final 
+                        year filled with NaN values, with size == # of years * 12
+                        'daily' indicates an array of full years of daily values with 366 days per year, as if each
+                        year were a leap year and any missing final months of the final year filled with NaN values, 
+                        with array size == (# years * 366)
     :return: 2-D array of transformed/fitted values, corresponding in size and shape of the input array
     :rtype: numpy.ndarray of floats
     '''
     
     # if we're passed all missing values then we can't compute anything, return the same array of missing values
-    if np.all(np.isnan(values)):
+    if np.ma.is_masked(values) and values.mask.all():
+        return values
+    elif np.all(np.isnan(values)):
         return values
         
     # validate (and possibly reshape) the input array
     if len(values.shape) == 1:
         
-        if time_series_type is None:    
-            message = '1-D input array requires a corresponding time series type argument, none provided'
+        if periodicity is None:    
+            message = '1-D input array requires a corresponding periodicity argument, none provided'
             _logger.error(message)
             raise ValueError(message)
 
-        elif time_series_type == 'monthly': 
+        elif periodicity == 'monthly': 
             # we've been passed a 1-D array with shape (months), reshape it to 2-D with shape (years, 12)
             values = utils.reshape_to_2d(values, 12)
      
-        elif time_series_type == 'daily':
+        elif periodicity == 'daily':
             # we've been passed a 1-D array with shape (days), reshape it to 2-D with shape (years, 366)
             values = utils.reshape_to_2d(values, 366)
             
         else:
-            message = 'Unsupported time series type argument: \'{0}\''.format(time_series_type)
+            message = 'Unsupported periodicity argument: \'{0}\''.format(periodicity)
             _logger.error(message)
             raise ValueError(message)
         
@@ -547,10 +539,7 @@ def transform_fitted_pearson(values,
     calibration_values = values[calibration_begin_index:calibration_end_index, :]
 
     # compute the values we'll use to fit to the Pearson Type III distribution
-    pearson_values = _pearson3_fitting_values(calibration_values)#, 
-#                                               data_start_year,
-#                                               calibration_start_year,
-#                                               calibration_end_year)
+    pearson_values = _pearson3_fitting_values(calibration_values)
     
     pearson_param_1 = pearson_values[1]   # first Pearson Type III parameter
     pearson_param_2 = pearson_values[2]   # second Pearson Type III parameter
@@ -568,7 +557,7 @@ def transform_fitted_gamma(values,
                            data_start_year,
                            calibration_start_year,
                            calibration_end_year,
-                           time_series_type=None):
+                           periodicity):
     '''
     Fit values to a gamma distribution and transform the values to corresponding normalized sigmas. 
 
@@ -578,7 +567,7 @@ def transform_fitted_gamma(values,
     :param data_start_year: the initial year of the input values array
     :param calibration_start_year: the initial year to use for the calibration period 
     :param calibration_end_year: the final year to use for the calibration period 
-    :param time_series_type: the type of time series represented by the input data, valid values are 'monthly' or 'daily'
+    :param periodicity: the type of time series represented by the input data, valid values are 'monthly' or 'daily'
                              'monthly': array of monthly values, assumed to span full years, i.e. the first value 
                              corresponds to January of the initial year and any missing final months of the final 
                              year filled with NaN values, with size == # of years * 12
@@ -590,27 +579,29 @@ def transform_fitted_gamma(values,
     '''
     
     # if we're passed all missing values then we can't compute anything, return the same array of missing values
-    if np.all(np.isnan(values)):
+    if np.ma.is_masked(values) and values.mask.all():
+        return values
+    elif np.all(np.isnan(values)):
         return values
         
     # validate (and possibly reshape) the input array
     if len(values.shape) == 1:
         
-        if time_series_type is None:    
-            message = '1-D input array requires a corresponding time series type argument, none provided'
+        if periodicity is None:    
+            message = '1-D input array requires a corresponding periodicity argument, none provided'
             _logger.error(message)
             raise ValueError(message)
 
-        elif time_series_type == 'monthly': 
+        elif periodicity == 'monthly': 
             # we've been passed a 1-D array with shape (months), reshape it to 2-D with shape (years, 12)
             values = utils.reshape_to_2d(values, 12)
      
-        elif time_series_type == 'daily':
+        elif periodicity == 'daily':
             # we've been passed a 1-D array with shape (days), reshape it to 2-D with shape (years, 366)
             values = utils.reshape_to_2d(values, 366)
             
         else:
-            message = 'Unsupported time series type argument: \'{0}\''.format(time_series_type)
+            message = 'Unsupported periodicity argument: \'{0}\''.format(periodicity)
             _logger.error(message)
             raise ValueError(message)
     
