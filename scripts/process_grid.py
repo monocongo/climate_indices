@@ -941,7 +941,7 @@ def _validate_arguments(index,
                 dimensions = dataset_temp.variables[var_name_temp].dimensions
                 if dimensions != expected_dimensions:
                     message = "Invalid dimensions of the temperature variable: {dims}, ".format(dims=dimensions) + \
-                              "(expected names and order: {dims})".format(expected_dimensions)
+                              "(expected names and order: {dims})".format(dims=expected_dimensions)
                     _logger.error(message)
                     raise ValueError(message)
                 
@@ -986,7 +986,7 @@ def _validate_arguments(index,
                 dimensions = dataset_awc.variables[var_name_awc].dimensions
                 if (dimensions != ('lat', 'lon')) and (dimensions != expected_dimensions):
                     message = "Invalid dimensions of the AWC variable: {dims}, ".format(dims=dimensions) + \
-                              "(expected names and order: {dims})".format(expected_dimensions)
+                              "(expected names and order: {dims})".format(dims=expected_dimensions)
                     _logger.error(message)
                     raise ValueError(message)
                 
