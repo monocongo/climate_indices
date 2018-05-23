@@ -250,7 +250,8 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                                    equal_nan=True,
                                    err_msg='Transformed Pearson Type III fitted values not computed as expected')
 
-        # if we provide a 1-D array then we need to provide a corresponding time series type, make sure we can't use an invalid type
+        # if we provide a 1-D array then we need to provide a corresponding time series type, 
+        # confirm we can't use an invalid type
         flat_array = self.fixture_precips_mm_monthly.flatten()
         np.testing.assert_raises(ValueError, 
                                  compute.transform_fitted_gamma, 
@@ -266,12 +267,6 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                                  self.fixture_calibration_year_start_monthly,
                                  self.fixture_calibration_year_end_monthly,
                                  None)
-        np.testing.assert_raises(ValueError, 
-                                 compute.transform_fitted_gamma, 
-                                 flat_array, 
-                                 self.fixture_data_year_start_monthly,
-                                 self.fixture_calibration_year_start_monthly,
-                                 self.fixture_calibration_year_end_monthly)
 
         # confirm that an input array which is not 1-D or 2-D will raise an error
         self.assertRaises(ValueError,
