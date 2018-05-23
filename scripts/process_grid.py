@@ -7,9 +7,7 @@ import netCDF4
 import netcdf_utils
 import numpy as np
 
-# imports from this script's package
-from climate_indices import indices, utils, compute
-# from scripts import netcdf_utils
+from climate_indices import indices, utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # static constants
@@ -77,10 +75,7 @@ class GridProcessor(object):             # pragma: no cover
         self.calibration_start_year = calibration_start_year
         self.calibration_end_year = calibration_end_year        
         self.index = index
-        if periodicity == 'monthly':
-            self.periodicity = compute.Periodicity.monthly
-        elif periodicity == 'daily':
-            self.periodicity = compute.Periodicity.daily
+        self.periodicity = periodicity
             
         # determine the file to use for coordinate specs (years range and lat/lon sizes), get relevant units
         if self.index == 'pet':
@@ -206,14 +201,14 @@ class GridProcessor(object):             # pragma: no cover
 
         # make a scale type substring to use within the variable long_name attributes
         scale_type = str(self.timestep_scale) + '-month scale'
-        if self.periodicity is compute.Periodicity.daily:
+        if self.periodicity == 'daily':
             if self.index in ['spi', 'pnp']:
                 scale_type = str(self.timestep_scale) + '-day scale'
             else:
                 message = 'Incompatible periodicity -- only SPI and PNP are supported for daily time series'
                 _logger.error(message)
                 raise ValueError(message)
-        elif self.periodicity is not compute.Periodicity.monthly:
+        elif self.periodicity != 'monthly':
             raise ValueError('Unsupported periodicity argument: %s' % self.time_series_type)
         
         # dictionary of index types (ex. 'spi_gamma', 'spei_pearson', etc.) mapped to their corresponding long 
@@ -372,7 +367,7 @@ class GridProcessor(object):             # pragma: no cover
             # read the latitude slice of input precipitation
             lat_slice_precip = dataset_precip[self.var_name_precip][lat_index, :, :]   # assuming (lat, lon, time)
 
-        if self.periodicity is compute.Periodicity.daily:
+        if self.periodicity == 'daily':
 
             # times are daily, transform to all leap year times (i.e. 366 days per year), 
             # so we fill Feb. 29th of each non-leap missing
@@ -400,9 +395,9 @@ class GridProcessor(object):             # pragma: no cover
         # compute PNP if specified
         if self.index in ['pnp', 'scaled']:
 
-            if self.periodicity is compute.Periodicity.daily:  
+            if self.periodicity == 'daily':  
                 scale_increment = 'day'
-            elif self.periodicity is compute.Periodicity.monthly:
+            elif self.periodicity == 'monthly':
                 scale_increment = 'month'
                 message = "Computing {scale}-{incr} ".format(scale=self.timestep_scale, incr=scale_increment) + \
                           "{index} for latitude index {lat}".format(index='PNP', lat=lat_index)
@@ -417,7 +412,7 @@ class GridProcessor(object):             # pragma: no cover
                                                 self.calibration_end_year,
                                                 self.time_series_type)
 
-            if self.periodicity is compute.Periodicity.daily:
+            if self.periodicity == 'daily':
 
                 # at each longitude we have a time series of values with a 366 day per year representation
                 # (Feb. 29 during non-leap years is a fill value), loop over these longitudes and transform
@@ -447,9 +442,9 @@ class GridProcessor(object):             # pragma: no cover
         # compute SPI if specified
         if self.index in ['spi', 'scaled']:
 
-            if self.periodicity is compute.Periodicity.daily:  
+            if self.periodicity == 'daily':  
                 scale_increment = 'day'
-            elif self.periodicity is compute.Periodicity.monthly:
+            elif self.periodicity == 'monthly':
                 scale_increment = 'month'
             _logger.info('Computing {scale}-{incr} {index} for latitude index {lat}'.format(scale=self.timestep_scale, 
                                                                                             incr=scale_increment, 
@@ -478,7 +473,7 @@ class GridProcessor(object):             # pragma: no cover
                                                         self.calibration_end_year,
                                                         self.periodicity)
 
-            if self.periodicity is compute.Periodicity.daily:
+            if self.periodicity == 'daily':
 
                 # at each longitude we have a time series of values with a 366 day per year representation 
                 # (Feb. 29 during non-leap years is a fill value), loop over these longitudes and transform each 
@@ -522,11 +517,11 @@ class GridProcessor(object):             # pragma: no cover
         # compute SPEI if specified
         if self.index in ['spei', 'scaled']:
 
-            if self.periodicity is compute.Periodicity.daily:
+            if self.periodicity == 'daily':
                 message = 'Daily SPEI not yet supported'
                 _logger.error(message)
                 raise ValueError(message)
-            elif self.periodicity is compute.Periodicity.monthly:
+            elif self.periodicity == 'monthly':
                 scale_increment = 'month'
                 message = "Computing {scale}-{incr} ".format(scale=self.timestep_scale, incr=scale_increment) + \
                           "{index} for latitude index {lat}".format(index='SPEI', lat=lat_index)
@@ -617,7 +612,7 @@ class GridProcessor(object):             # pragma: no cover
             # get the actual latitude value (assumed to be in degrees north) for the latitude slice specified by the index
             latitude_degrees_north = temp_dataset['lat'][lat_index]
 
-            if self.periodicity is compute.Periodicity.daily:
+            if self.periodicity == 'daily':
 
                 pass  #placeholder until we work out daily Thornthwaite and/or Hargreaves
             

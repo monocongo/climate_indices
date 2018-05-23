@@ -474,7 +474,7 @@ def transform_fitted_pearson(values,
     :param calibration_start_year: the initial year to use for the calibration period 
     :param calibration_end_year: the final year to use for the calibration period 
     :param periodicity: the periodicity of the time series represented by the input data, valid/supported values are 
-                        Periodicity.monthly and Periodicity.daily
+                        'monthly' and 'daily'
                         'monthly' indicates an array of monthly values, assumed to span full years, i.e. the first 
                         value corresponds to January of the initial year and any missing final months of the final 
                         year filled with NaN values, with size == # of years * 12
@@ -499,11 +499,11 @@ def transform_fitted_pearson(values,
             _logger.error(message)
             raise ValueError(message)
 
-        elif periodicity is Periodicity.monthly: 
+        elif periodicity == 'monthly': 
             # we've been passed a 1-D array with shape (months), reshape it to 2-D with shape (years, 12)
             values = utils.reshape_to_2d(values, 12)
      
-        elif periodicity is Periodicity.daily:
+        elif periodicity == 'daily':
             # we've been passed a 1-D array with shape (days), reshape it to 2-D with shape (years, 366)
             values = utils.reshape_to_2d(values, 366)
             
@@ -592,11 +592,11 @@ def transform_fitted_gamma(values,
             _logger.error(message)
             raise ValueError(message)
 
-        elif periodicity is Periodicity.monthly: 
+        elif periodicity == 'monthly': 
             # we've been passed a 1-D array with shape (months), reshape it to 2-D with shape (years, 12)
             values = utils.reshape_to_2d(values, 12)
      
-        elif periodicity is Periodicity.daily:
+        elif periodicity == 'daily':
             # we've been passed a 1-D array with shape (days), reshape it to 2-D with shape (years, 366)
             values = utils.reshape_to_2d(values, 366)
             

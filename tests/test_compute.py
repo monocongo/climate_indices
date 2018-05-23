@@ -218,7 +218,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                                                          self.fixture_data_year_start_monthly,
                                                          self.fixture_data_year_start_monthly,
                                                          self.fixture_data_year_end_monthly,
-                                                         compute.Periodicity.monthly)
+                                                         'monthly')
         np.testing.assert_allclose(computed_values, 
                                    self.fixture_transformed_gamma_monthly,
                                    err_msg='Transformed gamma fitted monthly values not computed as expected')            
@@ -230,7 +230,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                                                          self.fixture_data_year_start_daily,
                                                          self.fixture_calibration_year_start_daily,
                                                          self.fixture_calibration_year_end_daily,
-                                                         compute.Periodicity.daily)
+                                                         'daily')
         np.testing.assert_allclose(computed_values,
                                    self.fixture_transformed_gamma_daily,
                                    atol=0.001,
@@ -243,7 +243,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                                                          self.fixture_data_year_start_monthly,
                                                          1500,
                                                          2500,
-                                                         compute.Periodicity.monthly)
+                                                         'monthly')
         np.testing.assert_allclose(computed_values, 
                                    self.fixture_transformed_gamma_monthly,
                                    atol=0.001,
@@ -275,7 +275,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                           self.fixture_data_year_start_daily,
                           self.fixture_calibration_year_start_daily,
                           self.fixture_calibration_year_end_daily,
-                          compute.Periodicity.monthly)
+                          'monthly')
 
     #----------------------------------------------------------------------------------------
     def test_transform_fitted_pearson(self):
@@ -288,7 +288,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                                                            self.fixture_data_year_start_monthly,
                                                            self.fixture_calibration_year_start_monthly,
                                                            self.fixture_calibration_year_end_monthly,
-                                                           compute.Periodicity.monthly)
+                                                           'monthly')
         np.testing.assert_allclose(computed_values, 
                                    self.fixture_transformed_pearson3,
                                    atol=0.001,
@@ -300,7 +300,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                                                            self.fixture_data_year_start_monthly,
                                                            self.fixture_calibration_year_start_monthly,
                                                            self.fixture_calibration_year_end_monthly,
-                                                           compute.Periodicity.monthly)
+                                                           'monthly')
         np.testing.assert_allclose(computed_values, 
                                    all_nans,
                                    equal_nan=True,
@@ -312,7 +312,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                                                            self.fixture_data_year_start_monthly,
                                                            1500,
                                                            2500,
-                                                           compute.Periodicity.monthly)
+                                                           'monthly')
         np.testing.assert_allclose(computed_values.flatten(), 
                                    self.fixture_transformed_pearson3_monthly_fullperiod,
                                    atol=0.001,
@@ -324,7 +324,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                                          self.fixture_data_year_start_daily,
                                          self.fixture_calibration_year_start_daily,
                                          self.fixture_calibration_year_end_daily,
-                                         compute.Periodicity.daily)
+                                         'daily')
                                          
         # confirm that we get expected errors when using invalid time series type arguments
         self.assertRaises(ValueError,
@@ -349,7 +349,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                           self.fixture_data_year_start_daily,
                           self.fixture_calibration_year_start_daily,
                           self.fixture_calibration_year_end_daily,
-                          compute.Periodicity.monthly)
+                          'monthly')
 
 #     #----------------------------------------------------------------------------------------
 #     def test_error_function(self):
