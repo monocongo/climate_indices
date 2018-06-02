@@ -67,9 +67,7 @@ def spi(precips,
         raise ValueError(message)
         
     # if we're passed all missing values then we can't compute anything, return the same array of missing values
-    if np.ma.is_masked(precips) and precips.mask.all():
-        return precips
-    elif np.all(np.isnan(precips)):
+    if (np.ma.is_masked(precips) and precips.mask.all()) or np.all(np.isnan(precips)):
         return precips
         
     # remember the original length of the array, in order to facilitate returning an array of the same size
@@ -167,9 +165,7 @@ def spei(scale,
     '''
                     
     # if we're passed all missing values then we can't compute anything, return the same array of missing values
-    if np.ma.is_masked(precips_mm) and precips_mm.mask.all():
-        return precips_mm
-    elif np.all(np.isnan(precips_mm)):
+    if (np.ma.is_masked(precips_mm) and precips_mm.mask.all()) or np.all(np.isnan(precips_mm)):
         return precips_mm
 
     # validate the function's argument combinations
