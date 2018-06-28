@@ -51,7 +51,7 @@ with the following goals in mind:
 
 This is a developmental/forked version of code that is originally developed and 
 maintained by NIDIS/NCEI/NOAA. The official release version is available at 
-[drought.gov](drought.gov).
+[drought.gov](https://www.drought.gov/drought/python-climate-indices).
 
 * [__Documentation__](https://climate-indices.readthedocs.io/en/latest/)
 * [__License__](UNLICENSE)
