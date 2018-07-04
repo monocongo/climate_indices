@@ -26,7 +26,7 @@ _FITTED_INDEX_VALID_MIN = -3.09
 _FITTED_INDEX_VALID_MAX = 3.09
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
-@numba.jit
+#@numba.jit
 def spi(precips, 
         scale,
         distribution,
@@ -113,7 +113,7 @@ def spi(precips,
     return spi[0:original_length]
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
-@numba.jit
+#@numba.jit
 def spei(scale,
          distribution,
          periodicity,
