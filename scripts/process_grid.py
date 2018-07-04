@@ -1074,22 +1074,18 @@ if __name__ == '__main__':
         # parse the command line arguments
         parser = argparse.ArgumentParser()
         parser.add_argument("--netcdf_precip",
-                            help="Precipitation NetCDF file to be used as input for SPI, SPEI, PNP, and/or Palmer computations",
-                            required=True)
+                            help="Precipitation NetCDF file to be used as input for SPI, SPEI, PNP, and/or Palmer computations")
         parser.add_argument("--var_name_precip",
-                            help="Precipitation variable name used in the precipitation NetCDF file",
-                            required=True)
+                            help="Precipitation variable name used in the precipitation NetCDF file")
         parser.add_argument("--output_file_base",
                             help="Base output file path and name for the resulting output files",
                             required=True)
         parser.add_argument("--calibration_start_year",
                             help="Initial year of the calibration period",
-                            type=int,
-                            required=True)
+                            type=int)
         parser.add_argument("--calibration_end_year",
                             help="Final year of calibration period",
-                            type=int,
-                            required=True)
+                            type=int)
         parser.add_argument("--index",
                             help="Indices to compute",
                             choices=['spi', 'spei', 'pnp', 'scaled', 'pet', 'palmers'],

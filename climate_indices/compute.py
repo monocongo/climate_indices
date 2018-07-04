@@ -290,7 +290,7 @@ def _pearson3_fitting_values(values):
     return fitting_values
 
 #----------------------------------------------------------------------------------------------------------------------
-@numba.jit(numba.float64(numba.float64,numba.float64[:]))
+@numba.jit
 def _pearson3cdf(value,
                  pearson3_parameters):
     '''
@@ -342,7 +342,7 @@ def _pearson3cdf(value,
     return result
 
 #----------------------------------------------------------------------------------------------------------------------
-@numba.jit(numba.float64(numba.float64))
+@numba.jit
 def _error_function(value):
     '''
     TODO
@@ -486,9 +486,7 @@ def transform_fitted_pearson(values,
     '''
     
     # if we're passed all missing values then we can't compute anything, return the same array of missing values
-    if np.ma.is_masked(values) and values.mask.all():
-        return values
-    elif np.all(np.isnan(values)):
+    if (np.ma.is_masked(values) and values.mask.all()) or np.all(np.isnan(values)):
         return values
         
     # validate (and possibly reshape) the input array
@@ -579,9 +577,7 @@ def transform_fitted_gamma(values,
     '''
     
     # if we're passed all missing values then we can't compute anything, return the same array of missing values
-    if np.ma.is_masked(values) and values.mask.all():
-        return values
-    elif np.all(np.isnan(values)):
+    if (np.ma.is_masked(values) and values.mask.all()) or np.all(np.isnan(values)):
         return values
         
     # validate (and possibly reshape) the input array
@@ -605,7 +601,7 @@ def transform_fitted_gamma(values,
             _logger.error(message)
             raise ValueError(message)
     
-    elif (len(values.shape) != 2) or ((values.shape[1] != 12 and values.shape[1] != 366)):
+    elif (len(values.shape) != 2) or (values.shape[1] != 12 and values.shape[1] != 366):
      
         # neither a 1-D nor a 2-D array with valid shape was passed in
         message = 'Invalid input array with shape: {0}'.format(values.shape)
