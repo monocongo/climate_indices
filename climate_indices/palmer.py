@@ -695,7 +695,6 @@ def _z_index(P,
     return z.flatten()
 
 #-----------------------------------------------------------------------------------------------------------------------
-# previously Main()
 @numba.jit
 def _compute_X(Z, k, PPe, X1, X2, PX1, PX2, PX3, X, BT):
 
@@ -1076,11 +1075,6 @@ def _pdsi_from_zindex(Z):
     # V is the sum of the Uw (Ud) values for the current and previous months of an
     # established dry (wet) spell and is used in calculating the Pe value for a month.
     V = 0.0
-#     Pe = 0.0 # Pe is the probability that the current wet or dry spell has ended in a month.
-#     X1 = 0.0 # X1 is the severity index value for an incipient wet spell for a month.
-#     X2 = 0.0 # X2 is the severity index value for an incipient dry spell for a month.
-#     X3 = 0.0 # X3 is the severity index value of the current established wet or dry spell for a month.
-
     
     Pe = 0.0 # the probability that the current wet or dry spell has ended in a month
     X1 = 0.0 # the severity index value for an incipient wet spell for a month
@@ -1163,7 +1157,7 @@ def _pdsi_from_zindex(Z):
 #             PMDI[k - 1] = _pmdi(Pe, X1, X2, X3)  #TODO remove, testing only
 #         else:
 #             PMDI[k] = _pmdi(Pe, X1, X2, X3)
-#         #TODO remove above
+#         #TODO remove above !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         
         ## Assign V, Pe, X1, X2, and X3 for use with the next month
         V = PV
@@ -1857,7 +1851,7 @@ def _pdsi_at_percentile(pdsi_values,
     return pdsi_sorted[int(len(pdsi_values) * percentile)]
     
 #-----------------------------------------------------------------------------------------------------------------------
-#@numba.jit
+@numba.jit
 def _self_calibrate(pdsi_values,
                     sczindex_values,
                     calibration_start_year,
