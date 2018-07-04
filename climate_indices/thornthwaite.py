@@ -23,7 +23,7 @@ ISBN 97-8-146656-3780
 import calendar
 import logging
 import math
-from numba import boolean, float64, int64, jit
+import numba
 import numpy as np
 
 from climate_indices import utils
@@ -54,7 +54,7 @@ _SOLAR_DECLINATION_RADIANS_MIN = np.deg2rad(-23.45)
 _SOLAR_DECLINATION_RADIANS_MAX = np.deg2rad(23.45)
 
 #-----------------------------------------------------------------------------------------------------------------------
-@jit(float64(float64, float64))
+@numba.jit
 def _sunset_hour_angle(latitude_radians,
                        solar_declination_radians):
     '''
@@ -89,7 +89,7 @@ def _sunset_hour_angle(latitude_radians,
     return math.acos(min(max(cos_sunset_hour_angle, -1.0), 1.0))
 
 #-----------------------------------------------------------------------------------------------------------------------
-@jit(float64(int64))
+@numba.jit
 def _solar_declination(day_of_year):
     '''
     Calculate the angle of solar declination from day of the year.
@@ -107,7 +107,7 @@ def _solar_declination(day_of_year):
     return 0.409 * math.sin(((2.0 * math.pi / 365.0) * day_of_year - 1.39))
 
 #-----------------------------------------------------------------------------------------------------------------------
-@jit(float64(float64))
+@numba.jit
 def _daylight_hours(sunset_hour_angle_radians):
     '''
     Calculate daylight hours from a sunset hour angle.
@@ -130,7 +130,7 @@ def _daylight_hours(sunset_hour_angle_radians):
     return (24.0 / math.pi) * sunset_hour_angle_radians
 
 #-----------------------------------------------------------------------------------------------------------------------
-@jit(float64[:](float64, boolean))
+@numba.jit
 def _monthly_mean_daylight_hours(latitude_radians, 
                                  leap=False):
     '''
@@ -167,7 +167,7 @@ def _monthly_mean_daylight_hours(latitude_radians,
     return monthly_mean_dlh
 
 #-----------------------------------------------------------------------------------------------------------------------
-@jit(float64[:](float64[:], float64, int64))
+@numba.jit
 def potential_evapotranspiration(monthly_temps_celsius, 
                                  latitude_degrees, 
                                  data_start_year):

@@ -290,7 +290,7 @@ def _pearson3_fitting_values(values):
     return fitting_values
 
 #----------------------------------------------------------------------------------------------------------------------
-@numba.jit(numba.float64(numba.float64,numba.float64[:]))
+@numba.jit
 def _pearson3cdf(value,
                  pearson3_parameters):
     '''
@@ -342,7 +342,7 @@ def _pearson3cdf(value,
     return result
 
 #----------------------------------------------------------------------------------------------------------------------
-@numba.jit(numba.float64(numba.float64))
+@numba.jit
 def _error_function(value):
     '''
     TODO

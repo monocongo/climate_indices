@@ -4,7 +4,7 @@ setup(
     name='climate_indices',
     version='0.1.0',
     url='https://github.com/monocongo/climate_indices',
-    license='BSD',
+    license='Unlicense',
     author='James Adams',
     author_email='monocongo@gmail.com',
     description=('Community reference implementations of climate index '
