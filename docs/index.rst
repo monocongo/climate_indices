@@ -252,20 +252,20 @@ PET monthly
 
 ``$ python process_grid.py --index pet --periodicity monthly --netcdf_temp  
 ../example_inputs/nclimgrid_lowres_tavg.nc --var_name_temp tavg --output_file_base 
-/data/nclimgrid_lowres``
+<out_dir>/nclimgrid_lowres``
 
 The above command will compute PET (potential evapotranspiration) using the 
 Thornthwaite method from an input temperature dataset (in this case, the reduced 
 resolution nClimGrid temperature dataset provided as an example input). The input 
 dataset is monthly data and the calibration period used will be Jan. 1951 through 
-Dec. 2010. The output file will be `/data/nclimgrid_lowres_pet.nc`.
+Dec. 2010. The output file will be `<out_dir>/nclimgrid_lowres_pet.nc`.
 
 SPI daily
 """"""""""
 
 ``$ python process_grid.py --index spi  --periodicity daily --netcdf_precip 
 ../example_inputs/cmorph_lowres_daily_conus_prcp.nc --var_name_precip 
-prcp --output_file_base /data/cmorph_lowres_daily_conus --scales 30 90 
+prcp --output_file_base <out_dir>/cmorph_lowres_daily_conus --scales 30 90 
 --calibration_start_year 1998 --calibration_end_year 2016``
 
 The above command will compute SPI (standardized precipitation index, both gamma 
@@ -273,26 +273,27 @@ and Pearson Type III distributions) from an input precipitation dataset (in this
 the reduced resolution CMORPH precipitation dataset provided in the example inputs 
 directory). The input dataset is daily data and the calibration period used will be 
 Jan. 1st, 1998 through Dec. 31st, 2016. The index will be computed at 30-day and 
-90-day timescales. The output files will be `/data/cmorph_lowres_daily_conus_spi_gamma_30.nc`, 
-`/data/cmorph_lowres_daily_conus_spi_gamma_90.nc`, 
-`/data/cmorph_lowres_daily_conus_spi_pearson_30.nc`, and 
-`/data/cmorph_lowres_daily_conus_spi_pearson_90.nc`.
+90-day timescales. The output files will be `<out_dir>/cmorph_lowres_daily_conus_spi_gamma_30.nc`, 
+`<out_dir>/cmorph_lowres_daily_conus_spi_gamma_90.nc`, 
+`<out_dir>/cmorph_lowres_daily_conus_spi_pearson_30.nc`, and 
+`<out_dir>/cmorph_lowres_daily_conus_spi_pearson_90.nc`.
 
 SPI monthly
 """"""""""""
 
 ``$ python process_grid.py --index spi --periodicity monthly --netcdf_precip 
 ../example_inputs/nclimgrid_lowres_prcp.nc --var_name_precip  prcp 
---output_file_base /data/nclimgrid_lowres --scales 6 12 
+--output_file_base <out_dir>/nclimgrid_lowres --scales 6 12 
 --calibration_start_year 1951 --calibration_end_year 2010``  
 
 The above command will compute SPI (standardized precipitation index, both gamma and 
 Pearson Type III distributions) from an input precipitation dataset (in this case, 
-the reduced resolution nClimGrid precipitation dataset provided in the example inputs directory). The input dataset is monthly data and the calibration period used will be 
+the reduced resolution nClimGrid precipitation dataset provided in the example inputs directory). 
+The input dataset is monthly data and the calibration period used will be 
 Jan. 1951 through Dec. 2010. The index will be computed at 6-month and 12-month timescales. 
-The output files will be `/data/nclimgrid_lowres_spi_gamma_06.nc`, 
-`/data/nclimgrid_lowres_spi_gamma_12.nc`, `/data/nclimgrid_lowres_spi_pearson_06.nc`, 
-and `/data/nclimgrid_lowres_spi_pearson_12.nc`.
+The output files will be `<out_dir>/nclimgrid_lowres_spi_gamma_06.nc`, 
+`<out_dir>/nclimgrid_lowres_spi_gamma_12.nc`, `<out_dir>/nclimgrid_lowres_spi_pearson_06.nc`, 
+and `<out_dir>/nclimgrid_lowres_spi_pearson_12.nc`.
 
 SPEI monthly
 """""""""""""
@@ -300,15 +301,15 @@ SPEI monthly
 ``$ python process_grid.py --index spei --periodicity monthly --netcdf_precip 
 ../example_inputs/nclimgrid_lowres_prcp.nc --var_name_precip  prcp --netcdf_pet 
 ../example_inputs/nclimgrid_lowres_pet.nc --var_name_pet pet --output_file_base 
-/data/nclimgrid_lowres --scales 9 18 --calibration_start_year 1951 --calibration_end_year 2010``  
+<out_dir>/nclimgrid_lowres --scales 9 18 --calibration_start_year 1951 --calibration_end_year 2010``  
 
 The above command will compute SPEI (standardized precipitation evapotranspiration index, 
 both gamma and Pearson Type III distributions) from input precipitation and potential evapotranspiration datasets 
 (in this case, the reduced resolution nClimGrid precipitation and PET datasets provided in the example inputs directory). 
 The input datasets are monthly data and the calibration period used will be Jan. 1951 through Dec. 2010. The index 
 datasets will be computed at 9-month and 18-month timescales. The output files will be 
-`/data/nclimgrid_lowres_spi_gamma_09.nc`, `/data/nclimgrid_lowres_spi_gamma_18.nc`, 
-`/data/nclimgrid_lowres_spi_pearson_09.nc`, and `/data/nclimgrid_lowres_spi_pearson_18.nc`.
+`<out_dir>/nclimgrid_lowres_spi_gamma_09.nc`, `<out_dir>/nclimgrid_lowres_spi_gamma_18.nc`, 
+`<out_dir>/nclimgrid_lowres_spi_pearson_09.nc`, and `<out_dir>/nclimgrid_lowres_spi_pearson_18.nc`.
 
 Palmers monthly
 """"""""""""""""
@@ -316,7 +317,7 @@ Palmers monthly
 ../example_inputs/nclimgrid_lowres_prcp.nc --var_name_precip prcp --netcdf_pet 
 ../example_inputs/nclimgrid_lowres_pet.nc --var_name_pet pet --netcdf_awc 
 ../example_inputs/nclimgrid_lowres_soil.nc  --var_name_awc awc --output_file_base 
-/data/nclimgrid_lowres --calibration_start_year 1951 --calibration_end_year 2010``
+<out_dir>/nclimgrid_lowres --calibration_start_year 1951 --calibration_end_year 2010``
 
 The above command will compute the Palmer drought indices: PDSI (original Palmer Drought Severity Index), 
 PHDI (Palmer Hydrological Drought Index), PMDI (Palmer Modified Drought Index), Z-Index (Palmer Z-Index), 
@@ -324,8 +325,8 @@ and SCPDSI (Self-calibrated Palmer Drought Severity Index) from input precipitat
 evapotranspiration, and available water capacity datasets (in this case, the reduced resolution nClimGrid 
 precipitation, PET, and AWC datasets provided in the example inputs directory). The input datasets are monthly 
 data and the calibration period used will be Jan. 1951 through Dec. 2010. The output files will be 
-`/data/nclimgrid_lowres_pdsi.nc`, `/data/nclimgrid_lowres_phdi.nc`, 
-`/data/nclimgrid_lowres_pmdi.nc`, `/data/nclimgrid_lowres_scpdsi.nc`, and `/data/nclimgrid_lowres_zindex.nc`.
+`<out_dir>/nclimgrid_lowres_pdsi.nc`, `<out_dir>/nclimgrid_lowres_phdi.nc`, 
+`<out_dir>/nclimgrid_lowres_pmdi.nc`, `<out_dir>/nclimgrid_lowres_scpdsi.nc`, and `<out_dir>/nclimgrid_lowres_zindex.nc`.
 
 Get involved
 -------------
