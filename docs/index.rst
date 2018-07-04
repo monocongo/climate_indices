@@ -252,7 +252,7 @@ PET monthly
 
 ``$ python process_grid.py --index pet --periodicity monthly --netcdf_temp  
 ../example_inputs/nclimgrid_lowres_tavg.nc --var_name_temp tavg --output_file_base 
-/data/nclimgrid_lowres --calibration_start_year 1951 --calibration_end_year 2010``
+/data/nclimgrid_lowres``
 
 The above command will compute PET (potential evapotranspiration) using the 
 Thornthwaite method from an input temperature dataset (in this case, the reduced 
