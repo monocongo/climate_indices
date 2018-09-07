@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='climate_indices',
-    version='0.1.0',
+    version='1.0.0',
     url='https://github.com/monocongo/climate_indices',
     license='Unlicense',
     author='James Adams',
@@ -29,10 +29,11 @@ setup(
         'Intended Audience :: Developers',
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',
-        'License :: OSI Approved :: BSD License',
+        'License :: Public Domain',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Topic :: Scientific/Engineering :: Atmospheric Science',
+        'Topic :: Scientific/Engineering :: Climate Monitoring',
         'Topic :: Scientific/Engineering :: Physics',
     ],
 )
