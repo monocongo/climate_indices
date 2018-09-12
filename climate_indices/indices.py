@@ -77,11 +77,11 @@ def spi(precips,
     scaled_precips = compute.sum_to_scale(precips, scale)
 
     # reshape precipitation values to (years, 12) for monthly, or to (years, 366) for daily
-    if periodicity == 'monthly':
+    if periodicity is compute.Periodicity.monthly:
         
         scaled_precips = utils.reshape_to_2d(scaled_precips, 12)
 
-    elif periodicity == 'daily':
+    elif periodicity is compute.Periodicity.daily:
         
         scaled_precips = utils.reshape_to_2d(scaled_precips, 366)
         
@@ -349,9 +349,9 @@ def percentage_of_normal(values,
     '''
 
     # if doing monthly then we'll use 12 periods, corresponding to calendar months, if daily assume years w/366 days
-    if periodicity == 'monthly':
+    if periodicity is compute.Periodicity.monthly:
         periodicity = 12
-    elif periodicity == 'daily':
+    elif periodicity is compute.Periodicity.daily:
         periodicity = 366
     else:
         message = 'Invalid periodicity argument: \'{0}\''.format(periodicity)

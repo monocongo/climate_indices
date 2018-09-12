@@ -497,11 +497,11 @@ def transform_fitted_pearson(values,
             _logger.error(message)
             raise ValueError(message)
 
-        elif periodicity == 'monthly': 
+        elif periodicity is Periodicity.monthly:
             # we've been passed a 1-D array with shape (months), reshape it to 2-D with shape (years, 12)
             values = utils.reshape_to_2d(values, 12)
      
-        elif periodicity == 'daily':
+        elif periodicity is Periodicity.daily:
             # we've been passed a 1-D array with shape (days), reshape it to 2-D with shape (years, 366)
             values = utils.reshape_to_2d(values, 366)
             
@@ -588,11 +588,11 @@ def transform_fitted_gamma(values,
             _logger.error(message)
             raise ValueError(message)
 
-        elif periodicity == 'monthly': 
-            # we've been passed a 1-D array with shape (months), reshape it to 2-D with shape (years, 12)
+        elif periodicity is Periodicity.monthly:
+        # we've been passed a 1-D array with shape (months), reshape it to 2-D with shape (years, 12)
             values = utils.reshape_to_2d(values, 12)
      
-        elif periodicity == 'daily':
+        elif periodicity is Periodicity.daily:
             # we've been passed a 1-D array with shape (days), reshape it to 2-D with shape (years, 366)
             values = utils.reshape_to_2d(values, 366)
             
