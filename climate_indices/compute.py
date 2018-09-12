@@ -457,14 +457,15 @@ def _pearson_fit_ufunc(value_to_fit,
 
     return fitted_value
 
-#-----------------------------------------------------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def transform_fitted_pearson(values,
                              data_start_year,
                              calibration_start_year,
                              calibration_end_year,
                              periodicity):
-    '''
+    """
     Fit values to a Pearson Type III distribution and transform the values to corresponding normalized sigmas. 
     
     :param values: 2-D array of values, with each row representing a year containing
@@ -483,7 +484,7 @@ def transform_fitted_pearson(values,
                         with array size == (# years * 366)
     :return: 2-D array of transformed/fitted values, corresponding in size and shape of the input array
     :rtype: numpy.ndarray of floats
-    '''
+    """
     
     # if we're passed all missing values then we can't compute anything, return the same array of missing values
     if (np.ma.is_masked(values) and values.mask.all()) or np.all(np.isnan(values)):
@@ -549,7 +550,8 @@ def transform_fitted_pearson(values,
                     
     return fitted_values
 
-#-----------------------------------------------------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def transform_fitted_gamma(values,
                            data_start_year,
