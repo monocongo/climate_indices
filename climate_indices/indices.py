@@ -5,7 +5,8 @@ from enum import Enum
 
 from climate_indices import compute, palmer, thornthwaite, utils
 
-#-------------------------------------------------------------------------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------------------------------------------------
 class Distribution(Enum):
     """
     Enumeration type for distribution fittings used for SPI and SPEI.
@@ -13,20 +14,21 @@ class Distribution(Enum):
     pearson_type3 = 'Pearson Type III'
     gamma = 'gamma'
 
-#-------------------------------------------------------------------------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global _logger
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s %(levelname)s %(message)s',
                     datefmt='%Y-%m-%d  %H:%M:%S')
 _logger = logging.getLogger(__name__)
 
-#-------------------------------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # valid upper and lower bounds for indices that are fitted/transformed to a distribution (SPI and SPEI)  
 _FITTED_INDEX_VALID_MIN = -3.09
 _FITTED_INDEX_VALID_MAX = 3.09
 
-#-------------------------------------------------------------------------------------------------------------------------------------------
-#@numba.jit
+# ----------------------------------------------------------------------------------------------------------------------
+@numba.jit
 def spi(precips, 
         scale,
         distribution,
@@ -77,11 +79,11 @@ def spi(precips,
     scaled_precips = compute.sum_to_scale(precips, scale)
 
     # reshape precipitation values to (years, 12) for monthly, or to (years, 366) for daily
-    if periodicity == 'monthly':
+    if periodicity is compute.Periodicity.monthly:
         
         scaled_precips = utils.reshape_to_2d(scaled_precips, 12)
 
-    elif periodicity == 'daily':
+    elif periodicity is compute.Periodicity.daily:
         
         scaled_precips = utils.reshape_to_2d(scaled_precips, 366)
         
@@ -112,8 +114,9 @@ def spi(precips,
     # return the original size array 
     return spi[0:original_length]
 
-#-------------------------------------------------------------------------------------------------------------------------------------------
-#@numba.jit
+
+# ----------------------------------------------------------------------------------------------------------------------
+@numba.jit
 def spei(scale,
          distribution,
          periodicity,
@@ -190,7 +193,7 @@ def spei(scale,
             _logger.error(message)
             raise ValueError(message)
 
-        elif periodicity != 'monthly':
+        elif periodicity is not compute.Periodicity.monthly:
             # our PET currently uses a monthly version of Thornthwaite's equation and therefore's only valid for monthly 
             message = 'Unsupported periodicity: \'{0}\' '.format(periodicity) + \
                       '-- only monthly time series is supported when providing temperature and latitude inputs' 
@@ -349,9 +352,9 @@ def percentage_of_normal(values,
     '''
 
     # if doing monthly then we'll use 12 periods, corresponding to calendar months, if daily assume years w/366 days
-    if periodicity == 'monthly':
+    if periodicity is compute.Periodicity.monthly:
         periodicity = 12
-    elif periodicity == 'daily':
+    elif periodicity is compute.Periodicity.daily:
         periodicity = 366
     else:
         message = 'Invalid periodicity argument: \'{0}\''.format(periodicity)
