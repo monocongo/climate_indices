@@ -358,7 +358,7 @@ class DivisionsProcessor(object):
         # --------------------------------------------------------------------------------------------------------------
 
         # create a process Pool for worker processes to compute indices for each division
-        pool = multiprocessing.Pool(processes=1)#multiprocessing.cpu_count())   # use 1 here instead when debugging
+        pool = multiprocessing.Pool(processes=multiprocessing.cpu_count())   # use 1 here instead when debugging
           
         # map the divisions indices as an arguments iterable to the compute function
         result = pool.map_async(self._compute_and_write_division, range(divisions_count))

@@ -190,7 +190,7 @@ def spei(scale,
             _logger.error(message)
             raise ValueError(message)
 
-        elif periodicity != 'monthly':
+        elif periodicity is not compute.Periodicity.monthly:
             # our PET currently uses a monthly version of Thornthwaite's equation and therefore's only valid for monthly 
             message = 'Unsupported periodicity: \'{0}\' '.format(periodicity) + \
                       '-- only monthly time series is supported when providing temperature and latitude inputs' 
