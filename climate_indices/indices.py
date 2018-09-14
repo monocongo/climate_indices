@@ -160,7 +160,9 @@ def spei(scale,
                           (and shape?) as the input precipitation array, must be unspecified or None if using an array 
                           of PET values as input
     :param data_start_year: the initial year of the input datasets (assumes that the two inputs cover the same period)
-    :param latitude_degrees: the latitude of the location, in degrees north, must be unspecified or None if using 
+    :param calibration_year_initial: initial year of the calibration period
+    :param calibration_year_final: final year of the calibration period
+    :param latitude_degrees: the latitude of the location, in degrees north, must be unspecified or None if using
                              an array of PET values as an input, and must be specified if using an array of temperatures 
                              as input, valid range is -90.0 to 90.0 (inclusive)
     :return: an array of SPEI values
@@ -174,9 +176,11 @@ def spei(scale,
     # validate the function's argument combinations
     if temps_celsius is not None:
         
-        # since we have temperature then it's expected that we'll compute PET internally, so we shouldn't have PET as an input
+        # since we have temperature then it's expected that we'll compute PET internally,
+        # so we shouldn't have PET as an input
         if pet_mm is not None:
-            message = 'Incompatible arguments: either temperature or PET arrays can be specified as arguments, but not both' 
+            message = 'Incompatible arguments: either temperature or PET arrays can be '\
+                      'specified as arguments, but not both'
             _logger.error(message)
             raise ValueError(message)
         
@@ -249,7 +253,12 @@ def spei(scale,
                                                                      calibration_year_initial,
                                                                      calibration_year_final,
                                                                      periodicity)
-        
+
+    else:
+        message = "Unsupported distribution argument: {dist}".format(dist=distribution)
+        _logger.error(message)
+        raise ValueError(message)
+
     # clip values to within the valid range, reshape the array back to 1-D
     spei = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
     
@@ -350,6 +359,12 @@ def percentage_of_normal(values,
     :return: percent of normal precipitation values corresponding to the scaled precipitation values array   
     :rtype: numpy.ndarray of type float
     '''
+
+    # validate the scale argument
+    if (scale is None) or (scale < 1):
+        message = 'Invalid scale argument: \'{0}\''.format(scale)
+        _logger.error(message)
+        raise ValueError(message)
 
     # if doing monthly then we'll use 12 periods, corresponding to calendar months, if daily assume years w/366 days
     if periodicity is compute.Periodicity.monthly:
