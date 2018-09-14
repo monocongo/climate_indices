@@ -107,7 +107,12 @@ def spi(precips,
                                                                      calibration_year_initial,
                                                                      calibration_year_final,
                                                                      periodicity)
-        
+
+    else:
+        message = "Unsupported distribution: {dist}".format(dist=distribution)
+        _logger.error(message)
+        raise ValueError(message)
+
     # clip values to within the valid range, reshape the array back to 1-D
     spi = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
     
@@ -322,8 +327,9 @@ def pdsi(precip_time_series,
                        data_start_year,
                        calibration_start_year,
                        calibration_end_year)
-    
-#-------------------------------------------------------------------------------------------------------------------------------------------
+
+
+# ------------------------------------------------------------------------------------------------------------------------------------------
 @numba.jit     
 def percentage_of_normal(values, 
                          scale,
@@ -331,7 +337,7 @@ def percentage_of_normal(values,
                          calibration_start_year,
                          calibration_end_year,
                          periodicity):
-    '''
+    """
     This function finds the percent of normal values (average of each calendar month or day over a specified 
     calibration period of years) for a specified time steps scale. The normal precipitation for each calendar time step 
     is computed for the specified time steps scale, and then each time step's scaled value is compared against the 
@@ -346,8 +352,8 @@ def percentage_of_normal(values,
     :param data_start_year: the initial year of the input monthly values array
     :param calibration_start_year: the initial year of the calibration period over which the normal average for each  
                                    calendar time step is computed 
-    :param calibration_start_year: the final year of the calibration period over which the normal average for each 
-                                   calendar time step is computed 
+    :param calibration_end_year: the final year of the calibration period over which the normal average for each
+                                 calendar time step is computed
     :param periodicity: the periodicity of the time series represented by the input data, valid/supported values are 
                         'monthly' and 'daily'
                         'monthly' indicates an array of monthly values, assumed to span full years, i.e. the first 
@@ -358,7 +364,7 @@ def percentage_of_normal(values,
                         with array size == (# years * 366)
     :return: percent of normal precipitation values corresponding to the scaled precipitation values array   
     :rtype: numpy.ndarray of type float
-    '''
+    """
 
     # validate the scale argument
     if (scale is None) or (scale < 1):
@@ -382,10 +388,10 @@ def percentage_of_normal(values,
     
     # make sure we've been provided with sane calibration limits
     if data_start_year > calibration_start_year:
-        raise ValueError('Invalid start year arguments (data and/or calibration): calibration start year ' + \
+        raise ValueError('Invalid start year arguments (data and/or calibration): calibration start year '
                          'is before the data start year')
     elif ((calibration_end_year - calibration_start_year + 1) * 12) > values.size:
-        raise ValueError('Invalid calibration period specified: total calibration years exceeds the actual ' + \
+        raise ValueError('Invalid calibration period specified: total calibration years exceeds the actual '
                          'number of years of data')
         
     # get an array containing a sliding sum on the specified time step scale -- i.e. if the scale is 3 then the first 
@@ -405,7 +411,7 @@ def percentage_of_normal(values,
     for i in range(periodicity):
         averages[i] = np.nanmean(calibration_period_sums[i::periodicity])
     
-    #TODO replace the below loop with a vectorized implementation
+    # TODO replace the below loop with a vectorized implementation
     # for each time step of the scale_sums array find its corresponding
     # percentage of the time steps scale average for its respective calendar time step
     percentages_of_normal = np.full(scale_sums.shape, np.nan)
@@ -418,26 +424,29 @@ def percentage_of_normal(values,
             percentages_of_normal[i] = scale_sums[i] / divisor
     
     return percentages_of_normal
-    
-#-------------------------------------------------------------------------------------------------------------------------------------------
+
+
+# ------------------------------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def pet(temperature_celsius,
         latitude_degrees,
         data_start_year):
 
-    '''
+    """
     This function computes potential evapotranspiration (PET) using Thornthwaite's equation.
     
     :param temperature_celsius: an array of average temperature values, in degrees Celsius
-    :param latitude_degrees: the latitude of the location, in degrees north, must be within range [-90.0 ... 90.0] (inclusive), otherwise 
+    :param latitude_degrees: the latitude of the location, in degrees north,
+                             must be within range [-90.0 ... 90.0] (inclusive), otherwise
                              a ValueError is raised
     :param data_start_year: the initial year of the input dataset
-    :return: an array of PET values, of the same size and shape as the input temperature values array, in millimeters/time step
+    :return: an array of PET values, of the same size and shape as the input temperature
+             values array, in millimeters/time step
     :rtype: 1-D numpy.ndarray of floats
-    '''
+    """
     
     # make sure we're not dealing with all NaN values
-    if np.ma.isMaskedArray(temperature_celsius) and temperature_celsius.count() == 0:
+    if np.ma.isMaskedArray(temperature_celsius) and (temperature_celsius.count() == 0):
         
         # we started with all NaNs for the temperature, so just return the same as PET
         return temperature_celsius
@@ -453,12 +462,15 @@ def pet(temperature_celsius,
         
     # make sure we're not dealing with a NaN or out-of-range latitude value
     if latitude_degrees is not None and not np.isnan(latitude_degrees) and \
-        (latitude_degrees < 90.0) and (latitude_degrees > -90.0):
+       (latitude_degrees < 90.0) and (latitude_degrees > -90.0):
         
         # compute and return the PET values using Thornthwaite's equation
-        return thornthwaite.potential_evapotranspiration(temperature_celsius, latitude_degrees, data_start_year)
+        return thornthwaite.potential_evapotranspiration(temperature_celsius,
+                                                         latitude_degrees,
+                                                         data_start_year)
         
     else:
-        message = 'Invalid latitude value: {0} (must be in degrees north, between -90.0 and 90.0 inclusive)'.format(latitude_degrees)
+        message = 'Invalid latitude value: {0} (must be in degrees north, ' + \
+                  'between -90.0 and 90.0 inclusive)'.format(latitude_degrees)
         _logger.error(message)
         raise ValueError(message)
