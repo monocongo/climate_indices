@@ -101,6 +101,18 @@ class IndicesTestCase(fixtures.FixturesTestCase):
     # ----------------------------------------------------------------------------------------
     def test_pnp(self):
                 
+        # confirm that an input array of all NaNs for precipitation results in the same array returned
+        all_nan_precips = np.full(self.fixture_precips_mm_monthly.shape, np.NaN)
+        computed_pnp = indices.percentage_of_normal(all_nan_precips,
+                                                    1,
+                                                    self.fixture_data_year_start_monthly,
+                                                    self.fixture_calibration_year_start_monthly,
+                                                    self.fixture_calibration_year_end_monthly,
+                                                    compute.Periodicity.monthly)
+        np.testing.assert_equal(computed_pnp,
+                                all_nan_precips,
+                                'All-NaN input array does not result in the expected all-NaN result')
+
         # compute PNP from the daily precipitation array
         computed_pnp_6month = indices.percentage_of_normal(self.fixture_precips_mm_monthly.flatten(),
                                                            6, 
@@ -150,6 +162,24 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                  self.fixture_data_year_start_daily,
                                  self.fixture_calibration_year_start_daily,
                                  self.fixture_calibration_year_end_daily,
+                                 compute.Periodicity.daily)
+
+        # invalid calibration year arguments should raise an Error
+        np.testing.assert_raises(ValueError,
+                                 indices.percentage_of_normal,
+                                 self.fixture_precips_mm_daily.flatten(),
+                                 -1,
+                                 self.fixture_data_year_start_daily,
+                                 self.fixture_calibration_year_end_daily + 1,
+                                 self.fixture_calibration_year_end_daily,
+                                 compute.Periodicity.daily)
+        np.testing.assert_raises(ValueError,
+                                 indices.percentage_of_normal,
+                                 self.fixture_precips_mm_daily.flatten(),
+                                 None,
+                                 self.fixture_data_year_start_daily,
+                                 self.fixture_calibration_year_start_daily,
+                                 self.fixture_calibration_year_start_daily - 1,
                                  compute.Periodicity.daily)
 
     # ----------------------------------------------------------------------------------------
@@ -257,7 +287,18 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                  self.fixture_calibration_year_start_monthly, 
                                  self.fixture_calibration_year_end_monthly,
                                  'unsupported_value')
-        
+
+        # a missing distribution argument should raise a ValueError
+        np.testing.assert_raises(ValueError,
+                                 indices.spi,
+                                 self.fixture_precips_mm_monthly.flatten(),
+                                 6,
+                                 None,
+                                 self.fixture_data_year_start_monthly,
+                                 self.fixture_calibration_year_start_monthly,
+                                 self.fixture_calibration_year_end_monthly,
+                                 compute.Periodicity.monthly)
+
     # ----------------------------------------------------------------------------------------
     def test_spei(self):
         
