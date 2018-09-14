@@ -211,9 +211,9 @@ def reshape_to_divs_years_months(monthly_values):
             
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def transform_to_366day(original,
-                        year_start,
-                        total_years):
+def to_366day(original,
+              year_start,
+              total_years):
     '''
     Takes an array of daily values with only actual leap years represented as 366 day years (non-leap years with 365 days)
     and converts it to an array of daily values represented as containing full 366 day years as if each year is a leap year
@@ -278,8 +278,8 @@ def transform_to_366day(original,
 
 #-----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def transform_to_gregorian(original,
-                           year_start):
+def to_gregorian(original,
+                 year_start):
     '''
     Takes an array of daily values represented as full 366 day years (as if each year is a leap year with 
     fill/faux values for the Feb. 29th of each non-leap year) and converts it to an array of daily values 

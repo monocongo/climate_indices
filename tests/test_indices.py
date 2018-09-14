@@ -5,17 +5,18 @@ import unittest
 from tests import fixtures
 from climate_indices import compute, indices
 
-#-----------------------------------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------------------
 # disable logging messages
 logging.disable(logging.CRITICAL)
 
-#-----------------------------------------------------------------------------------------------------------------------
-class IndicesTestCase(fixtures.FixturesTestCase):
-    '''
-    Tests for `indices.py`.
-    '''
 
-    #----------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------------------
+class IndicesTestCase(fixtures.FixturesTestCase):
+    """
+    Tests for `indices.py`.
+    """
+
+    # ----------------------------------------------------------------------------------------
     def test_pdsi(self):
         
         # the indices.pdsi() function is a wrapper for palmer.pdsi(), so we'll 
@@ -28,7 +29,7 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                      self.fixture_calibration_year_start_monthly, 
                      self.fixture_calibration_year_end_monthly)
         
-    #----------------------------------------------------------------------------------------
+    # ----------------------------------------------------------------------------------------
     def test_scpdsi(self):
         
         # the indices.scpdsi() function is a wrapper for palmer.pdsi(), so we'll 
@@ -41,7 +42,7 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                        self.fixture_calibration_year_start_monthly, 
                        self.fixture_calibration_year_end_monthly)
         
-    #----------------------------------------------------------------------------------------
+    # ----------------------------------------------------------------------------------------
     def test_pet(self):
         
         # confirm that an input array of all NaNs for temperature results in the same array returned
@@ -93,12 +94,11 @@ class IndicesTestCase(fixtures.FixturesTestCase):
         # compute PET from the monthly temperatures, latitude, and initial years -- if this runs without 
         # error then this test passes, as the underlying method(s) being used to compute PET will be tested 
         # in the relevant test_compute.py or test_thornthwaite.py codes
-        computed_pet = indices.pet(self.fixture_temps_celsius,
-                                   self.fixture_latitude_degrees, 
-                                   self.fixture_data_year_start_monthly)
-                                         
-                                         
-    #----------------------------------------------------------------------------------------
+        indices.pet(self.fixture_temps_celsius,
+                    self.fixture_latitude_degrees,
+                    self.fixture_data_year_start_monthly)
+
+    # ----------------------------------------------------------------------------------------
     def test_pnp(self):
                 
         # compute PNP from the daily precipitation array
@@ -124,7 +124,7 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                      self.fixture_calibration_year_end_daily, 
                                      compute.Periodicity.daily)
                 
-        # invalid periodicity argument should raise an AttributeError
+        # invalid periodicity argument should raise an Error
         np.testing.assert_raises(ValueError, 
                                  indices.percentage_of_normal,
                                  self.fixture_precips_mm_daily.flatten(),
@@ -134,7 +134,25 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                  self.fixture_calibration_year_end_daily, 
                                  'unsupported_value')
 
-    #----------------------------------------------------------------------------------------
+        # invalid scale argument should raise an Error
+        np.testing.assert_raises(ValueError,
+                                 indices.percentage_of_normal,
+                                 self.fixture_precips_mm_daily.flatten(),
+                                 -1,
+                                 self.fixture_data_year_start_daily,
+                                 self.fixture_calibration_year_start_daily,
+                                 self.fixture_calibration_year_end_daily,
+                                 compute.Periodicity.daily)
+        np.testing.assert_raises(ValueError,
+                                 indices.percentage_of_normal,
+                                 self.fixture_precips_mm_daily.flatten(),
+                                 None,
+                                 self.fixture_data_year_start_daily,
+                                 self.fixture_calibration_year_start_daily,
+                                 self.fixture_calibration_year_end_daily,
+                                 compute.Periodicity.daily)
+
+    # ----------------------------------------------------------------------------------------
     def test_spi(self):
         
         # compute SPI/gamma at 1-month scale
@@ -167,13 +185,13 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                    err_msg='SPI/Gamma values for 6-month scale not computed as expected')
 
         # confirm we can also call the function with daily data
-        computed_spi = indices.spi(self.fixture_precips_mm_daily, 
-                                   30,
-                                   indices.Distribution.gamma,
-                                   self.fixture_data_year_start_daily, 
-                                   self.fixture_calibration_year_start_daily, 
-                                   self.fixture_calibration_year_end_daily, 
-                                   compute.Periodicity.daily)
+        indices.spi(self.fixture_precips_mm_daily,
+                    30,
+                    indices.Distribution.gamma,
+                    self.fixture_data_year_start_daily,
+                    self.fixture_calibration_year_start_daily,
+                    self.fixture_calibration_year_end_daily,
+                    compute.Periodicity.daily)
                                 
         # invalid periodicity argument should raise a ValueError
         np.testing.assert_raises(ValueError, 
@@ -232,7 +250,7 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                  self.fixture_calibration_year_end_monthly,
                                  'unsupported_value')
         
-    #----------------------------------------------------------------------------------------
+    # ----------------------------------------------------------------------------------------
     def test_spei(self):
         
         # compute SPEI/gamma at 6-month scale
@@ -366,7 +384,21 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                  temps_celsius=self.fixture_temps_celsius, 
                                  latitude_degrees=40.0)
 
-#--------------------------------------------------------------------------------------------
+        # not providing a distribution argument should raise a ValueError
+        np.testing.assert_raises(ValueError,
+                                 indices.spei,
+                                 6,
+                                 None,
+                                 compute.Periodicity.monthly,
+                                 data_start_year=self.fixture_data_year_start_monthly,
+                                 calibration_year_initial=self.fixture_data_year_start_monthly,
+                                 calibration_year_final=self.fixture_data_year_end_monthly,
+                                 precips_mm=self.fixture_precips_mm_monthly,
+                                 pet_mm=self.fixture_pet_mm,
+                                 temps_celsius=self.fixture_temps_celsius,
+                                 latitude_degrees=None)
+
+
+# --------------------------------------------------------------------------------------------
 if __name__ == '__main__':
     unittest.main()
-    
