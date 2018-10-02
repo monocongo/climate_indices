@@ -12,9 +12,9 @@ logging.disable(logging.CRITICAL)
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 class ComputeTestCase(fixtures.FixturesTestCase):
-    '''
+    """
     Tests for `compute.py`.
-    '''
+    """
 
     #----------------------------------------------------------------------------------------
     def test_error_function(self):
@@ -178,9 +178,9 @@ class ComputeTestCase(fixtures.FixturesTestCase):
 
     #----------------------------------------------------------------------------------------
     def test_sum_to_scale(self):
-        '''
+        """
         Test for the compute.sum_to_scale() function
-        '''
+        """
 
         # test an input array with no missing values    
         values = np.array([3, 4, 6, 2, 1, 3, 5, 8, 5])
@@ -204,13 +204,14 @@ class ComputeTestCase(fixtures.FixturesTestCase):
         expected_values = np.array([np.NaN, np.NaN, 13, 12, 9, 6, 9, np.NaN, np.NaN, np.NaN, 19])
         np.testing.assert_allclose(computed_values, 
                                    expected_values, 
-                                   err_msg='Sliding sums not computed as expected when missing values appended to end of input array')            
-    
-    #----------------------------------------------------------------------------------------
+                                   err_msg="Sliding sums not computed as expected when missing "
+                                           "values appended to end of input array")
+
+    # ----------------------------------------------------------------------------------------
     def test_transform_fitted_gamma(self):
-        '''
+        """
         Test for the compute.transform_fitted_gamma() function
-        '''
+        """
         
         # compute sigmas of transformed (normalized) values fitted to a gamma distribution,
         # using the full period of record as the calibration period
@@ -218,7 +219,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                                                          self.fixture_data_year_start_monthly,
                                                          self.fixture_data_year_start_monthly,
                                                          self.fixture_data_year_end_monthly,
-                                                         'monthly')
+                                                         compute.Periodicity.monthly)
         np.testing.assert_allclose(computed_values, 
                                    self.fixture_transformed_gamma_monthly,
                                    err_msg='Transformed gamma fitted monthly values not computed as expected')            
@@ -230,7 +231,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                                                          self.fixture_data_year_start_daily,
                                                          self.fixture_calibration_year_start_daily,
                                                          self.fixture_calibration_year_end_daily,
-                                                         'daily')
+                                                         compute.Periodicity.daily)
         np.testing.assert_allclose(computed_values,
                                    self.fixture_transformed_gamma_daily,
                                    atol=0.001,
@@ -243,7 +244,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                                                          self.fixture_data_year_start_monthly,
                                                          1500,
                                                          2500,
-                                                         'monthly')
+                                                         compute.Periodicity.monthly)
         np.testing.assert_allclose(computed_values, 
                                    self.fixture_transformed_gamma_monthly,
                                    atol=0.001,
@@ -275,20 +276,20 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                           self.fixture_data_year_start_daily,
                           self.fixture_calibration_year_start_daily,
                           self.fixture_calibration_year_end_daily,
-                          'monthly')
+                          compute.Periodicity.monthly)
 
     #----------------------------------------------------------------------------------------
     def test_transform_fitted_pearson(self):
-        '''
+        """
         Test for the compute.transform_fitted_pearson() function
-        '''
+        """
         
         # compute sigmas of transformed (normalized) values fitted to a Pearson Type III distribution
         computed_values = compute.transform_fitted_pearson(self.fixture_precips_mm_monthly, 
                                                            self.fixture_data_year_start_monthly,
                                                            self.fixture_calibration_year_start_monthly,
                                                            self.fixture_calibration_year_end_monthly,
-                                                           'monthly')
+                                                           compute.Periodicity.monthly)
         np.testing.assert_allclose(computed_values, 
                                    self.fixture_transformed_pearson3,
                                    atol=0.001,
@@ -300,7 +301,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                                                            self.fixture_data_year_start_monthly,
                                                            self.fixture_calibration_year_start_monthly,
                                                            self.fixture_calibration_year_end_monthly,
-                                                           'monthly')
+                                                           compute.Periodicity.monthly)
         np.testing.assert_allclose(computed_values, 
                                    all_nans,
                                    equal_nan=True,
@@ -312,7 +313,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                                                            self.fixture_data_year_start_monthly,
                                                            1500,
                                                            2500,
-                                                           'monthly')
+                                                           compute.Periodicity.monthly)
         np.testing.assert_allclose(computed_values.flatten(), 
                                    self.fixture_transformed_pearson3_monthly_fullperiod,
                                    atol=0.001,
@@ -324,7 +325,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                                          self.fixture_data_year_start_daily,
                                          self.fixture_calibration_year_start_daily,
                                          self.fixture_calibration_year_end_daily,
-                                         'daily')
+                                         compute.Periodicity.daily)
                                          
         # confirm that we get expected errors when using invalid time series type arguments
         self.assertRaises(ValueError,
@@ -349,7 +350,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                           self.fixture_data_year_start_daily,
                           self.fixture_calibration_year_start_daily,
                           self.fixture_calibration_year_end_daily,
-                          'monthly')
+                          compute.Periodicity.monthly)
 
 #     #----------------------------------------------------------------------------------------
 #     def test_error_function(self):
