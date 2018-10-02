@@ -1,20 +1,23 @@
 from datetime import datetime
 import logging
-import netCDF4
-import numpy as np
 import os
 import random
 
+import netCDF4
+import numpy as np
+import xarray as xr
+
 from climate_indices import utils
 
-#-----------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global _logger
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s',
                     datefmt='%Y-%m-%d  %H:%M:%S')
 _logger = logging.getLogger(__name__)
 
-#-----------------------------------------------------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------------------------------------------------
 def initial_and_final_years(netcdf_file):
     """
     Gets the initial and final years represented by the time dimension/coordinate variable.
@@ -33,7 +36,8 @@ def initial_and_final_years(netcdf_file):
 
     return initial_year, final_year
 
-#-----------------------------------------------------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------------------------------------------------
 def lat_and_lon_sizes(netcdf_file):
     """
     Gets the sizes of the latitude and longitude dimensions/coordinate variables.
@@ -52,17 +56,18 @@ def lat_and_lon_sizes(netcdf_file):
 
     return lat_size, lon_size
 
-#-----------------------------------------------------------------------------------------------------------------------
-def variable_units(netcdf_file, 
+
+# ----------------------------------------------------------------------------------------------------------------------
+def variable_units(netcdf_file,
                    var_name):
-    '''
+    """
     Gets the units of the named variable from the specified NetCDF dataset.
-    
+
     :param netcdf_file: NetCDF dataset file, assumed to contain the named variable
     :param var_name: name of the variable about for which we'll get the units
     :return: units used for the variable, or None if none are specified
-    :rtype: string  
-    '''
+    :rtype: string
+    """
     
     with netCDF4.Dataset(netcdf_file) as dataset:
 
@@ -71,16 +76,17 @@ def variable_units(netcdf_file,
     
     return units
  
-#-----------------------------------------------------------------------------------------------------------------------
-def variable_fillvalue(netcdf_file, 
+
+# ----------------------------------------------------------------------------------------------------------------------
+def variable_fillvalue(netcdf_file,
                        var_name):
-    '''
+    """
     Gets the fill value of the named variable from the specified NetCDF dataset.
-    
+
     :param netcdf_file: NetCDF dataset file, assumed to contain the named variable
     :param var_name: name of the variable about for which we'll get the units
     :return: fill value used for the variable, or None if none is specified
-    '''
+    """
     
     with netCDF4.Dataset(netcdf_file) as dataset:
 
@@ -89,9 +95,15 @@ def variable_fillvalue(netcdf_file,
     
     return fill_value
 
-#-----------------------------------------------------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------------------------------------------------
 def convert_and_move_netcdf(input_and_output_netcdfs):   # pragma: no cover
-    
+    """
+
+    :param input_and_output_netcdfs:
+    :return:
+    """
+
     input_netcdf = input_and_output_netcdfs[0]
     output_netcdf = input_and_output_netcdfs[1]
   
@@ -111,9 +123,15 @@ def convert_and_move_netcdf(input_and_output_netcdfs):   # pragma: no cover
     
         _logger.warning('NCO unavailable, skipping conversion/move')
 
-#-----------------------------------------------------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------------------------------------------------
 def find_netcdf_datatype(data_object):
-    
+    """
+
+    :param data_object:
+    :return:
+    """
+
     if isinstance(data_object, netCDF4.Variable):
 
         if data_object.dtype == 'float16':
@@ -158,12 +176,21 @@ def find_netcdf_datatype(data_object):
     
     return netcdf_datatype
     
-#-----------------------------------------------------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------------------------------------------------
 def create_dataset_climdivs(file_path,     # pragma: no cover
                             division_ids,
                             initial_year,
                             total_months):
-    
+    """
+
+    :param file_path:
+    :param division_ids:
+    :param initial_year:
+    :param total_months:
+    :return:
+    """
+
     # create/open the output file for writing, set its dimensions and coordinate variables
     with netCDF4.Dataset(file_path, 'w') as dataset:
 
@@ -197,8 +224,50 @@ def create_dataset_climdivs(file_path,     # pragma: no cover
         # set the coordinate variables' values
         time_variable[:] = utils.compute_days(initial_year, total_months, 1, units_start_year)
         divisions_variable[:] = np.array(sorted(division_ids), dtype=np.dtype(int))
-    
-#-----------------------------------------------------------------------------------------------------------------------
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def initialize_netcdf_divisions(file_path,
+                                template_netcdf,
+                                variables,
+                                overwrite=False):
+    """
+    Initialize a NetCDF to contain US climate divisions based on an existing US climate divisions NetCDF, copying the
+    coordinates and some global attributes from the existing (template) US climate divisions NetCDF. A dictionary
+    of variables is provided with the variable names as keys and dictionaries of attributes as values.
+
+    :param file_path: file path of new US climate divisions NetCDF to be created (if file already exists an error
+                      will be raised, unless overwrite is specified)
+    :param template_netcdf: existing US climate divisions NetCDF from which the new NetCDF will share coordinates
+                            and some global attributes
+    :param variables: dictionary with variable names as keys and dictionaries of attributes as values
+    :return: None
+    """
+
+    if os.path.isfile(file_path) and not overwrite:
+        raise ValueError("File already exists: {file}".format(file=file_path))
+
+    # read the template NetCDF
+    ds = xr.open_dataset(template_netcdf)
+
+    # get the dimensions of the precipitation variable, this will be used as the dimensions of new variables
+    var_dims = ds['prcp'].dims
+
+    # remove each of the data variables (leaving only coordinates and attributes)
+    for var in ds.data_vars:
+        ds.drop(var)
+
+    # create empty variables
+    for var_name, attributes in variables.getitems():
+        variable = xr.Variable(dims=var_dims,
+                               attrs=attributes)
+        ds[var_name] = variable
+
+    # write the dataset as the new NetCDF file
+    ds.to_netcdf(file_path)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 def initialize_netcdf_single_variable_grid(file_path,              # pragma: no cover
                                            template_netcdf,
                                            variable_name,
@@ -207,13 +276,13 @@ def initialize_netcdf_single_variable_grid(file_path,              # pragma: no 
                                            valid_max,
                                            variable_units=None,
                                            fill_value=np.float32(np.NaN)):
-    '''
-    This function is used to initialize and return a netCDF4.Dataset object, containing a single data variable having 
-    dimensions (lat, lon, time). The input data values array is assumed to be a 3-D array with indices corresponding to 
-    the variable dimensions. The latitude, longitude, and time values are copied from the template NetCDF, which is 
-    assumed to have dimension sizes matching to the axes of the variable values array. Global attributes are also copied 
+    """
+    This function is used to initialize and return a netCDF4.Dataset object, containing a single data variable having
+    dimensions (lat, lon, time). The input data values array is assumed to be a 3-D array with indices corresponding to
+    the variable dimensions. The latitude, longitude, and time values are copied from the template NetCDF, which is
+    assumed to have dimension sizes matching to the axes of the variable values array. Global attributes are also copied
     from the template NetCDF.
-    
+
     :param file_path: the file path/name of the NetCDF Dataset object returned by this function
     :param template_dataset: an existing/open NetCDF Dataset object which will be used as a template for the Dataset
                              that will be created by this function
@@ -221,9 +290,9 @@ def initialize_netcdf_single_variable_grid(file_path,              # pragma: no 
     :param variable_long_name: the long name attribute of the data variable within the Dataset
     :param valid_min: the minimum value to which the data variable of the resulting Dataset(s) will be clipped
     :param valid_max: the maximum value to which the data variable of the resulting Dataset(s) will be clipped
-    :param variable_units: string specifying the units of the variable 
+    :param variable_units: string specifying the units of the variable
     :param fill_value: the fill value to use for main data variable of the resulting Dataset
-    '''
+    """
 
     with netCDF4.Dataset(template_netcdf, 'r') as template_dataset:
  
@@ -279,14 +348,25 @@ def initialize_netcdf_single_variable_grid(file_path,              # pragma: no 
         y_variable[:] = template_dataset.variables['lat'][:]
         x_variable[:] = template_dataset.variables['lon'][:]
 
-#-----------------------------------------------------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------------------------------------------------
 def initialize_dataset_climdivs(file_path,            # pragma: no cover
                                 template_dataset,
                                 divisions_dim_name,
                                 data_variable_name=None,
                                 data_variable_attributes=None,
                                 data_fill_value=np.NaN):
-    
+    """
+
+    :param file_path:
+    :param template_dataset:
+    :param divisions_dim_name:
+    :param data_variable_name:
+    :param data_variable_attributes:
+    :param data_fill_value:
+    :return:
+    """
+
     # make sure the data matches the dimensions
     divisions_size = template_dataset.variables[divisions_dim_name].size
     
@@ -334,23 +414,24 @@ def initialize_dataset_climdivs(file_path,            # pragma: no cover
 
     return netcdf
     
-#-----------------------------------------------------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------------------------------------------------
 def add_variable_climdivs_divstime(file_path,
                                    variable_name,
                                    variable_attributes,
                                    divisions_to_arrays):
-    '''
-    Adds a two-dimensional (division, time) variable to an existing climate divisions NetCDF. The variable is created 
-    and populated with the provided data values. 
-    
-    :param file_path: existing NetCDF to which the variable will be added. This NetCDF is assumed to contain 
+    """
+    Adds a two-dimensional (division, time) variable to an existing climate divisions NetCDF. The variable is created
+    and populated with the provided data values.
+
+    :param file_path: existing NetCDF to which the variable will be added. This NetCDF is assumed to contain
                       the dimensions "division" and "time" as well as corresponding coordinate variables.
     :param variable_name: name of the new variable to be added, a variable with this name should not already exist
     :param variable_attributes: the attributes that should be assigned to the new variable
     :param divisions_to_arrays: a dictionary with division IDs as keys and corresponding 1-D Numpy arrays as values.
-                               The number of elements within the arrays should match with the number of time steps 
+                               The number of elements within the arrays should match with the number of time steps
                                of the existing NetCDF being added to (as specified by the time coordinate variable).
-    '''
+    """
     
     # get the NetCDF datatype applicable to the data array we'll store in the variable
     random_array = random.choice(list(divisions_to_arrays.values()))
@@ -393,23 +474,24 @@ def add_variable_climdivs_divstime(file_path,
 
                     _logger.info('Unexpected size of data array for division ID {0} -- '.format(division_id) + 
                                 'expected {0} time steps but the array contains {1}'.format(times_size, data_array.size))
-            
-#-----------------------------------------------------------------------------------------------------------------------
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 def add_variable_climdivs_divs(file_path,
                                variable_name,
                                variable_attributes,
                                divisions_to_values):
-    
-    '''
-    Adds a one-dimensional (division) variable to an existing climate divisions NetCDF. The variable is created 
-    and populated with the provided data values. 
-    
-    :param file_path: existing NetCDF to which the variable will be added. This NetCDF is assumed to contain 
+
+    """
+    Adds a one-dimensional (division) variable to an existing climate divisions NetCDF. The variable is created
+    and populated with the provided data values.
+
+    :param file_path: existing NetCDF to which the variable will be added. This NetCDF is assumed to contain
                       the dimensions "division" and "time" as well as corresponding coordinate variables.
     :param variable_name: name of the new variable to be added, a variable with this name should not already exist
     :param variable_attributes: the attributes that should be assigned to the new variable
     :param divisions_to_values: a dictionary with division IDs as keys and corresponding scalars as values.
-    '''
+    """
 
     # get the NetCDF datatype applicable to the data array we'll store in the variable
     random_value = random.choice(list(divisions_to_values.values()))
@@ -433,7 +515,6 @@ def add_variable_climdivs_divs(file_path,
         variable.setncatts(variable_attributes)
     
         # loop over each existing division, add the corresponding data array, if one was provided
-#         input_divisions = list(divisions_to_values.keys())
         for division_index, division_id in enumerate(list(dataset.variables['division'][:])):
             
             # make sure we have a value for this division
@@ -442,13 +523,22 @@ def add_variable_climdivs_divs(file_path,
                 # assign the value into the current division's slot in the variable
                 variable[division_index] = divisions_to_values[division_id]
             
-#-----------------------------------------------------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------------------------------------------------
 def initialize_variable_climdivs(netcdf,                   # pragma: no cover
                                  data_variable_name,
                                  data_variable_attributes,
                                  data_fill_value=np.NaN):
-    
-    #TODO fix these to come from the dataset's dimension attributes?
+    """
+
+    :param netcdf:
+    :param data_variable_name:
+    :param data_variable_attributes:
+    :param data_fill_value:
+    :return:
+    """
+
+    # TODO fix these to come from the dataset's dimension attributes?
     divisions_dim_name = 'division'
     
     # get the appropriate data types to use for the variables based on the values arrays
