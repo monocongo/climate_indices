@@ -17,6 +17,7 @@ setup(
         "numpy",
         "pandas",
         "scipy",
+        "xarray",
     ],
     tests_require=[
         "nose",
