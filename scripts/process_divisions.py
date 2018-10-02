@@ -80,67 +80,6 @@ class DivisionsProcessor(object):
                                                  _variable_info(self.scale_months),
                                                  True)
 
-    # # ----------------------------------------------------------------------------------------------------------------
-    # def _initialize_netcdf(self,
-    #
-    #                        dimensions):
-    #     """
-    #     This function is used to initialize and return a netCDF4.Dataset object containing all variables
-    #     to be computed for a climate divisions climatology.
-    #
-    #     :param dimensions: tuple of dimension names, such as ('division', 'time',) for climate divisions,
-    #                        or ('time', 'lat', 'lon',) for grids
-    #     """
-    #
-    #     # use NaNs as our default fill/missing value
-    #     fill_value=np.float32(np.NaN)
-    #
-    #     # open the NetCDF datasets within a context manager
-    #     with netCDF4.Dataset(self.input_file, 'a') as new_dataset:
-    #
-    #         data_dtype = netcdf_utils.find_netcdf_datatype(fill_value)
-    #
-    #         # create a variable for each unscaled index
-    #         unscaled_indices = ['pet', 'pdsi', 'phdi', 'pmdi', 'zindex', 'scpdsi']
-    #         for variable_name in unscaled_indices:
-    #
-    #             # only add the variable if it's not already present
-    #             if variable_name in new_dataset.variables.keys():
-    #                 continue
-    #
-    #             # get the attributes based on the name
-    #             variable_attributes = _variable_attributes(variable_name)
-    #
-    #             # create variables with scale month
-    #             data_variable = new_dataset.createVariable(variable_name,
-    #                                                        data_dtype,
-    #                                                        dimensions,
-    #                                                        fill_value=fill_value,
-    #                                                        zlib=False)
-    #             data_variable.setncatts(variable_attributes)
-    #
-    #         # create a variable for each scaled index
-    #         scaled_indices = ['pnp', 'spi_gamma', 'spi_pearson', 'spei_gamma', 'spei_pearson']
-    #         for scaled_index in scaled_indices:
-    #             for months in self.scale_months:
-    #
-    #                 variable_name = scaled_index + '_{}'.format(str(months).zfill(2))
-    #
-    #                 # only add the variable if it's not already present
-    #                 if variable_name in new_dataset.variables.keys():
-    #                     continue
-    #
-    #                 # get the attributes based on the name and number of scale months
-    #                 variable_attributes = _variable_attributes(scaled_index, months)
-    #
-    #                 # create month scaled variable
-    #                 data_variable = new_dataset.createVariable(variable_name,
-    #                                                            data_dtype,
-    #                                                            dimensions,
-    #                                                            fill_value=fill_value,
-    #                                                            zlib=False)
-    #                 data_variable.setncatts(variable_attributes)
-     
     # ------------------------------------------------------------------------------------------------------------------
     def _compute_and_write_division(self, div_index):
         """
@@ -398,55 +337,6 @@ class DivisionsProcessor(object):
         pool.close()
         pool.join()
 
-        #----------------------------------------------------------------------------------------------------------
-        # Take the PET and Palmer index NetCDF files, compress and move to destination directory.
-        #----------------------------------------------------------------------------------------------------------
-        
-#         input_output_netcdfs = []
-#         for index in ['pdsi', 'phdi', 'scpdsi', 'zindex']:
-#             
-#             # convert the Palmer files to compressed NetCDF4 and move to the destination directory
-#             indicator_tuple = (unscaled_netcdfs[index], os.sep.join([destination_dir, index, unscaled_netcdfs[index]]))
-#             input_output_netcdfs.append(indicator_tuple)
-# 
-#         pool = multiprocessing.Pool(processes=number_of_workers)
-#             
-#         # create an arguments iterable containing the input and output NetCDFs, map it to the convert function
-#         result = pool.map_async(netcdf_utils.convert_and_move_netcdf, input_output_netcdfs)
-#               
-#         # get the exception(s) thrown, if any
-#         result.get()
-#               
-#         # close the pool and wait on all processes to finish
-#         pool.close()
-#         pool.join()
-#        
-#         # compute the scaled indices (PNP, SPI, and SPEI)
-#         for months in self.scale_months:
-#  
-#             # convert the SPI, SPEI, and PNP files to compressed NetCDF4 and move to the destination directory
-#             input_output_netcdfs = [(scaled_netcdfs['spi_gamma'], '/nidis/test/nclimgrid/spi_gamma/' + scaled_netcdfs['spi_gamma']),
-#                                     (scaled_netcdfs['spi_pearson'], '/nidis/test/nclimgrid/spi_pearson/' + scaled_netcdfs['spi_pearson']),
-#                                     (scaled_netcdfs['spei_gamma'], '/nidis/test/nclimgrid/spei_gamma/' + scaled_netcdfs['spei_gamma']),
-#                                     (scaled_netcdfs['spei_pearson'], '/nidis/test/nclimgrid/spei_pearson/' + scaled_netcdfs['spei_pearson']),
-#                                     (scaled_netcdfs['pnp'], '/nidis/test/nclimgrid/pnp/' + scaled_netcdfs['pnp'])]
-#       
-#             pool = multiprocessing.Pool(processes=number_of_workers)
-#               
-#             # create an arguments iterable containing the input and output NetCDFs, map it to the convert function
-#             result = pool.map_async(netcdf_utils.convert_and_move_netcdf, input_output_netcdfs)
-#                 
-#             # get the exception(s) thrown, if any
-#             result.get()
-#                 
-#             # close the pool and wait on all processes to finish
-#             pool.close()
-#             pool.join()
-#         
-#         # convert the PET file to compressed NetCDF4 and move into the destination directory
-#         netcdf_utils.convert_and_move_netcdf((unscaled_netcdfs['pet'], '/nidis/test/nclimgrid/pet/' + \
-#             unscaled_netcdfs['pet']))
-
 
 # ----------------------------------------------------------------------------------------------------------------------
 def _variable_info(month_scales):
@@ -517,116 +407,6 @@ def _variable_info(month_scales):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-#@numba.jit
-def _variable_attributes(index_name,
-                         months=None):
-
-    """
-    Finds correct variable attributes for climate indices that will be computed by this processor.
-    
-    :param index_name: name of index for which attributes are requested
-    :param months: for month-scaled indices a number of months to use as scale
-    :return: dictionary of attribute names to values 
-    """
-    if index_name == 'pet':
-          
-        variable_name = 'pet'
-        variable_attributes = {'standard_name': 'pet',
-                               'long_name': 'Potential Evapotranspiration (PET), from Thornthwaite\'s equation',
-                               'valid_min': 0.0,
-                               'valid_max': 2000.0,
-                               'units': 'millimeter'}
-      
-    elif index_name == 'pdsi':
-          
-        variable_name = 'pdsi'
-        variable_attributes = {'standard_name': 'pdsi',
-                               'long_name': 'Palmer Drought Severity Index (PDSI)',
-                               'valid_min': -10.0,
-                               'valid_max': 10.0}
-      
-    elif index_name == 'scpdsi':
-          
-        variable_name = 'scpdsi'
-        variable_attributes = {'standard_name': 'scpdsi',
-                               'long_name': 'Self-calibrated Palmer Drought Severity Index (PDSI)',
-                               'valid_min': -10.0,
-                               'valid_max': 10.0}
-      
-    elif index_name == 'phdi':
-          
-        variable_name = 'phdi'
-        variable_attributes = {'standard_name': 'phdi',
-                               'long_name': 'Palmer Hydrological Drought Index (PHDI)',
-                               'valid_min': -10.0,
-                               'valid_max': 10.0}
-      
-    elif index_name == 'pmdi':
-          
-        variable_name = 'pmdi'
-        variable_attributes = {'standard_name': 'pmdi',
-                               'long_name': 'Palmer Modified Drought Index (PMDI)',
-                               'valid_min': -10.0,
-                               'valid_max': 10.0}
-      
-    elif index_name == 'zindex':
-          
-        variable_name = 'zindex'
-        variable_attributes = {'standard_name': 'zindex',
-                               'long_name': 'Palmer Z-Index',
-                               'valid_min': -10.0,
-                               'valid_max': 10.0}
-
-    else:
-
-        # use the scale months in the variable name        
-        variable_name = index_name + '_{}'.format(str(months).zfill(2))
-    
-        if index_name == 'pnp':
-        
-            variable_attributes = {'standard_name': variable_name,
-                                   'long_name': 'Percent average precipitation, {}-month scale'.format(months),
-                                   'valid_min': 0,
-                                   'valid_max': 10.0,
-                                   'units': 'percent of average'}
-
-        elif index_name == 'spi_gamma':
-        
-            variable_attributes = {'standard_name': variable_name,
-                                   'long_name': 'SPI (Gamma), {}-month scale'.format(months),
-                                   'valid_min': -3.09,
-                                   'valid_max': 3.09}
-        
-        elif index_name == 'spi_pearson':
-        
-            variable_attributes = {'standard_name': variable_name,
-                                   'long_name': 'SPI (Pearson), {}-month scale'.format(months),
-                                   'valid_min': -3.09,
-                                   'valid_max': 3.09}
-        
-        elif index_name == 'spei_gamma':
-        
-            variable_attributes = {'standard_name': variable_name,
-                                   'long_name': 'SPEI (Gamma), {}-month scale'.format(months),
-                                   'valid_min': -3.09,
-                                   'valid_max': 3.09}
-        
-        elif index_name == 'spei_pearson':
-        
-            variable_attributes = {'standard_name': variable_name,
-                                   'long_name': 'SPEI (Pearson), {}-month scale'.format(months),
-                                   'valid_min': -3.09,
-                                   'valid_max': 3.09}
-
-        else:
-        
-            message = '{0} is an unsupported index type'.format(index_name)
-            logger.error(message)
-            raise ValueError(message)
-
-    return variable_attributes
-    
-#-----------------------------------------------------------------------------------------------------------------------
 def process_divisions(input_file,
                       output_file,
                       precip_var_name,
@@ -694,7 +474,7 @@ if __name__ == '__main__':
         parser.add_argument("--output_file",
                             help=" Output file path",
                             required=True)
-        parser.add_argument("--month_scales",
+        parser.add_argument("--scales",
                             help="Month scales over which the PNP, SPI, and SPEI values are to be computed",
                             type=int,
                             nargs = '*',
@@ -710,12 +490,6 @@ if __name__ == '__main__':
                             type=int,
                             choices=range(1870, start_datetime.year + 1),
                             required=True)
-        parser.add_argument("--orig_pe", 
-                            help="Use the original NCDC method for calculating potential evapotranspiration "
-                                 "(PE) used in original Fortran",
-                            type=bool,
-                            default=False,
-                            required=False)
         parser.add_argument("--divisions",
                             help="Divisions for which the PNP, SPI, and SPEI values are to be computed "
                                  "(useful for specifying a short list of divisions",
@@ -731,10 +505,9 @@ if __name__ == '__main__':
                           args.var_name_precip,
                           args.var_name_temp,
                           args.var_name_awc,
-                          args.month_scales,
+                          args.scales,
                           args.calibration_start_year,
                           args.calibration_end_year,
-                          # args.orig_pe,
                           args.divisions)
         
         # report on the elapsed time
