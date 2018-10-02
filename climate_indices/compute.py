@@ -3,6 +3,7 @@ from enum import Enum
 import logging
 import math
 from math import exp, lgamma, pi, sqrt
+
 import numba
 import numpy as np
 import scipy.special
@@ -10,7 +11,15 @@ import scipy.stats
 
 from climate_indices import utils
 
-#-------------------------------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
+# set up a basic, global _logger
+logging.basicConfig(level=logging.WARN,
+                    format='%(asctime)s %(levelname)s %(message)s',
+                    datefmt='%Y-%m-%d  %H:%M:%S')
+_logger = logging.getLogger(__name__)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 class Periodicity(Enum):
     """
     Enumeration type for specifying dataset periodicity.
@@ -26,39 +35,33 @@ class Periodicity(Enum):
     monthly = 12
     daily = 366
 
-#-----------------------------------------------------------------------------------------------------------------------
-# set up a basic, global _logger
-logging.basicConfig(level=logging.WARN,
-                    format='%(asctime)s %(levelname)s %(message)s',
-                    datefmt='%Y-%m-%d  %H:%M:%S')
-_logger = logging.getLogger(__name__)
 
-#-----------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def sum_to_scale(values,
                  scale):
-    '''
-    Compute a sliding sums array using 1-D convolution. The initial (scale - 1) elements 
+    """
+    Compute a sliding sums array using 1-D convolution. The initial (scale - 1) elements
     of the result array will be padded with np.NaN values. Missing values are not ignored, i.e. if a np.NaN
     (missing) value is part of the group of values to be summed then the sum will be np.NaN
-    
-    For example if the first array is [3, 4, 6, 2, 1, 3, 5, 8, 5] and the number of values to sum is 3 then the resulting
-    array will be [np.NaN, np.NaN, 13, 12, 9, 6, 9, 16, 18].
-    
+
+    For example if the first array is [3, 4, 6, 2, 1, 3, 5, 8, 5] and the number of values to sum is 3 then
+    the resulting array will be [np.NaN, np.NaN, 13, 12, 9, 6, 9, 16, 18].
+
     More generally:
-    
+
     Y = f(X, n)
-    
+
     Y[i] == np.NaN, where i < n
     Y[i] == sum(X[i - n + 1:i + 1]), where i >= n - 1 and X[i - n + 1:i + 1] contains no NaN values
     Y[i] == np.NaN, where i >= n - 1 and X[i - n + 1:i + 1] contains one or more NaN values
-         
+
     :param values: the array of values over which we'll compute sliding sums
     :param scale: the number of values for which each sliding summation will encompass, for example if this value
-                  is 3 then the first two elements of the output array will contain the pad value and the third 
-                  element of the output array will contain the sum of the first three elements, and so on 
-    :return: an array of sliding sums, equal in length to the input values array, left padded with NaN values  
-    '''
+                  is 3 then the first two elements of the output array will contain the pad value and the third
+                  element of the output array will contain the sum of the first three elements, and so on
+    :return: an array of sliding sums, equal in length to the input values array, left padded with NaN values
+    """
     
     # don't bother if the number of values to sum is 1 (will result in duplicate array)
     if scale == 1:
@@ -70,19 +73,20 @@ def sum_to_scale(values,
     # pad the first (n - 1) elements of the array with NaN values
     return np.hstack(([np.NaN]*(scale - 1), sliding_sums))
 
-#-----------------------------------------------------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def _estimate_pearson3_parameters(lmoments):    
-    '''
-    Estimate parameters via L-moments for the Pearson Type III distribution, based on Fortran code written 
-    for inclusion in IBM Research Report RC20525, 'FORTRAN ROUTINES FOR USE WITH THE METHOD OF L-MOMENTS, VERSION 3' 
+def _estimate_pearson3_parameters(lmoments):
+    """
+    Estimate parameters via L-moments for the Pearson Type III distribution, based on Fortran code written
+    for inclusion in IBM Research Report RC20525, 'FORTRAN ROUTINES FOR USE WITH THE METHOD OF L-MOMENTS, VERSION 3'
     by J. R. M. Hosking, IBM Research Division, T. J. Watson Research Center, Yorktown Heights, NY 10598
     This is a Python translation of the original Fortran subroutine named 'pearson3'.
-    
+
     :param lmoments: 3-element, 1-D (flat) array containing the first three L-moments (lambda-1, lambda-2, and tau-3)
     :return the Pearson Type III parameters corresponding to the input L-moments
     :rtype: a 3-element, 1-D (flat) numpy array of floats
-    '''
+    """
     
     C1 = 0.2906
     C2 = 0.1882
@@ -131,23 +135,24 @@ def _estimate_pearson3_parameters(lmoments):
 
     return pearson3_parameters
 
-#-----------------------------------------------------------------------------------------------------------------------    
+
+# ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def _estimate_lmoments(values):
-    '''
+    """
     Estimate sample L-moments, based on Fortran code written for inclusion in IBM Research Report RC20525,
     'FORTRAN ROUTINES FOR USE WITH THE METHOD OF L-MOMENTS, VERSION 3' by J. R. M. Hosking, IBM Research Division,
     T. J. Watson Research Center, Yorktown Heights, NY 10598, Version 3 August 1996.
-    
+
     Documentation on the original Fortran routines found here: https://rdrr.io/cran/nsRFA/man/HW.original.html
-    
-    This is a Python translation of the original Fortran subroutine SAMLMR() and which has been optimized 
-    for calculating only the first three L-moments. 
-    
+
+    This is a Python translation of the original Fortran subroutine SAMLMR() and which has been optimized
+    for calculating only the first three L-moments.
+
     :param values: 1-D (flattened) array of float values
     :return: an estimate of the first three sample L-moments
     :rtype: 1-D numpy array of floats (the first three sample L-moments corresponding to the input values)
-    '''
+    """
     
     # we need to have at least four values in order to make a sample L-moments estimation
     number_of_values = np.count_nonzero(~np.isnan(values))
@@ -200,7 +205,8 @@ def _estimate_lmoments(values):
         
     return lmoments
     
-#-----------------------------------------------------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def _pearson3_fitting_values(values):
     """
@@ -212,10 +218,7 @@ def _pearson3_fitting_values(values):
                    (with Feb. 29th being an average of the Feb. 28th and Mar. 1st values for non-leap years)
                    and assuming that the first value of the array is January of the initial year for an input array 
                    of monthly values or Jan. 1st of initial year for an input array daily values
-    :param data_start_year: the initial year of the input values array
-    :param calibration_start_year: the initial year to use for the calibration period 
-    :param calibration_end_year: the final year to use for the calibration period 
-    :return: a 2-D array of fitting values for the Pearson Type III distribution, with shape (4, 12) for monthly 
+    :return: a 2-D array of fitting values for the Pearson Type III distribution, with shape (4, 12) for monthly
              or (4, 366) for daily
              returned_array[0] == probability of zero for each of the calendar time steps 
              returned_array[1] == the first Pearson Type III distribution parameter for each of the calendar time steps 
@@ -281,34 +284,36 @@ def _pearson3_fitting_values(values):
                 fitting_values[2, time_step_index] = pearson_parameters[1]
                 fitting_values[3, time_step_index] = pearson_parameters[2]
 
-#             else:
-#                 #FIXME/TODO there must be a better way to handle this, and/or is this as irrelevant 
-#                 #as swallowing the error here assumes? Do we get similar results using lmoments3 module?
-#                 #How does the comparable NCSU SPI code (Cumbie et al?) handle this?
-#                 _logger.warn('Due to invalid L-moments the Pearson fitting values for time step {0} are defaulting to zero'.format(time_step_index))
+            # else:
+            #     # FIXME/TODO there must be a better way to handle this, and/or is this as irrelevant
+            #     # as swallowing the error here assumes? Do we get similar results using lmoments3 module?
+            #     # How does the comparable NCSU SPI code (Cumbie et al?) handle this?
+            #     _logger.warn('Due to invalid L-moments the Pearson fitting values '
+            #                  'for time step {0} are defaulting to zero'.format(time_step_index))
 
     return fitting_values
 
-#----------------------------------------------------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def _pearson3cdf(value,
                  pearson3_parameters):
-    '''
-    Compute the probability that a random variable along the Pearson Type III distribution described by a set 
+    """
+    Compute the probability that a random variable along the Pearson Type III distribution described by a set
     of parameters will be less than or equal to a value.
-    
-    :param value: 
+
+    :param value:
     :param pearson3_parameters:
-    :return 
-    '''
+    :return
+    """
 
     # it's only possible to make the calculation if the second Pearson parameter is above zero
     if pearson3_parameters[1] <= 0.0:
     
-        #FIXME/TODO there must be a better way to handle this, and/or is this as irrelevant 
-        #as swallowing the error here assumes? Do we get similar results using lmoments3 module?
-        #How does the comparable NCSU SPI code (Cumbie et al?) handle this?
-#         _logger.debug("The second Pearson parameter is less than or equal to zero, invalid for the CDF calculation")
+        # FIXME/TODO there must be a better way to handle this, and/or is this as irrelevant
+        # as swallowing the error here assumes? Do we get similar results using lmoments3 module?
+        # How does the comparable NCSU SPI code (Cumbie et al?) handle this?
+        # _logger.debug("The second Pearson parameter is less than or equal to zero, invalid for the CDF calculation")
         return np.NaN
     
     result = 0
@@ -332,8 +337,9 @@ def _pearson3cdf(value,
         # calculate the lowest possible value that will fit the distribution (i.e. Z = 0)
         minimum_possible_value = pearson3_parameters[0] - ((alpha * pearson3_parameters[1] * skew) / 2.0)
         if value <= minimum_possible_value:
-        
-            result = 0.0005  # minimum probability (why this arbitrary value? Trevor/Richard? related to the trace precipitation value?)
+
+            # minimum probability
+            result = 0.0005  # (why this arbitrary value? Trevor/Richard? related to the trace precipitation value?)
         
         else:
         
@@ -341,15 +347,16 @@ def _pearson3cdf(value,
 
     return result
 
-#----------------------------------------------------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def _error_function(value):
-    '''
+    """
     TODO
-    
+
     :param value:
-    :return:  
-    '''
+    :return:
+    """
     
     result = 0.0
     if value != 0.0:
@@ -399,7 +406,8 @@ def _error_function(value):
 
     return result
 
-#-----------------------------------------------------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------------------------------------------------
 @numba.vectorize([numba.float32(numba.float32, numba.float32, numba.float32, numba.float32, numba.float32),
                   numba.float64(numba.float64, numba.float64, numba.float64, numba.float64, numba.float64)])
 def _pearson_fit_ufunc(value_to_fit, 
@@ -424,9 +432,8 @@ def _pearson_fit_ufunc(value_to_fit,
     if not math.isnan(value_to_fit):
 
         # get the Pearson Type III cumulative density function value
-        pe3_cdf = 0.0
-        
-        #TODO questions for Trevor/Richard/Deke -- what is the significance of the value 0.0005 below? 
+
+        # TODO questions for Trevor/Richard/Deke -- what is the significance of the value 0.0005 below?
         # Is this a trace precip value or a floor probability value, etc.?
         
         # handle trace amounts as a special case
@@ -457,33 +464,34 @@ def _pearson_fit_ufunc(value_to_fit,
 
     return fitted_value
 
-#-----------------------------------------------------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def transform_fitted_pearson(values,
                              data_start_year,
                              calibration_start_year,
                              calibration_end_year,
                              periodicity):
-    '''
-    Fit values to a Pearson Type III distribution and transform the values to corresponding normalized sigmas. 
-    
+    """
+    Fit values to a Pearson Type III distribution and transform the values to corresponding normalized sigmas.
+
     :param values: 2-D array of values, with each row representing a year containing
-                   twelve columns representing the respective calendar months, or 366 columns representing days 
+                   twelve columns representing the respective calendar months, or 366 columns representing days
                    as if all years were leap years
     :param data_start_year: the initial year of the input values array
-    :param calibration_start_year: the initial year to use for the calibration period 
-    :param calibration_end_year: the final year to use for the calibration period 
-    :param periodicity: the periodicity of the time series represented by the input data, valid/supported values are 
+    :param calibration_start_year: the initial year to use for the calibration period
+    :param calibration_end_year: the final year to use for the calibration period
+    :param periodicity: the periodicity of the time series represented by the input data, valid/supported values are
                         'monthly' and 'daily'
-                        'monthly' indicates an array of monthly values, assumed to span full years, i.e. the first 
-                        value corresponds to January of the initial year and any missing final months of the final 
+                        'monthly' indicates an array of monthly values, assumed to span full years, i.e. the first
+                        value corresponds to January of the initial year and any missing final months of the final
                         year filled with NaN values, with size == # of years * 12
                         'daily' indicates an array of full years of daily values with 366 days per year, as if each
-                        year were a leap year and any missing final months of the final year filled with NaN values, 
+                        year were a leap year and any missing final months of the final year filled with NaN values,
                         with array size == (# years * 366)
     :return: 2-D array of transformed/fitted values, corresponding in size and shape of the input array
     :rtype: numpy.ndarray of floats
-    '''
+    """
     
     # if we're passed all missing values then we can't compute anything, return the same array of missing values
     if (np.ma.is_masked(values) and values.mask.all()) or np.all(np.isnan(values)):
@@ -497,11 +505,11 @@ def transform_fitted_pearson(values,
             _logger.error(message)
             raise ValueError(message)
 
-        elif periodicity == 'monthly': 
+        elif periodicity is Periodicity.monthly:
             # we've been passed a 1-D array with shape (months), reshape it to 2-D with shape (years, 12)
             values = utils.reshape_to_2d(values, 12)
      
-        elif periodicity == 'daily':
+        elif periodicity is Periodicity.daily:
             # we've been passed a 1-D array with shape (days), reshape it to 2-D with shape (years, 366)
             values = utils.reshape_to_2d(values, 366)
             
@@ -522,10 +530,10 @@ def transform_fitted_pearson(values,
     
     # make sure that we have data within the full calibration period, otherwise use the full period of record
     if (calibration_start_year < data_start_year) or (calibration_end_year > data_end_year):
-        _logger.info('Insufficient data for the specified calibration period ({0}-{1}), instead using the full period '.format(calibration_start_year, 
-                                                                                                                              calibration_end_year) + 
-                    'of record ({0}-{1})'.format(data_start_year, 
-                                                 data_end_year))
+        _logger.info('Insufficient data for the specified calibration period ({0}-{1}),'.format(calibration_start_year,
+                                                                                                calibration_end_year) +
+                     ' instead using the full period of record ({0}-{1})'.format(data_start_year,
+                                                                                 data_end_year))
         calibration_start_year = data_start_year
         calibration_end_year = data_end_year
 
@@ -549,32 +557,33 @@ def transform_fitted_pearson(values,
                     
     return fitted_values
 
-#-----------------------------------------------------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def transform_fitted_gamma(values,
                            data_start_year,
                            calibration_start_year,
                            calibration_end_year,
                            periodicity):
-    '''
-    Fit values to a gamma distribution and transform the values to corresponding normalized sigmas. 
+    """
+    Fit values to a gamma distribution and transform the values to corresponding normalized sigmas.
 
     :param values: 2-D array of values, with each row typically representing a year containing
                    twelve columns representing the respective calendar months, or 366 days per column
                    as if all years were leap years
     :param data_start_year: the initial year of the input values array
-    :param calibration_start_year: the initial year to use for the calibration period 
-    :param calibration_end_year: the final year to use for the calibration period 
+    :param calibration_start_year: the initial year to use for the calibration period
+    :param calibration_end_year: the final year to use for the calibration period
     :param periodicity: the type of time series represented by the input data, valid values are 'monthly' or 'daily'
-                             'monthly': array of monthly values, assumed to span full years, i.e. the first value 
-                             corresponds to January of the initial year and any missing final months of the final 
+                             'monthly': array of monthly values, assumed to span full years, i.e. the first value
+                             corresponds to January of the initial year and any missing final months of the final
                              year filled with NaN values, with size == # of years * 12
-                             'daily': array of full years of daily values with 366 days per year, as if each year were 
-                             a leap year and any missing final months of the final year filled with NaN values, 
+                             'daily': array of full years of daily values with 366 days per year, as if each year were
+                             a leap year and any missing final months of the final year filled with NaN values,
                              with array size == (# years * 366)
     :return: 2-D array of transformed/fitted values, corresponding in size and shape of the input array
     :rtype: numpy.ndarray of floats
-    '''
+    """
     
     # if we're passed all missing values then we can't compute anything, return the same array of missing values
     if (np.ma.is_masked(values) and values.mask.all()) or np.all(np.isnan(values)):
@@ -588,11 +597,11 @@ def transform_fitted_gamma(values,
             _logger.error(message)
             raise ValueError(message)
 
-        elif periodicity == 'monthly': 
+        elif periodicity is Periodicity.monthly:
             # we've been passed a 1-D array with shape (months), reshape it to 2-D with shape (years, 12)
             values = utils.reshape_to_2d(values, 12)
      
-        elif periodicity == 'daily':
+        elif periodicity is Periodicity.daily:
             # we've been passed a 1-D array with shape (days), reshape it to 2-D with shape (years, 366)
             values = utils.reshape_to_2d(values, 366)
             
@@ -620,10 +629,10 @@ def transform_fitted_gamma(values,
     
     # make sure that we have data within the full calibration period, otherwise use the full period of record
     if (calibration_start_year < data_start_year) or (calibration_end_year > data_end_year):
-        _logger.info('Insufficient data for the specified calibration period ({0}-{1}), instead using the full period '.format(calibration_start_year, 
-                                                                                                                              calibration_end_year) + 
-                    'of record ({0}-{1})'.format(data_start_year, 
-                                                 data_end_year))
+        _logger.info('Insufficient data for the specified calibration period ({0}-{1}),'.format(calibration_start_year,
+                                                                                                calibration_end_year) +
+                     ' instead using the full period of record ({0}-{1})'.format(data_start_year,
+                                                                                 data_end_year))
         calibration_start_year = data_start_year
         calibration_end_year = data_end_year
 
@@ -635,24 +644,25 @@ def transform_fitted_gamma(values,
     calibration_values = values[calibration_begin_index:calibration_end_index, :]
 
     # compute the gamma distribution's shape and scale parameters, alpha and beta
-    #TODO explain this better
+    # TODO explain this better
     means = np.nanmean(calibration_values, axis=0)
     log_means = np.log(means)
     logs = np.log(calibration_values)
     mean_logs = np.nanmean(logs, axis=0)
-    A = log_means - mean_logs
-    alphas = (1 + np.sqrt(1 + 4 * A / 3)) / (4 * A)
+    a = log_means - mean_logs
+    alphas = (1 + np.sqrt(1 + 4 * a / 3)) / (4 * a)
     betas = means / alphas
     
     # find the gamma probability values using the gamma CDF
     gamma_probabilities = scipy.stats.gamma.cdf(values, a=alphas, scale=betas)
 
-    #TODO explain this
+    # TODO explain this
     # (normalize including the probability of zero, putting into the range [0..1]?)    
     probabilities = probabilities_of_zero + ((1 - probabilities_of_zero) * gamma_probabilities)
     
-    # the values we'll return are the values at which the probabilities of a normal distribution are less than or equal to
-    # the computed probabilities, as determined by the normal distribution's quantile (or inverse cumulative distribution) function  
+    # the values we'll return are the values at which the probabilities of a normal distribution
+    # are less than or equal to the computed probabilities, as determined by the normal distribution's
+    # quantile (or inverse cumulative distribution) function
     return scipy.stats.norm.ppf(probabilities)
  
 # ############################################################################################################################################   
