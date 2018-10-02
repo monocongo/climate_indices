@@ -497,11 +497,11 @@ def transform_fitted_pearson(values,
             _logger.error(message)
             raise ValueError(message)
 
-        elif periodicity == 'monthly': 
+        elif periodicity is Periodicity.monthly:
             # we've been passed a 1-D array with shape (months), reshape it to 2-D with shape (years, 12)
             values = utils.reshape_to_2d(values, 12)
      
-        elif periodicity == 'daily':
+        elif periodicity is Periodicity.daily:
             # we've been passed a 1-D array with shape (days), reshape it to 2-D with shape (years, 366)
             values = utils.reshape_to_2d(values, 366)
             
@@ -588,11 +588,11 @@ def transform_fitted_gamma(values,
             _logger.error(message)
             raise ValueError(message)
 
-        elif periodicity == 'monthly': 
+        elif periodicity is Periodicity.monthly:
             # we've been passed a 1-D array with shape (months), reshape it to 2-D with shape (years, 12)
             values = utils.reshape_to_2d(values, 12)
      
-        elif periodicity == 'daily':
+        elif periodicity is Periodicity.daily:
             # we've been passed a 1-D array with shape (days), reshape it to 2-D with shape (years, 366)
             values = utils.reshape_to_2d(values, 366)
             
@@ -635,7 +635,7 @@ def transform_fitted_gamma(values,
     calibration_values = values[calibration_begin_index:calibration_end_index, :]
 
     # compute the gamma distribution's shape and scale parameters, alpha and beta
-    #TODO explain this better
+    # TODO explain this better
     means = np.nanmean(calibration_values, axis=0)
     log_means = np.log(means)
     logs = np.log(calibration_values)
@@ -647,12 +647,13 @@ def transform_fitted_gamma(values,
     # find the gamma probability values using the gamma CDF
     gamma_probabilities = scipy.stats.gamma.cdf(values, a=alphas, scale=betas)
 
-    #TODO explain this
+    # TODO explain this
     # (normalize including the probability of zero, putting into the range [0..1]?)    
     probabilities = probabilities_of_zero + ((1 - probabilities_of_zero) * gamma_probabilities)
     
-    # the values we'll return are the values at which the probabilities of a normal distribution are less than or equal to
-    # the computed probabilities, as determined by the normal distribution's quantile (or inverse cumulative distribution) function  
+    # the values we'll return are the values at which the probabilities of a normal distribution
+    # are less than or equal to the computed probabilities, as determined by the normal distribution's
+    # quantile (or inverse cumulative distribution) function
     return scipy.stats.norm.ppf(probabilities)
  
 # ############################################################################################################################################   

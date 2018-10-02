@@ -229,6 +229,7 @@ def create_dataset_climdivs(file_path,     # pragma: no cover
 # ----------------------------------------------------------------------------------------------------------------------
 def initialize_netcdf_divisions(file_path,
                                 template_netcdf,
+                                precip_var_name,
                                 variables,
                                 overwrite=False):
     """
@@ -251,16 +252,18 @@ def initialize_netcdf_divisions(file_path,
     ds = xr.open_dataset(template_netcdf)
 
     # get the dimensions of the precipitation variable, this will be used as the dimensions of new variables
-    var_dims = ds['prcp'].dims
+    var_dims = ds[precip_var_name].dims
+    dims_shape = ds[precip_var_name].shape
 
     # remove each of the data variables (leaving only coordinates and attributes)
     for var in ds.data_vars:
-        ds.drop(var)
+        ds = ds.drop(var)
 
     # create empty variables
-    for var_name, attributes in variables.getitems():
+    for var_name, attributes in variables.items():
         variable = xr.Variable(dims=var_dims,
-                               attrs=attributes)
+                               attrs=attributes,
+                               data=np.empty(shape=dims_shape))
         ds[var_name] = variable
 
     # write the dataset as the new NetCDF file
