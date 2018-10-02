@@ -153,33 +153,55 @@ Indices Processing
 
 Included are scripts which interact with the core computational package to compute
 one or more climate indices. These are ``process_grid.py`` which is used
-to compute indices from gridded NetCDF datasets, and ``process_divisions.py`` 
-which is used to compute indices from US climate division NetCDF datasets.
+to compute indices corresponding to gridded NetCDF datasets, and ``process_divisions.py``
+which is used to compute indices corresponding to US climate division NetCDF datasets.
 
 These Python scripts are written to be run via bash shell commands, i.e.
 
 ``$ python process_grid.py <options>``
 
+The options for these scripts are described below:
+
 
 +------------------------+-------------------------------------------------+
 | Option                 | Description                                     |
 +========================+=================================================+
-| index                  | Which of the available indices to compute.      |
+| index                  | Which of the climate indices to compute.        |
 |                        | Valid values are 'spi', 'spei', 'pnp', 'scaled',|
-|                        | and 'palmers'. 'scaled' indicates all three     |
-|                        | scaled indices (SPI, SPEI, and PNP) and         |
+|                        | 'pet', and 'palmers'. 'scaled' indicates all    |
+|                        | three scaled indices (SPI, SPEI, and PNP) and   |
 |                        | 'palmers' indicates all Palmer indices (PDSI,   |
 |                        | PHDI, PMDI, SCPDSI, and Z-Index).               |
+|                        |                                                 |
+|                        | **NOTE**: Only used for grid processing, as     |
+|                        | the divisions processing will compute all       |
+|                        | indices.                                        |
 +------------------------+-------------------------------------------------+
 | periodicity            | The periodicity of the input dataset files.     |
 |                        | Valid values are 'monthly' and 'daily'.         |
-|                        | Note: only SPI and PNP support daily inputs.    |
+|                        |                                                 |
+|                        | **NOTE**: Only used for grid processing, and    |
+|                        | only SPI and PNP support daily inputs.          |
++------------------------+-------------------------------------------------+
+| netcdf_divs            | Input NetCDF file containing a US climate       |
+|                        | divisions dataset with precipitation,           |
+|                        | temperature, and AWC variables. Computed indices|
+|                        | variables will be written into this file, with  |
+|                        | existing indices variables (if any) overwritten |
+|                        | with the computed values. This file serves as   |
+|                        | both input and output for the divisions         |
+|                        | processing.                                     |
+|                        |                                                 |
+|                        | **NOTE**: Only used for US climate divisions    |
+|                        | processing.                                     |
 +------------------------+-------------------------------------------------+
 | netcdf_precip          | Input NetCDF file containing a                  |
 |                        | precipitation dataset, required for all         |
 |                        | indices except for PET. Requires the use of     |
 |                        | **var_name_temp** in conjunction so as to       |
 |                        | identify the NetCDF's precipitation variable.   |
+|                        |                                                 |
+|                        | **NOTE**: Only used for grid processing.        |
 +------------------------+-------------------------------------------------+
 | var_name_precip        | Name of the precipitation variable within       |
 |                        | the input precipitation NetCDF.                 |
@@ -197,6 +219,8 @@ These Python scripts are written to be run via bash shell commands, i.e.
 |                        | Palmers. Requires the use of                    |
 |                        | **var_name_temp** in conjunction so as to       |
 |                        | identify the NetCDF's temperature variable.     |
+|                        |                                                 |
+|                        | **NOTE**: Only used for grid processing.        |
 +------------------------+-------------------------------------------------+
 | var_name_temp          | Name of the temperature variable within the     |
 |                        | input temperature NetCDF.                       |
@@ -210,33 +234,51 @@ These Python scripts are written to be run via bash shell commands, i.e.
 |                        | Palmers. Requires the use of                    |
 |                        | **var_name_pet** in conjunction so as to        |
 |                        | identify the NetCDF's PET variable.             |
+|                        |                                                 |
+|                        | **NOTE**: Only used for grid processing.        |
 +------------------------+-------------------------------------------------+
 | var_name_pet           | Name of the PET variable within the input PET   |
 |                        | NetCDF.                                         |
+|                        |                                                 |
+|                        | **NOTE**: Only used for grid processing.        |
 +------------------------+-------------------------------------------------+
 | netcdf_awc             | Input NetCDF file containing an available water |
 |                        | capacity, required for Palmers. Requires the    |                    
 |                        | use of **var_name_awc** in conjunction so as to |
 |                        | identify the NetCDF's AWC variable.             |
+|                        |                                                 |
+|                        | **NOTE**: Only used for grid processing.        |
 +------------------------+-------------------------------------------------+
 | awc_var_name           | Name of the available water capacity variable   |
 |                        | within the input AWC NetCDF.                    |
 +------------------------+-------------------------------------------------+
-| output_file_base       | Base file name for all computed output files.   |
-|                        | Each computed index will have an output file    |
-|                        | whose name will begin with this base name plus  |
-|                        | the index's abbreviation plus a month scale     |
+| output_file_base       | Base file name for all grid processing          |
+|                        | output files.                                   |
+|                        |                                                 |
+|                        | Each computed index will have a corresponding   |
+|                        | output file whose name will begin with          |
+|                        | this base name plus the index's                 |
+|                        | abbreviation plus a month scale                 |
 |                        | (if applicable), connected with underscores,    |
 |                        | plus the '.nc' extension. For example           |
-|                        | for SPI at 3-month                              |
-|                        | scale the resulting output files will be        |
+|                        | for SPI at 3-month scale                        |
+|                        | the resulting output files will be              |
 |                        | named **<output_file_base>_spi_gamma_03.nc**    |
 |                        | and **<output_file_base>_spi_pearson_03.nc**.   |
+|                        |                                                 |
+|                        | **NOTE**: Only used for grid processing.        |
 +------------------------+-------------------------------------------------+
 | scales                 | Time step scales over which the PNP, SPI, and   |
 |                        | SPEI values are to be computed. Required when   |
 |                        | the **index** argument is 'spi', 'spei',        |
-|                        | 'pnp', or 'scaled'.                             |
+|                        | 'pnp', or 'scaled'. If the **periodicity**      |
+|                        | option is specified then that option will infer |
+|                        | that the scales used here either month or day   |
+|                        | scales.                                         |
+|                        |                                                 |
+|                        | **NOTE**: When used for US climate divisions    |
+|                        | processing this option specifies to month       |
+|                        | scales.                                         |
 +------------------------+-------------------------------------------------+
 | calibration_start_year | Initial year of the calibration period.         |
 +------------------------+-------------------------------------------------+
@@ -247,6 +289,27 @@ These Python scripts are written to be run via bash shell commands, i.e.
 Example Command Line Invocations
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+US Climate Divisions (all indices)
+""""""""""""""""""""""""""""""""""
+
+``$ python process_divisions.py --scales 3 6
+--input_file ../example_inputs/nclimdiv.nc
+--output_file /data/nclimdiv_indices.nc
+--var_name_precip prcp
+--var_name_temp tavg --var_name_awc awc
+--calibration_start_year 1951 --calibration_end_year 2010``
+
+The above command will compute all indices from an input NetCDF dataset containing
+precipitation, temperature, and available water capacity variables (in this case,
+the US Climate Divisions NetCDF dataset provided in the example inputs directory).
+The input dataset is monthly data and the calibration period used will be
+Jan. 1951 through Dec. 2010. The indices will be computed at 3-month and 6-month scales.
+Upon completion the output NetCDF file (/data/nclimdiv_indices.nc
+in this example) will contain variables for all computed indices:
+`pet`, `pnp_03`, `pnp_06`, `spi_gamma_03`, `spi_gamma_06`, `spi_pearson_03`, `spi_pearson_06`,
+`spei_gamma_03`, `spei_gamma_06`, `spei_pearson_03`, `spei_pearson_06`, `pdsi`, `phdi`, `pmdi`,
+`scpdsi`, and `zindex`.
+
 PET monthly
 """"""""""""
 
@@ -256,9 +319,9 @@ PET monthly
 
 The above command will compute PET (potential evapotranspiration) using the 
 Thornthwaite method from an input temperature dataset (in this case, the reduced 
-resolution nClimGrid temperature dataset provided as an example input). The input 
-dataset is monthly data and the calibration period used will be Jan. 1951 through 
-Dec. 2010. The output file will be `<out_dir>/nclimgrid_lowres_pet.nc`.
+resolution nClimGrid temperature dataset provided in the example inputs directory).
+The input dataset is monthly data and the calibration period used will be Jan. 1951
+through Dec. 2010. The output file will be `<out_dir>/nclimgrid_lowres_pet.nc`.
 
 SPI daily
 """"""""""
