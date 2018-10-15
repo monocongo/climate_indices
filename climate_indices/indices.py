@@ -3,7 +3,7 @@ import numba
 import numpy as np
 from enum import Enum
 
-from climate_indices import compute, palmer, thornthwaite, utils
+from climate_indices import compute, eto, palmer, utils
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -461,7 +461,7 @@ def pet(temperature_celsius,
         (latitude_degrees < 90.0) and (latitude_degrees > -90.0):
         
         # compute and return the PET values using Thornthwaite's equation
-        return thornthwaite.potential_evapotranspiration(temperature_celsius, latitude_degrees, data_start_year)
+        return eto.eto_thornthwaite(temperature_celsius, latitude_degrees, data_start_year)
         
     else:
         message = 'Invalid latitude value: {0} (must be in degrees north, between -90.0 and 90.0 inclusive)'.format(latitude_degrees)

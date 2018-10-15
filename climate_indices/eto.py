@@ -275,11 +275,10 @@ def eto_hargreaves(daily_tmin_celsius,
 
     Input arrays are assumed to be 1-D (an arbitrary number of days) or 2-D (years x 366 days per year).
 
-    :param daily_tmin_celsius: daily minimum temperature, in degrees Celsius
-    :param daily_tmax_celsius: daily maximum temperature, in degrees Celsius
-    :param daily_tmean_celsius: daily mean temperature, in degrees Celsius
+    :param daily_tmin_celsius: array of daily minimum temperature values, in degrees Celsius
+    :param daily_tmax_celsius: array of daily maximum temperature values, in degrees Celsius
+    :param daily_tmean_celsius: array of daily mean temperature values, in degrees Celsius
     :param latitude_degrees: latitude of location, in degrees
-    :param day_of_year: day of the year, range: 1 - 366
     :return: potential evapotranspiration over grass (ETo), in millimeters per day
     """
 
@@ -292,6 +291,7 @@ def eto_hargreaves(daily_tmin_celsius,
     # keep the original length for conversion back to original size
     original_length = daily_tmean_celsius.size
 
+    # reshape to 2-D with 366 days per year, if not already in this shape
     daily_tmean_celsius = utils.reshape_to_2d(daily_tmean_celsius, 366)
 
     # at this point we assume that our dataset array has shape (years, 366)
