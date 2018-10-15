@@ -29,7 +29,7 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                      self.fixture_calibration_year_start_monthly, 
                      self.fixture_calibration_year_end_monthly)
         
-    #----------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------
     def test_scpdsi(self):
         
         # the indices.scpdsi() function is a wrapper for palmer.pdsi(), so we'll 
@@ -42,7 +42,7 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                        self.fixture_calibration_year_start_monthly, 
                        self.fixture_calibration_year_end_monthly)
         
-    #----------------------------------------------------------------------------------------
+    # ----------------------------------------------------------------------------------------
     def test_pet(self):
         
         # confirm that an input array of all NaNs for temperature results in the same array returned
@@ -93,7 +93,7 @@ class IndicesTestCase(fixtures.FixturesTestCase):
 
         # compute PET from the monthly temperatures, latitude, and initial years -- if this runs without 
         # error then this test passes, as the underlying method(s) being used to compute PET will be tested 
-        # in the relevant test_compute.py or test_thornthwaite.py codes
+        # in the relevant test_compute.py or test_eto.py codes
         indices.pet(self.fixture_temps_celsius,
                     self.fixture_latitude_degrees,
                     self.fixture_data_year_start_monthly)

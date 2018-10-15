@@ -6856,7 +6856,3 @@ class FixturesTestCase(unittest.TestCase):
     fixture_palmer_calibration_begin_year = 1931
     fixture_palmer_calibration_end_year = 1990
     fixture_palmer_data_begin_year = 1895
-
-    #=================================================================================================================
-    # Fixtures below are initially relevant to the test of the Thornthwaite code (thornthwaite.py).
-    
