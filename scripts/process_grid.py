@@ -3,11 +3,12 @@ from datetime import datetime
 import logging
 import math
 import multiprocessing
+
 import netCDF4
-import netcdf_utils
 import numpy as np
 
 from climate_indices import indices, utils
+from scripts import netcdf_utils
 
 #-----------------------------------------------------------------------------------------------------------------------
 # static constants
