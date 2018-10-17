@@ -35,6 +35,15 @@ class Periodicity(Enum):
     monthly = 12
     daily = 366
 
+    def __str__(self):
+        return self.name
+
+    @staticmethod
+    def from_string(s):
+        try:
+            return Periodicity[s]
+        except KeyError:
+            raise ValueError()
 
 # ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
