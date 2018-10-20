@@ -1,4 +1,4 @@
-#import lmoments3  """ Use this once it works with a more recent version of numpy """
+# import lmoments3  # use this once it works with a more recent version of numpy
 from enum import Enum
 import logging
 import math
@@ -44,6 +44,7 @@ class Periodicity(Enum):
             return Periodicity[s]
         except KeyError:
             raise ValueError()
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
@@ -97,19 +98,19 @@ def _estimate_pearson3_parameters(lmoments):
     :rtype: a 3-element, 1-D (flat) numpy array of floats
     """
     
-    C1 = 0.2906
-    C2 = 0.1882
-    C3 = 0.0442
-    D1 = 0.36067
-    D2 = -0.59567
-    D3 = 0.25361
-    D4 = -2.78861
-    D5 = 2.56096
-    D6 = -0.77045
-    T3 = abs(lmoments[2])  # L-skewness?
+    c1 = 0.2906
+    c2 = 0.1882
+    c3 = 0.0442
+    d1 = 0.36067
+    d2 = -0.59567
+    d3 = 0.25361
+    d4 = -2.78861
+    d5 = 2.56096
+    d6 = -0.77045
+    t3 = abs(lmoments[2])  # L-skewness?
     
     # ensure the validity of the L-moments
-    if (lmoments[1] <= 0) or (T3 >= 1):
+    if (lmoments[1] <= 0) or (t3 >= 1):
         message = 'Unable to calculate Pearson Type III parameters due to invalid L-moments'
         _logger.error(message)
         raise ValueError(message)
@@ -120,17 +121,17 @@ def _estimate_pearson3_parameters(lmoments):
     # the first Pearson Type III parameter is the same as the first L-moment
     pearson3_parameters[0] = lmoments[0]
     
-    if T3 <= 1e-6:
+    if t3 <= 1e-6:
         # skewness is effectively zero
         pearson3_parameters[1] = lmoments[1] * sqrt(pi)
 
     else:
-        if T3 < 0.333333333:
-            T = pi * 3 * T3 * T3
-            alpha = (1.0 + (C1 * T)) / (T * (1.0 + (T * (C2 + (T * C3)))))
+        if t3 < 0.333333333:
+            t = pi * 3 * t3 * t3
+            alpha = (1.0 + (c1 * t)) / (t * (1.0 + (t * (c2 + (t * c3)))))
         else:
-            T = 1.0 - T3
-            alpha = T * (D1 + (T * (D2 + (T * D3)))) / (1.0 + (T * (D4 + (T * (D5 + (T * D6))))))
+            t = 1.0 - t3
+            alpha = t * (d1 + (t * (d2 + (t * d3)))) / (1.0 + (t * (d4 + (t * (d5 + (t * d6))))))
             
         alpha_root = sqrt(alpha)
         beta = sqrt(pi) * lmoments[1] * exp(lgamma(alpha) - lgamma(alpha + 0.5))
@@ -206,7 +207,7 @@ def _estimate_lmoments(values):
         sums[k - 1] = temp
         k = k - 1
       
-    lmoments = np.zeros((3,))  
+    lmoments = np.zeros((3,))
     if sums[1] != 0:
         lmoments[0] = sums[0]
         lmoments[1] = sums[1]
@@ -253,7 +254,7 @@ def _pearson3_fitting_values(values):
     fitting_values = np.zeros((4, time_steps_per_year))
 
     # compute the probability of zero and Pearson parameters for each calendar time step
-    #TODO vectorize the below loop? create a @numba.vectorize() ufunc for application over the second axis of the values
+    # TODO vectorize the below loop? create a @numba.vectorize() ufunc for application over the second axis
     for time_step_index in range(time_steps_per_year):
     
         # get the values for the current calendar time step
@@ -324,8 +325,7 @@ def _pearson3cdf(value,
         # How does the comparable NCSU SPI code (Cumbie et al?) handle this?
         # _logger.debug("The second Pearson parameter is less than or equal to zero, invalid for the CDF calculation")
         return np.NaN
-    
-    result = 0
+
     skew = pearson3_parameters[2]
     if abs(skew) <= 1e-6:
     
@@ -388,25 +388,25 @@ def _error_function(value):
 
             else:
                 # coefficients of rational-function approximation
-                P0 = 220.2068679123761
-                P1 = 221.2135961699311
-                P2 = 112.0792914978709
-                P3 = 33.91286607838300
-                P4 = 6.373962203531650
-                P5 = 0.7003830644436881
-                P6 = 0.03526249659989109
-                Q0 = 440.4137358247522
-                Q1 = 793.8265125199484
-                Q2 = 637.3336333788311
-                Q3 = 296.5642487796737
-                Q4 = 86.78073220294608
-                Q5 = 16.06417757920695
-                Q6 = 1.755667163182642
-                Q7 = 0.08838834764831844
+                p0 = 220.2068679123761
+                p1 = 221.2135961699311
+                p2 = 112.0792914978709
+                p3 = 33.91286607838300
+                p4 = 6.373962203531650
+                p5 = 0.7003830644436881
+                p6 = 0.03526249659989109
+                q0 = 440.4137358247522
+                q1 = 793.8265125199484
+                q2 = 637.3336333788311
+                q3 = 296.5642487796737
+                q4 = 86.78073220294608
+                q5 = 16.06417757920695
+                q6 = 1.755667163182642
+                q7 = 0.08838834764831844
 
                 # calculate the error function from the input value and constant values
-                result = exponential * ((((((P6 * zz + P5) * zz + P4) * zz + P3) * zz + P2) * zz + P1) * zz + P0) /  \
-                         (((((((Q7 * zz + Q6) * zz + Q5) * zz + Q4) * zz + Q3) * zz + Q2) * zz + Q1) * zz + Q0)
+                result = exponential * ((((((p6 * zz + p5) * zz + p4) * zz + p3) * zz + p2) * zz + p1) * zz + p0) /  \
+                         (((((((q7 * zz + q6) * zz + q5) * zz + q4) * zz + q3) * zz + q2) * zz + q1) * zz + q0)
 
             if value > 0.0:
                 result = 1 - result
@@ -674,14 +674,15 @@ def transform_fitted_gamma(values,
     # quantile (or inverse cumulative distribution) function
     return scipy.stats.norm.ppf(probabilities)
  
-# ############################################################################################################################################   
-# #-------------------------------------------------------------------------------------------------------------------------------------------
-# #-------------------------------------------------------------------------------------------------------------------------------------------
-# # Below are new versions of the code to perform a transformed fitting to the Pearson Type III distribution (for SPI and SPEI) 
-# # using a) the SciPy statistics module for finding the fitting parameters instead of the existing method of estimating parameters
-# # using sample L-moments, and b) the SciPy statistics module for computing the cumulative distribution function. 
-# #-------------------------------------------------------------------------------------------------------------------------------------------
-# #-------------------------------------------------------------------------------------------------------------------------------------------
+# ######################################################################################################################
+# # --------------------------------------------------------------------------------------------------------------------
+# # --------------------------------------------------------------------------------------------------------------------
+# # Below are new versions of the code to perform a transformed fitting to the Pearson Type III distribution (for SPI
+# # and SPEI) using a) the SciPy statistics module for finding the fitting parameters instead of the existing method of
+# # estimating parameters using sample L-moments, and b) the SciPy statistics module for computing the cumulative
+# # distribution function.
+# # --------------------------------------------------------------------------------------------------------------------
+# # --------------------------------------------------------------------------------------------------------------------
 # #@numba.jit
 # def transform_fitted_pearson_new(values,
 #                                  data_start_year,
@@ -759,25 +760,30 @@ def transform_fitted_gamma(values,
 #                 if not math.isnan(pe3_cdf):
 #                 
 #                     # calculate the probability value, clipped between 0 and 1
-#                     probability_value = np.clip((probability_of_zero + ((1.0 - probability_of_zero) * pe3_cdf)), 0.0, 1.0)
+#                     probability_value = np.clip((probability_of_zero + ((1.0 - probability_of_zero) * pe3_cdf)),
+#                                                  0.0,
+#                                                  1.0)
 #     
-#                     # the values we'll return are the values at which the probabilities of a normal distribution are less than or equal to
-#                     # the computed probabilities, as determined by the normal distribution's quantile (or inverse cumulative distribution) function  
+#                     # the values we'll return are the values at which the probabilities of a normal distribution
+#                     # are less than or equal to the computed probabilities, as determined by the normal distribution's
+#                     # quantile (or inverse cumulative distribution) function
 #                     fitted_values[year_index, calendar_month_index] = scipy.stats.norm.ppf(probability_value)
 #                 
 #     return fitted_values
 # 
-# #-----------------------------------------------------------------------------------------------------------------------
+# # --------------------------------------------------------------------------------------------------------------------
 # #@numba.jit
 # def _pearson3_fitting_values_new(values, 
 #                                 data_start_year, 
 #                                 calibration_start_year,
 #                                 calibration_end_year):
 #     '''
-#     This function computes the calendar monthly probability of zero and skew corresponding to an array of monthly values.
+#     This function computes the calendar monthly probability of zero and skew corresponding
+#     to an array of monthly values.
 #     
 #     :param values: 2-D array of monthly values, with each row representing a year containing 12 values corresponding 
-#                    to the calendar months of that year, and assuming that the first value of the array is January of the initial year
+#                    to the calendar months of that year, and assuming that the first value of the array is January of
+#                    the initial year
 #     :param data_start_year: the initial year of the input values array
 #     :param calibration_start_year: the initial year to use for the calibration period 
 #     :param calibration_end_year: the final year to use for the calibration period 
@@ -793,8 +799,9 @@ def transform_fitted_gamma(values,
 #     
 #     # make sure that we have data within the full calibration period, otherwise use the full period of record
 #     if (calibration_start_year < data_start_year) or (calibration_end_year > data_end_year):
-#         _logger.info('Insufficient data for the specified calibration period ({0}-{1}), instead using the full period '.format(calibration_start_year, 
-#                                                                                                                               calibration_end_year) + 
+#         _logger.info('Insufficient data for the specified calibration period ({0}-{1}), '.format(calibration_start_year,
+#                                                                                                  calibration_end_year) +
+#                     instead using the full period ' +
 #                     'of record ({0}-{1})'.format(data_start_year, 
 #                                                  data_end_year))
 #         calibration_start_year = data_start_year
