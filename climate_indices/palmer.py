@@ -26,7 +26,7 @@ warnings.simplefilter('ignore', Warning)
 
 # ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def _water_balance(AWC,
+def _water_balance(awc,
                    PET,
                    P):
     """
@@ -35,7 +35,7 @@ def _water_balance(AWC,
      
     Input arrays are expected to be the same size, corresponding to the total number of months.
     
-    :param AWC: available water capacity (total, including top/surface inch), in inches 
+    :param awc: available water capacity (total, including top/surface inch), in inches 
     :param PET: potential evapotranspiration, in inches 
     :param P: precipitation, in inches 
     :return: seven numpy arrays with values for evapotranspiration, potential recharge, recharge, runoff, 
@@ -83,27 +83,27 @@ def _water_balance(AWC,
    
     # NOTE: SOIL MOISTURE STORAGE IS HANDLED BY DIVIDING THE SOIL INTO TWO
     # LAYERS AND ASSUMING THAT 1 INCH OF WATER CAN BE STORED IN THE SURFACE
-    # LAYER. AWC IS THE COMBINED AVAILABLE MOISTURE CAPACITY IN BOTH SOIL
+    # LAYER. awc IS THE COMBINED AVAILABLE MOISTURE CAPACITY IN BOTH SOIL
     # LAYERS. THE UNDERLYING LAYER HAS AN AVAILABLE CAPACITY THAT DEPENDS 
     # ON THE SOIL CHARACTERISTICS OF THE LOCATION. THE SOIL MOISTURE 
     # STORAGE WITHIN THE SURFACE LAYER (UNDERLYING LAYER) IS THE AMOUNT OF 
     # AVAILABLE MOISTURE STORED AT THE BEGINNING OF THE MONTH IN THE 
     # SURFACE (UNDERLYING) LAYER.
     
-    # Ss_AWC is the available moisture capacity in the surface soil layer; it is a constant across all locations.
-    Ss_AWC = 1 
+    # Ss_awc is the available moisture capacity in the surface soil layer; it is a constant across all locations.
+    Ss_awc = 1 
     
     #!!!!!! VALIDATE !!!!!!!!!!!!!!!!!!!!!!!!!!
     #
-    # proposed fix for locations where the AWC is less than 1.0 inch
+    # proposed fix for locations where the awc is less than 1.0 inch
     #
-    if AWC < 1.0:
-        Ss_AWC = AWC
+    if awc < 1.0:
+        Ss_awc = awc
     #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!    
     
 
-    # Su_AWC is the available moisture capacity in the underlying soil layer; it is a location-specific constant.
-    Su_AWC = AWC - Ss_AWC
+    # Su_awc is the available moisture capacity in the underlying soil layer; it is a location-specific constant.
+    Su_awc = awc - Ss_awc
     
     ## INITIAL CONDITIONS
     
@@ -112,11 +112,11 @@ def _water_balance(AWC,
     # DURING A MONTH AND YEAR IN WHICH THE SOIL MOISTURE STORAGE CAN BE 
     # ASSUMED TO BE FULL.
     
-    # S0 = AWC is the initial combined soil moisture storage 
+    # S0 = awc is the initial combined soil moisture storage 
     # in both soil layers. Within the following water balance
     # calculation loop, S0 is the soil moisture storage in
     # both soil layers at the beginning of each month.
-    S0 = AWC 
+    S0 = awc 
     
     # Ss0 = 1 is the initial soil moisture storage in the surface 
     # soil layer. Within the following water balance calculation
@@ -126,18 +126,18 @@ def _water_balance(AWC,
     
     #!!!!!! VALIDATE !!!!!!!!!!!!!!!!!!!!!!!!!!
     #
-    # proposed fix for locations where the AWC is less than 1.0 inch
+    # proposed fix for locations where the awc is less than 1.0 inch
     #
-    if AWC < 1.0:
-        Ss0 = AWC
+    if awc < 1.0:
+        Ss0 = awc
     #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!    
 
-    # Su0 = Su_AWC is the initial soil moisture storage in 
+    # Su0 = Su_awc is the initial soil moisture storage in 
     # the underlying soil layer. Within the following 
     # water balance calculation loop, Su0 is the soil
     # moisture storage in the underlying soil layer at the 
     # beginning of each month.
-    Su0 = Su_AWC
+    Su0 = Su_awc
     
     ## CALCULATION OF THE WATER BALANCE
     
@@ -181,14 +181,14 @@ def _water_balance(AWC,
         
         # PR is the potential recharge to the combined surface and underlying 
         # soil moisture storage layers at the beginning of the month.
-        PR[k] = AWC - S0
+        PR[k] = awc - S0
         
         # RO is the actual runoff from the combined surface and underlying soil moisture storage layers.
         
         # PRO is the potential runoff. According to Alley (1984),
-        # PRO = AWC - PR = Ss + Su; here Ss and Su refer to those values at
+        # PRO = awc - PR = Ss + Su; here Ss and Su refer to those values at
         # the beginning of the month: Ss0 and Su0.
-        PRO[k] = AWC - PR[k]
+        PRO[k] = awc - PR[k]
         
         # A is the difference between the soil moisture in the surface soil layer and the potential evapotranspiration.
         A[k] = Ss0 - PET[k]
@@ -200,7 +200,7 @@ def _water_balance(AWC,
         # INTERNAL CALCULATIONS
 
         # calculate potential loss values        
-        PL[k], PLs[k], PLu[k] = _water_balance_potential_loss(A[k], PLs[k], PLu[k], PET[k], Ss0, Su0, AWC)
+        PL[k], PLs[k], PLu[k] = _water_balance_potential_loss(A[k], PET[k], Ss0, Su0, awc)
         
         if B[k] >= 0:
             # B >= 0 indicates that there is sufficient 
@@ -236,7 +236,7 @@ def _water_balance(AWC,
                 Ls[k] = 0 
                 Ss[k] = 1   # the approximate number of inches of moisture allocated to the surface soil layer
                 D[k] = B[k] - Rs[k] # amount of excess precipitation (in inches) left over after the surface soil layer is recharged
-                E[k] = Su_AWC - Su0  # amount of room (in inches) in the underlying soil layer available to be recharged with excess precipitation
+                E[k] = Su_awc - Su0  # amount of room (in inches) in the underlying soil layer available to be recharged with excess precipitation
                 if E[k] > D[k]: 
                     # E > D indicates that there is more room in the underlying soil layer than there is excess 
                     # precipitation available after recharge to the surface soil layer. Therefore, there is no runoff.
@@ -288,10 +288,10 @@ def _water_balance(AWC,
                 Ls[k] = Ss0
                 Rs[k] = 0
                 Ss[k] = 0
-                Lu[k] = min(((abs(B[k]) - Ls[k]) * Su0) / AWC, Su0)
+                Lu[k] = min(((abs(B[k]) - Ls[k]) * Su0) / awc, Su0)
                 #*
                 #
-                # Lu[k] = min((abs(B[k]) - Ls[k])*Su0/(AWC + 1),Su0);
+                # Lu[k] = min((abs(B[k]) - Ls[k])*Su0/(awc + 1),Su0);
                 # NOTE: This equation above was used by the NCDC in their FORTRAN code (pdi.f)
                 # prior to 2013. See Jacobi et al. (2013) for a full explanation. 
                 #
@@ -321,36 +321,40 @@ def _water_balance(AWC,
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def _water_balance_potential_loss(A, PLs, PLu, PET, Ss0, Su0, AWC):
+def _water_balance_potential_loss(a,
+                                  pet,
+                                  stored_moisture_surface,
+                                  stored_moisture_under,
+                                  awc):
 
     # A >= 0 indicates that there is sufficient moisture in the surface soil layer to satisfy the PET 
     # requirement for month k. Therefore, there is potential moisture loss from only the surface soil layer.
-    if A >= 0: 
-        PLs = PET         
-        PLu = 0
+    if a >= 0:
+        potential_loss_surface = pet
+        potential_loss_under = 0
         
     else: 
         # A < 0 indicates that there is not sufficient moisture in the surface soil layer to satisfy 
         # the PET requirement for month k. Therefore, there is potential moisture loss from both the surface
         # and underlying soil layers. The equation for PLu is given in Alley (1984).
-        PLs = Ss0
-        PLu = ((PET - PLs) * Su0) / AWC
+        potential_loss_surface = stored_moisture_surface
+        potential_loss_under = ((pet - potential_loss_surface) * stored_moisture_under) / awc
         
         # Su0 >= PLu indicates that there is sufficient moisture in the underlying soil layer to (along with 
         # the moisture in the surface soil layer) satisfy the PET requirement for month k; therefore, PLu is
         # as calculated according to the equation given in Alley (1984).
-        if Su0 >= PLu: 
-            PLu = ((PET - PLs) * Su0) / AWC
+        if stored_moisture_under >= potential_loss_under:
+            potential_loss_under = ((pet - potential_loss_surface) * stored_moisture_under) / awc
         
         else:
             # Su0 < PLu indicates that there is not sufficient moisture in the underlying soil layer to (along with  
             # the moisture in the surface soil layer) satisfy the PET requirement for month k; therefore, PLu is 
             # equal to the moisture storage in the underlying soil layer at the beginning of the month.
-            PLu = Su0
+            potential_loss_under = stored_moisture_under
     
-    PL = PLs + PLu
+    PL = potential_loss_surface + potential_loss_under
     
-    return PL, PLs, PLu
+    return PL, potential_loss_surface, potential_loss_under
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -499,15 +503,15 @@ def _climatic_characteristic(alpha,
                              beta,
                              gamma,
                              delta,
-                             P,
-                             ET,
-                             PET,
-                             R,
-                             PR,
-                             RO,
-                             PRO,
-                             L,
-                             PL,
+                             precip,
+                             evapotranspiration,
+                             potential_evapotranspiration,
+                             recharge,
+                             potential_recharge,
+                             runoff,
+                             potential_runoff,
+                             loss,
+                             potential_loss,
                              data_start_year,
                              calibration_start_year,
                              calibration_end_year):
@@ -515,19 +519,19 @@ def _climatic_characteristic(alpha,
     total_calibration_years = calibration_end_year - calibration_start_year + 1
     
     # get only the data from within the calibration period
-    calibrated_arrays = _calibrate_data([P, PET, ET, PR, R, PRO, RO, PL, L],
+    calibrated_arrays = _calibrate_data([precip, potential_evapotranspiration, evapotranspiration, potential_recharge, recharge, potential_runoff, runoff, potential_loss, loss],
                                         data_start_year,
                                         calibration_start_year,
                                         calibration_end_year)
-    P = calibrated_arrays[0]
-    PET = calibrated_arrays[1]
-    ET = calibrated_arrays[2]
-    PR = calibrated_arrays[3]
-    R = calibrated_arrays[4]
-    PRO = calibrated_arrays[5]
-    RO = calibrated_arrays[6]
-    PL = calibrated_arrays[7]
-    L = calibrated_arrays[8]
+    precip = calibrated_arrays[0]
+    potential_evapotranspiration = calibrated_arrays[1]
+    evapotranspiration = calibrated_arrays[2]
+    potential_recharge = calibrated_arrays[3]
+    recharge = calibrated_arrays[4]
+    potential_runoff = calibrated_arrays[5]
+    runoff = calibrated_arrays[6]
+    potential_loss = calibrated_arrays[7]
+    loss = calibrated_arrays[8]
 
     # CALIBRATED CAFEC, K, AND d CALCULATION
     # NOTE: 
@@ -539,14 +543,14 @@ def _climatic_characteristic(alpha,
     for k in range(total_calibration_years):
         for i in range(12):
             # CAFEC_hat is calculated for month i of year k of the calibration period.
-            CAFEC_hat = (alpha[i] * PET[k, i]) + \
-                        (beta[i] * PR[k, i]) + \
-                        (gamma[i] * PRO[k, i]) - \
-                        (delta[i] * PL[k, i])
+            cafec_hat = (alpha[i] * potential_evapotranspiration[k, i]) + \
+                        (beta[i] * potential_recharge[k, i]) + \
+                        (gamma[i] * potential_runoff[k, i]) - \
+                        (delta[i] * potential_loss[k, i])
                               
             # Calculate d_hat, the difference between actual precipitation
             # and CAFEC precipitation for month i of year k of the calibration period.
-            d_hat[k, i] = P[k, i] - CAFEC_hat
+            d_hat[k, i] = precip[k, i] - cafec_hat
     
     # NOTE: D_hat, T_hat, K_hat, and z_hat are all calibrated
     # variables - i.e., they are calculated only for the calibration period.
@@ -554,11 +558,11 @@ def _climatic_characteristic(alpha,
     T_hat = np.empty((12,)) 
     K_hat = np.empty((12,)) 
     z_hat_m = np.empty((12,)) 
-    P_bar = np.nanmean(P, axis=0)
-    PET_bar = np.nanmean(PET, axis=0)
-    R_bar = np.nanmean(R, axis=0)
-    L_bar = np.nanmean(L, axis=0)
-    RO_bar = np.nanmean(RO, axis=0)
+    P_bar = np.nanmean(precip, axis=0)
+    PET_bar = np.nanmean(potential_evapotranspiration, axis=0)
+    R_bar = np.nanmean(recharge, axis=0)
+    L_bar = np.nanmean(loss, axis=0)
+    RO_bar = np.nanmean(runoff, axis=0)
             
     for i in range(12):
                     

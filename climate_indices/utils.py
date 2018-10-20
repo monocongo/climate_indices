@@ -145,7 +145,7 @@ def reshape_to_2d(values,
             _logger.error(message)
             raise ValueError(message)
     
-    # otherwise make sure that we've been passed in a flat (1-D) array of values    
+    # otherwise make sure that we've been passed a flat (1-D) array of values
     elif len(shape) != 1:
         message = 'Values array has an invalid shape (not 1-D or 2-D): {0}'.format(shape)
         _logger.error(message)
@@ -155,14 +155,13 @@ def reshape_to_2d(values,
     final_year_values = shape[0] % second_axis_length
     if final_year_values > 0:
         pads = second_axis_length - final_year_values
-        pad_values = np.full((pads,), np.NaN)
-        values = np.append(values, pad_values)
-        
+        values = np.pad(values, pad_width=(0, pads), mode='constant', constant_values=np.NaN)
+
     # we should have an ordinal number of years now (ordinally divisible by second_axis_length)
-    increments = int(values.shape[0] / second_axis_length)
+    first_axis_length = int(values.shape[0] / second_axis_length)
     
     # return the reshaped array
-    return np.reshape(values, (increments, second_axis_length))
+    return np.reshape(values, newshape=(first_axis_length, second_axis_length))
 
 
 # ----------------------------------------------------------------------------------------------------------------------

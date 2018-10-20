@@ -457,13 +457,14 @@ def pet(temperature_celsius,
             return temperature_celsius
         
     # make sure we're not dealing with a NaN or out-of-range latitude value
-    if latitude_degrees is not None and not np.isnan(latitude_degrees) and \
-        (latitude_degrees < 90.0) and (latitude_degrees > -90.0):
+    if latitude_degrees is not None and not np.isnan(latitude_degrees) \
+            and (latitude_degrees < 90.0) and (latitude_degrees > -90.0):
         
         # compute and return the PET values using Thornthwaite's equation
         return eto.eto_thornthwaite(temperature_celsius, latitude_degrees, data_start_year)
         
     else:
-        message = 'Invalid latitude value: {0} (must be in degrees north, between -90.0 and 90.0 inclusive)'.format(latitude_degrees)
+        message = "Invalid latitude value: {lat} ".format(lat=latitude_degrees) + \
+                  "(must be in degrees north, between -90.0 and 90.0 inclusive)"
         _logger.error(message)
         raise ValueError(message)

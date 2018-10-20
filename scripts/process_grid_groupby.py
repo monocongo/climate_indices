@@ -226,6 +226,7 @@ def _validate_args(args):
             raise ValueError(message)
 
 
+# ----------------------------------------------------------------------------------------------------------------------
 def spi_gamma(data_array,
               scale,
               start_year,
@@ -235,12 +236,12 @@ def spi_gamma(data_array,
 
     original_shape = data_array.shape
     spi = indices.spi(data_array.values.squeeze(),
-                       scale,
-                       indices.Distribution.gamma,
-                       start_year,
-                       calibration_year_initial,
-                       calibration_year_final,
-                       periodicity)
+                      scale,
+                      indices.Distribution.gamma,
+                      start_year,
+                      calibration_year_initial,
+                      calibration_year_final,
+                      periodicity)
     data_array.values = np.reshape(spi, newshape=original_shape)
 
     return data_array
@@ -318,7 +319,7 @@ if __name__ == '__main__':
         if arguments.index in ['spi', 'scaled']:
 
             # open the precipitation NetCDF as an xarray DataSet object
-            dataset = xr.open_dataset(arguments.netcdf_precip)  # , chunks={'lat': 10, 'lon': 10})
+            dataset = xr.open_dataset(arguments.netcdf_precip) # , chunks={'lat': 1})
 
             # trim out all data variables from the dataset except the precipitation
             for var in dataset.data_vars:
@@ -348,7 +349,7 @@ if __name__ == '__main__':
                                                                        incr=scale_increment,
                                                                        index='SPI'))
 
-                # group the data by geospatial point and apply the SPI/Gamma function to each time series group
+                # group the data by lat/lon point and apply the SPI/Gamma function to each time series group
                 da_spi = da_precip.groupby('point').apply(spi_gamma,
                                                           scale=timestep_scale,
                                                           start_year=data_start_year,
@@ -366,7 +367,7 @@ if __name__ == '__main__':
                 for var_name in index_dataset.data_vars:
                     index_dataset = index_dataset.drop(var_name)
 
-                # TODO set global attributes accordinagly for this new dataset
+                # TODO set global attributes accordingly for this new dataset
 
                 # create a new variables to contain the SPI for the scale, assign into the dataset
                 long_name = "Standardized Precipitation Index (Gamma distribution), "\
@@ -380,7 +381,7 @@ if __name__ == '__main__':
                 index_dataset[var_name] = spi_var
 
                 # write the dataset as NetCDF
-                index_dataset.to_netcdf(arguments.output_file_base + var_name + ".nc")
+                index_dataset.to_netcdf(arguments.output_file_base + "_" + var_name + ".nc")
 
         # report on the elapsed time
         end_datetime = datetime.now()
