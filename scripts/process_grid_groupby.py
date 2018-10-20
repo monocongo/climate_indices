@@ -2,7 +2,6 @@ import argparse
 from datetime import datetime
 import logging
 
-import netCDF4
 import numpy as np
 import xarray as xr
 
@@ -26,7 +25,7 @@ def _validate_args(args):
     """
 
     # the dimensions we expect to find for each data variable (precipitation, temperature, and/or PET)
-    expected_dimensions = ('lat', 'lon', 'time')
+    expected_dimensions = [('lat', 'lon', 'time'), ('time', 'lat', 'lon')]
 
     # all indices except PET require a precipitation file
     if args.index != 'pet':
@@ -44,7 +43,7 @@ def _validate_args(args):
             raise ValueError(message)
 
         # validate the precipitation file itself
-        with netCDF4.Dataset(args.netcdf_precip) as dataset_precip:
+        with xr.open_dataset(args.netcdf_precip) as dataset_precip:
 
             # make sure we have a valid precipitation variable name
             if args.var_name_precip not in dataset_precip.variables:
@@ -54,17 +53,17 @@ def _validate_args(args):
                 raise ValueError(message)
 
             # verify that the precipitation variable's dimensions are in the expected order
-            dimensions = dataset_precip.variables[args.var_name_precip].dimensions
-            if dimensions != expected_dimensions:
+            dimensions = dataset_precip[args.var_name_precip].dims
+            if dimensions not in expected_dimensions:
                 message = "Invalid dimensions of the precipitation variable: {dims}, ".format(dims=dimensions) + \
                           "(expected names and order: {dims})".format(dims=expected_dimensions)
                 _logger.error(message)
                 raise ValueError(message)
 
             # get the sizes of the latitude and longitude coordinate variables
-            lats_precip = dataset_precip.variables['lat'][:]
-            lons_precip = dataset_precip.variables['lon'][:]
-            times_precip = dataset_precip.variables['time'][:]
+            lats_precip = dataset_precip['lat'].values[:]
+            lons_precip = dataset_precip['lon'].values[:]
+            times_precip = dataset_precip['time'].values[:]
 
     else:
 
@@ -92,7 +91,7 @@ def _validate_args(args):
                 raise ValueError(msg)
 
             # validate the PET file
-            with netCDF4.Dataset(args.netcdf_pet) as dataset_pet:
+            with xr.open_dataset(args.netcdf_pet) as dataset_pet:
 
                 # make sure we have a valid PET variable name
                 if args.var_name_pet is None:
@@ -106,7 +105,7 @@ def _validate_args(args):
                     raise ValueError(message)
 
                 # verify that the PET variable's dimensions are in the expected order
-                dimensions = dataset_pet.variables[args.var_name_pet].dimensions
+                dimensions = dataset_pet[args.var_name_pet].dims
                 if dimensions != expected_dimensions:
                     message = "Invalid dimensions of the PET variable: {dims}, ".format(dims=dimensions) + \
                               "(expected names and order: {dims})".format(dims=expected_dimensions)
@@ -114,15 +113,15 @@ def _validate_args(args):
                     raise ValueError(message)
 
                 # verify that the coordinate variables match with those of the precipitation dataset
-                if not np.array_equal(lats_precip, dataset_pet.variables['lat'][:]):
+                if not np.array_equal(lats_precip, dataset_pet['lat'][:]):
                     message = "Precipitation and PET variables contain non-matching latitudes"
                     _logger.error(message)
                     raise ValueError(message)
-                elif not np.array_equal(lons_precip, dataset_pet.variables['lon'][:]):
+                elif not np.array_equal(lons_precip, dataset_pet['lon'][:]):
                     message = "Precipitation and PET variables contain non-matching longitudes"
                     _logger.error(message)
                     raise ValueError(message)
-                elif not np.array_equal(times_precip, dataset_pet.variables['time'][:]):
+                elif not np.array_equal(times_precip, dataset_pet['time'][:]):
                     message = "Precipitation and PET variables contain non-matching times"
                     _logger.error(message)
                     raise ValueError(message)
@@ -137,7 +136,7 @@ def _validate_args(args):
         else:
 
             # validate the temperature file
-            with netCDF4.Dataset(args.netcdf_temp) as dataset_temp:
+            with xr.open_dataset(args.netcdf_temp) as dataset_temp:
 
                 # make sure we have a valid temperature variable name
                 if args.var_name_temp is None:
@@ -151,7 +150,7 @@ def _validate_args(args):
                     raise ValueError(message)
 
                 # verify that the temperature variable's dimensions are in the expected order
-                dimensions = dataset_temp.variables[args.var_name_temp].dimensions
+                dimensions = dataset_temp[args.var_name_temp].dims
                 if dimensions != expected_dimensions:
                     message = "Invalid dimensions of the temperature variable: {dims}, ".format(dims=dimensions) + \
                               "(expected names and order: {dims})".format(dims=expected_dimensions)
@@ -159,15 +158,15 @@ def _validate_args(args):
                     raise ValueError(message)
 
                 # verify that the coordinate variables match with those of the precipitation dataset
-                if not np.array_equal(lats_precip, dataset_temp.variables['lat'][:]):
+                if not np.array_equal(lats_precip, dataset_temp['lat'][:]):
                     message = "Precipitation and temperature variables contain non-matching latitudes"
                     _logger.error(message)
                     raise ValueError(message)
-                elif not np.array_equal(lons_precip, dataset_temp.variables['lon'][:]):
+                elif not np.array_equal(lons_precip, dataset_temp['lon'][:]):
                     message = "Precipitation and temperature variables contain non-matching longitudes"
                     _logger.error(message)
                     raise ValueError(message)
-                elif not np.array_equal(times_precip, dataset_temp.variables['time'][:]):
+                elif not np.array_equal(times_precip, dataset_temp['time'][:]):
                     message = "Precipitation and temperature variables contain non-matching times"
                     _logger.error(message)
                     raise ValueError(message)
@@ -182,7 +181,7 @@ def _validate_args(args):
                 raise ValueError(msg)
 
             # validate the AWC file
-            with netCDF4.Dataset(args.netcdf_awc) as dataset_awc:
+            with xr.open_dataset(args.netcdf_awc) as dataset_awc:
 
                 # make sure we have a valid PET variable name
                 if args.var_name_awc is None:
@@ -196,7 +195,7 @@ def _validate_args(args):
                     raise ValueError(message)
 
                 # verify that the AWC variable's dimensions are in the expected order
-                dimensions = dataset_awc.variables[args.var_name_awc].dimensions
+                dimensions = dataset_awc[args.var_name_awc].dims
                 if (dimensions != ('lat', 'lon')) and (dimensions != expected_dimensions):
                     message = "Invalid dimensions of the AWC variable: {dims}, ".format(dims=dimensions) + \
                               "(expected names and order: {dims})".format(dims=expected_dimensions)
@@ -204,11 +203,11 @@ def _validate_args(args):
                     raise ValueError(message)
 
                 # verify that the lat and lon coordinate variables match with those of the precipitation dataset
-                if not np.array_equal(lats_precip, dataset_awc.variables['lat'][:]):
+                if not np.array_equal(lats_precip, dataset_awc['lat'][:]):
                     message = "Precipitation and AWC variables contain non-matching latitudes"
                     _logger.error(message)
                     raise ValueError(message)
-                elif not np.array_equal(lons_precip, dataset_awc.variables['lon'][:]):
+                elif not np.array_equal(lons_precip, dataset_awc['lon'][:]):
                     message = "Precipitation and AWC variables contain non-matching longitudes"
                     _logger.error(message)
                     raise ValueError(message)
@@ -229,18 +228,22 @@ def _validate_args(args):
 
 def spi_gamma(data_array,
               scale,
-              data_start_year,
+              start_year,
               calibration_year_initial,
               calibration_year_final,
               periodicity):
 
-    return indices.spi(data_array,
+    original_shape = data_array.shape
+    spi = indices.spi(data_array.values.squeeze(),
                        scale,
                        indices.Distribution.gamma,
-                       data_start_year,
+                       start_year,
                        calibration_year_initial,
                        calibration_year_final,
                        periodicity)
+    data_array.values = np.reshape(spi, newshape=original_shape)
+
+    return data_array
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -250,12 +253,12 @@ if __name__ == '__main__':
     
     Example command line arguments for SPI only using monthly precipitation input:
     
+    --index spi 
+    --periodicity monthly
     --scales 1 2 3 6 9 12 24 
     --calibration_start_year 1998 
     --calibration_end_year 2016 
-    --index spi 
-    --periodicity monthly
-    --netcdf_precip /tmp/jadams/cmorph_daily_prcp_199801_201707.nc 
+    --netcdf_precip example_data/nclimgrid_prcp_lowres.nc 
     --var_name_precip prcp 
     --output_file_base ~/data/cmorph/spi/cmorph 
     """
@@ -268,28 +271,29 @@ if __name__ == '__main__':
 
         # parse the command line arguments
         parser = argparse.ArgumentParser()
-        parser.add_argument("--netcdf_precip",
-                            help="Precipitation NetCDF file to be used as input for indices computations")
-        parser.add_argument("--var_name_precip",
-                            help="Precipitation variable name used in the precipitation NetCDF file")
-        parser.add_argument("--output_file_base",
-                            help="Base output file path and name for the resulting output files",
-                            required=True)
-        parser.add_argument("--calibration_start_year",
-                            help="Initial year of the calibration period",
-                            type=int)
-        parser.add_argument("--calibration_end_year",
-                            help="Final year of calibration period",
-                            type=int)
         parser.add_argument("--index",
                             help="Indices to compute",
                             choices=['spi', 'spei', 'pnp', 'scaled', 'pet', 'palmers'],
                             required=True)
         parser.add_argument("--periodicity",
                             help="Process input as either monthly or daily values",
-                            choices=list(compute.Periodicity),
+                            choices=[compute.Periodicity.monthly, compute.Periodicity.daily],
                             type=compute.Periodicity.from_string,
                             required=True)
+        parser.add_argument("--scales",
+                            help="Timestep scales over which the PNP, SPI, and SPEI values are to be computed",
+                            type=int,
+                            nargs='*')
+        parser.add_argument("--calibration_start_year",
+                            help="Initial year of the calibration period",
+                            type=int)
+        parser.add_argument("--calibration_end_year",
+                            help="Final year of calibration period",
+                            type=int)
+        parser.add_argument("--netcdf_precip",
+                            help="Precipitation NetCDF file to be used as input for indices computations")
+        parser.add_argument("--var_name_precip",
+                            help="Precipitation variable name used in the precipitation NetCDF file")
         parser.add_argument("--netcdf_temp",
                             help="Temperature NetCDF file to be used as input for indices computations")
         parser.add_argument("--var_name_temp",
@@ -302,10 +306,9 @@ if __name__ == '__main__':
                             help="Available water capacity NetCDF file to be used as input for the Palmer computations")
         parser.add_argument("--var_name_awc",
                             help="Available water capacity variable name used in the AWC NetCDF file")
-        parser.add_argument("--scales",
-                            help="Timestep scales over which the PNP, SPI, and SPEI values are to be computed",
-                            type=int,
-                            nargs='*')
+        parser.add_argument("--output_file_base",
+                            help="Base output file path and name for the resulting output files",
+                            required=True)
         arguments = parser.parse_args()
 
         # validate the arguments
@@ -315,7 +318,7 @@ if __name__ == '__main__':
         if arguments.index in ['spi', 'scaled']:
 
             # open the precipitation NetCDF as an xarray DataSet object
-            dataset = xr.open_dataset(arguments.netcdf_precip)
+            dataset = xr.open_dataset(arguments.netcdf_precip)  # , chunks={'lat': 10, 'lon': 10})
 
             # trim out all data variables from the dataset except the precipitation
             for var in dataset.data_vars:
@@ -348,7 +351,7 @@ if __name__ == '__main__':
                 # group the data by geospatial point and apply the SPI/Gamma function to each time series group
                 da_spi = da_precip.groupby('point').apply(spi_gamma,
                                                           scale=timestep_scale,
-                                                          data_start_year=data_start_year,
+                                                          start_year=data_start_year,
                                                           calibration_year_initial=arguments.calibration_start_year,
                                                           calibration_year_final=arguments.calibration_end_year,
                                                           periodicity=arguments.periodicity)
@@ -356,21 +359,28 @@ if __name__ == '__main__':
                 # unstack the array back into original dimensions
                 da_spi = da_spi.unstack('point')
 
+                # copy the original dataset since we'll be able to reuse most of the coordinates, attributes, etc.
+                index_dataset = dataset.copy()
+
+                # remove all data variables
+                for var_name in index_dataset.data_vars:
+                    index_dataset = index_dataset.drop(var_name)
+
+                # TODO set global attributes accordinagly for this new dataset
+
                 # create a new variables to contain the SPI for the scale, assign into the dataset
                 long_name = "Standardized Precipitation Index (Gamma distribution), "\
                             "{scale}-{increment}".format(scale=timestep_scale, increment=scale_increment)
                 spi_var = xr.Variable(dims=da_spi.dims,
                                       data=da_spi,
-                                      attrs={'long_name' : long_name,
-                                             'valid_min' : -3.09,
-                                             'valid_max' : 3.09})
-                dataset["spi_gamma_" + str(timestep_scale).zfill(2)] = spi_var
+                                      attrs={'long_name': long_name,
+                                             'valid_min': -3.09,
+                                             'valid_max': 3.09})
+                var_name = "spi_gamma_" + str(timestep_scale).zfill(2)
+                index_dataset[var_name] = spi_var
 
-        # trim out the precipitation variable since it won't be needed again
-        dataset = dataset.drop(arguments.var_name_precip)
-
-        # write the dataset as NetCDF
-        dataset.to_netcdf(arguments.output_file_base + "_spi_gamma.nc")
+                # write the dataset as NetCDF
+                index_dataset.to_netcdf(arguments.output_file_base + var_name + ".nc")
 
         # report on the elapsed time
         end_datetime = datetime.now()
