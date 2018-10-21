@@ -106,7 +106,7 @@ def _validate_args(args):
 
                 # verify that the PET variable's dimensions are in the expected order
                 dimensions = dataset_pet[args.var_name_pet].dims
-                if dimensions != expected_dimensions:
+                if dimensions not in expected_dimensions:
                     message = "Invalid dimensions of the PET variable: {dims}, ".format(dims=dimensions) + \
                               "(expected names and order: {dims})".format(dims=expected_dimensions)
                     _logger.error(message)
@@ -151,7 +151,7 @@ def _validate_args(args):
 
                 # verify that the temperature variable's dimensions are in the expected order
                 dimensions = dataset_temp[args.var_name_temp].dims
-                if dimensions != expected_dimensions:
+                if dimensions not in expected_dimensions:
                     message = "Invalid dimensions of the temperature variable: {dims}, ".format(dims=dimensions) + \
                               "(expected names and order: {dims})".format(dims=expected_dimensions)
                     _logger.error(message)
@@ -227,24 +227,292 @@ def _validate_args(args):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def spi_gamma(data_array,
-              scale,
-              start_year,
-              calibration_year_initial,
-              calibration_year_final,
-              periodicity):
+def spi(data_array,
+        scale,
+        distribution,
+        start_year,
+        calibration_year_initial,
+        calibration_year_final,
+        periodicity):
 
+    # array may come in with an additional dimension with size 1, e.g. [times: 1224, points: 1],
+    # so we can squeeze the array to 1-D, the data shape expected by the SPI function, for later
+    # use in reshaping the values array back into the original/expected shape
     original_shape = data_array.shape
-    spi = indices.spi(data_array.values.squeeze(),
-                      scale,
-                      indices.Distribution.gamma,
-                      start_year,
-                      calibration_year_initial,
-                      calibration_year_final,
-                      periodicity)
-    data_array.values = np.reshape(spi, newshape=original_shape)
+
+    # compute SPI from precipitation values
+    spi_array = indices.spi(data_array.values.squeeze(),
+                            scale,
+                            distribution,
+                            start_year,
+                            calibration_year_initial,
+                            calibration_year_final,
+                            periodicity)
+
+    # reshape back into the original shape
+    data_array.values = np.reshape(spi_array, newshape=original_shape)
 
     return data_array
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def pet(data_array,
+        start_year,
+        periodicity):
+
+    # array may come in with an additional dimension with size 1, e.g. [times: 1224, points: 1],
+    # so we can squeeze the array to 1-D, the data shape expected by the PET function, for later
+    # use in reshaping the values array back into the original/expected shape
+    original_shape = data_array.shape
+
+    # use Thornthwaite for monthly, Hargreaves for daily
+    if periodicity is compute.Periodicity.monthly:
+
+        # compute PET from temperature values
+        pet_array = indices.pet(data_array.values.squeeze(),
+                                data_array['lat'][0],
+                                start_year)
+
+    elif periodicity is compute.Periodicity.daily:
+
+        message = "Unsupported periodicity argument: {periodicity}".format(periodicity=periodicity)
+        _logger.error(message)
+        raise ValueError(message)
+
+    else:
+
+        message = "Invalid periodicity argument: {periodicity}".format(periodicity=periodicity)
+        _logger.error(message)
+        raise ValueError(message)
+
+    # reshape back into the original shape
+    data_array.values = np.reshape(pet_array, newshape=original_shape)
+
+    return data_array
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def spei(dataset,
+         scale,
+         distribution,
+         start_year,
+         calibration_year_initial,
+         calibration_year_final,
+         periodicity):
+
+    # array may come in with an additional dimension with size 1, e.g. [times: 1224, points: 1],
+    # so we can squeeze the array to 1-D, the data shape expected by the SPI function, for later
+    # use in reshaping the values array back into the original/expected shape
+    original_shape = dataset['prcp'].shape  # TODO replace hard-coded variable name
+
+    # compute SPEI from precipitation and PET values
+    spei_array = indices.spei(scale,
+                              distribution,
+                              periodicity,
+                              start_year,
+                              calibration_year_initial,
+                              calibration_year_final,
+                              dataset['prcp'].values.squeeze(),
+                              pet_mm=dataset['pet'].values.squeeze())
+
+    # copy a DataArray into which we can assign the computed values
+    data_array = dataset['prcp']  # TODO replace hard-coded variable name
+
+    # reshape back into the original shape
+    data_array.values = np.reshape(spei_array, newshape=original_shape)
+
+    return data_array
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def compute_write_spi(netcdf_precip,
+                      var_name_precip,
+                      scales,
+                      periodicity,
+                      calibration_start_year,
+                      calibration_end_year):
+
+    # open the precipitation NetCDF as an xarray DataSet object
+    dataset = xr.open_dataset(netcdf_precip)  # , chunks={'lat': 10})
+
+    # trim out all data variables from the dataset except precipitation
+    for var in dataset.data_vars:
+        if var not in var_name_precip:
+            dataset = dataset.drop(var)
+
+    # get the precipitation variable as an xarray DataArray object
+    da_precip = dataset[var_name_precip]
+
+    # get the initial year of the data
+    data_start_year = int(str(da_precip['time'].values[0])[0:4])
+
+    # get the scale increment for use in later log messages
+    if arguments.periodicity is compute.Periodicity.daily:
+        scale_increment = 'day'
+    elif arguments.periodicity is compute.Periodicity.monthly:
+        scale_increment = 'month'
+    else:
+        raise ValueError("Invalid periodicity argument: {}".format(arguments.periodicity))
+
+    # stack the lat and lon dimensions into a new dimension named point,
+    # i.e. at each lat/lon we'll have a time series for that geospatial point
+    da_precip = da_precip.stack(point=('lat', 'lon'))
+
+    for timestep_scale in scales:
+
+        for dist in indices.Distribution:
+
+            _logger.info("Computing {scale}-{incr} {index}/{dist}".format(scale=timestep_scale,
+                                                                          incr=scale_increment,
+                                                                          index='SPI',
+                                                                          dist=dist.value.capitalize()))
+
+            # group the data by lat/lon point and apply the SPI function to each time series group
+            da_spi = da_precip.groupby('point').apply(spi,
+                                                      scale=timestep_scale,
+                                                      distribution=dist,
+                                                      start_year=data_start_year,
+                                                      calibration_year_initial=calibration_start_year,
+                                                      calibration_year_final=calibration_end_year,
+                                                      periodicity=periodicity)
+
+            # unstack the array back into original dimensions
+            da_spi = da_spi.unstack('point')
+
+            # copy the dataset since we'll be able to reuse most of the coordinates, attributes, etc.
+            index_dataset = dataset.copy()
+
+            # remove all data variables (only precipitation should be present)
+            for var_name in index_dataset.data_vars:
+                index_dataset = index_dataset.drop(var_name)
+
+            # TODO set global attributes accordingly for this new dataset
+
+            # create a new variables to contain the SPI for the scale, assign into the dataset
+            long_name = "Standardized Precipitation Index ({dist} distribution), " \
+                            .format(dist=dist.value.capitalize()) + \
+                        "{scale}-{increment}".format(scale=timestep_scale, increment=scale_increment)
+            spi_var = xr.Variable(dims=da_spi.dims,
+                                  data=da_spi,
+                                  attrs={'long_name': long_name,
+                                         'valid_min': -3.09,
+                                         'valid_max': 3.09})
+            var_name = "spi_" + dist.value + "_" + str(timestep_scale).zfill(2)
+            index_dataset[var_name] = spi_var
+
+            # write the dataset as NetCDF
+            index_dataset.to_netcdf(arguments.output_file_base + "_" + var_name + ".nc")
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def compute_write_spei(netcdf_precip,
+                       var_name_precip,
+                       netcdf_temp,
+                       var_name_temp,
+                       netcdf_pet,
+                       var_name_pet,
+                       scales,
+                       periodicity,
+                       calibration_start_year,
+                       calibration_end_year):
+
+    if netcdf_temp is not None:
+
+        second_file = netcdf_temp
+        keeper_data_vars = [var_name_precip, var_name_temp]
+
+    elif netcdf_pet is not None:
+
+        second_file = netcdf_pet
+        keeper_data_vars = [var_name_precip, var_name_pet]
+
+    else:
+        message = "SPEI requires either PET or temperature to compute PET, but neither input file was provided."
+        _logger.error(message)
+        raise ValueError(message)
+
+    # open the precipitation and temperature NetCDFs as an xarray DataSet object
+    dataset = xr.open_mfdataset([netcdf_precip, second_file])  # , chunks={'lat': 10})
+
+    # trim out all data variables from the dataset except precipitation and temperature
+    for var in dataset.data_vars:
+        if var not in keeper_data_vars:
+            dataset = dataset.drop(var)
+
+    # get the initial year of the data
+    data_start_year = int(str(dataset['time'].values[0])[0:4])
+
+    # get the scale increment for use in later log messages
+    if arguments.periodicity is compute.Periodicity.daily:
+        scale_increment = 'day'
+    elif arguments.periodicity is compute.Periodicity.monthly:
+        scale_increment = 'month'
+    else:
+        message = "Invalid periodicity argument: {}".format(arguments.periodicity)
+        _logger.error(message)
+        raise ValueError(message)
+
+    # stack the lat and lon dimensions into a new dimension named point,
+    # i.e. at each lat/lon we'll have a time series for that geospatial point
+    dataset = dataset.stack(point=('lat', 'lon'))
+
+    # compute PET if necessary
+    if netcdf_temp is not None:
+
+        da_temp = dataset[var_name_temp]
+        da_pet = da_temp.groupby('point').apply(pet,
+                                                data_start_year)
+        # TODO add PET DataArray into DataSet
+
+    elif netcdf_pet is None:
+        message = "SPEI requires either PET or temperature to compute PET, but neither input file was provided."
+        _logger.error(message)
+        raise ValueError(message)
+
+    for timestep_scale in scales:
+
+        for dist in indices.Distribution:
+
+            _logger.info("Computing {scale}-{incr} {index}/{dist}".format(scale=timestep_scale,
+                                                                          incr=scale_increment,
+                                                                          index='SPEI',
+                                                                          dist=dist.value.capitalize()))
+
+            # group the data by lat/lon point and apply the SPI function to each time series group
+            da_spei = dataset.groupby('point').apply(spei,
+                                                     scale=timestep_scale,
+                                                     distribution=dist,
+                                                     start_year=data_start_year,
+                                                     calibration_year_initial=calibration_start_year,
+                                                     calibration_year_final=calibration_end_year,
+                                                     periodicity=periodicity)
+
+            # unstack the array back into original dimensions
+            da_spei = da_spei.unstack('point')
+
+            # copy the dataset since we'll be able to reuse most of the coordinates, attributes, etc.
+            index_dataset = dataset.copy()
+
+            # remove all data variables (i.e precipitation and temperature)
+            for var_name in index_dataset.data_vars:
+                index_dataset = index_dataset.drop(var_name)
+
+            # TODO set global attributes accordingly for this new dataset
+
+            # create a new variable to contain the SPEI for the scale/distribution, assign into the dataset
+            long_name = "Standardized Precipitation Evapotranspiration Index ({dist} distribution), " \
+                            .format(dist=dist.value.capitalize()) + \
+                        "{scale}-{increment}".format(scale=timestep_scale, increment=scale_increment)
+            spi_var = xr.Variable(dims=da_spei.dims,
+                                  data=da_spei,
+                                  attrs={'long_name': long_name,
+                                         'valid_min': -3.09,
+                                         'valid_max': 3.09})
+            var_name = "spei_" + dist.value + "_" + str(timestep_scale).zfill(2)
+            index_dataset[var_name] = spi_var
+
+            # write the dataset as NetCDF
+            index_dataset.to_netcdf(arguments.output_file_base + "_" + var_name + ".nc")
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -261,7 +529,7 @@ if __name__ == '__main__':
     --calibration_end_year 2016 
     --netcdf_precip example_data/nclimgrid_prcp_lowres.nc 
     --var_name_precip prcp 
-    --output_file_base ~/data/cmorph/spi/cmorph 
+    --output_file_base ~/data/test/spi/nclimgrid_lowres 
     """
 
     try:
@@ -315,73 +583,27 @@ if __name__ == '__main__':
         # validate the arguments
         _validate_args(arguments)
 
-        # compute SPI if specified
-        if arguments.index in ['spi', 'scaled']:
+        if arguments.index == 'spi':
 
-            # open the precipitation NetCDF as an xarray DataSet object
-            dataset = xr.open_dataset(arguments.netcdf_precip) # , chunks={'lat': 1})
+            compute_write_spi(arguments.netcdf_precip,
+                              arguments.var_name_precip,
+                              arguments.scales,
+                              arguments.periodicity,
+                              arguments.calibration_start_year,
+                              arguments.calibration_end_year)
 
-            # trim out all data variables from the dataset except the precipitation
-            for var in dataset.data_vars:
-                if var not in arguments.var_name_precip:
-                    dataset = dataset.drop(var)
+        elif arguments.index == 'spei':
 
-            # get the precipitation variable as an xarray DataArray object
-            da_precip = dataset[arguments.var_name_precip]
-
-            # get the initial year of the data
-            data_start_year = int(str(da_precip['time'].values[0])[0:4])
-
-            # stack the lat and lon dimensions into a new dimension named point, so at each lat/lon
-            # we'll have a time series for the geospatial point
-            da_precip = da_precip.stack(point=('lat', 'lon'))
-
-            for timestep_scale in arguments.scales:
-
-                if arguments.periodicity is compute.Periodicity.daily:
-                    scale_increment = 'day'
-                elif arguments.periodicity is compute.Periodicity.monthly:
-                    scale_increment = 'month'
-                else:
-                    raise ValueError("Invalid periodicity argument: {}".format(arguments.periodicity))
-
-                _logger.info('Computing {scale}-{incr} {index}'.format(scale=timestep_scale,
-                                                                       incr=scale_increment,
-                                                                       index='SPI'))
-
-                # group the data by lat/lon point and apply the SPI/Gamma function to each time series group
-                da_spi = da_precip.groupby('point').apply(spi_gamma,
-                                                          scale=timestep_scale,
-                                                          start_year=data_start_year,
-                                                          calibration_year_initial=arguments.calibration_start_year,
-                                                          calibration_year_final=arguments.calibration_end_year,
-                                                          periodicity=arguments.periodicity)
-
-                # unstack the array back into original dimensions
-                da_spi = da_spi.unstack('point')
-
-                # copy the original dataset since we'll be able to reuse most of the coordinates, attributes, etc.
-                index_dataset = dataset.copy()
-
-                # remove all data variables
-                for var_name in index_dataset.data_vars:
-                    index_dataset = index_dataset.drop(var_name)
-
-                # TODO set global attributes accordingly for this new dataset
-
-                # create a new variables to contain the SPI for the scale, assign into the dataset
-                long_name = "Standardized Precipitation Index (Gamma distribution), "\
-                            "{scale}-{increment}".format(scale=timestep_scale, increment=scale_increment)
-                spi_var = xr.Variable(dims=da_spi.dims,
-                                      data=da_spi,
-                                      attrs={'long_name': long_name,
-                                             'valid_min': -3.09,
-                                             'valid_max': 3.09})
-                var_name = "spi_gamma_" + str(timestep_scale).zfill(2)
-                index_dataset[var_name] = spi_var
-
-                # write the dataset as NetCDF
-                index_dataset.to_netcdf(arguments.output_file_base + "_" + var_name + ".nc")
+            compute_write_spei(arguments.netcdf_precip,
+                               arguments.var_name_precip,
+                               arguments.netcdf_temp,
+                               arguments.var_name_temp,
+                               arguments.netcdf_pet,
+                               arguments.var_name_pet,
+                               arguments.scales,
+                               arguments.periodicity,
+                               arguments.calibration_start_year,
+                               arguments.calibration_end_year)
 
         # report on the elapsed time
         end_datetime = datetime.now()

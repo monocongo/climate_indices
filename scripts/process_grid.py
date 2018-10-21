@@ -1107,7 +1107,7 @@ if __name__ == '__main__':
     --calibration_end_year 2016 
     --netcdf_precip example_data/nclimgrid_prcp_lowres.nc 
     --var_name_precip prcp 
-    --output_file_base ~/data/cmorph/spi/cmorph 
+    --output_file_base ~/data/test/nclimgrid_lowres 
     """
 
     try:
