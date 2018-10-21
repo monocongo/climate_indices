@@ -293,6 +293,7 @@ def pet(data_array,
 
 # ----------------------------------------------------------------------------------------------------------------------
 def spei(dataset,
+         spei_var_name,
          scale,
          distribution,
          start_year,
@@ -303,7 +304,7 @@ def spei(dataset,
     # array may come in with an additional dimension with size 1, e.g. [times: 1224, points: 1],
     # so we can squeeze the array to 1-D, the data shape expected by the SPI function, for later
     # use in reshaping the values array back into the original/expected shape
-    original_shape = dataset['prcp'].shape  # TODO replace hard-coded variable name
+    original_shape = dataset[spei_var_name].shape
 
     # compute SPEI from precipitation and PET values
     spei_array = indices.spei(scale,
@@ -312,16 +313,13 @@ def spei(dataset,
                               start_year,
                               calibration_year_initial,
                               calibration_year_final,
-                              dataset['prcp'].values.squeeze(),
-                              pet_mm=dataset['pet'].values.squeeze())
-
-    # copy a DataArray into which we can assign the computed values
-    data_array = dataset['prcp']  # TODO replace hard-coded variable name
+                              dataset['prcp'].values.squeeze(),        # TODO replace hard-coded variable name
+                              pet_mm=dataset['pet'].values.squeeze())  # TODO replace hard-coded variable name
 
     # reshape back into the original shape
-    data_array.values = np.reshape(spei_array, newshape=original_shape)
+    dataset[spei_var_name].values = np.reshape(spei_array, newshape=original_shape)
 
-    return data_array
+    return dataset
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -416,6 +414,7 @@ def compute_write_spei(netcdf_precip,
                        calibration_start_year,
                        calibration_end_year):
 
+    # determine the second input file and variables to keep within trimmed dataset
     if netcdf_temp is not None:
 
         second_file = netcdf_temp
@@ -431,7 +430,7 @@ def compute_write_spei(netcdf_precip,
         _logger.error(message)
         raise ValueError(message)
 
-    # open the precipitation and temperature NetCDFs as an xarray DataSet object
+    # open the precipitation and secondary input NetCDFs as an xarray DataSet object
     dataset = xr.open_mfdataset([netcdf_precip, second_file])  # , chunks={'lat': 10})
 
     # trim out all data variables from the dataset except precipitation and temperature
@@ -478,8 +477,20 @@ def compute_write_spei(netcdf_precip,
                                                                           index='SPEI',
                                                                           dist=dist.value.capitalize()))
 
-            # group the data by lat/lon point and apply the SPI function to each time series group
-            da_spei = dataset.groupby('point').apply(spei,
+            # create a new variable to contain the SPEI for the scale/distribution, assign into the dataset
+            long_name = "Standardized Precipitation Evapotranspiration Index ({dist} distribution), " \
+                            .format(dist=dist.value.capitalize()) + \
+                        "{scale}-{increment}".format(scale=timestep_scale, increment=scale_increment)
+            spei_var = xr.Variable(dims=dataset[var_name_precip].dims,
+                                   attrs={'long_name': long_name,
+                                          'valid_min': -3.09,
+                                          'valid_max': 3.09})
+            spei_var_name = "spei_" + dist.value + "_" + str(timestep_scale).zfill(2)
+            index_dataset[spei_var_name] = spei_var
+
+            # group the data by lat/lon point and apply the SPEI function to each time series group
+            dataset = dataset.groupby('point').apply(spei,
+                                                     spei_var_name,
                                                      scale=timestep_scale,
                                                      distribution=dist,
                                                      start_year=data_start_year,
@@ -488,28 +499,17 @@ def compute_write_spei(netcdf_precip,
                                                      periodicity=periodicity)
 
             # unstack the array back into original dimensions
-            da_spei = da_spei.unstack('point')
+            dataset = dataset.unstack('point')
 
             # copy the dataset since we'll be able to reuse most of the coordinates, attributes, etc.
             index_dataset = dataset.copy()
 
-            # remove all data variables (i.e precipitation and temperature)
+            # remove all data variables except for the SPEI variable
             for var_name in index_dataset.data_vars:
-                index_dataset = index_dataset.drop(var_name)
+                if var_name != spei_var_name:
+                    index_dataset = index_dataset.drop(var_name)
 
             # TODO set global attributes accordingly for this new dataset
-
-            # create a new variable to contain the SPEI for the scale/distribution, assign into the dataset
-            long_name = "Standardized Precipitation Evapotranspiration Index ({dist} distribution), " \
-                            .format(dist=dist.value.capitalize()) + \
-                        "{scale}-{increment}".format(scale=timestep_scale, increment=scale_increment)
-            spi_var = xr.Variable(dims=da_spei.dims,
-                                  data=da_spei,
-                                  attrs={'long_name': long_name,
-                                         'valid_min': -3.09,
-                                         'valid_max': 3.09})
-            var_name = "spei_" + dist.value + "_" + str(timestep_scale).zfill(2)
-            index_dataset[var_name] = spi_var
 
             # write the dataset as NetCDF
             index_dataset.to_netcdf(arguments.output_file_base + "_" + var_name + ".nc")
