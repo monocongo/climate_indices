@@ -11,7 +11,7 @@ class Distribution(Enum):
     """
     Enumeration type for distribution fittings used for SPI and SPEI.
     """
-    pearson_type3 = 'Pearson Type III'
+    pearson = 'pearson'
     gamma = 'gamma'
 
 
@@ -100,7 +100,7 @@ def spi(precips,
                                                                    calibration_year_initial,
                                                                    calibration_year_final,
                                                                    periodicity)
-    elif distribution is Distribution.pearson_type3:
+    elif distribution is Distribution.pearson:
         
         # fit the scaled values to a Pearson Type III distribution and transform to corresponding normalized sigmas 
         transformed_fitted_values = compute.transform_fitted_pearson(scaled_precips, 
@@ -251,7 +251,7 @@ def spei(scale,
                                                                    calibration_year_final,
                                                                    periodicity)
     
-    elif distribution is Distribution.pearson_type3:
+    elif distribution is Distribution.pearson:
     
         # fit the scaled values to a Pearson Type III distribution and transform to corresponding normalized sigmas 
         transformed_fitted_values = compute.transform_fitted_pearson(scaled_values, 

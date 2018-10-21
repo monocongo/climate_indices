@@ -480,7 +480,7 @@ class GridProcessor(object):             # pragma: no cover
                                                         1,
                                                         lat_slice_precip,
                                                         self.timestep_scale,
-                                                        indices.Distribution.pearson_type3,
+                                                        indices.Distribution.pearson,
                                                         self.data_start_year,
                                                         self.calibration_start_year,
                                                         self.calibration_end_year,
@@ -574,7 +574,7 @@ class GridProcessor(object):             # pragma: no cover
                
                     # compute SPEI/Pearson
                     spei_pearson_lat_slice[lon_index, :] = indices.spei(self.timestep_scale,
-                                                                        indices.Distribution.pearson_type3,
+                                                                        indices.Distribution.pearson,
                                                                         self.periodicity,
                                                                         self.data_start_year,
                                                                         self.calibration_start_year,

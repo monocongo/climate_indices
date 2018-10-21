@@ -6,17 +6,18 @@ import unittest
 from tests import fixtures
 from climate_indices import compute
 
-#-----------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # disable logging messages
 logging.disable(logging.CRITICAL)
 
-#-------------------------------------------------------------------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------------------------------------------------------------------
 class ComputeTestCase(fixtures.FixturesTestCase):
     """
     Tests for `compute.py`.
     """
 
-    #----------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------
     def test_error_function(self):
         """
         Test for the compute._error_function() function
@@ -58,8 +59,9 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                          -0.9976611325094764, 
                          msg='Failed to accurately compute error function')
 
-    #----------------------------------------------------------------------------------------
-    def test_estimate_lmoments(self):
+    # ---------------------------------------------------------------------------------------
+    @staticmethod
+    def test_estimate_lmoments():
         """
         Test for the compute._estimate_lmoments() function
         """
@@ -77,8 +79,9 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                                    atol=0.001, 
                                    err_msg='Failed to accurately estimate L-moments')
         
-    #----------------------------------------------------------------------------------------
-    def test_estimate_pearson3_parameters(self):
+    # ---------------------------------------------------------------------------------------
+    @staticmethod
+    def test_estimate_pearson3_parameters():
         """
         Test for the compute._estimate_pearson3_parameters() function
         """
@@ -88,7 +91,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
         np.testing.assert_raises(ValueError, compute._estimate_pearson3_parameters, [1.0, -1.0, 1.0])
         np.testing.assert_raises(ValueError, compute._estimate_pearson3_parameters, [1.0, -1.0, 1e-7])
         
-    #----------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------
     def test_pearson3cdf(self):
         """
         Test for the compute._pearson3cdf() function
@@ -113,7 +116,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                          0.0005,  # value corresponding to trace value
                          msg='Failed to accurately compute Pearson Type III CDF')
 
-    #----------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------
     def test_pearson_fit_ufunc(self):
         """
         Test for the compute._pearson_fit_ufunc() function
@@ -129,7 +132,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                          0.7387835329883602, 
                          msg='Failed to accurately compute error function')
 
-    #----------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------
     def test_pearson3_fitting_values(self):
         """
         Test for the compute._pearson3_fitting_values() function
@@ -176,8 +179,9 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                                    equal_nan=True, 
                                    err_msg='Failed to accurately compute Pearson Type III fitting values')
 
-    #----------------------------------------------------------------------------------------
-    def test_sum_to_scale(self):
+    # ---------------------------------------------------------------------------------------
+    @staticmethod
+    def test_sum_to_scale():
         """
         Test for the compute.sum_to_scale() function
         """
@@ -278,7 +282,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                           self.fixture_calibration_year_end_daily,
                           compute.Periodicity.monthly)
 
-    #----------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------
     def test_transform_fitted_pearson(self):
         """
         Test for the compute.transform_fitted_pearson() function
@@ -352,7 +356,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
                           self.fixture_calibration_year_end_daily,
                           compute.Periodicity.monthly)
 
-#     #----------------------------------------------------------------------------------------
+#     # ---------------------------------------------------------------------------------------
 #     def test_error_function(self):
 #         '''
 #         Test for the compute._error_function() function
@@ -363,7 +367,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
 #         erf_math = math.erf(value)
 #         self.assertEqual(erf_compute, erf_scipy, 'Failed to match error function values')
         
-#--------------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------
 if __name__ == '__main__':
     unittest.main()
     

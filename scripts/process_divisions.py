@@ -250,7 +250,7 @@ class DivisionsProcessor(object):
 
                         # compute SPEI/Pearson
                         spei_pearson = indices.spei(months,
-                                                    indices.Distribution.pearson_type3,
+                                                    indices.Distribution.pearson,
                                                     compute.Periodicity.monthly,
                                                     self.data_start_year,
                                                     self.calibration_start_year,
@@ -270,7 +270,7 @@ class DivisionsProcessor(object):
                         # compute SPI/Pearson
                         spi_pearson = indices.spi(precip_time_series,
                                                   months,
-                                                  indices.Distribution.pearson_type3,
+                                                  indices.Distribution.pearson,
                                                   self.data_start_year,
                                                   self.calibration_start_year,
                                                   self.calibration_end_year,
