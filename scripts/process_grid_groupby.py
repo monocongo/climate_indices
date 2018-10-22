@@ -467,8 +467,12 @@ def compute_write_spei(netcdf_precip,
         dataset[pet_var_name] = dataset[var_name_precip].copy(deep=False)
         dataset[pet_var_name].attrs = pet_attrs
 
+        # compute PET on all time series grouped by lat/lon
         dataset = dataset.groupby('point').apply(pet,
-                                                 data_start_year)
+                                                 var_name_temp=var_name_temp,
+                                                 var_name_pet=pet_var_name,
+                                                 start_year=data_start_year,
+                                                 periodicity=periodicity)
 
     elif netcdf_pet is None:
         message = "SPEI requires either PET or temperature to compute PET, but neither input file was provided."
