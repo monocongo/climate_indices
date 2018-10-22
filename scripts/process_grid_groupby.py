@@ -2,6 +2,7 @@ import argparse
 from datetime import datetime
 import logging
 
+import dask
 import numpy as np
 import xarray as xr
 
@@ -74,7 +75,7 @@ def _validate_args(args):
             raise ValueError(msg)
 
         # don't allow a daily periodicity (yet, this will be possible once we have Hargreaves or a daily Thornthwaite)
-        if args.periodicity != 'monthly':
+        if args.periodicity is not 'monthly':
             msg = "Invalid periodicity argument for PET: " + \
                 "'{period}' -- only monthly is supported".format(period=args.periodicity)
             _logger.error(msg)
@@ -235,13 +236,11 @@ def spi(data_array,
         calibration_year_final,
         periodicity):
 
-    # array may come in with an additional dimension with size 1, e.g. [times: 1224, points: 1],
-    # so we can squeeze the array to 1-D, the data shape expected by the SPI function, for later
-    # use in reshaping the values array back into the original/expected shape
-    original_shape = data_array.shape
+    # save the original chunks to use later when converting the numpy array we'll compute into a dask array
+    chunks = data_array.chunks
 
     # compute SPI from precipitation values
-    spi_array = indices.spi(data_array.values.squeeze(),
+    spi_array = indices.spi(data_array.data,
                             scale,
                             distribution,
                             start_year,
@@ -249,8 +248,8 @@ def spi(data_array,
                             calibration_year_final,
                             periodicity)
 
-    # reshape back into the original shape
-    data_array.values = np.reshape(spi_array, newshape=original_shape)
+    # we have a numpy array, turn it back into a dask array
+    data_array.data = dask.array.from_array(spi_array, chunks=chunks)
 
     return data_array
 
@@ -260,16 +259,14 @@ def pet(data_array,
         start_year,
         periodicity):
 
-    # array may come in with an additional dimension with size 1, e.g. [times: 1224, points: 1],
-    # so we can squeeze the array to 1-D, the data shape expected by the PET function, for later
-    # use in reshaping the values array back into the original/expected shape
-    original_shape = data_array.shape
+    # save the original chunks to use later when converting the numpy array we'll compute into a dask array
+    chunks = data_array.chunks
 
     # use Thornthwaite for monthly, Hargreaves for daily
     if periodicity is compute.Periodicity.monthly:
 
         # compute PET from temperature values
-        pet_array = indices.pet(data_array.values.squeeze(),
+        pet_array = indices.pet(data_array.data,
                                 data_array['lat'][0],
                                 start_year)
 
@@ -285,8 +282,8 @@ def pet(data_array,
         _logger.error(message)
         raise ValueError(message)
 
-    # reshape back into the original shape
-    data_array.values = np.reshape(pet_array, newshape=original_shape)
+    # we have a numpy array, turn it back into a dask array
+    data_array.data = dask.array.from_array(pet_array, chunks=chunks)
 
     return data_array
 
@@ -301,10 +298,8 @@ def spei(dataset,
          calibration_year_final,
          periodicity):
 
-    # array may come in with an additional dimension with size 1, e.g. [times: 1224, points: 1],
-    # so we can squeeze the array to 1-D, the data shape expected by the SPI function, for later
-    # use in reshaping the values array back into the original/expected shape
-    original_shape = dataset[spei_var_name].shape
+    # save the original chunks to use later when converting the numpy array we'll compute into a dask array
+    chunks = dataset[spei_var_name].chunks
 
     # compute SPEI from precipitation and PET values
     spei_array = indices.spei(scale,
@@ -313,11 +308,11 @@ def spei(dataset,
                               start_year,
                               calibration_year_initial,
                               calibration_year_final,
-                              dataset['prcp'].values.squeeze(),        # TODO replace hard-coded variable name
-                              pet_mm=dataset['pet'].values.squeeze())  # TODO replace hard-coded variable name
+                              dataset['prcp'].data,        # TODO replace hard-coded variable name
+                              pet_mm=dataset['pet'].data)  # TODO replace hard-coded variable name
 
-    # reshape back into the original shape
-    dataset[spei_var_name].values = np.reshape(spei_array, newshape=original_shape)
+    # we have a numpy array, turn it back into a dask array
+    dataset[spei_var_name].data = dask.array.from_array(spei_array, chunks=chunks)
 
     return dataset
 
@@ -481,16 +476,22 @@ def compute_write_spei(netcdf_precip,
             long_name = "Standardized Precipitation Evapotranspiration Index ({dist} distribution), " \
                             .format(dist=dist.value.capitalize()) + \
                         "{scale}-{increment}".format(scale=timestep_scale, increment=scale_increment)
-            spei_var = xr.Variable(dims=dataset[var_name_precip].dims,
-                                   attrs={'long_name': long_name,
-                                          'valid_min': -3.09,
-                                          'valid_max': 3.09})
+            spei_attrs={'long_name': long_name,
+                        'valid_min': -3.09,
+                        'valid_max': 3.09}
             spei_var_name = "spei_" + dist.value + "_" + str(timestep_scale).zfill(2)
-            index_dataset[spei_var_name] = spei_var
+            dataset[spei_var_name] = dataset[var_name_precip].copy(deep=False)
+            dataset[spei_var_name].attrs = spei_attrs
+            # spei_var = xr.Variable(dims=dataset[var_name_precip].dims,
+            #                        data=dataset[var_name_precip].copy(deep=False),
+            #                        attrs={'long_name': long_name,
+            #                               'valid_min': -3.09,
+            #                               'valid_max': 3.09})
+            # dataset[spei_var_name] = spei_var
 
             # group the data by lat/lon point and apply the SPEI function to each time series group
             dataset = dataset.groupby('point').apply(spei,
-                                                     spei_var_name,
+                                                     spei_var_name=spei_var_name,
                                                      scale=timestep_scale,
                                                      distribution=dist,
                                                      start_year=data_start_year,

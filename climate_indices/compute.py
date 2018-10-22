@@ -79,7 +79,7 @@ def sum_to_scale(values,
     
     # get the valid sliding summations with 1D convolution
     sliding_sums = np.convolve(values, np.ones(scale), mode='valid')
-    
+
     # pad the first (n - 1) elements of the array with NaN values
     return np.hstack(([np.NaN]*(scale - 1), sliding_sums))
 
