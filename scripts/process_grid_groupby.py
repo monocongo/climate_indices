@@ -255,19 +255,21 @@ def spi(data_array,
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def pet(data_array,
+def pet(dataset,
+        var_name_pet,
+        var_name_temp,
         start_year,
         periodicity):
 
     # save the original chunks to use later when converting the numpy array we'll compute into a dask array
-    chunks = data_array.chunks
+    chunks = dataset[var_name_pet].chunks
 
     # use Thornthwaite for monthly, Hargreaves for daily
     if periodicity is compute.Periodicity.monthly:
 
         # compute PET from temperature values
-        pet_array = indices.pet(data_array.data,
-                                data_array['lat'][0],
+        pet_array = indices.pet(dataset[var_name_temp].data,
+                                dataset['lat'].data,
                                 start_year)
 
     elif periodicity is compute.Periodicity.daily:
@@ -283,9 +285,9 @@ def pet(data_array,
         raise ValueError(message)
 
     # we have a numpy array, turn it back into a dask array
-    data_array.data = dask.array.from_array(pet_array, chunks=chunks)
+    dataset[var_name_pet].data = dask.array.from_array(pet_array, chunks=chunks)
 
-    return data_array
+    return dataset
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -439,8 +441,10 @@ def compute_write_spei(netcdf_precip,
     # get the scale increment for use in later log messages
     if arguments.periodicity is compute.Periodicity.daily:
         scale_increment = 'day'
+        pet_method = "Hargreaves"
     elif arguments.periodicity is compute.Periodicity.monthly:
         scale_increment = 'month'
+        pet_method = "Thornthwaite"
     else:
         message = "Invalid periodicity argument: {}".format(arguments.periodicity)
         _logger.error(message)
@@ -453,10 +457,18 @@ def compute_write_spei(netcdf_precip,
     # compute PET if necessary
     if netcdf_temp is not None:
 
-        da_temp = dataset[var_name_temp]
-        da_pet = da_temp.groupby('point').apply(pet,
-                                                data_start_year)
-        # TODO add PET DataArray into DataSet
+        # create a new DataArray to contain the PET, assign into the DataSet
+        long_name = "Potential Evapotranspiration ({method}), ".format(method=pet_method)
+        pet_attrs = {'long_name': long_name,
+                     'valid_min': 0.00,
+                     'valid_max': 10000.0,
+                     'units': 'millimeters'}
+        pet_var_name = "pet"
+        dataset[pet_var_name] = dataset[var_name_precip].copy(deep=False)
+        dataset[pet_var_name].attrs = pet_attrs
+
+        dataset = dataset.groupby('point').apply(pet,
+                                                 data_start_year)
 
     elif netcdf_pet is None:
         message = "SPEI requires either PET or temperature to compute PET, but neither input file was provided."
@@ -472,7 +484,7 @@ def compute_write_spei(netcdf_precip,
                                                                           index='SPEI',
                                                                           dist=dist.value.capitalize()))
 
-            # create a new variable to contain the SPEI for the scale/distribution, assign into the dataset
+            # create a new DataArray to contain the SPEI for the scale/distribution, assign into the DataSet
             long_name = "Standardized Precipitation Evapotranspiration Index ({dist} distribution), " \
                             .format(dist=dist.value.capitalize()) + \
                         "{scale}-{increment}".format(scale=timestep_scale, increment=scale_increment)
@@ -482,12 +494,6 @@ def compute_write_spei(netcdf_precip,
             spei_var_name = "spei_" + dist.value + "_" + str(timestep_scale).zfill(2)
             dataset[spei_var_name] = dataset[var_name_precip].copy(deep=False)
             dataset[spei_var_name].attrs = spei_attrs
-            # spei_var = xr.Variable(dims=dataset[var_name_precip].dims,
-            #                        data=dataset[var_name_precip].copy(deep=False),
-            #                        attrs={'long_name': long_name,
-            #                               'valid_min': -3.09,
-            #                               'valid_max': 3.09})
-            # dataset[spei_var_name] = spei_var
 
             # group the data by lat/lon point and apply the SPEI function to each time series group
             dataset = dataset.groupby('point').apply(spei,
@@ -513,7 +519,7 @@ def compute_write_spei(netcdf_precip,
             # TODO set global attributes accordingly for this new dataset
 
             # write the dataset as NetCDF
-            index_dataset.to_netcdf(arguments.output_file_base + "_" + var_name + ".nc")
+            index_dataset.to_netcdf(arguments.output_file_base + "_" + spei_var_name + ".nc")
 
 
 # ----------------------------------------------------------------------------------------------------------------------
