@@ -293,6 +293,8 @@ def pet(dataset,
 # ----------------------------------------------------------------------------------------------------------------------
 def spei(dataset,
          spei_var_name,
+         precip_var_name,
+         pet_var_name,
          scale,
          distribution,
          start_year,
@@ -310,8 +312,8 @@ def spei(dataset,
                               start_year,
                               calibration_year_initial,
                               calibration_year_final,
-                              dataset['prcp'].data,        # TODO replace hard-coded variable name
-                              pet_mm=dataset['pet'].data)  # TODO replace hard-coded variable name
+                              dataset[precip_var_name].data,
+                              pet_mm=dataset[pet_var_name].data)
 
     # we have a numpy array, turn it back into a dask array
     dataset[spei_var_name].data = dask.array.from_array(spei_array, chunks=chunks)
@@ -463,14 +465,13 @@ def compute_write_spei(netcdf_precip,
                      'valid_min': 0.00,
                      'valid_max': 10000.0,
                      'units': 'millimeters'}
-        pet_var_name = "pet"
-        dataset[pet_var_name] = dataset[var_name_precip].copy(deep=False)
-        dataset[pet_var_name].attrs = pet_attrs
+        dataset[var_name_pet] = dataset[var_name_precip].copy(deep=False)
+        dataset[var_name_pet].attrs = pet_attrs
 
         # compute PET on all time series grouped by lat/lon
         dataset = dataset.groupby('point').apply(pet,
                                                  var_name_temp=var_name_temp,
-                                                 var_name_pet=pet_var_name,
+                                                 var_name_pet=var_name_pet,
                                                  start_year=data_start_year,
                                                  periodicity=periodicity)
 
@@ -495,13 +496,20 @@ def compute_write_spei(netcdf_precip,
             spei_attrs={'long_name': long_name,
                         'valid_min': -3.09,
                         'valid_max': 3.09}
-            spei_var_name = "spei_" + dist.value + "_" + str(timestep_scale).zfill(2)
-            dataset[spei_var_name] = dataset[var_name_precip].copy(deep=False)
-            dataset[spei_var_name].attrs = spei_attrs
+            var_name_spei = "spei_" + dist.value + "_" + str(timestep_scale).zfill(2)
+            dataset[var_name_spei] = dataset[var_name_precip].copy(deep=False)
+            dataset[var_name_spei].attrs = spei_attrs
+
+            # clean out all data variables that aren't necessary for the upcoming SPEI computation
+            for var_name in dataset.data_vars:
+                if var_name not in [var_name_spei, var_name_pet, var_name_precip]:
+                    dataset = dataset.drop(var_name)
 
             # group the data by lat/lon point and apply the SPEI function to each time series group
             dataset = dataset.groupby('point').apply(spei,
-                                                     spei_var_name=spei_var_name,
+                                                     spei_var_name=var_name_spei,
+                                                     precip_var_name=var_name_precip,
+                                                     pet_var_name=var_name_pet,
                                                      scale=timestep_scale,
                                                      distribution=dist,
                                                      start_year=data_start_year,
@@ -517,13 +525,13 @@ def compute_write_spei(netcdf_precip,
 
             # remove all data variables except for the SPEI variable
             for var_name in index_dataset.data_vars:
-                if var_name != spei_var_name:
+                if var_name != var_name_spei:
                     index_dataset = index_dataset.drop(var_name)
 
             # TODO set global attributes accordingly for this new dataset
 
             # write the dataset as NetCDF
-            index_dataset.to_netcdf(arguments.output_file_base + "_" + spei_var_name + ".nc")
+            index_dataset.to_netcdf(arguments.output_file_base + "_" + var_name_spei + ".nc")
 
 
 # ----------------------------------------------------------------------------------------------------------------------
