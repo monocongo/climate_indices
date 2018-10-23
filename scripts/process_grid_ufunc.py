@@ -304,6 +304,88 @@ def compute_write_spi(kwrgs):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
+def compute_write_spei(kwrgs):
+
+    # open the precipitation NetCDF as an xarray DataSet object
+    dataset = xr.open_mfdataset([kwrgs['netcdf_precip'], kwrgs['netcdf_pet']])
+
+    # trim out all data variables from the dataset except the precipitation
+    for var in dataset.data_vars:
+        if var not in [kwrgs['var_name_precip'], kwrgs['var_name_pet']]:
+            dataset = dataset.drop(var)
+
+    # get the initial year of the data
+    data_start_year = int(str(dataset['time'].values[0])[0:4])
+
+    # get the scale increment for use in later log messages
+    if kwrgs['periodicity'] is compute.Periodicity.daily:
+        scale_increment = 'day'
+    elif kwrgs['periodicity'] is compute.Periodicity.monthly:
+        scale_increment = 'month'
+    else:
+        raise ValueError("Invalid periodicity argument: {}".format(kwrgs['periodicity']))
+
+    _logger.info("Computing {scale}-{incr} {index}/{dist}".format(scale=kwrgs['scale'],
+                                                                  incr=scale_increment,
+                                                                  index='SPEI',
+                                                                  dist=kwrgs['distribution'].value.capitalize()))
+
+    # get the precipitation and PET arrays, over which we'll compute the SPEI
+    da_precip = dataset[kwrgs['var_name_precip']]
+    da_pet = dataset[kwrgs['var_name_pet']]
+
+    # stack the lat and lon dimensions into a new dimension named point, so at each lat/lon
+    # we'll have a time series for the geospatial point, and group by these points
+    da_precip_groupby = da_precip.stack(point=('lat', 'lon')).groupby('point')
+    da_pet_groupby = da_pet.stack(point=('lat', 'lon')).groupby('point')
+
+    # keyword arguments used for the function we'll apply to the data array
+    args_dict = {'scale': kwrgs['scale'],
+                 'distribution': kwrgs['distribution'],
+                 'data_start_year': data_start_year,
+                 'calibration_year_initial': kwrgs['calibration_start_year'],
+                 'calibration_year_final': kwrgs['calibration_end_year'],
+                 'periodicity': kwrgs['periodicity'],
+                 'pet_mm': da_pet_groupby}
+
+    # apply the SPEI function to the data array
+    da_spei = xr.apply_ufunc(indices.spei,
+                             da_precip_groupby,
+                             kwargs=args_dict)
+
+    # unstack the array back into original dimensions
+    da_spei = da_spei.unstack('point')
+
+    # copy the original dataset since we'll be able to reuse most of the coordinates, attributes, etc.
+    index_dataset = dataset.copy()
+
+    # remove all data variables
+    for var_name in index_dataset.data_vars:
+        index_dataset = index_dataset.drop(var_name)
+
+    # TODO set global attributes accordingly for this new dataset
+
+    # create a new variable to contain the SPEI for the distribution/scale, assign into the dataset
+    long_name = "Standardized Precipitation Evapotranspiration Index ({dist} distribution), "\
+                    .format(dist=kwrgs['distribution'].value.capitalize()) + \
+                "{scale}-{increment}".format(scale=kwrgs['scale'], increment=scale_increment)
+    spei_attrs = {'long_name': long_name,
+                  'valid_min': -3.09,
+                  'valid_max': 3.09}
+    var_name_spei = "spei_" + kwrgs['distribution'].value + "_" + str(kwrgs['scale']).zfill(2)
+    spei_var = xr.Variable(dims=da_spei.dims,
+                           data=da_spei,
+                           attrs=spei_attrs)
+    index_dataset[var_name_spei] = spei_var
+
+    # write the dataset as NetCDF
+    netcdf_file_name = kwrgs['output_file_base'] + "_" + var_name_spei + ".nc"
+    index_dataset.to_netcdf(netcdf_file_name)
+
+    return netcdf_file_name, var_name_spei
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 def compute_write_pet(kwrgs):
 
     # open the temperature NetCDF as an xarray DataSet object
@@ -370,7 +452,7 @@ def compute_write_pet(kwrgs):
     netcdf_file_name = kwrgs['output_file_base'] + "_" + var_name_pet + ".nc"
     index_dataset.to_netcdf(netcdf_file_name)
 
-    return netcdf_file_name
+    return netcdf_file_name, var_name_pet
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -407,6 +489,53 @@ def run_multi_spi(netcdf_precip,
 
     # map the arguments iterable to the compute function
     result = pool.map_async(compute_write_spi, args)
+
+    # get/swallow the exception(s) thrown, if any
+    result.get()
+
+    # close the pool and wait on all processes to finish
+    pool.close()
+    pool.join()
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def run_multi_spei(netcdf_precip,
+                   var_name_precip,
+                   netcdf_pet,
+                   var_name_pet,
+                   scales,
+                   periodicity,
+                   calibration_start_year,
+                   calibration_end_year,
+                   output_file_base):
+
+    # the number of worker processes we'll use in our process pool
+    number_of_workers = 1  # multiprocessing.cpu_count()  # NOTE use 1 here when debugging for less butt hurt
+
+    # create a process Pool for worker processes which will compute indices
+    pool = multiprocessing.Pool(processes=number_of_workers)
+
+    # create an iterable of arguments specific to the function that we'll call within each worker process
+    args = []
+    for scale in scales:
+
+        for dist in indices.Distribution:
+
+            # keyword arguments used for the function we'll map
+            kwrgs = {'netcdf_precip': netcdf_precip,
+                     'var_name_precip': var_name_precip,
+                     'netcdf_pet': netcdf_pet,
+                     'var_name_pet': var_name_pet,
+                     'scale': scale,
+                     'distribution': dist,
+                     'periodicity': periodicity,
+                     'calibration_start_year': calibration_start_year,
+                     'calibration_end_year': calibration_end_year,
+                     'output_file_base': output_file_base}
+            args.append(kwrgs)
+
+    # map the arguments iterable to the compute function
+    result = pool.map_async(compute_write_spei, args)
 
     # get/swallow the exception(s) thrown, if any
     result.get()
@@ -504,7 +633,21 @@ if __name__ == '__main__':
                           'var_name_temp': arguments.var_name_temp,
                           'output_file_base': arguments.output_file_base}
 
-                arguments.netcdf_pet = compute_write_pet(kwargs)
+                arguments.netcdf_pet, arguments.var_name_pet = compute_write_pet(kwargs)
+
+        if arguments.index in ['spei', 'scaled']:
+
+            run_multi_spei(arguments.netcdf_precip,
+                           arguments.var_name_precip,
+                           arguments.netcdf_pet,
+                           arguments.var_name_pet,
+                           arguments.scales,
+                           arguments.periodicity,
+                           arguments.calibration_start_year,
+                           arguments.calibration_end_year,
+                           arguments.output_file_base)
+
+
 
         # report on the elapsed time
         end_datetime = datetime.now()
