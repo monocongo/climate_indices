@@ -227,36 +227,6 @@ def _validate_args(args):
             raise ValueError(message)
 
 
-# # ----------------------------------------------------------------------------------------------------------------------
-# def spi(data_array,
-#         scale,
-#         distribution,
-#         start_year,
-#         calibration_year_initial,
-#         calibration_year_final,
-#         periodicity):
-#
-#     # # array may come in with an additional dimension with size 1, e.g. [times: 1224, points: 1],
-#     # # so we can squeeze the array to 1-D, the data shape expected by the SPI function, for later
-#     # # use in reshaping the values array back into the original/expected shape
-#     # original_shape = data_array.shape
-#
-#     # compute SPI from precipitation values
-#     spi = indices.spi(data_array.data, # values.squeeze(),
-#                       scale,
-#                       distribution,
-#                       start_year,
-#                       calibration_year_initial,
-#                       calibration_year_final,
-#                       periodicity)
-#
-#     # # reshape back into the original shape
-#     # data_array.values = np.reshape(spi, newshape=original_shape)
-#
-#     data_array.data = spi
-#     return data_array
-#
-#
 # ----------------------------------------------------------------------------------------------------------------------
 def compute_write_spi(kwrgs):
 
@@ -341,13 +311,13 @@ def run_multi(netcdf_precip,
               calibration_start_year,
               calibration_end_year):
 
-    # the number of worker processes we'll have in our process pool
-    number_of_workers = multiprocessing.cpu_count()  # use 1 here for debugging
+    # the number of worker processes we'll use in our process pool
+    number_of_workers = multiprocessing.cpu_count()  # NOTE use 1 here when debugging for less butt hurt
 
-    # create a process Pool for worker processes which will compute indices over an entire latitude slice
+    # create a process Pool for worker processes which will compute indices
     pool = multiprocessing.Pool(processes=number_of_workers)
 
-    # create a list of time scale and distribution tuples
+    # create an iterable of arguments specific to the function that we'll call within each worker process
     args = []
     for scale in scales:
 
@@ -363,10 +333,10 @@ def run_multi(netcdf_precip,
                       'calibration_end_year': calibration_end_year}
             args.append(kwargs)
 
-    # map the latitude indices as an arguments iterable to the compute function
+    # map the arguments iterable to the compute function
     result = pool.map_async(compute_write_spi, args)
 
-    # get the exception(s) thrown, if any
+    # get/swallow the exception(s) thrown, if any
     result.get()
 
     # close the pool and wait on all processes to finish
