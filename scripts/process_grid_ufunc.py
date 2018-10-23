@@ -300,16 +300,17 @@ def compute_write_spi(kwrgs):
     index_dataset[var_name_spi] = spi_var
 
     # write the dataset as NetCDF
-    index_dataset.to_netcdf(arguments.output_file_base + "_" + var_name_spi + ".nc")
+    index_dataset.to_netcdf(kwrgs['output_file_base'] + "_" + var_name_spi + ".nc")
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def run_multi(netcdf_precip,
-              var_name_precip,
-              scales,
-              periodicity,
-              calibration_start_year,
-              calibration_end_year):
+def run_multi_spi(netcdf_precip,
+                  var_name_precip,
+                  scales,
+                  periodicity,
+                  calibration_start_year,
+                  calibration_end_year,
+                  output_file_base):
 
     # the number of worker processes we'll use in our process pool
     number_of_workers = multiprocessing.cpu_count()  # NOTE use 1 here when debugging for less butt hurt
@@ -330,7 +331,8 @@ def run_multi(netcdf_precip,
                       'distribution': dist,
                       'periodicity': periodicity,
                       'calibration_start_year': calibration_start_year,
-                      'calibration_end_year': calibration_end_year}
+                      'calibration_end_year': calibration_end_year,
+                      'output_file_base': output_file_base}
             args.append(kwargs)
 
     # map the arguments iterable to the compute function
@@ -415,12 +417,13 @@ if __name__ == '__main__':
         # compute SPI if specified
         if arguments.index in ['spi', 'scaled']:
 
-            run_multi(arguments.netcdf_precip,
-                      arguments.var_name_precip,
-                      arguments.scales,
-                      arguments.periodicity,
-                      arguments.calibration_start_year,
-                      arguments.calibration_end_year)
+            run_multi_spi(arguments.netcdf_precip,
+                          arguments.var_name_precip,
+                          arguments.scales,
+                          arguments.periodicity,
+                          arguments.calibration_start_year,
+                          arguments.calibration_end_year,
+                          arguments.output_file_base)
 
         # report on the elapsed time
         end_datetime = datetime.now()
