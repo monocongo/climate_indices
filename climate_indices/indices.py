@@ -123,13 +123,13 @@ def spi(precips,
 
 # ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def spei(scale,
+def spei(precips_mm,
+         scale,
          distribution,
          periodicity,
          data_start_year,
          calibration_year_initial,
          calibration_year_final,
-         precips_mm,
          pet_mm=None,
          temps_celsius=None,
          latitude_degrees=None):
@@ -450,12 +450,16 @@ def pet(temperature_celsius,
     else:
         
         # we were passed a vanilla Numpy array, look for indices where the value == NaN
-        nan_indices = np.isnan(temperature_celsius)
-        if np.all(nan_indices):
+        if np.all(np.isnan(temperature_celsius)):
         
             # we started with all NaNs for the temperature, so just return the same
             return temperature_celsius
-        
+
+    # if we've been passed an array of latitude values then just use
+    # the first one (useful when applying this function with xarray.GroupBy)
+    if isinstance(latitude_degrees, np.ndarray) and (latitude_degrees.size > 1):
+        latitude_degrees = latitude_degrees[0]
+
     # make sure we're not dealing with a NaN or out-of-range latitude value
     if latitude_degrees is not None and not np.isnan(latitude_degrees) \
             and (latitude_degrees < 90.0) and (latitude_degrees > -90.0):

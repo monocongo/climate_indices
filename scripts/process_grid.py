@@ -563,25 +563,25 @@ class GridProcessor(object):             # pragma: no cover
                    (not pet_time_series.mask.all()):
 
                     # compute SPEI/Gamma
-                    spei_gamma_lat_slice[lon_index, :] = indices.spei(self.timestep_scale,
+                    spei_gamma_lat_slice[lon_index, :] = indices.spei(precip_time_series,
+                                                                      self.timestep_scale,
                                                                       indices.Distribution.gamma,
                                                                       self.periodicity,
                                                                       self.data_start_year,
                                                                       self.calibration_start_year,
                                                                       self.calibration_end_year,
-                                                                      precip_time_series,
                                                                       pet_mm=pet_time_series)
                
                     # compute SPEI/Pearson
-                    spei_pearson_lat_slice[lon_index, :] = indices.spei(self.timestep_scale,
+                    spei_pearson_lat_slice[lon_index, :] = indices.spei(precip_time_series,
+                                                                        self.timestep_scale,
                                                                         indices.Distribution.pearson,
                                                                         self.periodicity,
                                                                         self.data_start_year,
                                                                         self.calibration_start_year,
                                                                         self.calibration_end_year,
-                                                                        precip_time_series,
                                                                         pet_mm=pet_time_series)
-                 
+
             # use relevant variable names
             spei_gamma_variable_name = 'spei_gamma_' + str(self.timestep_scale).zfill(2)
             spei_pearson_variable_name = 'spei_pearson_' + str(self.timestep_scale).zfill(2)

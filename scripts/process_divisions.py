@@ -239,23 +239,23 @@ class DivisionsProcessor(object):
                         # TODO ensure that the precipitation and PET values are using the same units
                         
                         # compute SPEI/Gamma
-                        spei_gamma = indices.spei(months,
+                        spei_gamma = indices.spei(precip_time_series,
+                                                  months,
                                                   indices.Distribution.gamma,
                                                   compute.Periodicity.monthly,
                                                   self.data_start_year,
                                                   self.calibration_start_year,
                                                   self.calibration_end_year,
-                                                  precip_time_series,
                                                   pet_mm=pet_time_series)
 
                         # compute SPEI/Pearson
-                        spei_pearson = indices.spei(months,
+                        spei_pearson = indices.spei(precip_time_series,
+                                                    months,
                                                     indices.Distribution.pearson,
                                                     compute.Periodicity.monthly,
                                                     self.data_start_year,
                                                     self.calibration_start_year,
                                                     self.calibration_end_year,
-                                                    precip_time_series,
                                                     pet_mm=pet_time_series)
 
                         # compute SPI/Gamma
