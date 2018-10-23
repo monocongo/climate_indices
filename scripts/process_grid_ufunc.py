@@ -304,6 +304,76 @@ def compute_write_spi(kwrgs):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
+def compute_write_pet(kwrgs):
+
+    # open the temperature NetCDF as an xarray DataSet object
+    dataset = xr.open_dataset(kwrgs['netcdf_temp'])  # , chunks={'lat': 1})
+
+    # trim out all data variables from the dataset except the precipitation
+    for var in dataset.data_vars:
+        if var not in kwrgs['var_name_temp']:
+            dataset = dataset.drop(var)
+
+    # get the initial year of the data
+    data_start_year = int(str(dataset['time'].values[0])[0:4])
+
+    _logger.info("Computing PET")
+
+    # get the temperature and latitude arrays, over which we'll compute the PET
+    da_temp = dataset[kwrgs['var_name_temp']]
+
+    # create a DataArray with the same shape as temperature, fill all lon/times with the lat value for the lat index
+    da_lat_orig = dataset['lat']
+    da_lat = dataset['tavg'].copy(deep=True)
+    for lat_index in range(da_lat_orig.size):
+        da_lat[dict(lat=lat_index)] = da_lat_orig.values[lat_index]
+
+    # stack the lat and lon dimensions into a new dimension named point, so at each lat/lon
+    # we'll have a time series for the geospatial point, and group by these points
+    da_temp_groupby = da_temp.stack(point=('lat', 'lon')).groupby('point')
+    da_lat_groupby = da_lat.stack(point=('lat', 'lon')).groupby('point')
+
+    # keyword arguments used for the function we'll apply to the data arrays
+    args_dict = {'data_start_year': data_start_year}
+
+    # apply the PET function to the data arrays
+    da_pet = xr.apply_ufunc(indices.pet,
+                            da_temp_groupby,
+                            da_lat_groupby,
+                            kwargs=args_dict)
+
+    # unstack the array back into original dimensions
+    da_pet = da_pet.unstack('point')
+
+    # copy the original dataset since we'll be able to reuse most of the coordinates, attributes, etc.
+    index_dataset = dataset.copy()
+
+    # remove all data variables
+    for var_name in index_dataset.data_vars:
+        index_dataset = index_dataset.drop(var_name)
+
+    # TODO set global attributes accordingly for this new dataset
+
+    # create a new variable to contain the PET values, assign into the dataset
+    long_name = "Potential Evapotranspiration (Thornthwaite)"
+    pet_attrs = {'long_name': long_name,
+                 'valid_min': 0.0,
+                 'valid_max': 10000.0,
+                 'units': 'millimeters'}
+    var_name_pet = "pet_thornthwaite"
+    pet_var = xr.Variable(dims=da_pet.dims,
+                          data=da_pet,
+                          attrs=pet_attrs)
+    index_dataset[var_name_pet] = pet_var
+
+    # write the dataset as NetCDF
+    netcdf_file_name = kwrgs['output_file_base'] + "_" + var_name_pet + ".nc"
+    index_dataset.to_netcdf(netcdf_file_name)
+
+    return netcdf_file_name
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 def run_multi_spi(netcdf_precip,
                   var_name_precip,
                   scales,
@@ -325,15 +395,15 @@ def run_multi_spi(netcdf_precip,
         for dist in indices.Distribution:
 
             # keyword arguments used for the function we'll map
-            kwargs = {'netcdf_precip': netcdf_precip,
-                      'var_name_precip': var_name_precip,
-                      'scale': scale,
-                      'distribution': dist,
-                      'periodicity': periodicity,
-                      'calibration_start_year': calibration_start_year,
-                      'calibration_end_year': calibration_end_year,
-                      'output_file_base': output_file_base}
-            args.append(kwargs)
+            kwrgs = {'netcdf_precip': netcdf_precip,
+                     'var_name_precip': var_name_precip,
+                     'scale': scale,
+                     'distribution': dist,
+                     'periodicity': periodicity,
+                     'calibration_start_year': calibration_start_year,
+                     'calibration_end_year': calibration_end_year,
+                     'output_file_base': output_file_base}
+            args.append(kwrgs)
 
     # map the arguments iterable to the compute function
     result = pool.map_async(compute_write_spi, args)
@@ -424,6 +494,17 @@ if __name__ == '__main__':
                           arguments.calibration_start_year,
                           arguments.calibration_end_year,
                           arguments.output_file_base)
+
+        if arguments.index in ['pet', 'spei', 'scaled', 'palmer']:
+
+            if arguments.netcdf_pet is None:
+
+                # keyword arguments used for the function we'll map
+                kwargs = {'netcdf_temp': arguments.netcdf_temp,
+                          'var_name_temp': arguments.var_name_temp,
+                          'output_file_base': arguments.output_file_base}
+
+                arguments.netcdf_pet = compute_write_pet(kwargs)
 
         # report on the elapsed time
         end_datetime = datetime.now()
