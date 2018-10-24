@@ -563,24 +563,26 @@ class GridProcessor(object):             # pragma: no cover
                    (not pet_time_series.mask.all()):
 
                     # compute SPEI/Gamma
-                    spei_gamma_lat_slice[lon_index, :] = indices.spei(precip_time_series,
-                                                                      self.timestep_scale,
-                                                                      indices.Distribution.gamma,
-                                                                      self.periodicity,
-                                                                      self.data_start_year,
-                                                                      self.calibration_start_year,
-                                                                      self.calibration_end_year,
-                                                                      pet_mm=pet_time_series)
+                    spei_gamma_lat_slice[lon_index, :] = \
+                        indices.spei(precips_mm=precip_time_series,
+                                     pet_mm=pet_time_series,
+                                     scale=self.timestep_scale,
+                                     distribution=indices.Distribution.gamma,
+                                     periodicity=self.periodicity,
+                                     data_start_year=self.data_start_year,
+                                     calibration_year_initial=self.calibration_start_year,
+                                     calibration_year_final=self.calibration_end_year)
                
                     # compute SPEI/Pearson
-                    spei_pearson_lat_slice[lon_index, :] = indices.spei(precip_time_series,
-                                                                        self.timestep_scale,
-                                                                        indices.Distribution.pearson,
-                                                                        self.periodicity,
-                                                                        self.data_start_year,
-                                                                        self.calibration_start_year,
-                                                                        self.calibration_end_year,
-                                                                        pet_mm=pet_time_series)
+                    spei_pearson_lat_slice[lon_index, :] = \
+                        indices.spei(precips_mm=precip_time_series,
+                                     pet_mm=pet_time_series,
+                                     scale=self.timestep_scale,
+                                     distribution=indices.Distribution.pearson,
+                                     periodicity=self.periodicity,
+                                     data_start_year=self.data_start_year,
+                                     calibration_year_initial=self.calibration_start_year,
+                                     calibration_year_final=self.calibration_end_year)
 
             # use relevant variable names
             spei_gamma_variable_name = 'spei_gamma_' + str(self.timestep_scale).zfill(2)
@@ -627,7 +629,7 @@ class GridProcessor(object):             # pragma: no cover
 
             if self.periodicity is compute.Periodicity.daily:
 
-                pass  #placeholder until we work out daily Thornthwaite and/or Hargreaves
+                pass  # placeholder until we work out daily Thornthwaite and/or Hargreaves
             
 #                 # times are daily, transform to all leap year times (i.e. 366 days per year),
 #                 # so we fill Feb 29th of each non-leap missing
@@ -1155,7 +1157,7 @@ if __name__ == '__main__':
         parser.add_argument("--scales",
                             help="Timestep scales over which the PNP, SPI, and SPEI values are to be computed",
                             type=int,
-                            nargs ='*')
+                            nargs='*')
         args = parser.parse_args()
 
         process_grid(args.index,
