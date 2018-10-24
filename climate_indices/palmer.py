@@ -1907,15 +1907,15 @@ def _self_calibrate(pdsi_values,
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def scpdsi(precip_time_series,      # pragma: no cover
-           pet_time_series,
+def scpdsi(precip_time_series: np.ndarray,      # pragma: no cover
+           pet_time_series: np.ndarray,
            awc,
            data_start_year,
            calibration_start_year,
-           calibration_end_year):
+           calibration_end_year):  # -> tuple([np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]):
     """
-    Computes the Palmer Drought Severity Index (PDSI), Palmer Hydrological Drought Index (PHDI),
-    Modified Palmer Drought Index (PMDI), and Palmer Z-Index.
+    Computes the Self-calibrated Palmer Drought Severity Index (SCPDSI), Palmer Drought Severity Index (PDSI),
+    Palmer Hydrological Drought Index (PHDI), Modified Palmer Drought Index (PMDI), and Palmer Z-Index.
 
     Some of the original code for self-calibrated Palmer comes from Goddard (co-author with Wells on 2004 scPDSI paper)
     and is found here: https://github.com/cszang/pdsi
@@ -1931,6 +1931,16 @@ def scpdsi(precip_time_series,      # pragma: no cover
     """
 
     try:
+        # if we're passed all missing values then we can't compute anything, return the same array of missing values
+        if (np.ma.is_masked(precip_time_series) and precip_time_series.mask.all())\
+                or np.all(np.isnan(precip_time_series)):
+            return [precip_time_series, precip_time_series, precip_time_series, precip_time_series, precip_time_series]
+
+        # if we've been passed an array of AWC values then just use
+        # the first one (useful when applying this function with xarray.GroupBy)
+        if isinstance(awc, np.ndarray) and (awc.size > 1):
+            awc = awc[0]
+
         # make sure we have matching precipitation and PET time series
         if precip_time_series.size != pet_time_series.size:
             message = 'Precipitation and PET time series do not match, unequal number or months'
@@ -1971,14 +1981,7 @@ def scpdsi(precip_time_series,      # pragma: no cover
         # trim off the padded months from the Z-index array
         if pad_months > 0:
             zindex = zindex[0:-pad_months]
-            ET = ET[0:-pad_months]
-            PR = PR[0:-pad_months]
-            R = R[0:-pad_months]
-            RO = RO[0:-pad_months]
-            PRO = PRO[0:-pad_months]
-            L = L[0:-pad_months]
-            PL = PL[0:-pad_months]
-            
+
         # compute PDSI and other associated variables
         PDSI, PHDI, PMDI = _pdsi_from_zindex(zindex)
 
@@ -1995,7 +1998,7 @@ def scpdsi(precip_time_series,      # pragma: no cover
         # recompute PDSI and other associated variables
         SCPDSI, PHDI, PMDI = _pdsi_from_zindex(zindex)
         
-        return [SCPDSI, final_PDSI, PHDI, PMDI, zindex]
+        return SCPDSI, final_PDSI, PHDI, PMDI, zindex
 
     except:
         # catch all exceptions, log rudimentary error information

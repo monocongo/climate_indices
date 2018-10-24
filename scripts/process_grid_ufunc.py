@@ -389,7 +389,7 @@ def compute_write_spei(kwrgs):
     dataset_pet = xr.open_dataset(kwrgs['netcdf_pet'])
     dataset = dataset_precip.merge(dataset_pet)
 
-    # trim out all data variables from the dataset except the precipitation
+    # trim out all data variables from the dataset except the precipitation and PET
     for var in dataset.data_vars:
         if var not in [kwrgs['var_name_precip'], kwrgs['var_name_pet']]:
             dataset = dataset.drop(var)
@@ -463,6 +463,154 @@ def compute_write_spei(kwrgs):
     index_dataset.to_netcdf(netcdf_file_name)
 
     return netcdf_file_name, var_name_spei
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def compute_write_palmers(kwrgs):
+
+    _logger.info("Computing {period} Palmers".format(period=kwrgs['periodicity']))
+
+    # open the precipitation, PET, and AWC NetCDFs as a single xarray.DataSet object
+    dataset_precip = xr.open_dataset(kwrgs['netcdf_precip'])
+    dataset_pet = xr.open_dataset(kwrgs['netcdf_pet'])
+    dataset_awc = xr.open_dataset(kwrgs['netcdf_awc'])
+    dataset = dataset_precip.merge(dataset_pet)
+    dataset = dataset.merge(dataset_awc)
+
+    # trim out all data variables from the dataset except the precipitation, PET, and AWC
+    for var in dataset.data_vars:
+        if var not in [kwrgs['var_name_precip'], kwrgs['var_name_pet'], kwrgs['var_name_awc']]:
+            dataset = dataset.drop(var)
+
+    # get the initial year of the data
+    data_start_year = int(str(dataset['time'].values[0])[0:4])
+
+    # get the precipitation, PET, and AWC arrays
+    da_precip = dataset[kwrgs['var_name_precip']]
+    da_pet = dataset[kwrgs['var_name_pet']]
+
+    # add a time dimension and duplicate the AWC value across all times for each lat/lon, in order
+    # to have an array of the same size and dims as the precipitation and PET arrays, allowing for
+    # the use of an AWC GroupBy that will correspond to the precipitation and PET GroupBys
+
+    # create a DataArray with the same shape as temperature, fill all times with the AWC value for the lat/lon index
+    da_awc_orig = dataset[kwrgs['var_name_awc']]
+    da_awc = dataset[kwrgs['var_name_precip']].copy(deep=True)
+    for lat_index in range(da_awc_orig['lat'].size):
+        for lon_index in range(da_awc_orig['lon'].size):
+            da_awc[dict(lat=lat_index, lon=lon_index)] = da_awc_orig[dict(lat=lat_index, lon=lon_index)]
+
+    # stack the lat and lon dimensions into a new dimension named point, so at each lat/lon
+    # we'll have a time series for the geospatial point, and group by these points
+    da_precip_groupby = da_precip.stack(point=('lat', 'lon')).groupby('point')
+    da_pet_groupby = da_pet.stack(point=('lat', 'lon')).groupby('point')
+    da_awc_groupby = da_awc.stack(point=('lat', 'lon')).groupby('point')
+
+    # keyword arguments used for the function we'll apply to the data array
+    args_dict = {'data_start_year': data_start_year,
+                 'calibration_start_year': kwrgs['calibration_start_year'],
+                 'calibration_end_year': kwrgs['calibration_end_year']}
+
+    # apply the self-calibrated Palmers function to the data arrays
+    da_scpdsi, da_pdsi, da_phdi, da_pmdi, da_zindex = xr.apply_ufunc(indices.scpdsi,
+                                                                     da_precip_groupby,
+                                                                     da_pet_groupby,
+                                                                     da_awc_groupby,
+                                                                     output_core_dims=[[], [], [], [], []],
+                                                                     kwargs=args_dict)
+
+    # unstack the arrays back into original dimensions
+    da_scpdsi = da_scpdsi.unstack('point')
+    da_pdsi = da_pdsi.unstack('point')
+    da_phdi = da_phdi.unstack('point')
+    da_pmdi = da_pmdi.unstack('point')
+    da_zindex = da_zindex.unstack('point')
+
+    # copy the original dataset since we'll be able to reuse most of the coordinates, attributes, etc.
+    index_dataset = dataset.copy()
+
+    # remove all data variables
+    for var_name in index_dataset.data_vars:
+        index_dataset = index_dataset.drop(var_name)
+
+    # TODO set global attributes accordingly for this new dataset
+
+    # create a new variable to contain the SCPDSI values, assign into the dataset
+    long_name = "Self-calibrated Palmer Drought Severity Index"
+    scpdsi_attrs = {'long_name': long_name,
+                    'valid_min': -10.0,
+                    'valid_max': 10.0}
+    var_name_scpdsi = "scpdsi"
+    scpdsi_var = xr.Variable(dims=da_scpdsi.dims,
+                             data=da_scpdsi,
+                             attrs=scpdsi_attrs)
+    index_dataset[var_name_scpdsi] = scpdsi_var
+
+    # write the dataset as NetCDF
+    netcdf_file_name = kwrgs['output_file_base'] + "_" + var_name_scpdsi + ".nc"
+    index_dataset.to_netcdf(netcdf_file_name)
+
+    # create a new variable to contain the PDSI values, assign into the dataset
+    long_name = "Palmer Drought Severity Index"
+    pdsi_attrs = {'long_name': long_name,
+                  'valid_min': -10.0,
+                  'valid_max': 10.0}
+    var_name_pdsi = "pdsi"
+    pdsi_var = xr.Variable(dims=da_pdsi.dims,
+                             data=da_pdsi,
+                             attrs=pdsi_attrs)
+    index_dataset[var_name_pdsi] = pdsi_var
+
+    # write the dataset as NetCDF
+    netcdf_file_name = kwrgs['output_file_base'] + "_" + var_name_pdsi + ".nc"
+    index_dataset.to_netcdf(netcdf_file_name)
+
+    # create a new variable to contain the PHDI values, assign into the dataset
+    long_name = "Palmer Hydrological Drought Index"
+    phdi_attrs = {'long_name': long_name,
+                  'valid_min': -10.0,
+                  'valid_max': 10.0}
+    var_name_phdi = "phdi"
+    phdi_var = xr.Variable(dims=da_phdi.dims,
+                           data=da_phdi,
+                           attrs=phdi_attrs)
+    index_dataset[var_name_phdi] = phdi_var
+
+    # write the dataset as NetCDF
+    netcdf_file_name = kwrgs['output_file_base'] + "_" + var_name_phdi + ".nc"
+    index_dataset.to_netcdf(netcdf_file_name)
+
+    # create a new variable to contain the PMDI values, assign into the dataset
+    long_name = "Palmer Modified Drought Index"
+    pmdi_attrs = {'long_name': long_name,
+                  'valid_min': -10.0,
+                  'valid_max': 10.0}
+    var_name_pmdi = "pmdi"
+    pmdi_var = xr.Variable(dims=da_pmdi.dims,
+                           data=da_pmdi,
+                           attrs=pmdi_attrs)
+    index_dataset[var_name_pmdi] = pmdi_var
+
+    # write the dataset as NetCDF
+    netcdf_file_name = kwrgs['output_file_base'] + "_" + var_name_pmdi + ".nc"
+    index_dataset.to_netcdf(netcdf_file_name)
+
+    # create a new variable to contain the Z-Index values, assign into the dataset
+    long_name = "Palmer Z-Index"
+    zindex_attrs = {'long_name': long_name,
+                    'valid_min': -10.0,
+                    'valid_max': 10.0}
+    var_name_zindex = "zindex"
+    zindex_var = xr.Variable(dims=da_zindex.dims,
+                             data=da_zindex,
+                             attrs=zindex_attrs)
+    index_dataset[var_name_zindex] = zindex_var
+
+    # write the dataset as NetCDF
+    netcdf_file_name = kwrgs['output_file_base'] + "_" + var_name_zindex + ".nc"
+    index_dataset.to_netcdf(netcdf_file_name)
+
+    return True
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -734,7 +882,7 @@ if __name__ == '__main__':
         _validate_args(arguments)
 
         # compute SPI if specified
-        if arguments.index in ['spi', 'scaled']:
+        if arguments.index in ['spi', 'scaled', 'all']:
 
             run_multi_spi(arguments.netcdf_precip,
                           arguments.var_name_precip,
@@ -744,7 +892,7 @@ if __name__ == '__main__':
                           arguments.calibration_end_year,
                           arguments.output_file_base)
 
-        if arguments.index in ['pet', 'spei', 'scaled', 'palmer']:
+        if arguments.index in ['pet', 'spei', 'scaled', 'palmers', 'all']:
 
             if arguments.netcdf_pet is None:
 
@@ -755,7 +903,7 @@ if __name__ == '__main__':
 
                 arguments.netcdf_pet, arguments.var_name_pet = compute_write_pet(kwargs)
 
-        if arguments.index in ['spei', 'scaled']:
+        if arguments.index in ['spei', 'scaled', 'all']:
 
             run_multi_spei(arguments.netcdf_precip,
                            arguments.var_name_precip,
@@ -767,7 +915,7 @@ if __name__ == '__main__':
                            arguments.calibration_end_year,
                            arguments.output_file_base)
 
-        if arguments.index in ['pnp', 'scaled']:
+        if arguments.index in ['pnp', 'scaled', 'all']:
 
             run_multi_pnp(arguments.netcdf_precip,
                           arguments.var_name_precip,
@@ -776,6 +924,22 @@ if __name__ == '__main__':
                           arguments.calibration_start_year,
                           arguments.calibration_end_year,
                           arguments.output_file_base)
+
+        if arguments.index in ['palmers', 'all']:
+
+            # keyword arguments used for the function we'll map
+            kwargs = {'netcdf_precip': arguments.netcdf_precip,
+                      'var_name_precip': arguments.var_name_precip,
+                      'netcdf_pet': arguments.netcdf_pet,
+                      'var_name_pet': arguments.var_name_pet,
+                      'netcdf_awc': arguments.netcdf_awc,
+                      'var_name_awc': arguments.var_name_awc,
+                      'calibration_start_year': arguments.calibration_start_year,
+                      'calibration_end_year': arguments.calibration_end_year,
+                      'periodicity': arguments.periodicity,
+                      'output_file_base': arguments.output_file_base}
+
+            compute_write_palmers(kwargs)
 
         # report on the elapsed time
         end_datetime = datetime.now()

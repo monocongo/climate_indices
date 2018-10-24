@@ -227,7 +227,7 @@ def scpdsi(precip_time_series,
                             both of which are assumed to start in January of this year
     :param calibration_start_year: initial year of the calibration period
     :param calibration_end_year: final year of the calibration period
-    :return: four numpy arrays containing SCPDSI, PDSI, PHDI, and Z-Index values respectively
+    :return: five numpy arrays containing SCPDSI, PDSI, PHDI, PMDI, and Z-Index values respectively
     """
     
     return palmer.scpdsi(precip_time_series,

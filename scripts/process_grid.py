@@ -756,19 +756,19 @@ class GridProcessor(object):             # pragma: no cover
                     pet_time_series = pet_time_series * _MM_TO_INCHES_FACTOR
         
                 # compute Palmer indices
-                palmer_values = indices.scpdsi(precip_time_series,
-                                               pet_time_series,
-                                               awc,
-                                               self.data_start_year,
-                                               self.calibration_start_year,
-                                               self.calibration_end_year)
+                scpdsi, pdsi, phdi, pmdi, zindex = indices.scpdsi(precip_time_series,
+                                                                  pet_time_series,
+                                                                  awc,
+                                                                  self.data_start_year,
+                                                                  self.calibration_start_year,
+                                                                  self.calibration_end_year)
         
                 # add the values into the slice, first clipping all values to the valid range
-                scpdsi_lat_slice[lon_index, :] = np.clip(palmer_values[0], _VALID_MIN, _VALID_MAX)
-                pdsi_lat_slice[lon_index, :] = np.clip(palmer_values[1], _VALID_MIN, _VALID_MAX)
-                phdi_lat_slice[lon_index, :] = np.clip(palmer_values[2], _VALID_MIN, _VALID_MAX)
-                pmdi_lat_slice[lon_index, :] = np.clip(palmer_values[3], _VALID_MIN, _VALID_MAX)
-                zindex_lat_slice[lon_index, :] = palmer_values[4]
+                scpdsi_lat_slice[lon_index, :] = np.clip(scpdsi, _VALID_MIN, _VALID_MAX)
+                pdsi_lat_slice[lon_index, :] = np.clip(pdsi, _VALID_MIN, _VALID_MAX)
+                phdi_lat_slice[lon_index, :] = np.clip(phdi, _VALID_MIN, _VALID_MAX)
+                pmdi_lat_slice[lon_index, :] = np.clip(pmdi, _VALID_MIN, _VALID_MAX)
+                zindex_lat_slice[lon_index, :] = zindex
         
         # open the existing PDSI NetCDF file for writing, copy the latitude slice 
         # into the PET variable at the indexed latitude position
