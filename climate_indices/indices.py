@@ -124,15 +124,13 @@ def spi(precips,
 # ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def spei(precips_mm,
+         pet_mm,
          scale,
          distribution,
          periodicity,
          data_start_year,
          calibration_year_initial,
-         calibration_year_final,
-         pet_mm=None,
-         temps_celsius=None,
-         latitude_degrees=None):
+         calibration_year_final):
     """
     Compute SPEI fitted to the gamma distribution.
 
@@ -140,14 +138,10 @@ def spei(precips_mm,
     then scaled to the specified months scale and finally fitted/transformed to SPEI values corresponding to the
     input precipitation time series.
 
-    If an input array of temperature values is provided then PET values are computed internally using the input
-    temperature array, data start year, and latitude value (all three of which are required in combination).
-    In this case an input array of PET values should not be specified and if so will result in an error being
-    raised indicating invalid arguments.
-
-    If an input array of PET values is provided then neither an input array of temperature values nor a latitude
-    should be specified, and if so will result in an error being raised indicating invalid arguments.
-
+    :param precips_mm: an array of monthly total precipitation values, in millimeters, should be of the same size
+                       (and shape?) as the input temperature array
+    :param pet_mm: an array of monthly PET values, in millimeters, should be of the same size (and shape?) as the input
+                   precipitation array
     :param scale: the number of months over which the values should be scaled before computing the indicator
     :param distribution: distribution type to be used for the internal fitting/transform computation
     :param periodicity: the periodicity of the time series represented by the input data, valid/supported values are
@@ -158,103 +152,45 @@ def spei(precips_mm,
                         'daily' indicates an array of full years of daily values with 366 days per year, as if each
                         year were a leap year and any missing final months of the final year filled with NaN values,
                         with array size == (# years * 366)
-    :param precips_mm: an array of monthly total precipitation values, in millimeters, should be of the same size
-                       (and shape?) as the input temperature array
-    :param pet_mm: an array of monthly PET values, in millimeters, should be of the same size (and shape?) as the input
-                   precipitation array, must be unspecified or None if using an array of temperature values as input
-    :param temps_celsius: an array of monthly average temperature values, in degrees Celsius, should be of the same size
-                          (and shape?) as the input precipitation array, must be unspecified or None if using an array
-                          of PET values as input
     :param data_start_year: the initial year of the input datasets (assumes that the two inputs cover the same period)
     :param calibration_year_initial: initial year of the calibration period
     :param calibration_year_final: final year of the calibration period
-    :param latitude_degrees: the latitude of the location, in degrees north, must be unspecified or None if using
-                             an array of PET values as an input, and must be specified if using an array of temperatures
-                             as input, valid range is -90.0 to 90.0 (inclusive)
     :return: an array of SPEI values
     :rtype: numpy.ndarray of type float, of the same size and shape as the input temperature and precipitation arrays
     """
-                    
+
     # if we're passed all missing values then we can't compute anything, return the same array of missing values
     if (np.ma.is_masked(precips_mm) and precips_mm.mask.all()) or np.all(np.isnan(precips_mm)):
         return precips_mm
 
-    # validate the function's argument combinations
-    if temps_celsius is not None:
-        
-        # since we have temperature then it's expected that we'll compute PET internally,
-        # so we shouldn't have PET as an input
-        if pet_mm is not None:
-            message = "Incompatible arguments: either temperature or PET arrays can be " + \
-                      "specified as arguments, but not both"
-            _logger.error(message)
-            raise ValueError(message)
-        
-        # we'll need both the latitude and data start year in order to compute PET 
-        elif (latitude_degrees is None) or (data_start_year is None):
-            message = 'Missing arguments: since temperature is provided as an input then both latitude ' + \
-                      'and the data start year must also be specified, and one or both is not'
-            _logger.error(message)
-            raise ValueError(message)
-
-        # validate that the two input arrays are compatible
-        elif precips_mm.size != temps_celsius.size:
-            message = "Incompatible precipitation and temperature arrays"
-            _logger.error(message)
-            raise ValueError(message)
-
-        elif periodicity is not compute.Periodicity.monthly:
-            # our PET currently uses a monthly version of Thornthwaite's equation and therefore's only valid for monthly 
-            message = "Unsupported periodicity: \'{0}\' ".format(periodicity) + \
-                      "-- only monthly time series is supported when providing temperature and latitude inputs"
-            _logger.error(message)
-            raise ValueError(message)
-
-        # compute PET
-        pet_mm = pet(temps_celsius, latitude_degrees, data_start_year)
-
-    elif pet_mm is not None:
-        
-        # make sure there's no confusion by not allowing a user to specify unnecessary parameters 
-        if latitude_degrees is not None:
-            message = 'Invalid argument: since PET is provided as an input then latitude must be absent'
-            _logger.error(message)
-            raise ValueError(message)
-            
-        # validate that the two input arrays are compatible
-        elif precips_mm.size != pet_mm.size:
-            message = 'Incompatible precipitation and PET arrays'
-            _logger.error(message)
-            raise ValueError(message)
-
-    else:
-        
-        message = 'Neither temperature nor PET array was specified, one or the other is required for SPEI'
+    # validate that the two input arrays are compatible
+    if precips_mm.size != pet_mm.size:
+        message = 'Incompatible precipitation and PET arrays'
         _logger.error(message)
         raise ValueError(message)
 
     # subtract the PET from precipitation, adding an offset to ensure that all values are positive
     p_minus_pet = (precips_mm.flatten() - pet_mm.flatten()) + 1000.0
-        
+
     # remember the original length of the input array, in order to facilitate returning an array of the same size
     original_length = precips_mm.size
-    
+
     # get a sliding sums array, with each element's value scaled by the specified number of time steps
     scaled_values = compute.sum_to_scale(p_minus_pet, scale)
 
     if distribution is Distribution.gamma:
 
-        # fit the scaled values to a gamma distribution and transform to corresponding normalized sigmas 
+        # fit the scaled values to a gamma distribution and transform to corresponding normalized sigmas
         transformed_fitted_values = compute.transform_fitted_gamma(scaled_values,
-                                                                   data_start_year, 
+                                                                   data_start_year,
                                                                    calibration_year_initial,
                                                                    calibration_year_final,
                                                                    periodicity)
-    
+
     elif distribution is Distribution.pearson:
-    
-        # fit the scaled values to a Pearson Type III distribution and transform to corresponding normalized sigmas 
-        transformed_fitted_values = compute.transform_fitted_pearson(scaled_values, 
+
+        # fit the scaled values to a Pearson Type III distribution and transform to corresponding normalized sigmas
+        transformed_fitted_values = compute.transform_fitted_pearson(scaled_values,
                                                                      data_start_year,
                                                                      calibration_year_initial,
                                                                      calibration_year_final,
@@ -267,8 +203,8 @@ def spei(precips_mm,
 
     # clip values to within the valid range, reshape the array back to 1-D
     values = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
-    
-    # return the original size array 
+
+    # return the original size array
     return values[0:original_length]
 
 
