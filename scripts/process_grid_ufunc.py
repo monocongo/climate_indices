@@ -300,14 +300,18 @@ def compute_write_spi(kwrgs):
     index_dataset[var_name_spi] = spi_var
 
     # write the dataset as NetCDF
-    index_dataset.to_netcdf(kwrgs['output_file_base'] + "_" + var_name_spi + ".nc")
+    netcdf_file_name = kwrgs['output_file_base'] + "_" + var_name_spi + ".nc"
+    index_dataset.to_netcdf(netcdf_file_name)
 
+    return netcdf_file_name, var_name_spi
 
 # ----------------------------------------------------------------------------------------------------------------------
 def compute_write_spei(kwrgs):
 
-    # open the precipitation NetCDF as an xarray DataSet object
-    dataset = xr.open_mfdataset([kwrgs['netcdf_precip'], kwrgs['netcdf_pet']])
+    # open the precipitation and PET NetCDFs as a single xarray.DataSet object
+    dataset_precip = xr.open_dataset(kwrgs['netcdf_precip'])
+    dataset_pet = xr.open_dataset(kwrgs['netcdf_pet'])
+    dataset = dataset_precip.merge(dataset_pet)
 
     # trim out all data variables from the dataset except the precipitation
     for var in dataset.data_vars:
@@ -345,12 +349,12 @@ def compute_write_spei(kwrgs):
                  'data_start_year': data_start_year,
                  'calibration_year_initial': kwrgs['calibration_start_year'],
                  'calibration_year_final': kwrgs['calibration_end_year'],
-                 'periodicity': kwrgs['periodicity'],
-                 'pet_mm': da_pet_groupby}
+                 'periodicity': kwrgs['periodicity']}
 
-    # apply the SPEI function to the data array
+    # apply the SPEI function to the data arrays
     da_spei = xr.apply_ufunc(indices.spei,
                              da_precip_groupby,
+                             da_pet_groupby,
                              kwargs=args_dict)
 
     # unstack the array back into original dimensions
@@ -510,7 +514,7 @@ def run_multi_spei(netcdf_precip,
                    output_file_base):
 
     # the number of worker processes we'll use in our process pool
-    number_of_workers = 1  # multiprocessing.cpu_count()  # NOTE use 1 here when debugging for less butt hurt
+    number_of_workers = multiprocessing.cpu_count()  # NOTE use 1 here when debugging for less butt hurt
 
     # create a process Pool for worker processes which will compute indices
     pool = multiprocessing.Pool(processes=number_of_workers)
@@ -646,8 +650,6 @@ if __name__ == '__main__':
                            arguments.calibration_start_year,
                            arguments.calibration_end_year,
                            arguments.output_file_base)
-
-
 
         # report on the elapsed time
         end_datetime = datetime.now()
