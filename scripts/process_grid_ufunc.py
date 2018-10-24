@@ -306,6 +306,82 @@ def compute_write_spi(kwrgs):
     return netcdf_file_name, var_name_spi
 
 # ----------------------------------------------------------------------------------------------------------------------
+def compute_write_pnp(kwrgs):
+
+    # open the precipitation NetCDF as an xarray DataSet object
+    dataset = xr.open_dataset(kwrgs['netcdf_precip'])
+
+    # trim out all data variables from the dataset except the precipitation
+    for var in dataset.data_vars:
+        if var not in kwrgs['var_name_precip']:
+            dataset = dataset.drop(var)
+
+    # get the initial year of the data
+    data_start_year = int(str(dataset['time'].values[0])[0:4])
+
+    # get the scale increment for use in later log messages
+    if kwrgs['periodicity'] is compute.Periodicity.daily:
+        scale_increment = 'day'
+    elif kwrgs['periodicity'] is compute.Periodicity.monthly:
+        scale_increment = 'month'
+    else:
+        raise ValueError("Invalid periodicity argument: {}".format(kwrgs['periodicity']))
+
+    _logger.info("Computing {scale}-{incr} {index}".format(scale=kwrgs['scale'],
+                                                           incr=scale_increment,
+                                                           index='PNP'))
+
+    # get the precipitation array, over which we'll compute the SPI
+    da_precip = dataset[kwrgs['var_name_precip']]
+
+    # stack the lat and lon dimensions into a new dimension named point, so at each lat/lon
+    # we'll have a time series for the geospatial point, and group by these points
+    da_precip_groupby = da_precip.stack(point=('lat', 'lon')).groupby('point')
+
+    # keyword arguments used for the function we'll apply to the data array
+    args_dict = {'scale': kwrgs['scale'],
+                 'data_start_year': data_start_year,
+                 'calibration_start_year': kwrgs['calibration_start_year'],
+                 'calibration_end_year': kwrgs['calibration_end_year'],
+                 'periodicity': kwrgs['periodicity']}
+
+    # apply the PNP function to the data array
+    da_pnp = xr.apply_ufunc(indices.percentage_of_normal,
+                            da_precip_groupby,
+                            kwargs=args_dict)
+
+    # unstack the array back into original dimensions
+    da_pnp = da_pnp.unstack('point')
+
+    # copy the original dataset since we'll be able to reuse most of the coordinates, attributes, etc.
+    index_dataset = dataset.copy()
+
+    # remove all data variables
+    for var_name in index_dataset.data_vars:
+        index_dataset = index_dataset.drop(var_name)
+
+    # TODO set global attributes accordingly for this new dataset
+
+    # create a new variable to contain the SPI for the distribution/scale, assign into the dataset
+    long_name = "Percentage of Normal Precipitation" + \
+                "{scale}-{increment}".format(scale=kwrgs['scale'], increment=scale_increment)
+    pnp_attrs = {'long_name': long_name,
+                 'valid_min': -1000.0,
+                 'valid_max': 1000.0}
+    var_name_pnp = "pnp_" + "_" + str(kwrgs['scale']).zfill(2)
+    pnp_var = xr.Variable(dims=da_pnp.dims,
+                          data=da_pnp,
+                          attrs=pnp_attrs)
+    index_dataset[var_name_pnp] = pnp_var
+
+    # write the dataset as NetCDF
+    netcdf_file_name = kwrgs['output_file_base'] + "_" + var_name_pnp + ".nc"
+    index_dataset.to_netcdf(netcdf_file_name)
+
+    return netcdf_file_name, var_name_pnp
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 def compute_write_spei(kwrgs):
 
     # open the precipitation and PET NetCDFs as a single xarray.DataSet object
@@ -457,6 +533,46 @@ def compute_write_pet(kwrgs):
     index_dataset.to_netcdf(netcdf_file_name)
 
     return netcdf_file_name, var_name_pet
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def run_multi_pnp(netcdf_precip,
+                  var_name_precip,
+                  scales,
+                  periodicity,
+                  calibration_start_year,
+                  calibration_end_year,
+                  output_file_base):
+
+    # the number of worker processes we'll use in our process pool
+    number_of_workers = multiprocessing.cpu_count()  # NOTE use 1 here when debugging for less butt hurt
+
+    # create a process Pool for worker processes which will compute indices
+    pool = multiprocessing.Pool(processes=number_of_workers)
+
+    # create an iterable of arguments specific to the function that we'll call within each worker process
+    args = []
+    for scale in scales:
+
+        # keyword arguments used for the function we'll map
+        kwrgs = {'netcdf_precip': netcdf_precip,
+                 'var_name_precip': var_name_precip,
+                 'scale': scale,
+                 'periodicity': periodicity,
+                 'calibration_start_year': calibration_start_year,
+                 'calibration_end_year': calibration_end_year,
+                 'output_file_base': output_file_base}
+        args.append(kwrgs)
+
+    # map the arguments iterable to the compute function
+    result = pool.map_async(compute_write_pnp, args)
+
+    # get/swallow the exception(s) thrown, if any
+    result.get()
+
+    # close the pool and wait on all processes to finish
+    pool.close()
+    pool.join()
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -650,6 +766,16 @@ if __name__ == '__main__':
                            arguments.calibration_start_year,
                            arguments.calibration_end_year,
                            arguments.output_file_base)
+
+        if arguments.index in ['pnp', 'scaled']:
+
+            run_multi_pnp(arguments.netcdf_precip,
+                          arguments.var_name_precip,
+                          arguments.scales,
+                          arguments.periodicity,
+                          arguments.calibration_start_year,
+                          arguments.calibration_end_year,
+                          arguments.output_file_base)
 
         # report on the elapsed time
         end_datetime = datetime.now()
