@@ -40,7 +40,7 @@ class DivisionsProcessor(object):
                  calibration_start_year,
                  calibration_end_year,
                  divisions=None):
-        
+
         """
         Constructor method.
         
@@ -61,12 +61,12 @@ class DivisionsProcessor(object):
         self.var_name_soil = var_name_soil
         self.scale_months = month_scales
         self.calibration_start_year = calibration_start_year
-        self.calibration_end_year = calibration_end_year        
+        self.calibration_end_year = calibration_end_year
         self.divisions = divisions
         
         # TODO get the initial year from the precipitation NetCDF, for now use hard-coded value specific to nClimDiv
         self.data_start_year = 1895
-        
+
         # create and populate the NetCDF we'll use to contain our results of a call to run()
         self._initialize_netcdf()
         # self._initialize_netcdf(('division', 'time',))
@@ -91,7 +91,7 @@ class DivisionsProcessor(object):
         # only process specified divisions
         if self.divisions is not None and div_index not in self.divisions:
             return
-        
+
         # open the NetCDF files 
         with netCDF4.Dataset(self.input_file, 'a') as input_divisions, \
             netCDF4.Dataset(self.output_file, 'a') as output_divisions:
@@ -101,7 +101,7 @@ class DivisionsProcessor(object):
             # only process divisions within CONUS, 101 - 4811
             if climdiv_id > 4811:
                 return
-            
+
             logger.info('Processing indices for division %s', climdiv_id)
         
             # read the division of input temperature values 
@@ -120,7 +120,7 @@ class DivisionsProcessor(object):
     
             # only proceed if the latitude value is within valid range            
             if not np.isnan(latitude) and (latitude < 90.0) and (latitude > -90.0):
-                
+
                 # convert temperatures from Fahrenheit to Celsius, if necessary
                 temperature_units = input_divisions[self.var_name_temperature].units
                 if temperature_units in ['degree_Fahrenheit',
@@ -147,18 +147,18 @@ class DivisionsProcessor(object):
                 # 1-D array argument to the function we'll apply)
                 
                 logger.info('\tComputing PET for division %s', climdiv_id)
-    
+
                 logger.info('\t\tCalculating PET using Thornthwaite method')
 
                 # compute PET across all longitudes of the latitude slice
                 # Thornthwaite PE
-                pet_time_series = indices.pet(temperature, 
-                                              latitude_degrees=latitude, 
+                pet_time_series = indices.pet(temperature,
+                                              latitude_degrees=latitude,
                                               data_start_year=self.data_start_year)
-                            
+
                 # the above returns PET in millimeters, note this for further consideration
                 pet_units = 'millimeter'
-                
+
                 # write the PET values to NetCDF        
                 lock_output.acquire()
                 output_divisions['pet'][div_index, :] = np.reshape(pet_time_series, (1, pet_time_series.size))
@@ -166,10 +166,10 @@ class DivisionsProcessor(object):
                 lock_output.release()
     
             else:
-                
+
                 pet_time_series = np.full(temperature.shape, np.NaN)
                 pet_units = None
-    
+
             # read the division's input precipitation and available water capacity values
             precip_time_series = input_divisions[self.var_name_precip][div_index, :]   # assuming dims (divisions, time)
             
@@ -185,7 +185,7 @@ class DivisionsProcessor(object):
                 
             # compute SPI and SPEI for the current division only if we have valid inputs
             if not np.isnan(precip_time_series).all():
-                
+
                 # put precipitation into inches if not already
                 mm_to_inches_multiplier = 0.0393701
                 possible_mm_units = ['millimeters', 'millimeter', 'mm']
@@ -194,19 +194,19 @@ class DivisionsProcessor(object):
 
                 # only compute Palmers if we have PET already
                 if not np.isnan(pet_time_series).all():
-                
+
                     # compute Palmer indices if we have valid inputs
                     if not np.isnan(awc):
-                            
+
                         # if PET is in mm, convert to inches
                         if pet_units in possible_mm_units:
                             pet_time_series = pet_time_series * mm_to_inches_multiplier
-        
+
                         # PET is in mm, convert to inches since the Palmer uses imperial units
                         pet_time_series = pet_time_series * mm_to_inches_multiplier
-        
+
                         logger.info('\tComputing PDSI for division %s', climdiv_id)
-    
+
                         # compute Palmer indices
                         palmer_values = indices.scpdsi(precip_time_series,
                                                        pet_time_series,
@@ -214,7 +214,8 @@ class DivisionsProcessor(object):
                                                        self.data_start_year,
                                                        self.calibration_start_year,
                                                        self.calibration_end_year)
-            
+
+                        # pull Palmer indices out of the returned array (for code clarity)
                         scpdsi = palmer_values[0]
                         pdsi = palmer_values[1]
                         phdi = palmer_values[2]
@@ -233,7 +234,6 @@ class DivisionsProcessor(object):
         
                     # process the SPI, SPEI, and PNP at the specified month scales
                     for months in self.scale_months:
-                        
                         logger.info('\tComputing SPI/SPEI/PNP at %s-month scale for division %s', months, climdiv_id)
     
                         # TODO ensure that the precipitation and PET values are using the same units
@@ -277,7 +277,7 @@ class DivisionsProcessor(object):
                                                   compute.Periodicity.monthly)
 
                         # compute PNP
-                        pnp = indices.percentage_of_normal(precip_time_series, 
+                        pnp = indices.percentage_of_normal(precip_time_series,
                                                            months,
                                                            self.data_start_year,
                                                            self.calibration_start_year, 
@@ -291,7 +291,7 @@ class DivisionsProcessor(object):
                         spi_gamma_variable_name = 'spi_gamma_' + scaled_name_suffix
                         spi_pearson_variable_name = 'spi_pearson_' + scaled_name_suffix
                         pnp_variable_name = 'pnp_' + scaled_name_suffix
-        
+
                         # write the SPI, SPEI, and PNP values to NetCDF        
                         lock_output.acquire()
                         output_divisions[spei_gamma_variable_name][div_index, :] =   \
@@ -308,14 +308,14 @@ class DivisionsProcessor(object):
 
     # ------------------------------------------------------------------------------------------------------------------
     def run(self):
-        
+
         # initialize the output NetCDF that will contain the computed indices
         with netCDF4.Dataset(self.input_file) as input_dataset:
             
             # get the initial and final year of the input datasets
             time_variable = input_dataset.variables['time']
             self.data_start_year = netCDF4.num2date(time_variable[0], time_variable.units).year
- 
+
             # get the number of divisions in the input dataset(s)
             divisions_count = input_dataset.variables['division'].size
         
@@ -329,10 +329,10 @@ class DivisionsProcessor(object):
           
         # map the divisions indices as an arguments iterable to the compute function
         result = pool.map_async(self._compute_and_write_division, range(divisions_count))
-                  
+
         # get the exception(s) thrown, if any
         result.get()
-              
+
         # close the pool and wait on all processes to finish
         pool.close()
         pool.join()
@@ -416,7 +416,6 @@ def process_divisions(input_file,
                       calibration_start_year,
                       calibration_end_year,
                       divisions=None):
-
     """
     Performs indices processing from climate divisions inputs.
     
@@ -477,7 +476,7 @@ if __name__ == '__main__':
         parser.add_argument("--scales",
                             help="Month scales over which the PNP, SPI, and SPEI values are to be computed",
                             type=int,
-                            nargs = '*',
+                            nargs='*',
                             choices=range(1, 73),
                             required=True)
         parser.add_argument("--calibration_start_year",
@@ -494,7 +493,7 @@ if __name__ == '__main__':
                             help="Divisions for which the PNP, SPI, and SPEI values are to be computed "
                                  "(useful for specifying a short list of divisions",
                             type=int,
-                            nargs = '*',
+                            nargs='*',
                             choices=range(101, 4811),
                             required=False)
         args = parser.parse_args()
@@ -509,7 +508,7 @@ if __name__ == '__main__':
                           args.calibration_start_year,
                           args.calibration_end_year,
                           args.divisions)
-        
+
         # report on the elapsed time
         end_datetime = datetime.now()
         logger.info("End time:      %s", end_datetime)
@@ -519,4 +518,3 @@ if __name__ == '__main__':
     except Exception as ex:
         logger.exception('Failed to complete', exc_info=True)
         raise
-    
