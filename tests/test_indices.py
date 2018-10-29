@@ -101,6 +101,18 @@ class IndicesTestCase(fixtures.FixturesTestCase):
     # ----------------------------------------------------------------------------------------
     def test_pnp(self):
                 
+        # confirm that an input array of all NaNs for precipitation results in the same array returned
+        all_nan_precips = np.full(self.fixture_precips_mm_monthly.shape, np.NaN)
+        computed_pnp = indices.percentage_of_normal(all_nan_precips,
+                                                    1,
+                                                    self.fixture_data_year_start_monthly,
+                                                    self.fixture_calibration_year_start_monthly,
+                                                    self.fixture_calibration_year_end_monthly,
+                                                    compute.Periodicity.monthly)
+        np.testing.assert_equal(computed_pnp,
+                                all_nan_precips,
+                                'All-NaN input array does not result in the expected all-NaN result')
+
         # compute PNP from the daily precipitation array
         computed_pnp_6month = indices.percentage_of_normal(self.fixture_precips_mm_monthly.flatten(),
                                                            6, 
@@ -124,7 +136,7 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                      self.fixture_calibration_year_end_daily, 
                                      compute.Periodicity.daily)
                 
-        # invalid periodicity argument should raise an AttributeError
+        # invalid periodicity argument should raise an Error
         np.testing.assert_raises(ValueError, 
                                  indices.percentage_of_normal,
                                  self.fixture_precips_mm_daily.flatten(),
@@ -136,9 +148,10 @@ class IndicesTestCase(fixtures.FixturesTestCase):
 
     # ----------------------------------------------------------------------------------------
     def test_spi(self):
-        
-        # compute SPI/gamma at 1-month scale
-        computed_spi = indices.spi(self.fixture_precips_mm_monthly, 
+
+        # confirm that an input array of all NaNs for precipitation results in the same array returned
+        all_nan_precips = np.full(self.fixture_precips_mm_monthly.shape, np.NaN)
+        computed_spi = indices.spi(all_nan_precips,
                                    1,
                                    indices.Distribution.gamma,
                                    self.fixture_data_year_start_monthly, 
@@ -147,12 +160,20 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                    compute.Periodicity.monthly)
                                          
         # confirm SPI/gamma is being computed as expected
-        np.testing.assert_allclose(computed_spi, 
+        computed_spi = indices.spi(self.fixture_precips_mm_monthly,
+                                   1,
+                                   indices.Distribution.gamma,
+                                   self.fixture_data_year_start_monthly,
+                                   self.fixture_data_year_start_monthly,
+                                   self.fixture_data_year_end_monthly,
+                                   compute.Periodicity.monthly)
+        np.testing.assert_allclose(computed_spi,
                                    self.fixture_spi_1_month_gamma, 
                                    atol=0.001,
                                    err_msg='SPI/Gamma values for 1-month scale not computed as expected')
         
-        computed_spi = indices.spi(self.fixture_precips_mm_monthly.flatten(), 
+        # confirm SPI/gamma is being computed as expected
+        computed_spi = indices.spi(self.fixture_precips_mm_monthly.flatten(),
                                    6,
                                    indices.Distribution.gamma,
                                    self.fixture_data_year_start_monthly, 
@@ -207,7 +228,14 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                    compute.Periodicity.monthly)
         
         # confirm SPI/Pearson is being computed as expected
-        np.testing.assert_allclose(computed_spi, 
+        computed_spi = indices.spi(self.fixture_precips_mm_monthly.flatten(),
+                                   6,
+                                   indices.Distribution.pearson_type3,
+                                   self.fixture_data_year_start_monthly,
+                                   self.fixture_calibration_year_start_monthly,
+                                   self.fixture_calibration_year_end_monthly,
+                                   compute.Periodicity.monthly)
+        np.testing.assert_allclose(computed_spi,
                                    self.fixture_spi_6_month_pearson3, 
                                    atol=0.01, 
                                    err_msg='SPI/Pearson values for 6-month scale not computed as expected')
@@ -235,6 +263,19 @@ class IndicesTestCase(fixtures.FixturesTestCase):
     # ----------------------------------------------------------------------------------------
     def test_spei(self):
         
+        # confirm that an input array of all NaNs for precipitation results in the same array returned
+        all_nan_precips = np.full(self.fixture_precips_mm_monthly.shape, np.NaN)
+        computed_spei = indices.spi(all_nan_precips,
+                                    1,
+                                    indices.Distribution.gamma,
+                                    self.fixture_data_year_start_monthly,
+                                    self.fixture_data_year_start_monthly,
+                                    self.fixture_data_year_end_monthly,
+                                    compute.Periodicity.monthly)
+        np.testing.assert_equal(computed_spei,
+                                all_nan_precips.flatten(),
+                                'All-NaN input array does not result in the expected all-NaN result')
+
         # compute SPEI/gamma at 6-month scale
         computed_spei = indices.spei(self.fixture_precips_mm_monthly,
                                      self.fixture_pet_mm,
@@ -261,7 +302,7 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                      self.fixture_data_year_start_monthly,
                                      self.fixture_data_year_end_monthly)
 
-        # confirm SPEI/gamma is being computed as expected
+        # confirm SPEI/Pearson is being computed as expected
         np.testing.assert_allclose(computed_spei, 
                                    self.fixture_spei_6_month_pearson3, 
                                    atol=0.01,
