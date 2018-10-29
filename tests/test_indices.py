@@ -258,15 +258,16 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                  self.fixture_data_year_end_monthly, 
                                  compute.Periodicity.daily)
         
-        # compute SPI/Pearson at 6-month scale
-        computed_spi = indices.spi(self.fixture_precips_mm_monthly.flatten(),
-                                   6,
-                                   indices.Distribution.pearson,
-                                   self.fixture_data_year_start_monthly,
-                                   self.fixture_calibration_year_start_monthly,
-                                   self.fixture_calibration_year_end_monthly,
-                                   compute.Periodicity.monthly)
-        
+        # compute SPI/Pearson at 60-day scale, just make sure it completes without error
+        # TODO compare against expected results
+        indices.spi(self.fixture_precips_mm_daily.flatten(),
+                    60,
+                    indices.Distribution.pearson,
+                    self.fixture_data_year_start_daily,
+                    self.fixture_calibration_year_start_daily,
+                    self.fixture_calibration_year_end_daily,
+                    compute.Periodicity.daily)
+
         # confirm SPI/Pearson is being computed as expected
         computed_spi = indices.spi(self.fixture_precips_mm_monthly.flatten(),
                                    6,
