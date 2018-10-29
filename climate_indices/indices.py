@@ -103,7 +103,7 @@ def spi(precips,
     elif distribution is Distribution.pearson:
         
         # fit the scaled values to a Pearson Type III distribution and transform to corresponding normalized sigmas 
-        transformed_fitted_values = compute.transform_fitted_pearson(scaled_precips, 
+        transformed_fitted_values = compute.transform_fitted_pearson(scaled_precips,
                                                                      data_start_year,
                                                                      calibration_year_initial,
                                                                      calibration_year_final,
