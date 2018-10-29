@@ -192,7 +192,7 @@ class PalmerTestCase(fixtures.FixturesTestCase):
     # ------------------------------------------------------------------------------------------------------------------
     def test_cafec_coeff_ufunc(self):
         """
-        Test for the palmer._dry_spell_abatement() function
+        Test for the palmer._cafec_coeff_ufunc() function
         """
         
         self.assertEqual(palmer._cafec_coeff_ufunc(0, 0), 1)
@@ -275,6 +275,11 @@ class PalmerTestCase(fixtures.FixturesTestCase):
                                        expected, 
                                        atol=0.01,
                                        err_msg='Not computing the {0} as expected'.format(name))        
+
+        # verify that the function can be called with an AWC value of zero (no error == passed test)
+        palmer._water_balance(0.0,
+                              self.fixture_palmer_pet_AL01,
+                              self.fixture_palmer_precip_AL01)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
