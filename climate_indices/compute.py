@@ -1,7 +1,5 @@
 from enum import Enum
 import logging
-import math
-from math import exp, lgamma, pi, sqrt
 
 from lmoments3 import distr
 import numba
@@ -84,138 +82,6 @@ def sum_to_scale(values,
     return np.hstack(([np.NaN]*(scale - 1), sliding_sums))
 
 
-# ----------------------------------------------------------------------------------------------------------------------
-# @numba.jit
-# def _estimate_pearson3_parameters(lmoments):
-#     """
-#     Estimate parameters via L-moments for the Pearson Type III distribution, based on Fortran code written
-#     for inclusion in IBM Research Report RC20525, 'FORTRAN ROUTINES FOR USE WITH THE METHOD OF L-MOMENTS, VERSION 3'
-#     by J. R. M. Hosking, IBM Research Division, T. J. Watson Research Center, Yorktown Heights, NY 10598
-#     This is a Python translation of the original Fortran subroutine named 'pearson3'.
-#
-#     :param lmoments: 3-element, 1-D (flat) array containing the first three L-moments (lambda-1, lambda-2, and tau-3)
-#     :return the Pearson Type III parameters corresponding to the input L-moments
-#     :rtype: a 3-element, 1-D (flat) numpy array of floats
-#     """
-#
-#     c1 = 0.2906
-#     c2 = 0.1882
-#     c3 = 0.0442
-#     d1 = 0.36067
-#     d2 = -0.59567
-#     d3 = 0.25361
-#     d4 = -2.78861
-#     d5 = 2.56096
-#     d6 = -0.77045
-#     t3 = abs(lmoments[2])  # L-skewness?
-#
-#     # ensure the validity of the L-moments
-#     if (lmoments[1] <= 0) or (t3 >= 1):
-#         message = 'Unable to calculate Pearson Type III parameters due to invalid L-moments'
-#         _logger.error(message)
-#         raise ValueError(message)
-#
-#     # initialize the output array
-#     pearson3_parameters = np.zeros((3,))
-#
-#     # the first Pearson Type III parameter is the same as the first L-moment
-#     pearson3_parameters[0] = lmoments[0]
-#
-#     if t3 <= 1e-6:
-#         # skewness is effectively zero
-#         pearson3_parameters[1] = lmoments[1] * sqrt(pi)
-#
-#     else:
-#         if t3 < 0.333333333:
-#             t = pi * 3 * t3 * t3
-#             alpha = (1.0 + (c1 * t)) / (t * (1.0 + (t * (c2 + (t * c3)))))
-#         else:
-#             t = 1.0 - t3
-#             alpha = t * (d1 + (t * (d2 + (t * d3)))) / (1.0 + (t * (d4 + (t * (d5 + (t * d6))))))
-#
-#         alpha_root = sqrt(alpha)
-#         beta = sqrt(pi) * lmoments[1] * exp(lgamma(alpha) - lgamma(alpha + 0.5))
-#         pearson3_parameters[1] = beta * alpha_root
-#
-#         # the sign of the third L-moment determines the sign of the third Pearson Type III parameter
-#         if lmoments[2] < 0:
-#             pearson3_parameters[2] = -2.0 / alpha_root
-#         else:
-#             pearson3_parameters[2] = 2.0 / alpha_root
-#
-#     return pearson3_parameters
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-# @numba.jit
-# def _estimate_lmoments(values):
-#     """
-#     Estimate sample L-moments, based on Fortran code written for inclusion in IBM Research Report RC20525,
-#     'FORTRAN ROUTINES FOR USE WITH THE METHOD OF L-MOMENTS, VERSION 3' by J. R. M. Hosking, IBM Research Division,
-#     T. J. Watson Research Center, Yorktown Heights, NY 10598, Version 3 August 1996.
-#
-#     Documentation on the original Fortran routines found here: https://rdrr.io/cran/nsRFA/man/HW.original.html
-#
-#     This is a Python translation of the original Fortran subroutine SAMLMR() and which has been optimized
-#     for calculating only the first three L-moments.
-#
-#     :param values: 1-D (flattened) array of float values
-#     :return: an estimate of the first three sample L-moments
-#     :rtype: 1-D numpy array of floats (the first three sample L-moments corresponding to the input values)
-#     """
-#
-#     # we need to have at least four values in order to make a sample L-moments estimation
-#     number_of_values = np.count_nonzero(~np.isnan(values))
-#     if number_of_values < 4:
-#         message = 'Insufficient number of values to perform sample L-moments estimation'
-#         _logger.warning(message)
-#         raise ValueError(message)
-#
-#     # sort the values into ascending order
-#     values = np.sort(values)
-#
-#     sums = np.zeros((3,))
-#
-#     for i in range(1, number_of_values + 1):
-#         z = i
-#         term = values[i - 1]
-#         sums[0] = sums[0] + term
-#         for j in range(1, 3):
-#             z -= 1
-#             term = term * z
-#             sums[j] = sums[j] + term
-#
-#     y = float(number_of_values)
-#     z = float(number_of_values)
-#     sums[0] = sums[0] / z
-#     for j in range(1, 3):
-#         y = y - 1.0
-#         z = z * y
-#         sums[j] = sums[j] / z
-#
-#     k = 3
-#     p0 = -1.0
-#     for _ in range(2):
-#         ak = float(k)
-#         p0 = -p0
-#         p = p0
-#         temp = p * sums[0]
-#         for i in range(1, k):
-#             ai = i
-#             p = -p * (ak + ai - 1.0) * (ak - ai) / (ai * ai)
-#             temp = temp + (p * sums[i])
-#         sums[k - 1] = temp
-#         k = k - 1
-#
-#     lmoments = np.zeros((3,))
-#     if sums[1] != 0:
-#         lmoments[0] = sums[0]
-#         lmoments[1] = sums[1]
-#         lmoments[2] = sums[2] / sums[1]
-#
-#     return lmoments
-
-
 # -----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def _pearson3_fitting_values(values):
@@ -279,71 +145,17 @@ def _pearson3_fitting_values(values):
         # get the estimated L-moments, if we have more than three non-missing/non-zero values
         if (number_of_non_missing - number_of_zeros) > 3:
 
-            # TODO use lmoments3 here
             # remove NaN values from the array, as this invalidates the calculation within the lmoments3 function
             time_step_values = time_step_values[~np.isnan(time_step_values)]
 
             # get the Pearson Tyoe III parameters for this calendar month's values within the calibration period
-            paras = distr.pe3.lmom_fit(time_step_values)
+            params = distr.pe3.lmom_fit(time_step_values)
             fitting_values[0, time_step_index] = probability_of_zero
-            fitting_values[1, time_step_index] = paras['loc']
-            fitting_values[2, time_step_index] = paras['scale']
-            fitting_values[3, time_step_index] = paras['skew']
+            fitting_values[1, time_step_index] = params['loc']
+            fitting_values[2, time_step_index] = params['scale']
+            fitting_values[3, time_step_index] = params['skew']
 
     return fitting_values
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-@numba.jit
-def _pearson3cdf(value,
-                 pearson3_parameters):
-    """
-    Compute the probability that a random variable along the Pearson Type III distribution described by a set
-    of parameters will be less than or equal to a value.
-
-    :param value:
-    :param pearson3_parameters:
-    :return
-    """
-
-    # it's only possible to make the calculation if the second Pearson parameter is above zero
-    if pearson3_parameters[1] <= 0.0:
-
-        # FIXME/TODO there must be a better way to handle this, and/or is this as irrelevant
-        # as swallowing the error here assumes? Do we get similar results using lmoments3 module?
-        # How does the comparable NCSU SPI code (Cumbie et al?) handle this?
-        # _logger.debug("The second Pearson parameter is less than or equal to zero, invalid for the CDF calculation")
-        return np.NaN
-
-    skew = pearson3_parameters[2]
-    if abs(skew) <= 1e-6:
-
-        z = (value - pearson3_parameters[0]) / pearson3_parameters[1]
-        return 0.5 + (0.5 * _error_function(z * sqrt(0.5)))
-
-    alpha = 4.0 / (skew * skew)
-    x = ((2.0 * (value - pearson3_parameters[0])) / (pearson3_parameters[1] * skew)) + alpha
-    if x > 0:
-
-        result = scipy.special.gammainc(alpha, x)
-        if skew < 0.0:
-
-            result = 1.0 - result
-
-    else:
-
-        # calculate the lowest possible value that will fit the distribution (i.e. Z = 0)
-        minimum_possible_value = pearson3_parameters[0] - ((alpha * pearson3_parameters[1] * skew) / 2.0)
-        if value <= minimum_possible_value:
-
-            # minimum probability
-            result = 0.0005  # (why this arbitrary value? Trevor/Richard? related to the trace precipitation value?)
-
-        else:
-
-            result = np.NaN
-
-    return result
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -366,123 +178,6 @@ def _minimum_possible(skew,
     return loc - ((alpha * scale * skew) / 2.0)
 
 
-# ---------------------------------------------------------------------------------------------------------------------
-@numba.jit
-def _error_function(value):
-    """
-    TODO
-
-    :param value:
-    :return:
-    """
-
-    result = 0.0
-    if value != 0.0:
-
-        absolute_value = abs(value)
-
-        if absolute_value > 6.25:
-            if value < 0:
-                result = -1.0
-            else:
-                result = 1.0
-        else:
-            exponential = exp(value * value * (-1))
-            sqrt_two = sqrt(2.0)
-            zz = abs(value * sqrt_two)
-            if absolute_value > 5.0:
-                # alternative error function calculation for when the input value is in the critical range
-                result = exponential * (sqrt_two / pi) / \
-                                         (absolute_value + 1 / (zz + 2 / (zz + 3 / (zz + 4 / (zz + 0.65)))))
-
-            else:
-                # coefficients of rational-function approximation
-                p0 = 220.2068679123761
-                p1 = 221.2135961699311
-                p2 = 112.0792914978709
-                p3 = 33.91286607838300
-                p4 = 6.373962203531650
-                p5 = 0.7003830644436881
-                p6 = 0.03526249659989109
-                q0 = 440.4137358247522
-                q1 = 793.8265125199484
-                q2 = 637.3336333788311
-                q3 = 296.5642487796737
-                q4 = 86.78073220294608
-                q5 = 16.06417757920695
-                q6 = 1.755667163182642
-                q7 = 0.08838834764831844
-
-                # calculate the error function from the input value and constant values
-                result = exponential * ((((((p6 * zz + p5) * zz + p4) * zz + p3) * zz + p2) * zz + p1) * zz + p0) /  \
-                         (((((((q7 * zz + q6) * zz + q5) * zz + q4) * zz + q3) * zz + q2) * zz + q1) * zz + q0)
-
-            if value > 0.0:
-                result = 1 - result
-            elif value < 0:
-                result = result - 1.0
-
-    return result
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-# @numba.vectorize([numba.float32(numba.float32, numba.float32, numba.float32, numba.float32, numba.float32),
-#                   numba.float64(numba.float64, numba.float64, numba.float64, numba.float64, numba.float64)])
-def _pearson_fit_ufunc(value_to_fit,
-                       pearson_param_1,
-                       pearson_param_2,
-                       pearson_param_3,
-                       probability_of_zero):
-    """
-    Universal function (ufunc) used to perform fitting of a value to a Pearson Type III distribution
-    as described by the Pearson Type III parameters and probability of zero arguments.
-
-    :param value_to_fit: a value to fit within the Pearson Type III distribution described by the parameters
-    :param pearson_param_1: first Pearson Type III parameter
-    :param pearson_param_2: second Pearson Type III parameter
-    :param pearson_param_3: third Pearson Type III parameter
-    :param probability_of_zero: probability that the value is zero
-    """
-
-    fitted_value = np.NaN
-
-    # only fit to the distribution if the value is valid/not missing
-    if not math.isnan(value_to_fit):
-
-        # get the Pearson Type III cumulative density function value
-
-        # TODO questions for Trevor/Richard/Deke -- what is the significance of the value 0.0005 below?
-        # Is this a trace precip value or a floor probability value, etc.?
-
-        # handle trace amounts as a special case
-        if value_to_fit < 0.0005:
-
-            if probability_of_zero > 0.0:
-
-                pe3_cdf = 0.0
-
-            else:
-
-                pe3_cdf = 0.0005  # minimum probability
-
-        else:
-
-            # calculate the CDF value corresponding to the value
-            pe3_cdf = _pearson3cdf(value_to_fit, [pearson_param_1, pearson_param_2, pearson_param_3])
-
-        if not math.isnan(pe3_cdf):
-
-            # calculate the probability value, clipped between 0 and 1
-            probability_value = np.clip((probability_of_zero + ((1.0 - probability_of_zero) * pe3_cdf)), 0.0, 1.0)
-
-            # the values we'll return are the values at which the probabilities of a normal distribution are
-            # less than or equal to the computed probabilities, as determined by the normal distribution's
-            # quantile (or inverse cumulative distribution) function
-            fitted_value = scipy.stats.norm.ppf(probability_value)
-
-    return fitted_value
-
-
 # ----------------------------------------------------------------------------------------------------------------------
 def _pearson_fit(values,
                  probabilities_of_zero,
@@ -493,11 +188,11 @@ def _pearson_fit(values,
     Perform fitting of an array of value to a Pearson Type III distribution
     as described by the Pearson Type III parameters and probability of zero arguments.
 
-    :param values: an array of values to fit to the Pearson Type III distribution described by the parameters
-    :param pearson_param_1: first Pearson Type III parameter
-    :param pearson_param_2: second Pearson Type III parameter
-    :param pearson_param_3: third Pearson Type III parameter
-    :param probability_of_zero: probability that the value is zero
+    :param values: an array of values to fit to the Pearson Type III distribution described by the skew, loc, and scale
+    :param probabilities_of_zero: probability that the value is zero
+    :param skew: first Pearson Type III parameter, the skew of the distribution
+    :param loc: second Pearson Type III parameter, the loc of the distribution
+    :param scale: third Pearson Type III parameter, the scale of the distribution
     """
 
     # only fit to the distribution if the values array is valid/not missing
@@ -505,9 +200,6 @@ def _pearson_fit(values,
 
         # get the Pearson Type III cumulative density function value
         pe3_cdf = scipy.stats.pearson3.cdf(values, skew, loc, scale)
-
-        # DEBUG -- REMOVE
-        debug_pe3_cdf = _pearson3cdf(values[0, 8], [loc[8], scale[8], skew[8]])
 
         # turn zero, trace, or minimum values either into either zero or minimum value based on the probability of zero
         zero_mask = np.logical_and((values < 0.0005), (probabilities_of_zero > 0.0))
@@ -536,6 +228,10 @@ def _pearson_fit(values,
             # less than or equal to the computed probabilities, as determined by the normal distribution's
             # quantile (or inverse cumulative distribution) function
             fitted_values = scipy.stats.norm.ppf(probabilities)
+
+        else:
+
+            fitted_values = values
 
     else:
 

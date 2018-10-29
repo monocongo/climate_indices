@@ -305,6 +305,7 @@ def compute_write_spi(kwrgs):
 
     return netcdf_file_name, var_name_spi
 
+
 # ----------------------------------------------------------------------------------------------------------------------
 def compute_write_pnp(kwrgs):
 
@@ -940,6 +941,7 @@ if __name__ == '__main__':
                       'output_file_base': arguments.output_file_base}
 
             compute_write_palmers(kwargs)
+            # compute_write_palmers_vectorized(kwargs)
 
         # report on the elapsed time
         end_datetime = datetime.now()
