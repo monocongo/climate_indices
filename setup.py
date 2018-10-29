@@ -12,11 +12,13 @@ setup(
                  'PHDI, and Z-Index), SPI, SPEI, PET, and PNP.'),
     packages=['climate_indices'],
     install_requires=[
+        "lmoments3",
         "netcdf4",
         "numba",
         "numpy",
         "pandas",
         "scipy",
+        "xarray",
     ],
     tests_require=[
         "nose",
@@ -35,4 +37,6 @@ setup(
         'Topic :: Scientific/Engineering :: Atmospheric Science',
         'Topic :: Scientific/Engineering :: Physics',
     ],
+    scripts=['scripts/process_divisions.py',
+             'scripts/process_grid.py'],
 )

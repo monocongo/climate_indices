@@ -4,21 +4,22 @@ import unittest
 
 from scripts import netcdf_utils
 
-#-----------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # disable logging messages
 logging.disable(logging.CRITICAL)
 
-#-------------------------------------------------------------------------------------------------------------------------------------------
-class NetcdfUtilsTestCase(unittest.TestCase):
-    '''
-    Tests for `netcdf_utils.py`.
-    '''
 
-    #----------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------------------------------------------------------
+class NetcdfUtilsTestCase(unittest.TestCase):
+    """
+    Tests for `netcdf_utils.py`.
+    """
+
+    # ---------------------------------------------------------------------------------------
     def test_find_netcdf_datatype(self):
-        '''
+        """
         Test for the netcdf_utils.find_netcdf_datatype() function
-        '''
+        """
 
         data_objs = (['f8', float(1.0)], 
                      ['f4', np.float32(1.0)], 
@@ -40,8 +41,8 @@ class NetcdfUtilsTestCase(unittest.TestCase):
             netcdf_utils.find_netcdf_datatype(data_object={'abc': 123})
             netcdf_utils.find_netcdf_datatype("hokey pokey")
             netcdf_utils.find_netcdf_datatype(['this is a list of heterogeneous items', 14, {43: 56}])
-        
-#--------------------------------------------------------------------------------------------
+
+
+# -------------------------------------------------------------------------------------------
 if __name__ == '__main__':
     unittest.main()
-    

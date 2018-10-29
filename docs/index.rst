@@ -276,7 +276,7 @@ The options for these scripts are described below:
 |                        | scales.                                         |
 |                        |                                                 |
 |                        | **NOTE**: When used for US climate divisions    |
-|                        | processing this option on specifies to month    |
+|                        | processing this option specifies to month       |
 |                        | scales.                                         |
 +------------------------+-------------------------------------------------+
 | calibration_start_year | Initial year of the calibration period.         |
@@ -292,7 +292,8 @@ US Climate Divisions (all indices)
 """"""""""""""""""""""""""""""""""
 
 ``$ python process_divisions.py --scales 3 6
---netcdf_divs ../example_inputs/nclimdiv.nc
+--input_file ../example_inputs/nclimdiv.nc
+--output_file /data/nclimdiv_indices.nc
 --var_name_precip prcp
 --var_name_temp tavg --var_name_awc awc
 --calibration_start_year 1951 --calibration_end_year 2010``
@@ -302,12 +303,11 @@ precipitation, temperature, and available water capacity variables (in this case
 the US Climate Divisions NetCDF dataset provided in the example inputs directory).
 The input dataset is monthly data and the calibration period used will be
 Jan. 1951 through Dec. 2010. The indices will be computed at 3-month and 6-month scales.
-Upon completion the NetCDF file will contain variables for all computed indices:
+Upon completion the output NetCDF file (/data/nclimdiv_indices.nc
+in this example) will contain variables for all computed indices:
 `pet`, `pnp_03`, `pnp_06`, `spi_gamma_03`, `spi_gamma_06`, `spi_pearson_03`, `spi_pearson_06`,
 `spei_gamma_03`, `spei_gamma_06`, `spei_pearson_03`, `spei_pearson_06`, `pdsi`, `phdi`, `pmdi`,
-`scpdsi`, and `zindex`. If any or all of these index variables exist in the file before the
-processing then existing values are overwritten with computed values, otherwise new variables
-are created and populated in the NetCDF dataset file.
+`scpdsi`, and `zindex`.
 
 PET monthly
 """"""""""""
