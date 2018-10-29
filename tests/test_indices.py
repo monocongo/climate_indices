@@ -230,7 +230,7 @@ class IndicesTestCase(fixtures.FixturesTestCase):
         # confirm SPI/Pearson is being computed as expected
         computed_spi = indices.spi(self.fixture_precips_mm_monthly.flatten(),
                                    6,
-                                   indices.Distribution.pearson_type3,
+                                   indices.Distribution.pearson,
                                    self.fixture_data_year_start_monthly,
                                    self.fixture_calibration_year_start_monthly,
                                    self.fixture_calibration_year_end_monthly,
