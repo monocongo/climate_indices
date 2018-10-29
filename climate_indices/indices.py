@@ -110,6 +110,7 @@ def spi(precips,
                                                                      periodicity)
 
     else:
+
         message = "Unsupported distribution argument: {dist}".format(dist=distribution)
         _logger.error(message)
         raise ValueError(message)
@@ -305,6 +306,12 @@ def percentage_of_normal(values,
     :rtype: numpy.ndarray of type float
     """
 
+    # validate the scale argument
+    if (scale is None) or (scale < 1):
+        message = 'Invalid scale argument: \'{0}\''.format(scale)
+        _logger.error(message)
+        raise ValueError(message)
+
     # if doing monthly then we'll use 12 periods, corresponding to calendar months, if daily assume years w/366 days
     if periodicity is compute.Periodicity.monthly:
         periodicity = 12
@@ -378,7 +385,7 @@ def pet(temperature_celsius,
     """
     
     # make sure we're not dealing with all NaN values
-    if np.ma.isMaskedArray(temperature_celsius) and temperature_celsius.count() == 0:
+    if np.ma.isMaskedArray(temperature_celsius) and (temperature_celsius.count() == 0):
         
         # we started with all NaNs for the temperature, so just return the same as PET
         return temperature_celsius

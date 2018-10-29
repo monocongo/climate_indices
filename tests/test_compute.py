@@ -299,6 +299,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
         expected_values = self.fixture_transformed_pearson3
         np.testing.assert_allclose(computed_values,
                                    expected_values,
+
                                    atol=0.001,
                                    err_msg='Transformed Pearson Type III fitted values not computed as expected')
         

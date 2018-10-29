@@ -252,22 +252,22 @@ class UtilsTestCase(unittest.TestCase):
         values_365[59:] = [x + 1 for x in values_365[59:]]
         
         # exercise the function with the 366 day year array, using a non-leap year argument (1971) 
-        values_365_computed = utils.transform_to_gregorian(values_366, 1971)
+        values_365_computed = utils.to_gregorian(values_366, 1971)
         
         np.testing.assert_equal(values_365_computed, 
                                 values_365, 
                                 'Not transforming the 1-D array of 366 days into a corresponding 365 day array')
         
         # exercise the function with the 366 day year array, using a leap year argument (1972)
-        values_366_computed = utils.transform_to_gregorian(values_366, 1972)
+        values_366_computed = utils.to_gregorian(values_366, 1972)
         
         np.testing.assert_equal(values_366_computed, 
                                 values_366, 
                                 'Not transforming the 1-D array of 366 days into a corresponding 366 day array')
         
         # make sure that the function croaks with a ValueError whenever it gets invalid array arguments
-        np.testing.assert_raises(ValueError, utils.transform_to_gregorian, values_365, 1972)
-        np.testing.assert_raises(ValueError, utils.transform_to_gregorian, np.ones((2, 10)), 1972)
+        np.testing.assert_raises(ValueError, utils.to_gregorian, values_365, 1972)
+        np.testing.assert_raises(ValueError, utils.to_gregorian, np.ones((2, 10)), 1972)
 
         # make sure that the function croaks with a ValueError whenever it gets invalid year arguments
         np.testing.assert_raises(ValueError, utils.transform_to_gregorian, values_366, -1972)
@@ -294,7 +294,7 @@ class UtilsTestCase(unittest.TestCase):
         values_365 = np.array(range(365))
         
         # exercise the function with the 366 day year array, using a non-leap year argument (1971) 
-        values_366_computed = utils.transform_to_366day(values_365, 1971, 1)
+        values_366_computed = utils.to_366day(values_365, 1971, 1)
         
         np.testing.assert_equal(values_366_computed, 
                                 values_366_faux_feb29, 
@@ -302,20 +302,20 @@ class UtilsTestCase(unittest.TestCase):
                                 '366 day array as expected')
         
         # exercise the function with the 366 day year array, using a leap year argument (1972)
-        values_366_computed = utils.transform_to_366day(values_366, 1972, 1)
+        values_366_computed = utils.to_366day(values_366, 1972, 1)
         
         np.testing.assert_equal(values_366_computed, 
                                 values_366, 
                                 'Not transforming the 1-D array of 366 days into a corresponding 366 day array')
         
         # make sure that the function croaks with a ValueError whenever it gets invalid array arguments
-        np.testing.assert_raises(ValueError, utils.transform_to_366day, values_365[:50], 1972, 1)
-        np.testing.assert_raises(ValueError, utils.transform_to_366day, np.ones((2, 10)), 1972, 1)
+        np.testing.assert_raises(ValueError, utils.to_366day, values_365[:50], 1972, 1)
+        np.testing.assert_raises(ValueError, utils.to_366day, np.ones((2, 10)), 1972, 1)
 
         # make sure that the function croaks with a ValueError whenever it gets invalid year arguments
-        np.testing.assert_raises(ValueError, utils.transform_to_366day, values_365, -1972, 1)
-        np.testing.assert_raises(TypeError, utils.transform_to_366day, values_365, 45.7, 1)
-        np.testing.assert_raises(TypeError, utils.transform_to_366day, values_365, "obviously wrong", 1)
+        np.testing.assert_raises(ValueError, utils.to_366day, values_365, -1972, 1)
+        np.testing.assert_raises(TypeError, utils.to_366day, values_365, 45.7, 1)
+        np.testing.assert_raises(TypeError, utils.to_366day, values_365, "obviously wrong", 1)
 
         # make sure that the function croaks with a ValueError whenever it gets invalid total years arguments
         np.testing.assert_raises(ValueError, utils.transform_to_366day, values_365, 1972, -5)
