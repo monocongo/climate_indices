@@ -5826,7 +5826,7 @@ class FixturesTestCase(unittest.TestCase):
      4.19, 14.30, 44.33, 64.48, 97.73, 151.97, 169.05, 154.83, 119.98, 75.00, 33.28, 12.46,
      19.77, 25.63, 37.14, 79.57, 98.02, 132.23, 162.97, 18.25, 16.23, 15.25, 13.54, 13.39 ])
 
-    # underlying layer of soil water field capacity (need to add 1 inch to get total AWC for water balance calculation
+    # underlying layer of soil water field capacity (need to add 1 inch to get total AWC for water balance calculation)
     fixture_palmer_awc_AL01 = 5.0
 
     # runoff
