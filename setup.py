@@ -12,6 +12,7 @@ setup(
                  'PHDI, and Z-Index), SPI, SPEI, PET, and PNP.'),
     packages=['climate_indices'],
     install_requires=[
+        "lmoments3",
         "netcdf4",
         "numba",
         "numpy",

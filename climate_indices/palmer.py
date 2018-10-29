@@ -78,7 +78,8 @@ def _water_balance(awc,
     # D is the amount of excess precipitation (in inches) that is left over after the surface soil layer is recharged
     D = np.zeros((total_months,))
     
-    # E is the amount of room (in inches) in the underlying soil layer that is available to be recharged with excess precipitation
+    # E is the amount of room (in inches) in the underlying soil layer
+    # that is available to be recharged with excess precipitation
     E = np.zeros((total_months,))
    
     # NOTE: SOIL MOISTURE STORAGE IS HANDLED BY DIVIDING THE SOIL INTO TWO
@@ -93,19 +94,18 @@ def _water_balance(awc,
     # Ss_awc is the available moisture capacity in the surface soil layer; it is a constant across all locations.
     Ss_awc = 1 
     
-    #!!!!!! VALIDATE !!!!!!!!!!!!!!!!!!!!!!!!!!
+    # !!!!!! VALIDATE !!!!!!!!!!!!!!!!!!!!!!!!!!
     #
     # proposed fix for locations where the awc is less than 1.0 inch
     #
     if awc < 1.0:
         Ss_awc = awc
-    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!    
-    
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     # Su_awc is the available moisture capacity in the underlying soil layer; it is a location-specific constant.
     Su_awc = awc - Ss_awc
     
-    ## INITIAL CONDITIONS
+    # INITIAL CONDITIONS
     
     # NOTE: AS THE FIRST STEP IN THE CALCULATION OF THE PALMER DROUGHT 
     # INDICES IS A WATER BALANCE, THE CALCULATION SHOULD BE INITIALIZED 
@@ -124,13 +124,13 @@ def _water_balance(awc,
     # layer at the beginning of each month.
     Ss0 = 1 
     
-    #!!!!!! VALIDATE !!!!!!!!!!!!!!!!!!!!!!!!!!
+    # !!!!!! VALIDATE !!!!!!!!!!!!!!!!!!!!!!!!!!
     #
     # proposed fix for locations where the awc is less than 1.0 inch
     #
     if awc < 1.0:
         Ss0 = awc
-    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!    
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     # Su0 = Su_awc is the initial soil moisture storage in 
     # the underlying soil layer. Within the following 
@@ -139,7 +139,7 @@ def _water_balance(awc,
     # beginning of each month.
     Su0 = Su_awc
     
-    ## CALCULATION OF THE WATER BALANCE
+    # CALCULATION OF THE WATER BALANCE
     
     # THE FIRST PART OF PALMER'S METHOD FOR CALCULATING THE PDSI INVOLVES 
     # THE CALCULATION OF  A WATER BALANCE USING HISTORIC RECORDS OF 
@@ -148,7 +148,7 @@ def _water_balance(awc,
     # k is the counter for each month of data on record
     for k in range(total_months):
 
-        ## VARIABLE DEFINITIONS
+        # VARIABLE DEFINITIONS
         
         # P is the historical, monthly precipitation for the location.
         
@@ -197,9 +197,7 @@ def _water_balance(awc,
         # evapotranspiration - it is the excess precipitation.
         B[k] = P[k] - PET[k]
         
-        # INTERNAL CALCULATIONS
-
-        # calculate potential loss values        
+        # calculate potential loss values
         PL[k], PLs[k], PLu[k] = _water_balance_potential_loss(A[k], PET[k], Ss0, Su0, awc)
         
         if B[k] >= 0:
@@ -235,8 +233,12 @@ def _water_balance(awc,
                 Rs[k] = C[k]
                 Ls[k] = 0 
                 Ss[k] = 1   # the approximate number of inches of moisture allocated to the surface soil layer
-                D[k] = B[k] - Rs[k] # amount of excess precipitation (in inches) left over after the surface soil layer is recharged
-                E[k] = Su_awc - Su0  # amount of room (in inches) in the underlying soil layer available to be recharged with excess precipitation
+
+                # amount of excess precipitation (in inches) left over after the surface soil layer is recharged
+                D[k] = B[k] - Rs[k]
+
+                # amount of room (in inches) in the underlying soil layer available to be recharged with excess precip
+                E[k] = Su_awc - Su0
                 if E[k] > D[k]: 
                     # E > D indicates that there is more room in the underlying soil layer than there is excess 
                     # precipitation available after recharge to the surface soil layer. Therefore, there is no runoff.
@@ -289,13 +291,13 @@ def _water_balance(awc,
                 Rs[k] = 0
                 Ss[k] = 0
                 Lu[k] = min(((abs(B[k]) - Ls[k]) * Su0) / awc, Su0)
-                #*
+                #
                 #
                 # Lu[k] = min((abs(B[k]) - Ls[k])*Su0/(awc + 1),Su0);
-                # NOTE: This equation above was used by the NCDC in their FORTRAN code (pdi.f)
+                # NOTE: The equation above was used by the NCDC in their FORTRAN code (pdi.f)
                 # prior to 2013. See Jacobi et al. (2013) for a full explanation. 
                 #
-                #*
+                #
                 Ru[k] = 0
                 Su[k] = Su0 - Lu[k]
 
@@ -383,16 +385,15 @@ def _cafec_coeff_ufunc(actual,
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-# @numba.jit    # not working yet 
-def _cafec_coefficients(P,
-                        PET,
-                        ET,
-                        PR,
-                        R,
-                        RO,
-                        PRO,
-                        L,
-                        PL,
+# @numba.jit
+def _cafec_coefficients(potential_evapotranspiration,
+                        evapotranspiration,
+                        potential_recharge,
+                        recharge,
+                        runoff,
+                        potential_runoff,
+                        loss,
+                        potential_loss,
                         data_start_year,
                         calibration_start_year,
                         calibration_end_year):
@@ -400,23 +401,22 @@ def _cafec_coefficients(P,
     This function calculates CAFEC coefficients used for computing Palmer's Z index using inputs from
     the water balance function.
 
-    :param P: 1-D numpy.ndarray of monthly precipitation observations, in inches, the number of array elements
+    :param potential_evapotranspiration: 1-D numpy.ndarray of monthly potential evapotranspiration values, in inches,
+              the number of array elements (array size) should be a multiple of 12 (representing an ordinal
+              number of full years)
+    :param evapotranspiration: 1-D numpy.ndarray of monthly evapotranspiration values, in inches, the number
+              of array elements (array size) should be a multiple of 12 (representing an ordinal number of full years)
+    :param potential_recharge: 1-D numpy.ndarray of monthly potential recharge values, in inches, the number
+              of array elements (array size) should be a multiple of 12 (representing an ordinal number of full years)
+    :param recharge: 1-D numpy.ndarray of monthly recharge values, in inches, the number of array elements
               (array size) should be a multiple of 12 (representing an ordinal number of full years)
-    :param PET: 1-D numpy.ndarray of monthly potential evapotranspiration values, in inches, the number of array elements
-                (array size) should be a multiple of 12 (representing an ordinal number of full years)
-    :param ET: 1-D numpy.ndarray of monthly evapotranspiration values, in inches, the number of array elements
+    :param runoff: 1-D numpy.ndarray of monthly runoff values, in inches, the number of array elements
                (array size) should be a multiple of 12 (representing an ordinal number of full years)
-    :param PR: 1-D numpy.ndarray of monthly potential recharge values, in inches, the number of array elements
-               (array size) should be a multiple of 12 (representing an ordinal number of full years)
-    :param R: 1-D numpy.ndarray of monthly recharge values, in inches, the number of array elements
+    :param potential_runoff: 1-D numpy.ndarray of monthly potential runoff values, in inches, the number of array
+               elements (array size) should be a multiple of 12 (representing an ordinal number of full years)
+    :param loss: 1-D numpy.ndarray of monthly loss values, in inches, the number of array elements
               (array size) should be a multiple of 12 (representing an ordinal number of full years)
-    :param RO: 1-D numpy.ndarray of monthly runoff values, in inches, the number of array elements
-               (array size) should be a multiple of 12 (representing an ordinal number of full years)
-    :param PRO: 1-D numpy.ndarray of monthly potential runoff values, in inches, the number of array elements
-                (array size) should be a multiple of 12 (representing an ordinal number of full years)
-    :param L: 1-D numpy.ndarray of monthly loss values, in inches, the number of array elements
-              (array size) should be a multiple of 12 (representing an ordinal number of full years)
-    :param PL: 1-D numpy.ndarray of monthly potential loss values, in inches, the number of array elements
+    :param potential_loss: 1-D numpy.ndarray of monthly potential loss values, in inches, the number of array elements
                (array size) should be a multiple of 12 (representing an ordinal number of full years)
     :param data_start_year: initial year of the input arrays, i.e. the first element of each of the input arrays
                             is assumed to correspond to January of this initial year
@@ -427,19 +427,25 @@ def _cafec_coefficients(P,
     """
     
     # get only the data from within the calibration period
-    calibrated_arrays = _calibrate_data([P, PET, ET, PR, R, PRO, RO, PL, L],
+    calibrated_arrays = _calibrate_data([potential_evapotranspiration,
+                                         evapotranspiration,
+                                         potential_recharge,
+                                         recharge,
+                                         potential_runoff,
+                                         runoff,
+                                         potential_loss,
+                                         loss],
                                         data_start_year,
                                         calibration_start_year,
                                         calibration_end_year)
-    P = calibrated_arrays[0]
-    PET = calibrated_arrays[1]
-    ET = calibrated_arrays[2]
-    PR = calibrated_arrays[3]
-    R = calibrated_arrays[4]
-    PRO = calibrated_arrays[5]
-    RO = calibrated_arrays[6]
-    PL = calibrated_arrays[7]
-    L = calibrated_arrays[8]
+    potential_evapotranspiration = calibrated_arrays[0]
+    evapotranspiration = calibrated_arrays[1]
+    potential_recharge = calibrated_arrays[2]
+    recharge = calibrated_arrays[3]
+    potential_runoff = calibrated_arrays[4]
+    runoff = calibrated_arrays[5]
+    potential_loss = calibrated_arrays[6]
+    loss = calibrated_arrays[7]
 
     # ALPHA, BETA, GAMMA, DELTA CALCULATIONS
     # A calibration period is used to calculate alpha, beta, gamma, and delta, four coefficients dependent upon 
@@ -450,14 +456,14 @@ def _cafec_coefficients(P,
         warnings.simplefilter("ignore", category=RuntimeWarning)
         
         # get averages for each calendar month (compute means over the year axis, giving an average for each calendar month over all years)
-        ET_bar = np.nanmean(ET, axis=0)
-        PET_bar = np.nanmean(PET, axis=0)
-        R_bar = np.nanmean(R, axis=0)
-        PR_bar = np.nanmean(PR, axis=0)
-        L_bar = np.nanmean(L, axis=0)
-        PL_bar = np.nanmean(PL, axis=0)
-        RO_bar = np.nanmean(RO, axis=0)
-        PRO_bar = np.nanmean(PRO, axis=0)
+        ET_bar = np.nanmean(evapotranspiration, axis=0)
+        PET_bar = np.nanmean(potential_evapotranspiration, axis=0)
+        R_bar = np.nanmean(recharge, axis=0)
+        PR_bar = np.nanmean(potential_recharge, axis=0)
+        L_bar = np.nanmean(loss, axis=0)
+        PL_bar = np.nanmean(potential_loss, axis=0)
+        RO_bar = np.nanmean(runoff, axis=0)
+        PRO_bar = np.nanmean(potential_runoff, axis=0)
             
         alpha = _cafec_coeff_ufunc(ET_bar, PET_bar)
         beta = _cafec_coeff_ufunc(R_bar, PR_bar)
@@ -473,8 +479,7 @@ def _calibrate_data(arrays,
                     calibration_start_year,
                     calibration_end_year):
 
-    #!!!!!!!!!!!!!
-    # TODO make sure calibration years range is valid, i.e. within actual data years range 
+    # TODO make sure calibration years range is valid, i.e. within actual data years range
     
     # determine the array (year axis) indices for the calibration period
     total_data_years = int(arrays[0].shape[0] / 12)
@@ -504,7 +509,6 @@ def _climatic_characteristic(alpha,
                              gamma,
                              delta,
                              precip,
-                             evapotranspiration,
                              potential_evapotranspiration,
                              recharge,
                              potential_recharge,
@@ -519,19 +523,25 @@ def _climatic_characteristic(alpha,
     total_calibration_years = calibration_end_year - calibration_start_year + 1
     
     # get only the data from within the calibration period
-    calibrated_arrays = _calibrate_data([precip, potential_evapotranspiration, evapotranspiration, potential_recharge, recharge, potential_runoff, runoff, potential_loss, loss],
+    calibrated_arrays = _calibrate_data([precip,
+                                         potential_evapotranspiration,
+                                         potential_recharge,
+                                         recharge,
+                                         potential_runoff,
+                                         runoff,
+                                         potential_loss,
+                                         loss],
                                         data_start_year,
                                         calibration_start_year,
                                         calibration_end_year)
     precip = calibrated_arrays[0]
     potential_evapotranspiration = calibrated_arrays[1]
-    evapotranspiration = calibrated_arrays[2]
-    potential_recharge = calibrated_arrays[3]
-    recharge = calibrated_arrays[4]
-    potential_runoff = calibrated_arrays[5]
-    runoff = calibrated_arrays[6]
-    potential_loss = calibrated_arrays[7]
-    loss = calibrated_arrays[8]
+    potential_recharge = calibrated_arrays[2]
+    recharge = calibrated_arrays[3]
+    potential_runoff = calibrated_arrays[4]
+    runoff = calibrated_arrays[5]
+    potential_loss = calibrated_arrays[6]
+    loss = calibrated_arrays[7]
 
     # CALIBRATED CAFEC, K, AND d CALCULATION
     # NOTE: 
@@ -597,7 +607,7 @@ def _climatic_characteristic(alpha,
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-# @numba.jit  # not working yet, AssertionError: Failed at object (analyzing bytecode)
+@numba.jit
 def _z_index(P,
              PET,
              ET,
@@ -655,8 +665,7 @@ def _z_index(P,
     P = utils.reshape_to_2d(P, 12)
 
     # get the CAFEC coefficients
-    alpha, beta, gamma, delta = _cafec_coefficients(P, 
-                                                    PET, 
+    alpha, beta, gamma, delta = _cafec_coefficients(PET,
                                                     ET,
                                                     PR,
                                                     R,
@@ -673,8 +682,7 @@ def _z_index(P,
                                  gamma, 
                                  delta, 
                                  P, 
-                                 ET, 
-                                 PET, 
+                                 PET,
                                  R, 
                                  PR, 
                                  RO, 
@@ -685,7 +693,8 @@ def _z_index(P,
                                  calibration_start_year,
                                  calibration_end_year)
     
-    # loop over the full period of record and compute the CAFEC precipitation, and use this to determine the moisture departure
+    # loop over the full period of record and compute the CAFEC precipitation,
+    # and use this to determine the moisture departure
     # FULL RECORD CAFEC AND d CALCULATION
     z = np.empty((P.shape[0], 12))
     for n in range(P.shape[0]):
@@ -896,8 +905,7 @@ def _dry_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT):
     if PV <= 0:
         # During a drought, PV <= 0 implies PPe = 0 (i.e., the 
         # probability that the drought has ended returns to zero).                                                             
-        Q = 0 
-        PV, PX1, PX2, PX3, PPe, X, BT = _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)                                                                 
+        PV, PX1, PX2, PX3, PPe, X, BT = _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)
     
     else:
         Ze = (-2.691 * X3) - 1.5  # (Palmer eq. 28) Calculate the soil moisture anomaly (Z value) which corresponds to an amount of moisture that is sufficient to end the currently established drought in a single month. Once this is known then we can compare against the actual Z value, to see if we've pulled out of the established drought or not
@@ -933,8 +941,7 @@ def _wet_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT):
     if PV >= 0: 
         # During a wet spell, PV >= 0 implies PPe = 0 (i.e., the 
         # probability that the wet spell has ended returns to zero).
-        Q = 0 
-        PV, PX1, PX2, PX3, PPe, X, BT = _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)                                                           
+        PV, PX1, PX2, PX3, PPe, X, BT = _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X)
     
     else:
         Ze = -2.691 * X3 + 1.5
@@ -1089,7 +1096,7 @@ def _assign_X(k,
 
 
 # -----------------------------------------------------------------------------------------------------------------
-# @numba.jit
+@numba.jit
 def _pdsi_from_zindex(Z):
 
     # INITIALIZE PDSI AND PHDI CALCULATIONS
@@ -1098,10 +1105,10 @@ def _pdsi_from_zindex(Z):
     # established dry (wet) spell and is used in calculating the Pe value for a month.
     V = 0.0
     
-    Pe = 0.0 # the probability that the current wet or dry spell has ended in a month
-    X1 = 0.0 # the severity index value for an incipient wet spell for a month
-    X2 = 0.0 # the severity index value for an incipient dry spell for a month
-    X3 = 0.0 # the severity index value of the current established wet or dry spell for a month
+    Pe = 0.0  # the probability that the current wet or dry spell has ended in a month
+    X1 = 0.0  # the severity index value for an incipient wet spell for a month
+    X2 = 0.0  # the severity index value for an incipient dry spell for a month
+    X3 = 0.0  # the severity index value of the current established wet or dry spell for a month
     
     number_of_months = Z.shape[0]
     
@@ -1241,7 +1248,7 @@ def _phdi_select_ufunc(px3, x):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-# @numba.jit  # not working yet
+@numba.jit
 def _compute_scpdsi(established_index_values,
                     sczindex_values,
                     scpdsi_values,
@@ -1276,20 +1283,14 @@ def _compute_scpdsi(established_index_values,
 
     # Initializes the book keeping indices used in finding the PDSI
     V = 0.0
-    Q = 0.0
 
     # current and previous period (month/time step) indices
-    period = 0
     previous_key = -1
 
     for period in range(established_index_values.size):
     
         # These variables represent the values for  corresponding variables for the current period.
         # They are kept separate because many calculations depend on last period's values.  
-        new_X = 0
-        new_X1 = 0
-        new_X2 = 0
-        new_X3 = 0
         previous_established_index_X3 = 0
 
         if (previous_key >= 0) and not np.isnan(established_index_values[previous_key]):
@@ -1321,7 +1322,6 @@ def _compute_scpdsi(established_index_values,
             
                 new_X3 = 0
                 new_V = 0
-                new_probability = 0
                 new_X, new_X1, new_X2, new_X3 = _choose_X(pdsi_values,
                                                           established_index_values,
                                                           wet_index_values,
@@ -1333,8 +1333,7 @@ def _compute_scpdsi(established_index_values,
                                                           wet_B,
                                                           dry_M,
                                                           dry_B,
-                                                          new_X, 
-                                                          new_X3, 
+                                                          new_X3,
                                                           period, 
                                                           previous_key)
 
@@ -1350,7 +1349,6 @@ def _compute_scpdsi(established_index_values,
                 if (wd * new_V) > 0:
                 
                     new_V = 0
-                    new_probability = 0
                     new_X1 = 0
                     new_X2 = 0
                     new_X = new_X3
@@ -1365,7 +1363,6 @@ def _compute_scpdsi(established_index_values,
 
                         new_X3 = 0
                         new_V = 0
-                        new_probability = 100
 
                     # xValues should be a list of doubles
                     new_X, new_X1, new_X2, new_X3 = _choose_X(pdsi_values,
@@ -1379,8 +1376,7 @@ def _compute_scpdsi(established_index_values,
                                                               wet_B,
                                                               dry_M,
                                                               dry_B,
-                                                              new_X, 
-                                                              new_X3, 
+                                                              new_X3,
                                                               period, 
                                                               previous_key)
 
@@ -1430,7 +1426,6 @@ def _choose_X(pdsi_values,
               wet_B,
               dry_M,
               dry_B,
-              new_X,
               new_X3,
               month_index, 
               previous_key,
@@ -1601,7 +1596,6 @@ def _z_sum(interval,
            calibration_end_year,
            input_start_year):
 
-    z = 0.0
     z_temporary = collections.deque()
     values_to_sum = collections.deque()
     summed_values = collections.deque()
@@ -1634,12 +1628,8 @@ def _z_sum(interval,
     sum_value = 0.0
     for i in range(interval):
     
-        if not z_temporary:
+        if z_temporary:
            
-            i = interval
-            
-        else:
-
             # pull a value off the end of the list
             z = z_temporary.pop()
             remaining_calibration_periods -= 1
@@ -1763,7 +1753,7 @@ def _least_squares(x,
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-# @numba.jit    # not working yet
+@numba.jit
 def _duration_factors(zindex_values,
                       calibration_start_year,
                       calibration_end_year,
@@ -1784,7 +1774,6 @@ def _duration_factors(zindex_values,
     negative and positive Z values, so the variable 'wet_or_dry' will
     determine whether the driest or wettest periods are looked at.
 
-    :param pdsi_values:
     :param zindex_values:
     :param calibration_start_year:
     :param calibration_end_year:
@@ -1930,80 +1919,75 @@ def scpdsi(precip_time_series: np.ndarray,      # pragma: no cover
     :return: five numpy arrays, respectively containing SCPDSI, PDSI, PHDI, PMDI, and Z-Index values
     """
 
-    try:
-        # if we're passed all missing values then we can't compute anything, return the same array of missing values
-        if (np.ma.is_masked(precip_time_series) and precip_time_series.mask.all())\
-                or np.all(np.isnan(precip_time_series)):
-            return [precip_time_series, precip_time_series, precip_time_series, precip_time_series, precip_time_series]
+    # if we're passed all missing values then we can't compute anything, return the same array of missing values
+    if (np.ma.is_masked(precip_time_series) and precip_time_series.mask.all())\
+            or np.all(np.isnan(precip_time_series)):
+        return precip_time_series, precip_time_series, precip_time_series, precip_time_series, precip_time_series
 
-        # if we've been passed an array of AWC values then just use
-        # the first one (useful when applying this function with xarray.GroupBy)
-        if isinstance(awc, np.ndarray) and (awc.size > 1):
-            awc = awc[0]
+    # if we've been passed an array of AWC values then just use
+    # the first one (useful when applying this function with xarray.GroupBy)
+    if isinstance(awc, np.ndarray) and (awc.size > 1):
+        awc = awc[0]
 
-        # make sure we have matching precipitation and PET time series
-        if precip_time_series.size != pet_time_series.size:
-            message = 'Precipitation and PET time series do not match, unequal number or months'
-            _logger.error(message)
-            raise ValueError(message)
-                    
-        # perform water balance accounting
-        ET, PR, R, RO, PRO, L, PL = _water_balance(awc, pet_time_series, precip_time_series)
-        
-        # if we have input time series (precipitation and PET) with an incomplete 
-        # final year then we pad all the time series arrays with NaN values
-        pad_months = (12 - (precip_time_series.size % 12)) % 12
-        if pad_months > 0:            
-            precip_time_series = np.pad(precip_time_series, (0, pad_months), 'constant', constant_values=(np.nan))
-            pet_time_series = np.pad(pet_time_series, (0, pad_months), 'constant', constant_values=(np.nan))
-            ET = np.pad(ET, (0, pad_months), 'constant', constant_values=(np.nan))
-            PR = np.pad(PR, (0, pad_months), 'constant', constant_values=(np.nan))
-            R = np.pad(R, (0, pad_months), 'constant', constant_values=(np.nan))
-            RO = np.pad(RO, (0, pad_months), 'constant', constant_values=(np.nan))
-            PRO = np.pad(PRO, (0, pad_months), 'constant', constant_values=(np.nan))
-            L = np.pad(L, (0, pad_months), 'constant', constant_values=(np.nan))
-            PL = np.pad(PL, (0, pad_months), 'constant', constant_values=(np.nan))
-                
-        # compute Z-index values
-        zindex = _z_index(precip_time_series, 
-                          pet_time_series, 
-                          ET, 
-                          PR, 
-                          R, 
-                          RO, 
-                          PRO, 
-                          L, 
-                          PL, 
-                          data_start_year, 
-                          calibration_start_year, 
-                          calibration_end_year)
-        
-        # trim off the padded months from the Z-index array
-        if pad_months > 0:
-            zindex = zindex[0:-pad_months]
+    # make sure we have matching precipitation and PET time series
+    if precip_time_series.size != pet_time_series.size:
+        message = 'Precipitation and PET time series do not match, unequal number or months'
+        _logger.error(message)
+        raise ValueError(message)
 
-        # compute PDSI and other associated variables
-        PDSI, PHDI, PMDI = _pdsi_from_zindex(zindex)
+    # perform water balance accounting
+    evapotranspiration, potential_recharge, recharge, runoff, potential_runoff, loss, potential_loss = \
+        _water_balance(awc, pet_time_series, precip_time_series)
 
-        # keep a copy of the originally computed PDSI for return
-        final_PDSI = np.array(PDSI)
-        
-        # perform self-calibration        
-        zindex, PDSI, SCPDSI = _self_calibrate(PDSI, 
-                                               zindex,
-                                               calibration_start_year,
-                                               calibration_end_year,
-                                               data_start_year)
+    # if we have input time series (precipitation and PET) with an incomplete
+    # final year then we pad all the time series arrays with NaN values
+    pad_months = (12 - (precip_time_series.size % 12)) % 12
+    if pad_months > 0:
+        precip_time_series = np.pad(precip_time_series, (0, pad_months), 'constant', constant_values=np.nan)
+        pet_time_series = np.pad(pet_time_series, (0, pad_months), 'constant', constant_values=np.nan)
+        evapotranspiration = np.pad(evapotranspiration, (0, pad_months), 'constant', constant_values=np.nan)
+        potential_recharge = np.pad(potential_recharge, (0, pad_months), 'constant', constant_values=np.nan)
+        recharge = np.pad(recharge, (0, pad_months), 'constant', constant_values=np.nan)
+        runoff = np.pad(runoff, (0, pad_months), 'constant', constant_values=np.nan)
+        potential_runoff = np.pad(potential_runoff, (0, pad_months), 'constant', constant_values=np.nan)
+        loss = np.pad(loss, (0, pad_months), 'constant', constant_values=np.nan)
+        potential_loss = np.pad(potential_loss, (0, pad_months), 'constant', constant_values=np.nan)
 
-        # recompute PDSI and other associated variables
-        SCPDSI, PHDI, PMDI = _pdsi_from_zindex(zindex)
-        
-        return SCPDSI, final_PDSI, PHDI, PMDI, zindex
+    # compute Z-index values
+    zindex = _z_index(precip_time_series,
+                      pet_time_series,
+                      evapotranspiration,
+                      potential_recharge,
+                      recharge,
+                      runoff,
+                      potential_runoff,
+                      loss,
+                      potential_loss,
+                      data_start_year,
+                      calibration_start_year,
+                      calibration_end_year)
 
-    except:
-        # catch all exceptions, log rudimentary error information
-        _logger.error('Failed to complete', exc_info=True)
-        raise
+    # trim off the padded months from the Z-index array
+    if pad_months > 0:
+        zindex = zindex[0:-pad_months]
+
+    # compute PDSI and other associated variables
+    pdsi, phdi, pmdi = _pdsi_from_zindex(zindex)
+
+    # keep a copy of the originally computed PDSI for return
+    final_pdsi = np.array(pdsi)
+
+    # perform self-calibration
+    zindex, pdsi, scpdsi = _self_calibrate(pdsi,
+                                           zindex,
+                                           calibration_start_year,
+                                           calibration_end_year,
+                                           data_start_year)
+
+    # recompute PDSI and other associated variables
+    scpdsi, phdi, pmdi = _pdsi_from_zindex(zindex)
+
+    return scpdsi, final_pdsi, phdi, pmdi, zindex
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -2044,7 +2028,7 @@ def pdsi(precip_time_series,          # pragma: no cover
             # pad arrays with empty/fill months at end of final year
             arrays_to_pad = [precip_time_series, pet_time_series, ET, PR, R, RO, PRO, L, PL]
             for ary in arrays_to_pad:
-                ary = np.pad(ary, (0, pad_months), 'constant', constant_values=(np.nan))
+                ary = np.pad(ary, (0, pad_months), 'constant', constant_values=np.nan)
                 
         # compute Z-index values
         zindex = _z_index(precip_time_series, 

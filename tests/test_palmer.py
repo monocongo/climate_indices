@@ -111,7 +111,6 @@ class PalmerTestCase(fixtures.FixturesTestCase):
                                                    self.fixture_palmer_gamma_AL01,
                                                    self.fixture_palmer_delta_AL01,
                                                    self.fixture_palmer_precip_AL01,
-                                                   self.fixture_palmer_et_AL01,
                                                    self.fixture_palmer_pet_AL01,
                                                    self.fixture_palmer_r_AL01,
                                                    self.fixture_palmer_pr_AL01,
@@ -207,8 +206,7 @@ class PalmerTestCase(fixtures.FixturesTestCase):
         """
         
         # call the _cafec_coefficients() function                                                                                        
-        alpha, beta, gamma, delta = palmer._cafec_coefficients(self.fixture_palmer_precip_AL01,
-                                                               self.fixture_palmer_pet_AL01,
+        alpha, beta, gamma, delta = palmer._cafec_coefficients(self.fixture_palmer_pet_AL01,
                                                                self.fixture_palmer_et_AL01,
                                                                self.fixture_palmer_pr_AL01,
                                                                self.fixture_palmer_r_AL01,
