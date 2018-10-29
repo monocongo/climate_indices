@@ -219,6 +219,18 @@ class ComputeTestCase(fixtures.FixturesTestCase):
         Test for the compute.transform_fitted_gamma() function
         """
         
+        # confirm that an input array of all NaNs results in the same array returned
+        all_nans = np.full(self.fixture_precips_mm_monthly.shape, np.NaN)
+        computed_values = compute.transform_fitted_gamma(all_nans,
+                                                         self.fixture_data_year_start_monthly,
+                                                         self.fixture_data_year_start_monthly,
+                                                         self.fixture_data_year_end_monthly,
+                                                         compute.Periodicity.monthly)
+        np.testing.assert_allclose(computed_values,
+                                   all_nans,
+                                   equal_nan=True,
+                                   err_msg='Gamma fit/transform not handling all-NaN arrays as expected')
+
         # compute sigmas of transformed (normalized) values fitted to a gamma distribution,
         # using the full period of record as the calibration period
         computed_values = compute.transform_fitted_gamma(self.fixture_precips_mm_monthly, 
@@ -229,8 +241,7 @@ class ComputeTestCase(fixtures.FixturesTestCase):
         np.testing.assert_allclose(computed_values, 
                                    self.fixture_transformed_gamma_monthly,
                                    err_msg='Transformed gamma fitted monthly values not computed as expected')            
-         
-         
+
         # compute sigmas of transformed (normalized) values fitted to a gamma distribution,
         # using the full period of record as the calibration period
         computed_values = compute.transform_fitted_gamma(self.fixture_precips_mm_daily.flatten(),
@@ -290,6 +301,18 @@ class ComputeTestCase(fixtures.FixturesTestCase):
         Test for the compute.transform_fitted_pearson() function
         """
         
+        # confirm that an input array of all NaNs results in the same array returned
+        all_nans = np.full(self.fixture_precips_mm_monthly.shape, np.NaN)
+        computed_values = compute.transform_fitted_pearson(all_nans,
+                                                           self.fixture_data_year_start_monthly,
+                                                           self.fixture_data_year_start_monthly,
+                                                           self.fixture_data_year_end_monthly,
+                                                           compute.Periodicity.monthly)
+        np.testing.assert_allclose(computed_values,
+                                   all_nans,
+                                   equal_nan=True,
+                                   err_msg='Pearson fit/transform not handling all-NaN arrays as expected')
+
         # compute sigmas of transformed (normalized) values fitted to a Pearson Type III distribution
         computed_values = compute.transform_fitted_pearson(self.fixture_precips_mm_monthly,
                                                            self.fixture_data_year_start_monthly,
