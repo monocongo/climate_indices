@@ -240,6 +240,7 @@ class DivisionsProcessor(object):
                         
                         # compute SPEI/Gamma
                         spei_gamma = indices.spei(precip_time_series,
+                                                  pet_time_series,
                                                   months,
                                                   indices.Distribution.gamma,
                                                   compute.Periodicity.monthly,
@@ -250,13 +251,13 @@ class DivisionsProcessor(object):
 
                         # compute SPEI/Pearson
                         spei_pearson = indices.spei(precip_time_series,
+                                                    pet_time_series,
                                                     months,
                                                     indices.Distribution.pearson,
                                                     compute.Periodicity.monthly,
                                                     self.data_start_year,
                                                     self.calibration_start_year,
-                                                    self.calibration_end_year,
-                                                    pet_mm=pet_time_series)
+                                                    self.calibration_end_year)
 
                         # compute SPI/Gamma
                         spi_gamma = indices.spi(precip_time_series,
