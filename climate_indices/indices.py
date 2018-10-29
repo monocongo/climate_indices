@@ -3,7 +3,7 @@ import numba
 import numpy as np
 from enum import Enum
 
-from climate_indices import compute, palmer, thornthwaite, utils
+from climate_indices import compute, eto, palmer, utils
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -11,7 +11,7 @@ class Distribution(Enum):
     """
     Enumeration type for distribution fittings used for SPI and SPEI.
     """
-    pearson_type3 = 'Pearson Type III'
+    pearson = 'pearson'
     gamma = 'gamma'
 
 
@@ -27,6 +27,7 @@ _logger = logging.getLogger(__name__)
 _FITTED_INDEX_VALID_MIN = -3.09
 _FITTED_INDEX_VALID_MAX = 3.09
 
+
 # ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def spi(precips, 
@@ -36,10 +37,10 @@ def spi(precips,
         calibration_year_initial,
         calibration_year_final,
         periodicity):
-    '''
+    """
     Computes SPI (Standardized Precipitation Index).
-    
-    :param precips: 1-D numpy array of precipitation values, in any units, first value assumed to correspond 
+
+    :param precips: 1-D numpy array of precipitation values, in any units, first value assumed to correspond
                     to January of the initial year if the periodicity is monthly, or January 1st of the initial
                     year if daily
     :param scale: number of time steps over which the values should be scaled before the index is computed
@@ -47,17 +48,17 @@ def spi(precips,
     :param data_start_year: the initial year of the input precipitation dataset
     :param calibration_year_initial: initial year of the calibration period
     :param calibration_year_final: final year of the calibration period
-    :param periodicity: the periodicity of the time series represented by the input data, valid/supported values are 
+    :param periodicity: the periodicity of the time series represented by the input data, valid/supported values are
                         'monthly' and 'daily'
-                        'monthly' indicates an array of monthly values, assumed to span full years, i.e. the first 
-                        value corresponds to January of the initial year and any missing final months of the final 
+                        'monthly' indicates an array of monthly values, assumed to span full years, i.e. the first
+                        value corresponds to January of the initial year and any missing final months of the final
                         year filled with NaN values, with size == # of years * 12
                         'daily' indicates an array of full years of daily values with 366 days per year, as if each
-                        year were a leap year and any missing final months of the final year filled with NaN values, 
+                        year were a leap year and any missing final months of the final year filled with NaN values,
                         with array size == (# years * 366)
     :return SPI values fitted to the gamma distribution at the specified time step scale, unitless
     :rtype: 1-D numpy.ndarray of floats of the same length as the input array of precipitation values
-    '''
+    """
 
     # we expect to operate upon a 1-D array, so if we've been passed a 2-D array we flatten it, otherwise raise an error
     shape = precips.shape
@@ -99,161 +100,98 @@ def spi(precips,
                                                                    calibration_year_initial,
                                                                    calibration_year_final,
                                                                    periodicity)
-    elif distribution is Distribution.pearson_type3:
+    elif distribution is Distribution.pearson:
         
         # fit the scaled values to a Pearson Type III distribution and transform to corresponding normalized sigmas 
-        transformed_fitted_values = compute.transform_fitted_pearson(scaled_precips, 
+        transformed_fitted_values = compute.transform_fitted_pearson(scaled_precips,
                                                                      data_start_year,
                                                                      calibration_year_initial,
                                                                      calibration_year_final,
                                                                      periodicity)
 
     else:
-        message = "Unsupported distribution: {dist}".format(dist=distribution)
+
+        message = "Unsupported distribution argument: {dist}".format(dist=distribution)
         _logger.error(message)
         raise ValueError(message)
 
     # clip values to within the valid range, reshape the array back to 1-D
-    spi = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
+    values = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
     
     # return the original size array 
-    return spi[0:original_length]
+    return values[0:original_length]
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def spei(scale,
+def spei(precips_mm,
+         pet_mm,
+         scale,
          distribution,
          periodicity,
          data_start_year,
          calibration_year_initial,
-         calibration_year_final,
-         precips_mm,
-         pet_mm=None,
-         temps_celsius=None,
-         latitude_degrees=None):
-    '''
+         calibration_year_final):
+    """
     Compute SPEI fitted to the gamma distribution.
-    
-    PET values are subtracted from the precipitation values to come up with an array of (P - PET) values, which is 
+
+    PET values are subtracted from the precipitation values to come up with an array of (P - PET) values, which is
     then scaled to the specified months scale and finally fitted/transformed to SPEI values corresponding to the
     input precipitation time series.
 
-    If an input array of temperature values is provided then PET values are computed internally using the input 
-    temperature array, data start year, and latitude value (all three of which are required in combination). 
-    In this case an input array of PET values should not be specified and if so will result in an error being 
-    raised indicating invalid arguments.
-    
-    If an input array of PET values is provided then neither an input array of temperature values nor a latitude 
-    should be specified, and if so will result in an error being raised indicating invalid arguments.
-        
+    :param precips_mm: an array of monthly total precipitation values, in millimeters, should be of the same size
+                       (and shape?) as the input temperature array
+    :param pet_mm: an array of monthly PET values, in millimeters, should be of the same size (and shape?) as the input
+                   precipitation array
     :param scale: the number of months over which the values should be scaled before computing the indicator
     :param distribution: distribution type to be used for the internal fitting/transform computation
-    :param periodicity: the periodicity of the time series represented by the input data, valid/supported values are 
+    :param periodicity: the periodicity of the time series represented by the input data, valid/supported values are
                         'monthly' and 'daily'
-                        'monthly' indicates an array of monthly values, assumed to span full years, i.e. the first 
-                        value corresponds to January of the initial year and any missing final months of the final 
+                        'monthly' indicates an array of monthly values, assumed to span full years, i.e. the first
+                        value corresponds to January of the initial year and any missing final months of the final
                         year filled with NaN values, with size == # of years * 12
                         'daily' indicates an array of full years of daily values with 366 days per year, as if each
-                        year were a leap year and any missing final months of the final year filled with NaN values, 
+                        year were a leap year and any missing final months of the final year filled with NaN values,
                         with array size == (# years * 366)
-    :param precips_mm: an array of monthly total precipitation values, in millimeters, should be of the same size 
-                       (and shape?) as the input temperature array
-    :param pet_mm: an array of monthly PET values, in millimeters, should be of the same size (and shape?) as the input 
-                   precipitation array, must be unspecified or None if using an array of temperature values as input
-    :param temps_celsius: an array of monthly average temperature values, in degrees Celsius, should be of the same size 
-                          (and shape?) as the input precipitation array, must be unspecified or None if using an array 
-                          of PET values as input
     :param data_start_year: the initial year of the input datasets (assumes that the two inputs cover the same period)
     :param calibration_year_initial: initial year of the calibration period
     :param calibration_year_final: final year of the calibration period
-    :param latitude_degrees: the latitude of the location, in degrees north, must be unspecified or None if using
-                             an array of PET values as an input, and must be specified if using an array of temperatures 
-                             as input, valid range is -90.0 to 90.0 (inclusive)
     :return: an array of SPEI values
     :rtype: numpy.ndarray of type float, of the same size and shape as the input temperature and precipitation arrays
-    '''
-                    
+    """
+
     # if we're passed all missing values then we can't compute anything, return the same array of missing values
     if (np.ma.is_masked(precips_mm) and precips_mm.mask.all()) or np.all(np.isnan(precips_mm)):
         return precips_mm
 
-    # validate the function's argument combinations
-    if temps_celsius is not None:
-        
-        # since we have temperature then it's expected that we'll compute PET internally,
-        # so we shouldn't have PET as an input
-        if pet_mm is not None:
-            message = 'Incompatible arguments: either temperature or PET arrays can be '\
-                      'specified as arguments, but not both'
-            _logger.error(message)
-            raise ValueError(message)
-        
-        # we'll need both the latitude and data start year in order to compute PET 
-        elif (latitude_degrees is None) or (data_start_year is None):
-            message = 'Missing arguments: since temperature is provided as an input then both latitude ' + \
-                      'and the data start year must also be specified, and one or both is not'
-            _logger.error(message)
-            raise ValueError(message)
-
-        # validate that the two input arrays are compatible
-        elif precips_mm.size != temps_celsius.size:
-            message = 'Incompatible precipitation and temperature arrays'
-            _logger.error(message)
-            raise ValueError(message)
-
-        elif periodicity is not compute.Periodicity.monthly:
-            # our PET currently uses a monthly version of Thornthwaite's equation and therefore's only valid for monthly 
-            message = 'Unsupported periodicity: \'{0}\' '.format(periodicity) + \
-                      '-- only monthly time series is supported when providing temperature and latitude inputs' 
-            _logger.error(message)
-            raise ValueError(message)
-
-        # compute PET
-        pet_mm = pet(temps_celsius, latitude_degrees, data_start_year)
-
-    elif pet_mm is not None:
-        
-        # make sure there's no confusion by not allowing a user to specify unnecessary parameters 
-        if latitude_degrees is not None:
-            message = 'Invalid argument: since PET is provided as an input then latitude must be absent'
-            _logger.error(message)
-            raise ValueError(message)
-            
-        # validate that the two input arrays are compatible
-        elif precips_mm.size != pet_mm.size:
-            message = 'Incompatible precipitation and PET arrays'
-            _logger.error(message)
-            raise ValueError(message)
-
-    else:
-        
-        message = 'Neither temperature nor PET array was specified, one or the other is required for SPEI'
+    # validate that the two input arrays are compatible
+    if precips_mm.size != pet_mm.size:
+        message = 'Incompatible precipitation and PET arrays'
         _logger.error(message)
         raise ValueError(message)
 
     # subtract the PET from precipitation, adding an offset to ensure that all values are positive
     p_minus_pet = (precips_mm.flatten() - pet_mm.flatten()) + 1000.0
-        
+
     # remember the original length of the input array, in order to facilitate returning an array of the same size
     original_length = precips_mm.size
-    
+
     # get a sliding sums array, with each element's value scaled by the specified number of time steps
     scaled_values = compute.sum_to_scale(p_minus_pet, scale)
 
     if distribution is Distribution.gamma:
 
-        # fit the scaled values to a gamma distribution and transform to corresponding normalized sigmas 
+        # fit the scaled values to a gamma distribution and transform to corresponding normalized sigmas
         transformed_fitted_values = compute.transform_fitted_gamma(scaled_values,
-                                                                   data_start_year, 
+                                                                   data_start_year,
                                                                    calibration_year_initial,
                                                                    calibration_year_final,
                                                                    periodicity)
-    
-    elif distribution is Distribution.pearson_type3:
-    
-        # fit the scaled values to a Pearson Type III distribution and transform to corresponding normalized sigmas 
-        transformed_fitted_values = compute.transform_fitted_pearson(scaled_values, 
+
+    elif distribution is Distribution.pearson:
+
+        # fit the scaled values to a Pearson Type III distribution and transform to corresponding normalized sigmas
+        transformed_fitted_values = compute.transform_fitted_pearson(scaled_values,
                                                                      data_start_year,
                                                                      calibration_year_initial,
                                                                      calibration_year_final,
@@ -265,12 +203,13 @@ def spei(scale,
         raise ValueError(message)
 
     # clip values to within the valid range, reshape the array back to 1-D
-    spei = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
-    
-    # return the original size array 
-    return spei[0:original_length]
+    values = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
 
-#-------------------------------------------------------------------------------------------------------------------------------------------
+    # return the original size array
+    return values[0:original_length]
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def scpdsi(precip_time_series,
            pet_time_series,
@@ -278,19 +217,19 @@ def scpdsi(precip_time_series,
            data_start_year,
            calibration_start_year,
            calibration_end_year):
-    '''
-    This function computes the self-calibrated Palmer Drought Severity Index (scPDSI), Palmer Drought Severity Index 
+    """
+    This function computes the self-calibrated Palmer Drought Severity Index (scPDSI), Palmer Drought Severity Index
     (PDSI), Palmer Hydrological Drought Index (PHDI), Palmer Modified Drought Index (PMDI), and Palmer Z-Index.
-    
+
     :param precip_time_series: time series of precipitation values, in inches
     :param pet_time_series: time series of PET values, in inches
     :param awc: available water capacity (soil constant), in inches
-    :param data_start_year: initial year of the input precipitation and PET datasets, 
+    :param data_start_year: initial year of the input precipitation and PET datasets,
                             both of which are assumed to start in January of this year
-    :param calibration_start_year: initial year of the calibration period 
-    :param calibration_end_year: final year of the calibration period 
-    :return: four numpy arrays containing SCPDSI, PDSI, PHDI, and Z-Index values respectively 
-    '''
+    :param calibration_start_year: initial year of the calibration period
+    :param calibration_end_year: final year of the calibration period
+    :return: five numpy arrays containing SCPDSI, PDSI, PHDI, PMDI, and Z-Index values respectively
+    """
     
     return palmer.scpdsi(precip_time_series,
                          pet_time_series,
@@ -298,8 +237,9 @@ def scpdsi(precip_time_series,
                          data_start_year,
                          calibration_start_year,
                          calibration_end_year)
-    
-#-------------------------------------------------------------------------------------------------------------------------------------------
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def pdsi(precip_time_series,
          pet_time_series,
@@ -307,19 +247,19 @@ def pdsi(precip_time_series,
          data_start_year,
          calibration_start_year,
          calibration_end_year):
-    '''
-    This function computes the Palmer Drought Severity Index (PDSI), Palmer Hydrological Drought Index (PHDI), 
+    """
+    This function computes the Palmer Drought Severity Index (PDSI), Palmer Hydrological Drought Index (PHDI),
     and Palmer Z-Index.
-    
+
     :param precip_time_series: time series of monthly precipitation values, in inches
     :param pet_time_series: time series of monthly PET values, in inches
     :param awc: available water capacity (soil constant), in inches
-    :param data_start_year: initial year of the input precipitation and PET datasets, 
+    :param data_start_year: initial year of the input precipitation and PET datasets,
                             both of which are assumed to start in January of this year
-    :param calibration_start_year: initial year of the calibration period 
-    :param calibration_end_year: final year of the calibration period 
-    :return: four numpy arrays containing PDSI, PHDI, PMDI, and Z-Index values respectively 
-    '''
+    :param calibration_start_year: initial year of the calibration period
+    :param calibration_end_year: final year of the calibration period
+    :return: four numpy arrays containing PDSI, PHDI, PMDI, and Z-Index values respectively
+    """
     
     return palmer.pdsi(precip_time_series,
                        pet_time_series,
@@ -329,7 +269,7 @@ def pdsi(precip_time_series,
                        calibration_end_year)
 
 
-# ------------------------------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 @numba.jit     
 def percentage_of_normal(values, 
                          scale,
@@ -338,31 +278,31 @@ def percentage_of_normal(values,
                          calibration_end_year,
                          periodicity):
     """
-    This function finds the percent of normal values (average of each calendar month or day over a specified 
-    calibration period of years) for a specified time steps scale. The normal precipitation for each calendar time step 
-    is computed for the specified time steps scale, and then each time step's scaled value is compared against the 
-    corresponding calendar time step's average to determine the percentage of normal. The period that defines the 
-    normal is described by the calibration start and end years arguments. The calibration period typically used  
-    for US climate monitoring is 1981-2010. 
-    
-    :param values: 1-D numpy array of precipitation values, any length, initial value assumed to be January of the data 
-                   start year (January 1st of the start year if daily periodicity), see the description of the 
+    This function finds the percent of normal values (average of each calendar month or day over a specified
+    calibration period of years) for a specified time steps scale. The normal precipitation for each calendar time step
+    is computed for the specified time steps scale, and then each time step's scaled value is compared against the
+    corresponding calendar time step's average to determine the percentage of normal. The period that defines the
+    normal is described by the calibration start and end years arguments. The calibration period typically used
+    for US climate monitoring is 1981-2010.
+
+    :param values: 1-D numpy array of precipitation values, any length, initial value assumed to be January of the data
+                   start year (January 1st of the start year if daily periodicity), see the description of the
                    *periodicity* argument below for further clarification
     :param scale: integer number of months over which the normal value is computed (eg 3-months, 6-months, etc.)
     :param data_start_year: the initial year of the input monthly values array
-    :param calibration_start_year: the initial year of the calibration period over which the normal average for each  
-                                   calendar time step is computed 
+    :param calibration_start_year: the initial year of the calibration period over which the normal average for each
+                                   calendar time step is computed
     :param calibration_end_year: the final year of the calibration period over which the normal average for each
                                  calendar time step is computed
-    :param periodicity: the periodicity of the time series represented by the input data, valid/supported values are 
+    :param periodicity: the periodicity of the time series represented by the input data, valid/supported values are
                         'monthly' and 'daily'
-                        'monthly' indicates an array of monthly values, assumed to span full years, i.e. the first 
-                        value corresponds to January of the initial year and any missing final months of the final 
+                        'monthly' indicates an array of monthly values, assumed to span full years, i.e. the first
+                        value corresponds to January of the initial year and any missing final months of the final
                         year filled with NaN values, with size == # of years * 12
                         'daily' indicates an array of full years of daily values with 366 days per year, as if each
-                        year were a leap year and any missing final months of the final year filled with NaN values, 
+                        year were a leap year and any missing final months of the final year filled with NaN values,
                         with array size == (# years * 366)
-    :return: percent of normal precipitation values corresponding to the scaled precipitation values array   
+    :return: percent of normal precipitation values corresponding to the scaled precipitation values array
     :rtype: numpy.ndarray of type float
     """
 
@@ -426,7 +366,7 @@ def percentage_of_normal(values,
     return percentages_of_normal
 
 
-# ------------------------------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def pet(temperature_celsius,
         latitude_degrees,
@@ -434,14 +374,13 @@ def pet(temperature_celsius,
 
     """
     This function computes potential evapotranspiration (PET) using Thornthwaite's equation.
-    
+
     :param temperature_celsius: an array of average temperature values, in degrees Celsius
-    :param latitude_degrees: the latitude of the location, in degrees north,
-                             must be within range [-90.0 ... 90.0] (inclusive), otherwise
-                             a ValueError is raised
+    :param latitude_degrees: the latitude of the location, in degrees north, must be within
+                             range [-90.0 ... 90.0] (inclusive), otherwise a ValueError is raised
     :param data_start_year: the initial year of the input dataset
-    :return: an array of PET values, of the same size and shape as the input temperature
-             values array, in millimeters/time step
+    :return: an array of PET values, of the same size and shape as the input temperature values array,
+             in millimeters/time step
     :rtype: 1-D numpy.ndarray of floats
     """
     
@@ -454,23 +393,25 @@ def pet(temperature_celsius,
     else:
         
         # we were passed a vanilla Numpy array, look for indices where the value == NaN
-        nan_indices = np.isnan(temperature_celsius)
-        if np.all(nan_indices):
+        if np.all(np.isnan(temperature_celsius)):
         
             # we started with all NaNs for the temperature, so just return the same
             return temperature_celsius
-        
+
+    # if we've been passed an array of latitude values then just use
+    # the first one (useful when applying this function with xarray.GroupBy)
+    if isinstance(latitude_degrees, np.ndarray) and (latitude_degrees.size > 1):
+        latitude_degrees = latitude_degrees[0]
+
     # make sure we're not dealing with a NaN or out-of-range latitude value
-    if latitude_degrees is not None and not np.isnan(latitude_degrees) and \
-       (latitude_degrees < 90.0) and (latitude_degrees > -90.0):
+    if latitude_degrees is not None and not np.isnan(latitude_degrees) \
+            and (latitude_degrees < 90.0) and (latitude_degrees > -90.0):
         
         # compute and return the PET values using Thornthwaite's equation
-        return thornthwaite.potential_evapotranspiration(temperature_celsius,
-                                                         latitude_degrees,
-                                                         data_start_year)
+        return eto.eto_thornthwaite(temperature_celsius, latitude_degrees, data_start_year)
         
     else:
-        message = 'Invalid latitude value: {0} (must be in degrees north, ' + \
-                  'between -90.0 and 90.0 inclusive)'.format(latitude_degrees)
+        message = "Invalid latitude value: {lat} ".format(lat=latitude_degrees) + \
+                  "(must be in degrees north, between -90.0 and 90.0 inclusive)"
         _logger.error(message)
         raise ValueError(message)
