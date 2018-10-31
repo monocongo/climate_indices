@@ -370,8 +370,8 @@ both gamma and Pearson Type III distributions) from input precipitation and pote
 (in this case, the reduced resolution nClimGrid precipitation and PET datasets provided in the example inputs directory). 
 The input datasets are monthly data and the calibration period used will be Jan. 1951 through Dec. 2010. The index 
 datasets will be computed at 9-month and 18-month timescales. The output files will be 
-`<out_dir>/nclimgrid_lowres_spi_gamma_09.nc`, `<out_dir>/nclimgrid_lowres_spi_gamma_18.nc`, 
-`<out_dir>/nclimgrid_lowres_spi_pearson_09.nc`, and `<out_dir>/nclimgrid_lowres_spi_pearson_18.nc`.
+`<out_dir>/nclimgrid_lowres_spei_gamma_09.nc`, `<out_dir>/nclimgrid_lowres_spei_gamma_18.nc`,
+`<out_dir>/nclimgrid_lowres_spei_pearson_09.nc`, and `<out_dir>/nclimgrid_lowres_spei_pearson_18.nc`.
 
 Palmers monthly
 """"""""""""""""
