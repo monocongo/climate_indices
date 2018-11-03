@@ -7,32 +7,42 @@ from climate_indices import utils
 # disable logging messages
 logging.disable(logging.CRITICAL)
 
-#-----------------------------------------------------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------------------------------------------------
 class UtilsTestCase(unittest.TestCase):
     """
     Tests for `utils.py`.
     """
     
-    #----------------------------------------------------------------------------------------
-    def test_compute_days(self):
+    # ---------------------------------------------------------------------------------------
+    @staticmethod
+    def test_compute_days():
         """
         Test for the utils.compute_days() function
         """
         
         days_array = np.array([0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334])
         results = utils.compute_days(1800, 12, 1, 1800)
-        np.testing.assert_allclose(days_array, results, err_msg='Fahrenheit to Celsius conversion failed', atol=0.01, equal_nan=True)
+        np.testing.assert_allclose(days_array,
+                                   results,
+                                   err_msg='Fahrenheit to Celsius conversion failed',
+                                   atol=0.01,
+                                   equal_nan=True)
         
-        days_array = np.array([18443, 18474, 18505, 18535, 18566, 18596, 18627, 18658, 18686, 18717, \
+        days_array = np.array([18443, 18474, 18505, 18535, 18566, 18596, 18627, 18658, 18686, 18717,
                                18747, 18778, 18808, 18839, 18870, 18900, 18931, 18961, 18992, 19023])
         results = utils.compute_days(1850, 20, 7, 1800)
-        np.testing.assert_allclose(days_array, results, err_msg='Fahrenheit to Celsius conversion failed', atol=0.01, equal_nan=True)
+        np.testing.assert_allclose(days_array,
+                                   results,
+                                   err_msg='Fahrenheit to Celsius conversion failed',
+                                   atol=0.01,
+                                   equal_nan=True)
 
-    #----------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------
     def test_count_zeros_and_non_missings(self):
-        '''
+        """
         Test for the utils.count_zeros_and_non_missings() function
-        '''
+        """
         
         # vanilla use case
         values_list = [3, 4, 0, 2, 3.1, 5, np.NaN, 8, 5, 6, 0.0, np.NaN, 5.6, 2]
@@ -55,7 +65,7 @@ class UtilsTestCase(unittest.TestCase):
         values = [1, 2, 3, 0, 'abcxyz']
         np.testing.assert_raises(TypeError, utils.count_zeros_and_non_missings, values)
 
-    #----------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------
     def test_is_data_valid(self):
         """
         Test for the utils.is_data_valid() function
@@ -68,8 +78,9 @@ class UtilsTestCase(unittest.TestCase):
         self.assertFalse(utils.is_data_valid(['bad', 'data']))
         self.assertTrue(utils.is_data_valid(np.ma.masked_array(valid_array)))
         
-    #----------------------------------------------------------------------------------------
-    def test_sign_change(self):
+    # ---------------------------------------------------------------------------------------
+    @staticmethod
+    def test_sign_change():
         """
         Test for the utils.sign_change() function
         """
@@ -94,58 +105,16 @@ class UtilsTestCase(unittest.TestCase):
                                  np.array([1., 2., 3.]), 
                                  np.array([[1., 2.], [3., 4.]]))
         
-#     #----------------------------------------------------------------------------------------
-#     def test_reshape_to_years_months(self):
-#         '''
-#         Test for the utils.reshape_to_years_months() function
-#         '''
-#         
-#         # an array of monthly values
-#         values_1d = np.array([3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2, 1, 3, 5, 8, 5, 6])
-#         
-#         # the expected rearrangement of the above values from 1-D to 2-D
-#         values_2d_expected = np.array([[3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4], 
-#                                        [6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2], 
-#                                        [1, 3, 5, 8, 5, 6, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN]])
-#         
-#         # exercise the function
-#         values_2d_reshaped = utils.reshape_to_years_months(values_1d)
-#         
-#         # verify that the function performed as expected
-#         np.testing.assert_equal(values_2d_expected, 
-#                                 values_2d_reshaped, 
-#                                 'Not rearranging the 1-D array months into 2-D year increments as expected')
-#         
-#         # a 3-D array that should be returned as-is
-#         values_3d = np.array([[3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4], 
-#                               [6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2], 
-#                               [1, 3, 5, 8, 5, 6, 3, 5, 1, 2, 8, 4]])
-#         
-#         # exercise the function
-#         values_3d_reshaped = utils.reshape_to_years_months(values_3d)
-#         
-#         # verify that the function performed as expected
-#         np.testing.assert_equal(values_3d, 
-#                                 values_3d_reshaped, 
-#                                 'Not returning a valid 2-D array as expected')
-#         
-#         # a 2-D array that's in an invalid shape for the function
-#         values_2d = np.array([[3, 4, 6, 2, 1, 3, 5, 3, 4], 
-#                               [6, 2, 1, 3, 5, 8, 5, 6, 2], 
-#                               [1, 3, 5, 8, 5, 6, 3, 8, 4]])
-#         
-#         # make sure that the function croaks with a ValueError when expected
-#         np.testing.assert_raises(ValueError, utils.reshape_to_years_months, values_2d)
-#         np.testing.assert_raises(ValueError, utils.reshape_to_years_months, np.reshape(values_2d, (3, 3, 3)))
-#         
-    #----------------------------------------------------------------------------------------
-    def test_reshape_to_2d(self):
-        '''
+    # ---------------------------------------------------------------------------------------
+    @staticmethod
+    def test_reshape_to_2d():
+        """
         Test for the utils.reshape_to_2d() function
-        '''
+        """
         
         # an array of monthly values
-        values_1d = np.array([3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2, 1, 3, 5, 8, 5, 6])
+        values_1d = np.array([3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2, 1, 3, 5, 8, 5, 6],
+                             dtype=float)
         
         # the expected rearrangement of the above values from 1-D to 2-D if using 12 as the second axis size
         values_2d_by_12_expected = np.array([[3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4], 
@@ -196,11 +165,12 @@ class UtilsTestCase(unittest.TestCase):
         np.testing.assert_raises(ValueError, utils.reshape_to_2d, values_2d, 12)
         np.testing.assert_raises(ValueError, utils.reshape_to_2d, values_2d.reshape((3, 3, 3)), 6)
         
-    #----------------------------------------------------------------------------------------
-    def test_reshape_to_divs_years_months(self):
-        '''
+    # ----------------------------------------------------------------------------------------
+    @staticmethod
+    def test_reshape_to_divs_years_months():
+        """
         Test for the utils.reshape_to_divs_years_months() function
-        '''
+        """
         
         # an array of monthly values
         values_1d = np.array([3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2, 1, 3, 5, 8, 5, 6])
@@ -249,7 +219,7 @@ class UtilsTestCase(unittest.TestCase):
         np.testing.assert_raises(ValueError, utils.reshape_to_divs_years_months, values_2d)
         np.testing.assert_raises(ValueError, utils.reshape_to_divs_years_months, np.reshape(values_2d, (3, 3, 3)))
         
-    #----------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------
     def test_rmse(self):
         """
         Test for the utils.rmse() function
@@ -265,17 +235,19 @@ class UtilsTestCase(unittest.TestCase):
                                expected_rmse, 
                                msg='Incorrect root mean square error (RMSE)',
                                delta=0.001)
-        
-    #----------------------------------------------------------------------------------------
-    def test_transform_to_gregorian(self):
-        '''
+
+    # ---------------------------------------------------------------------------------------
+    @staticmethod
+    def test_transform_to_gregorian():
+        """
         Test for the utils.transform_to_gregorian() function
-        '''
+        """
         
         # an array of 366 values, representing a year with 366 days, such as a leap year
         values_366 = np.array(range(366))
         
-        # an array of 365 values, representing a year with 365 days, with the value for all days after Feb 28th matching to those in the 366 day array 
+        # an array of 365 values, representing a year with 365 days, with the value
+        # for all days after Feb 28th matching to those in the 366 day array
         values_365 = np.array(range(365))
         values_365[59:] = [x + 1 for x in values_365[59:]]
         
@@ -284,14 +256,14 @@ class UtilsTestCase(unittest.TestCase):
         
         np.testing.assert_equal(values_365_computed, 
                                 values_365, 
-                                'Not transforming the 1-D array of 366 days into a corresponding 365 day array as expected')
+                                'Not transforming the 1-D array of 366 days into a corresponding 365 day array')
         
         # exercise the function with the 366 day year array, using a leap year argument (1972)
         values_366_computed = utils.transform_to_gregorian(values_366, 1972)
         
         np.testing.assert_equal(values_366_computed, 
                                 values_366, 
-                                'Not transforming the 1-D array of 366 days into a corresponding 366 day array as expected')
+                                'Not transforming the 1-D array of 366 days into a corresponding 366 day array')
         
         # make sure that the function croaks with a ValueError whenever it gets invalid array arguments
         np.testing.assert_raises(ValueError, utils.transform_to_gregorian, values_365, 1972)
@@ -301,12 +273,13 @@ class UtilsTestCase(unittest.TestCase):
         np.testing.assert_raises(ValueError, utils.transform_to_gregorian, values_366, -1972)
         np.testing.assert_raises(TypeError, utils.transform_to_gregorian, values_366, 45.7)
         np.testing.assert_raises(TypeError, utils.transform_to_gregorian, values_366, "obviously wrong")
-        
-    #----------------------------------------------------------------------------------------
-    def test_transform_to_366day(self):
-        '''
+
+    # ---------------------------------------------------------------------------------------
+    @staticmethod
+    def test_transform_to_366day():
+        """
         Test for the utils.transform_to_366day() function
-        '''
+        """
         
         # an array of 366 values, representing a year with 366 days, such as a leap year
         values_366 = np.array(range(366))
@@ -333,7 +306,7 @@ class UtilsTestCase(unittest.TestCase):
         
         np.testing.assert_equal(values_366_computed, 
                                 values_366, 
-                                'Not transforming the 1-D array of 366 days into a corresponding 366 day array as expected')
+                                'Not transforming the 1-D array of 366 days into a corresponding 366 day array')
         
         # make sure that the function croaks with a ValueError whenever it gets invalid array arguments
         np.testing.assert_raises(ValueError, utils.transform_to_366day, values_365[:50], 1972, 1)
@@ -348,8 +321,8 @@ class UtilsTestCase(unittest.TestCase):
         np.testing.assert_raises(ValueError, utils.transform_to_366day, values_365, 1972, -5)
         np.testing.assert_raises(TypeError, utils.transform_to_366day, values_365, 1972, 4.9)
         np.testing.assert_raises(ValueError, utils.transform_to_366day, values_365, 1972, 24)
-    
-#--------------------------------------------------------------------------------------------
+
+
+# -------------------------------------------------------------------------------------------
 if __name__ == '__main__':
     unittest.main()
-    
