@@ -29,7 +29,7 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                      self.fixture_calibration_year_start_monthly, 
                      self.fixture_calibration_year_end_monthly)
         
-    #----------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------
     def test_scpdsi(self):
         
         # the indices.scpdsi() function is a wrapper for palmer.pdsi(), so we'll 
@@ -42,7 +42,7 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                        self.fixture_calibration_year_start_monthly, 
                        self.fixture_calibration_year_end_monthly)
         
-    #----------------------------------------------------------------------------------------
+    # ----------------------------------------------------------------------------------------
     def test_pet(self):
         
         # confirm that an input array of all NaNs for temperature results in the same array returned
@@ -93,14 +93,33 @@ class IndicesTestCase(fixtures.FixturesTestCase):
 
         # compute PET from the monthly temperatures, latitude, and initial years -- if this runs without 
         # error then this test passes, as the underlying method(s) being used to compute PET will be tested 
-        # in the relevant test_compute.py or test_thornthwaite.py codes
+        # in the relevant test_compute.py or test_eto.py codes
         indices.pet(self.fixture_temps_celsius,
                     self.fixture_latitude_degrees,
+                    self.fixture_data_year_start_monthly)
+
+        # compute PET from the monthly temperatures, latitude (as an array), and initial years -- if this runs without
+        # error then this test passes, as the underlying method(s) being used to compute PET will be tested
+        # in the relevant test_compute.py or test_eto.py codes
+        indices.pet(self.fixture_temps_celsius,
+                    np.array([self.fixture_latitude_degrees]),
                     self.fixture_data_year_start_monthly)
 
     # ----------------------------------------------------------------------------------------
     def test_pnp(self):
                 
+        # confirm that an input array of all NaNs for precipitation results in the same array returned
+        all_nan_precips = np.full(self.fixture_precips_mm_monthly.shape, np.NaN)
+        computed_pnp = indices.percentage_of_normal(all_nan_precips,
+                                                    1,
+                                                    self.fixture_data_year_start_monthly,
+                                                    self.fixture_calibration_year_start_monthly,
+                                                    self.fixture_calibration_year_end_monthly,
+                                                    compute.Periodicity.monthly)
+        np.testing.assert_equal(computed_pnp,
+                                all_nan_precips,
+                                'All-NaN input array does not result in the expected all-NaN result')
+
         # compute PNP from the daily precipitation array
         computed_pnp_6month = indices.percentage_of_normal(self.fixture_precips_mm_monthly.flatten(),
                                                            6, 
@@ -124,7 +143,7 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                      self.fixture_calibration_year_end_daily, 
                                      compute.Periodicity.daily)
                 
-        # invalid periodicity argument should raise an AttributeError
+        # invalid periodicity argument should raise an Error
         np.testing.assert_raises(ValueError, 
                                  indices.percentage_of_normal,
                                  self.fixture_precips_mm_daily.flatten(),
@@ -134,25 +153,56 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                  self.fixture_calibration_year_end_daily, 
                                  'unsupported_value')
 
+        # invalid scale argument should raise an Error
+        np.testing.assert_raises(ValueError,
+                                 indices.percentage_of_normal,
+                                 self.fixture_precips_mm_daily.flatten(),
+                                 -3,
+                                 self.fixture_data_year_start_daily,
+                                 self.fixture_calibration_year_start_daily,
+                                 self.fixture_calibration_year_end_daily,
+                                 compute.Periodicity.daily)
+        np.testing.assert_raises(ValueError,
+                                 indices.percentage_of_normal,
+                                 self.fixture_precips_mm_daily.flatten(),
+                                 None,
+                                 self.fixture_data_year_start_daily,
+                                 self.fixture_calibration_year_start_daily,
+                                 self.fixture_calibration_year_end_daily,
+                                 compute.Periodicity.daily)
+
     # ----------------------------------------------------------------------------------------
     def test_spi(self):
-        
-        # compute SPI/gamma at 1-month scale
-        computed_spi = indices.spi(self.fixture_precips_mm_monthly, 
+
+        # confirm that an input array of all NaNs for precipitation results in the same array returned
+        all_nans = np.full(self.fixture_precips_mm_monthly.shape, np.NaN)
+        computed_spi = indices.spi(all_nans,
                                    1,
                                    indices.Distribution.gamma,
                                    self.fixture_data_year_start_monthly, 
                                    self.fixture_data_year_start_monthly, 
                                    self.fixture_data_year_end_monthly, 
                                    compute.Periodicity.monthly)
-                                         
+        np.testing.assert_allclose(computed_spi,
+                                   all_nans.flatten(),
+                                   equal_nan=True,
+                                   err_msg='SPI/Gamma not handling all-NaN arrays as expected')
+
         # confirm SPI/gamma is being computed as expected
-        np.testing.assert_allclose(computed_spi, 
+        computed_spi = indices.spi(self.fixture_precips_mm_monthly,
+                                   1,
+                                   indices.Distribution.gamma,
+                                   self.fixture_data_year_start_monthly,
+                                   self.fixture_data_year_start_monthly,
+                                   self.fixture_data_year_end_monthly,
+                                   compute.Periodicity.monthly)
+        np.testing.assert_allclose(computed_spi,
                                    self.fixture_spi_1_month_gamma, 
                                    atol=0.001,
                                    err_msg='SPI/Gamma values for 1-month scale not computed as expected')
         
-        computed_spi = indices.spi(self.fixture_precips_mm_monthly.flatten(), 
+        # confirm SPI/gamma is being computed as expected
+        computed_spi = indices.spi(self.fixture_precips_mm_monthly.flatten(),
                                    6,
                                    indices.Distribution.gamma,
                                    self.fixture_data_year_start_monthly, 
@@ -185,7 +235,18 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                  self.fixture_data_year_start_monthly, 
                                  self.fixture_data_year_end_monthly, 
                                  'unsupported_value')
-        
+
+        # invalid distribution argument should raise a ValueError
+        np.testing.assert_raises(ValueError,
+                                 indices.spi,
+                                 self.fixture_precips_mm_monthly.flatten(),
+                                 6,
+                                 None,
+                                 self.fixture_data_year_start_monthly,
+                                 self.fixture_data_year_start_monthly,
+                                 self.fixture_data_year_end_monthly,
+                                 compute.Periodicity.monthly)
+
         # input array argument that's neither 1-D nor 2-D should raise a ValueError
         np.testing.assert_raises(ValueError, 
                                  indices.spi,
@@ -197,55 +258,76 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                  self.fixture_data_year_end_monthly, 
                                  compute.Periodicity.daily)
         
-        # compute SPI/Pearson at 6-month scale
-        computed_spi = indices.spi(self.fixture_precips_mm_monthly.flatten(), 
-                                   6, 
-                                   indices.Distribution.pearson_type3,
-                                   self.fixture_data_year_start_monthly, 
-                                   self.fixture_calibration_year_start_monthly, 
-                                   self.fixture_calibration_year_end_monthly,
-                                   compute.Periodicity.monthly)
-        
-        # confirm we can compute from daily values without raising an error                                 
-        indices.spi(self.fixture_precips_mm_daily.flatten(), 
-                    60, 
-                    indices.Distribution.pearson_type3,
-                    self.fixture_data_year_start_daily, 
-                    self.fixture_calibration_year_start_daily, 
+        # compute SPI/Pearson at 60-day scale, just make sure it completes without error
+        # TODO compare against expected results
+        indices.spi(self.fixture_precips_mm_daily.flatten(),
+                    60,
+                    indices.Distribution.pearson,
+                    self.fixture_data_year_start_daily,
+                    self.fixture_calibration_year_start_daily,
                     self.fixture_calibration_year_end_daily,
                     compute.Periodicity.daily)
 
         # confirm SPI/Pearson is being computed as expected
-        np.testing.assert_allclose(computed_spi, 
+        computed_spi = indices.spi(self.fixture_precips_mm_monthly.flatten(),
+                                   6,
+                                   indices.Distribution.pearson,
+                                   self.fixture_data_year_start_monthly,
+                                   self.fixture_calibration_year_start_monthly,
+                                   self.fixture_calibration_year_end_monthly,
+                                   compute.Periodicity.monthly)
+        np.testing.assert_allclose(computed_spi,
                                    self.fixture_spi_6_month_pearson3, 
                                    atol=0.01, 
                                    err_msg='SPI/Pearson values for 6-month scale not computed as expected')
 
+        # confirm we can compute from daily values without raising an error
+        indices.spi(self.fixture_precips_mm_daily.flatten(),
+                    60,
+                    indices.Distribution.pearson,
+                    self.fixture_data_year_start_daily,
+                    self.fixture_calibration_year_start_daily,
+                    self.fixture_calibration_year_end_daily,
+                    compute.Periodicity.daily)
+
         # invalid periodicity argument should raise a ValueError
-        np.testing.assert_raises(ValueError, 
+        np.testing.assert_raises(ValueError,
                                  indices.spi,
-                                 self.fixture_precips_mm_monthly.flatten(), 
+                                 self.fixture_precips_mm_monthly.flatten(),
                                  6,
-                                 indices.Distribution.pearson_type3,
-                                 self.fixture_data_year_start_monthly, 
-                                 self.fixture_calibration_year_start_monthly, 
+                                 indices.Distribution.pearson,
+                                 self.fixture_data_year_start_monthly,
+                                 self.fixture_calibration_year_start_monthly,
                                  self.fixture_calibration_year_end_monthly,
                                  'unsupported_value')
         
     # ----------------------------------------------------------------------------------------
     def test_spei(self):
         
-        # compute SPEI/gamma at 6-month scale
-        computed_spei = indices.spei(6,
+        # confirm that an input array of all NaNs for precipitation results in the same array returned
+        all_nans = np.full(self.fixture_precips_mm_monthly.shape, np.NaN)
+        computed_spei = indices.spei(all_nans,
+                                     all_nans,
+                                     1,
                                      indices.Distribution.gamma,
                                      compute.Periodicity.monthly,
-                                     data_start_year=self.fixture_data_year_start_monthly,
-                                     calibration_year_initial=self.fixture_data_year_start_monthly,
-                                     calibration_year_final=self.fixture_data_year_end_monthly,
-                                     precips_mm=self.fixture_precips_mm_monthly, 
-                                     pet_mm=None, 
-                                     temps_celsius=self.fixture_temps_celsius, 
-                                     latitude_degrees=self.fixture_latitude_degrees)
+                                     self.fixture_data_year_start_monthly,
+                                     self.fixture_data_year_start_monthly,
+                                     self.fixture_data_year_end_monthly)
+        np.testing.assert_allclose(computed_spei,
+                                   all_nans,
+                                   equal_nan=True,
+                                   err_msg='SPEI/Gamma not handling all-NaN arrays as expected')
+
+        # compute SPEI/gamma at 6-month scale
+        computed_spei = indices.spei(self.fixture_precips_mm_monthly,
+                                     self.fixture_pet_mm,
+                                     6,
+                                     indices.Distribution.gamma,
+                                     compute.Periodicity.monthly,
+                                     self.fixture_data_year_start_monthly,
+                                     self.fixture_data_year_start_monthly,
+                                     self.fixture_data_year_end_monthly)
 
         # confirm SPEI/gamma is being computed as expected
         np.testing.assert_allclose(computed_spei, 
@@ -254,117 +336,43 @@ class IndicesTestCase(fixtures.FixturesTestCase):
                                    err_msg='SPEI/Gamma values for 6-month scale not computed as expected')
         
         # compute SPEI/Pearson at 6-month scale
-        computed_spei = indices.spei(6,
-                                     indices.Distribution.pearson_type3,
+        computed_spei = indices.spei(self.fixture_precips_mm_monthly,
+                                     self.fixture_pet_mm,
+                                     6,
+                                     indices.Distribution.pearson,
                                      compute.Periodicity.monthly,
-                                     data_start_year=self.fixture_data_year_start_monthly,
-                                     calibration_year_initial=self.fixture_data_year_start_monthly,
-                                     calibration_year_final=self.fixture_data_year_end_monthly,
-                                     precips_mm=self.fixture_precips_mm_monthly, 
-                                     pet_mm=None, 
-                                     temps_celsius=self.fixture_temps_celsius, 
-                                     latitude_degrees=self.fixture_latitude_degrees)
+                                     self.fixture_data_year_start_monthly,
+                                     self.fixture_data_year_start_monthly,
+                                     self.fixture_data_year_end_monthly)
 
-        # confirm SPEI/gamma is being computed as expected
+        # confirm SPEI/Pearson is being computed as expected
         np.testing.assert_allclose(computed_spei, 
                                    self.fixture_spei_6_month_pearson3, 
                                    atol=0.01,
                                    err_msg='SPEI/Pearson values for 6-month scale not computed as expected')
         
         # invalid periodicity argument should raise a ValueError
-        np.testing.assert_raises(ValueError, 
-                                 indices.spei, 
+        np.testing.assert_raises(ValueError,
+                                 indices.spei,
+                                 self.fixture_precips_mm_monthly,
+                                 self.fixture_pet_mm,
                                  6,
-                                 indices.Distribution.pearson_type3,
-                                 'unsupported_value', 
-                                 data_start_year=self.fixture_data_year_start_monthly,
-                                 calibration_year_initial=self.fixture_data_year_start_monthly,
-                                 calibration_year_final=self.fixture_data_year_end_monthly,
-                                 precips_mm=self.fixture_precips_mm_monthly, 
-                                 pet_mm=None, 
-                                 temps_celsius=self.fixture_temps_celsius, 
-                                 latitude_degrees=self.fixture_latitude_degrees)
-        
-        # missing temperature and PET arguments should raise a ValueError
-        np.testing.assert_raises(ValueError, 
-                                 indices.spei, 
-                                 6,
-                                 indices.Distribution.pearson_type3,
-                                 compute.Periodicity.monthly,
-                                 data_start_year=self.fixture_data_year_start_monthly,
-                                 calibration_year_initial=self.fixture_data_year_start_monthly,
-                                 calibration_year_final=self.fixture_data_year_end_monthly,
-                                 precips_mm=self.fixture_precips_mm_monthly, 
-                                 pet_mm=None, 
-                                 temps_celsius=None, 
-                                 latitude_degrees=self.fixture_latitude_degrees)
-        
-        # having both temperature and PET input array arguments should raise a ValueError
-        np.testing.assert_raises(ValueError, 
-                                 indices.spei, 
-                                 6,
-                                 indices.Distribution.pearson_type3,
-                                 compute.Periodicity.monthly,
-                                 data_start_year=self.fixture_data_year_start_monthly,
-                                 calibration_year_initial=self.fixture_data_year_start_monthly,
-                                 calibration_year_final=self.fixture_data_year_end_monthly,
-                                 precips_mm=self.fixture_precips_mm_monthly, 
-                                 pet_mm=self.fixture_pet_mm, 
-                                 temps_celsius=self.fixture_temps_celsius, 
-                                 latitude_degrees=self.fixture_latitude_degrees)
-        
-        # having temperature without corresponding latitude argument should raise a ValueError
-        np.testing.assert_raises(ValueError, 
-                                 indices.spei, 
-                                 6,
-                                 indices.Distribution.pearson_type3,
-                                 compute.Periodicity.monthly,
-                                 data_start_year=self.fixture_data_year_start_monthly,
-                                 calibration_year_initial=self.fixture_data_year_start_monthly,
-                                 calibration_year_final=self.fixture_data_year_end_monthly,
-                                 precips_mm=self.fixture_precips_mm_monthly, 
-                                 pet_mm=self.fixture_pet_mm, 
-                                 temps_celsius=self.fixture_temps_celsius, 
-                                 latitude_degrees=None)
+                                 indices.Distribution.pearson,
+                                 'unsupported_value',
+                                 self.fixture_data_year_start_monthly,
+                                 self.fixture_data_year_start_monthly,
+                                 self.fixture_data_year_end_monthly)
         
         # having both precipitation and PET input array arguments with incongruent dimensions should raise a ValueError
-        np.testing.assert_raises(ValueError, 
-                                 indices.spei, 
-                                 6,
-                                 indices.Distribution.pearson_type3,
+        np.testing.assert_raises(ValueError,
+                                 indices.spei,
+                                 self.fixture_precips_mm_monthly,
+                                 np.array((200, 200), dtype=float),                                 6,
+                                 indices.Distribution.pearson,
                                  compute.Periodicity.monthly,
-                                 data_start_year=self.fixture_data_year_start_monthly,
-                                 calibration_year_initial=self.fixture_data_year_start_monthly,
-                                 calibration_year_final=self.fixture_data_year_end_monthly,
-                                 precips_mm=self.fixture_precips_mm_monthly, 
-                                 pet_mm=np.array((200, 200), dtype=float))
-        
-        # having temperature without corresponding latitude argument should raise a ValueError
-        np.testing.assert_raises(ValueError, 
-                                 indices.spei, 
-                                 6,
-                                 indices.Distribution.pearson_type3,
-                                 compute.Periodicity.monthly,
-                                 data_start_year=self.fixture_data_year_start_monthly,
-                                 calibration_year_initial=self.fixture_data_year_start_monthly,
-                                 calibration_year_final=self.fixture_data_year_end_monthly,
-                                 precips_mm=self.fixture_precips_mm_monthly, 
-                                 temps_celsius=self.fixture_temps_celsius, 
-                                 latitude_degrees=None)
-        
-        # providing PET with a corresponding latitude argument should raise a ValueError
-        np.testing.assert_raises(ValueError, 
-                                 indices.spei, 
-                                 6,
-                                 indices.Distribution.pearson_type3,
-                                 compute.Periodicity.monthly,
-                                 data_start_year=self.fixture_data_year_start_monthly,
-                                 calibration_year_initial=self.fixture_data_year_start_monthly,
-                                 calibration_year_final=self.fixture_data_year_end_monthly,
-                                 precips_mm=self.fixture_precips_mm_monthly, 
-                                 pet_mm=self.fixture_pet_mm, 
-                                 temps_celsius=self.fixture_temps_celsius, 
-                                 latitude_degrees=40.0)
+                                 self.fixture_data_year_start_monthly,
+                                 self.fixture_data_year_start_monthly,
+                                 self.fixture_data_year_end_monthly)
 
 
 # --------------------------------------------------------------------------------------------

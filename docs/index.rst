@@ -19,8 +19,7 @@
 .. |License| image:: https://img.shields.io/badge/license-Unlicense-green.svg
    :target: https://unlicense.org/
 
-
-|Build| |Coverage| |CodeFactor| |License| 
+|Build| |Coverage| |CodeFactor| |License|
 
 Climate Indices in Python
 =============================================
@@ -333,7 +332,7 @@ prcp --output_file_base <out_dir>/cmorph_lowres_daily_conus --scales 30 90
 
 The above command will compute SPI (standardized precipitation index, both gamma 
 and Pearson Type III distributions) from an input precipitation dataset (in this case, 
-the reduced resolution CMORPH precipitation dataset provided in the example inputs 
+the reduced resolution CMORPH precipitation dataset provided in the example inputs
 directory). The input dataset is daily data and the calibration period used will be 
 Jan. 1st, 1998 through Dec. 31st, 2016. The index will be computed at 30-day and 
 90-day timescales. The output files will be `<out_dir>/cmorph_lowres_daily_conus_spi_gamma_30.nc`, 
@@ -351,7 +350,7 @@ SPI monthly
 
 The above command will compute SPI (standardized precipitation index, both gamma and 
 Pearson Type III distributions) from an input precipitation dataset (in this case, 
-the reduced resolution nClimGrid precipitation dataset provided in the example inputs directory). 
+the reduced resolution nClimGrid precipitation dataset provided in the example inputs directory).
 The input dataset is monthly data and the calibration period used will be 
 Jan. 1951 through Dec. 2010. The index will be computed at 6-month and 12-month timescales. 
 The output files will be `<out_dir>/nclimgrid_lowres_spi_gamma_06.nc`, 
@@ -371,8 +370,8 @@ both gamma and Pearson Type III distributions) from input precipitation and pote
 (in this case, the reduced resolution nClimGrid precipitation and PET datasets provided in the example inputs directory). 
 The input datasets are monthly data and the calibration period used will be Jan. 1951 through Dec. 2010. The index 
 datasets will be computed at 9-month and 18-month timescales. The output files will be 
-`<out_dir>/nclimgrid_lowres_spi_gamma_09.nc`, `<out_dir>/nclimgrid_lowres_spi_gamma_18.nc`, 
-`<out_dir>/nclimgrid_lowres_spi_pearson_09.nc`, and `<out_dir>/nclimgrid_lowres_spi_pearson_18.nc`.
+`<out_dir>/nclimgrid_lowres_spei_gamma_09.nc`, `<out_dir>/nclimgrid_lowres_spei_gamma_18.nc`,
+`<out_dir>/nclimgrid_lowres_spei_pearson_09.nc`, and `<out_dir>/nclimgrid_lowres_spei_pearson_18.nc`.
 
 Palmers monthly
 """"""""""""""""
