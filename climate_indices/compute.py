@@ -305,10 +305,10 @@ def transform_fitted_pearson(values,
     
     # make sure that we have data within the full calibration period, otherwise use the full period of record
     if (calibration_start_year < data_start_year) or (calibration_end_year > data_end_year):
-        _logger.info('Insufficient data for the specified calibration period ({0}-{1}),'.format(calibration_start_year,
-                                                                                                calibration_end_year) +
-                     ' instead using the full period of record ({0}-{1})'.format(data_start_year,
-                                                                                 data_end_year))
+        # _logger.info('Insufficient data for the specified calibration period ({0}-{1}),'.format(calibration_start_year,
+        #                                                                                         calibration_end_year) +
+        #              ' instead using the full period of record ({0}-{1})'.format(data_start_year,
+        #                                                                          data_end_year))
         calibration_start_year = data_start_year
         calibration_end_year = data_end_year
 
@@ -404,10 +404,10 @@ def transform_fitted_gamma(values,
     
     # make sure that we have data within the full calibration period, otherwise use the full period of record
     if (calibration_start_year < data_start_year) or (calibration_end_year > data_end_year):
-        _logger.info('Insufficient data for the specified calibration period ({0}-{1}),'.format(calibration_start_year,
-                                                                                                calibration_end_year) +
-                     ' instead using the full period of record ({0}-{1})'.format(data_start_year,
-                                                                                 data_end_year))
+        # _logger.info('Insufficient data for the specified calibration period ({0}-{1}),'.format(calibration_start_year,
+        #                                                                                         calibration_end_year) +
+        #              ' instead using the full period of record ({0}-{1})'.format(data_start_year,
+        #                                                                          data_end_year))
         calibration_start_year = data_start_year
         calibration_end_year = data_end_year
 
