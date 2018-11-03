@@ -257,6 +257,9 @@ def compute_write_spi(kwrgs):
     # get the precipitation array, over which we'll compute the SPI
     da_precip = dataset[kwrgs['var_name_precip']]
 
+    # sort the lat and lon values
+    da_precip = da_precip.sortby(['lat', 'lon'])
+
     # stack the lat and lon dimensions into a new dimension named point, so at each lat/lon
     # we'll have a time series for the geospatial point, and group by these points
     da_precip_groupby = da_precip.stack(point=('lat', 'lon')).groupby('point')
