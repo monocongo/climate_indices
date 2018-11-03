@@ -1117,19 +1117,6 @@ if __name__ == '__main__':
 
         # parse the command line arguments
         parser = argparse.ArgumentParser()
-        parser.add_argument("--netcdf_precip",
-                            help="Precipitation NetCDF file to be used as input")
-        parser.add_argument("--var_name_precip",
-                            help="Precipitation variable name used in the precipitation NetCDF file")
-        parser.add_argument("--output_file_base",
-                            help="Base output file path and name for the resulting output files",
-                            required=True)
-        parser.add_argument("--calibration_start_year",
-                            help="Initial year of the calibration period",
-                            type=int)
-        parser.add_argument("--calibration_end_year",
-                            help="Final year of calibration period",
-                            type=int)
         parser.add_argument("--index",
                             help="Indices to compute",
                             choices=['spi', 'spei', 'pnp', 'scaled', 'pet', 'palmers'],
@@ -1143,13 +1130,18 @@ if __name__ == '__main__':
                             help="Timestep scales over which the PNP, SPI, and SPEI values are to be computed",
                             type=int,
                             nargs='*')
+        parser.add_argument("--calibration_start_year",
+                            help="Initial year of the calibration period",
+                            type=int)
+        parser.add_argument("--calibration_end_year",
+                            help="Final year of calibration period",
+                            type=int)
         parser.add_argument("--netcdf_precip",
-                            help="Precipitation NetCDF file to be used as input for SPI, SPEI, PNP, and/or "\
-                                 "Palmer computations")
+                            help="Precipitation NetCDF file to be used as input for indices computations")
         parser.add_argument("--var_name_precip",
                             help="Precipitation variable name used in the precipitation NetCDF file")
         parser.add_argument("--netcdf_temp",
-                            help="Temperature NetCDF file to be used as input")
+                            help="Temperature NetCDF file to be used as input for indices computations")
         parser.add_argument("--var_name_temp",
                             help="Temperature variable name used in the temperature NetCDF file")
         parser.add_argument("--netcdf_pet",
@@ -1160,10 +1152,9 @@ if __name__ == '__main__':
                             help="Available water capacity NetCDF file to be used as input for the Palmer computations")
         parser.add_argument("--var_name_awc",
                             help="Available water capacity variable name used in the AWC NetCDF file")
-        parser.add_argument("--scales",
-                            help="Timestep scales over which the PNP, SPI, and SPEI values are to be computed",
-                            type=int,
-                            nargs='*')
+        parser.add_argument("--output_file_base",
+                            help="Base output file path and name for the resulting output files",
+                            required=True)
         args = parser.parse_args()
 
         process_grid(args.index,
