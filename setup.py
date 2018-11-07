@@ -13,6 +13,7 @@ setup(
     packages=['climate_indices'],
     install_requires=[
         "lmoments3",
+        "nco",
         "netcdf4",
         "numba",
         "numpy",
