@@ -846,7 +846,7 @@ def _validate_arguments(index,
     """
 
     # the dimensions we expect to find for each data variable (precipitation, temperature, and/or PET)
-    expected_dimensions = ('lat', 'lon', 'time')
+    expected_dimensions = [('lat', 'lon', 'time'), ('time', 'lat', 'lon')]
 
     # all indices except PET require a precipitation file
     if index != 'pet':
@@ -875,7 +875,7 @@ def _validate_arguments(index,
 
             # verify that the precipitation variable's dimensions are in the expected order
             dimensions = dataset_precip.variables[var_name_precip].dimensions
-            if dimensions != expected_dimensions:
+            if dimensions not in expected_dimensions:
                 message = "Invalid dimensions of the precipitation variable: {dims}, ".format(dims=dimensions) + \
                           "(expected names and order: {dims})".format(dims=expected_dimensions)
                 _logger.error(message)
