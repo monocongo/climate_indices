@@ -1,8 +1,11 @@
 import argparse
+from collections import Counter
 from datetime import datetime
 import logging
 import multiprocessing
+import os
 
+from nco import Nco
 import numpy as np
 import xarray as xr
 
@@ -231,7 +234,7 @@ def _validate_args(args):
 def compute_write_spi(kwrgs):
 
     # open the precipitation NetCDF as an xarray DataSet object
-    dataset = xr.open_dataset(kwrgs['netcdf_precip'])  # , chunks={'lat': 1})
+    dataset = xr.open_dataset(kwrgs['netcdf_precip'])
 
     # trim out all data variables from the dataset except the precipitation
     for var in dataset.data_vars:
@@ -257,9 +260,6 @@ def compute_write_spi(kwrgs):
     # get the precipitation array, over which we'll compute the SPI
     da_precip = dataset[kwrgs['var_name_precip']]
 
-    # sort the lat and lon values
-    da_precip = da_precip.sortby(['lat', 'lon'])
-
     # stack the lat and lon dimensions into a new dimension named point, so at each lat/lon
     # we'll have a time series for the geospatial point, and group by these points
     da_precip_groupby = da_precip.stack(point=('lat', 'lon')).groupby('point')
@@ -280,18 +280,11 @@ def compute_write_spi(kwrgs):
     # unstack the array back into original dimensions
     da_spi = da_spi.unstack('point')
 
-    # copy the original dataset since we'll be able to reuse most of the coordinates, attributes, etc.
-    index_dataset = dataset.copy()
-
-    # remove all data variables
-    for var_name in index_dataset.data_vars:
-        index_dataset = index_dataset.drop(var_name)
-
     # TODO set global attributes accordingly for this new dataset
 
     # create a new variable to contain the SPI for the distribution/scale, assign into the dataset
     long_name = "Standardized Precipitation Index ({dist} distribution), "\
-                    .format(dist=kwrgs['distribution'].value.capitalize()) + \
+                .format(dist=kwrgs['distribution'].value.capitalize()) + \
                 "{scale}-{increment}".format(scale=kwrgs['scale'], increment=scale_increment)
     spi_attrs = {'long_name': long_name,
                  'valid_min': -3.09,
@@ -300,11 +293,16 @@ def compute_write_spi(kwrgs):
     spi_var = xr.Variable(dims=da_spi.dims,
                           data=da_spi,
                           attrs=spi_attrs)
-    index_dataset[var_name_spi] = spi_var
+    dataset[var_name_spi] = spi_var
+
+    # remove all data variables except for the new SPI variable
+    for var_name in dataset.data_vars:
+        if var_name != var_name_spi:
+            dataset = dataset.drop(var_name)
 
     # write the dataset as NetCDF
     netcdf_file_name = kwrgs['output_file_base'] + "_" + var_name_spi + ".nc"
-    index_dataset.to_netcdf(netcdf_file_name)
+    dataset.to_netcdf(netcdf_file_name)
 
     return netcdf_file_name, var_name_spi
 
@@ -357,13 +355,6 @@ def compute_write_pnp(kwrgs):
     # unstack the array back into original dimensions
     da_pnp = da_pnp.unstack('point')
 
-    # copy the original dataset since we'll be able to reuse most of the coordinates, attributes, etc.
-    index_dataset = dataset.copy()
-
-    # remove all data variables
-    for var_name in index_dataset.data_vars:
-        index_dataset = index_dataset.drop(var_name)
-
     # TODO set global attributes accordingly for this new dataset
 
     # create a new variable to contain the SPI for the distribution/scale, assign into the dataset
@@ -376,11 +367,16 @@ def compute_write_pnp(kwrgs):
     pnp_var = xr.Variable(dims=da_pnp.dims,
                           data=da_pnp,
                           attrs=pnp_attrs)
-    index_dataset[var_name_pnp] = pnp_var
+    dataset[var_name_pnp] = pnp_var
+
+    # remove all data variables except for the new PNP variable
+    for var_name in dataset.data_vars:
+        if var_name != var_name_pnp:
+            dataset = dataset.drop(var_name)
 
     # write the dataset as NetCDF
     netcdf_file_name = kwrgs['output_file_base'] + "_" + var_name_pnp + ".nc"
-    index_dataset.to_netcdf(netcdf_file_name)
+    dataset.to_netcdf(netcdf_file_name)
 
     return netcdf_file_name, var_name_pnp
 
@@ -440,18 +436,11 @@ def compute_write_spei(kwrgs):
     # unstack the array back into original dimensions
     da_spei = da_spei.unstack('point')
 
-    # copy the original dataset since we'll be able to reuse most of the coordinates, attributes, etc.
-    index_dataset = dataset.copy()
-
-    # remove all data variables
-    for var_name in index_dataset.data_vars:
-        index_dataset = index_dataset.drop(var_name)
-
     # TODO set global attributes accordingly for this new dataset
 
     # create a new variable to contain the SPEI for the distribution/scale, assign into the dataset
     long_name = "Standardized Precipitation Evapotranspiration Index ({dist} distribution), "\
-                    .format(dist=kwrgs['distribution'].value.capitalize()) + \
+                .format(dist=kwrgs['distribution'].value.capitalize()) + \
                 "{scale}-{increment}".format(scale=kwrgs['scale'], increment=scale_increment)
     spei_attrs = {'long_name': long_name,
                   'valid_min': -3.09,
@@ -460,11 +449,16 @@ def compute_write_spei(kwrgs):
     spei_var = xr.Variable(dims=da_spei.dims,
                            data=da_spei,
                            attrs=spei_attrs)
-    index_dataset[var_name_spei] = spei_var
+    dataset[var_name_spei] = spei_var
+
+    # remove all data variables except for the new SPEI variable
+    for var_name in dataset.data_vars:
+        if var_name != var_name_spei:
+            dataset = dataset.drop(var_name)
 
     # write the dataset as NetCDF
     netcdf_file_name = kwrgs['output_file_base'] + "_" + var_name_spei + ".nc"
-    index_dataset.to_netcdf(netcdf_file_name)
+    dataset.to_netcdf(netcdf_file_name)
 
     return netcdf_file_name, var_name_spei
 
@@ -530,13 +524,6 @@ def compute_write_palmers(kwrgs):
     da_pmdi = da_pmdi.unstack('point')
     da_zindex = da_zindex.unstack('point')
 
-    # copy the original dataset since we'll be able to reuse most of the coordinates, attributes, etc.
-    index_dataset = dataset.copy()
-
-    # remove all data variables
-    for var_name in index_dataset.data_vars:
-        index_dataset = index_dataset.drop(var_name)
-
     # TODO set global attributes accordingly for this new dataset
 
     # create a new variable to contain the SCPDSI values, assign into the dataset
@@ -548,11 +535,16 @@ def compute_write_palmers(kwrgs):
     scpdsi_var = xr.Variable(dims=da_scpdsi.dims,
                              data=da_scpdsi,
                              attrs=scpdsi_attrs)
-    index_dataset[var_name_scpdsi] = scpdsi_var
+    dataset[var_name_scpdsi] = scpdsi_var
+
+    # remove all data variables except for the new SCPDSI variable
+    for var_name in dataset.data_vars:
+        if var_name != var_name_scpdsi:
+            dataset = dataset.drop(var_name)
 
     # write the dataset as NetCDF
     netcdf_file_name = kwrgs['output_file_base'] + "_" + var_name_scpdsi + ".nc"
-    index_dataset.to_netcdf(netcdf_file_name)
+    dataset.to_netcdf(netcdf_file_name)
 
     # create a new variable to contain the PDSI values, assign into the dataset
     long_name = "Palmer Drought Severity Index"
@@ -561,13 +553,18 @@ def compute_write_palmers(kwrgs):
                   'valid_max': 10.0}
     var_name_pdsi = "pdsi"
     pdsi_var = xr.Variable(dims=da_pdsi.dims,
-                             data=da_pdsi,
-                             attrs=pdsi_attrs)
-    index_dataset[var_name_pdsi] = pdsi_var
+                           data=da_pdsi,
+                           attrs=pdsi_attrs)
+    dataset[var_name_pdsi] = pdsi_var
+
+    # remove all data variables except for the new PDSI variable
+    for var_name in dataset.data_vars:
+        if var_name != var_name_pdsi:
+            dataset = dataset.drop(var_name)
 
     # write the dataset as NetCDF
     netcdf_file_name = kwrgs['output_file_base'] + "_" + var_name_pdsi + ".nc"
-    index_dataset.to_netcdf(netcdf_file_name)
+    dataset.to_netcdf(netcdf_file_name)
 
     # create a new variable to contain the PHDI values, assign into the dataset
     long_name = "Palmer Hydrological Drought Index"
@@ -578,11 +575,16 @@ def compute_write_palmers(kwrgs):
     phdi_var = xr.Variable(dims=da_phdi.dims,
                            data=da_phdi,
                            attrs=phdi_attrs)
-    index_dataset[var_name_phdi] = phdi_var
+    dataset[var_name_phdi] = phdi_var
+
+    # remove all data variables except for the new PHDI variable
+    for var_name in dataset.data_vars:
+        if var_name != var_name_phdi:
+            dataset = dataset.drop(var_name)
 
     # write the dataset as NetCDF
     netcdf_file_name = kwrgs['output_file_base'] + "_" + var_name_phdi + ".nc"
-    index_dataset.to_netcdf(netcdf_file_name)
+    dataset.to_netcdf(netcdf_file_name)
 
     # create a new variable to contain the PMDI values, assign into the dataset
     long_name = "Palmer Modified Drought Index"
@@ -593,11 +595,16 @@ def compute_write_palmers(kwrgs):
     pmdi_var = xr.Variable(dims=da_pmdi.dims,
                            data=da_pmdi,
                            attrs=pmdi_attrs)
-    index_dataset[var_name_pmdi] = pmdi_var
+    dataset[var_name_pmdi] = pmdi_var
+
+    # remove all data variables except for the new PMDI variable
+    for var_name in dataset.data_vars:
+        if var_name != var_name_pmdi:
+            dataset = dataset.drop(var_name)
 
     # write the dataset as NetCDF
     netcdf_file_name = kwrgs['output_file_base'] + "_" + var_name_pmdi + ".nc"
-    index_dataset.to_netcdf(netcdf_file_name)
+    dataset.to_netcdf(netcdf_file_name)
 
     # create a new variable to contain the Z-Index values, assign into the dataset
     long_name = "Palmer Z-Index"
@@ -608,11 +615,16 @@ def compute_write_palmers(kwrgs):
     zindex_var = xr.Variable(dims=da_zindex.dims,
                              data=da_zindex,
                              attrs=zindex_attrs)
-    index_dataset[var_name_zindex] = zindex_var
+    dataset[var_name_zindex] = zindex_var
+
+    # remove all data variables except for the new Z-Index variable
+    for var_name in dataset.data_vars:
+        if var_name != var_name_zindex:
+            dataset = dataset.drop(var_name)
 
     # write the dataset as NetCDF
     netcdf_file_name = kwrgs['output_file_base'] + "_" + var_name_zindex + ".nc"
-    index_dataset.to_netcdf(netcdf_file_name)
+    dataset.to_netcdf(netcdf_file_name)
 
     return True
 
@@ -621,7 +633,7 @@ def compute_write_palmers(kwrgs):
 def compute_write_pet(kwrgs):
 
     # open the temperature NetCDF as an xarray DataSet object
-    dataset = xr.open_dataset(kwrgs['netcdf_temp'])  # , chunks={'lat': 1})
+    dataset = xr.open_dataset(kwrgs['netcdf_temp'])
 
     # trim out all data variables from the dataset except the precipitation
     for var in dataset.data_vars:
@@ -659,13 +671,6 @@ def compute_write_pet(kwrgs):
     # unstack the array back into original dimensions
     da_pet = da_pet.unstack('point')
 
-    # copy the original dataset since we'll be able to reuse most of the coordinates, attributes, etc.
-    index_dataset = dataset.copy()
-
-    # remove all data variables
-    for var_name in index_dataset.data_vars:
-        index_dataset = index_dataset.drop(var_name)
-
     # TODO set global attributes accordingly for this new dataset
 
     # create a new variable to contain the PET values, assign into the dataset
@@ -678,11 +683,16 @@ def compute_write_pet(kwrgs):
     pet_var = xr.Variable(dims=da_pet.dims,
                           data=da_pet,
                           attrs=pet_attrs)
-    index_dataset[var_name_pet] = pet_var
+    dataset[var_name_pet] = pet_var
+
+    # remove all data variables except for the new PET variable
+    for var_name in dataset.data_vars:
+        if var_name != var_name_pet:
+            dataset = dataset.drop(var_name)
 
     # write the dataset as NetCDF
     netcdf_file_name = kwrgs['output_file_base'] + "_" + var_name_pet + ".nc"
-    index_dataset.to_netcdf(netcdf_file_name)
+    dataset.to_netcdf(netcdf_file_name)
 
     return netcdf_file_name, var_name_pet
 
@@ -818,6 +828,46 @@ def run_multi_spei(netcdf_precip,
 
 
 # ----------------------------------------------------------------------------------------------------------------------
+def _prepare_file(netcdf_file,
+                  var_name):
+
+    # determine if coordinates are correctly ordered in ascending order
+    ds = xr.open_dataset(netcdf_file)
+
+    # make sure we have lat, lon, and time as variable dimensions
+    expected_dims = ('lat', 'lon', 'time')
+    if Counter(ds[var_name].dims) != Counter(expected_dims):
+        message = "Invalid dimensions for precipitation " \
+                  "variable: {dims}".format(dims=ds[var_name].dims)
+        _logger.error(message)
+        raise ValueError(message)
+
+    # see if we need to reorder into (lat,lon,time)
+    reorder_dims = (ds[var_name].dims != expected_dims)
+
+    # see if we need to reverse the lat and/or lon dimensions
+    dims = []
+    reverse_dims = False
+    for dim_name in ['lat', 'lon']:
+        vals = ds[dim_name].values
+        if np.all(vals[:-1] <= vals[1:]):
+            dims.append(dim_name)
+        else:
+            reverse_dims = True
+            dims.append("-" + dim_name)
+    dims.append('time')
+
+    # perform reorder and/or reversal of dimensions if necessary
+    if reorder_dims or reverse_dims:
+        dims = ','.join(dims)
+        nco = Nco()
+        netcdf_file = nco.ncpdq(input_file=netcdf_file,
+                                options=["-a \\\"{dims}\\\"".format(dims=dims), "-O"])
+
+    return netcdf_file
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
     """
     This script is used to perform climate indices processing on gridded datasets in NetCDF.
@@ -888,7 +938,12 @@ if __name__ == '__main__':
         # compute SPI if specified
         if arguments.index in ['spi', 'scaled', 'all']:
 
-            run_multi_spi(arguments.netcdf_precip,
+            # prepare precipitation NetCDF in case dimensions not (lat, lon, time) or if any coordinates are descending
+            netcdf_precip = _prepare_file(arguments.netcdf_precip,
+                                          arguments.var_name_precip)
+
+            # run SPI with one process per scale/distribution
+            run_multi_spi(netcdf_precip,
                           arguments.var_name_precip,
                           arguments.scales,
                           arguments.periodicity,
@@ -896,22 +951,41 @@ if __name__ == '__main__':
                           arguments.calibration_end_year,
                           arguments.output_file_base)
 
+            # remove temporary file
+            if netcdf_precip != arguments.netcdf_precip:
+                os.remove(netcdf_precip)
+
         if arguments.index in ['pet', 'spei', 'scaled', 'palmers', 'all']:
 
+            # run SPI with one process per scale/distribution
             if arguments.netcdf_pet is None:
 
+                # prepare temperature NetCDF in case dimensions not (lat, lon, time) or if coordinates are descending
+                netcdf_temp = _prepare_file(arguments.netcdf_temp,
+                                            arguments.var_name_temp)
+
                 # keyword arguments used for the function we'll map
-                kwargs = {'netcdf_temp': arguments.netcdf_temp,
+                kwargs = {'netcdf_temp': netcdf_temp,
                           'var_name_temp': arguments.var_name_temp,
                           'output_file_base': arguments.output_file_base}
 
                 arguments.netcdf_pet, arguments.var_name_pet = compute_write_pet(kwargs)
 
+                # remove temporary file
+                if netcdf_temp != arguments.netcdf_temp:
+                    os.remove(netcdf_temp)
+
         if arguments.index in ['spei', 'scaled', 'all']:
 
-            run_multi_spei(arguments.netcdf_precip,
+            # prepare NetCDFs in case dimensions not (lat, lon, time) or if any coordinates are descending
+            netcdf_precip = _prepare_file(arguments.netcdf_precip,
+                                          arguments.var_name_precip)
+            netcdf_pet = _prepare_file(arguments.netcdf_pet,
+                                       arguments.var_name_pet)
+
+            run_multi_spei(netcdf_precip,
                            arguments.var_name_precip,
-                           arguments.netcdf_pet,
+                           netcdf_pet,
                            arguments.var_name_pet,
                            arguments.scales,
                            arguments.periodicity,
@@ -919,9 +993,19 @@ if __name__ == '__main__':
                            arguments.calibration_end_year,
                            arguments.output_file_base)
 
+            # remove temporary files
+            if netcdf_precip != arguments.netcdf_precip:
+                os.remove(netcdf_precip)
+            if netcdf_pet != arguments.netcdf_pet:
+                os.remove(netcdf_pet)
+
         if arguments.index in ['pnp', 'scaled', 'all']:
 
-            run_multi_pnp(arguments.netcdf_precip,
+            # prepare NetCDF in case dimensions not (lat, lon, time) or if any coordinates are descending
+            netcdf_precip = _prepare_file(arguments.netcdf_precip,
+                                          arguments.var_name_precip)
+
+            run_multi_pnp(netcdf_precip,
                           arguments.var_name_precip,
                           arguments.scales,
                           arguments.periodicity,
@@ -929,7 +1013,13 @@ if __name__ == '__main__':
                           arguments.calibration_end_year,
                           arguments.output_file_base)
 
+            # remove temporary files
+            if netcdf_precip != arguments.netcdf_precip:
+                os.remove(netcdf_precip)
+
         if arguments.index in ['palmers', 'all']:
+
+            # TODO prepare input NetCDF files, ensure matching dimensions, etc.
 
             # keyword arguments used for the function we'll map
             kwargs = {'netcdf_precip': arguments.netcdf_precip,
@@ -944,7 +1034,6 @@ if __name__ == '__main__':
                       'output_file_base': arguments.output_file_base}
 
             compute_write_palmers(kwargs)
-            # compute_write_palmers_vectorized(kwargs)
 
         # report on the elapsed time
         end_datetime = datetime.now()
