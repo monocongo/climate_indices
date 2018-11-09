@@ -7,7 +7,6 @@ import warnings
 
 import netCDF4
 import numpy as np
-import warnings
 
 from climate_indices import compute, indices, utils
 from scripts import netcdf_utils
@@ -18,7 +17,7 @@ _VALID_MIN = -10.0
 _VALID_MAX = 10.0
 _POSSIBLE_MM_UNITS = ["millimeters", "millimeter", "mm"]
 _POSSIBLE_INCH_UNITS = ["inches", "inch"]
-_MM_TO_INCHES_FACTOR = 0.0393701
+_MM_TO_INCHES_FACTOR = 0.039_370_1
 
 # ----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global _logger which will write to the console as standard error
