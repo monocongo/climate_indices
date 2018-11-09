@@ -11,32 +11,37 @@ class Distribution(Enum):
     """
     Enumeration type for distribution fittings used for SPI and SPEI.
     """
-    pearson = 'pearson'
-    gamma = 'gamma'
+
+    pearson = "pearson"
+    gamma = "gamma"
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global _logger
-logging.basicConfig(level=logging.DEBUG,
-                    format='%(asctime)s %(levelname)s %(message)s',
-                    datefmt='%Y-%m-%d  %H:%M:%S')
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s %(levelname)s %(message)s",
+    datefmt="%Y-%m-%d  %H:%M:%S",
+)
 _logger = logging.getLogger(__name__)
 
 # ----------------------------------------------------------------------------------------------------------------------
-# valid upper and lower bounds for indices that are fitted/transformed to a distribution (SPI and SPEI)  
+# valid upper and lower bounds for indices that are fitted/transformed to a distribution (SPI and SPEI)
 _FITTED_INDEX_VALID_MIN = -3.09
 _FITTED_INDEX_VALID_MAX = 3.09
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def spi(precips, 
-        scale,
-        distribution,
-        data_start_year,
-        calibration_year_initial,
-        calibration_year_final,
-        periodicity):
+def spi(
+    precips,
+    scale,
+    distribution,
+    data_start_year,
+    calibration_year_initial,
+    calibration_year_final,
+    periodicity,
+):
     """
     Computes SPI (Standardized Precipitation Index).
 
@@ -65,49 +70,55 @@ def spi(precips,
     if len(shape) == 2:
         precips = precips.flatten()
     elif len(shape) != 1:
-        message = 'Invalid shape of input array: {0} -- only 1-D and 2-D arrays are supported'.format(shape)
+        message = "Invalid shape of input array: {0} -- only 1-D and 2-D arrays are supported".format(
+            shape
+        )
         _logger.error(message)
         raise ValueError(message)
-        
+
     # if we're passed all missing values then we can't compute anything, return the same array of missing values
     if (np.ma.is_masked(precips) and precips.mask.all()) or np.all(np.isnan(precips)):
         return precips
-        
+
     # remember the original length of the array, in order to facilitate returning an array of the same size
     original_length = precips.size
-    
+
     # get a sliding sums array, with each time step's value scaled by the specified number of time steps
     scaled_precips = compute.sum_to_scale(precips, scale)
 
     # reshape precipitation values to (years, 12) for monthly, or to (years, 366) for daily
     if periodicity is compute.Periodicity.monthly:
-        
+
         scaled_precips = utils.reshape_to_2d(scaled_precips, 12)
 
     elif periodicity is compute.Periodicity.daily:
-        
+
         scaled_precips = utils.reshape_to_2d(scaled_precips, 366)
-        
+
     else:
-        
-        raise ValueError('Invalid periodicity argument: %s' % periodicity)
-    
+
+        raise ValueError("Invalid periodicity argument: %s" % periodicity)
+
     if distribution is Distribution.gamma:
-        
-        # fit the scaled values to a gamma distribution and transform to corresponding normalized sigmas 
-        transformed_fitted_values = compute.transform_fitted_gamma(scaled_precips, 
-                                                                   data_start_year,
-                                                                   calibration_year_initial,
-                                                                   calibration_year_final,
-                                                                   periodicity)
+
+        # fit the scaled values to a gamma distribution and transform to corresponding normalized sigmas
+        transformed_fitted_values = compute.transform_fitted_gamma(
+            scaled_precips,
+            data_start_year,
+            calibration_year_initial,
+            calibration_year_final,
+            periodicity,
+        )
     elif distribution is Distribution.pearson:
-        
-        # fit the scaled values to a Pearson Type III distribution and transform to corresponding normalized sigmas 
-        transformed_fitted_values = compute.transform_fitted_pearson(scaled_precips,
-                                                                     data_start_year,
-                                                                     calibration_year_initial,
-                                                                     calibration_year_final,
-                                                                     periodicity)
+
+        # fit the scaled values to a Pearson Type III distribution and transform to corresponding normalized sigmas
+        transformed_fitted_values = compute.transform_fitted_pearson(
+            scaled_precips,
+            data_start_year,
+            calibration_year_initial,
+            calibration_year_final,
+            periodicity,
+        )
 
     else:
 
@@ -116,22 +127,26 @@ def spi(precips,
         raise ValueError(message)
 
     # clip values to within the valid range, reshape the array back to 1-D
-    values = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
-    
-    # return the original size array 
+    values = np.clip(
+        transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX
+    ).flatten()
+
+    # return the original size array
     return values[0:original_length]
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def spei(precips_mm,
-         pet_mm,
-         scale,
-         distribution,
-         periodicity,
-         data_start_year,
-         calibration_year_initial,
-         calibration_year_final):
+def spei(
+    precips_mm,
+    pet_mm,
+    scale,
+    distribution,
+    periodicity,
+    data_start_year,
+    calibration_year_initial,
+    calibration_year_final,
+):
     """
     Compute SPEI fitted to the gamma distribution.
 
@@ -161,12 +176,14 @@ def spei(precips_mm,
     """
 
     # if we're passed all missing values then we can't compute anything, return the same array of missing values
-    if (np.ma.is_masked(precips_mm) and precips_mm.mask.all()) or np.all(np.isnan(precips_mm)):
+    if (np.ma.is_masked(precips_mm) and precips_mm.mask.all()) or np.all(
+        np.isnan(precips_mm)
+    ):
         return precips_mm
 
     # validate that the two input arrays are compatible
     if precips_mm.size != pet_mm.size:
-        message = 'Incompatible precipitation and PET arrays'
+        message = "Incompatible precipitation and PET arrays"
         _logger.error(message)
         raise ValueError(message)
 
@@ -182,20 +199,24 @@ def spei(precips_mm,
     if distribution is Distribution.gamma:
 
         # fit the scaled values to a gamma distribution and transform to corresponding normalized sigmas
-        transformed_fitted_values = compute.transform_fitted_gamma(scaled_values,
-                                                                   data_start_year,
-                                                                   calibration_year_initial,
-                                                                   calibration_year_final,
-                                                                   periodicity)
+        transformed_fitted_values = compute.transform_fitted_gamma(
+            scaled_values,
+            data_start_year,
+            calibration_year_initial,
+            calibration_year_final,
+            periodicity,
+        )
 
     elif distribution is Distribution.pearson:
 
         # fit the scaled values to a Pearson Type III distribution and transform to corresponding normalized sigmas
-        transformed_fitted_values = compute.transform_fitted_pearson(scaled_values,
-                                                                     data_start_year,
-                                                                     calibration_year_initial,
-                                                                     calibration_year_final,
-                                                                     periodicity)
+        transformed_fitted_values = compute.transform_fitted_pearson(
+            scaled_values,
+            data_start_year,
+            calibration_year_initial,
+            calibration_year_final,
+            periodicity,
+        )
 
     else:
         message = "Unsupported distribution argument: {dist}".format(dist=distribution)
@@ -203,7 +224,9 @@ def spei(precips_mm,
         raise ValueError(message)
 
     # clip values to within the valid range, reshape the array back to 1-D
-    values = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
+    values = np.clip(
+        transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX
+    ).flatten()
 
     # return the original size array
     return values[0:original_length]
@@ -211,12 +234,14 @@ def spei(precips_mm,
 
 # ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def scpdsi(precip_time_series,
-           pet_time_series,
-           awc,
-           data_start_year,
-           calibration_start_year,
-           calibration_end_year):
+def scpdsi(
+    precip_time_series,
+    pet_time_series,
+    awc,
+    data_start_year,
+    calibration_start_year,
+    calibration_end_year,
+):
     """
     This function computes the self-calibrated Palmer Drought Severity Index (scPDSI), Palmer Drought Severity Index
     (PDSI), Palmer Hydrological Drought Index (PHDI), Palmer Modified Drought Index (PMDI), and Palmer Z-Index.
@@ -230,23 +255,27 @@ def scpdsi(precip_time_series,
     :param calibration_end_year: final year of the calibration period
     :return: five numpy arrays containing SCPDSI, PDSI, PHDI, PMDI, and Z-Index values respectively
     """
-    
-    return palmer.scpdsi(precip_time_series,
-                         pet_time_series,
-                         awc,
-                         data_start_year,
-                         calibration_start_year,
-                         calibration_end_year)
+
+    return palmer.scpdsi(
+        precip_time_series,
+        pet_time_series,
+        awc,
+        data_start_year,
+        calibration_start_year,
+        calibration_end_year,
+    )
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def pdsi(precip_time_series,
-         pet_time_series,
-         awc,
-         data_start_year,
-         calibration_start_year,
-         calibration_end_year):
+def pdsi(
+    precip_time_series,
+    pet_time_series,
+    awc,
+    data_start_year,
+    calibration_start_year,
+    calibration_end_year,
+):
     """
     This function computes the Palmer Drought Severity Index (PDSI), Palmer Hydrological Drought Index (PHDI),
     and Palmer Z-Index.
@@ -260,23 +289,27 @@ def pdsi(precip_time_series,
     :param calibration_end_year: final year of the calibration period
     :return: four numpy arrays containing PDSI, PHDI, PMDI, and Z-Index values respectively
     """
-    
-    return palmer.pdsi(precip_time_series,
-                       pet_time_series,
-                       awc,
-                       data_start_year,
-                       calibration_start_year,
-                       calibration_end_year)
+
+    return palmer.pdsi(
+        precip_time_series,
+        pet_time_series,
+        awc,
+        data_start_year,
+        calibration_start_year,
+        calibration_end_year,
+    )
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-@numba.jit     
-def percentage_of_normal(values, 
-                         scale,
-                         data_start_year,
-                         calibration_start_year,
-                         calibration_end_year,
-                         periodicity):
+@numba.jit
+def percentage_of_normal(
+    values,
+    scale,
+    data_start_year,
+    calibration_start_year,
+    calibration_end_year,
+    periodicity,
+):
     """
     This function finds the percent of normal values (average of each calendar month or day over a specified
     calibration period of years) for a specified time steps scale. The normal precipitation for each calendar time step
@@ -308,7 +341,7 @@ def percentage_of_normal(values,
 
     # validate the scale argument
     if (scale is None) or (scale < 1):
-        message = 'Invalid scale argument: \'{0}\''.format(scale)
+        message = "Invalid scale argument: '{0}'".format(scale)
         _logger.error(message)
         raise ValueError(message)
 
@@ -318,39 +351,43 @@ def percentage_of_normal(values,
     elif periodicity is compute.Periodicity.daily:
         periodicity = 366
     else:
-        message = 'Invalid periodicity argument: \'{0}\''.format(periodicity)
+        message = "Invalid periodicity argument: '{0}'".format(periodicity)
         _logger.error(message)
         raise ValueError(message)
-    
-    # bypass processing if all values are masked    
+
+    # bypass processing if all values are masked
     if np.ma.is_masked(values) and values.mask.all():
         return values
-    
+
     # make sure we've been provided with sane calibration limits
     if data_start_year > calibration_start_year:
-        raise ValueError('Invalid start year arguments (data and/or calibration): calibration start year '
-                         'is before the data start year')
+        raise ValueError(
+            "Invalid start year arguments (data and/or calibration): calibration start year "
+            "is before the data start year"
+        )
     elif ((calibration_end_year - calibration_start_year + 1) * 12) > values.size:
-        raise ValueError('Invalid calibration period specified: total calibration years exceeds the actual '
-                         'number of years of data')
-        
-    # get an array containing a sliding sum on the specified time step scale -- i.e. if the scale is 3 then the first 
-    # two elements will be np.NaN, since we need 3 elements to get a sum, and then from the third element to the end 
+        raise ValueError(
+            "Invalid calibration period specified: total calibration years exceeds the actual "
+            "number of years of data"
+        )
+
+    # get an array containing a sliding sum on the specified time step scale -- i.e. if the scale is 3 then the first
+    # two elements will be np.NaN, since we need 3 elements to get a sum, and then from the third element to the end
     # the values will equal the sum of the corresponding time step plus the values of the two previous time steps
     scale_sums = compute.sum_to_scale(values, scale)
-    
+
     # extract the timesteps over which we'll compute the normal average for each time step of the year
     calibration_years = calibration_end_year - calibration_start_year + 1
     calibration_start_index = (calibration_start_year - data_start_year) * periodicity
     calibration_end_index = calibration_start_index + (calibration_years * periodicity)
     calibration_period_sums = scale_sums[calibration_start_index:calibration_end_index]
-    
-    # for each time step in the calibration period, get the average of the scale sum 
-    # for that calendar time step (i.e. average all January sums, then all February sums, etc.) 
+
+    # for each time step in the calibration period, get the average of the scale sum
+    # for that calendar time step (i.e. average all January sums, then all February sums, etc.)
     averages = np.full((periodicity,), np.nan)
     for i in range(periodicity):
         averages[i] = np.nanmean(calibration_period_sums[i::periodicity])
-    
+
     # TODO replace the below loop with a vectorized implementation
     # for each time step of the scale_sums array find its corresponding
     # percentage of the time steps scale average for its respective calendar time step
@@ -360,17 +397,15 @@ def percentage_of_normal(values,
         # make sure we don't have a zero divisor
         divisor = averages[i % periodicity]
         if divisor > 0.0:
-            
+
             percentages_of_normal[i] = scale_sums[i] / divisor
-    
+
     return percentages_of_normal
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def pet(temperature_celsius,
-        latitude_degrees,
-        data_start_year):
+def pet(temperature_celsius, latitude_degrees, data_start_year):
 
     """
     This function computes potential evapotranspiration (PET) using Thornthwaite's equation.
@@ -383,18 +418,18 @@ def pet(temperature_celsius,
              in millimeters/time step
     :rtype: 1-D numpy.ndarray of floats
     """
-    
+
     # make sure we're not dealing with all NaN values
     if np.ma.isMaskedArray(temperature_celsius) and (temperature_celsius.count() == 0):
-        
+
         # we started with all NaNs for the temperature, so just return the same as PET
         return temperature_celsius
 
     else:
-        
+
         # we were passed a vanilla Numpy array, look for indices where the value == NaN
         if np.all(np.isnan(temperature_celsius)):
-        
+
             # we started with all NaNs for the temperature, so just return the same
             return temperature_celsius
 
@@ -404,14 +439,22 @@ def pet(temperature_celsius,
         latitude_degrees = latitude_degrees[0]
 
     # make sure we're not dealing with a NaN or out-of-range latitude value
-    if latitude_degrees is not None and not np.isnan(latitude_degrees) \
-            and (latitude_degrees < 90.0) and (latitude_degrees > -90.0):
-        
+    if (
+        latitude_degrees is not None
+        and not np.isnan(latitude_degrees)
+        and (latitude_degrees < 90.0)
+        and (latitude_degrees > -90.0)
+    ):
+
         # compute and return the PET values using Thornthwaite's equation
-        return eto.eto_thornthwaite(temperature_celsius, latitude_degrees, data_start_year)
-        
+        return eto.eto_thornthwaite(
+            temperature_celsius, latitude_degrees, data_start_year
+        )
+
     else:
-        message = "Invalid latitude value: {lat} ".format(lat=latitude_degrees) + \
-                  "(must be in degrees north, between -90.0 and 90.0 inclusive)"
+        message = (
+            "Invalid latitude value: {lat} ".format(lat=latitude_degrees)
+            + "(must be in degrees north, between -90.0 and 90.0 inclusive)"
+        )
         _logger.error(message)
         raise ValueError(message)
