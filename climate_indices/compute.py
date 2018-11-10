@@ -11,9 +11,11 @@ from climate_indices import utils
 
 # ----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global _logger
-logging.basicConfig(level=logging.WARN,
-                    format='%(asctime)s %(levelname)s %(message)s',
-                    datefmt='%Y-%m-%d  %H:%M:%S')
+logging.basicConfig(
+    level=logging.WARN,
+    format="%(asctime)s %(levelname)s %(message)s",
+    datefmt="%Y-%m-%d  %H:%M:%S",
+)
 _logger = logging.getLogger(__name__)
 
 
@@ -30,6 +32,7 @@ class Periodicity(Enum):
     a leap year and any missing final months of the final year filled with NaN values, 
     with array size == (# years * 366)
     """
+
     monthly = 12
     daily = 366
 
@@ -46,8 +49,7 @@ class Periodicity(Enum):
 
 # ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def sum_to_scale(values,
-                 scale):
+def sum_to_scale(values, scale):
     """
     Compute a sliding sums array using 1-D convolution. The initial (scale - 1) elements
     of the result array will be padded with np.NaN values. Missing values are not ignored, i.e. if a np.NaN
@@ -76,10 +78,10 @@ def sum_to_scale(values,
         return values
 
     # get the valid sliding summations with 1D convolution
-    sliding_sums = np.convolve(values, np.ones(scale), mode='valid')
+    sliding_sums = np.convolve(values, np.ones(scale), mode="valid")
 
     # pad the first (n - 1) elements of the array with NaN values
-    return np.hstack(([np.NaN]*(scale - 1), sliding_sums))
+    return np.hstack(([np.NaN] * (scale - 1), sliding_sums))
 
 
 # -----------------------------------------------------------------------------------------------------------------------
@@ -104,7 +106,7 @@ def _pearson3_fitting_values(values):
 
     # validate that the values array has shape: (years, 12) for monthly or (years, 366) for daily
     if len(values.shape) != 2:
-        message = 'Invalid shape of input data array: {0}'.format(values.shape)
+        message = "Invalid shape of input data array: {0}".format(values.shape)
         _logger.error(message)
         raise ValueError(message)
 
@@ -112,7 +114,7 @@ def _pearson3_fitting_values(values):
 
         time_steps_per_year = values.shape[1]
         if (time_steps_per_year != 12) and (time_steps_per_year != 366):
-            message = 'Invalid shape of input data array: {0}'.format(values.shape)
+            message = "Invalid shape of input data array: {0}".format(values.shape)
             _logger.error(message)
             raise ValueError(message)
 
@@ -127,7 +129,9 @@ def _pearson3_fitting_values(values):
         time_step_values = values[:, time_step_index]
 
         # count the number of zeros and valid (non-missing/non-NaN) values
-        number_of_zeros, number_of_non_missing = utils.count_zeros_and_non_missings(time_step_values)
+        number_of_zeros, number_of_non_missing = utils.count_zeros_and_non_missings(
+            time_step_values
+        )
 
         # make sure we have at least four values that are both non-missing (i.e. non-NaN)
         # and non-zero, otherwise use the entire period of record
@@ -151,17 +155,15 @@ def _pearson3_fitting_values(values):
             # get the Pearson Tyoe III parameters for this calendar month's values within the calibration period
             params = distr.pe3.lmom_fit(time_step_values)
             fitting_values[0, time_step_index] = probability_of_zero
-            fitting_values[1, time_step_index] = params['loc']
-            fitting_values[2, time_step_index] = params['scale']
-            fitting_values[3, time_step_index] = params['skew']
+            fitting_values[1, time_step_index] = params["loc"]
+            fitting_values[2, time_step_index] = params["scale"]
+            fitting_values[3, time_step_index] = params["skew"]
 
     return fitting_values
 
 
 # ---------------------------------------------------------------------------------------------------------------------
-def _minimum_possible(skew,
-                      loc,
-                      scale):
+def _minimum_possible(skew, loc, scale):
     """
     Conpute the minimum possible value that can be fitted to a distribution described
     by a set of skew, loc, and scale parameters.
@@ -179,11 +181,7 @@ def _minimum_possible(skew,
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def _pearson_fit(values,
-                 probabilities_of_zero,
-                 skew,
-                 loc,
-                 scale):
+def _pearson_fit(values, probabilities_of_zero, skew, loc, scale):
     """
     Perform fitting of an array of value to a Pearson Type III distribution
     as described by the Pearson Type III parameters and probability of zero arguments.
@@ -222,7 +220,11 @@ def _pearson_fit(values,
         if not np.all(np.isnan(pe3_cdf)):
 
             # calculate the probability value, clipped between 0 and 1
-            probabilities = np.clip((probabilities_of_zero + ((1.0 - probabilities_of_zero) * pe3_cdf)), 0.0, 1.0)
+            probabilities = np.clip(
+                (probabilities_of_zero + ((1.0 - probabilities_of_zero) * pe3_cdf)),
+                0.0,
+                1.0,
+            )
 
             # the values we'll return are the values at which the probabilities of a normal distribution are
             # less than or equal to the computed probabilities, as determined by the normal distribution's
@@ -242,11 +244,9 @@ def _pearson_fit(values,
 
 # ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def transform_fitted_pearson(values,
-                             data_start_year,
-                             calibration_start_year,
-                             calibration_end_year,
-                             periodicity):
+def transform_fitted_pearson(
+    values, data_start_year, calibration_start_year, calibration_end_year, periodicity
+):
     """
     Fit values to a Pearson Type III distribution and transform the values to corresponding normalized sigmas.
 
@@ -267,44 +267,48 @@ def transform_fitted_pearson(values,
     :return: 2-D array of transformed/fitted values, corresponding in size and shape of the input array
     :rtype: numpy.ndarray of floats
     """
-    
+
     # if we're passed all missing values then we can't compute anything, return the same array of missing values
     if (np.ma.is_masked(values) and values.mask.all()) or np.all(np.isnan(values)):
         return values
-        
+
     # validate (and possibly reshape) the input array
     if len(values.shape) == 1:
-        
-        if periodicity is None:    
-            message = '1-D input array requires a corresponding periodicity argument, none provided'
+
+        if periodicity is None:
+            message = "1-D input array requires a corresponding periodicity argument, none provided"
             _logger.error(message)
             raise ValueError(message)
 
         elif periodicity is Periodicity.monthly:
             # we've been passed a 1-D array with shape (months), reshape it to 2-D with shape (years, 12)
             values = utils.reshape_to_2d(values, 12)
-     
+
         elif periodicity is Periodicity.daily:
             # we've been passed a 1-D array with shape (days), reshape it to 2-D with shape (years, 366)
             values = utils.reshape_to_2d(values, 366)
-            
+
         else:
-            message = 'Unsupported periodicity argument: \'{0}\''.format(periodicity)
+            message = "Unsupported periodicity argument: '{0}'".format(periodicity)
             _logger.error(message)
             raise ValueError(message)
-        
-    elif (len(values.shape) != 2) or ((values.shape[1] != 12) and (values.shape[1] != 366)):
-      
+
+    elif (len(values.shape) != 2) or (
+        (values.shape[1] != 12) and (values.shape[1] != 366)
+    ):
+
         # neither a 1-D nor a 2-D array with valid shape was passed in
-        message = 'Invalid input array with shape: {0}'.format(values.shape)
-        _logger.error(message)   
+        message = "Invalid input array with shape: {0}".format(values.shape)
+        _logger.error(message)
         raise ValueError(message)
-    
+
     # determine the end year of the values array
     data_end_year = data_start_year + values.shape[0]
-    
+
     # make sure that we have data within the full calibration period, otherwise use the full period of record
-    if (calibration_start_year < data_start_year) or (calibration_end_year > data_end_year):
+    if (calibration_start_year < data_start_year) or (
+        calibration_end_year > data_end_year
+    ):
         # _logger.info('Insufficient data for the specified calibration period ({0}-{1}),'.format(calibration_start_year,
         #                                                                                         calibration_end_year) +
         #              ' instead using the full period of record ({0}-{1})'.format(data_start_year,
@@ -313,9 +317,9 @@ def transform_fitted_pearson(values,
         calibration_end_year = data_end_year
 
     # get the year axis indices corresponding to the calibration start and end years
-    calibration_begin_index = (calibration_start_year - data_start_year)
+    calibration_begin_index = calibration_start_year - data_start_year
     calibration_end_index = (calibration_end_year - data_start_year) + 1
-    
+
     # get the values for the current calendar time step that fall within the calibration years period
     calibration_values = values[calibration_begin_index:calibration_end_index, :]
 
@@ -326,7 +330,7 @@ def transform_fitted_pearson(values,
     scale = pearson_values[2]
     skew = pearson_values[3]
     probability_of_zero = pearson_values[0]
- 
+
     # fit each value using the Pearson Type III fitting universal function in a broadcast fashion
     fitted_values = _pearson_fit(values, probability_of_zero, skew, loc, scale)
 
@@ -335,11 +339,9 @@ def transform_fitted_pearson(values,
 
 # ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def transform_fitted_gamma(values,
-                           data_start_year,
-                           calibration_start_year,
-                           calibration_end_year,
-                           periodicity):
+def transform_fitted_gamma(
+    values, data_start_year, calibration_start_year, calibration_end_year, periodicity
+):
     """
     Fit values to a gamma distribution and transform the values to corresponding normalized sigmas.
 
@@ -359,51 +361,53 @@ def transform_fitted_gamma(values,
     :return: 2-D array of transformed/fitted values, corresponding in size and shape of the input array
     :rtype: numpy.ndarray of floats
     """
-    
+
     # if we're passed all missing values then we can't compute anything, return the same array of missing values
     if (np.ma.is_masked(values) and values.mask.all()) or np.all(np.isnan(values)):
         return values
-        
+
     # validate (and possibly reshape) the input array
     if len(values.shape) == 1:
-        
-        if periodicity is None:    
-            message = '1-D input array requires a corresponding periodicity argument, none provided'
+
+        if periodicity is None:
+            message = "1-D input array requires a corresponding periodicity argument, none provided"
             _logger.error(message)
             raise ValueError(message)
 
         elif periodicity is Periodicity.monthly:
             # we've been passed a 1-D array with shape (months), reshape it to 2-D with shape (years, 12)
             values = utils.reshape_to_2d(values, 12)
-     
+
         elif periodicity is Periodicity.daily:
             # we've been passed a 1-D array with shape (days), reshape it to 2-D with shape (years, 366)
             values = utils.reshape_to_2d(values, 366)
-            
+
         else:
-            message = 'Unsupported periodicity argument: \'{0}\''.format(periodicity)
+            message = "Unsupported periodicity argument: '{0}'".format(periodicity)
             _logger.error(message)
             raise ValueError(message)
-    
+
     elif (len(values.shape) != 2) or (values.shape[1] != 12 and values.shape[1] != 366):
-     
+
         # neither a 1-D nor a 2-D array with valid shape was passed in
-        message = 'Invalid input array with shape: {0}'.format(values.shape)
-        _logger.error(message)   
+        message = "Invalid input array with shape: {0}".format(values.shape)
+        _logger.error(message)
         raise ValueError(message)
-    
+
     # find the percentage of zero values for each time step
     zeros = (values == 0).sum(axis=0)
     probabilities_of_zero = zeros / values.shape[0]
-    
+
     # replace zeros with NaNs
     values[values == 0] = np.NaN
-    
+
     # determine the end year of the values array
     data_end_year = data_start_year + values.shape[0]
-    
+
     # make sure that we have data within the full calibration period, otherwise use the full period of record
-    if (calibration_start_year < data_start_year) or (calibration_end_year > data_end_year):
+    if (calibration_start_year < data_start_year) or (
+        calibration_end_year > data_end_year
+    ):
         # _logger.info('Insufficient data for the specified calibration period ({0}-{1}),'.format(calibration_start_year,
         #                                                                                         calibration_end_year) +
         #              ' instead using the full period of record ({0}-{1})'.format(data_start_year,
@@ -412,9 +416,9 @@ def transform_fitted_gamma(values,
         calibration_end_year = data_end_year
 
     # get the year axis indices corresponding to the calibration start and end years
-    calibration_begin_index = (calibration_start_year - data_start_year)
+    calibration_begin_index = calibration_start_year - data_start_year
     calibration_end_index = (calibration_end_year - data_start_year) + 1
-    
+
     # get the values for the current calendar time step that fall within the calibration years period
     calibration_values = values[calibration_begin_index:calibration_end_index, :]
 
@@ -427,14 +431,16 @@ def transform_fitted_gamma(values,
     a = log_means - mean_logs
     alphas = (1 + np.sqrt(1 + 4 * a / 3)) / (4 * a)
     betas = means / alphas
-    
+
     # find the gamma probability values using the gamma CDF
     gamma_probabilities = scipy.stats.gamma.cdf(values, a=alphas, scale=betas)
 
     # TODO explain this
-    # (normalize including the probability of zero, putting into the range [0..1]?)    
-    probabilities = probabilities_of_zero + ((1 - probabilities_of_zero) * gamma_probabilities)
-    
+    # (normalize including the probability of zero, putting into the range [0..1]?)
+    probabilities = probabilities_of_zero + (
+        (1 - probabilities_of_zero) * gamma_probabilities
+    )
+
     # the values we'll return are the values at which the probabilities of a normal distribution
     # are less than or equal to the computed probabilities, as determined by the normal distribution's
     # quantile (or inverse cumulative distribution) function

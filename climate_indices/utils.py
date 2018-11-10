@@ -7,9 +7,11 @@ import numpy as np
 
 # -----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global _logger
-logging.basicConfig(level=logging.DEBUG,
-                    format='%(asctime)s %(levelname)s %(message)s',
-                    datefmt='%Y-%m-%d  %H:%M:%S')
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s %(levelname)s %(message)s",
+    datefmt="%Y-%m-%d  %H:%M:%S",
+)
 _logger = logging.getLogger(__name__)
 
 
@@ -23,20 +25,20 @@ def sign_change(a, b):
     :param b: 
     :return: array of booleans of same size as input arrays
     """
-    
-    if a.size != b.size:
-        
-        raise ValueError('Mismatched input arrays')
 
-    # use the shape of the first array as the shape of the array we'll return    
+    if a.size != b.size:
+
+        raise ValueError("Mismatched input arrays")
+
+    # use the shape of the first array as the shape of the array we'll return
     original_shape = a.shape
-    
+
     # get the sign value for each element
     sign_a = np.sign(a.flatten())
     sign_b = np.sign(b.flatten())
-    
+
     # sign change between the two where values unequal
-    sign_changes = (sign_a != sign_b)
+    sign_changes = sign_a != sign_b
 
     return np.reshape(sign_changes, original_shape)
 
@@ -61,7 +63,7 @@ def is_data_valid(data):
         valid_flag = not np.all(np.isnan(data))
 
     else:
-        _logger.warning('Invalid data type')
+        _logger.warning("Invalid data type")
         valid_flag = False
 
     return valid_flag
@@ -80,10 +82,7 @@ def rmse(predictions, targets):
 
 
 # -----------------------------------------------------------------------------------------------------------------------
-def compute_days(initial_year,
-                 total_months,
-                 initial_month=1,
-                 units_start_year=1800):
+def compute_days(initial_year, total_months, initial_month=1, units_start_year=1800):
     """
     Computes the "number of days" equivalent for regular, incremental monthly time steps given an initial year/month.
     Useful when using "days since <start_date>" as time units within a NetCDF dataset.
@@ -100,31 +99,32 @@ def compute_days(initial_year,
     :rtype: ndarray of ints
     """
 
-    # compute an offset from which the day values should begin 
+    # compute an offset from which the day values should begin
     start_date = datetime(units_start_year, 1, 1)
 
     # initialize the list of day values we'll build
     days = np.empty(total_months, dtype=int)
-    
+
     # loop over all time steps (months)
     for i in range(total_months):
-        
-        years = int((i + initial_month - 1) / 12)   # the number of years since the initial year 
+
+        years = int(
+            (i + initial_month - 1) / 12
+        )  # the number of years since the initial year
         months = int((i + initial_month - 1) % 12)  # the number of months since January
-        
+
         # cook up a datetime object for the current time step (month)
         current_date = datetime(initial_year + years, 1 + months, 1)
-        
+
         # get the number of days since the initial date
         days[i] = (current_date - start_date).days
-    
+
     return days
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def reshape_to_2d(values,
-                  second_axis_length):
+def reshape_to_2d(values, second_axis_length):
     """
     :param values: an 1-D numpy.ndarray of values
     :param second_axis_length:
@@ -132,7 +132,7 @@ def reshape_to_2d(values,
              with shape [int(original length / second axis length), second axis length]
     :rtype: 2-D numpy.ndarray of floats
     """
-    
+
     # if we've been passed a 2-D array with valid shape then let it pass through
     shape = values.shape
     if len(shape) == 2:
@@ -140,14 +140,20 @@ def reshape_to_2d(values,
             # data is already in the shape we want, return it unaltered
             return values
         else:
-            message = "Values array has an invalid shape (2-D but " + \
-                      "second dimension not {length}): {shape}".format(length=second_axis_length, shape=shape)
+            message = (
+                "Values array has an invalid shape (2-D but "
+                + "second dimension not {length}): {shape}".format(
+                    length=second_axis_length, shape=shape
+                )
+            )
             _logger.error(message)
             raise ValueError(message)
-    
+
     # otherwise make sure that we've been passed a flat (1-D) array of values
     elif len(shape) != 1:
-        message = 'Values array has an invalid shape (not 1-D or 2-D): {0}'.format(shape)
+        message = "Values array has an invalid shape (not 1-D or 2-D): {0}".format(
+            shape
+        )
         _logger.error(message)
         raise ValueError(message)
 
@@ -155,11 +161,13 @@ def reshape_to_2d(values,
     final_year_values = shape[0] % second_axis_length
     if final_year_values > 0:
         pads = second_axis_length - final_year_values
-        values = np.pad(values, pad_width=(0, pads), mode='constant', constant_values=np.NaN)
+        values = np.pad(
+            values, pad_width=(0, pads), mode="constant", constant_values=np.NaN
+        )
 
     # we should have an ordinal number of years now (ordinally divisible by second_axis_length)
     first_axis_length = int(values.shape[0] / second_axis_length)
-    
+
     # return the reshaped array
     return np.reshape(values, newshape=(first_axis_length, second_axis_length))
 
@@ -175,7 +183,7 @@ def reshape_to_divs_years_months(monthly_values):
              to a year, with each column of the row matching to the corresponding calendar month
     :rtype: 3-D numpy.ndarray of floats
     """
-    
+
     # if we've been passed a 3-D array with valid shape then let it pass through
     shape = monthly_values.shape
     if len(shape) == 3:
@@ -183,34 +191,36 @@ def reshape_to_divs_years_months(monthly_values):
             # data is already in the shape we want, return it unaltered
             return monthly_values
         else:
-            message = 'Values array has an invalid shape (3-D but third dimension not 12): {}'.format(shape)
+            message = "Values array has an invalid shape (3-D but third dimension not 12): {}".format(
+                shape
+            )
             _logger.error(message)
             raise ValueError(message)
-    
-    # otherwise make sure that we've been passed in a 2-D array of values    
+
+    # otherwise make sure that we've been passed in a 2-D array of values
     elif len(shape) != 2:
-        message = 'Values array has an invalid shape (not 2-D or 3-D): {}'.format(shape)
+        message = "Values array has an invalid shape (not 2-D or 3-D): {}".format(shape)
         _logger.error(message)
         raise ValueError(message)
 
     # otherwise make sure that we've been passed in a 2-D array of values with the final dimension size == 12
     elif shape[1] != 12:
-        message = "Values array has an invalid shape (second dimension should be 12, but is not): {}".format(shape)
+        message = "Values array has an invalid shape (second dimension should be 12, but is not): {}".format(
+            shape
+        )
         _logger.error(message)
         raise ValueError(message)
 
     # we should have an ordinal number of years now (ordinally divisible by 12)
     total_years = int(monthly_values.shape[1] / 12)
-    
+
     # reshape from (months) to (years, 12) in order to have one year of months per row
     return np.reshape(monthly_values, (shape[0], total_years, 12))
 
 
 # -----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def transform_to_366day(original,
-                        year_start,
-                        total_years):
+def transform_to_366day(original, year_start, total_years):
     """
     Takes an array of daily values with only actual leap years represented as 366 day years (non-leap years
     with 365 days) and converts it to an array of daily values represented as containing full 366 day years as
@@ -230,42 +240,50 @@ def transform_to_366day(original,
     :return: 1-D array of values with size (total_years * 366)
     """
     # original time series is assumed to be a one-dimensional array of floats corresponding to a number of full years
-    
+
     # validate the arguments
     if len(original.shape) > 1:
-        message = 'Invalid input array: only 1-D arrays are supported'
+        message = "Invalid input array: only 1-D arrays are supported"
         _logger.error(message)
         raise ValueError(message)
 
     # allocate the new array for 366 daily values per year, including a faux Feb 29 for non-leap years
     all_leap = np.full((total_years * 366,), np.NaN)
-    
+
     # index of the first day of the year within the original and all_leap arrays
     original_index = 0
     all_leap_index = 0
-    
+
     # loop over each year
     for year in range(year_start, year_start + total_years):
-        
+
         if calendar.isleap(year):
-            
+
             # write the next 366 days from the original time series into the all_leap array
-            all_leap[all_leap_index:all_leap_index + 366] = original[original_index:original_index + 366]
+            all_leap[all_leap_index : all_leap_index + 366] = original[
+                original_index : original_index + 366
+            ]
 
             # increment the "start day of the current year" index for the original
             # so that the next iteration jumps ahead a full year
             original_index += 366
-            
+
         else:
 
             # write the first 59 days (Jan 1 through Feb 28) from the original time series into the all_leap array
-            all_leap[all_leap_index:all_leap_index + 59] = original[original_index:original_index + 59]
+            all_leap[all_leap_index : all_leap_index + 59] = original[
+                original_index : original_index + 59
+            ]
 
             # average the Feb 28th and March 1st values as the faux Feb 29th value
-            all_leap[all_leap_index + 59] = (original[original_index + 58] + original[original_index + 59]) / 2
-            
+            all_leap[all_leap_index + 59] = (
+                original[original_index + 58] + original[original_index + 59]
+            ) / 2
+
             # write the remaining days of the year (Mar 1 through Dec 31) from the original into the all_leap array
-            all_leap[all_leap_index + 60:all_leap_index + 366] = original[original_index + 59:original_index + 365]
+            all_leap[all_leap_index + 60 : all_leap_index + 366] = original[
+                original_index + 59 : original_index + 365
+            ]
 
             # increment the "start day of the current year" index for the original
             # so the next iteration jumps ahead a full year
@@ -278,8 +296,7 @@ def transform_to_366day(original,
 
 # -----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def transform_to_gregorian(original,
-                           year_start):
+def transform_to_gregorian(original, year_start):
     """
     Takes an array of daily values represented as full 366 day years (as if each year is a leap year with
     fill/faux values for the Feb. 29th of each non-leap year) and converts it to an array of daily values
@@ -303,48 +320,54 @@ def transform_to_gregorian(original,
     """
     # original time series is assumed to be a one-dimensional array of floats corresponding to a number of full years,
     # with each year containing 366 days, as if each year is a leap year
-    
+
     # validate the arguments
     if len(original.shape) > 1:
-        message = 'Invalid input array: only 1-D arrays are supported'
+        message = "Invalid input array: only 1-D arrays are supported"
         _logger.error(message)
         raise ValueError(message)
     if original.size % 366 != 0:
-        message = 'Invalid input array: only 1-D arrays containing multiples of 366 days are supported'
+        message = "Invalid input array: only 1-D arrays containing multiples of 366 days are supported"
         _logger.error(message)
         raise ValueError(message)
-            
+
     # find the total number of actual days between the start and end year
     total_years = int(original.size / 366)
     year_end = year_start + total_years - 1
     days_actual = (datetime(year_end, 12, 31) - datetime(year_start, 1, 1)).days + 1
-    
+
     # allocate the new array we'll write daily values into, including a faux Feb 29 for non-leap years
     gregorian = np.full((days_actual,), np.NaN)
-    
+
     # index of the first day of the year within the original and gregorian arrays
     original_index = 0
     gregorian_index = 0
-    
+
     # loop over each year
     for year in range(year_start, year_start + total_years):
-        
+
         if calendar.isleap(year):
-            
+
             # write the next 366 days from the original time series into the gregorian array
-            gregorian[gregorian_index:gregorian_index + 366] = original[original_index:original_index + 366]
+            gregorian[gregorian_index : gregorian_index + 366] = original[
+                original_index : original_index + 366
+            ]
 
             # increment the "start day of the current year" index for the original
             # so the next iteration jumps ahead a full year
             gregorian_index += 366
-            
+
         else:
 
             # write the first 59 days (Jan 1 through Feb 28) from the original time series into the gregorian array
-            gregorian[gregorian_index: gregorian_index + 59] = original[original_index:original_index + 59]
+            gregorian[gregorian_index : gregorian_index + 59] = original[
+                original_index : original_index + 59
+            ]
 
             # write the remaining days of the year (Mar 1 through Dec 31) from the original into the gregorian array
-            gregorian[gregorian_index + 59: gregorian_index + 365] = original[original_index + 60:original_index + 366]
+            gregorian[gregorian_index + 59 : gregorian_index + 365] = original[
+                original_index + 60 : original_index + 366
+            ]
 
             # increment the "start day of the current year" index for the original
             # so the next iteration jumps ahead a full year
@@ -364,10 +387,10 @@ def count_zeros_and_non_missings(values):
     :param values: array like object (numpy array, most likely)
     :return: two int scalars: 1) the count of zeros, and 2) the count of non-missing values  
     """
-    
+
     # make sure we have a numpy array
     values = np.array(values)
-    
+
     # count the number of zeros and non-missing (non-NaN) values
     zeros = values.size - np.count_nonzero(values)
     non_missings = np.count_nonzero(~np.isnan(values))
