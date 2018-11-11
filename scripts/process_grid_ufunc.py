@@ -11,6 +11,9 @@ import xarray as xr
 
 from climate_indices import compute, indices
 
+# the number of worker processes we'll use for process pools
+_NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count()
+
 # ----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global _logger which will write to the console as standard error
 logging.basicConfig(
@@ -285,9 +288,9 @@ def compute_write_spi(kwrgs):
     data_start_year = int(str(dataset["time"].values[0])[0:4])
 
     # get the scale increment for use in later log messages
-    if kwrgs["periodicity"] is compute.Periodicity.daily:
+    if kwrgs["periodicity"] == compute.Periodicity.daily:
         scale_increment = "day"
-    elif kwrgs["periodicity"] is compute.Periodicity.monthly:
+    elif kwrgs["periodicity"] == compute.Periodicity.monthly:
         scale_increment = "month"
     else:
         raise ValueError(
@@ -321,7 +324,9 @@ def compute_write_spi(kwrgs):
     }
 
     # apply the SPI function to the data array
-    da_spi = xr.apply_ufunc(indices.spi, da_precip_groupby, kwargs=args_dict)
+    da_spi = xr.apply_ufunc(
+        indices.spi, da_precip_groupby, dask="allowed", kwargs=args_dict
+    )
 
     # unstack the array back into original dimensions
     da_spi = da_spi.unstack("point")
@@ -366,9 +371,9 @@ def compute_write_pnp(kwrgs):
     data_start_year = int(str(dataset["time"].values[0])[0:4])
 
     # get the scale increment for use in later log messages
-    if kwrgs["periodicity"] is compute.Periodicity.daily:
+    if kwrgs["periodicity"] == compute.Periodicity.daily:
         scale_increment = "day"
-    elif kwrgs["periodicity"] is compute.Periodicity.monthly:
+    elif kwrgs["periodicity"] == compute.Periodicity.monthly:
         scale_increment = "month"
     else:
         raise ValueError(
@@ -445,9 +450,9 @@ def compute_write_spei(kwrgs):
     data_start_year = int(str(dataset["time"].values[0])[0:4])
 
     # get the scale increment for use in later log messages
-    if kwrgs["periodicity"] is compute.Periodicity.daily:
+    if kwrgs["periodicity"] == compute.Periodicity.daily:
         scale_increment = "day"
-    elif kwrgs["periodicity"] is compute.Periodicity.monthly:
+    elif kwrgs["periodicity"] == compute.Periodicity.monthly:
         scale_increment = "month"
     else:
         raise ValueError(
@@ -751,13 +756,8 @@ def run_multi_pnp(
     output_file_base,
 ):
 
-    # the number of worker processes we'll use in our process pool
-    number_of_workers = (
-        multiprocessing.cpu_count()
-    )  # NOTE use 1 here when debugging for less butt hurt
-
     # create a process Pool for worker processes which will compute indices
-    pool = multiprocessing.Pool(processes=number_of_workers)
+    pool = multiprocessing.Pool(processes=_NUMBER_OF_WORKER_PROCESSES)
 
     # create an iterable of arguments specific to the function that we'll call within each worker process
     args = []
@@ -797,13 +797,8 @@ def run_multi_spi(
     output_file_base,
 ):
 
-    # the number of worker processes we'll use in our process pool
-    number_of_workers = (
-        multiprocessing.cpu_count()
-    )  # NOTE use 1 here when debugging for less butt hurt
-
     # create a process Pool for worker processes which will compute indices
-    pool = multiprocessing.Pool(processes=number_of_workers)
+    pool = multiprocessing.Pool(processes=_NUMBER_OF_WORKER_PROCESSES)
 
     # create an iterable of arguments specific to the function that we'll call within each worker process
     args = []
@@ -848,13 +843,8 @@ def run_multi_spei(
     output_file_base,
 ):
 
-    # the number of worker processes we'll use in our process pool
-    number_of_workers = (
-        multiprocessing.cpu_count()
-    )  # NOTE use 1 here when debugging for less butt hurt
-
     # create a process Pool for worker processes which will compute indices
-    pool = multiprocessing.Pool(processes=number_of_workers)
+    pool = multiprocessing.Pool(processes=_NUMBER_OF_WORKER_PROCESSES)
 
     # create an iterable of arguments specific to the function that we'll call within each worker process
     args = []
@@ -923,7 +913,7 @@ def _prepare_file(netcdf_file, var_name):
         dims = ",".join(dims)
         nco = Nco()
         netcdf_file = nco.ncpdq(
-            input_file=netcdf_file, options=['-a \\"{dims}\\"'.format(dims=dims), "-O"]
+            input=netcdf_file, options=['-a \\"{dims}\\"'.format(dims=dims), "-O"]
         )
 
     return netcdf_file

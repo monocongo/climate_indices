@@ -142,10 +142,11 @@ class IndicesTestCase(fixtures.FixturesTestCase):
             self.fixture_calibration_year_end_monthly,
             compute.Periodicity.monthly,
         )
-        np.testing.assert_equal(
-            computed_pnp,
-            all_nan_precips,
-            "All-NaN input array does not result in the expected all-NaN result",
+        np.testing.assert_allclose(
+            computed_pnp.flatten(),
+            all_nan_precips.flatten(),
+            equal_nan=True,
+            err_msg="All-NaN input array does not result in the expected all-NaN result",
         )
 
         # compute PNP from the daily precipitation array
@@ -160,9 +161,9 @@ class IndicesTestCase(fixtures.FixturesTestCase):
 
         # confirm PNP is being computed as expected
         np.testing.assert_allclose(
-            self.fixture_pnp_6month,
-            computed_pnp_6month,
-            atol=0.001,
+            self.fixture_pnp_6month.flatten(),
+            computed_pnp_6month.flatten(),
+            atol=0.01,
             equal_nan=True,
             err_msg="PNP values not computed as expected",
         )
