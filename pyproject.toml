@@ -1,6 +1,7 @@
 [tool.black]
 line-length = 88
 py36 = true
+skip-numeric-underscore-normalization = true
 include = '\.pyi?$'
 exclude = '''
 /(
