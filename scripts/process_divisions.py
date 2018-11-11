@@ -211,7 +211,7 @@ class DivisionsProcessor(object):
             if not np.isnan(precip_time_series).all():
 
                 # put precipitation into inches if not already
-                mm_to_inches_multiplier = 0.0393701
+                mm_to_inches_multiplier = 0.039_370_1
                 possible_mm_units = ["millimeters", "millimeter", "mm"]
                 if input_divisions[self.var_name_precip].units in possible_mm_units:
                     precip_time_series = precip_time_series * mm_to_inches_multiplier
