@@ -119,7 +119,7 @@ class EtoTestCase(fixtures.FixturesTestCase):
             err_msg="Sunset hour angle not computed as expected",
         )
 
-        expected_value = 1.6018925422201806
+        expected_value = 1.601_892_542_220_180_6
         computed_value = eto._sunset_hour_angle(np.deg2rad(10.0), np.deg2rad(10.0))
         np.testing.assert_equal(
             computed_value,
@@ -137,7 +137,7 @@ class EtoTestCase(fixtures.FixturesTestCase):
         self.assertRaises(ValueError, eto._solar_declination, 5000)
         self.assertRaises(ValueError, eto._solar_declination, np.NaN)
 
-        expected_value = -0.313551072399921
+        expected_value = -0.313_551_072_399_921
         computed_value = eto._solar_declination(30)
         np.testing.assert_equal(
             computed_value,
@@ -153,7 +153,7 @@ class EtoTestCase(fixtures.FixturesTestCase):
         self.assertRaises(ValueError, eto._daylight_hours, -1.0)
         self.assertRaises(ValueError, eto._daylight_hours, np.NaN)
 
-        expected_value = 7.999999999999999
+        expected_value = 7.999_999_999_999_999
         computed_value = eto._daylight_hours(math.pi / 3)
         np.testing.assert_equal(
             computed_value,

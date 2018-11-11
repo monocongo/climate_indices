@@ -1,6 +1,8 @@
 from enum import Enum
 import logging
 
+# from dask.array import pad
+# from dask_image.ndfilters import convolve
 from lmoments3 import distr
 import numba
 import numpy as np
@@ -82,6 +84,14 @@ def sum_to_scale(values, scale):
 
     # pad the first (n - 1) elements of the array with NaN values
     return np.hstack(([np.NaN] * (scale - 1), sliding_sums))
+
+    # BELOW FOR dask/xarray DataArray integration
+    # # pad the values array with (scale - 1) NaNs
+    # values = pad(values, pad_width=(scale - 1, 0), mode='constant', constant_values=np.NaN)
+    #
+    # start = 1
+    # end = -(scale - 2)
+    # return convolve(values, np.ones(scale), mode='reflect', cval=0.0, origin=0)[start: end]
 
 
 # -----------------------------------------------------------------------------------------------------------------------
@@ -408,10 +418,6 @@ def transform_fitted_gamma(
     if (calibration_start_year < data_start_year) or (
         calibration_end_year > data_end_year
     ):
-        # _logger.info('Insufficient data for the specified calibration period ({0}-{1}),'.format(calibration_start_year,
-        #                                                                                         calibration_end_year) +
-        #              ' instead using the full period of record ({0}-{1})'.format(data_start_year,
-        #                                                                          data_end_year))
         calibration_start_year = data_start_year
         calibration_end_year = data_end_year
 
