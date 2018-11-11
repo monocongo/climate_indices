@@ -13,13 +13,13 @@
    :target: https://www.codefactor.io/repository/github/monocongo/climate_indices/overview/master
 .. |Coverage| image:: https://coveralls.io/repos/github/monocongo/climate_indices/badge.svg?branch=master
    :target: https://coveralls.io/github/monocongo/climate_indices?branch=master
-.. |Dependencies| image:: https://gemnasium.com/badges/github.com/monocongo/climate_indices.svg
-
-   :target: https://gemnasium.com/github.com/monocongo/climate_indices
 .. |License| image:: https://img.shields.io/badge/license-Unlicense-green.svg
    :target: https://unlicense.org/
 
-|Build| |Coverage| |CodeFactor| |License|
+.. |Style| image:: https://img.shields.io/badge/code%20style-black-000000.svg
+    :target: https://github.com/ambv/black
+
+|Build| |Coverage| |CodeFactor| |Style| |License|
 
 Climate Indices in Python
 =============================================
