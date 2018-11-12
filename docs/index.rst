@@ -9,17 +9,16 @@
 
 .. |Build| image:: https://travis-ci.org/monocongo/climate_indices.svg?master
    :target: https://travis-ci.org/monocongo
-.. |CodeFactor| image:: https://www.codefactor.io/repository/github/monocongo/climate_indices/badge/master
-   :target: https://www.codefactor.io/repository/github/monocongo/climate_indices/overview/master
 .. |Coverage| image:: https://coveralls.io/repos/github/monocongo/climate_indices/badge.svg?branch=master
    :target: https://coveralls.io/github/monocongo/climate_indices?branch=master
-.. |Dependencies| image:: https://gemnasium.com/badges/github.com/monocongo/climate_indices.svg
-
-   :target: https://gemnasium.com/github.com/monocongo/climate_indices
+.. |Quality| image:: https://api.codacy.com/project/badge/Grade/48563cbc37504fc6aa72100370e71f58
+   :target: https://www.codacy.com/app/monocongo/climate_indices?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=monocongo/climate_indices&amp;utm_campaign=Badge_Grade
+.. |Style| image:: https://img.shields.io/badge/code%20style-black-000000.svg
+   :target: https://github.com/ambv/black
 .. |License| image:: https://img.shields.io/badge/license-Unlicense-green.svg
    :target: https://unlicense.org/
 
-|Build| |Coverage| |CodeFactor| |License|
+|Build| |Coverage| |Quality| |Style| |License|
 
 Climate Indices in Python
 =============================================
