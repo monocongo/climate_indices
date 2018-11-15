@@ -34,7 +34,7 @@ _FITTED_INDEX_VALID_MAX = 3.09
 # ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
 def spi(
-    precips,
+    values,
     scale,
     distribution,
     data_start_year,
@@ -45,9 +45,9 @@ def spi(
     """
     Computes SPI (Standardized Precipitation Index).
 
-    :param precips: 1-D numpy array of precipitation values, in any units, first value assumed to correspond
-                    to January of the initial year if the periodicity is monthly, or January 1st of the initial
-                    year if daily
+    :param values: 1-D numpy array of precipitation values, in any units, first value assumed to correspond
+                   to January of the initial year if the periodicity is monthly, or January 1st of the initial
+                   year if daily
     :param scale: number of time steps over which the values should be scaled before the index is computed
     :param distribution: distribution type to be used for the internal fitting/transform computation
     :param data_start_year: the initial year of the input precipitation dataset
@@ -66,9 +66,9 @@ def spi(
     """
 
     # we expect to operate upon a 1-D array, so if we've been passed a 2-D array we flatten it, otherwise raise an error
-    shape = precips.shape
+    shape = values.shape
     if len(shape) == 2:
-        precips = precips.flatten()
+        values = values.flatten()
     elif len(shape) != 1:
         message = "Invalid shape of input array: {0} -- only 1-D and 2-D arrays are supported".format(
             shape
@@ -77,23 +77,23 @@ def spi(
         raise ValueError(message)
 
     # if we're passed all missing values then we can't compute anything, return the same array of missing values
-    if (np.ma.is_masked(precips) and precips.mask.all()) or np.all(np.isnan(precips)):
-        return precips
+    if (np.ma.is_masked(values) and values.mask.all()) or np.all(np.isnan(values)):
+        return values
 
     # remember the original length of the array, in order to facilitate returning an array of the same size
-    original_length = precips.size
+    original_length = values.size
 
     # get a sliding sums array, with each time step's value scaled by the specified number of time steps
-    scaled_precips = compute.sum_to_scale(precips, scale)
+    values = compute.sum_to_scale(values, scale)
 
     # reshape precipitation values to (years, 12) for monthly, or to (years, 366) for daily
     if periodicity is compute.Periodicity.monthly:
 
-        scaled_precips = utils.reshape_to_2d(scaled_precips, 12)
+        values = utils.reshape_to_2d(values, 12)
 
     elif periodicity is compute.Periodicity.daily:
 
-        scaled_precips = utils.reshape_to_2d(scaled_precips, 366)
+        values = utils.reshape_to_2d(values, 366)
 
     else:
 
@@ -102,8 +102,8 @@ def spi(
     if distribution is Distribution.gamma:
 
         # fit the scaled values to a gamma distribution and transform to corresponding normalized sigmas
-        transformed_fitted_values = compute.transform_fitted_gamma(
-            scaled_precips,
+        values = compute.transform_fitted_gamma(
+            values,
             data_start_year,
             calibration_year_initial,
             calibration_year_final,
@@ -112,8 +112,8 @@ def spi(
     elif distribution is Distribution.pearson:
 
         # fit the scaled values to a Pearson Type III distribution and transform to corresponding normalized sigmas
-        transformed_fitted_values = compute.transform_fitted_pearson(
-            scaled_precips,
+        values = compute.transform_fitted_pearson(
+            values,
             data_start_year,
             calibration_year_initial,
             calibration_year_final,
@@ -127,9 +127,7 @@ def spi(
         raise ValueError(message)
 
     # clip values to within the valid range, reshape the array back to 1-D
-    values = np.clip(
-        transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX
-    ).flatten()
+    values = np.clip(values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
 
     # return the original size array
     return values[0:original_length]
