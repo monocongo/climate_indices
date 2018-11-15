@@ -206,32 +206,33 @@ def _pearson_fit(values, probabilities_of_zero, skew, loc, scale):
     # only fit to the distribution if the values array is valid/not missing
     if not np.all(np.isnan(values)):
 
-        # get the Pearson Type III cumulative density function value
-        pe3_cdf = scipy.stats.pearson3.cdf(values, skew, loc, scale)
-
-        # turn zero, trace, or minimum values either into either zero or minimum value based on the probability of zero
+        minimums_possible = _minimum_possible(skew, loc, scale)
+        minimums_mask = values <= minimums_possible
         zero_mask = np.logical_and((values < 0.0005), (probabilities_of_zero > 0.0))
         trace_mask = np.logical_and((values < 0.0005), (probabilities_of_zero <= 0.0))
-        pe3_cdf[zero_mask] = 0.0
-        pe3_cdf[trace_mask] = 0.0005
+
+        # get the Pearson Type III cumulative density function value
+        values = scipy.stats.pearson3.cdf(values, skew, loc, scale)
+
+        # turn zero, trace, or minimum values either into either zero or minimum value based on the probability of zero
+        values[zero_mask] = 0.0
+        values[trace_mask] = 0.0005
 
         # compute the minimum value possible, and if any values are below that threshold
         # then we set the corresponding CDF to a floor value
         # TODO ask Richard Heim why the use of this floor value, matching that used for the trace amount?
-        minimums_possible = _minimum_possible(skew, loc, scale)
-        nans_mask = np.isnan(pe3_cdf)
-        minimums_mask = np.logical_and((values <= minimums_possible), nans_mask)
-        pe3_cdf[minimums_mask] = 0.0005
+        nans_mask = np.isnan(values)
+        values[np.logical_and(minimums_mask, nans_mask)] = 0.0005
 
         # account for negative skew
         skew_mask = skew < 0.0
-        pe3_cdf[:, skew_mask] = 1 - pe3_cdf[:, skew_mask]
+        values[:, skew_mask] = 1 - values[:, skew_mask]
 
-        if not np.all(np.isnan(pe3_cdf)):
+        if not np.all(np.isnan(values)):
 
             # calculate the probability value, clipped between 0 and 1
             probabilities = np.clip(
-                (probabilities_of_zero + ((1.0 - probabilities_of_zero) * pe3_cdf)),
+                (probabilities_of_zero + ((1.0 - probabilities_of_zero) * values)),
                 0.0,
                 1.0,
             )
@@ -319,10 +320,6 @@ def transform_fitted_pearson(
     if (calibration_start_year < data_start_year) or (
         calibration_end_year > data_end_year
     ):
-        # _logger.info('Insufficient data for the specified calibration period ({0}-{1}),'.format(calibration_start_year,
-        #                                                                                         calibration_end_year) +
-        #              ' instead using the full period of record ({0}-{1})'.format(data_start_year,
-        #                                                                          data_end_year))
         calibration_start_year = data_start_year
         calibration_end_year = data_end_year
 
@@ -330,11 +327,10 @@ def transform_fitted_pearson(
     calibration_begin_index = calibration_start_year - data_start_year
     calibration_end_index = (calibration_end_year - data_start_year) + 1
 
-    # get the values for the current calendar time step that fall within the calibration years period
-    calibration_values = values[calibration_begin_index:calibration_end_index, :]
-
     # compute the values we'll use to fit to the Pearson Type III distribution
-    pearson_values = _pearson3_fitting_values(calibration_values)
+    pearson_values = _pearson3_fitting_values(
+        values[calibration_begin_index:calibration_end_index, :]
+    )
 
     loc = pearson_values[1]
     scale = pearson_values[2]
@@ -342,9 +338,9 @@ def transform_fitted_pearson(
     probability_of_zero = pearson_values[0]
 
     # fit each value using the Pearson Type III fitting universal function in a broadcast fashion
-    fitted_values = _pearson_fit(values, probability_of_zero, skew, loc, scale)
+    values = _pearson_fit(values, probability_of_zero, skew, loc, scale)
 
-    return fitted_values
+    return values
 
 
 # ----------------------------------------------------------------------------------------------------------------------
