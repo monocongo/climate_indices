@@ -330,7 +330,14 @@ def compute_write_spi(kwrgs):
     # }
 
     # apply the SPI function along the time axis (axis=2)
-    spi_values = np.apply_along_axis(spi, axis=2, arr=da_precip.values, args=kwrgs)
+    args = kwrgs.copy()
+    args.pop("netcdf_precip")
+    args.pop("var_name_precip")
+    args.pop("output_file_base")
+    spi_values = parallel_apply_along_axis(
+        spi, axis=2, arr=da_precip.values, arguments=args
+    )
+    # spi_values = np.apply_along_axis(spi, axis=2, arr=da_precip.values, args=kwrgs)
 
     # TODO set global attributes accordingly for this new dataset
 
@@ -358,16 +365,16 @@ def compute_write_spi(kwrgs):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def spi(precips, args):
+def spi(precips, arguments):
 
     return indices.spi(
         precips,
-        scale=args["scale"],
-        distribution=args["distribution"],
-        data_start_year=args["data_start_year"],
-        calibration_year_initial=args["calibration_start_year"],
-        calibration_year_final=args["calibration_end_year"],
-        periodicity=args["periodicity"],
+        scale=arguments["scale"],
+        distribution=arguments["distribution"],
+        data_start_year=arguments["data_start_year"],
+        calibration_year_initial=arguments["calibration_start_year"],
+        calibration_year_final=arguments["calibration_end_year"],
+        periodicity=arguments["periodicity"],
     )
 
 
@@ -413,6 +420,68 @@ def run_multi_spi(
     # close the pool and wait on all processes to finish
     pool.close()
     pool.join()
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def parallel_apply_along_axis(func1d, axis, arr, *args, **kwargs):
+    """
+    Like numpy.apply_along_axis(), but takes advantage of multiple cores.
+    """
+    # Effective axis where apply_along_axis() will be applied by each
+    # worker (any non-zero axis number would work, so as to allow the use
+    # of `np.array_split()`, which is only done on axis 0):
+    effective_axis = 1 if axis == 0 else axis
+    if effective_axis != axis:
+        arr = arr.swapaxes(axis, effective_axis)
+
+    # Chunks for the mapping (only a few chunks):
+    # chunks = [(func1d, effective_axis, sub_arr, args, kwargs)
+    #           for sub_arr in np.array_split(arr, _NUMBER_OF_WORKER_PROCESSES)]
+    chunks = []
+    for sub_arr in np.array_split(arr, _NUMBER_OF_WORKER_PROCESSES):
+        params = {
+            "func1d": func1d,
+            "axis": effective_axis,
+            "arr": sub_arr,
+            "args": kwargs["arguments"],
+            "kwargs": None,
+        }
+        chunks.append(params)
+
+    pool = multiprocessing.Pool(processes=_NUMBER_OF_WORKER_PROCESSES)
+
+    """
+     the function unpacking_apply_along_axis() being applied in Pool.map() is separate
+     so that subprocesses can import it, and is simply a thin wrapper that handles the
+     fact that Pool.map() only takes a single argument:
+    """
+
+    individual_results = pool.map(unpacking_apply_along_axis, chunks)
+    # Freeing the workers:
+    pool.close()
+    pool.join()
+
+    return np.concatenate(individual_results)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def unpacking_apply_along_axis(params):
+    """
+    Like numpy.apply_along_axis(), but and with arguments in a tuple
+    instead.
+
+    This function is useful with multiprocessing.Pool().map(): (1)
+    map() only handles functions that take a single argument, and (2)
+    this function can generally be imported from a module, as required
+    by map().
+    """
+    func1d = params["func1d"]
+    axis = params["axis"]
+    arr = params["arr"]
+    args = params["args"]
+    # kwargs = params["kwargs"]
+    return np.apply_along_axis(func1d, axis, arr, arguments=args)
+    # return np.apply_along_axis(func1d, axis, arr, *args, **kwargs)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -557,16 +626,35 @@ if __name__ == "__main__":
                 arguments.netcdf_precip, arguments.var_name_precip
             )
 
-            # run SPI with one process per scale/distribution
-            run_multi_spi(
-                netcdf_precip,
-                arguments.var_name_precip,
-                arguments.scales,
-                arguments.periodicity,
-                arguments.calibration_start_year,
-                arguments.calibration_end_year,
-                arguments.output_file_base,
-            )
+            # run the multiprocessing version of compute_write_spi()
+            # create an iterable of arguments specific to the function that we'll call within each worker process
+            for scale in arguments.scales:
+
+                for dist in indices.Distribution:
+                    # keyword arguments used for the function we'll map
+                    kwrgs = {
+                        "netcdf_precip": netcdf_precip,
+                        "var_name_precip": arguments.var_name_precip,
+                        "scale": scale,
+                        "distribution": dist,
+                        "periodicity": arguments.periodicity,
+                        "calibration_start_year": arguments.calibration_start_year,
+                        "calibration_end_year": arguments.calibration_end_year,
+                        "output_file_base": arguments.output_file_base,
+                    }
+
+                    compute_write_spi(kwrgs)
+
+            # # run SPI with one process per scale/distribution
+            # run_multi_spi(
+            #     netcdf_precip,
+            #     arguments.var_name_precip,
+            #     arguments.scales,
+            #     arguments.periodicity,
+            #     arguments.calibration_start_year,
+            #     arguments.calibration_end_year,
+            #     arguments.output_file_base,
+            # )
 
             # remove temporary file
             if netcdf_precip != arguments.netcdf_precip:
