@@ -12,7 +12,7 @@ import xarray as xr
 from climate_indices import compute, indices
 
 # the number of worker processes we'll use for process pools
-_NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count()
+_NUMBER_OF_WORKER_PROCESSES = 1  # multiprocessing.cpu_count()
 
 # ----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global _logger which will write to the console as standard error
@@ -274,159 +274,356 @@ def _validate_args(args):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def compute_write_spi(kwrgs):
+def _get_scale_increment(args_dict):
 
-    # open the precipitation NetCDF as an xarray DataSet object
-    dataset = xr.open_dataset(kwrgs["netcdf_precip"])
+    if args_dict["periodicity"] == compute.Periodicity.daily:
+        scale_increment = "day"
+    elif args_dict["periodicity"] == compute.Periodicity.monthly:
+        scale_increment = "month"
+    else:
+        raise ValueError(
+            "Invalid periodicity argument: {}".format(args_dict["periodicity"])
+        )
 
-    # trim out all data variables from the dataset except the precipitation
+    return scale_increment
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def _log_status(args_dict):
+
+    # get the scale increment for use in later log messages
+    if "scale" in args_dict:
+
+        if "distribution" in args_dict:
+
+            _logger.info(
+                "Computing {scale}-{incr} {index}/{dist}".format(
+                    scale=args_dict["scale"],
+                    incr=_get_scale_increment(args_dict),
+                    index=args_dict["index"].upper(),
+                    dist=args_dict["distribution"].value.capitalize(),
+                )
+            )
+
+        else:
+
+            _logger.info(
+                "Computing {scale}-{incr} {index}".format(
+                    scale=args_dict["scale"],
+                    incr=_get_scale_increment(args_dict),
+                    index=args_dict["index"].value.capitalize(),
+                )
+            )
+
+    else:
+
+        _logger.info("Computing {index}".format(index=args_dict["index"].upper()))
+
+    return True
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def _build_arguments(keyword_args):
+    """
+    Builds a dictionary of function arguments appropriate to the index to be computed.
+
+    :param dict keyword_args:
+    :return: dictionary of arguments keyed with names expected by the corresponding
+        index computation function
+    """
+    function_arguments = {"data_start_year": keyword_args["data_start_year"]}
+    if keyword_args["index"] in ["spi", "spei"]:
+        function_arguments["scale"] = keyword_args["scale"]
+        function_arguments["distribution"] = keyword_args["distribution"]
+        function_arguments["calibration_year_initial"] = keyword_args[
+            "calibration_start_year"
+        ]
+        function_arguments["calibration_year_final"] = keyword_args[
+            "calibration_end_year"
+        ]
+        function_arguments["periodicity"] = keyword_args["periodicity"]
+    elif keyword_args["index"] == "pnp":
+        function_arguments["scale"] = keyword_args["scale"]
+        function_arguments["calibration_start_year"] = keyword_args[
+            "calibration_start_year"
+        ]
+        function_arguments["calibration_end_year"] = keyword_args[
+            "calibration_end_year"
+        ]
+        function_arguments["periodicity"] = keyword_args["periodicity"]
+    elif keyword_args["index"] != "pet":
+        raise ValueError(
+            "Index {index} not yet supported.".format(index=keyword_args["index"])
+        )
+
+    return function_arguments
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def _get_variable_attributes(args_dict):
+
+    if args_dict["index"] == "spi":
+
+        long_name = "Standardized Precipitation Index ({dist} distribution), ".format(
+            dist=args_dict["distribution"].value.capitalize()
+        ) + "{scale}-{increment}".format(
+            scale=args_dict["scale"], increment=_get_scale_increment(args_dict)
+        )
+        attrs = {"long_name": long_name, "valid_min": -3.09, "valid_max": 3.09}
+        var_name = (
+            "spi_"
+            + args_dict["distribution"].value
+            + "_"
+            + str(args_dict["scale"]).zfill(2)
+        )
+
+    elif args_dict["index"] == "spei":
+
+        long_name = "Standardized Precipitation Evapotranspiration Index ({dist} distribution), ".format(
+            dist=args_dict["distribution"].value.capitalize()
+        ) + "{scale}-{increment}".format(
+            scale=args_dict["scale"], increment=_get_scale_increment(args_dict)
+        )
+        attrs = {"long_name": long_name, "valid_min": -3.09, "valid_max": 3.09}
+        var_name = (
+            "spei_"
+            + args_dict["distribution"].value
+            + "_"
+            + str(args_dict["scale"]).zfill(2)
+        )
+
+    elif args_dict["index"] == "pnp":
+
+        long_name = "Percentage of Normal Precipitation" + "{scale}-{increment}".format(
+            scale=args_dict["scale"], increment=_get_scale_increment(args_dict)
+        )
+        attrs = {"long_name": long_name, "valid_min": -1000.0, "valid_max": 1000.0}
+        var_name = "pnp_" + str(args_dict["scale"]).zfill(2)
+
+    elif args_dict["index"] == "pet":
+
+        long_name = "Potential Evapotranspiration (Thornthwaite)"
+        attrs = {
+            "long_name": long_name,
+            "valid_min": 0.0,
+            "valid_max": 10000.0,
+            "units": "millimeters",
+        }
+        var_name = "pet_thornthwaite"
+
+    else:
+
+        raise ValueError("Unsupported index: {index}".format(index=args_dict["index"]))
+
+    return var_name, attrs
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def _compute_write_index(keyword_arguments):
+    """
+    Computes a climate index and writes the result into a corresponding NetCDF.
+
+    :param keyword_arguments:
+    :return:
+    """
+
+    _log_status(keyword_arguments)
+
+    # open the precipitation NetCDF files as an xarray DataSet object
+    files = []
+    if "netcdf_precip" in keyword_arguments:
+        files.append(keyword_arguments["netcdf_precip"])
+    if "netcdf_temp" in keyword_arguments:
+        files.append(keyword_arguments["netcdf_temp"])
+    if "netcdf_pet" in keyword_arguments:
+        files.append(keyword_arguments["netcdf_pet"])
+    dataset = xr.open_mfdataset(files)
+
+    # trim out all data variables from the dataset except the ones we'll need
+    var_names = []
+    if "var_name_precip" in keyword_arguments:
+        var_names.append(keyword_arguments["var_name_precip"])
+    if "var_name_temp" in keyword_arguments:
+        var_names.append(keyword_arguments["var_name_temp"])
+    if "var_name_pet" in keyword_arguments:
+        var_names.append(keyword_arguments["var_name_pet"])
     for var in dataset.data_vars:
-        if var not in kwrgs["var_name_precip"]:
+        if var not in var_names:
             dataset = dataset.drop(var)
 
     # get the initial year of the data
     data_start_year = int(str(dataset["time"].values[0])[0:4])
-    kwrgs["data_start_year"] = data_start_year
+    keyword_arguments["data_start_year"] = data_start_year
 
-    # get the scale increment for use in later log messages
-    if kwrgs["periodicity"] == compute.Periodicity.daily:
-        scale_increment = "day"
-    elif kwrgs["periodicity"] == compute.Periodicity.monthly:
-        scale_increment = "month"
-    else:
-        raise ValueError(
-            "Invalid periodicity argument: {}".format(kwrgs["periodicity"])
-        )
-
-    _logger.info(
-        "Computing {scale}-{incr} {index}/{dist}".format(
-            scale=kwrgs["scale"],
-            incr=scale_increment,
-            index="SPI",
-            dist=kwrgs["distribution"].value.capitalize(),
-        )
-    )
-
-    # get the precipitation array, over which we'll compute the SPI
-    da_precip = dataset[kwrgs["var_name_precip"]]
-
-    # ensure we have our data array in either (lat, lon, time) or (lon, lat, time) orientation
+    data_arrays = {}
     expected_dims = (("lat", "lon", "time"), ("lon", "lat", "time"))
-    if da_precip.dims not in expected_dims:
-        message = "Invalid dimensions for precipitation " "variable: {dims}".format(
-            dims=da_precip.dims
+    for var_name in var_names:
+
+        data_array = dataset[var_name]
+        if data_array.dims not in expected_dims:
+            message = "Invalid dimensions for variable '{var_name}\`: {dims}".format(
+                var_name=var_name, dims=data_array.dims
+            )
+            _logger.error(message)
+            raise ValueError(message)
+        data_arrays[var_name] = data_array
+
+    # build an arguments dictionary appropriate to the index we'll compute
+    args = _build_arguments(keyword_arguments)
+
+    if keyword_arguments["index"] == "spi":
+
+        # get the precipitation array, over which we'll compute the SPI
+        da_precip = data_arrays[keyword_arguments["var_name_precip"]]
+
+        # apply the SPI function along the time axis (axis=2)
+        index_values = _parallel_apply_along_axis(
+            spi, 2, da_precip.values, args, **keyword_arguments
         )
-        _logger.error(message)
-        raise ValueError(message)
 
-    # # keyword arguments used for the function we'll apply to the data array
-    # args_dict = {
-    #     "scale": kwrgs["scale"],
-    #     "distribution": kwrgs["distribution"],
-    #     "data_start_year": data_start_year,
-    #     "calibration_year_initial": kwrgs["calibration_start_year"],
-    #     "calibration_year_final": kwrgs["calibration_end_year"],
-    #     "periodicity": kwrgs["periodicity"],
-    # }
+    elif keyword_arguments["index"] == "spei":
 
-    # apply the SPI function along the time axis (axis=2)
-    args = kwrgs.copy()
-    args.pop("netcdf_precip")
-    args.pop("var_name_precip")
-    args.pop("output_file_base")
-    spi_values = parallel_apply_along_axis(
-        spi, axis=2, arr=da_precip.values, arguments=args
-    )
-    # spi_values = np.apply_along_axis(spi, axis=2, arr=da_precip.values, args=kwrgs)
+        # get the precipitation and PET arrays, over which we'll compute the SPEI
+        da_precip = data_arrays[keyword_arguments["var_name_precip"]]
+        da_pet = data_arrays[keyword_arguments["var_name_pet"]]
+
+        # add the PET array as an argument to the arguments dictionary
+        keyword_arguments["pet_array"] = da_pet.values
+
+        # apply the SPEI function along the time axis (axis=2)
+        index_values = _parallel_apply_along_axis(
+            spei, 2, da_precip.values, args, **keyword_arguments
+        )
+
+    elif keyword_arguments["index"] == "pet":
+
+        # get the temperature and latitude arrays, over which we'll compute PET
+        da_temp = data_arrays[keyword_arguments["var_name_temp"]]
+
+        # create a DataArray for latitudes with the same shape as temperature,
+        # filling all lon/times with the lat value for the lat index
+        da_lat_orig = dataset["lat"]
+        da_lat = da_temp.copy(deep=True).load()
+        for lat_index in range(da_lat_orig.size):
+            da_lat[dict(lat=lat_index)] = da_lat_orig.values[lat_index]
+
+        # add the latitudes array as an argument to the arguments dictionary
+        keyword_arguments["lat_array"] = da_lat.values
+
+        # apply the PET function along the time axis (axis=2)
+        index_values = _parallel_apply_along_axis(
+            pet, 2, da_temp.values, args, **keyword_arguments
+        )
+
+    elif keyword_arguments["index"] == "pnp":
+
+        # get the precipitation array, over which we'll compute the PNP
+        da_precip = data_arrays[keyword_arguments["var_name_precip"]]
+
+        # apply the PNP function along the time axis (axis=2)
+        index_values = _parallel_apply_along_axis(
+            pnp, axis=2, arr=da_precip.values, arguments=args
+        )
+
+    else:
+
+        raise ValueError(
+            "Index {index} not yet supported.".format(index=keyword_arguments["index"])
+        )
 
     # TODO set global attributes accordingly for this new dataset
 
-    # create a new variable to contain the SPI for the distribution/scale, assign into the dataset
-    long_name = "Standardized Precipitation Index ({dist} distribution), ".format(
-        dist=kwrgs["distribution"].value.capitalize()
-    ) + "{scale}-{increment}".format(scale=kwrgs["scale"], increment=scale_increment)
-    spi_attrs = {"long_name": long_name, "valid_min": -3.09, "valid_max": 3.09}
-    var_name_spi = (
-        "spi_" + kwrgs["distribution"].value + "_" + str(kwrgs["scale"]).zfill(2)
-    )
-    spi_var = xr.Variable(dims=da_precip.dims, data=spi_values, attrs=spi_attrs)
-    dataset[var_name_spi] = spi_var
+    # get the name and attributes to use for the index variable in the output NetCDF
+    variable_name, attributes = _get_variable_attributes(keyword_arguments)
 
-    # remove all data variables except for the new SPI variable
+    # here we assume all input data arrays share the dimensions of the computed
+    # index values, so we just get the dimensions from the first one we find in the
+    # dictionary of input data arrays
+    dimensions = data_arrays[list(data_arrays.keys())[0]].dims
+
+    # create a new variable to contain the index values, assign into the dataset
+    variable = xr.Variable(dims=dimensions, data=index_values, attrs=attributes)
+    dataset[variable_name] = variable
+
+    # remove all data variables except for the new variable
     for var_name in dataset.data_vars:
-        if var_name != var_name_spi:
+        if var_name != variable_name:
             dataset = dataset.drop(var_name)
 
     # write the dataset as NetCDF
-    netcdf_file_name = kwrgs["output_file_base"] + "_" + var_name_spi + ".nc"
+    netcdf_file_name = (
+        keyword_arguments["output_file_base"] + "_" + variable_name + ".nc"
+    )
     dataset.to_netcdf(netcdf_file_name)
 
-    return netcdf_file_name, var_name_spi
+    return netcdf_file_name, variable_name
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def spi(precips, arguments):
+def pet(temps, parameters):
 
-    return indices.spi(
-        precips,
-        scale=arguments["scale"],
-        distribution=arguments["distribution"],
-        data_start_year=arguments["data_start_year"],
-        calibration_year_initial=arguments["calibration_start_year"],
-        calibration_year_final=arguments["calibration_end_year"],
-        periodicity=arguments["periodicity"],
+    return indices.pet(
+        temps,
+        latitude_degrees=parameters["latitude_degrees"],
+        data_start_year=parameters["data_start_year"],
     )
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def run_multi_spi(
-    netcdf_precip,
-    var_name_precip,
-    scales,
-    periodicity,
-    calibration_start_year,
-    calibration_end_year,
-    output_file_base,
-):
+def spi(precips, parameters):
 
-    # create a process Pool for worker processes which will compute indices
-    pool = multiprocessing.Pool(processes=_NUMBER_OF_WORKER_PROCESSES)
-
-    # create an iterable of arguments specific to the function that we'll call within each worker process
-    args = []
-    for scale in scales:
-
-        for dist in indices.Distribution:
-
-            # keyword arguments used for the function we'll map
-            kwrgs = {
-                "netcdf_precip": netcdf_precip,
-                "var_name_precip": var_name_precip,
-                "scale": scale,
-                "distribution": dist,
-                "periodicity": periodicity,
-                "calibration_start_year": calibration_start_year,
-                "calibration_end_year": calibration_end_year,
-                "output_file_base": output_file_base,
-            }
-            args.append(kwrgs)
-
-    # map the arguments iterable to the compute function
-    result = pool.map_async(compute_write_spi, args)
-
-    # get/swallow the exception(s) thrown, if any
-    result.get()
-
-    # close the pool and wait on all processes to finish
-    pool.close()
-    pool.join()
+    return indices.spi(
+        precips,
+        scale=parameters["scale"],
+        distribution=parameters["distribution"],
+        data_start_year=parameters["data_start_year"],
+        calibration_year_initial=parameters["calibration_year_initial"],
+        calibration_year_final=parameters["calibration_year_final"],
+        periodicity=parameters["periodicity"],
+    )
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def parallel_apply_along_axis(func1d, axis, arr, *args, **kwargs):
+def spei(precips, parameters):
+
+    return indices.spei(
+        precips,
+        pet_mm=parameters["pet_mm"],
+        scale=parameters["scale"],
+        distribution=parameters["distribution"],
+        data_start_year=parameters["data_start_year"],
+        calibration_year_initial=parameters["calibration_year_initial"],
+        calibration_year_final=parameters["calibration_year_final"],
+        periodicity=parameters["periodicity"],
+    )
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def pnp(precips, parameters):
+
+    return indices.percentage_of_normal(
+        precips,
+        scale=parameters["scale"],
+        data_start_year=parameters["data_start_year"],
+        calibration_start_year=parameters["calibration_start_year"],
+        calibration_end_year=parameters["calibration_end_year"],
+        periodicity=parameters["periodicity"],
+    )
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def _parallel_apply_along_axis(func1d, axis, arr, args, **kwargs):
     """
     Like numpy.apply_along_axis(), but takes advantage of multiple cores.
+
+    :param func1d:
+    :param axis:
+    :param arr:
+    :param args:
+    :param kwargs:
+    :return:
     """
+
     # Effective axis where apply_along_axis() will be applied by each
     # worker (any non-zero axis number would work, so as to allow the use
     # of `np.array_split()`, which is only done on axis 0):
@@ -434,40 +631,84 @@ def parallel_apply_along_axis(func1d, axis, arr, *args, **kwargs):
     if effective_axis != axis:
         arr = arr.swapaxes(axis, effective_axis)
 
-    # Chunks for the mapping (only a few chunks):
-    # chunks = [(func1d, effective_axis, sub_arr, args, kwargs)
-    #           for sub_arr in np.array_split(arr, _NUMBER_OF_WORKER_PROCESSES)]
-    chunks = []
-    for sub_arr in np.array_split(arr, _NUMBER_OF_WORKER_PROCESSES):
-        params = {
-            "func1d": func1d,
-            "axis": effective_axis,
-            "arr": sub_arr,
-            "args": kwargs["arguments"],
-            "kwargs": None,
-        }
-        chunks.append(params)
+    # build a list of parameters for each application of the function to an array chunk
+    chunk_params = []
+    if kwargs["index"] in ["spi", "pnp"]:
 
+        # we have a single input array
+        for sub_arr in np.array_split(arr, _NUMBER_OF_WORKER_PROCESSES):
+            params = {
+                "func1d": func1d,
+                "axis": effective_axis,
+                "arr": sub_arr,
+                "args": args,
+                "kwargs": None,
+            }
+            chunk_params.append(params)
+
+    elif kwargs["index"] == "spei":
+
+        # we have a two input arrays (precipitation and PET)
+        for sub_arr1, sub_arr2 in (
+            np.array_split(arr, _NUMBER_OF_WORKER_PROCESSES),
+            np.array_split(kwargs["pet_array"], _NUMBER_OF_WORKER_PROCESSES),
+        ):
+
+            # add the PET sub-array as the PET array argument expected by the SPEI function
+            args["pet_mm"] = sub_arr2
+
+            params = {
+                "func1d": func1d,
+                "axis": effective_axis,
+                "arr": sub_arr1,
+                "args": args,
+                "kwargs": None,
+            }
+            chunk_params.append(params)
+
+    elif kwargs["index"] == "pet":
+
+        # we have a two input arrays (temperature and latitude)
+        for sub_arr1, sub_arr2 in zip(
+            np.array_split(arr, _NUMBER_OF_WORKER_PROCESSES),
+            np.array_split(kwargs["lat_array"], _NUMBER_OF_WORKER_PROCESSES),
+        ):
+
+            # add the latitude sub-array as the latitude array argument expected by the PET function
+            args["latitude_degrees"] = sub_arr2
+
+            params = {
+                "func1d": func1d,
+                "axis": effective_axis,
+                "arr": sub_arr1,
+                "args": args,
+                "kwargs": None,
+            }
+            chunk_params.append(params)
+
+    # instantiate a process pool
     pool = multiprocessing.Pool(processes=_NUMBER_OF_WORKER_PROCESSES)
 
     """
-     the function unpacking_apply_along_axis() being applied in Pool.map() is separate
+     the function _unpacking_apply_along_axis() being applied in Pool.map() is separate
      so that subprocesses can import it, and is simply a thin wrapper that handles the
      fact that Pool.map() only takes a single argument:
     """
 
-    individual_results = pool.map(unpacking_apply_along_axis, chunks)
-    # Freeing the workers:
+    individual_results = pool.map(_unpacking_apply_along_axis, chunk_params)
+
+    # close the pool and wait on all processes to finish
     pool.close()
     pool.join()
 
+    # concatenate all the individual result arrays back into a complete result array
     return np.concatenate(individual_results)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def unpacking_apply_along_axis(params):
+def _unpacking_apply_along_axis(params):
     """
-    Like numpy.apply_along_axis(), but and with arguments in a tuple
+    Like numpy.apply_along_axis(), but and with arguments in a dict
     instead.
 
     This function is useful with multiprocessing.Pool().map(): (1)
@@ -479,9 +720,7 @@ def unpacking_apply_along_axis(params):
     axis = params["axis"]
     arr = params["arr"]
     args = params["args"]
-    # kwargs = params["kwargs"]
-    return np.apply_along_axis(func1d, axis, arr, arguments=args)
-    # return np.apply_along_axis(func1d, axis, arr, *args, **kwargs)
+    return np.apply_along_axis(func1d, axis, arr, parameters=args)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -626,13 +865,13 @@ if __name__ == "__main__":
                 arguments.netcdf_precip, arguments.var_name_precip
             )
 
-            # run the multiprocessing version of compute_write_spi()
-            # create an iterable of arguments specific to the function that we'll call within each worker process
+            # run SPI computations for each scale/distribution in turn
             for scale in arguments.scales:
-
                 for dist in indices.Distribution:
-                    # keyword arguments used for the function we'll map
+
+                    # keyword arguments used for the SPI function
                     kwrgs = {
+                        "index": "spi",
                         "netcdf_precip": netcdf_precip,
                         "var_name_precip": arguments.var_name_precip,
                         "scale": scale,
@@ -643,98 +882,106 @@ if __name__ == "__main__":
                         "output_file_base": arguments.output_file_base,
                     }
 
-                    compute_write_spi(kwrgs)
+                    # compute and write SPI
+                    _compute_write_index(kwrgs)
 
-            # # run SPI with one process per scale/distribution
-            # run_multi_spi(
-            #     netcdf_precip,
-            #     arguments.var_name_precip,
-            #     arguments.scales,
-            #     arguments.periodicity,
-            #     arguments.calibration_start_year,
-            #     arguments.calibration_end_year,
-            #     arguments.output_file_base,
-            # )
-
-            # remove temporary file
+            # remove temporary file if one was created
             if netcdf_precip != arguments.netcdf_precip:
                 os.remove(netcdf_precip)
 
         if arguments.index in ["pet", "spei", "scaled", "palmers", "all"]:
 
-            # # run SPI with one process per scale/distribution
-            # if arguments.netcdf_pet is None:
-            #
-            #     # prepare temperature NetCDF in case dimensions not (lat, lon, time) or if coordinates are descending
-            #     netcdf_temp = _prepare_file(
-            #         arguments.netcdf_temp, arguments.var_name_temp
-            #     )
-            #
-            #     # keyword arguments used for the function we'll map
-            #     kwargs = {
-            #         "netcdf_temp": netcdf_temp,
-            #         "var_name_temp": arguments.var_name_temp,
-            #         "output_file_base": arguments.output_file_base,
-            #     }
-            #
-            #     arguments.netcdf_pet, arguments.var_name_pet = compute_write_pet(kwargs)
-            #
-            #     # remove temporary file
-            #     if netcdf_temp != arguments.netcdf_temp:
-            #         os.remove(netcdf_temp)
+            # run PET computation only if we've not been provided with a PET file
+            if arguments.netcdf_pet is None:
 
-            pass
+                # prepare temperature NetCDF in case dimensions not (lat, lon, time)
+                # or if coordinates are descending
+                netcdf_temp = _prepare_file(
+                    arguments.netcdf_temp, arguments.var_name_temp
+                )
+
+                # keyword arguments used for the PET function
+                kwargs = {
+                    "index": "pet",
+                    "netcdf_temp": netcdf_temp,
+                    "var_name_temp": arguments.var_name_temp,
+                    "output_file_base": arguments.output_file_base,
+                }
+
+                # run PET computation, getting the PET file and corresponding variable name for later use
+                arguments.netcdf_pet, arguments.var_name_pet = _compute_write_index(
+                    kwargs
+                )
+
+                # remove temporary file
+                if netcdf_temp != arguments.netcdf_temp:
+                    os.remove(netcdf_temp)
 
         if arguments.index in ["spei", "scaled", "all"]:
 
-            # # prepare NetCDFs in case dimensions not (lat, lon, time) or if any coordinates are descending
-            # netcdf_precip = _prepare_file(
-            #     arguments.netcdf_precip, arguments.var_name_precip
-            # )
-            # netcdf_pet = _prepare_file(arguments.netcdf_pet, arguments.var_name_pet)
-            #
-            # run_multi_spei(
-            #     netcdf_precip,
-            #     arguments.var_name_precip,
-            #     netcdf_pet,
-            #     arguments.var_name_pet,
-            #     arguments.scales,
-            #     arguments.periodicity,
-            #     arguments.calibration_start_year,
-            #     arguments.calibration_end_year,
-            #     arguments.output_file_base,
-            # )
-            #
-            # # remove temporary files
-            # if netcdf_precip != arguments.netcdf_precip:
-            #     os.remove(netcdf_precip)
-            # if netcdf_pet != arguments.netcdf_pet:
-            #     os.remove(netcdf_pet)
+            # prepare NetCDFs in case dimensions not (lat, lon, time) or if any coordinates are descending
+            netcdf_precip = _prepare_file(
+                arguments.netcdf_precip, arguments.var_name_precip
+            )
+            netcdf_pet = _prepare_file(arguments.netcdf_pet, arguments.var_name_pet)
 
-            pass
+            # run SPI computations for each scale/distribution in turn
+            for scale in arguments.scales:
+                for dist in indices.Distribution:
+
+                    # keyword arguments used for the SPI function
+                    kwrgs = {
+                        "index": "spei",
+                        "netcdf_precip": netcdf_precip,
+                        "var_name_precip": arguments.var_name_precip,
+                        "netcdf_pet": netcdf_pet,
+                        "var_name_pet": arguments.var_name_pet,
+                        "scale": scale,
+                        "distribution": dist,
+                        "periodicity": arguments.periodicity,
+                        "calibration_start_year": arguments.calibration_start_year,
+                        "calibration_end_year": arguments.calibration_end_year,
+                        "output_file_base": arguments.output_file_base,
+                    }
+
+                    # compute and write SPEI
+                    _compute_write_index(kwrgs)
+
+            # remove temporary file if one was created
+            if netcdf_precip != arguments.netcdf_precip:
+                os.remove(netcdf_precip)
+            if netcdf_pet != arguments.netcdf_pet:
+                os.remove(netcdf_pet)
 
         if arguments.index in ["pnp", "scaled", "all"]:
 
-            # # prepare NetCDF in case dimensions not (lat, lon, time) or if any coordinates are descending
-            # netcdf_precip = _prepare_file(
-            #     arguments.netcdf_precip, arguments.var_name_precip
-            # )
-            #
-            # run_multi_pnp(
-            #     netcdf_precip,
-            #     arguments.var_name_precip,
-            #     arguments.scales,
-            #     arguments.periodicity,
-            #     arguments.calibration_start_year,
-            #     arguments.calibration_end_year,
-            #     arguments.output_file_base,
-            # )
-            #
-            # # remove temporary files
-            # if netcdf_precip != arguments.netcdf_precip:
-            #     os.remove(netcdf_precip)
+            # prepare precipitation NetCDF in case dimensions not (lat, lon, time) or if any coordinates are descending
+            netcdf_precip = _prepare_file(
+                arguments.netcdf_precip, arguments.var_name_precip
+            )
 
-            pass
+            # run SPI computations for each scale/distribution in turn
+            for scale in arguments.scales:
+                for dist in indices.Distribution:
+
+                    # keyword arguments used for the SPI function
+                    kwrgs = {
+                        "index": "pnp",
+                        "netcdf_precip": netcdf_precip,
+                        "var_name_precip": arguments.var_name_precip,
+                        "scale": scale,
+                        "periodicity": arguments.periodicity,
+                        "calibration_start_year": arguments.calibration_start_year,
+                        "calibration_end_year": arguments.calibration_end_year,
+                        "output_file_base": arguments.output_file_base,
+                    }
+
+                    # compute and write PNP
+                    _compute_write_index(kwrgs)
+
+            # remove temporary file if one was created
+            if netcdf_precip != arguments.netcdf_precip:
+                os.remove(netcdf_precip)
 
         if arguments.index in ["palmers", "all"]:
 
