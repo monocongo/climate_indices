@@ -1989,8 +1989,8 @@ def _self_calibrate(
 
 # ----------------------------------------------------------------------------------------------------------------------
 def scpdsi(
-    precip_time_series: np.ndarray,  # pragma: no cover
-    pet_time_series: np.ndarray,
+    precip_time_series,
+    pet_time_series,
     awc,
     data_start_year,
     calibration_start_year,
@@ -2027,7 +2027,7 @@ def scpdsi(
 
     # if we've been passed an array of AWC values then just use
     # the first one (useful when applying this function with xarray.GroupBy)
-    if isinstance(awc, np.ndarray) and (awc.size > 1):
+    if isinstance(awc, np.ndarray) and (awc.size >= 1):
         awc = awc.flat[0]
 
     # make sure we have matching precipitation and PET time series
