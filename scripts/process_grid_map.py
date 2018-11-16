@@ -12,7 +12,7 @@ import xarray as xr
 from climate_indices import compute, indices
 
 # the number of worker processes we'll use for process pools
-_NUMBER_OF_WORKER_PROCESSES = 1  # multiprocessing.cpu_count()
+_NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count()
 
 # ----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global _logger which will write to the console as standard error
@@ -522,7 +522,7 @@ def _compute_write_index(keyword_arguments):
 
         # apply the PNP function along the time axis (axis=2)
         index_values = _parallel_apply_along_axis(
-            pnp, axis=2, arr=da_precip.values, arguments=args
+            pnp, 2, da_precip.values, args, **keyword_arguments
         )
 
     else:
@@ -584,11 +584,11 @@ def spi(precips, parameters):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def spei(precips, parameters):
+def spei(precips, pet_mm, parameters):
 
     return indices.spei(
         precips,
-        pet_mm=parameters["pet_mm"],
+        pet_mm,
         scale=parameters["scale"],
         distribution=parameters["distribution"],
         data_start_year=parameters["data_start_year"],
@@ -612,7 +612,7 @@ def pnp(precips, parameters):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def _parallel_apply_along_axis(func1d, axis, arr, args, **kwargs):
+def _parallel_apply_along_axis(func1d, axis, arr, args, **kw_args):
     """
     Like numpy.apply_along_axis(), but takes advantage of multiple cores.
 
@@ -620,7 +620,7 @@ def _parallel_apply_along_axis(func1d, axis, arr, args, **kwargs):
     :param axis:
     :param arr:
     :param args:
-    :param kwargs:
+    :param kw_args:
     :return:
     """
 
@@ -633,7 +633,7 @@ def _parallel_apply_along_axis(func1d, axis, arr, args, **kwargs):
 
     # build a list of parameters for each application of the function to an array chunk
     chunk_params = []
-    if kwargs["index"] in ["spi", "pnp"]:
+    if kw_args["index"] in ["spi", "pnp"]:
 
         # we have a single input array
         for sub_arr in np.array_split(arr, _NUMBER_OF_WORKER_PROCESSES):
@@ -642,36 +642,37 @@ def _parallel_apply_along_axis(func1d, axis, arr, args, **kwargs):
                 "axis": effective_axis,
                 "arr": sub_arr,
                 "args": args,
-                "kwargs": None,
+                "kw_args": None,
             }
             chunk_params.append(params)
 
-    elif kwargs["index"] == "spei":
+    elif kw_args["index"] == "spei":
 
         # we have a two input arrays (precipitation and PET)
-        for sub_arr1, sub_arr2 in (
+        for sub_arr1, sub_arr2 in zip(
             np.array_split(arr, _NUMBER_OF_WORKER_PROCESSES),
-            np.array_split(kwargs["pet_array"], _NUMBER_OF_WORKER_PROCESSES),
+            np.array_split(kw_args["pet_array"], _NUMBER_OF_WORKER_PROCESSES),
         ):
 
-            # add the PET sub-array as the PET array argument expected by the SPEI function
-            args["pet_mm"] = sub_arr2
+            # # add the PET sub-array as the PET array argument expected by the SPEI function
+            # args["pet_mm"] = sub_arr2
 
             params = {
                 "func1d": func1d,
                 "axis": effective_axis,
-                "arr": sub_arr1,
+                "arr1": sub_arr1,
+                "arr2": sub_arr2,
                 "args": args,
-                "kwargs": None,
+                "kw_args": None,
             }
             chunk_params.append(params)
 
-    elif kwargs["index"] == "pet":
+    elif kw_args["index"] == "pet":
 
         # we have a two input arrays (temperature and latitude)
         for sub_arr1, sub_arr2 in zip(
             np.array_split(arr, _NUMBER_OF_WORKER_PROCESSES),
-            np.array_split(kwargs["lat_array"], _NUMBER_OF_WORKER_PROCESSES),
+            np.array_split(kw_args["lat_array"], _NUMBER_OF_WORKER_PROCESSES),
         ):
 
             # add the latitude sub-array as the latitude array argument expected by the PET function
@@ -682,7 +683,7 @@ def _parallel_apply_along_axis(func1d, axis, arr, args, **kwargs):
                 "axis": effective_axis,
                 "arr": sub_arr1,
                 "args": args,
-                "kwargs": None,
+                "kw_args": None,
             }
             chunk_params.append(params)
 
@@ -695,7 +696,10 @@ def _parallel_apply_along_axis(func1d, axis, arr, args, **kwargs):
      fact that Pool.map() only takes a single argument:
     """
 
-    individual_results = pool.map(_unpacking_apply_along_axis, chunk_params)
+    if kw_args["index"] == "spei":
+        individual_results = pool.map(_unpacking_apply_along_axis_double, chunk_params)
+    else:
+        individual_results = pool.map(_unpacking_apply_along_axis, chunk_params)
 
     # close the pool and wait on all processes to finish
     pool.close()
@@ -721,6 +725,30 @@ def _unpacking_apply_along_axis(params):
     arr = params["arr"]
     args = params["args"]
     return np.apply_along_axis(func1d, axis, arr, parameters=args)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def _unpacking_apply_along_axis_double(params):
+    """
+    Like numpy.apply_along_axis(), but and with arguments in a dict
+    instead.
+
+    This function is useful with multiprocessing.Pool().map(): (1)
+    map() only handles functions that take a single argument, and (2)
+    this function can generally be imported from a module, as required
+    by map().
+    """
+    func1d = params["func1d"]
+    arr1 = params["arr1"]
+    arr2 = params["arr2"]
+    args = params["args"]
+
+    result = np.empty_like(arr1)
+    for i, (x, y) in enumerate(zip(arr1, arr2)):
+        for j in range(x.shape[0]):
+            result[i, j] = func1d(x[j], y[j], parameters=args)
+
+    return result
 
 
 # ----------------------------------------------------------------------------------------------------------------------
