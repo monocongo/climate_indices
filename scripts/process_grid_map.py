@@ -311,7 +311,7 @@ def _log_status(args_dict):
                 "Computing {scale}-{incr} {index}".format(
                     scale=args_dict["scale"],
                     incr=_get_scale_increment(args_dict),
-                    index=args_dict["index"].value.capitalize(),
+                    index=args_dict["index"].upper(),
                 )
             )
 
@@ -406,8 +406,11 @@ def _get_variable_attributes(args_dict):
 
     elif args_dict["index"] == "pnp":
 
-        long_name = "Percentage of Normal Precipitation" + "{scale}-{increment}".format(
-            scale=args_dict["scale"], increment=_get_scale_increment(args_dict)
+        long_name = (
+            "Percentage of Normal Precipitation, "
+            + "{scale}-{increment}".format(
+                scale=args_dict["scale"], increment=_get_scale_increment(args_dict)
+            )
         )
         attrs = {"long_name": long_name, "valid_min": -1000.0, "valid_max": 1000.0}
         var_name = "pnp_" + str(args_dict["scale"]).zfill(2)
@@ -507,7 +510,7 @@ def _compute_write_index(keyword_arguments):
 
         # apply the SPI function along the time axis (axis=2)
         index_values = _parallel_apply_along_axis(
-            spi, 2, da_precip.values, args, **keyword_arguments
+            _spi, 2, da_precip.values, args, **keyword_arguments
         )
 
     elif keyword_arguments["index"] == "spei":
@@ -521,7 +524,7 @@ def _compute_write_index(keyword_arguments):
 
         # apply the SPEI function along the time axis (axis=2)
         index_values = _parallel_apply_along_axis(
-            spei, 2, da_precip.values, args, **keyword_arguments
+            _spei, 2, da_precip.values, args, **keyword_arguments
         )
 
     elif keyword_arguments["index"] == "pet":
@@ -541,7 +544,7 @@ def _compute_write_index(keyword_arguments):
 
         # apply the PET function along the time axis (axis=2)
         index_values = _parallel_apply_along_axis(
-            pet, 2, da_temp.values, args, **keyword_arguments
+            _pet, 2, da_temp.values, args, **keyword_arguments
         )
 
     elif keyword_arguments["index"] == "pnp":
@@ -551,7 +554,7 @@ def _compute_write_index(keyword_arguments):
 
         # apply the PNP function along the time axis (axis=2)
         index_values = _parallel_apply_along_axis(
-            pnp, 2, da_precip.values, args, **keyword_arguments
+            _pnp, 2, da_precip.values, args, **keyword_arguments
         )
 
     elif keyword_arguments["index"] == "palmers":
@@ -698,7 +701,7 @@ def _compute_write_index(keyword_arguments):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def pet(temps, parameters):
+def _pet(temps, parameters):
 
     return indices.pet(
         temps,
@@ -708,7 +711,7 @@ def pet(temps, parameters):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def spi(precips, parameters):
+def _spi(precips, parameters):
 
     return indices.spi(
         precips,
@@ -722,7 +725,7 @@ def spi(precips, parameters):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def spei(precips, pet_mm, parameters):
+def _spei(precips, pet_mm, parameters):
 
     return indices.spei(
         precips,
@@ -750,7 +753,7 @@ def _palmers(precips, pet_mm, awc, parameters):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def pnp(precips, parameters):
+def _pnp(precips, parameters):
 
     return indices.percentage_of_normal(
         precips,
@@ -962,9 +965,17 @@ def _unpacking_apply_along_axis_palmers(params):
     zindex = np.empty_like(arr1)
     for i, (x, y, z) in enumerate(zip(arr1, arr2, arr3)):
         for j in range(x.shape[0]):
-            scpdsi[i, j], pdsi[i, j], phdi[i, j], pmdi[i, j], zindex[i, j] = func1d(
-                x[j], y[j], z[j], parameters=args
+            a, b, c, d, e = func1d(x[j], y[j], z[j], parameters=args)
+            scpdsi[i, j], pdsi[i, j], phdi[i, j], pmdi[i, j], zindex[i, j] = (
+                a,
+                b,
+                c,
+                d,
+                e,
             )
+            # scpdsi[i, j], pdsi[i, j], phdi[i, j], pmdi[i, j], zindex[i, j] = func1d(
+            #     x[j], y[j], z[j], parameters=args
+            # )
 
     return scpdsi, pdsi, phdi, pmdi, zindex
 
