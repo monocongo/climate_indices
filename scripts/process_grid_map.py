@@ -12,7 +12,7 @@ import xarray as xr
 from climate_indices import compute, indices
 
 # the number of worker processes we'll use for process pools
-_NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count()
+_NUMBER_OF_WORKER_PROCESSES = 1  # multiprocessing.cpu_count()
 
 # ----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global _logger which will write to the console as standard error
@@ -317,9 +317,7 @@ def _log_status(args_dict):
 
     else:
 
-        _logger.info(
-            "Computing {index}".format(index=args_dict["index"].value.capitalize())
-        )
+        _logger.info("Computing {index}".format(index=args_dict["index"].upper()))
 
     return True
 
@@ -402,6 +400,17 @@ def _get_variable_attributes(args_dict):
         attrs = {"long_name": long_name, "valid_min": -1000.0, "valid_max": 1000.0}
         var_name = "pnp_" + str(args_dict["scale"]).zfill(2)
 
+    elif args_dict["index"] == "pet":
+
+        long_name = "Potential Evapotranspiration (Thornthwaite)"
+        attrs = {
+            "long_name": long_name,
+            "valid_min": 0.0,
+            "valid_max": 10000.0,
+            "units": "millimeters",
+        }
+        var_name = "pet_thornthwaite"
+
     else:
 
         raise ValueError("Unsupported index: {index}".format(index=args_dict["index"]))
@@ -479,11 +488,31 @@ def _compute_write_index(keyword_arguments):
         da_pet = data_arrays[keyword_arguments["var_name_pet"]]
 
         # add the PET array as an argument to the arguments dictionary
-        kwargs["pet_array"] = da_pet.values
+        keyword_arguments["pet_array"] = da_pet.values
 
         # apply the SPEI function along the time axis (axis=2)
         index_values = _parallel_apply_along_axis(
-            spei, axis=2, arr=da_precip.values, arguments=args
+            spei, 2, da_precip.values, args, **keyword_arguments
+        )
+
+    elif keyword_arguments["index"] == "pet":
+
+        # get the temperature and latitude arrays, over which we'll compute PET
+        da_temp = data_arrays[keyword_arguments["var_name_temp"]]
+
+        # create a DataArray for latitudes with the same shape as temperature,
+        # filling all lon/times with the lat value for the lat index
+        da_lat_orig = dataset["lat"]
+        da_lat = da_temp.copy(deep=True).load()
+        for lat_index in range(da_lat_orig.size):
+            da_lat[dict(lat=lat_index)] = da_lat_orig.values[lat_index]
+
+        # add the latitudes array as an argument to the arguments dictionary
+        keyword_arguments["lat_array"] = da_lat.values
+
+        # apply the PET function along the time axis (axis=2)
+        index_values = _parallel_apply_along_axis(
+            pet, 2, da_temp.values, args, **keyword_arguments
         )
 
     elif keyword_arguments["index"] == "pnp":
@@ -504,12 +533,19 @@ def _compute_write_index(keyword_arguments):
 
     # TODO set global attributes accordingly for this new dataset
 
-    # create a new variable to contain the index values, assign into the dataset
+    # get the name and attributes to use for the index variable in the output NetCDF
     variable_name, attributes = _get_variable_attributes(keyword_arguments)
-    variable = xr.Variable(dims=da_precip.dims, data=index_values, attrs=attributes)
+
+    # here we assume all input data arrays share the dimensions of the computed
+    # index values, so we just get the dimensions from the first one we find in the
+    # dictionary of input data arrays
+    dimensions = data_arrays[list(data_arrays.keys())[0]].dims
+
+    # create a new variable to contain the index values, assign into the dataset
+    variable = xr.Variable(dims=dimensions, data=index_values, attrs=attributes)
     dataset[variable_name] = variable
 
-    # remove all data variables except for the new SPI variable
+    # remove all data variables except for the new variable
     for var_name in dataset.data_vars:
         if var_name != variable_name:
             dataset = dataset.drop(var_name)
@@ -521,6 +557,16 @@ def _compute_write_index(keyword_arguments):
     dataset.to_netcdf(netcdf_file_name)
 
     return netcdf_file_name, variable_name
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def pet(temps, parameters):
+
+    return indices.pet(
+        temps,
+        latitude_degrees=parameters["latitude_degrees"],
+        data_start_year=parameters["data_start_year"],
+    )
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -587,7 +633,7 @@ def _parallel_apply_along_axis(func1d, axis, arr, args, **kwargs):
 
     # build a list of parameters for each application of the function to an array chunk
     chunk_params = []
-    if kwargs["index"] in ["spi", "pet", "pnp"]:
+    if kwargs["index"] in ["spi", "pnp"]:
 
         # we have a single input array
         for sub_arr in np.array_split(arr, _NUMBER_OF_WORKER_PROCESSES):
@@ -609,13 +655,33 @@ def _parallel_apply_along_axis(func1d, axis, arr, args, **kwargs):
         ):
 
             # add the PET sub-array as the PET array argument expected by the SPEI function
-            kwargs["arguments"]["pet_mm"] = sub_arr2
+            args["pet_mm"] = sub_arr2
 
             params = {
                 "func1d": func1d,
                 "axis": effective_axis,
                 "arr": sub_arr1,
-                "args": kwargs["arguments"],
+                "args": args,
+                "kwargs": None,
+            }
+            chunk_params.append(params)
+
+    elif kwargs["index"] == "pet":
+
+        # we have a two input arrays (temperature and latitude)
+        for sub_arr1, sub_arr2 in zip(
+            np.array_split(arr, _NUMBER_OF_WORKER_PROCESSES),
+            np.array_split(kwargs["lat_array"], _NUMBER_OF_WORKER_PROCESSES),
+        ):
+
+            # add the latitude sub-array as the latitude array argument expected by the PET function
+            args["latitude_degrees"] = sub_arr2
+
+            params = {
+                "func1d": func1d,
+                "axis": effective_axis,
+                "arr": sub_arr1,
+                "args": args,
                 "kwargs": None,
             }
             chunk_params.append(params)
