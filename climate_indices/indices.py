@@ -431,10 +431,12 @@ def pet(temperature_celsius, latitude_degrees, data_start_year):
             # we started with all NaNs for the temperature, so just return the same
             return temperature_celsius
 
-    # if we've been passed an array of latitude values then just use
-    # the first one (useful when applying this function with xarray.GroupBy)
+    # If we've been passed an array of latitude values then just use
+    # the first one -- useful when applying this function with xarray.GroupBy
+    # or numpy.apply_along_axis() where we've had to duplicate values in a 3-D
+    # array of latitudes in order to correspond with a 3-D array of temperatures.
     if isinstance(latitude_degrees, np.ndarray) and (latitude_degrees.size > 1):
-        latitude_degrees = latitude_degrees[0]
+        latitude_degrees = latitude_degrees.flat[0]
 
     # make sure we're not dealing with a NaN or out-of-range latitude value
     if (
