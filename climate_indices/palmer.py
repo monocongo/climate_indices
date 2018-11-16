@@ -1995,7 +1995,7 @@ def scpdsi(
     data_start_year,
     calibration_start_year,
     calibration_end_year,
-):  # -> tuple([np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]):
+):
     """
     Computes the Self-calibrated Palmer Drought Severity Index (SCPDSI), Palmer Drought Severity Index (PDSI),
     Palmer Hydrological Drought Index (PHDI), Modified Palmer Drought Index (PMDI), and Palmer Z-Index.
@@ -2028,7 +2028,7 @@ def scpdsi(
     # if we've been passed an array of AWC values then just use
     # the first one (useful when applying this function with xarray.GroupBy)
     if isinstance(awc, np.ndarray) and (awc.size > 1):
-        awc = awc[0]
+        awc = awc.flat[0]
 
     # make sure we have matching precipitation and PET time series
     if precip_time_series.size != pet_time_series.size:
