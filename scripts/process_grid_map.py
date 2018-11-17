@@ -811,8 +811,8 @@ def _parallel_apply_along_axis(func1d, axis, arr, args, **kw_args):
             params = {
                 "func1d": func1d,
                 "axis": effective_axis,
-                "arr1": sub_arr1,
-                "arr2": sub_arr2,
+                "precip_array": sub_arr1,
+                "pet_array": sub_arr2,
                 "args": args,
                 "kw_args": None,
             }
@@ -850,9 +850,9 @@ def _parallel_apply_along_axis(func1d, axis, arr, args, **kw_args):
             params = {
                 "func1d": func1d,
                 "axis": effective_axis,
-                "arr1": sub_arr1,
-                "arr2": sub_arr2,
-                "arr3": sub_arr3,
+                "precip_array": sub_arr1,
+                "pet_array": sub_arr2,
+                "awc_array": sub_arr3,
                 "args": args,
                 "kw_args": None,
             }
@@ -873,9 +873,7 @@ def _parallel_apply_along_axis(func1d, axis, arr, args, **kw_args):
     if kw_args["index"] == "spei":
         individual_results = pool.map(_unpacking_apply_along_axis_double, chunk_params)
     elif kw_args["index"] == "palmers":
-        scpdsi, pdsi, phdi, pmdi, zindex = pool.map(
-            _unpacking_apply_along_axis_palmers, chunk_params
-        )
+        individual_results = pool.map(_unpacking_apply_along_axis_palmers, chunk_params)
     else:
         individual_results = pool.map(_unpacking_apply_along_axis, chunk_params)
 
@@ -886,11 +884,23 @@ def _parallel_apply_along_axis(func1d, axis, arr, args, **kw_args):
     # concatenate all the individual result arrays back into a complete result array
     if kw_args["index"] == "palmers":
 
-        scpdsi = np.concatenate(scpdsi)
-        pdsi = np.concatenate(pdsi)
-        phdi = np.concatenate(phdi)
-        pmdi = np.concatenate(pmdi)
-        zindex = np.concatenate(zindex)
+        scpdsi_parts = []
+        pdsi_parts = []
+        phdi_parts = []
+        pmdi_parts = []
+        zindex_parts = []
+        for result in individual_results:
+            scpdsi_parts.append(result[0])
+            pdsi_parts.append(result[1])
+            phdi_parts.append(result[2])
+            pmdi_parts.append(result[3])
+            zindex_parts.append(result[4])
+
+        scpdsi = np.concatenate(scpdsi_parts)
+        pdsi = np.concatenate(pdsi_parts)
+        phdi = np.concatenate(phdi_parts)
+        pmdi = np.concatenate(pmdi_parts)
+        zindex = np.concatenate(zindex_parts)
 
         return scpdsi, pdsi, phdi, pmdi, zindex
 
@@ -929,8 +939,8 @@ def _unpacking_apply_along_axis_double(params):
     by map().
     """
     func1d = params["func1d"]
-    arr1 = params["arr1"]
-    arr2 = params["arr2"]
+    arr1 = params["precip_array"]
+    arr2 = params["pet_array"]
     args = params["args"]
 
     result = np.empty_like(arr1)
@@ -953,31 +963,23 @@ def _unpacking_apply_along_axis_palmers(params):
     by map().
     """
     func1d = params["func1d"]
-    arr1 = params["arr1"]
-    arr2 = params["arr2"]
-    arr3 = params["arr3"]
+    precip = params["precip_array"]
+    pet = params["pet_array"]
+    awc = params["awc_array"]
     args = params["args"]
 
-    scpdsi = np.empty_like(arr1)
-    pdsi = np.empty_like(arr1)
-    phdi = np.empty_like(arr1)
-    pmdi = np.empty_like(arr1)
-    zindex = np.empty_like(arr1)
-    for i, (x, y, z) in enumerate(zip(arr1, arr2, arr3)):
+    scpdsi = np.empty_like(precip)
+    pdsi = np.empty_like(precip)
+    phdi = np.empty_like(precip)
+    pmdi = np.empty_like(precip)
+    zindex = np.empty_like(precip)
+    for i, (x, y, z) in enumerate(zip(precip, pet, awc)):
         for j in range(x.shape[0]):
-            a, b, c, d, e = func1d(x[j], y[j], z[j], parameters=args)
-            scpdsi[i, j], pdsi[i, j], phdi[i, j], pmdi[i, j], zindex[i, j] = (
-                a,
-                b,
-                c,
-                d,
-                e,
+            scpdsi[i, j], pdsi[i, j], phdi[i, j], pmdi[i, j], zindex[i, j] = func1d(
+                x[j], y[j], z[j], parameters=args
             )
-            # scpdsi[i, j], pdsi[i, j], phdi[i, j], pmdi[i, j], zindex[i, j] = func1d(
-            #     x[j], y[j], z[j], parameters=args
-            # )
 
-    return scpdsi, pdsi, phdi, pmdi, zindex
+    return [scpdsi, pdsi, phdi, pmdi, zindex]
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -1052,7 +1054,7 @@ if __name__ == "__main__":
         parser.add_argument(
             "--index",
             help="Indices to compute",
-            choices=["spi", "spei", "pnp", "scaled", "pet", "palmers"],
+            choices=["spi", "spei", "pnp", "scaled", "pet", "palmers", "all"],
             required=True,
         )
         parser.add_argument(
