@@ -701,11 +701,11 @@ def _compute_write_index(keyword_arguments):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def _pet(temps, parameters):
+def _pet(temperatures, latitudes, parameters):
 
     return indices.pet(
-        temps,
-        latitude_degrees=parameters["latitude_degrees"],
+        temperature_celsius=temperatures,
+        latitude_degrees=latitudes,
         data_start_year=parameters["data_start_year"],
     )
 
@@ -714,7 +714,7 @@ def _pet(temps, parameters):
 def _spi(precips, parameters):
 
     return indices.spi(
-        precips,
+        values=precips,
         scale=parameters["scale"],
         distribution=parameters["distribution"],
         data_start_year=parameters["data_start_year"],
@@ -728,8 +728,8 @@ def _spi(precips, parameters):
 def _spei(precips, pet_mm, parameters):
 
     return indices.spei(
-        precips,
-        pet_mm,
+        precips_mm=precips,
+        pet_mm=pet_mm,
         scale=parameters["scale"],
         distribution=parameters["distribution"],
         data_start_year=parameters["data_start_year"],
@@ -743,9 +743,9 @@ def _spei(precips, pet_mm, parameters):
 def _palmers(precips, pet_mm, awc, parameters):
 
     return indices.scpdsi(
-        precips,
-        pet_mm,
-        awc,
+        precip_time_series=precips,
+        pet_time_series=pet_mm,
+        awc=awc,
         data_start_year=parameters["data_start_year"],
         calibration_start_year=parameters["calibration_start_year"],
         calibration_end_year=parameters["calibration_end_year"],
@@ -792,6 +792,7 @@ def _parallel_apply_along_axis(func1d, axis, arr, args, **kw_args):
         # we have a single input array
         for sub_arr in np.array_split(arr, _NUMBER_OF_WORKER_PROCESSES):
             params = {
+                "index": kw_args["index"],
                 "func1d": func1d,
                 "axis": effective_axis,
                 "arr": sub_arr,
@@ -803,16 +804,17 @@ def _parallel_apply_along_axis(func1d, axis, arr, args, **kw_args):
     elif kw_args["index"] == "spei":
 
         # we have a two input arrays (precipitation and PET)
-        for sub_arr1, sub_arr2 in zip(
+        for sub_array_precip, sub_array_pet in zip(
             np.array_split(arr, _NUMBER_OF_WORKER_PROCESSES),
             np.array_split(kw_args["pet_array"], _NUMBER_OF_WORKER_PROCESSES),
         ):
 
             params = {
+                "index": kw_args["index"],
                 "func1d": func1d,
                 "axis": effective_axis,
-                "precip_array": sub_arr1,
-                "pet_array": sub_arr2,
+                "precip_array": sub_array_precip,
+                "pet_array": sub_array_pet,
                 "args": args,
                 "kw_args": None,
             }
@@ -821,18 +823,17 @@ def _parallel_apply_along_axis(func1d, axis, arr, args, **kw_args):
     elif kw_args["index"] == "pet":
 
         # we have a two input arrays (temperature and latitude)
-        for sub_arr1, sub_arr2 in zip(
+        for sub_array_temp, sub_array_lat in zip(
             np.array_split(arr, _NUMBER_OF_WORKER_PROCESSES),
             np.array_split(kw_args["lat_array"], _NUMBER_OF_WORKER_PROCESSES),
         ):
 
-            # add the latitude sub-array as the latitude array argument expected by the PET function
-            args["latitude_degrees"] = sub_arr2
-
             params = {
+                "index": kw_args["index"],
                 "func1d": func1d,
                 "axis": effective_axis,
-                "arr": sub_arr1,
+                "temp_array": sub_array_temp,
+                "lat_array": sub_array_lat,
                 "args": args,
                 "kw_args": None,
             }
@@ -841,18 +842,19 @@ def _parallel_apply_along_axis(func1d, axis, arr, args, **kw_args):
     elif kw_args["index"] == "palmers":
 
         # we have a three input arrays (precipitation, PET, and AWC)
-        for sub_arr1, sub_arr2, sub_arr3 in zip(
+        for sub_arr1, sub_array_pet, sub_array_awc in zip(
             np.array_split(arr, _NUMBER_OF_WORKER_PROCESSES),
             np.array_split(kw_args["pet_array"], _NUMBER_OF_WORKER_PROCESSES),
             np.array_split(kw_args["awc_array"], _NUMBER_OF_WORKER_PROCESSES),
         ):
 
             params = {
+                "index": kw_args["index"],
                 "func1d": func1d,
                 "axis": effective_axis,
                 "precip_array": sub_arr1,
-                "pet_array": sub_arr2,
-                "awc_array": sub_arr3,
+                "pet_array": sub_array_pet,
+                "awc_array": sub_array_awc,
                 "args": args,
                 "kw_args": None,
             }
@@ -870,7 +872,7 @@ def _parallel_apply_along_axis(func1d, axis, arr, args, **kw_args):
      fact that Pool.map() only takes a single argument:
     """
 
-    if kw_args["index"] == "spei":
+    if kw_args["index"] in ["spei", "pet"]:
         individual_results = pool.map(_unpacking_apply_along_axis_double, chunk_params)
     elif kw_args["index"] == "palmers":
         individual_results = pool.map(_unpacking_apply_along_axis_palmers, chunk_params)
@@ -939,9 +941,15 @@ def _unpacking_apply_along_axis_double(params):
     by map().
     """
     func1d = params["func1d"]
-    arr1 = params["precip_array"]
-    arr2 = params["pet_array"]
     args = params["args"]
+    if params["index"] == "spei":
+        arr1 = params["precip_array"]
+        arr2 = params["pet_array"]
+    elif params["index"] == "pet":
+        arr1 = params["temp_array"]
+        arr2 = params["lat_array"]
+    else:
+        raise ValueError("Unsupported index: {index}".format(params["index"]))
 
     result = np.empty_like(arr1)
     for i, (x, y) in enumerate(zip(arr1, arr2)):
