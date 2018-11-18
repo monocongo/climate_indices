@@ -12,7 +12,7 @@ import xarray as xr
 from climate_indices import compute, indices
 
 # the number of worker processes we'll use for process pools
-_NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count()
+_NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count() - 1
 
 # ----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global _logger which will write to the console as standard error
@@ -1122,10 +1122,24 @@ if __name__ == "__main__":
             help="Base output file path and name for the resulting output files",
             required=True,
         )
+        parser.add_argument(
+            "--multiprocessing",
+            help="Indices to compute",
+            choices=["single", "all_but_one", "all"],
+            required=False,
+            default="all_but_one",
+        )
         arguments = parser.parse_args()
 
         # validate the arguments
         _validate_args(arguments)
+
+        if arguments.multiprocessing == "single":
+            _NUMBER_OF_WORKER_PROCESSES = 1
+        elif arguments.multiprocessing == "all":
+            _NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count()
+        else:  # default ("all_but_one")
+            _NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count() - 1
 
         # compute SPI if specified
         if arguments.index in ["spi", "scaled", "all"]:
