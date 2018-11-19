@@ -14,6 +14,9 @@ from climate_indices import compute, indices
 # the number of worker processes we'll use for process pools
 _NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count() - 1
 
+# global dictionary to contain shared arrays for use by worker processes
+_global_shared_arrays = {}
+
 # ----------------------------------------------------------------------------------------------------------------------
 # set up a basic, global _logger which will write to the console as standard error
 logging.basicConfig(
@@ -22,6 +25,21 @@ logging.basicConfig(
     datefmt="%Y-%m-%d  %H:%M:%S",
 )
 _logger = logging.getLogger(__name__)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def init_worker(arrays_and_shapes):
+    """
+    Initialization function that assigns named arrays into the global variable.
+
+    :param arrays_and_shapes: dictionary containing variable names as keys
+        and two-element dictionaries containing RawArrays and associated shapes
+        (i.e. each value of the dictionary is itself a dictionary with one key "array"
+        and another key "shape")
+    :return:
+    """
+
+    _global_shared_arrays = arrays_and_shapes
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -475,7 +493,7 @@ def _compute_write_index(keyword_arguments):
     keyword_arguments["data_start_year"] = data_start_year
 
     # get the data arrays we'll use later in the index computations
-    data_arrays = {}
+    global _global_shared_arrays
     expected_dims_3d = (("lat", "lon", "time"), ("lon", "lat", "time"))
     expected_dims_2d = (("lat", "lon"), ("lon", "lat"))
     for var_name in var_names:
@@ -497,90 +515,129 @@ def _compute_write_index(keyword_arguments):
                 _logger.error(message)
                 raise ValueError(message)
 
-        # good looking array, add it
-        data_arrays[var_name] = dataset[var_name]
+        # create a shared memory array, wrap it as a numpy array and copy
+        # copy the data (values) from this variable's DataArray
+        shared_array = multiprocessing.Array("d", int(np.prod(dataset[var_name].shape)))
+        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(
+            dataset[var_name].shape
+        )
+        np.copyto(shared_array_np, dataset[var_name].values)
+
+        # add to the dictionary of arrays
+        _global_shared_arrays[var_name] = {
+            "array": shared_array,
+            "shape": dataset[var_name].shape,
+        }
+
+    # add output variable arrays into the shared memory arrays dictionary
+
+    # the shape of output variables is assumed to match that of the input,
+    # so use either precipitation or temperature variable's shape
+    if "var_name_precip" in keyword_arguments:
+        output_shape = dataset[keyword_arguments["var_name_precip"]].shape
+        output_dims = dataset[keyword_arguments["var_name_precip"]].dims
+    elif "var_name_temp" in keyword_arguments:
+        output_shape = dataset[keyword_arguments["var_name_temp"]].shape
+        output_dims = dataset[keyword_arguments["var_name_temp"]].dims
+    else:
+        raise ValueError(
+            "Unable to determine output shape, no precipitation "
+            "or temperature variable name was specified."
+        )
+
+    # add to the dictionary of arrays, if not already present
+    if "result_array" not in _global_shared_arrays:
+        _global_shared_arrays["result_array"] = {
+            "array": multiprocessing.Array("d", int(np.prod(output_shape))),
+            "shape": output_shape,
+        }
 
     # build an arguments dictionary appropriate to the index we'll compute
     args = _build_arguments(keyword_arguments)
 
     if keyword_arguments["index"] == "spi":
 
-        # get the precipitation array, over which we'll compute the SPI
-        da_precip = data_arrays[keyword_arguments["var_name_precip"]]
-
         # apply the SPI function along the time axis (axis=2)
-        index_values = _parallel_apply_along_axis(
-            _spi, 2, da_precip.values, args, **keyword_arguments
+        _parallel_process(
+            keyword_arguments["index"],
+            _global_shared_arrays,
+            [keyword_arguments["var_name_precip"]],
+            "result_array",
+            args,
         )
 
-    elif keyword_arguments["index"] == "spei":
+        array = _global_shared_arrays["result_array"]["array"]
+        shape = _global_shared_arrays["result_array"]["shape"]
+        index_values = np.frombuffer(array.get_obj()).reshape(shape)
 
-        # get the precipitation and PET arrays, over which we'll compute the SPEI
-        da_precip = data_arrays[keyword_arguments["var_name_precip"]]
-        da_pet = data_arrays[keyword_arguments["var_name_pet"]]
-
-        # add the PET array as an argument to the arguments dictionary
-        keyword_arguments["pet_array"] = da_pet.values
-
-        # apply the SPEI function along the time axis (axis=2)
-        index_values = _parallel_apply_along_axis(
-            _spei, 2, da_precip.values, args, **keyword_arguments
-        )
-
-    elif keyword_arguments["index"] == "pet":
-
-        # get the temperature and latitude arrays, over which we'll compute PET
-        da_temp = data_arrays[keyword_arguments["var_name_temp"]]
-
-        # create a DataArray for latitudes with the same shape as temperature,
-        # filling all lon/times with the lat value for the lat index
-        da_lat_orig = dataset["lat"]
-        da_lat = da_temp.copy(deep=True).load()
-        for lat_index in range(da_lat_orig.size):
-            da_lat[dict(lat=lat_index)] = da_lat_orig.values[lat_index]
-
-        # add the latitudes array as an argument to the arguments dictionary
-        keyword_arguments["lat_array"] = da_lat.values
-
-        # apply the PET function along the time axis (axis=2)
-        index_values = _parallel_apply_along_axis(
-            _pet, 2, da_temp.values, args, **keyword_arguments
-        )
-
-    elif keyword_arguments["index"] == "pnp":
-
-        # get the precipitation array, over which we'll compute the PNP
-        da_precip = data_arrays[keyword_arguments["var_name_precip"]]
-
-        # apply the PNP function along the time axis (axis=2)
-        index_values = _parallel_apply_along_axis(
-            _pnp, 2, da_precip.values, args, **keyword_arguments
-        )
-
-    elif keyword_arguments["index"] == "palmers":
-
-        # get the precipitation, PET, and AWC arrays, over which we'll compute the Palmers
-        da_precip = data_arrays[keyword_arguments["var_name_precip"]]
-        da_pet = data_arrays[keyword_arguments["var_name_pet"]]
-
-        # create a DataArray for AWC with the same shape as temperature,
-        # filling all times with the AWC value for the lat/lon index
-        da_awc_orig = data_arrays[keyword_arguments["var_name_awc"]]
-        da_awc = da_precip.copy(deep=True).load()
-        for lat_index in range(da_awc_orig["lat"].size):
-            for lon_index in range(da_awc_orig["lon"].size):
-                da_awc[dict(lat=lat_index, lon=lon_index)] = da_awc_orig[
-                    dict(lat=lat_index, lon=lon_index)
-                ]
-
-        # add the PET and AWC arrays as arguments in the arguments dictionary
-        keyword_arguments["pet_array"] = da_pet.values
-        keyword_arguments["awc_array"] = da_awc.values
-
-        # apply the Palmers function along the time axis (axis=2)
-        scpdsi, pdsi, phdi, pmdi, zindex = _parallel_apply_along_axis(
-            _palmers, 2, da_precip.values, args, **keyword_arguments
-        )
+    # elif keyword_arguments["index"] == "spei":
+    #
+    #     # get the precipitation and PET arrays, over which we'll compute the SPEI
+    #     da_precip = data_arrays[keyword_arguments["var_name_precip"]]
+    #     da_pet = data_arrays[keyword_arguments["var_name_pet"]]
+    #
+    #     # add the PET array as an argument to the arguments dictionary
+    #     keyword_arguments["pet_array"] = da_pet.values
+    #
+    #     # apply the SPEI function along the time axis (axis=2)
+    #     index_values = _parallel_apply_along_axis(
+    #         _spei, 2, da_precip.values, args, **keyword_arguments
+    #     )
+    #
+    # elif keyword_arguments["index"] == "pet":
+    #
+    #     # get the temperature and latitude arrays, over which we'll compute PET
+    #     da_temp = data_arrays[keyword_arguments["var_name_temp"]]
+    #
+    #     # create a DataArray for latitudes with the same shape as temperature,
+    #     # filling all lon/times with the lat value for the lat index
+    #     da_lat_orig = dataset["lat"]
+    #     da_lat = da_temp.copy(deep=True).load()
+    #     for lat_index in range(da_lat_orig.size):
+    #         da_lat[dict(lat=lat_index)] = da_lat_orig.values[lat_index]
+    #
+    #     # add the latitudes array as an argument to the arguments dictionary
+    #     keyword_arguments["lat_array"] = da_lat.values
+    #
+    #     # apply the PET function along the time axis (axis=2)
+    #     index_values = _parallel_apply_along_axis(
+    #         _pet, 2, da_temp.values, args, **keyword_arguments
+    #     )
+    #
+    # elif keyword_arguments["index"] == "pnp":
+    #
+    #     # get the precipitation array, over which we'll compute the PNP
+    #     da_precip = data_arrays[keyword_arguments["var_name_precip"]]
+    #
+    #     # apply the PNP function along the time axis (axis=2)
+    #     index_values = _parallel_apply_along_axis(
+    #         _pnp, 2, da_precip.values, args, **keyword_arguments
+    #     )
+    #
+    # elif keyword_arguments["index"] == "palmers":
+    #
+    #     # get the precipitation, PET, and AWC arrays, over which we'll compute the Palmers
+    #     da_precip = data_arrays[keyword_arguments["var_name_precip"]]
+    #     da_pet = data_arrays[keyword_arguments["var_name_pet"]]
+    #
+    #     # create a DataArray for AWC with the same shape as temperature,
+    #     # filling all times with the AWC value for the lat/lon index
+    #     da_awc_orig = data_arrays[keyword_arguments["var_name_awc"]]
+    #     da_awc = da_precip.copy(deep=True).load()
+    #     for lat_index in range(da_awc_orig["lat"].size):
+    #         for lon_index in range(da_awc_orig["lon"].size):
+    #             da_awc[dict(lat=lat_index, lon=lon_index)] = da_awc_orig[
+    #                 dict(lat=lat_index, lon=lon_index)
+    #             ]
+    #
+    #     # add the PET and AWC arrays as arguments in the arguments dictionary
+    #     keyword_arguments["pet_array"] = da_pet.values
+    #     keyword_arguments["awc_array"] = da_awc.values
+    #
+    #     # apply the Palmers function along the time axis (axis=2)
+    #     scpdsi, pdsi, phdi, pmdi, zindex = _parallel_apply_along_axis(
+    #         _palmers, 2, da_precip.values, args, **keyword_arguments
+    #     )
 
     else:
 
@@ -590,114 +647,115 @@ def _compute_write_index(keyword_arguments):
 
     # TODO set global attributes accordingly for this new dataset
 
-    # here we assume all input data arrays share the dimensions of the computed
-    # index values, so we just get the dimensions from the first one we find in the
-    # dictionary of input data arrays
-    dimensions = data_arrays[list(data_arrays.keys())[0]].dims
-
     if keyword_arguments["index"] == "palmers":
 
-        # create a new variable to contain the SCPDSI values, assign into the dataset
-        long_name = "Self-calibrated Palmer Drought Severity Index"
-        scpdsi_attrs = {"long_name": long_name, "valid_min": -10.0, "valid_max": 10.0}
-        var_name_scpdsi = "scpdsi"
-        scpdsi_var = xr.Variable(dims=dimensions, data=scpdsi, attrs=scpdsi_attrs)
-        dataset[var_name_scpdsi] = scpdsi_var
+        # # create a new variable to contain the SCPDSI values, assign into the dataset
+        # long_name = "Self-calibrated Palmer Drought Severity Index"
+        # scpdsi_attrs = {"long_name": long_name, "valid_min": -10.0, "valid_max": 10.0}
+        # var_name_scpdsi = "scpdsi"
+        # scpdsi_var = xr.Variable(dims=output_dims, data=scpdsi, attrs=scpdsi_attrs)
+        # dataset[var_name_scpdsi] = scpdsi_var
+        #
+        # # remove all data variables except for the new SCPDSI variable
+        # for var_name in dataset.data_vars:
+        #     if var_name != var_name_scpdsi:
+        #         dataset = dataset.drop(var_name)
+        #
+        # # write the dataset as NetCDF
+        # netcdf_file_name = kwrgs["output_file_base"] + "_" + var_name_scpdsi + ".nc"
+        # dataset.to_netcdf(netcdf_file_name)
+        #
+        # # create a new variable to contain the PDSI values, assign into the dataset
+        # long_name = "Palmer Drought Severity Index"
+        # pdsi_attrs = {"long_name": long_name, "valid_min": -10.0, "valid_max": 10.0}
+        # var_name_pdsi = "pdsi"
+        # pdsi_var = xr.Variable(dims=output_dims, data=pdsi, attrs=pdsi_attrs)
+        # dataset[var_name_pdsi] = pdsi_var
+        #
+        # # remove all data variables except for the new PDSI variable
+        # for var_name in dataset.data_vars:
+        #     if var_name != var_name_pdsi:
+        #         dataset = dataset.drop(var_name)
+        #
+        # # write the dataset as NetCDF
+        # netcdf_file_name = kwrgs["output_file_base"] + "_" + var_name_pdsi + ".nc"
+        # dataset.to_netcdf(netcdf_file_name)
+        #
+        # # create a new variable to contain the PHDI values, assign into the dataset
+        # long_name = "Palmer Hydrological Drought Index"
+        # phdi_attrs = {"long_name": long_name, "valid_min": -10.0, "valid_max": 10.0}
+        # var_name_phdi = "phdi"
+        # phdi_var = xr.Variable(dims=output_dims, data=phdi, attrs=phdi_attrs)
+        # dataset[var_name_phdi] = phdi_var
+        #
+        # # remove all data variables except for the new PHDI variable
+        # for var_name in dataset.data_vars:
+        #     if var_name != var_name_phdi:
+        #         dataset = dataset.drop(var_name)
+        #
+        # # write the dataset as NetCDF
+        # netcdf_file_name = kwrgs["output_file_base"] + "_" + var_name_phdi + ".nc"
+        # dataset.to_netcdf(netcdf_file_name)
+        #
+        # # create a new variable to contain the PMDI values, assign into the dataset
+        # long_name = "Palmer Modified Drought Index"
+        # pmdi_attrs = {"long_name": long_name, "valid_min": -10.0, "valid_max": 10.0}
+        # var_name_pmdi = "pmdi"
+        # pmdi_var = xr.Variable(dims=output_dims, data=pmdi, attrs=pmdi_attrs)
+        # dataset[var_name_pmdi] = pmdi_var
+        #
+        # # remove all data variables except for the new PMDI variable
+        # for var_name in dataset.data_vars:
+        #     if var_name != var_name_pmdi:
+        #         dataset = dataset.drop(var_name)
+        #
+        # # write the dataset as NetCDF
+        # netcdf_file_name = kwrgs["output_file_base"] + "_" + var_name_pmdi + ".nc"
+        # dataset.to_netcdf(netcdf_file_name)
+        #
+        # # create a new variable to contain the Z-Index values, assign into the dataset
+        # long_name = "Palmer Z-Index"
+        # zindex_attrs = {"long_name": long_name, "valid_min": -10.0, "valid_max": 10.0}
+        # var_name_zindex = "zindex"
+        # zindex_var = xr.Variable(dims=output_dims, data=zindex, attrs=zindex_attrs)
+        # dataset[var_name_zindex] = zindex_var
+        #
+        # # remove all data variables except for the new Z-Index variable
+        # for var_name in dataset.data_vars:
+        #     if var_name != var_name_zindex:
+        #         dataset = dataset.drop(var_name)
+        #
+        # # write the dataset as NetCDF
+        # netcdf_file_name = kwrgs["output_file_base"] + "_" + var_name_zindex + ".nc"
+        # dataset.to_netcdf(netcdf_file_name)
 
-        # remove all data variables except for the new SCPDSI variable
-        for var_name in dataset.data_vars:
-            if var_name != var_name_scpdsi:
-                dataset = dataset.drop(var_name)
-
-        # write the dataset as NetCDF
-        netcdf_file_name = kwrgs["output_file_base"] + "_" + var_name_scpdsi + ".nc"
-        dataset.to_netcdf(netcdf_file_name)
-
-        # create a new variable to contain the PDSI values, assign into the dataset
-        long_name = "Palmer Drought Severity Index"
-        pdsi_attrs = {"long_name": long_name, "valid_min": -10.0, "valid_max": 10.0}
-        var_name_pdsi = "pdsi"
-        pdsi_var = xr.Variable(dims=dimensions, data=pdsi, attrs=pdsi_attrs)
-        dataset[var_name_pdsi] = pdsi_var
-
-        # remove all data variables except for the new PDSI variable
-        for var_name in dataset.data_vars:
-            if var_name != var_name_pdsi:
-                dataset = dataset.drop(var_name)
-
-        # write the dataset as NetCDF
-        netcdf_file_name = kwrgs["output_file_base"] + "_" + var_name_pdsi + ".nc"
-        dataset.to_netcdf(netcdf_file_name)
-
-        # create a new variable to contain the PHDI values, assign into the dataset
-        long_name = "Palmer Hydrological Drought Index"
-        phdi_attrs = {"long_name": long_name, "valid_min": -10.0, "valid_max": 10.0}
-        var_name_phdi = "phdi"
-        phdi_var = xr.Variable(dims=dimensions, data=phdi, attrs=phdi_attrs)
-        dataset[var_name_phdi] = phdi_var
-
-        # remove all data variables except for the new PHDI variable
-        for var_name in dataset.data_vars:
-            if var_name != var_name_phdi:
-                dataset = dataset.drop(var_name)
-
-        # write the dataset as NetCDF
-        netcdf_file_name = kwrgs["output_file_base"] + "_" + var_name_phdi + ".nc"
-        dataset.to_netcdf(netcdf_file_name)
-
-        # create a new variable to contain the PMDI values, assign into the dataset
-        long_name = "Palmer Modified Drought Index"
-        pmdi_attrs = {"long_name": long_name, "valid_min": -10.0, "valid_max": 10.0}
-        var_name_pmdi = "pmdi"
-        pmdi_var = xr.Variable(dims=dimensions, data=pmdi, attrs=pmdi_attrs)
-        dataset[var_name_pmdi] = pmdi_var
-
-        # remove all data variables except for the new PMDI variable
-        for var_name in dataset.data_vars:
-            if var_name != var_name_pmdi:
-                dataset = dataset.drop(var_name)
-
-        # write the dataset as NetCDF
-        netcdf_file_name = kwrgs["output_file_base"] + "_" + var_name_pmdi + ".nc"
-        dataset.to_netcdf(netcdf_file_name)
-
-        # create a new variable to contain the Z-Index values, assign into the dataset
-        long_name = "Palmer Z-Index"
-        zindex_attrs = {"long_name": long_name, "valid_min": -10.0, "valid_max": 10.0}
-        var_name_zindex = "zindex"
-        zindex_var = xr.Variable(dims=dimensions, data=zindex, attrs=zindex_attrs)
-        dataset[var_name_zindex] = zindex_var
-
-        # remove all data variables except for the new Z-Index variable
-        for var_name in dataset.data_vars:
-            if var_name != var_name_zindex:
-                dataset = dataset.drop(var_name)
-
-        # write the dataset as NetCDF
-        netcdf_file_name = kwrgs["output_file_base"] + "_" + var_name_zindex + ".nc"
-        dataset.to_netcdf(netcdf_file_name)
+        pass
 
     else:
 
         # get the name and attributes to use for the index variable in the output NetCDF
-        variable_name, attributes = _get_variable_attributes(keyword_arguments)
+        output_var_name, output_var_attributes = _get_variable_attributes(
+            keyword_arguments
+        )
 
         # create a new variable to contain the index values, assign into the dataset
-        variable = xr.Variable(dims=dimensions, data=index_values, attrs=attributes)
-        dataset[variable_name] = variable
+        variable = xr.Variable(
+            dims=output_dims, data=index_values, attrs=output_var_attributes
+        )
+        dataset[output_var_name] = variable
 
         # remove all data variables except for the new variable
         for var_name in dataset.data_vars:
-            if var_name != variable_name:
+            if var_name != output_var_name:
                 dataset = dataset.drop(var_name)
 
         # write the dataset as NetCDF
         netcdf_file_name = (
-            keyword_arguments["output_file_base"] + "_" + variable_name + ".nc"
+            keyword_arguments["output_file_base"] + "_" + output_var_name + ".nc"
         )
         dataset.to_netcdf(netcdf_file_name)
 
-        return netcdf_file_name, variable_name
+        return netcdf_file_name, output_var_name
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -864,24 +922,28 @@ def _parallel_apply_along_axis(func1d, axis, arr, args, **kw_args):
         raise ValueError("Unsupported index: {index}".format(index=kw_args["index"]))
 
     # instantiate a process pool
-    pool = multiprocessing.Pool(processes=_NUMBER_OF_WORKER_PROCESSES)
+    with multiprocessing.Pool(processes=_NUMBER_OF_WORKER_PROCESSES) as pool:
 
-    """
-     the function _unpacking_apply_along_axis() being applied in Pool.map() is separate
-     so that subprocesses can import it, and is simply a thin wrapper that handles the
-     fact that Pool.map() only takes a single argument:
-    """
+        """
+         the function _unpacking_apply_along_axis() being applied in Pool.map() is separate
+         so that subprocesses can import it, and is simply a thin wrapper that handles the
+         fact that Pool.map() only takes a single argument:
+        """
 
-    if kw_args["index"] in ["spei", "pet"]:
-        individual_results = pool.map(_unpacking_apply_along_axis_double, chunk_params)
-    elif kw_args["index"] == "palmers":
-        individual_results = pool.map(_unpacking_apply_along_axis_palmers, chunk_params)
-    else:
-        individual_results = pool.map(_unpacking_apply_along_axis, chunk_params)
+        if kw_args["index"] in ["spei", "pet"]:
+            individual_results = pool.map(
+                _unpacking_apply_along_axis_double, chunk_params
+            )
+        elif kw_args["index"] == "palmers":
+            individual_results = pool.map(
+                _unpacking_apply_along_axis_palmers, chunk_params
+            )
+        else:
+            individual_results = pool.map(_unpacking_apply_along_axis, chunk_params)
 
-    # close the pool and wait on all processes to finish
-    pool.close()
-    pool.join()
+        # # close the pool and wait on all processes to finish
+        # pool.close()
+        # pool.join()
 
     # concatenate all the individual result arrays back into a complete result array
     if kw_args["index"] == "palmers":
@@ -912,6 +974,187 @@ def _parallel_apply_along_axis(func1d, axis, arr, args, **kw_args):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
+def _init_worker(shared_arrays_dict):
+
+    global _global_shared_arrays
+    _global_shared_arrays = shared_arrays_dict
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def _parallel_process(index, arrays_dict, input_var_names, output_var_name, args):
+    """
+    Like numpy.apply_along_axis(), but takes advantage of multiple cores.
+
+    :param func1d:
+    :param axis:
+    :param arr:
+    :param args:
+    :param kw_args:
+    :return:
+    """
+
+    # clear items from the dictionary of shared memory arrays
+    # if not specified by the variable names
+    if set(arrays_dict.keys()) != set(input_var_names + [output_var_name]):
+        keys_to_pop = []
+        for var_name in arrays_dict:
+            if var_name not in (input_var_names + [output_var_name]):
+                keys_to_pop.append(var_name)
+        for var_name in keys_to_pop:
+            arrays_dict.pop(var_name)
+
+    # find the start index of each sub-array we'll split out per worker process
+    shape = arrays_dict[input_var_names[0]]["shape"]
+    d, m = divmod(shape[0], _NUMBER_OF_WORKER_PROCESSES)
+    split_indices = list(range(0, ((d + 1) * (m + 1)), (d + 1)))
+    if d != 0:
+        split_indices += list(range(split_indices[-1] + d, shape[0], d))
+
+    # build a list of parameters for each application of the function to an array chunk
+    chunk_params = []
+    if index in ["spi", "pnp"]:
+
+        if index == "spi":
+            func1d = _spi
+        else:
+            func1d = _pnp
+
+        # we have a single input array
+        for i in range(_NUMBER_OF_WORKER_PROCESSES):
+            params = {
+                "index": index,
+                "func1d": func1d,
+                "input_var_name": input_var_names[0],
+                "output_var_name": output_var_name,
+                "sub_array_start": split_indices[i],
+                "args": args,
+            }
+            if i < (_NUMBER_OF_WORKER_PROCESSES - 1):
+                params["sub_array_end"] = split_indices[i + 1]
+            else:
+                params["sub_array_end"] = None
+
+            chunk_params.append(params)
+
+    # elif kw_args["index"] == "spei":
+    #
+    #     # we have a two input arrays (precipitation and PET)
+    #     for sub_array_precip, sub_array_pet in zip(
+    #         np.array_split(arr, _NUMBER_OF_WORKER_PROCESSES),
+    #         np.array_split(kw_args["pet_array"], _NUMBER_OF_WORKER_PROCESSES),
+    #     ):
+    #
+    #         params = {
+    #             "index": kw_args["index"],
+    #             "func1d": func1d,
+    #             "axis": effective_axis,
+    #             "precip_array": sub_array_precip,
+    #             "pet_array": sub_array_pet,
+    #             "args": args,
+    #             "kw_args": None,
+    #         }
+    #         chunk_params.append(params)
+    #
+    # elif kw_args["index"] == "pet":
+    #
+    #     # we have a two input arrays (temperature and latitude)
+    #     for sub_array_temp, sub_array_lat in zip(
+    #         np.array_split(arr, _NUMBER_OF_WORKER_PROCESSES),
+    #         np.array_split(kw_args["lat_array"], _NUMBER_OF_WORKER_PROCESSES),
+    #     ):
+    #
+    #         params = {
+    #             "index": kw_args["index"],
+    #             "func1d": func1d,
+    #             "axis": effective_axis,
+    #             "temp_array": sub_array_temp,
+    #             "lat_array": sub_array_lat,
+    #             "args": args,
+    #             "kw_args": None,
+    #         }
+    #         chunk_params.append(params)
+    #
+    # elif kw_args["index"] == "palmers":
+    #
+    #     # we have a three input arrays (precipitation, PET, and AWC)
+    #     for sub_arr1, sub_array_pet, sub_array_awc in zip(
+    #         np.array_split(arr, _NUMBER_OF_WORKER_PROCESSES),
+    #         np.array_split(kw_args["pet_array"], _NUMBER_OF_WORKER_PROCESSES),
+    #         np.array_split(kw_args["awc_array"], _NUMBER_OF_WORKER_PROCESSES),
+    #     ):
+    #
+    #         params = {
+    #             "index": kw_args["index"],
+    #             "func1d": func1d,
+    #             "axis": effective_axis,
+    #             "precip_array": sub_arr1,
+    #             "pet_array": sub_array_pet,
+    #             "awc_array": sub_array_awc,
+    #             "args": args,
+    #             "kw_args": None,
+    #         }
+    #         chunk_params.append(params)
+
+    else:
+        raise ValueError("Unsupported index: {index}".format(index=index))
+
+    # instantiate a process pool
+    with multiprocessing.Pool(
+        processes=_NUMBER_OF_WORKER_PROCESSES,
+        initializer=_init_worker,
+        initargs=(arrays_dict,),
+    ) as pool:
+
+        """
+         the function _unpacking_apply_along_axis() being applied in Pool.map() is separate
+         so that subprocesses can import it, and is simply a thin wrapper that handles the
+         fact that Pool.map() only takes a single argument:
+        """
+
+        if index in ["spei", "pet"]:
+            individual_results = pool.map(
+                _unpacking_apply_along_axis_double, chunk_params
+            )
+        elif index == "palmers":
+            individual_results = pool.map(
+                _unpacking_apply_along_axis_palmers, chunk_params
+            )
+        else:
+            pool.map(_unpacking_apply_along_axis, chunk_params)
+
+        # # close the pool and wait on all processes to finish
+        # pool.close()
+        # pool.join()
+
+    # # concatenate all the individual result arrays back into a complete result array
+    # if index == "palmers":
+    #
+    #     scpdsi_parts = []
+    #     pdsi_parts = []
+    #     phdi_parts = []
+    #     pmdi_parts = []
+    #     zindex_parts = []
+    #     for result in individual_results:
+    #         scpdsi_parts.append(result[0])
+    #         pdsi_parts.append(result[1])
+    #         phdi_parts.append(result[2])
+    #         pmdi_parts.append(result[3])
+    #         zindex_parts.append(result[4])
+    #
+    #     scpdsi = np.concatenate(scpdsi_parts)
+    #     pdsi = np.concatenate(pdsi_parts)
+    #     phdi = np.concatenate(phdi_parts)
+    #     pmdi = np.concatenate(pmdi_parts)
+    #     zindex = np.concatenate(zindex_parts)
+    #
+    #     return scpdsi, pdsi, phdi, pmdi, zindex
+    #
+    # else:
+    #
+    #     return np.concatenate(individual_results)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 def _unpacking_apply_along_axis(params):
     """
     Like numpy.apply_along_axis(), but and with arguments in a dict
@@ -923,10 +1166,17 @@ def _unpacking_apply_along_axis(params):
     by map().
     """
     func1d = params["func1d"]
-    axis = params["axis"]
-    arr = params["arr"]
+    start_index = params["sub_array_start"]
+    end_index = params["sub_array_end"]
+    array = _global_shared_arrays[params["input_var_name"]]["array"]
+    shape = _global_shared_arrays[params["input_var_name"]]["shape"]
+    np_array = np.frombuffer(array.get_obj()).reshape(shape)
+    sub_array = np_array[start_index:end_index]
     args = params["args"]
-    return np.apply_along_axis(func1d, axis, arr, parameters=args)
+    computed_array = np.apply_along_axis(func1d, axis=2, arr=sub_array, parameters=args)
+    output_array = _global_shared_arrays[params["output_var_name"]]["array"]
+    np_output_array = np.frombuffer(output_array.get_obj()).reshape(shape)
+    np.copyto(np_output_array[start_index:end_index], computed_array)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
