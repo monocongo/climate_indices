@@ -561,7 +561,7 @@ def _compute_write_index(keyword_arguments):
         _parallel_process(
             keyword_arguments["index"],
             _global_shared_arrays,
-            [keyword_arguments["var_name_precip"]],
+            {"var_name_precip": keyword_arguments["var_name_precip"]},
             "result_array",
             args,
         )
@@ -584,26 +584,44 @@ def _compute_write_index(keyword_arguments):
     #         _spei, 2, da_precip.values, args, **keyword_arguments
     #     )
     #
-    # elif keyword_arguments["index"] == "pet":
-    #
-    #     # get the temperature and latitude arrays, over which we'll compute PET
-    #     da_temp = data_arrays[keyword_arguments["var_name_temp"]]
-    #
-    #     # create a DataArray for latitudes with the same shape as temperature,
-    #     # filling all lon/times with the lat value for the lat index
-    #     da_lat_orig = dataset["lat"]
-    #     da_lat = da_temp.copy(deep=True).load()
-    #     for lat_index in range(da_lat_orig.size):
-    #         da_lat[dict(lat=lat_index)] = da_lat_orig.values[lat_index]
-    #
-    #     # add the latitudes array as an argument to the arguments dictionary
-    #     keyword_arguments["lat_array"] = da_lat.values
-    #
-    #     # apply the PET function along the time axis (axis=2)
-    #     index_values = _parallel_apply_along_axis(
-    #         _pet, 2, da_temp.values, args, **keyword_arguments
-    #     )
-    #
+    elif keyword_arguments["index"] == "pet":
+
+        # get the temperature and latitude arrays, over which we'll compute PET
+        da_temp = dataset[keyword_arguments["var_name_temp"]]
+
+        # create a DataArray for latitudes with the same shape as temperature,
+        # filling all lon/times with the lat value for the lat index
+        da_lat_orig = dataset["lat"]
+        da_lat = da_temp.copy(deep=False).load()
+        for lat_index in range(da_lat_orig.size):
+            da_lat[dict(lat=lat_index)] = da_lat_orig.values[lat_index]
+
+        # create a shared memory array, wrap it as a numpy array and copy
+        # copy the data (values) from this variable's DataArray
+        shared_array = multiprocessing.Array("d", int(np.prod(da_lat.shape)))
+        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(da_lat.shape)
+        np.copyto(shared_array_np, da_lat.values)
+
+        # add to the dictionary of arrays
+        _global_shared_arrays["lat"] = {"array": shared_array, "shape": da_lat.shape}
+
+        # apply the PET function along the time axis (axis=2)
+        _parallel_process(
+            keyword_arguments["index"],
+            _global_shared_arrays,
+            {
+                "var_name_temp": keyword_arguments["var_name_temp"],
+                "var_name_lat": "lat",
+            },
+            "result_array",
+            args,
+        )
+
+        array = _global_shared_arrays["result_array"]["array"]
+        shape = _global_shared_arrays["result_array"]["shape"]
+        index_values = np.frombuffer(array).reshape(shape)
+        # index_values = np.frombuffer(array.get_obj()).reshape(shape)
+
     # elif keyword_arguments["index"] == "pnp":
     #
     #     # get the precipitation array, over which we'll compute the PNP
@@ -993,18 +1011,20 @@ def _parallel_process(index, arrays_dict, input_var_names, output_var_name, args
     :return:
     """
 
-    # clear items from the dictionary of shared memory arrays
-    # if not specified by the variable names
-    if set(arrays_dict.keys()) != set(input_var_names + [output_var_name]):
-        keys_to_pop = []
-        for var_name in arrays_dict:
-            if var_name not in (input_var_names + [output_var_name]):
-                keys_to_pop.append(var_name)
-        for var_name in keys_to_pop:
-            arrays_dict.pop(var_name)
+    # # clear items from the dictionary of shared memory arrays
+    # # if not specified by the variable names
+    # expected_var_names = set(list(input_var_names.values()) + [output_var_name])
+    # if set(arrays_dict.keys()) != expected_var_names:
+    #     keys_to_pop = []
+    #     for var_name in arrays_dict:
+    #         if var_name not in expected_var_names:
+    #             keys_to_pop.append(var_name)
+    #     for var_name in keys_to_pop:
+    #         arrays_dict.pop(var_name)
 
-    # find the start index of each sub-array we'll split out per worker process
-    shape = arrays_dict[input_var_names[0]]["shape"]
+    # find the start index of each sub-array we'll split out per worker process,
+    # assuming the shape of the output array is the same as all input arrays
+    shape = arrays_dict[output_var_name]["shape"]
     d, m = divmod(shape[0], _NUMBER_OF_WORKER_PROCESSES)
     split_indices = list(range(0, ((d + 1) * (m + 1)), (d + 1)))
     if d != 0:
@@ -1024,7 +1044,7 @@ def _parallel_process(index, arrays_dict, input_var_names, output_var_name, args
             params = {
                 "index": index,
                 "func1d": func1d,
-                "input_var_name": input_var_names[0],
+                "input_var_name": input_var_names["var_name_precip"],
                 "output_var_name": output_var_name,
                 "sub_array_start": split_indices[i],
                 "args": args,
@@ -1054,26 +1074,26 @@ def _parallel_process(index, arrays_dict, input_var_names, output_var_name, args
     #             "kw_args": None,
     #         }
     #         chunk_params.append(params)
-    #
-    # elif kw_args["index"] == "pet":
-    #
-    #     # we have a two input arrays (temperature and latitude)
-    #     for sub_array_temp, sub_array_lat in zip(
-    #         np.array_split(arr, _NUMBER_OF_WORKER_PROCESSES),
-    #         np.array_split(kw_args["lat_array"], _NUMBER_OF_WORKER_PROCESSES),
-    #     ):
-    #
-    #         params = {
-    #             "index": kw_args["index"],
-    #             "func1d": func1d,
-    #             "axis": effective_axis,
-    #             "temp_array": sub_array_temp,
-    #             "lat_array": sub_array_lat,
-    #             "args": args,
-    #             "kw_args": None,
-    #         }
-    #         chunk_params.append(params)
-    #
+
+    elif index == "pet":
+
+        for i in range(_NUMBER_OF_WORKER_PROCESSES):
+            params = {
+                "index": index,
+                "func1d": _pet,
+                "var_name_temp": input_var_names["var_name_temp"],
+                "var_name_lat": input_var_names["var_name_lat"],
+                "output_var_name": output_var_name,
+                "sub_array_start": split_indices[i],
+                "args": args,
+            }
+            if i < (_NUMBER_OF_WORKER_PROCESSES - 1):
+                params["sub_array_end"] = split_indices[i + 1]
+            else:
+                params["sub_array_end"] = None
+
+            chunk_params.append(params)
+
     # elif kw_args["index"] == "palmers":
     #
     #     # we have a three input arrays (precipitation, PET, and AWC)
@@ -1190,23 +1210,34 @@ def _unpacking_apply_along_axis_double(params):
     this function can generally be imported from a module, as required
     by map().
     """
+
     func1d = params["func1d"]
-    args = params["args"]
-    if params["index"] == "spei":
-        arr1 = params["precip_array"]
-        arr2 = params["pet_array"]
-    elif params["index"] == "pet":
-        arr1 = params["temp_array"]
-        arr2 = params["lat_array"]
+    start_index = params["sub_array_start"]
+    end_index = params["sub_array_end"]
+    if params["index"] == "pet":
+        first_array_key = params["var_name_temp"]
+        second_array_key = params["var_name_lat"]
+    elif params["index"] == "spei":
+        first_array_key = params["var_name_precip"]
+        second_array_key = params["var_name_pet"]
     else:
-        raise ValueError("Unsupported index: {index}".format(params["index"]))
+        raise ValueError("Unsupporte index: {index}".format(index=params["index"]))
 
-    result = np.empty_like(arr1)
-    for i, (x, y) in enumerate(zip(arr1, arr2)):
+    shape = _global_shared_arrays[params["output_var_name"]]["shape"]
+    first_array = _global_shared_arrays[first_array_key]["array"]
+    first_np_array = np.frombuffer(first_array.get_obj()).reshape(shape)
+    sub_array_1 = first_np_array[start_index:end_index]
+    second_array = _global_shared_arrays[second_array_key]["array"]
+    second_np_array = np.frombuffer(second_array.get_obj()).reshape(shape)
+    sub_array_2 = second_np_array[start_index:end_index]
+
+    computed_array = np.empty_like(sub_array_1)
+    for i, (x, y) in enumerate(zip(sub_array_1, sub_array_2)):
         for j in range(x.shape[0]):
-            result[i, j] = func1d(x[j], y[j], parameters=args)
-
-    return result
+            computed_array[i, j] = func1d(x[j], y[j], parameters=params["args"])
+    output_array = _global_shared_arrays[params["output_var_name"]]["array"]
+    np_output_array = np.frombuffer(output_array.get_obj()).reshape(shape)
+    np.copyto(np_output_array[start_index:end_index], computed_array)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
