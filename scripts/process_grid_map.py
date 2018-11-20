@@ -261,9 +261,7 @@ def _validate_args(args):
 
                 # verify that the AWC variable's dimensions are in the expected order
                 dimensions = dataset_awc[args.var_name_awc].dims
-                if (dimensions != ("lat", "lon")) and (
-                    dimensions != expected_dimensions
-                ):
+                if dimensions not in expected_dimensions:
                     message = "Invalid dimensions of the AWC variable: {dims}, ".format(
                         dims=dimensions
                     ) + "(expected names and order: {dims})".format(
@@ -272,14 +270,15 @@ def _validate_args(args):
                     _logger.error(message)
                     raise ValueError(message)
 
-                # verify that the lat and lon coordinate variables match with those of the precipitation dataset
-                if not np.array_equal(lats_precip, dataset_awc["lat"][:]):
+                # verify that the lat and lon coordinate variable values
+                # (closely) match with those of the precipitation dataset
+                if not np.allclose(lats_precip, dataset_awc["lat"][:], atol=0.001):
                     message = (
                         "Precipitation and AWC variables contain non-matching latitudes"
                     )
                     _logger.error(message)
                     raise ValueError(message)
-                elif not np.array_equal(lons_precip, dataset_awc["lon"][:]):
+                elif not np.allclose(lons_precip, dataset_awc["lon"][:], atol=0.001):
                     message = "Precipitation and AWC variables contain non-matching longitudes"
                     _logger.error(message)
                     raise ValueError(message)
