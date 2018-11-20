@@ -1064,7 +1064,7 @@ def _validate_arguments(
 
                 # verify that the PET variable's dimensions are in the expected order
                 dimensions = dataset_pet.variables[var_name_pet].dimensions
-                if dimensions != expected_dimensions:
+                if dimensions not in expected_dimensions:
                     message = "Invalid dimensions of the PET variable: {dims}, ".format(
                         dims=dimensions
                     ) + "(expected names and order: {dims})".format(
@@ -1119,7 +1119,7 @@ def _validate_arguments(
 
                 # verify that the temperature variable's dimensions are in the expected order
                 dimensions = dataset_temp.variables[var_name_temp].dimensions
-                if dimensions != expected_dimensions:
+                if dimensions not in expected_dimensions:
                     message = "Invalid dimensions of the temperature variable: {dims}, ".format(
                         dims=dimensions
                     ) + "(expected names and order: {dims})".format(
