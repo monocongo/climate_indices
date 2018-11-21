@@ -15,6 +15,8 @@ from climate_indices import compute, indices
 _NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count() - 1
 
 # shared memory array dictionary keys
+_KEY_ARRAY = "array"
+_KEY_SHAPE = "shape"
 _KEY_RESULT = "result_array"
 _KEY_RESULT_SCPDSI = "result_array_scpdsi"
 _KEY_RESULT_PDSI = "result_array_pdsi"
@@ -43,7 +45,7 @@ def init_worker(arrays_and_shapes):
     :param arrays_and_shapes: dictionary containing variable names as keys
         and two-element dictionaries containing RawArrays and associated shapes
         (i.e. each value of the dictionary is itself a dictionary with one key "array"
-        and another key "shape")
+        and another key _KEY_SHAPE)
     :return:
     """
 
@@ -271,14 +273,14 @@ def _validate_args(args):
                     raise ValueError(message)
 
                 # verify that the lat and lon coordinate variable values
-                # (closely) match with those of the precipitation dataset
-                if not np.allclose(lats_precip, dataset_awc["lat"][:], atol=0.001):
+                # match with those of the precipitation dataset
+                if not np.array_equal(lats_precip, dataset_awc["lat"][:]):
                     message = (
                         "Precipitation and AWC variables contain non-matching latitudes"
                     )
                     _logger.error(message)
                     raise ValueError(message)
-                elif not np.allclose(lons_precip, dataset_awc["lon"][:], atol=0.001):
+                elif not np.array_equal(lons_precip, dataset_awc["lon"][:]):
                     message = "Precipitation and AWC variables contain non-matching longitudes"
                     _logger.error(message)
                     raise ValueError(message)
@@ -470,7 +472,7 @@ def _compute_write_index(keyword_arguments):
 
     _log_status(keyword_arguments)
 
-    # open the precipitation NetCDF files as an xarray DataSet object
+    # open the NetCDF files as an xarray DataSet object
     files = []
     if "netcdf_precip" in keyword_arguments:
         files.append(keyword_arguments["netcdf_precip"])
@@ -478,33 +480,43 @@ def _compute_write_index(keyword_arguments):
         files.append(keyword_arguments["netcdf_temp"])
     if "netcdf_pet" in keyword_arguments:
         files.append(keyword_arguments["netcdf_pet"])
-    if "netcdf_awc" in keyword_arguments:
-        files.append(keyword_arguments["netcdf_awc"])
-    dataset = xr.open_mfdataset(files)
+    dataset = xr.open_mfdataset(files, chunks={"lat": -1, "lon": -1})
 
     # trim out all data variables from the dataset except the ones we'll need
-    var_names = []
+    input_var_names = []
     if "var_name_precip" in keyword_arguments:
-        var_names.append(keyword_arguments["var_name_precip"])
+        input_var_names.append(keyword_arguments["var_name_precip"])
     if "var_name_temp" in keyword_arguments:
-        var_names.append(keyword_arguments["var_name_temp"])
+        input_var_names.append(keyword_arguments["var_name_temp"])
     if "var_name_pet" in keyword_arguments:
-        var_names.append(keyword_arguments["var_name_pet"])
-    if "var_name_awc" in keyword_arguments:
-        var_names.append(keyword_arguments["var_name_awc"])
+        input_var_names.append(keyword_arguments["var_name_pet"])
     for var in dataset.data_vars:
-        if var not in var_names:
+        if var not in input_var_names:
             dataset = dataset.drop(var)
 
     # get the initial year of the data
     data_start_year = int(str(dataset["time"].values[0])[0:4])
     keyword_arguments["data_start_year"] = data_start_year
 
+    # the shape of output variables is assumed to match that of the input,
+    # so use either precipitation or temperature variable's shape
+    if "var_name_precip" in keyword_arguments:
+        output_shape = dataset[keyword_arguments["var_name_precip"]].shape
+        output_dims = dataset[keyword_arguments["var_name_precip"]].dims
+    elif "var_name_temp" in keyword_arguments:
+        output_shape = dataset[keyword_arguments["var_name_temp"]].shape
+        output_dims = dataset[keyword_arguments["var_name_temp"]].dims
+    else:
+        raise ValueError(
+            "Unable to determine output shape, no precipitation "
+            "or temperature variable name was specified."
+        )
+
     # get the data arrays we'll use later in the index computations
     global _global_shared_arrays
     expected_dims_3d = (("lat", "lon", "time"), ("lon", "lat", "time"))
     expected_dims_2d = (("lat", "lon"), ("lon", "lat"))
-    for var_name in var_names:
+    for var_name in input_var_names:
 
         # confirm that the dimensions of the data array are valid
         dims = dataset[var_name].dims
@@ -533,54 +545,68 @@ def _compute_write_index(keyword_arguments):
 
         # add to the dictionary of arrays
         _global_shared_arrays[var_name] = {
-            "array": shared_array,
-            "shape": dataset[var_name].shape,
+            _KEY_ARRAY: shared_array,
+            _KEY_SHAPE: dataset[var_name].shape,
+        }
+
+        # drop the variable from the dataset (we're assuming this frees the memory)
+        dataset = dataset.drop(var_name)
+
+    # read AWC data into shared memory array
+    if keyword_arguments["index"] == "palmers":
+
+        if ("netcdf_awc" not in keyword_arguments) or (
+            "var_name_awc" not in keyword_arguments
+        ):
+            raise ValueError("Missing the AWC file and/or variable name argument(s)")
+
+        awc_dataset = xr.open_dataset(keyword_arguments["netcdf_awc"])
+
+        # create a shared memory array, wrap it as a numpy array and copy
+        # copy the data (values) from this variable's DataArray
+        var_name = keyword_arguments["var_name_awc"]
+        shared_array = multiprocessing.Array(
+            "d", int(np.prod(awc_dataset[var_name].shape))
+        )
+        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(
+            awc_dataset[var_name].shape
+        )
+        np.copyto(shared_array_np, awc_dataset[var_name].values)
+
+        # add to the dictionary of arrays
+        _global_shared_arrays[var_name] = {
+            _KEY_ARRAY: shared_array,
+            _KEY_SHAPE: awc_dataset[var_name].shape,
         }
 
     # add output variable arrays into the shared memory arrays dictionary
-
-    # the shape of output variables is assumed to match that of the input,
-    # so use either precipitation or temperature variable's shape
-    if "var_name_precip" in keyword_arguments:
-        output_shape = dataset[keyword_arguments["var_name_precip"]].shape
-        output_dims = dataset[keyword_arguments["var_name_precip"]].dims
-    elif "var_name_temp" in keyword_arguments:
-        output_shape = dataset[keyword_arguments["var_name_temp"]].shape
-        output_dims = dataset[keyword_arguments["var_name_temp"]].dims
-    else:
-        raise ValueError(
-            "Unable to determine output shape, no precipitation "
-            "or temperature variable name was specified."
-        )
-
-    # add result arrays into the dictionary of shared memory arrays
     if keyword_arguments["index"] == "palmers":
 
         # add to the dictionary of arrays, if not already present
         if _KEY_RESULT_SCPDSI not in _global_shared_arrays:
             _global_shared_arrays[_KEY_RESULT_SCPDSI] = {
-                "array": multiprocessing.Array("d", int(np.prod(output_shape))),
-                "shape": output_shape,
+                _KEY_ARRAY: multiprocessing.Array("d", int(np.prod(output_shape))),
+                _KEY_SHAPE: output_shape,
             }
         if _KEY_RESULT_PDSI not in _global_shared_arrays:
             _global_shared_arrays[_KEY_RESULT_PDSI] = {
-                "array": multiprocessing.Array("d", int(np.prod(output_shape))),
-                "shape": output_shape,
+                _KEY_ARRAY: multiprocessing.Array("d", int(np.prod(output_shape))),
+                _KEY_SHAPE: output_shape,
             }
         if _KEY_RESULT_PHDI not in _global_shared_arrays:
             _global_shared_arrays[_KEY_RESULT_PHDI] = {
-                "array": multiprocessing.Array("d", int(np.prod(output_shape))),
-                "shape": output_shape,
+                _KEY_ARRAY: multiprocessing.Array("d", int(np.prod(output_shape))),
+                _KEY_SHAPE: output_shape,
             }
         if _KEY_RESULT_PMDI not in _global_shared_arrays:
             _global_shared_arrays[_KEY_RESULT_PMDI] = {
-                "array": multiprocessing.Array("d", int(np.prod(output_shape))),
-                "shape": output_shape,
+                _KEY_ARRAY: multiprocessing.Array("d", int(np.prod(output_shape))),
+                _KEY_SHAPE: output_shape,
             }
         if _KEY_RESULT_ZINDEX not in _global_shared_arrays:
             _global_shared_arrays[_KEY_RESULT_ZINDEX] = {
-                "array": multiprocessing.Array("d", int(np.prod(output_shape))),
-                "shape": output_shape,
+                _KEY_ARRAY: multiprocessing.Array("d", int(np.prod(output_shape))),
+                _KEY_SHAPE: output_shape,
             }
 
     else:
@@ -588,8 +614,8 @@ def _compute_write_index(keyword_arguments):
         # add to the dictionary of arrays, if not already present
         if _KEY_RESULT not in _global_shared_arrays:
             _global_shared_arrays[_KEY_RESULT] = {
-                "array": multiprocessing.Array("d", int(np.prod(output_shape))),
-                "shape": output_shape,
+                _KEY_ARRAY: multiprocessing.Array("d", int(np.prod(output_shape))),
+                _KEY_SHAPE: output_shape,
             }
 
     # build an arguments dictionary appropriate to the index we'll compute
@@ -606,8 +632,8 @@ def _compute_write_index(keyword_arguments):
             args,
         )
 
-        array = _global_shared_arrays[_KEY_RESULT]["array"]
-        shape = _global_shared_arrays[_KEY_RESULT]["shape"]
+        array = _global_shared_arrays[_KEY_RESULT][_KEY_ARRAY]
+        shape = _global_shared_arrays[_KEY_RESULT][_KEY_SHAPE]
         index_values = np.frombuffer(array.get_obj()).reshape(shape)
 
     elif keyword_arguments["index"] == "spei":
@@ -624,8 +650,8 @@ def _compute_write_index(keyword_arguments):
             args,
         )
 
-        array = _global_shared_arrays[_KEY_RESULT]["array"]
-        shape = _global_shared_arrays[_KEY_RESULT]["shape"]
+        array = _global_shared_arrays[_KEY_RESULT][_KEY_ARRAY]
+        shape = _global_shared_arrays[_KEY_RESULT][_KEY_SHAPE]
         index_values = np.frombuffer(array.get_obj()).reshape(shape)
 
     elif keyword_arguments["index"] == "pet":
@@ -645,7 +671,10 @@ def _compute_write_index(keyword_arguments):
         np.copyto(shared_array_np, da_lat.values)
 
         # add to the dictionary of arrays
-        _global_shared_arrays["lat"] = {"array": shared_array, "shape": da_lat.shape}
+        _global_shared_arrays["lat"] = {
+            _KEY_ARRAY: shared_array,
+            _KEY_SHAPE: da_lat.shape,
+        }
 
         # apply the PET function along the time axis (axis=2)
         _parallel_process(
@@ -659,34 +688,34 @@ def _compute_write_index(keyword_arguments):
             args,
         )
 
-        array = _global_shared_arrays[_KEY_RESULT]["array"]
-        shape = _global_shared_arrays[_KEY_RESULT]["shape"]
+        array = _global_shared_arrays[_KEY_RESULT][_KEY_ARRAY]
+        shape = _global_shared_arrays[_KEY_RESULT][_KEY_SHAPE]
         index_values = np.frombuffer(array.get_obj()).reshape(shape)
 
     elif keyword_arguments["index"] == "palmers":
 
-        # create an array for AWC with the same shape as the pecipitation array,
-        # array, filling all times with the AWC value for the lat/lon index
-        da_precip = dataset[keyword_arguments["var_name_precip"]]
-        da_awc = da_precip.copy(deep=False).load()
-        da_awc_orig = dataset[keyword_arguments["var_name_awc"]]
-        for lat_index in range(da_awc_orig["lat"].size):
-            for lon_index in range(da_awc_orig["lon"].size):
-                da_awc[dict(lat=lat_index, lon=lon_index)] = da_awc_orig[
-                    dict(lat=lat_index, lon=lon_index)
-                ]
-
-        # create a shared memory array, wrap it as a numpy array and copy
-        # copy the data (values) from this variable's DataArray
-        shared_array = multiprocessing.Array("d", int(np.prod(da_awc.shape)))
-        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(da_awc.shape)
-        np.copyto(shared_array_np, da_awc.values)
-
-        # add to the dictionary of arrays
-        _global_shared_arrays[keyword_arguments["var_name_awc"]] = {
-            "array": shared_array,
-            "shape": da_awc.shape,
-        }
+        # # create an array for AWC with the same shape as the pecipitation array,
+        # # array, filling all times with the AWC value for the lat/lon index
+        # da_precip = dataset[keyword_arguments["var_name_precip"]]
+        # da_awc = da_precip.copy(deep=False).load()
+        # da_awc_orig = dataset[keyword_arguments["var_name_awc"]]
+        # for lat_index in range(da_awc_orig["lat"].size):
+        #     for lon_index in range(da_awc_orig["lon"].size):
+        #         da_awc[dict(lat=lat_index, lon=lon_index)] = da_awc_orig[
+        #             dict(lat=lat_index, lon=lon_index)
+        #         ]
+        #
+        # # create a shared memory array, wrap it as a numpy array and copy
+        # # copy the data (values) from this variable's DataArray
+        # shared_array = multiprocessing.Array("d", int(np.prod(da_awc.shape)))
+        # shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(da_awc.shape)
+        # np.copyto(shared_array_np, da_awc.values)
+        #
+        # # add to the dictionary of arrays
+        # _global_shared_arrays[keyword_arguments["var_name_awc"]] = {
+        #     _KEY_ARRAY: shared_array,
+        #     _KEY_SHAPE: da_awc.shape,
+        # }
 
         # apply the Palmers function along the time axis (axis=2)
         _parallel_process(
@@ -701,24 +730,24 @@ def _compute_write_index(keyword_arguments):
             args,
         )
 
-        array = _global_shared_arrays[_KEY_RESULT_SCPDSI]["array"]
-        shape = _global_shared_arrays[_KEY_RESULT_SCPDSI]["shape"]
+        array = _global_shared_arrays[_KEY_RESULT_SCPDSI][_KEY_ARRAY]
+        shape = _global_shared_arrays[_KEY_RESULT_SCPDSI][_KEY_SHAPE]
         scpdsi = np.frombuffer(array.get_obj()).reshape(shape)
 
-        array = _global_shared_arrays[_KEY_RESULT_PDSI]["array"]
-        shape = _global_shared_arrays[_KEY_RESULT_PDSI]["shape"]
+        array = _global_shared_arrays[_KEY_RESULT_PDSI][_KEY_ARRAY]
+        shape = _global_shared_arrays[_KEY_RESULT_PDSI][_KEY_SHAPE]
         pdsi = np.frombuffer(array.get_obj()).reshape(shape)
 
-        array = _global_shared_arrays[_KEY_RESULT_PHDI]["array"]
-        shape = _global_shared_arrays[_KEY_RESULT_PHDI]["shape"]
+        array = _global_shared_arrays[_KEY_RESULT_PHDI][_KEY_ARRAY]
+        shape = _global_shared_arrays[_KEY_RESULT_PHDI][_KEY_SHAPE]
         phdi = np.frombuffer(array.get_obj()).reshape(shape)
 
-        array = _global_shared_arrays[_KEY_RESULT_PMDI]["array"]
-        shape = _global_shared_arrays[_KEY_RESULT_PMDI]["shape"]
+        array = _global_shared_arrays[_KEY_RESULT_PMDI][_KEY_ARRAY]
+        shape = _global_shared_arrays[_KEY_RESULT_PMDI][_KEY_SHAPE]
         pmdi = np.frombuffer(array.get_obj()).reshape(shape)
 
-        array = _global_shared_arrays[_KEY_RESULT_ZINDEX]["array"]
-        shape = _global_shared_arrays[_KEY_RESULT_ZINDEX]["shape"]
+        array = _global_shared_arrays[_KEY_RESULT_ZINDEX][_KEY_ARRAY]
+        shape = _global_shared_arrays[_KEY_RESULT_ZINDEX][_KEY_SHAPE]
         zindex = np.frombuffer(array.get_obj()).reshape(shape)
 
     else:
@@ -925,7 +954,7 @@ def _parallel_process(index, arrays_dict, input_var_names, output_var_name, args
 
     # find the start index of each sub-array we'll split out per worker process,
     # assuming the shape of the output array is the same as all input arrays
-    shape = arrays_dict[output_var_name]["shape"]
+    shape = arrays_dict[output_var_name][_KEY_SHAPE]
     d, m = divmod(shape[0], _NUMBER_OF_WORKER_PROCESSES)
     split_indices = list(range(0, ((d + 1) * (m + 1)), (d + 1)))
     if d != 0:
@@ -1053,8 +1082,8 @@ def _unpacking_apply_along_axis(params):
     func1d = params["func1d"]
     start_index = params["sub_array_start"]
     end_index = params["sub_array_end"]
-    array = _global_shared_arrays[params["input_var_name"]]["array"]
-    shape = _global_shared_arrays[params["input_var_name"]]["shape"]
+    array = _global_shared_arrays[params["input_var_name"]][_KEY_ARRAY]
+    shape = _global_shared_arrays[params["input_var_name"]][_KEY_SHAPE]
     np_array = np.frombuffer(array.get_obj()).reshape(shape)
     sub_array = np_array[start_index:end_index]
     args = params["args"]
@@ -1064,7 +1093,7 @@ def _unpacking_apply_along_axis(params):
     # directly into those shared memory areas
     computed_array = np.apply_along_axis(func1d, axis=2, arr=sub_array, parameters=args)
 
-    output_array = _global_shared_arrays[params["output_var_name"]]["array"]
+    output_array = _global_shared_arrays[params["output_var_name"]][_KEY_ARRAY]
     np_output_array = np.frombuffer(output_array.get_obj()).reshape(shape)
     np.copyto(np_output_array[start_index:end_index], computed_array)
 
@@ -1093,11 +1122,11 @@ def _unpacking_apply_along_axis_double(params):
     else:
         raise ValueError("Unsupported index: {index}".format(index=params["index"]))
 
-    shape = _global_shared_arrays[params["output_var_name"]]["shape"]
-    first_array = _global_shared_arrays[first_array_key]["array"]
+    shape = _global_shared_arrays[params["output_var_name"]][_KEY_SHAPE]
+    first_array = _global_shared_arrays[first_array_key][_KEY_ARRAY]
     first_np_array = np.frombuffer(first_array.get_obj()).reshape(shape)
     sub_array_1 = first_np_array[start_index:end_index]
-    second_array = _global_shared_arrays[second_array_key]["array"]
+    second_array = _global_shared_arrays[second_array_key][_KEY_ARRAY]
     second_np_array = np.frombuffer(second_array.get_obj()).reshape(shape)
     sub_array_2 = second_np_array[start_index:end_index]
 
@@ -1109,7 +1138,7 @@ def _unpacking_apply_along_axis_double(params):
     for i, (x, y) in enumerate(zip(sub_array_1, sub_array_2)):
         for j in range(x.shape[0]):
             computed_array[i, j] = func1d(x[j], y[j], parameters=params["args"])
-    output_array = _global_shared_arrays[params["output_var_name"]]["array"]
+    output_array = _global_shared_arrays[params["output_var_name"]][_KEY_ARRAY]
     np_output_array = np.frombuffer(output_array.get_obj()).reshape(shape)
     np.copyto(np_output_array[start_index:end_index], computed_array)
 
@@ -1132,15 +1161,15 @@ def _unpacking_apply_along_axis_palmers(params):
     pet_array_key = params["var_name_pet"]
     awc_array_key = params["var_name_awc"]
 
-    shape = _global_shared_arrays[params["output_var_name"]]["shape"]
-    precip_array = _global_shared_arrays[precip_array_key]["array"]
+    shape = _global_shared_arrays[params["output_var_name"]][_KEY_SHAPE]
+    precip_array = _global_shared_arrays[precip_array_key][_KEY_ARRAY]
     precip_np_array = np.frombuffer(precip_array.get_obj()).reshape(shape)
     sub_array_precip = precip_np_array[start_index:end_index]
-    pet_array = _global_shared_arrays[pet_array_key]["array"]
+    pet_array = _global_shared_arrays[pet_array_key][_KEY_ARRAY]
     pet_np_array = np.frombuffer(pet_array.get_obj()).reshape(shape)
     sub_array_pet = pet_np_array[start_index:end_index]
-    awc_array = _global_shared_arrays[awc_array_key]["array"]
-    awc_np_array = np.frombuffer(awc_array.get_obj()).reshape(shape)
+    awc_array = _global_shared_arrays[awc_array_key][_KEY_ARRAY]
+    awc_np_array = np.frombuffer(awc_array.get_obj()).reshape([shape[0], shape[1]])
     sub_array_awc = awc_np_array[start_index:end_index]
 
     args = params["args"]
@@ -1154,29 +1183,31 @@ def _unpacking_apply_along_axis_palmers(params):
     pmdi = np.empty_like(sub_array_precip)
     zindex = np.empty_like(sub_array_precip)
 
-    for i, (x, y, z) in enumerate(zip(sub_array_precip, sub_array_pet, sub_array_awc)):
-        for j in range(x.shape[0]):
+    for i, (precip, pet, awc) in enumerate(
+        zip(sub_array_precip, sub_array_pet, sub_array_awc)
+    ):
+        for j in range(precip.shape[0]):
             scpdsi[i, j], pdsi[i, j], phdi[i, j], pmdi[i, j], zindex[i, j] = func1d(
-                x[j], y[j], z[j], parameters=args
+                precip[j], pet[j], awc[j], parameters=args
             )
 
-    scpdsi_output_array = _global_shared_arrays[_KEY_RESULT_SCPDSI]["array"]
+    scpdsi_output_array = _global_shared_arrays[_KEY_RESULT_SCPDSI][_KEY_ARRAY]
     scpdsi_np_output_array = np.frombuffer(scpdsi_output_array.get_obj()).reshape(shape)
     np.copyto(scpdsi_np_output_array[start_index:end_index], scpdsi)
 
-    pdsi_output_array = _global_shared_arrays[_KEY_RESULT_PDSI]["array"]
+    pdsi_output_array = _global_shared_arrays[_KEY_RESULT_PDSI][_KEY_ARRAY]
     pdsi_np_output_array = np.frombuffer(pdsi_output_array.get_obj()).reshape(shape)
     np.copyto(pdsi_np_output_array[start_index:end_index], pdsi)
 
-    phdi_output_array = _global_shared_arrays[_KEY_RESULT_PHDI]["array"]
+    phdi_output_array = _global_shared_arrays[_KEY_RESULT_PHDI][_KEY_ARRAY]
     phdi_np_output_array = np.frombuffer(phdi_output_array.get_obj()).reshape(shape)
     np.copyto(phdi_np_output_array[start_index:end_index], phdi)
 
-    pmdi_output_array = _global_shared_arrays[_KEY_RESULT_PMDI]["array"]
+    pmdi_output_array = _global_shared_arrays[_KEY_RESULT_PMDI][_KEY_ARRAY]
     pmdi_np_output_array = np.frombuffer(pmdi_output_array.get_obj()).reshape(shape)
     np.copyto(pmdi_np_output_array[start_index:end_index], pmdi)
 
-    zindex_output_array = _global_shared_arrays[_KEY_RESULT_ZINDEX]["array"]
+    zindex_output_array = _global_shared_arrays[_KEY_RESULT_ZINDEX][_KEY_ARRAY]
     zindex_np_output_array = np.frombuffer(zindex_output_array.get_obj()).reshape(shape)
     np.copyto(zindex_np_output_array[start_index:end_index], zindex)
 
