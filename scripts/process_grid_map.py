@@ -1059,9 +1059,6 @@ def _unpacking_apply_along_axis(params):
     sub_array = np_array[start_index:end_index]
     args = params["args"]
 
-    # TODO rather than creating new result sub arrays for later copy into the shared
-    # arrays we should instead try to get slices of the actual shared arrays and write
-    # directly into those shared memory areas
     computed_array = np.apply_along_axis(func1d, axis=2, arr=sub_array, parameters=args)
 
     output_array = _global_shared_arrays[params["output_var_name"]][_KEY_ARRAY]
@@ -1105,10 +1102,11 @@ def _unpacking_apply_along_axis_double(params):
         second_np_array = np.frombuffer(second_array.get_obj()).reshape(shape)
     sub_array_2 = second_np_array[start_index:end_index]
 
-    # TODO rather than creating new result sub arrays for later copy into the shared
-    # arrays we should instead try to get slices of the actual shared arrays and write
-    # directly into those shared memory areas
-    computed_array = np.empty_like(sub_array_1)
+    # get the output shared memory array, convert to numpy, and get the subarray slice
+    output_array = _global_shared_arrays[params["output_var_name"]][_KEY_ARRAY]
+    computed_array = np.frombuffer(output_array.get_obj()).reshape(shape)[
+        start_index:end_index
+    ]
 
     for i, (x, y) in enumerate(zip(sub_array_1, sub_array_2)):
         for j in range(x.shape[0]):
@@ -1116,10 +1114,6 @@ def _unpacking_apply_along_axis_double(params):
                 computed_array[i, j] = func1d(x[j], y, parameters=params["args"])
             else:
                 computed_array[i, j] = func1d(x[j], y[j], parameters=params["args"])
-
-    output_array = _global_shared_arrays[params["output_var_name"]][_KEY_ARRAY]
-    np_output_array = np.frombuffer(output_array.get_obj()).reshape(shape)
-    np.copyto(np_output_array[start_index:end_index], computed_array)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -1153,14 +1147,31 @@ def _unpacking_apply_along_axis_palmers(params):
 
     args = params["args"]
 
-    # TODO rather than creating new sub arrays for later copy into the shared arrays
-    # we should instead try to get slices of the actual shared arrays and write
-    # directly into those shared memory areas
-    scpdsi = np.empty_like(sub_array_precip)
-    pdsi = np.empty_like(sub_array_precip)
-    phdi = np.empty_like(sub_array_precip)
-    pmdi = np.empty_like(sub_array_precip)
-    zindex = np.empty_like(sub_array_precip)
+    # get the output shared memory arrays, convert to numpy, and get the subarray slices
+    scpdsi_output_array = _global_shared_arrays[_KEY_RESULT_SCPDSI][_KEY_ARRAY]
+    scpdsi = np.frombuffer(scpdsi_output_array.get_obj()).reshape(shape)[
+        start_index:end_index
+    ]
+
+    pdsi_output_array = _global_shared_arrays[_KEY_RESULT_PDSI][_KEY_ARRAY]
+    pdsi = np.frombuffer(pdsi_output_array.get_obj()).reshape(shape)[
+        start_index:end_index
+    ]
+
+    phdi_output_array = _global_shared_arrays[_KEY_RESULT_PHDI][_KEY_ARRAY]
+    phdi = np.frombuffer(phdi_output_array.get_obj()).reshape(shape)[
+        start_index:end_index
+    ]
+
+    pmdi_output_array = _global_shared_arrays[_KEY_RESULT_PMDI][_KEY_ARRAY]
+    pmdi = np.frombuffer(pmdi_output_array.get_obj()).reshape(shape)[
+        start_index:end_index
+    ]
+
+    zindex_output_array = _global_shared_arrays[_KEY_RESULT_ZINDEX][_KEY_ARRAY]
+    zindex = np.frombuffer(zindex_output_array.get_obj()).reshape(shape)[
+        start_index:end_index
+    ]
 
     for i, (precip, pet, awc) in enumerate(
         zip(sub_array_precip, sub_array_pet, sub_array_awc)
@@ -1170,26 +1181,6 @@ def _unpacking_apply_along_axis_palmers(params):
                 precip[j], pet[j], awc[j], parameters=args
             )
 
-    scpdsi_output_array = _global_shared_arrays[_KEY_RESULT_SCPDSI][_KEY_ARRAY]
-    scpdsi_np_output_array = np.frombuffer(scpdsi_output_array.get_obj()).reshape(shape)
-    np.copyto(scpdsi_np_output_array[start_index:end_index], scpdsi)
-
-    pdsi_output_array = _global_shared_arrays[_KEY_RESULT_PDSI][_KEY_ARRAY]
-    pdsi_np_output_array = np.frombuffer(pdsi_output_array.get_obj()).reshape(shape)
-    np.copyto(pdsi_np_output_array[start_index:end_index], pdsi)
-
-    phdi_output_array = _global_shared_arrays[_KEY_RESULT_PHDI][_KEY_ARRAY]
-    phdi_np_output_array = np.frombuffer(phdi_output_array.get_obj()).reshape(shape)
-    np.copyto(phdi_np_output_array[start_index:end_index], phdi)
-
-    pmdi_output_array = _global_shared_arrays[_KEY_RESULT_PMDI][_KEY_ARRAY]
-    pmdi_np_output_array = np.frombuffer(pmdi_output_array.get_obj()).reshape(shape)
-    np.copyto(pmdi_np_output_array[start_index:end_index], pmdi)
-
-    zindex_output_array = _global_shared_arrays[_KEY_RESULT_ZINDEX][_KEY_ARRAY]
-    zindex_np_output_array = np.frombuffer(zindex_output_array.get_obj()).reshape(shape)
-    np.copyto(zindex_np_output_array[start_index:end_index], zindex)
-
 
 # ----------------------------------------------------------------------------------------------------------------------
 def _prepare_file(netcdf_file, var_name):
@@ -1198,8 +1189,8 @@ def _prepare_file(netcdf_file, var_name):
     correctly ordered then create a temporary NetCDF with dimensions in (lat, lon, time) order,
     otherwise just return the input NetCDF unchanged.
 
-    :param netcdf_file:
-    :param var_name:
+    :param str netcdf_file:
+    :param str var_name:
     :return:
     """
 
@@ -1239,17 +1230,17 @@ def _prepare_file(netcdf_file, var_name):
 if __name__ == "__main__":
     """
     This script is used to perform climate indices processing on gridded datasets in NetCDF.
-    
+
     Example command line arguments for SPI only using monthly precipitation input:
-    
-    --index spi 
+
+    --index spi
     --periodicity monthly
-    --scales 1 2 3 6 9 12 24 
-    --calibration_start_year 1998 
-    --calibration_end_year 2016 
-    --netcdf_precip example_data/nclimgrid_prcp_lowres.nc 
-    --var_name_precip prcp 
-    --output_file_base ~/data/test/spi/nclimgrid_lowres 
+    --scales 1 2 3 6 9 12 24
+    --calibration_start_year 1998
+    --calibration_end_year 2016
+    --netcdf_precip example_data/nclimgrid_prcp_lowres.nc
+    --var_name_precip prcp
+    --output_file_base ~/data/test/spi/nclimgrid_lowres
     """
 
     try:
