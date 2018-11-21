@@ -23,7 +23,7 @@ _logger = logging.getLogger(__name__)
 def initial_and_final_years(netcdf_file):
     """
     Gets the initial and final years represented by the time dimension/coordinate variable.
-    
+
     :param netcdf_file: a NetCDF file, assumed to a coordinate variables named 'time'
     :return: the years corresponding to the initial and final time values
     :rtype: integers
@@ -43,9 +43,9 @@ def initial_and_final_years(netcdf_file):
 def lat_and_lon_sizes(netcdf_file):
     """
     Gets the sizes of the latitude and longitude dimensions/coordinate variables.
-    
+
     :param netcdf_file: a NetCDF file, assumed to contain coordinate variables named 'lat' and 'lon'
-    :return: two values: the sizes of the latitude and longitude coordinate variables 
+    :return: two values: the sizes of the latitude and longitude coordinate variables
              (i.e. the number of lats and lons, respectively)
     :rtype: integers
     """
