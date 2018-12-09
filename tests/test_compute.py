@@ -10,129 +10,6 @@ from climate_indices import compute
 logging.disable(logging.CRITICAL)
 
 
-# ------------------------------------------------------------------------------------------------------------------------------------------
-# class ComputeTestCase(fixtures.FixturesTestCase):
-#     """
-#     Tests for `compute.py`.
-#     """
-#
-#     # # ---------------------------------------------------------------------------------------
-#     # def test_error_function(self):
-#     #     """
-#     #     Test for the compute._error_function() function
-#     #     """
-#     #
-#     #     self.assertEqual(compute._error_function(0.0),
-#     #                      0.0,
-#     #                      msg='Failed to accurately compute error function')
-#     #
-#     #     self.assertEqual(compute._error_function(5.0),
-#     #                      0.9999999999992313,
-#     #                      msg='Failed to accurately compute error function')
-#     #
-#     #     self.assertEqual(compute._error_function(-5.0),
-#     #                      -0.9999999999992313,
-#     #                      msg='Failed to accurately compute error function')
-#     #
-#     #     self.assertEqual(compute._error_function(5.5),
-#     #                      0.9999999999999941,
-#     #                      msg='Failed to accurately compute error function')
-#     #
-#     #     self.assertEqual(compute._error_function(0.17),
-#     #                      0.5949962306009045,
-#     #                      msg='Failed to accurately compute error function')
-#     #
-#     #     self.assertEqual(compute._error_function(-0.07),
-#     #                      -0.5394288598854453,
-#     #                      msg='Failed to accurately compute error function')
-#     #
-#     #     self.assertEqual(compute._error_function(50.0),
-#     #                      1.0,
-#     #                      msg='Failed to accurately compute error function')
-#     #
-#     #     self.assertEqual(compute._error_function(-50.0),
-#     #                      -1.0,
-#     #                      msg='Failed to accurately compute error function')
-#     #
-#     #     self.assertEqual(compute._error_function(-2.0),
-#     #                      -0.9976611325094764,
-#     #                      msg='Failed to accurately compute error function')
-#     #
-#     # # ---------------------------------------------------------------------------------------
-#     # @staticmethod
-#     # def test_estimate_lmoments():
-#     #     """
-#     #     Test for the compute._estimate_lmoments() function
-#     #     """
-#     #
-#     #     # provide some bogus inputs to at least make sure these raise expected errors
-#     #     np.testing.assert_raises(ValueError, compute._estimate_lmoments, [1.0, 0.0, 0.0])
-#     #     np.testing.assert_raises(ValueError, compute._estimate_lmoments, [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN])
-#     #     np.testing.assert_raises(TypeError, compute._estimate_lmoments, None)
-#     #
-#     #     values = [0.8, 0.7, 0.6, 0.8, 0.7, 0.6, 0.8, 0.7, 0.6, 0.8, 0.8, 0.7, 0.6, 0.8, 0.7, 0.6, 0.7, 0.6]
-#     #     lmoments_expected = [0.7, 0.0470588235294, -9.43689570931e-15]
-#     #     lmoments_computed = compute._estimate_lmoments(values)
-#     #     np.testing.assert_allclose(lmoments_expected,
-#     #                                lmoments_computed,
-#     #                                atol=0.001,
-#     #                                err_msg='Failed to accurately estimate L-moments')
-#     #
-#     # # ---------------------------------------------------------------------------------------
-#     # @staticmethod
-#     # def test_estimate_pearson3_parameters():
-#     #     """
-#     #     Test for the compute._estimate_pearson3_parameters() function
-#     #     """
-#     #     # provide some bogus inputs to at least make sure these raise expected errors
-#     #     np.testing.assert_raises(ValueError, compute._estimate_pearson3_parameters, [1.0, 0.0, 0.0])
-#     #     np.testing.assert_raises(ValueError, compute._estimate_pearson3_parameters, [1.0, 1.0, 5.0])
-#     #     np.testing.assert_raises(ValueError, compute._estimate_pearson3_parameters, [1.0, -1.0, 1.0])
-#     #     np.testing.assert_raises(ValueError, compute._estimate_pearson3_parameters, [1.0, -1.0, 1e-7])
-#     #
-#     # # ---------------------------------------------------------------------------------------
-#     # def test_pearson3cdf(self):
-#     #     """
-#     #     Test for the compute._pearson3cdf() function
-#     #     """
-#     #
-#     #     self.assertTrue(math.isnan(compute._pearson3cdf(5.0, [1.0, -1.0, 0.0])),
-#     #                     msg='Failed to accurately compute Pearson Type III CDF')
-#     #
-#     #     self.assertEqual(compute._pearson3cdf(5.0, [1.0, 1.0, 1e-7]),
-#     #                      0.9999841643790834,
-#     #                      msg='Failed to accurately compute Pearson Type III CDF')
-#     #
-#     #     self.assertEqual(compute._pearson3cdf(7.7, [1.0, 501.0, 0.0]),
-#     #                      0.752667498611228,
-#     #                      msg='Failed to accurately compute Pearson Type III CDF')
-#     #
-#     #     self.assertEqual(compute._pearson3cdf(7.7, [1.0, 501.0, -10.0]),
-#     #                      0.10519432662999628,
-#     #                      msg='Failed to accurately compute Pearson Type III CDF')
-#     #
-#     #     self.assertEqual(compute._pearson3cdf(1e-6, [441.0, 501.0, 30.0]),
-#     #                      0.0005,  # value corresponding to trace value
-#     #                      msg='Failed to accurately compute Pearson Type III CDF')
-#     #
-#     # # ---------------------------------------------------------------------------------------
-#     # def test_pearson_fit_ufunc(self):
-#     #     """
-#     #     Test for the compute._pearson_fit_ufunc() function
-#     #     """
-#     #
-#     #     self.assertTrue(math.isnan(compute._pearson_fit_ufunc(np.NaN, 1.0, -1.0, 0.0, 0.0)),
-#     #                     msg='Failed to accurately compute error function')
-#     #
-#     #     self.assertTrue(math.isnan(compute._pearson_fit_ufunc(5.0, 1.0, -1.0, 0.0, 0.0)),
-#     #                     msg='Failed to accurately compute error function')
-#     #
-#     #     self.assertEqual(compute._pearson_fit_ufunc(7.7, 1.0, 501.0, 0.0, 0.07),
-#     #                      0.7387835329883602,
-#     #                      msg='Failed to accurately compute error function')
-#
-
-
 # ----------------------------------------------------------------------------------------
 @pytest.mark.usefixtures(
     "precips_mm_monthly",
@@ -591,22 +468,22 @@ def test_sum_to_scale():
         "values appended to end of input array",
     )
 
-    test_vals = np.array([1.0, 5, 7, 2, 3, 4, 9, 6, 3, 8])
+    test_values = np.array([1.0, 5, 7, 2, 3, 4, 9, 6, 3, 8])
     sum_by2 = np.array([np.NaN, 6, 12, 9, 5, 7, 13, 15, 9, 11])
     sum_by4 = np.array([np.NaN, np.NaN, np.NaN, 15, 17, 16, 18, 22, 22, 26])
     sum_by6 = np.array([np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, 22, 30, 31, 27, 33])
     np.testing.assert_equal(
-        compute.sum_to_scale(test_vals, 2),
+        compute.sum_to_scale(test_values, 2),
         sum_by2,
         err_msg="Sliding sums not computed as expected",
     )
     np.testing.assert_equal(
-        compute.sum_to_scale(test_vals, 4),
+        compute.sum_to_scale(test_values, 4),
         sum_by4,
         err_msg="Sliding sums not computed as expected",
     )
     np.testing.assert_equal(
-        compute.sum_to_scale(test_vals, 6),
+        compute.sum_to_scale(test_values, 6),
         sum_by6,
         err_msg="Sliding sums not computed as expected",
     )
