@@ -131,110 +131,137 @@ logging.disable(logging.CRITICAL)
 #     #                      0.7387835329883602,
 #     #                      msg='Failed to accurately compute error function')
 #
-#     # ----------------------------------------------------------------------------------------
-#     def test_transform_fitted_gamma(self):
-#         """
-#         Test for the compute.transform_fitted_gamma() function
-#         """
-#
-#         # confirm that an input array of all NaNs results in the same array returned
-#         all_nans = np.full(self.fixture_precips_mm_monthly.shape, np.NaN)
-#         computed_values = compute.transform_fitted_gamma(
-#             all_nans,
-#             self.fixture_data_year_start_monthly,
-#             self.fixture_data_year_start_monthly,
-#             self.fixture_data_year_end_monthly,
-#             compute.Periodicity.monthly,
-#         )
-#         np.testing.assert_allclose(
-#             computed_values,
-#             all_nans,
-#             equal_nan=True,
-#             err_msg="Gamma fit/transform not handling all-NaN arrays as expected",
-#         )
-#
-#         # compute sigmas of transformed (normalized) values fitted to a gamma distribution,
-#         # using the full period of record as the calibration period
-#         computed_values = compute.transform_fitted_gamma(
-#             self.fixture_precips_mm_monthly,
-#             self.fixture_data_year_start_monthly,
-#             self.fixture_data_year_start_monthly,
-#             self.fixture_data_year_end_monthly,
-#             compute.Periodicity.monthly,
-#         )
-#         np.testing.assert_allclose(
-#             computed_values,
-#             self.fixture_transformed_gamma_monthly,
-#             err_msg="Transformed gamma fitted monthly values not computed as expected",
-#         )
-#
-#         # compute sigmas of transformed (normalized) values fitted to a gamma distribution,
-#         # using the full period of record as the calibration period
-#         computed_values = compute.transform_fitted_gamma(
-#             self.fixture_precips_mm_daily.flatten(),
-#             self.fixture_data_year_start_daily,
-#             self.fixture_calibration_year_start_daily,
-#             self.fixture_calibration_year_end_daily,
-#             compute.Periodicity.daily,
-#         )
-#         np.testing.assert_allclose(
-#             computed_values,
-#             self.fixture_transformed_gamma_daily,
-#             atol=0.001,
-#             equal_nan=True,
-#             err_msg="Transformed gamma fitted daily values not computed as expected",
-#         )
-#
-#         # confirm that we can call with a calibration period outside of valid range
-#         # and as a result use the full period of record as the calibration period instead
-#         computed_values = compute.transform_fitted_gamma(
-#             self.fixture_precips_mm_monthly,
-#             self.fixture_data_year_start_monthly,
-#             1500,
-#             2500,
-#             compute.Periodicity.monthly,
-#         )
-#         np.testing.assert_allclose(
-#             computed_values,
-#             self.fixture_transformed_gamma_monthly,
-#             atol=0.001,
-#             equal_nan=True,
-#             err_msg="Transformed Pearson Type III fitted values not computed as expected",
-#         )
-#
-#         # if we provide a 1-D array then we need to provide a corresponding time series type,
-#         # confirm we can't use an invalid type
-#         flat_array = self.fixture_precips_mm_monthly.flatten()
-#         np.testing.assert_raises(
-#             ValueError,
-#             compute.transform_fitted_gamma,
-#             flat_array,
-#             self.fixture_data_year_start_monthly,
-#             self.fixture_calibration_year_start_monthly,
-#             self.fixture_calibration_year_end_monthly,
-#             "invalid_value",
-#         )
-#         np.testing.assert_raises(
-#             ValueError,
-#             compute.transform_fitted_gamma,
-#             flat_array,
-#             self.fixture_data_year_start_monthly,
-#             self.fixture_calibration_year_start_monthly,
-#             self.fixture_calibration_year_end_monthly,
-#             None,
-#         )
-#
-#         # confirm that an input array which is not 1-D or 2-D will raise an error
-#         self.assertRaises(
-#             ValueError,
-#             compute.transform_fitted_gamma,
-#             np.zeros((9, 8, 7, 6), dtype=float),
-#             self.fixture_data_year_start_daily,
-#             self.fixture_calibration_year_start_daily,
-#             self.fixture_calibration_year_end_daily,
-#             compute.Periodicity.monthly,
-#         )
-#
+
+
+# ----------------------------------------------------------------------------------------
+@pytest.mark.usefixtures(
+    "precips_mm_monthly",
+    "precips_mm_daily",
+    "data_year_start_monthly",
+    "data_year_end_monthly",
+    "data_year_start_daily",
+    "calibration_year_start_monthly",
+    "calibration_year_end_monthly",
+    "calibration_year_start_daily",
+    "calibration_year_end_daily",
+    "transformed_gamma_monthly",
+    "transformed_gamma_daily",
+)
+def test_transform_fitted_gamma(
+    precips_mm_monthly,
+    precips_mm_daily,
+    data_year_start_monthly,
+    data_year_end_monthly,
+    data_year_start_daily,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+    calibration_year_start_daily,
+    calibration_year_end_daily,
+    transformed_gamma_monthly,
+    transformed_gamma_daily,
+):
+    """
+    Test for the compute.transform_fitted_gamma() function
+    """
+
+    # confirm that an input array of all NaNs results in the same array returned
+    all_nans = np.full(precips_mm_monthly.shape, np.NaN)
+    computed_values = compute.transform_fitted_gamma(
+        all_nans,
+        data_year_start_monthly,
+        data_year_start_monthly,
+        data_year_end_monthly,
+        compute.Periodicity.monthly,
+    )
+    np.testing.assert_allclose(
+        computed_values,
+        all_nans,
+        equal_nan=True,
+        err_msg="Gamma fit/transform not handling all-NaN arrays as expected",
+    )
+
+    # compute sigmas of transformed (normalized) values fitted to a gamma distribution,
+    # using the full period of record as the calibration period
+    computed_values = compute.transform_fitted_gamma(
+        precips_mm_monthly,
+        data_year_start_monthly,
+        data_year_start_monthly,
+        data_year_end_monthly,
+        compute.Periodicity.monthly,
+    )
+    np.testing.assert_allclose(
+        computed_values,
+        transformed_gamma_monthly,
+        err_msg="Transformed gamma fitted monthly values not computed as expected",
+    )
+
+    # compute sigmas of transformed (normalized) values fitted to a gamma distribution,
+    # using the full period of record as the calibration period
+    computed_values = compute.transform_fitted_gamma(
+        precips_mm_daily.flatten(),
+        data_year_start_daily,
+        calibration_year_start_daily,
+        calibration_year_end_daily,
+        compute.Periodicity.daily,
+    )
+    np.testing.assert_allclose(
+        computed_values,
+        transformed_gamma_daily,
+        atol=0.001,
+        equal_nan=True,
+        err_msg="Transformed gamma fitted daily values not computed as expected",
+    )
+
+    # confirm that we can call with a calibration period outside of valid range
+    # and as a result use the full period of record as the calibration period instead
+    computed_values = compute.transform_fitted_gamma(
+        precips_mm_monthly,
+        data_year_start_monthly,
+        1500,
+        2500,
+        compute.Periodicity.monthly,
+    )
+    np.testing.assert_allclose(
+        computed_values,
+        transformed_gamma_monthly,
+        atol=0.001,
+        equal_nan=True,
+        err_msg="Transformed Pearson Type III fitted values not computed as expected",
+    )
+
+    # if we provide a 1-D array then we need to provide a corresponding time series type,
+    # confirm we can't use an invalid type
+    flat_array = precips_mm_monthly.flatten()
+    np.testing.assert_raises(
+        ValueError,
+        compute.transform_fitted_gamma,
+        flat_array,
+        data_year_start_monthly,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
+        "invalid_value",
+    )
+    np.testing.assert_raises(
+        ValueError,
+        compute.transform_fitted_gamma,
+        flat_array,
+        data_year_start_monthly,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
+        None,
+    )
+
+    # confirm that an input array which is not 1-D or 2-D will raise an error
+    pytest.raises(
+        ValueError,
+        compute.transform_fitted_gamma,
+        np.zeros((9, 8, 7, 6), dtype=float),
+        data_year_start_daily,
+        calibration_year_start_daily,
+        calibration_year_end_daily,
+        compute.Periodicity.monthly,
+    )
+
 
 # ---------------------------------------------------------------------------------------
 @pytest.mark.usefixtures(
