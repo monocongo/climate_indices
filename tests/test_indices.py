@@ -246,7 +246,34 @@ def test_pnp(
 
 
 # ----------------------------------------------------------------------------------------
-def test_spi(self):
+@pytest.mark.usefixtures(
+    "precips_mm_monthly",
+    "precips_mm_daily",
+    "data_year_start_monthly",
+    "data_year_end_monthly",
+    "data_year_start_daily",
+    "calibration_year_start_monthly",
+    "calibration_year_end_monthly",
+    "calibration_year_start_daily",
+    "calibration_year_end_daily",
+    "spi_1_month_gamma",
+    "spi_6_month_gamma",
+    "spi_6_month_pearson3",
+)
+def test_spi(
+    precips_mm_monthly,
+    precips_mm_daily,
+    data_year_start_monthly,
+    data_year_end_monthly,
+    data_year_start_daily,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+    calibration_year_start_daily,
+    calibration_year_end_daily,
+    spi_1_month_gamma,
+    spi_6_month_gamma,
+    spi_6_month_pearson3,
+):
 
     # confirm that an input array of all NaNs for precipitation results in the same array returned
     all_nans = np.full(precips_mm_monthly.shape, np.NaN)
@@ -407,7 +434,22 @@ def test_spi(self):
 
 
 # ----------------------------------------------------------------------------------------
-def test_spei(self):
+@pytest.mark.usefixtures(
+    "precips_mm_monthly",
+    "pet_thornthwaite_mm",
+    "data_year_start_monthly",
+    "data_year_end_monthly",
+    "spei_6_month_gamma",
+    "spei_6_month_pearson3",
+)
+def test_spei(
+    precips_mm_monthly,
+    pet_thornthwaite_mm,
+    data_year_start_monthly,
+    data_year_end_monthly,
+    spei_6_month_gamma,
+    spei_6_month_pearson3,
+):
 
     # confirm that an input array of all NaNs for precipitation results in the same array returned
     all_nans = np.full(precips_mm_monthly.shape, np.NaN)
@@ -431,7 +473,7 @@ def test_spei(self):
     # compute SPEI/gamma at 6-month scale
     computed_spei = indices.spei(
         precips_mm_monthly,
-        pet_mm,
+        pet_thornthwaite_mm,
         6,
         indices.Distribution.gamma,
         compute.Periodicity.monthly,
@@ -451,7 +493,7 @@ def test_spei(self):
     # compute SPEI/Pearson at 6-month scale
     computed_spei = indices.spei(
         precips_mm_monthly,
-        pet_mm,
+        pet_thornthwaite_mm,
         6,
         indices.Distribution.pearson,
         compute.Periodicity.monthly,
@@ -473,7 +515,7 @@ def test_spei(self):
         ValueError,
         indices.spei,
         precips_mm_monthly,
-        pet_mm,
+        pet_thornthwaite_mm,
         6,
         indices.Distribution.pearson,
         "unsupported_value",
