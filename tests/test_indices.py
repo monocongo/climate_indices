@@ -143,16 +143,24 @@ def test_pet(temps_celsius, latitude_degrees, data_year_start_monthly):
 # ----------------------------------------------------------------------------------------
 @pytest.mark.usefixtures(
     "precips_mm_monthly",
+    "precips_mm_daily",
     "data_year_start_monthly",
+    "data_year_start_daily",
     "calibration_year_start_monthly",
     "calibration_year_end_monthly",
+    "calibration_year_start_daily",
+    "calibration_year_end_daily",
     "pnp_6month",
 )
 def test_pnp(
     precips_mm_monthly,
+    precips_mm_daily,
     data_year_start_monthly,
+    data_year_start_daily,
     calibration_year_start_monthly,
     calibration_year_end_monthly,
+    calibration_year_start_daily,
+    calibration_year_end_daily,
     pnp_6month,
 ):
 
