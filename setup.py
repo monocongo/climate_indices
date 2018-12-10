@@ -23,7 +23,7 @@ setup(
         "scipy",
         "xarray",
     ],
-    tests_require=["nose"],
+    tests_require=["pytest"],
     test_suite="tests",
     keywords=(
         "indices climate climate_indices drought drought_indices pdsi "
