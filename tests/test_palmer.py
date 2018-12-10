@@ -247,89 +247,103 @@ def test_climatic_characteristic(
     )
 
 
-# # ------------------------------------------------------------------------------------------------------------------
-# def test_cafec_compute_X(self):
-#     """
-#     Test for the palmer._compute_X() function
-#     """
-#
-#     # simulate computation of X at an initial step (with all zeros for intermediate value arrays)
-#     Z = palmer_zindex_monthly
-#     k = 0
-#     PPe = np.zeros(Z.shape)
-#     X1 = 0.0
-#     X2 = 0.0
-#     PX1 = np.zeros(Z.shape)
-#     PX2 = np.zeros(Z.shape)
-#     PX3 = np.zeros(Z.shape)
-#     X = np.zeros(Z.shape)
-#     BT = np.zeros(Z.shape)
-#     PX1, PX2, PX3, X, BT = palmer._compute_X(
-#         Z, k, PPe, X1, X2, PX1, PX2, PX3, X, BT
-#     )
-#     .assertEqual(
-#         PX1[0], 0.0, "PX1 value not computed as expected at initial step"
-#     )
-#     .assertEqual(
-#         PX2[0], -0.34, "PX2 value not computed as expected at initial step"
-#     )
-#     .assertEqual(
-#         PX3[0], 0.0, "PX3 value not computed as expected at initial step"
-#     )
-#     .assertEqual(
-#         X[0], -0.34, "X value not computed as expected at initial step"
-#     )
-#     .assertEqual(
-#         BT[0], 2, "Backtrack value not computed as expected at initial step"
-#     )
-#
-# # ------------------------------------------------------------------------------------------------------------------
-# def test_scpdsi():
-#     """
-#     Test for the palmer.scpdsi() function
-#     """
-#
-#     scpdsi, pdsi, phdi, pmdi, zindex = palmer.scpdsi(
-#         precips_mm_monthly,
-#         pet_mm,
-#         awc_inches,
-#         data_year_start_monthly,
-#         calibration_year_start_monthly,
-#         calibration_year_end_monthly,
-#     )
-#
-#     np.testing.assert_allclose(
-#         scpdsi,
-#         palmer_scpdsi_monthly,
-#         atol=0.001,
-#         equal_nan=True,
-#         err_msg="PDSI not computed as expected from monthly inputs",
-#     )
-#
-#     np.testing.assert_allclose(
-#         phdi,
-#         palmer_scphdi_monthly,
-#         atol=0.001,
-#         equal_nan=True,
-#         err_msg="PHDI not computed as expected from monthly inputs",
-#     )
-#
-#     np.testing.assert_allclose(
-#         pmdi,
-#         palmer_scpmdi_monthly,
-#         atol=0.001,
-#         equal_nan=True,
-#         err_msg="PMDI not computed as expected from monthly inputs",
-#     )
-#
-#     np.testing.assert_allclose(
-#         zindex,
-#         palmer_sczindex_monthly,
-#         atol=0.001,
-#         equal_nan=True,
-#         err_msg="Z-Index not computed as expected from monthly inputs",
-#     )
-#
+# ------------------------------------------------------------------------------------------------------------------
+@pytest.mark.usefixtures("palmer_zindex_monthly")
+def test_cafec_compute_X(palmer_zindex_monthly):
+    """
+    Test for the palmer._compute_X() function
+    """
+
+    # simulate computation of X at an initial step (with all zeros for intermediate value arrays)
+    Z = palmer_zindex_monthly
+    k = 0
+    PPe = np.zeros(Z.shape)
+    X1 = 0.0
+    X2 = 0.0
+    PX1 = np.zeros(Z.shape)
+    PX2 = np.zeros(Z.shape)
+    PX3 = np.zeros(Z.shape)
+    X = np.zeros(Z.shape)
+    BT = np.zeros(Z.shape)
+    PX1, PX2, PX3, X, BT = palmer._compute_X(Z, k, PPe, X1, X2, PX1, PX2, PX3, X, BT)
+    assert PX1[0] == 0.0, "PX1 value not computed as expected at initial step"
+    assert PX2[0] == -0.34, "PX2 value not computed as expected at initial step"
+    assert PX3[0] == 0.0, "PX3 value not computed as expected at initial step"
+    assert X[0] == -0.34, "X value not computed as expected at initial step"
+    assert BT[0] == 2, "Backtrack value not computed as expected at initial step"
+
+
+# ------------------------------------------------------------------------------------------------------------------
+@pytest.mark.usefixtures(
+    "precips_mm_monthly",
+    "pet_thornthwaite_mm",
+    "awc_inches",
+    "data_year_start_monthly",
+    "calibration_year_start_monthly",
+    "calibration_year_end_monthly",
+    "palmer_scpdsi_monthly",
+    "palmer_scphdi_monthly",
+    "palmer_scpmdi_monthly",
+    "palmer_sczindex_monthly",
+)
+def test_scpdsi(
+    precips_mm_monthly,
+    pet_thornthwaite_mm,
+    awc_inches,
+    data_year_start_monthly,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+    palmer_scpdsi_monthly,
+    palmer_scphdi_monthly,
+    palmer_scpmdi_monthly,
+    palmer_sczindex_monthly,
+):
+    """
+    Test for the palmer.scpdsi() function
+    """
+
+    scpdsi, pdsi, phdi, pmdi, zindex = palmer.scpdsi(
+        precips_mm_monthly,
+        pet_thornthwaite_mm,
+        awc_inches,
+        data_year_start_monthly,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
+    )
+
+    np.testing.assert_allclose(
+        scpdsi,
+        palmer_scpdsi_monthly,
+        atol=0.001,
+        equal_nan=True,
+        err_msg="PDSI not computed as expected from monthly inputs",
+    )
+
+    np.testing.assert_allclose(
+        phdi,
+        palmer_scphdi_monthly,
+        atol=0.001,
+        equal_nan=True,
+        err_msg="PHDI not computed as expected from monthly inputs",
+    )
+
+    np.testing.assert_allclose(
+        pmdi,
+        palmer_scpmdi_monthly,
+        atol=0.001,
+        equal_nan=True,
+        err_msg="PMDI not computed as expected from monthly inputs",
+    )
+
+    np.testing.assert_allclose(
+        zindex,
+        palmer_sczindex_monthly,
+        atol=0.001,
+        equal_nan=True,
+        err_msg="Z-Index not computed as expected from monthly inputs",
+    )
+
+
 # ------------------------------------------------------------------------------------------------------------------
 def test_cafec_coeff_ufunc():
     """
@@ -341,48 +355,81 @@ def test_cafec_coeff_ufunc():
     assert palmer._cafec_coeff_ufunc(5, 10) == 0.5
 
 
-# # ------------------------------------------------------------------------------------------------------------------
-# def test_cafec_coefficients():
-#     """
-#     Test for the palmer._cafec_coefficients() function
-#     """
-#
-#     # call the _cafec_coefficients() function
-#     alpha, beta, gamma, delta = palmer._cafec_coefficients(
-#         palmer_pet_AL01,
-#         palmer_et_AL01,
-#         palmer_pr_AL01,
-#         palmer_r_AL01,
-#         palmer_ro_AL01,
-#         palmer_pro_AL01,
-#         palmer_l_AL01,
-#         palmer_pl_AL01,
-#         palmer_data_begin_year,
-#         palmer_calibration_begin_year,
-#         palmer_calibration_end_year,
-#     )
-#
-#     # verify that the function performed as expected
-#     arys = [
-#         ["Alpha", alpha, palmer_alpha_AL01],
-#         ["Beta", beta, palmer_beta_AL01],
-#         ["Gamma", gamma, palmer_gamma_AL01],
-#         ["Delta", delta, palmer_delta_AL01],
-#     ]
-#
-#     for lst in arys:
-#
-#         name = lst[0]
-#         actual = lst[1]
-#         expected = lst[2]
-#
-#         # compare against expected results
-#         np.testing.assert_allclose(
-#             actual,
-#             expected,
-#             atol=0.01,
-#             err_msg="Not computing the {0} as expected".format(name),
-#         )
+# ------------------------------------------------------------------------------------------------------------------
+@pytest.mark.usefixtures(
+    "palmer_alpha_AL01",
+    "palmer_beta_AL01",
+    "palmer_gamma_AL01",
+    "palmer_delta_AL01",
+    "palmer_pet_AL01",
+    "palmer_et_AL01",
+    "palmer_pr_AL01",
+    "palmer_r_AL01",
+    "palmer_ro_AL01",
+    "palmer_pro_AL01",
+    "palmer_l_AL01",
+    "palmer_pl_AL01",
+    "data_year_start_palmer",
+    "calibration_year_start_palmer",
+    "calibration_year_end_palmer",
+)
+def test_cafec_coefficients(
+    palmer_alpha_AL01,
+    palmer_beta_AL01,
+    palmer_gamma_AL01,
+    palmer_delta_AL01,
+    palmer_pet_AL01,
+    palmer_et_AL01,
+    palmer_pr_AL01,
+    palmer_r_AL01,
+    palmer_ro_AL01,
+    palmer_pro_AL01,
+    palmer_l_AL01,
+    palmer_pl_AL01,
+    data_year_start_palmer,
+    calibration_year_start_palmer,
+    calibration_year_end_palmer,
+):
+    """
+    Test for the palmer._cafec_coefficients() function
+    """
+
+    # call the _cafec_coefficients() function
+    alpha, beta, gamma, delta = palmer._cafec_coefficients(
+        palmer_pet_AL01,
+        palmer_et_AL01,
+        palmer_pr_AL01,
+        palmer_r_AL01,
+        palmer_ro_AL01,
+        palmer_pro_AL01,
+        palmer_l_AL01,
+        palmer_pl_AL01,
+        data_year_start_palmer,
+        calibration_year_start_palmer,
+        calibration_year_end_palmer,
+    )
+
+    # verify that the function performed as expected
+    arrays = [
+        ["Alpha", alpha, palmer_alpha_AL01],
+        ["Beta", beta, palmer_beta_AL01],
+        ["Gamma", gamma, palmer_gamma_AL01],
+        ["Delta", delta, palmer_delta_AL01],
+    ]
+
+    for lst in arrays:
+
+        name = lst[0]
+        actual = lst[1]
+        expected = lst[2]
+
+        # compare against expected results
+        np.testing.assert_allclose(
+            actual,
+            expected,
+            atol=0.01,
+            err_msg="Not computing the {0} as expected".format(name),
+        )
 
 
 # ------------------------------------------------------------------------------------------------------------------
