@@ -16,7 +16,8 @@ install:
 
 script:
   # run all tests with coverage
-  - coverage run --source=climate_indices pytest
+  #- coverage run --source=climate_indices setup.py test
+  - pytest
 
 after_success:
   # produce a code coverage report for coveralls.io integration
