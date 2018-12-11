@@ -145,43 +145,43 @@ def transformed_gamma_daily():
 @pytest.fixture(scope="module")
 def pet_thornthwaite_mm():
 
-    return np.load("fixture/pet_thornthwaite.npy")
+    return np.load(os.path.join(os.getcwd(), "fixture", "pet_thornthwaite.npy"))
 
 
 @pytest.fixture(scope="module")
 def temps_celsius():
 
-    return np.load("fixture/temp_celsius.npy")
+    return np.load(os.path.join(os.getcwd(), "fixture", "temp_celsius.npy"))
 
 
 @pytest.fixture(scope="module")
 def pnp_6month():
 
-    return np.load("fixture/pnp_06.npy")
+    return np.load(os.path.join(os.getcwd(), "fixture", "pnp_06.npy"))
 
 
 @pytest.fixture(scope="module")
 def spei_6_month_gamma():
 
-    return np.load("fixture/spei_06_gamma.npy")
+    return np.load(os.path.join(os.getcwd(), "fixture", "spei_06_gamma.npy"))
 
 
 @pytest.fixture(scope="module")
 def spei_6_month_pearson3():
 
-    return np.load("fixture/spei_06_pearson3.npy")
+    return np.load(os.path.join(os.getcwd(), "fixture", "spei_06_pearson3.npy"))
 
 
 @pytest.fixture(scope="module")
 def spi_1_month_gamma():
 
-    return np.load("fixture/spi_01_gamma.npy")
+    return np.load(os.path.join(os.getcwd(), "fixture", "spi_01_gamma.npy"))
 
 
 @pytest.fixture(scope="module")
 def spi_6_month_gamma():
 
-    return np.load("fixture/spi_06_gamma.npy")
+    return np.load(os.path.join(os.getcwd(), "fixture", "spi_06_gamma.npy"))
 
 
 @pytest.fixture(scope="module")
