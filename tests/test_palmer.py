@@ -123,31 +123,31 @@ def test_pdsi_from_zindex(
 
 # ------------------------------------------------------------------------------------------------------------------
 @pytest.mark.usefixtures(
-    "palmer_precip_AL01",
-    "palmer_pet_AL01",
-    "palmer_et_AL01",
-    "palmer_pr_AL01",
-    "palmer_r_AL01",
-    "palmer_ro_AL01",
-    "palmer_pro_AL01",
-    "palmer_l_AL01",
-    "palmer_pl_AL01",
-    "palmer_zindex_AL01",
+    "palmer_precip",
+    "palmer_pet",
+    "palmer_et",
+    "palmer_pr",
+    "palmer_r",
+    "palmer_ro",
+    "palmer_pro",
+    "palmer_l",
+    "palmer_pl",
+    "palmer_zindex",
     "data_year_start_palmer",
     "calibration_year_start_palmer",
     "calibration_year_end_palmer",
 )
 def test_z_index(
-    palmer_precip_AL01,
-    palmer_pet_AL01,
-    palmer_et_AL01,
-    palmer_pr_AL01,
-    palmer_r_AL01,
-    palmer_ro_AL01,
-    palmer_pro_AL01,
-    palmer_l_AL01,
-    palmer_pl_AL01,
-    palmer_zindex_AL01,
+    palmer_precip,
+    palmer_pet,
+    palmer_et,
+    palmer_pr,
+    palmer_r,
+    palmer_ro,
+    palmer_pro,
+    palmer_l,
+    palmer_pl,
+    palmer_zindex,
     data_year_start_palmer,
     calibration_year_start_palmer,
     calibration_year_end_palmer,
@@ -158,15 +158,15 @@ def test_z_index(
 
     # call the _z_index() function
     zindex = palmer._z_index(
-        palmer_precip_AL01,
-        palmer_pet_AL01,
-        palmer_et_AL01,
-        palmer_pr_AL01,
-        palmer_r_AL01,
-        palmer_ro_AL01,
-        palmer_pro_AL01,
-        palmer_l_AL01,
-        palmer_pl_AL01,
+        palmer_precip,
+        palmer_pet,
+        palmer_et,
+        palmer_pr,
+        palmer_r,
+        palmer_ro,
+        palmer_pro,
+        palmer_l,
+        palmer_pl,
         data_year_start_palmer,
         calibration_year_start_palmer,
         calibration_year_end_palmer,
@@ -175,7 +175,7 @@ def test_z_index(
     # compare against expected results
     np.testing.assert_allclose(
         zindex,
-        palmer_zindex_AL01,
+        palmer_zindex,
         atol=0.01,
         err_msg="Not computing the Z-Index as expected",
     )
@@ -183,37 +183,37 @@ def test_z_index(
 
 # ------------------------------------------------------------------------------------------------------------------
 @pytest.mark.usefixtures(
-    "palmer_alpha_AL01",
-    "palmer_beta_AL01",
-    "palmer_gamma_AL01",
-    "palmer_delta_AL01",
-    "palmer_precip_AL01",
-    "palmer_pet_AL01",
-    "palmer_r_AL01",
-    "palmer_pr_AL01",
-    "palmer_ro_AL01",
-    "palmer_pro_AL01",
-    "palmer_l_AL01",
-    "palmer_pl_AL01",
-    "palmer_K_AL01",
+    "palmer_alpha",
+    "palmer_beta",
+    "palmer_gamma",
+    "palmer_delta",
+    "palmer_precip",
+    "palmer_pet",
+    "palmer_r",
+    "palmer_pr",
+    "palmer_ro",
+    "palmer_pro",
+    "palmer_l",
+    "palmer_pl",
+    "palmer_K",
     "data_year_start_palmer",
     "calibration_year_start_palmer",
     "calibration_year_end_palmer",
 )
 def test_climatic_characteristic(
-    palmer_alpha_AL01,
-    palmer_beta_AL01,
-    palmer_gamma_AL01,
-    palmer_delta_AL01,
-    palmer_precip_AL01,
-    palmer_pet_AL01,
-    palmer_r_AL01,
-    palmer_pr_AL01,
-    palmer_ro_AL01,
-    palmer_pro_AL01,
-    palmer_l_AL01,
-    palmer_pl_AL01,
-    palmer_K_AL01,
+    palmer_alpha,
+    palmer_beta,
+    palmer_gamma,
+    palmer_delta,
+    palmer_precip,
+    palmer_pet,
+    palmer_r,
+    palmer_pr,
+    palmer_ro,
+    palmer_pro,
+    palmer_l,
+    palmer_pl,
+    palmer_K,
     data_year_start_palmer,
     calibration_year_start_palmer,
     calibration_year_end_palmer,
@@ -224,18 +224,18 @@ def test_climatic_characteristic(
 
     # call the _cafec_coefficients() function
     palmer_K = palmer._climatic_characteristic(
-        palmer_alpha_AL01,
-        palmer_beta_AL01,
-        palmer_gamma_AL01,
-        palmer_delta_AL01,
-        palmer_precip_AL01,
-        palmer_pet_AL01,
-        palmer_r_AL01,
-        palmer_pr_AL01,
-        palmer_ro_AL01,
-        palmer_pro_AL01,
-        palmer_l_AL01,
-        palmer_pl_AL01,
+        palmer_alpha,
+        palmer_beta,
+        palmer_gamma,
+        palmer_delta,
+        palmer_precip,
+        palmer_pet,
+        palmer_r,
+        palmer_pr,
+        palmer_ro,
+        palmer_pro,
+        palmer_l,
+        palmer_pl,
         data_year_start_palmer,
         calibration_year_start_palmer,
         calibration_year_end_palmer,
@@ -243,7 +243,7 @@ def test_climatic_characteristic(
 
     # compare against expected results
     np.testing.assert_allclose(
-        palmer_K, palmer_K_AL01, atol=0.01, err_msg="Not computing the K as expected"
+        palmer_K, palmer_K, atol=0.01, err_msg="Not computing the K as expected"
     )
 
 
@@ -255,17 +255,18 @@ def test_cafec_compute_X(palmer_zindex_monthly):
     """
 
     # simulate computation of X at an initial step (with all zeros for intermediate value arrays)
-    Z = palmer_zindex_monthly
     k = 0
-    PPe = np.zeros(Z.shape)
+    PPe = np.zeros(palmer_zindex_monthly.shape)
     X1 = 0.0
     X2 = 0.0
-    PX1 = np.zeros(Z.shape)
-    PX2 = np.zeros(Z.shape)
-    PX3 = np.zeros(Z.shape)
-    X = np.zeros(Z.shape)
-    BT = np.zeros(Z.shape)
-    PX1, PX2, PX3, X, BT = palmer._compute_X(Z, k, PPe, X1, X2, PX1, PX2, PX3, X, BT)
+    PX1 = np.zeros(palmer_zindex_monthly.shape)
+    PX2 = np.zeros(palmer_zindex_monthly.shape)
+    PX3 = np.zeros(palmer_zindex_monthly.shape)
+    X = np.zeros(palmer_zindex_monthly.shape)
+    BT = np.zeros(palmer_zindex_monthly.shape)
+    PX1, PX2, PX3, X, BT = palmer._compute_X(
+        palmer_zindex_monthly, k, PPe, X1, X2, PX1, PX2, PX3, X, BT
+    )
     assert PX1[0] == 0.0, "PX1 value not computed as expected at initial step"
     assert PX2[0] == -0.34, "PX2 value not computed as expected at initial step"
     assert PX3[0] == 0.0, "PX3 value not computed as expected at initial step"
@@ -357,35 +358,35 @@ def test_cafec_coeff_ufunc():
 
 # ------------------------------------------------------------------------------------------------------------------
 @pytest.mark.usefixtures(
-    "palmer_alpha_AL01",
-    "palmer_beta_AL01",
-    "palmer_gamma_AL01",
-    "palmer_delta_AL01",
-    "palmer_pet_AL01",
-    "palmer_et_AL01",
-    "palmer_pr_AL01",
-    "palmer_r_AL01",
-    "palmer_ro_AL01",
-    "palmer_pro_AL01",
-    "palmer_l_AL01",
-    "palmer_pl_AL01",
+    "palmer_alpha",
+    "palmer_beta",
+    "palmer_gamma",
+    "palmer_delta",
+    "palmer_pet",
+    "palmer_et",
+    "palmer_pr",
+    "palmer_r",
+    "palmer_ro",
+    "palmer_pro",
+    "palmer_l",
+    "palmer_pl",
     "data_year_start_palmer",
     "calibration_year_start_palmer",
     "calibration_year_end_palmer",
 )
 def test_cafec_coefficients(
-    palmer_alpha_AL01,
-    palmer_beta_AL01,
-    palmer_gamma_AL01,
-    palmer_delta_AL01,
-    palmer_pet_AL01,
-    palmer_et_AL01,
-    palmer_pr_AL01,
-    palmer_r_AL01,
-    palmer_ro_AL01,
-    palmer_pro_AL01,
-    palmer_l_AL01,
-    palmer_pl_AL01,
+    palmer_alpha,
+    palmer_beta,
+    palmer_gamma,
+    palmer_delta,
+    palmer_pet,
+    palmer_et,
+    palmer_pr,
+    palmer_r,
+    palmer_ro,
+    palmer_pro,
+    palmer_l,
+    palmer_pl,
     data_year_start_palmer,
     calibration_year_start_palmer,
     calibration_year_end_palmer,
@@ -396,14 +397,14 @@ def test_cafec_coefficients(
 
     # call the _cafec_coefficients() function
     alpha, beta, gamma, delta = palmer._cafec_coefficients(
-        palmer_pet_AL01,
-        palmer_et_AL01,
-        palmer_pr_AL01,
-        palmer_r_AL01,
-        palmer_ro_AL01,
-        palmer_pro_AL01,
-        palmer_l_AL01,
-        palmer_pl_AL01,
+        palmer_pet,
+        palmer_et,
+        palmer_pr,
+        palmer_r,
+        palmer_ro,
+        palmer_pro,
+        palmer_l,
+        palmer_pl,
         data_year_start_palmer,
         calibration_year_start_palmer,
         calibration_year_end_palmer,
@@ -411,10 +412,10 @@ def test_cafec_coefficients(
 
     # verify that the function performed as expected
     arrays = [
-        ["Alpha", alpha, palmer_alpha_AL01],
-        ["Beta", beta, palmer_beta_AL01],
-        ["Gamma", gamma, palmer_gamma_AL01],
-        ["Delta", delta, palmer_delta_AL01],
+        ["Alpha", alpha, palmer_alpha],
+        ["Beta", beta, palmer_beta],
+        ["Gamma", gamma, palmer_gamma],
+        ["Delta", delta, palmer_delta],
     ]
 
     for lst in arrays:
@@ -444,28 +445,28 @@ def test_phdi_select_ufunc():
 
 # ------------------------------------------------------------------------------------------------------------------
 @pytest.mark.usefixtures(
-    "palmer_awc_AL01",
-    "palmer_pet_AL01",
-    "palmer_precip_AL01",
-    "palmer_et_AL01",
-    "palmer_pr_AL01",
-    "palmer_r_AL01",
-    "palmer_ro_AL01",
-    "palmer_pro_AL01",
-    "palmer_l_AL01",
-    "palmer_pl_AL01",
+    "palmer_awc",
+    "palmer_pet",
+    "palmer_precip",
+    "palmer_et",
+    "palmer_pr",
+    "palmer_r",
+    "palmer_ro",
+    "palmer_pro",
+    "palmer_l",
+    "palmer_pl",
 )
 def test_water_balance(
-    palmer_awc_AL01,
-    palmer_pet_AL01,
-    palmer_precip_AL01,
-    palmer_et_AL01,
-    palmer_pr_AL01,
-    palmer_r_AL01,
-    palmer_ro_AL01,
-    palmer_pro_AL01,
-    palmer_l_AL01,
-    palmer_pl_AL01,
+    palmer_awc,
+    palmer_pet,
+    palmer_precip,
+    palmer_et,
+    palmer_pr,
+    palmer_r,
+    palmer_ro,
+    palmer_pro,
+    palmer_l,
+    palmer_pl,
 ):
     """
     Test for the palmer._water_balance() function
@@ -473,17 +474,17 @@ def test_water_balance(
 
     # call the water balance accounting function, providing AL-01 climate division input data
     palmer_ET, palmer_PR, palmer_R, palmer_RO, palmer_PRO, palmer_L, palmer_PL = palmer._water_balance(
-        palmer_awc_AL01 + 1.0, palmer_pet_AL01, palmer_precip_AL01
+        palmer_awc + 1.0, palmer_pet, palmer_precip
     )
 
     arrays = [
-        ["ET", palmer_ET, palmer_et_AL01],
-        ["PR", palmer_PR, palmer_pr_AL01],
-        ["R", palmer_R, palmer_r_AL01],
-        ["RO", palmer_RO, palmer_ro_AL01],
-        ["PRO", palmer_PRO, palmer_pro_AL01],
-        ["L", palmer_L, palmer_l_AL01],
-        ["PL", palmer_PL, palmer_pl_AL01],
+        ["ET", palmer_ET, palmer_et],
+        ["PR", palmer_PR, palmer_pr],
+        ["R", palmer_R, palmer_r],
+        ["RO", palmer_RO, palmer_ro],
+        ["PRO", palmer_PRO, palmer_pro],
+        ["L", palmer_L, palmer_l],
+        ["PL", palmer_PL, palmer_pl],
     ]
 
     # verify that the function performed as expected
@@ -500,4 +501,4 @@ def test_water_balance(
         )
 
     # verify that the function can be called with an AWC value of zero (no error == passed test)
-    palmer._water_balance(0.0, palmer_pet_AL01, palmer_precip_AL01)
+    palmer._water_balance(0.0, palmer_pet, palmer_precip)
