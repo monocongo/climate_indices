@@ -96,25 +96,33 @@ def palmer_awc():
 @pytest.fixture(scope="module")
 def precips_mm_monthly():
 
-    return np.load("fixture/precips_mm_monthly.npy")
+    return np.load(
+        os.path.join(os.path.split(__file__)[0], "fixture", "precips_mm_monthly.npy")
+    )
 
 
 @pytest.fixture(scope="module")
 def precips_mm_daily():
 
-    return np.load("fixture/precips_mm_daily.npy")
+    return np.load(
+        os.path.join(os.path.split(__file__)[0], "fixture", "precips_mm_daily.npy")
+    )
 
 
 @pytest.fixture(scope="module")
 def transformed_pearson3():
 
-    return np.load("fixture/pearson3_monthly.npy")
+    return np.load(
+        os.path.join(os.path.split(__file__)[0], "fixture", "pearson3_monthly.npy")
+    )
 
 
 @pytest.fixture(scope="module")
 def transformed_pearson3_monthly_fullperiod():
 
-    return np.load("fixture/pearson3_monthly_full.npy")
+    return np.load(
+        os.path.join(os.path.split(__file__)[0], "fixture", "pearson3_monthly_full.npy")
+    )
 
 
 @pytest.fixture(scope="module")
@@ -126,7 +134,9 @@ def transformed_gamma_monthly():
 
     :return:
     """
-    return np.load("fixture/gamma_monthly.npy")
+    return np.load(
+        os.path.join(os.path.split(__file__)[0], "fixture", "gamma_monthly.npy")
+    )
 
 
 @pytest.fixture(scope="module")
@@ -139,13 +149,17 @@ def transformed_gamma_daily():
     :return:
     """
 
-    return np.load("fixture/gamma_daily.npy")
+    return np.load(
+        os.path.join(os.path.split(__file__)[0], "fixture", "gamma_daily.npy")
+    )
 
 
 @pytest.fixture(scope="module")
 def pet_thornthwaite_mm():
 
-    return np.load("fixture/pet_thornthwaite.npy")
+    return np.load(
+        os.path.join(os.path.split(__file__)[0], "fixture", "pet_thornthwaite.npy")
+    )
 
 
 @pytest.fixture(scope="module")
