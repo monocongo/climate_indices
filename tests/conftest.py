@@ -96,25 +96,25 @@ def palmer_awc():
 @pytest.fixture(scope="module")
 def precips_mm_monthly():
 
-    return np.load("./fixture/precips_mm_monthly.npy")
+    return np.load("fixture/precips_mm_monthly.npy")
 
 
 @pytest.fixture(scope="module")
 def precips_mm_daily():
 
-    return np.load("./fixture/precips_mm_daily.npy")
+    return np.load("fixture/precips_mm_daily.npy")
 
 
 @pytest.fixture(scope="module")
 def transformed_pearson3():
 
-    return np.load("./fixture/pearson3_monthly.npy")
+    return np.load("fixture/pearson3_monthly.npy")
 
 
 @pytest.fixture(scope="module")
 def transformed_pearson3_monthly_fullperiod():
 
-    return np.load("./fixture/pearson3_monthly_full.npy")
+    return np.load("fixture/pearson3_monthly_full.npy")
 
 
 @pytest.fixture(scope="module")
@@ -126,7 +126,7 @@ def transformed_gamma_monthly():
 
     :return:
     """
-    return np.load("./fixture/gamma_monthly.npy")
+    return np.load("fixture/gamma_monthly.npy")
 
 
 @pytest.fixture(scope="module")
@@ -139,190 +139,190 @@ def transformed_gamma_daily():
     :return:
     """
 
-    return np.load("./fixture/gamma_daily.npy")
+    return np.load("fixture/gamma_daily.npy")
 
 
 @pytest.fixture(scope="module")
 def pet_thornthwaite_mm():
 
-    return np.load("./fixture/pet_thornthwaite.npy")
+    return np.load("fixture/pet_thornthwaite.npy")
 
 
 @pytest.fixture(scope="module")
 def temps_celsius():
 
-    return np.load("./fixture/temp_celsius.npy")
+    return np.load("fixture/temp_celsius.npy")
 
 
 @pytest.fixture(scope="module")
 def pnp_6month():
 
-    return np.load("./fixture/pnp_06.npy")
+    return np.load("fixture/pnp_06.npy")
 
 
 @pytest.fixture(scope="module")
 def spei_6_month_gamma():
 
-    return np.load("./fixture/spei_06_gamma.npy")
+    return np.load("fixture/spei_06_gamma.npy")
 
 
 @pytest.fixture(scope="module")
 def spei_6_month_pearson3():
 
-    return np.load("./fixture/spei_06_pearson3.npy")
+    return np.load("fixture/spei_06_pearson3.npy")
 
 
 @pytest.fixture(scope="module")
 def spi_1_month_gamma():
 
-    return np.load("./fixture/spi_01_gamma.npy")
+    return np.load("fixture/spi_01_gamma.npy")
 
 
 @pytest.fixture(scope="module")
 def spi_6_month_gamma():
 
-    return np.load("./fixture/spi_06_gamma.npy")
+    return np.load("fixture/spi_06_gamma.npy")
 
 
 @pytest.fixture(scope="module")
 def spi_6_month_pearson3():
 
-    return np.load("./fixture/spi_06_pearson3.npy")
+    return np.load("fixture/spi_06_pearson3.npy")
 
 
 @pytest.fixture(scope="module")
 def palmer_pet():
 
-    return np.load("./fixture/palmer_pet.npy")
+    return np.load("fixture/palmer_pet.npy")
 
 
 @pytest.fixture(scope="module")
 def palmer_precip():
 
-    return np.load("./fixture/palmer_precip.npy")
+    return np.load("fixture/palmer_precip.npy")
 
 
 @pytest.fixture(scope="module")
 def palmer_et():
 
-    return np.load("./fixture/palmer_et.npy")
+    return np.load("fixture/palmer_et.npy")
 
 
 @pytest.fixture(scope="module")
 def palmer_pr():
 
-    return np.load("./fixture/palmer_pr.npy")
+    return np.load("fixture/palmer_pr.npy")
 
 
 @pytest.fixture(scope="module")
 def palmer_r():
 
-    return np.load("./fixture/palmer_r.npy")
+    return np.load("fixture/palmer_r.npy")
 
 
 @pytest.fixture(scope="module")
 def palmer_ro():
 
-    return np.load("./fixture/palmer_ro.npy")
+    return np.load("fixture/palmer_ro.npy")
 
 
 @pytest.fixture(scope="module")
 def palmer_pro():
 
-    return np.load("./fixture/palmer_pro.npy")
+    return np.load("fixture/palmer_pro.npy")
 
 
 @pytest.fixture(scope="module")
 def palmer_l():
 
-    return np.load("./fixture/palmer_l.npy")
+    return np.load("fixture/palmer_l.npy")
 
 
 @pytest.fixture(scope="module")
 def palmer_pl():
 
-    return np.load("./fixture/palmer_pl.npy")
+    return np.load("fixture/palmer_pl.npy")
 
 
 @pytest.fixture(scope="module")
 def palmer_pdsi_monthly():
 
-    return np.load("./fixture/palmer_pdsi.npy")
+    return np.load("fixture/palmer_pdsi.npy")
 
 
 @pytest.fixture(scope="module")
 def palmer_phdi_monthly():
 
-    return np.load("./fixture/palmer_phdi.npy")
+    return np.load("fixture/palmer_phdi.npy")
 
 
 @pytest.fixture(scope="module")
 def palmer_pmdi_monthly():
 
-    return np.load("./fixture/palmer_pmdi.npy")
+    return np.load("fixture/palmer_pmdi.npy")
 
 
 @pytest.fixture(scope="module")
 def palmer_zindex():
 
-    return np.load("./fixture/palmer_zindex_0.npy")
+    return np.load("fixture/palmer_zindex_0.npy")
 
 
 @pytest.fixture(scope="module")
 def palmer_alpha():
 
-    return np.load("./fixture/palmer_alpha.npy")
+    return np.load("fixture/palmer_alpha.npy")
 
 
 @pytest.fixture(scope="module")
 def palmer_beta():
 
-    return np.load("./fixture/palmer_beta.npy")
+    return np.load("fixture/palmer_beta.npy")
 
 
 @pytest.fixture(scope="module")
 def palmer_gamma():
 
-    return np.load("./fixture/palmer_gamma.npy")
+    return np.load("fixture/palmer_gamma.npy")
 
 
 @pytest.fixture(scope="module")
 def palmer_delta():
 
-    return np.load("./fixture/palmer_delta.npy")
+    return np.load("fixture/palmer_delta.npy")
 
 
 @pytest.fixture(scope="module")
 def palmer_K():
 
-    return np.load("./fixture/palmer_k.npy")
+    return np.load("fixture/palmer_k.npy")
 
 
 @pytest.fixture(scope="module")
 def palmer_zindex_monthly():
 
-    return np.load("./fixture/palmer_zindex_1.npy")
+    return np.load("fixture/palmer_zindex_1.npy")
 
 
 @pytest.fixture(scope="module")
 def palmer_scpdsi_monthly():
 
-    return np.load("./fixture/palmer_scpdsi.npy")
+    return np.load("fixture/palmer_scpdsi.npy")
 
 
 @pytest.fixture(scope="module")
 def palmer_scphdi_monthly():
 
-    return np.load("./fixture/palmer_scphdi.npy")
+    return np.load("fixture/palmer_scphdi.npy")
 
 
 @pytest.fixture(scope="module")
 def palmer_scpmdi_monthly():
 
-    return np.load("./fixture/palmer_scpmdi.npy")
+    return np.load("fixture/palmer_scpmdi.npy")
 
 
 @pytest.fixture(scope="module")
 def palmer_sczindex_monthly():
 
-    return np.load("./fixture/palmer_sczindex.npy")
+    return np.load("fixture/palmer_sczindex.npy")
