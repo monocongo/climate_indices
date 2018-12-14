@@ -94,7 +94,7 @@ Within this directory, there are six subdirectories:
 -  ``climate_indices``: main computational package
 -  ``tests``: unit tests for the main package
 -  ``scripts``: scripts and supporting utility modules used to perform processing of indices computations on climatological datasets (typically grids or US climate division datasets in NetCDF)
--  ``example_inputs``: example/reference datasets that can be used as inputs to the processing scripts
+-  ``example/input``: example/reference datasets that can be used as inputs to the processing scripts
 -  ``notebooks``: Jupyter Notebooks describing the internals of the computational modules
 -  ``docs``: documentation files
 
@@ -291,7 +291,7 @@ US Climate Divisions (all indices)
 """"""""""""""""""""""""""""""""""
 
 ``$ python process_divisions.py --scales 3 6
---input_file ../example_inputs/nclimdiv.nc
+--input_file ../example/input/nclimdiv.nc
 --output_file /data/nclimdiv_indices.nc
 --var_name_precip prcp
 --var_name_temp tavg --var_name_awc awc
@@ -312,7 +312,7 @@ PET monthly
 """"""""""""
 
 ``$ python process_grid.py --index pet --periodicity monthly --netcdf_temp
-../example_inputs/nclimgrid_lowres_tavg.nc --var_name_temp tavg --output_file_base
+../example/input/nclimgrid_lowres_tavg.nc --var_name_temp tavg --output_file_base
 <out_dir>/nclimgrid_lowres``
 
 The above command will compute PET (potential evapotranspiration) using the
@@ -325,7 +325,7 @@ SPI daily
 """"""""""
 
 ``$ python process_grid.py --index spi  --periodicity daily --netcdf_precip
-../example_inputs/cmorph_lowres_daily_conus_prcp.nc --var_name_precip
+../example/input/cmorph_lowres_daily_conus_prcp.nc --var_name_precip
 prcp --output_file_base <out_dir>/cmorph_lowres_daily_conus --scales 30 90
 --calibration_start_year 1998 --calibration_end_year 2016``
 
@@ -343,7 +343,7 @@ SPI monthly
 """"""""""""
 
 ``$ python process_grid.py --index spi --periodicity monthly --netcdf_precip
-../example_inputs/nclimgrid_lowres_prcp.nc --var_name_precip  prcp
+../example/input/nclimgrid_lowres_prcp.nc --var_name_precip  prcp
 --output_file_base <out_dir>/nclimgrid_lowres --scales 6 12
 --calibration_start_year 1951 --calibration_end_year 2010``
 
@@ -360,8 +360,8 @@ SPEI monthly
 """""""""""""
 
 ``$ python process_grid.py --index spei --periodicity monthly --netcdf_precip
-../example_inputs/nclimgrid_lowres_prcp.nc --var_name_precip  prcp --netcdf_pet
-../example_inputs/nclimgrid_lowres_pet.nc --var_name_pet pet --output_file_base
+../example/input/nclimgrid_lowres_prcp.nc --var_name_precip  prcp --netcdf_pet
+../example/input/nclimgrid_lowres_pet.nc --var_name_pet pet --output_file_base
 <out_dir>/nclimgrid_lowres --scales 9 18 --calibration_start_year 1951 --calibration_end_year 2010``
 
 The above command will compute SPEI (standardized precipitation evapotranspiration index,
@@ -375,9 +375,9 @@ datasets will be computed at 9-month and 18-month timescales. The output files w
 Palmers monthly
 """"""""""""""""
 ``$ python process_grid.py --index palmers --periodicity monthly --netcdf_precip
-../example_inputs/nclimgrid_lowres_prcp.nc --var_name_precip prcp --netcdf_pet
-../example_inputs/nclimgrid_lowres_pet.nc --var_name_pet pet --netcdf_awc
-../example_inputs/nclimgrid_lowres_soil.nc  --var_name_awc awc --output_file_base
+../example/input/nclimgrid_lowres_prcp.nc --var_name_precip prcp --netcdf_pet
+../example/input/nclimgrid_lowres_pet.nc --var_name_pet pet --netcdf_awc
+../example/input/nclimgrid_lowres_soil.nc  --var_name_awc awc --output_file_base
 <out_dir>/nclimgrid_lowres --calibration_start_year 1951 --calibration_end_year 2010``
 
 The above command will compute the Palmer drought indices: PDSI (original Palmer Drought Severity Index),
