@@ -9,11 +9,12 @@ exclude_lines =
     raise NotImplementedError
     if 0:
     if __name__ == .__main__.:
-    
+
 ignore_errors = True
 
 omit =
+    docs/*
     example_inputs/*
+    notebooks/*
     scripts/*
     tests/*
-    
