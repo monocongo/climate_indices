@@ -28,7 +28,7 @@ _KEY_RESULT_ZINDEX = "result_array_zindex"
 # global dictionary to contain shared arrays for use by worker processes
 _global_shared_arrays = {}
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # set up a basic, global _logger which will write to the console as standard error
 logging.basicConfig(
     level=logging.INFO,
@@ -38,7 +38,7 @@ logging.basicConfig(
 _logger = logging.getLogger(__name__)
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 def init_worker(arrays_and_shapes):
     """
     Initialization function that assigns named arrays into the global variable.
@@ -54,7 +54,7 @@ def init_worker(arrays_and_shapes):
     _global_shared_arrays = arrays_and_shapes
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 def _validate_args(args):
     """
     Validate the processing settings to confirm that proper argument combinations have been provided.
@@ -304,7 +304,7 @@ def _validate_args(args):
             raise ValueError(message)
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 def _get_scale_increment(args_dict):
 
     if args_dict["periodicity"] == compute.Periodicity.daily:
@@ -319,7 +319,7 @@ def _get_scale_increment(args_dict):
     return scale_increment
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 def _log_status(args_dict):
 
     # get the scale increment for use in later log messages
@@ -353,7 +353,7 @@ def _log_status(args_dict):
     return True
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 def _build_arguments(keyword_args):
     """
     Builds a dictionary of function arguments appropriate to the index to be computed.
@@ -402,7 +402,7 @@ def _build_arguments(keyword_args):
     return function_arguments
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 def _get_variable_attributes(args_dict):
 
     if args_dict["index"] == "spi":
@@ -464,7 +464,7 @@ def _get_variable_attributes(args_dict):
     return var_name, attrs
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 def _compute_write_index(keyword_arguments):
     """
     Computes a climate index and writes the result into a corresponding NetCDF.
@@ -841,7 +841,7 @@ def _compute_write_index(keyword_arguments):
         return netcdf_file_name, output_var_name
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 def _pet(temperatures, latitude, parameters):
 
     return indices.pet(
@@ -851,7 +851,7 @@ def _pet(temperatures, latitude, parameters):
     )
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 def _spi(precips, parameters):
 
     return indices.spi(
@@ -865,7 +865,7 @@ def _spi(precips, parameters):
     )
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 def _spei(precips, pet_mm, parameters):
 
     return indices.spei(
@@ -880,7 +880,7 @@ def _spei(precips, pet_mm, parameters):
     )
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 def _palmers(precips, pet_mm, awc, parameters):
 
     return indices.scpdsi(
@@ -893,7 +893,7 @@ def _palmers(precips, pet_mm, awc, parameters):
     )
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 def _pnp(precips, parameters):
 
     return indices.percentage_of_normal(
@@ -906,14 +906,14 @@ def _pnp(precips, parameters):
     )
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 def _init_worker(shared_arrays_dict):
 
     global _global_shared_arrays
     _global_shared_arrays = shared_arrays_dict
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 def _parallel_process(index, arrays_dict, input_var_names, output_var_name, args):
     """
     Like numpy.apply_along_axis(), but takes advantage of multiple cores.
@@ -1042,16 +1042,21 @@ def _parallel_process(index, arrays_dict, input_var_names, output_var_name, args
             pool.map(_unpacking_apply_along_axis, chunk_params)
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 def _unpacking_apply_along_axis(params):
     """
-    Like numpy.apply_along_axis(), but and with arguments in a dict
-    instead.
+    Like numpy.apply_along_axis(), but and with arguments in a dict instead.
+    Applicable for applying a function across subarrays of a single input array.
 
-    This function is useful with multiprocessing.Pool().map(): (1)
-    map() only handles functions that take a single argument, and (2)
-    this function can generally be imported from a module, as required
-    by map().
+    This function is useful with multiprocessing.Pool().map(): (1) map() only
+    handles functions that take a single argument, and (2) this function can
+    generally be imported from a module, as required by map().
+
+    :param dict params: dictionary of parameters including a function name,
+        "func1d", start and stop indices for specifying the subarray to which
+        the function should be applied, "sub_array_start" and "sub_array_end",
+        a dictionary of arguments to be passed to the function, "args", and
+        the key name of the shared array for output values, "output_var_name".
     """
     func1d = params["func1d"]
     start_index = params["sub_array_start"]
@@ -1069,16 +1074,21 @@ def _unpacking_apply_along_axis(params):
     np.copyto(np_output_array[start_index:end_index], computed_array)
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 def _unpacking_apply_along_axis_double(params):
     """
-    Like numpy.apply_along_axis(), but and with arguments in a dict
-    instead.
+    Like numpy.apply_along_axis(), but and with arguments in a dict instead.
+    Applicable for applying a function across subarrays of two input arrays.
 
-    This function is useful with multiprocessing.Pool().map(): (1)
-    map() only handles functions that take a single argument, and (2)
-    this function can generally be imported from a module, as required
-    by map().
+    This function is useful with multiprocessing.Pool().map(): (1) map() only
+    handles functions that take a single argument, and (2) this function can
+    generally be imported from a module, as required by map().
+
+    :param dict params: dictionary of parameters including a function name,
+        "func1d", start and stop indices for specifying the subarray to which
+        the function should be applied, "sub_array_start" and "sub_array_end",
+        a dictionary of arguments to be passed to the function, "args", and
+        the key name of the shared array for output values, "output_var_name".
     """
 
     func1d = params["func1d"]
@@ -1119,16 +1129,24 @@ def _unpacking_apply_along_axis_double(params):
                 computed_array[i, j] = func1d(x[j], y[j], parameters=params["args"])
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 def _unpacking_apply_along_axis_palmers(params):
     """
-    Like numpy.apply_along_axis(), but and with arguments in a dict
-    instead.
+    Like numpy.apply_along_axis(), but and with arguments in a dict instead.
+    Applicable for applying a function across subarrays of Palmer-specific
+    input arrays.
 
-    This function is useful with multiprocessing.Pool().map(): (1)
-    map() only handles functions that take a single argument, and (2)
-    this function can generally be imported from a module, as required
-    by map().
+    This function is useful with multiprocessing.Pool().map(): (1) map() only
+    handles functions that take a single argument, and (2) this function can
+    generally be imported from a module, as required by map().
+
+    :param dict params: dictionary of parameters including a function name,
+        "func1d", start and stop indices for specifying the subarray to which
+        the function should be applied, "sub_array_start" and "sub_array_end",
+        the variable names used for precipitation, PET, and AWC arrays,
+        "var_name_precip", "var_name_pet", and "var_name_awc", a dictionary
+        of arguments to be passed to the function, "args", and the key name of
+        the shared array for output values, "output_var_name".
     """
     func1d = params["func1d"]
     start_index = params["sub_array_start"]
@@ -1185,16 +1203,16 @@ def _unpacking_apply_along_axis_palmers(params):
             )
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 def _prepare_file(netcdf_file, var_name):
     """
-    Determine if the NetCDF file has the expected lat, lon, and time dimensions, and if not
-    correctly ordered then create a temporary NetCDF with dimensions in (lat, lon, time) order,
-    otherwise just return the input NetCDF unchanged.
+    Determine if the NetCDF file has the expected lat, lon, and time dimensions,
+    and if not correctly ordered then create a temporary NetCDF with dimensions
+    in (lat, lon, time) order, otherwise just return the input NetCDF unchanged.
 
     :param str netcdf_file:
     :param str var_name:
-    :return:
+    :return: name of the NetCDF file containing correct dimensions
     """
 
     # make sure we have lat, lon, and time as variable dimensions, regardless of order
@@ -1229,10 +1247,11 @@ def _prepare_file(netcdf_file, var_name):
     return netcdf_file
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 if __name__ == "__main__":
     """
-    This script is used to perform climate indices processing on gridded datasets in NetCDF.
+    This script is used to perform climate indices processing on NetCDF 
+    gridded datasets.
 
     Example command line arguments for SPI only using monthly precipitation input:
 
