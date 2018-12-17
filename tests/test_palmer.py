@@ -1,8 +1,8 @@
 import logging
-import numpy as np
-import unittest
 
-from tests import fixtures
+import numpy as np
+import pytest
+
 from climate_indices import palmer
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -10,335 +10,495 @@ from climate_indices import palmer
 logging.disable(logging.CRITICAL)
 
 
-# ----------------------------------------------------------------------------------------------------------------------
-class PalmerTestCase(fixtures.FixturesTestCase):
+"""
+Tests for `palmer.py`.
+"""
+
+
+# ---------------------------------------------------------------------------------------
+@pytest.mark.usefixtures(
+    "precips_mm_monthly",
+    "pet_thornthwaite_mm",
+    "awc_inches",
+    "data_year_start_monthly",
+    "calibration_year_start_monthly",
+    "calibration_year_end_monthly",
+    "palmer_pdsi_monthly",
+    "palmer_phdi_monthly",
+    "palmer_pmdi_monthly",
+    "palmer_zindex_monthly",
+)
+def test_pdsi(
+    precips_mm_monthly,
+    pet_thornthwaite_mm,
+    awc_inches,
+    data_year_start_monthly,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+    palmer_pdsi_monthly,
+    palmer_phdi_monthly,
+    palmer_pmdi_monthly,
+    palmer_zindex_monthly,
+):
+
+    pdsi, phdi, pmdi, zindex = palmer.pdsi(
+        precips_mm_monthly,
+        pet_thornthwaite_mm,
+        awc_inches,
+        data_year_start_monthly,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
+    )
+
+    np.testing.assert_allclose(
+        pdsi,
+        palmer_pdsi_monthly,
+        atol=0.001,
+        equal_nan=True,
+        err_msg="PDSI not computed as expected from monthly inputs",
+    )
+
+    np.testing.assert_allclose(
+        phdi,
+        palmer_phdi_monthly,
+        atol=0.001,
+        equal_nan=True,
+        err_msg="PHDI not computed as expected from monthly inputs",
+    )
+
+    np.testing.assert_allclose(
+        pmdi,
+        palmer_pmdi_monthly,
+        atol=0.001,
+        equal_nan=True,
+        err_msg="PMDI not computed as expected from monthly inputs",
+    )
+
+    np.testing.assert_allclose(
+        zindex,
+        palmer_zindex_monthly,
+        atol=0.001,
+        equal_nan=True,
+        err_msg="Z-Index not computed as expected from monthly inputs",
+    )
+
+
+# ---------------------------------------------------------------------------------------
+@pytest.mark.usefixtures(
+    "palmer_pdsi_monthly",
+    "palmer_phdi_monthly",
+    "palmer_pmdi_monthly",
+    "palmer_zindex_monthly",
+)
+def test_pdsi_from_zindex(
+    palmer_pdsi_monthly, palmer_phdi_monthly, palmer_pmdi_monthly, palmer_zindex_monthly
+):
+
+    pdsi, phdi, pmdi = palmer._pdsi_from_zindex(palmer_zindex_monthly)
+
+    np.testing.assert_allclose(
+        pdsi,
+        palmer_pdsi_monthly,
+        atol=0.001,
+        equal_nan=True,
+        err_msg="PDSI not computed as expected from monthly Z-Index fixture",
+    )
+
+    np.testing.assert_allclose(
+        phdi,
+        palmer_phdi_monthly,
+        atol=0.01,
+        equal_nan=True,
+        err_msg="PHDI not computed as expected from monthly Z-Index fixture",
+    )
+
+    np.testing.assert_allclose(
+        pmdi,
+        palmer_pmdi_monthly,
+        atol=0.01,
+        equal_nan=True,
+        err_msg="PMDI not computed as expected from monthly Z-Index fixture",
+    )
+
+
+# ------------------------------------------------------------------------------------------------------------------
+@pytest.mark.usefixtures(
+    "palmer_precip",
+    "palmer_pet",
+    "palmer_et",
+    "palmer_pr",
+    "palmer_r",
+    "palmer_ro",
+    "palmer_pro",
+    "palmer_l",
+    "palmer_pl",
+    "palmer_zindex",
+    "data_year_start_palmer",
+    "calibration_year_start_palmer",
+    "calibration_year_end_palmer",
+)
+def test_z_index(
+    palmer_precip,
+    palmer_pet,
+    palmer_et,
+    palmer_pr,
+    palmer_r,
+    palmer_ro,
+    palmer_pro,
+    palmer_l,
+    palmer_pl,
+    palmer_zindex,
+    data_year_start_palmer,
+    calibration_year_start_palmer,
+    calibration_year_end_palmer,
+):
     """
-    Tests for `palmer.py`.
+    Test for the palmer._z_index() function
     """
 
-    # ---------------------------------------------------------------------------------------
-    def test_pdsi(self):
+    # call the _z_index() function
+    zindex = palmer._z_index(
+        palmer_precip,
+        palmer_pet,
+        palmer_et,
+        palmer_pr,
+        palmer_r,
+        palmer_ro,
+        palmer_pro,
+        palmer_l,
+        palmer_pl,
+        data_year_start_palmer,
+        calibration_year_start_palmer,
+        calibration_year_end_palmer,
+    )
 
-        pdsi, phdi, pmdi, zindex = palmer.pdsi(
-            self.fixture_precips_mm_monthly,
-            self.fixture_pet_mm,
-            self.fixture_awc_inches,
-            self.fixture_data_year_start_monthly,
-            self.fixture_calibration_year_start_monthly,
-            self.fixture_calibration_year_end_monthly,
-        )
+    # compare against expected results
+    np.testing.assert_allclose(
+        zindex,
+        palmer_zindex,
+        atol=0.01,
+        err_msg="Not computing the Z-Index as expected",
+    )
 
-        np.testing.assert_allclose(
-            pdsi,
-            self.fixture_palmer_pdsi_monthly,
-            atol=0.001,
-            equal_nan=True,
-            err_msg="PDSI not computed as expected from monthly inputs",
-        )
 
-        np.testing.assert_allclose(
-            phdi,
-            self.fixture_palmer_phdi_monthly,
-            atol=0.001,
-            equal_nan=True,
-            err_msg="PHDI not computed as expected from monthly inputs",
-        )
+# ------------------------------------------------------------------------------------------------------------------
+@pytest.mark.usefixtures(
+    "palmer_alpha",
+    "palmer_beta",
+    "palmer_gamma",
+    "palmer_delta",
+    "palmer_precip",
+    "palmer_pet",
+    "palmer_r",
+    "palmer_pr",
+    "palmer_ro",
+    "palmer_pro",
+    "palmer_l",
+    "palmer_pl",
+    "palmer_K",
+    "data_year_start_palmer",
+    "calibration_year_start_palmer",
+    "calibration_year_end_palmer",
+)
+def test_climatic_characteristic(
+    palmer_alpha,
+    palmer_beta,
+    palmer_gamma,
+    palmer_delta,
+    palmer_precip,
+    palmer_pet,
+    palmer_r,
+    palmer_pr,
+    palmer_ro,
+    palmer_pro,
+    palmer_l,
+    palmer_pl,
+    palmer_K,
+    data_year_start_palmer,
+    calibration_year_start_palmer,
+    calibration_year_end_palmer,
+):
+    """
+    Test for the palmer._climatic_characteristic() function
+    """
 
-        np.testing.assert_allclose(
-            pmdi,
-            self.fixture_palmer_pmdi_monthly,
-            atol=0.001,
-            equal_nan=True,
-            err_msg="PMDI not computed as expected from monthly inputs",
-        )
+    # call the _cafec_coefficients() function
+    palmer_K = palmer._climatic_characteristic(
+        palmer_alpha,
+        palmer_beta,
+        palmer_gamma,
+        palmer_delta,
+        palmer_precip,
+        palmer_pet,
+        palmer_r,
+        palmer_pr,
+        palmer_ro,
+        palmer_pro,
+        palmer_l,
+        palmer_pl,
+        data_year_start_palmer,
+        calibration_year_start_palmer,
+        calibration_year_end_palmer,
+    )
 
-        np.testing.assert_allclose(
-            zindex,
-            self.fixture_palmer_zindex_monthly,
-            atol=0.001,
-            equal_nan=True,
-            err_msg="Z-Index not computed as expected from monthly inputs",
-        )
+    # compare against expected results
+    np.testing.assert_allclose(
+        palmer_K, palmer_K, atol=0.01, err_msg="Not computing the K as expected"
+    )
 
-    # ---------------------------------------------------------------------------------------
-    def test_pdsi_from_zindex(self):
 
-        pdsi, phdi, pmdi = palmer._pdsi_from_zindex(self.fixture_palmer_zindex_monthly)
+# ------------------------------------------------------------------------------------------------------------------
+@pytest.mark.usefixtures("palmer_zindex_monthly")
+def test_cafec_compute_X(palmer_zindex_monthly):
+    """
+    Test for the palmer._compute_X() function
+    """
 
-        np.testing.assert_allclose(
-            pdsi,
-            self.fixture_palmer_pdsi_monthly,
-            atol=0.001,
-            equal_nan=True,
-            err_msg="PDSI not computed as expected from monthly Z-Index fixture",
-        )
+    # simulate computation of X at an initial step (with all zeros for intermediate value arrays)
+    k = 0
+    PPe = np.zeros(palmer_zindex_monthly.shape)
+    X1 = 0.0
+    X2 = 0.0
+    PX1 = np.zeros(palmer_zindex_monthly.shape)
+    PX2 = np.zeros(palmer_zindex_monthly.shape)
+    PX3 = np.zeros(palmer_zindex_monthly.shape)
+    X = np.zeros(palmer_zindex_monthly.shape)
+    BT = np.zeros(palmer_zindex_monthly.shape)
+    PX1, PX2, PX3, X, BT = palmer._compute_X(
+        palmer_zindex_monthly, k, PPe, X1, X2, PX1, PX2, PX3, X, BT
+    )
+    assert PX1[0] == 0.0, "PX1 value not computed as expected at initial step"
+    assert PX2[0] == -0.34, "PX2 value not computed as expected at initial step"
+    assert PX3[0] == 0.0, "PX3 value not computed as expected at initial step"
+    assert X[0] == -0.34, "X value not computed as expected at initial step"
+    assert BT[0] == 2, "Backtrack value not computed as expected at initial step"
 
-        np.testing.assert_allclose(
-            phdi,
-            self.fixture_palmer_phdi_monthly,
-            atol=0.01,
-            equal_nan=True,
-            err_msg="PHDI not computed as expected from monthly Z-Index fixture",
-        )
 
-        np.testing.assert_allclose(
-            pmdi,
-            self.fixture_palmer_pmdi_monthly,
-            atol=0.01,
-            equal_nan=True,
-            err_msg="PMDI not computed as expected from monthly Z-Index fixture",
-        )
+# ------------------------------------------------------------------------------------------------------------------
+@pytest.mark.usefixtures(
+    "precips_mm_monthly",
+    "pet_thornthwaite_mm",
+    "awc_inches",
+    "data_year_start_monthly",
+    "calibration_year_start_monthly",
+    "calibration_year_end_monthly",
+    "palmer_scpdsi_monthly",
+    "palmer_scphdi_monthly",
+    "palmer_scpmdi_monthly",
+    "palmer_sczindex_monthly",
+)
+def test_scpdsi(
+    precips_mm_monthly,
+    pet_thornthwaite_mm,
+    awc_inches,
+    data_year_start_monthly,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+    palmer_scpdsi_monthly,
+    palmer_scphdi_monthly,
+    palmer_scpmdi_monthly,
+    palmer_sczindex_monthly,
+):
+    """
+    Test for the palmer.scpdsi() function
+    """
 
-    # ------------------------------------------------------------------------------------------------------------------
-    def test_z_index(self):
-        """
-        Test for the palmer._z_index() function
-        """
+    scpdsi, pdsi, phdi, pmdi, zindex = palmer.scpdsi(
+        precips_mm_monthly,
+        pet_thornthwaite_mm,
+        awc_inches,
+        data_year_start_monthly,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
+    )
 
-        # call the _z_index() function
-        zindex = palmer._z_index(
-            self.fixture_palmer_precip_AL01,
-            self.fixture_palmer_pet_AL01,
-            self.fixture_palmer_et_AL01,
-            self.fixture_palmer_pr_AL01,
-            self.fixture_palmer_r_AL01,
-            self.fixture_palmer_ro_AL01,
-            self.fixture_palmer_pro_AL01,
-            self.fixture_palmer_l_AL01,
-            self.fixture_palmer_pl_AL01,
-            self.fixture_palmer_data_begin_year,
-            self.fixture_palmer_calibration_begin_year,
-            self.fixture_palmer_calibration_end_year,
-        )
+    np.testing.assert_allclose(
+        scpdsi,
+        palmer_scpdsi_monthly,
+        atol=0.001,
+        equal_nan=True,
+        err_msg="PDSI not computed as expected from monthly inputs",
+    )
+
+    np.testing.assert_allclose(
+        phdi,
+        palmer_scphdi_monthly,
+        atol=0.001,
+        equal_nan=True,
+        err_msg="PHDI not computed as expected from monthly inputs",
+    )
+
+    np.testing.assert_allclose(
+        pmdi,
+        palmer_scpmdi_monthly,
+        atol=0.001,
+        equal_nan=True,
+        err_msg="PMDI not computed as expected from monthly inputs",
+    )
+
+    np.testing.assert_allclose(
+        zindex,
+        palmer_sczindex_monthly,
+        atol=0.001,
+        equal_nan=True,
+        err_msg="Z-Index not computed as expected from monthly inputs",
+    )
+
+
+# ------------------------------------------------------------------------------------------------------------------
+def test_cafec_coeff_ufunc():
+    """
+    Test for the palmer._cafec_coeff_ufunc() function
+    """
+
+    assert palmer._cafec_coeff_ufunc(0, 0) == 1
+    assert palmer._cafec_coeff_ufunc(5, 0) == 0
+    assert palmer._cafec_coeff_ufunc(5, 10) == 0.5
+
+
+# ------------------------------------------------------------------------------------------------------------------
+@pytest.mark.usefixtures(
+    "palmer_alpha",
+    "palmer_beta",
+    "palmer_gamma",
+    "palmer_delta",
+    "palmer_pet",
+    "palmer_et",
+    "palmer_pr",
+    "palmer_r",
+    "palmer_ro",
+    "palmer_pro",
+    "palmer_l",
+    "palmer_pl",
+    "data_year_start_palmer",
+    "calibration_year_start_palmer",
+    "calibration_year_end_palmer",
+)
+def test_cafec_coefficients(
+    palmer_alpha,
+    palmer_beta,
+    palmer_gamma,
+    palmer_delta,
+    palmer_pet,
+    palmer_et,
+    palmer_pr,
+    palmer_r,
+    palmer_ro,
+    palmer_pro,
+    palmer_l,
+    palmer_pl,
+    data_year_start_palmer,
+    calibration_year_start_palmer,
+    calibration_year_end_palmer,
+):
+    """
+    Test for the palmer._cafec_coefficients() function
+    """
+
+    # call the _cafec_coefficients() function
+    alpha, beta, gamma, delta = palmer._cafec_coefficients(
+        palmer_pet,
+        palmer_et,
+        palmer_pr,
+        palmer_r,
+        palmer_ro,
+        palmer_pro,
+        palmer_l,
+        palmer_pl,
+        data_year_start_palmer,
+        calibration_year_start_palmer,
+        calibration_year_end_palmer,
+    )
+
+    # verify that the function performed as expected
+    arrays = [
+        ["Alpha", alpha, palmer_alpha],
+        ["Beta", beta, palmer_beta],
+        ["Gamma", gamma, palmer_gamma],
+        ["Delta", delta, palmer_delta],
+    ]
+
+    for lst in arrays:
+
+        name = lst[0]
+        actual = lst[1]
+        expected = lst[2]
 
         # compare against expected results
         np.testing.assert_allclose(
-            zindex,
-            self.fixture_palmer_zindex_AL01,
+            actual,
+            expected,
             atol=0.01,
-            err_msg="Not computing the Z-Index as expected",
+            err_msg="Not computing the {0} as expected".format(name),
         )
 
-    # ------------------------------------------------------------------------------------------------------------------
-    def test_climatic_characteristic(self):
-        """
-        Test for the palmer._climatic_characteristic() function
-        """
 
-        # call the _cafec_coefficients() function
-        palmer_K = palmer._climatic_characteristic(
-            self.fixture_palmer_alpha_AL01,
-            self.fixture_palmer_beta_AL01,
-            self.fixture_palmer_gamma_AL01,
-            self.fixture_palmer_delta_AL01,
-            self.fixture_palmer_precip_AL01,
-            self.fixture_palmer_pet_AL01,
-            self.fixture_palmer_r_AL01,
-            self.fixture_palmer_pr_AL01,
-            self.fixture_palmer_ro_AL01,
-            self.fixture_palmer_pro_AL01,
-            self.fixture_palmer_l_AL01,
-            self.fixture_palmer_pl_AL01,
-            self.fixture_palmer_data_begin_year,
-            self.fixture_palmer_calibration_begin_year,
-            self.fixture_palmer_calibration_end_year,
-        )
+# ------------------------------------------------------------------------------------------------------------------
+def test_phdi_select_ufunc():
+    """
+    Test for the palmer._phdi_select_ufunc() function
+    """
 
-        # compare against expected results
+    assert palmer._phdi_select_ufunc(0, 5) == 5
+    assert palmer._phdi_select_ufunc(8, 5) == 8
+
+
+# ------------------------------------------------------------------------------------------------------------------
+@pytest.mark.usefixtures(
+    "palmer_awc",
+    "palmer_pet",
+    "palmer_precip",
+    "palmer_et",
+    "palmer_pr",
+    "palmer_r",
+    "palmer_ro",
+    "palmer_pro",
+    "palmer_l",
+    "palmer_pl",
+)
+def test_water_balance(
+    palmer_awc,
+    palmer_pet,
+    palmer_precip,
+    palmer_et,
+    palmer_pr,
+    palmer_r,
+    palmer_ro,
+    palmer_pro,
+    palmer_l,
+    palmer_pl,
+):
+    """
+    Test for the palmer._water_balance() function
+    """
+
+    # call the water balance accounting function, providing AL-01 climate division input data
+    palmer_ET, palmer_PR, palmer_R, palmer_RO, palmer_PRO, palmer_L, palmer_PL = palmer._water_balance(
+        palmer_awc + 1.0, palmer_pet, palmer_precip
+    )
+
+    arrays = [
+        ["ET", palmer_ET, palmer_et],
+        ["PR", palmer_PR, palmer_pr],
+        ["R", palmer_R, palmer_r],
+        ["RO", palmer_RO, palmer_ro],
+        ["PRO", palmer_PRO, palmer_pro],
+        ["L", palmer_L, palmer_l],
+        ["PL", palmer_PL, palmer_pl],
+    ]
+
+    # verify that the function performed as expected
+    for lst in arrays:
+        name = lst[0]
+        actual = lst[1]
+        expected = lst[2]
+
         np.testing.assert_allclose(
-            palmer_K,
-            self.fixture_palmer_K_AL01,
+            actual,
+            expected,
             atol=0.01,
-            err_msg="Not computing the K as expected",
+            err_msg="Not computing the {0} as expected".format(name),
         )
 
-    # ------------------------------------------------------------------------------------------------------------------
-    def test_cafec_compute_X(self):
-        """
-        Test for the palmer._compute_X() function
-        """
-
-        # simulate computation of X at an initial step (with all zeros for intermediate value arrays)
-        Z = self.fixture_palmer_zindex_monthly
-        k = 0
-        PPe = np.zeros(Z.shape)
-        X1 = 0.0
-        X2 = 0.0
-        PX1 = np.zeros(Z.shape)
-        PX2 = np.zeros(Z.shape)
-        PX3 = np.zeros(Z.shape)
-        X = np.zeros(Z.shape)
-        BT = np.zeros(Z.shape)
-        PX1, PX2, PX3, X, BT = palmer._compute_X(
-            Z, k, PPe, X1, X2, PX1, PX2, PX3, X, BT
-        )
-        self.assertEqual(
-            PX1[0], 0.0, "PX1 value not computed as expected at initial step"
-        )
-        self.assertEqual(
-            PX2[0], -0.34, "PX2 value not computed as expected at initial step"
-        )
-        self.assertEqual(
-            PX3[0], 0.0, "PX3 value not computed as expected at initial step"
-        )
-        self.assertEqual(
-            X[0], -0.34, "X value not computed as expected at initial step"
-        )
-        self.assertEqual(
-            BT[0], 2, "Backtrack value not computed as expected at initial step"
-        )
-
-    # ------------------------------------------------------------------------------------------------------------------
-    def test_scpdsi(self):
-        """
-        Test for the palmer.scpdsi() function
-        """
-
-        scpdsi, pdsi, phdi, pmdi, zindex = palmer.scpdsi(
-            self.fixture_precips_mm_monthly,
-            self.fixture_pet_mm,
-            self.fixture_awc_inches,
-            self.fixture_data_year_start_monthly,
-            self.fixture_calibration_year_start_monthly,
-            self.fixture_calibration_year_end_monthly,
-        )
-
-        np.testing.assert_allclose(
-            scpdsi,
-            self.fixture_palmer_scpdsi_monthly,
-            atol=0.001,
-            equal_nan=True,
-            err_msg="PDSI not computed as expected from monthly inputs",
-        )
-
-        np.testing.assert_allclose(
-            phdi,
-            self.fixture_palmer_scphdi_monthly,
-            atol=0.001,
-            equal_nan=True,
-            err_msg="PHDI not computed as expected from monthly inputs",
-        )
-
-        np.testing.assert_allclose(
-            pmdi,
-            self.fixture_palmer_scpmdi_monthly,
-            atol=0.001,
-            equal_nan=True,
-            err_msg="PMDI not computed as expected from monthly inputs",
-        )
-
-        np.testing.assert_allclose(
-            zindex,
-            self.fixture_palmer_sczindex_monthly,
-            atol=0.001,
-            equal_nan=True,
-            err_msg="Z-Index not computed as expected from monthly inputs",
-        )
-
-    # ------------------------------------------------------------------------------------------------------------------
-    def test_cafec_coeff_ufunc(self):
-        """
-        Test for the palmer._cafec_coeff_ufunc() function
-        """
-
-        self.assertEqual(palmer._cafec_coeff_ufunc(0, 0), 1)
-        self.assertEqual(palmer._cafec_coeff_ufunc(5, 0), 0)
-        self.assertEqual(palmer._cafec_coeff_ufunc(5, 10), 0.5)
-
-    # ------------------------------------------------------------------------------------------------------------------
-    def test_cafec_coefficients(self):
-        """
-        Test for the palmer._cafec_coefficients() function
-        """
-
-        # call the _cafec_coefficients() function
-        alpha, beta, gamma, delta = palmer._cafec_coefficients(
-            self.fixture_palmer_pet_AL01,
-            self.fixture_palmer_et_AL01,
-            self.fixture_palmer_pr_AL01,
-            self.fixture_palmer_r_AL01,
-            self.fixture_palmer_ro_AL01,
-            self.fixture_palmer_pro_AL01,
-            self.fixture_palmer_l_AL01,
-            self.fixture_palmer_pl_AL01,
-            self.fixture_palmer_data_begin_year,
-            self.fixture_palmer_calibration_begin_year,
-            self.fixture_palmer_calibration_end_year,
-        )
-
-        # verify that the function performed as expected
-        arys = [
-            ["Alpha", alpha, self.fixture_palmer_alpha_AL01],
-            ["Beta", beta, self.fixture_palmer_beta_AL01],
-            ["Gamma", gamma, self.fixture_palmer_gamma_AL01],
-            ["Delta", delta, self.fixture_palmer_delta_AL01],
-        ]
-
-        for lst in arys:
-
-            name = lst[0]
-            actual = lst[1]
-            expected = lst[2]
-
-            # compare against expected results
-            np.testing.assert_allclose(
-                actual,
-                expected,
-                atol=0.01,
-                err_msg="Not computing the {0} as expected".format(name),
-            )
-
-    # ------------------------------------------------------------------------------------------------------------------
-    def test_phdi_select_ufunc(self):
-        """
-        Test for the palmer._phdi_select_ufunc() function
-        """
-
-        self.assertEqual(palmer._phdi_select_ufunc(0, 5), 5)
-        self.assertEqual(palmer._phdi_select_ufunc(8, 5), 8)
-
-    # ------------------------------------------------------------------------------------------------------------------
-    def test_water_balance(self):
-        """
-        Test for the palmer._water_balance() function
-        """
-
-        # call the water balance accounting function, providing AL-01 climate division input data
-        palmer_ET, palmer_PR, palmer_R, palmer_RO, palmer_PRO, palmer_L, palmer_PL = palmer._water_balance(
-            self.fixture_palmer_awc_AL01 + 1.0,
-            self.fixture_palmer_pet_AL01,
-            self.fixture_palmer_precip_AL01,
-        )
-
-        arys = [
-            ["ET", palmer_ET, self.fixture_palmer_et_AL01],
-            ["PR", palmer_PR, self.fixture_palmer_pr_AL01],
-            ["R", palmer_R, self.fixture_palmer_r_AL01],
-            ["RO", palmer_RO, self.fixture_palmer_ro_AL01],
-            ["PRO", palmer_PRO, self.fixture_palmer_pro_AL01],
-            ["L", palmer_L, self.fixture_palmer_l_AL01],
-            ["PL", palmer_PL, self.fixture_palmer_pl_AL01],
-        ]
-
-        # verify that the function performed as expected
-        for lst in arys:
-            name = lst[0]
-            actual = lst[1]
-            expected = lst[2]
-
-            np.testing.assert_allclose(
-                actual,
-                expected,
-                atol=0.01,
-                err_msg="Not computing the {0} as expected".format(name),
-            )
-
-        # verify that the function can be called with an AWC value of zero (no error == passed test)
-        palmer._water_balance(
-            0.0, self.fixture_palmer_pet_AL01, self.fixture_palmer_precip_AL01
-        )
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-if __name__ == "__main__":
-    unittest.main()
+    # verify that the function can be called with an AWC value of zero (no error == passed test)
+    palmer._water_balance(0.0, palmer_pet, palmer_precip)
