@@ -525,14 +525,14 @@ def _compute_write_index(keyword_arguments):
         dims = dataset[var_name].dims
         if len(dims) == 3:
             if dims not in expected_dims_3d:
-                message = "Invalid dimensions for variable '{var_name}\`: {dims}".format(
+                message = "Invalid dimensions for variable '{var_name}': {dims}".format(
                     var_name=var_name, dims=dims
                 )
                 _logger.error(message)
                 raise ValueError(message)
         elif len(dims) == 2:
             if dims not in expected_dims_2d:
-                message = "Invalid dimensions for variable '{var_name}\`: {dims}".format(
+                message = "Invalid dimensions for variable '{var_name}': {dims}".format(
                     var_name=var_name, dims=dims
                 )
                 _logger.error(message)
@@ -626,25 +626,30 @@ def _compute_write_index(keyword_arguments):
             args,
         )
 
+        # get the computed SCPDSI data as an array of float32 values
         array = _global_shared_arrays[_KEY_RESULT_SCPDSI][_KEY_ARRAY]
         shape = _global_shared_arrays[_KEY_RESULT_SCPDSI][_KEY_SHAPE]
-        scpdsi = np.frombuffer(array.get_obj()).reshape(shape)
+        scpdsi = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
 
+        # get the computedPDSI data as an array of float32 values
         array = _global_shared_arrays[_KEY_RESULT_PDSI][_KEY_ARRAY]
         shape = _global_shared_arrays[_KEY_RESULT_PDSI][_KEY_SHAPE]
-        pdsi = np.frombuffer(array.get_obj()).reshape(shape)
+        pdsi = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
 
+        # get the computed PHDI data as an array of float32 values
         array = _global_shared_arrays[_KEY_RESULT_PHDI][_KEY_ARRAY]
         shape = _global_shared_arrays[_KEY_RESULT_PHDI][_KEY_SHAPE]
-        phdi = np.frombuffer(array.get_obj()).reshape(shape)
+        phdi = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
 
+        # get the computed PMDI data as an array of float32 values
         array = _global_shared_arrays[_KEY_RESULT_PMDI][_KEY_ARRAY]
         shape = _global_shared_arrays[_KEY_RESULT_PMDI][_KEY_SHAPE]
-        pmdi = np.frombuffer(array.get_obj()).reshape(shape)
+        pmdi = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
 
+        # get the computed Z-Index data as an array of float32 values
         array = _global_shared_arrays[_KEY_RESULT_ZINDEX][_KEY_ARRAY]
         shape = _global_shared_arrays[_KEY_RESULT_ZINDEX][_KEY_SHAPE]
-        zindex = np.frombuffer(array.get_obj()).reshape(shape)
+        zindex = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
 
         # create a new variable to contain the SCPDSI values, assign into the dataset
         long_name = "Self-calibrated Palmer Drought Severity Index"
@@ -801,9 +806,7 @@ def _compute_write_index(keyword_arguments):
 
         else:
             raise ValueError(
-                "Unsupported index: \`{index}\`".format(
-                    index=keyword_arguments["index"]
-                )
+                "Unsupported index: '{index}'".format(index=keyword_arguments["index"])
             )
 
         # get the name and attributes to use for the index variable in the output NetCDF
@@ -814,7 +817,7 @@ def _compute_write_index(keyword_arguments):
         # get the shared memory results array and convert it to a numpy array
         array = _global_shared_arrays[_KEY_RESULT][_KEY_ARRAY]
         shape = _global_shared_arrays[_KEY_RESULT][_KEY_SHAPE]
-        index_values = np.frombuffer(array.get_obj()).reshape(shape)
+        index_values = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
 
         # create a new variable to contain the index values, assign into the dataset
         variable = xr.Variable(
@@ -1204,13 +1207,13 @@ def _prepare_file(netcdf_file, var_name):
         dims = "lat,lon,time"
     else:
         raise ValueError(
-            "Unsupported dimensions for variable \`{var_name}\`: {dims}".format(
+            "Unsupported dimensions for variable '{var_name}': {dims}".format(
                 var_name=var_name, dims=ds[var_name].dims
             )
         )
 
     if Counter(ds[var_name].dims) != Counter(expected_dims):
-        message = "Invalid dimensions for variable \`{var_name}\`: {dims}".format(
+        message = "Invalid dimensions for variable '{var_name}': {dims}".format(
             var_name=var_name, dims=ds[var_name].dims
         )
         _logger.error(message)
