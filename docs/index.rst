@@ -15,8 +15,9 @@
    :target: https://www.codacy.com/app/monocongo/climate_indices?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=monocongo/climate_indices&amp;utm_campaign=Badge_Grade
 .. |Style| image:: https://img.shields.io/badge/code%20style-black-000000.svg
    :target: https://github.com/ambv/black
-.. |License| image:: https://img.shields.io/badge/license-Unlicense-green.svg
-   :target: https://unlicense.org/
+.. |License| image:: https://img.shields.io/badge/license-BSD%203--Clause-green.svg
+   :target: https://opensource.org/licenses/BSD-3-Clause
+
 
 |Build| |Coverage| |Quality| |Style| |License|
 
@@ -426,6 +427,7 @@ Copyright and licensing
 This is a developmental version of code that is originally developed at
 NCEI/NOAA, official release version available on
 `drought.gov <https://www.drought.gov/drought/python-climate-indices>`__.
-This software is in the public domain, with no copyright. Please read more on our `license <UNLICENSE>`__ page.
+This software is under BSD 3-Clause license, copyright James Adams, 2017.
+Please read more on our `license <LICENSE>`__ page.
 
 
