@@ -1241,7 +1241,7 @@ def _prepare_file(netcdf_file, var_name):
     if ds[var_name].dims != expected_dims:
         nco = Nco()
         netcdf_file = nco.ncpdq(
-            input=netcdf_file, options=['-a \\"{dims}\\"'.format(dims=dims), "-O"]
+            input=netcdf_file, options=['-a "{dims}"'.format(dims=dims), "-O"]
         )
 
     return netcdf_file
