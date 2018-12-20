@@ -18,16 +18,15 @@ _logger = logging.getLogger(__name__)
 # -----------------------------------------------------------------------------------------------------------------------
 def sign_change(a, b):
     """
-    Given two same-sized arrays of floats return an array of booleans indicating if a sign change occurs at the 
+    Given two same-sized arrays of floats return an array of booleans indicating if a sign change occurs at the
     corresponding index.
-    
+
     :param a: array of floats
-    :param b: 
+    :param b:
     :return: array of booleans of same size as input arrays
     """
 
     if a.size != b.size:
-
         raise ValueError("Mismatched input arrays")
 
     # use the shape of the first array as the shape of the array we'll return
@@ -73,7 +72,7 @@ def is_data_valid(data):
 def rmse(predictions, targets):
     """
     Root mean square error
-    
+
     :param predictions: np.ndarray
     :param targets: np.ndarray
     :return: np.ndarray
@@ -383,9 +382,9 @@ def count_zeros_and_non_missings(values):
     """
     Given an input array of values return a count of the zeros and non-missing values.
     Missing values assumed to be numpy.NaNs.
-    
+
     :param values: array like object (numpy array, most likely)
-    :return: two int scalars: 1) the count of zeros, and 2) the count of non-missing values  
+    :return: two int scalars: 1) the count of zeros, and 2) the count of non-missing values
     """
 
     # make sure we have a numpy array

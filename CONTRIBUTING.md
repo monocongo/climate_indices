@@ -6,12 +6,12 @@ Thanks for being here, we need volunteer developers to help this project come to
 
 Hopefully a clear, coherent style will emerge from a reading of the code. We optimize for readability:
 
-  * Indent using four spaces (no tabs)
-  * Whitespaces after list items and method parameters (`[1, 2, 3]`, not `[1,2,3]`), around operators (`x += 1`, not `x+=1`), and around hash arrows.
-  * Liberal use of whitespace and blank lines
-  * Comment as much as necessary, more is better than less, and comments are code -- maintain the commentary as if it were being compiled
-  * Underscores instead of camelCase
-  * This is open source software. Consider the people who will read your code, and make it look nice for them. It's sort of like driving a car: Perhaps you love doing donuts when you're alone, but with passengers the goal is to make the ride as smooth as possible.
+* Indent using four spaces (no tabs)
+* Whitespaces after list items and method parameters (`[1, 2, 3]`, not `[1,2,3]`), around operators (`x += 1`, not `x+=1`), and around hash arrows.
+* Liberal use of whitespace and blank lines
+* Comment as much as necessary, more is better than less, and comments are code -- maintain the commentary as if it were being compiled
+* Underscores instead of camelCase
+* This is open source software. Consider the people who will read your code, and make it look nice for them. It's sort of like driving a car: Perhaps you love doing donuts when you're alone, but with passengers the goal is to make the ride as smooth as possible.
 
 ## Issues
 The list of outstanding feature requests and bugs can be found on our on our GitHub issue tracker. Pick an unassigned issue that you think you can accomplish, add a comment that you are attempting to do it, and shortly your own personal label matching your GitHub ID will be assigned to that issue.

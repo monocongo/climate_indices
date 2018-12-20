@@ -33,11 +33,12 @@ def test_find_netcdf_datatype():
     )
     for [data_type, data_object] in data_objs:
 
-        assert data_type == netcdf_utils.find_netcdf_datatype(
-            data_object
-        ), "Failed to determine expected data type for {0}, expected {1}".format(
-            data_object, data_type
-        )
+        if data_type != netcdf_utils.find_netcdf_datatype(data_object):
+            raise AssertionError(
+                "Failed to determine expected data type for {0}, expected {1}".format(
+                    data_object, data_type
+                )
+            )
 
     # provide nonsense arguments, should raise error in each case
     with pytest.raises(ValueError):
