@@ -46,15 +46,15 @@ class DivisionsProcessor(object):
 
         """
         Constructor method.
-        
+
         :param input_file:
-        :param var_name_precip: 
-        :param var_name_temperature: 
-        :param var_name_soil: 
+        :param var_name_precip:
+        :param var_name_temperature:
+        :param var_name_soil:
         :param month_scales:
         :param calibration_start_year:
         :param calibration_end_year:
-        :param divisions:    
+        :param divisions:
         """
 
         self.input_file = input_file
@@ -72,7 +72,6 @@ class DivisionsProcessor(object):
 
         # create and populate the NetCDF we'll use to contain our results of a call to run()
         self._initialize_netcdf()
-        # self._initialize_netcdf(('division', 'time',))
 
     # ------------------------------------------------------------------------------------------------------------------
     def _initialize_netcdf(self):
@@ -89,8 +88,8 @@ class DivisionsProcessor(object):
     def _compute_and_write_division(self, div_index):
         """
         Computes indices for a single division, writing the output into NetCDF.
-        
-        :param div_index: 
+
+        :param div_index:
         """
 
         # only process specified divisions
@@ -507,7 +506,7 @@ def process_divisions(
 
     """
     Performs indices processing from climate divisions inputs.
-    
+
     :param input_file
     :param output_file
     :param precip_var_name
@@ -516,7 +515,7 @@ def process_divisions(
     :param month_scales
     :param calibration_start_year
     :param calibration_end_year
-    :param divisions: list of divisions to compute, if None (default) then all divisions are included 
+    :param divisions: list of divisions to compute, if None (default) then all divisions are included
     """
 
     # perform the processing
