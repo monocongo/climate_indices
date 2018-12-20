@@ -2,7 +2,7 @@
 [![Coverage Status](https://coveralls.io/repos/github/monocongo/climate_indices/badge.svg?branch=master)](https://coveralls.io/github/monocongo/climate_indices?branch=master)
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/48563cbc37504fc6aa72100370e71f58)](https://www.codacy.com/app/monocongo/climate_indices?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=monocongo/climate_indices&amp;utm_campaign=Badge_Grade)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black)
-[![License](https://img.shields.io/badge/license-Unlicense-green.svg)](https://unlicense.org/)
+[![License](https://img.shields.io/badge/License-BSD%203--Clause-green.svg)](https://opensource.org/licenses/BSD-3-Clause)
 
 # Climate Indices in Python
 
@@ -55,5 +55,5 @@ maintained by NIDIS/NCEI/NOAA. The official release version is available at
 [drought.gov](https://www.drought.gov/drought/python-climate-indices).
 
 * [__Documentation__](https://climate-indices.readthedocs.io/en/latest/)
-* [__License__](UNLICENSE)
+* [__License__](LICENSE)
 * [__Disclaimer__](DISCLAIMER)
