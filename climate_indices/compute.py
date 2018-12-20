@@ -25,14 +25,15 @@ _logger = logging.getLogger(__name__)
 class Periodicity(Enum):
     """
     Enumeration type for specifying dataset periodicity.
-    
-    'monthly' indicates an array of monthly values, assumed to span full years, i.e. the first value 
-    corresponds to January of the initial year and any missing final months of the final year 
-    filled with NaN values, with size == # of years * 12
-    
-    'daily' indicates an array of full years of daily values with 366 days per year, as if each year were 
-    a leap year and any missing final months of the final year filled with NaN values, 
-    with array size == (# years * 366)
+
+    'monthly' indicates an array of monthly values, assumed to span full years,
+    i.e. the first value corresponds to January of the initial year and any
+    missing final months of the final year filled with NaN values,
+    with size == # of years * 12
+
+    'daily' indicates an array of full years of daily values with 366 days per year,
+    as if each year were a leap year and any missing final months of the final
+    year filled with NaN values, with array size == (# years * 366)
     """
 
     monthly = 12
