@@ -267,11 +267,16 @@ def test_cafec_compute_X(palmer_zindex_monthly):
     PX1, PX2, PX3, X, BT = palmer._compute_X(
         palmer_zindex_monthly, k, PPe, X1, X2, PX1, PX2, PX3, X, BT
     )
-    assert PX1[0] == 0.0, "PX1 value not computed as expected at initial step"
-    assert PX2[0] == -0.34, "PX2 value not computed as expected at initial step"
-    assert PX3[0] == 0.0, "PX3 value not computed as expected at initial step"
-    assert X[0] == -0.34, "X value not computed as expected at initial step"
-    assert BT[0] == 2, "Backtrack value not computed as expected at initial step"
+    if PX1[0] != 0.0:
+        raise AssertionError("PX1 value not computed as expected at initial step")
+    if PX2[0] != -0.34:
+        raise AssertionError("PX2 value not computed as expected at initial step")
+    if PX3[0] != 0.0:
+        raise AssertionError("PX3 value not computed as expected at initial step")
+    if X[0] != -0.34:
+        raise AssertionError("X value not computed as expected at initial step")
+    if BT[0] != 2:
+        raise AssertionError("Backtrack value not computed as expected at initial step")
 
 
 # ------------------------------------------------------------------------------------------------------------------
@@ -351,9 +356,12 @@ def test_cafec_coeff_ufunc():
     Test for the palmer._cafec_coeff_ufunc() function
     """
 
-    assert palmer._cafec_coeff_ufunc(0, 0) == 1
-    assert palmer._cafec_coeff_ufunc(5, 0) == 0
-    assert palmer._cafec_coeff_ufunc(5, 10) == 0.5
+    if palmer._cafec_coeff_ufunc(0, 0) != 1:
+        raise AssertionError()
+    if palmer._cafec_coeff_ufunc(5, 0) != 0:
+        raise AssertionError()
+    if palmer._cafec_coeff_ufunc(5, 10) != 0.5:
+        raise AssertionError()
 
 
 # ------------------------------------------------------------------------------------------------------------------
@@ -439,8 +447,10 @@ def test_phdi_select_ufunc():
     Test for the palmer._phdi_select_ufunc() function
     """
 
-    assert palmer._phdi_select_ufunc(0, 5) == 5
-    assert palmer._phdi_select_ufunc(8, 5) == 8
+    if palmer._phdi_select_ufunc(0, 5) != 5:
+        raise AssertionError()
+    if palmer._phdi_select_ufunc(8, 5) != 8:
+        raise AssertionError()
 
 
 # ------------------------------------------------------------------------------------------------------------------
