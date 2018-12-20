@@ -74,18 +74,24 @@ def test_count_zeros_and_non_missings():
     values_list = [3, 4, 0, 2, 3.1, 5, np.NaN, 8, 5, 6, 0.0, np.NaN, 5.6, 2]
     values = np.array(values_list)
     zeros, non_missings = utils.count_zeros_and_non_missings(values)
-    assert zeros == 2, "Failed to correctly count zero values"
-    assert non_missings == 12, "Failed to correctly count non-missing values"
+    if zeros != 2:
+        raise AssertionError("Failed to correctly count zero values")
+    if non_missings != 12:
+        raise AssertionError("Failed to correctly count non-missing values")
 
     # test with lists
     values = values_list
     zeros, non_missings = utils.count_zeros_and_non_missings(values)
-    assert zeros == 2, "Failed to correctly count zero values"
-    assert non_missings == 12, "Failed to correctly count non-missing values"
+    if zeros != 2:
+        raise AssertionError("Failed to correctly count zero values")
+    if non_missings != 12:
+        raise AssertionError("Failed to correctly count non-missing values")
     values = [[3, 4, 0, 2, 3.1, 5, np.NaN], [8, 5, 6, 0.0, np.NaN, 5.6, 2]]
     zeros, non_missings = utils.count_zeros_and_non_missings(values)
-    assert zeros == 2, "Failed to correctly count zero values"
-    assert non_missings == 12, "Failed to correctly count non-missing values"
+    if zeros != 2:
+        raise AssertionError("Failed to correctly count zero values")
+    if non_missings != 12:
+        raise AssertionError("Failed to correctly count non-missing values")
 
     # using a list that can't be converted into an array should result in a TypeError
     values = [1, 2, 3, 0, "abcxyz"]
@@ -100,10 +106,14 @@ def test_is_data_valid():
 
     valid_array = np.full((12,), 1.0)
     invalid_array = np.full((12,), np.NaN)
-    assert utils.is_data_valid(valid_array)
-    assert not utils.is_data_valid(invalid_array)
-    assert not utils.is_data_valid(["bad", "data"])
-    assert utils.is_data_valid(np.ma.masked_array(valid_array))
+    if not utils.is_data_valid(valid_array):
+        raise AssertionError()
+    if utils.is_data_valid(invalid_array):
+        raise AssertionError()
+    if utils.is_data_valid(["bad", "data"]):
+        raise AssertionError()
+    if not utils.is_data_valid(np.ma.masked_array(valid_array)):
+        raise AssertionError()
 
 
 # ---------------------------------------------------------------------------------------
@@ -375,9 +385,8 @@ def test_rmse():
     expected_rmse = 6.364
 
     # verify that the function performed as expected
-    assert computed_rmse == pytest.approx(
-        expected_rmse, abs=1e-3
-    ), "Incorrect root mean square error (RMSE)"
+    if computed_rmse != pytest.approx(expected_rmse, abs=1e-3):
+        raise AssertionError("Incorrect root mean square error (RMSE)")
 
 
 # ---------------------------------------------------------------------------------------

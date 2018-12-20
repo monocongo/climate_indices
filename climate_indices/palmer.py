@@ -30,16 +30,21 @@ warnings.simplefilter("ignore", Warning)
 @numba.jit
 def _water_balance(awc, PET, P):
     """
-    Performs a water balance accounting for a location which accounts for several monthly water balance variables, 
-    calculated based on precipitation, potential evapotranspiration, and available water capacity of the soil.
-     
-    Input arrays are expected to be the same size, corresponding to the total number of months.
-    
-    :param awc: available water capacity (total, including top/surface inch), in inches 
-    :param PET: potential evapotranspiration, in inches 
-    :param P: precipitation, in inches 
-    :return: seven numpy arrays with values for evapotranspiration, potential recharge, recharge, runoff, 
-             potential runoff, loss, and potential loss 
+    Performs a water balance accounting for a location which accounts
+    for several monthly water balance variables, calculated based on
+    precipitation, potential evapotranspiration, and available water
+    capacity of the soil.
+
+    Input arrays are expected to be the same size, corresponding to
+    the total number of months.
+
+    :param awc: available water capacity (total, including top/surface inch),
+        in inches
+    :param PET: potential evapotranspiration, in inches
+    :param P: precipitation, in inches
+    :return: seven numpy arrays with values for evapotranspiration,
+        potential recharge, recharge, runoff, potential runoff, loss,
+        and potential loss
     """
 
     # flatten timeseries to a 1-D array
@@ -372,8 +377,8 @@ def _water_balance_potential_loss(
 def _cafec_coeff_ufunc(actual, potential):
     """
     Vectorized function for computing a CAFEC coefficient.
-    
-    :param actual: average value for a month from water balance accounting 
+
+    :param actual: average value for a month from water balance accounting
     :param potential: average potential value from water balance accounting
     :return CAFEC coefficient
     """
@@ -1093,10 +1098,10 @@ def _assign_X_backtracking(
 def _assign_X(k, number_of_months, BT, PX1, PX2, PX3, X):
     """
     Assign X values using backtracking.
-    
+
     :param k: number of months to backtrack
     :param number_of_months: ?
-    :param BT: backtracking array 
+    :param BT: backtracking array
     :param PX1: potential X1 values
     :param PX2: potential X2 values
     :param PX3: potential X3 values
