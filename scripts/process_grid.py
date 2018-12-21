@@ -1133,9 +1133,8 @@ def _apply_along_axis_double(params):
 # ------------------------------------------------------------------------------
 def _apply_along_axis_palmers(params):
     """
-    Like numpy.apply_along_axis(), but with arguments in a dict instead.
-    Applicable for applying a function across subarrays of Palmer-specific
-    input arrays.
+    Applies the Palmer computation function across subarrays of
+    the Palmer-specific input (shared-memory) arrays.
 
     This function is useful with multiprocessing.Pool().map(): (1) map() only
     handles functions that take a single argument, and (2) this function can
