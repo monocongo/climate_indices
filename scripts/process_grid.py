@@ -1028,12 +1028,6 @@ def _parallel_process(index, arrays_dict, input_var_names, output_var_name, args
         initargs=(arrays_dict,),
     ) as pool:
 
-        """
-         the function _apply_along_axis() being applied in Pool.map() is separate
-         so that subprocesses can import it, and is simply a thin wrapper that handles the
-         fact that Pool.map() only takes a single argument:
-        """
-
         if index in ["spei", "pet"]:
             pool.map(_apply_along_axis_double, chunk_params)
         elif index == "palmers":
