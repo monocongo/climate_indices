@@ -10,9 +10,7 @@ from climate_indices import palmer
 logging.disable(logging.CRITICAL)
 
 
-"""
-Tests for `palmer.py`.
-"""
+# Tests for `climate_indices.palmer.py`
 
 
 # ---------------------------------------------------------------------------------------
@@ -287,6 +285,7 @@ def test_cafec_compute_X(palmer_zindex_monthly):
     "data_year_start_monthly",
     "calibration_year_start_monthly",
     "calibration_year_end_monthly",
+    "palmer_pdsi_from_scpdsi_monthly",
     "palmer_scpdsi_monthly",
     "palmer_scphdi_monthly",
     "palmer_scpmdi_monthly",
@@ -299,6 +298,7 @@ def test_scpdsi(
     data_year_start_monthly,
     calibration_year_start_monthly,
     calibration_year_end_monthly,
+    palmer_pdsi_from_scpdsi_monthly,
     palmer_scpdsi_monthly,
     palmer_scphdi_monthly,
     palmer_scpmdi_monthly,
@@ -320,6 +320,14 @@ def test_scpdsi(
     np.testing.assert_allclose(
         scpdsi,
         palmer_scpdsi_monthly,
+        atol=0.001,
+        equal_nan=True,
+        err_msg="PDSI not computed as expected from monthly inputs",
+    )
+
+    np.testing.assert_allclose(
+        pdsi,
+        palmer_pdsi_from_scpdsi_monthly,
         atol=0.001,
         equal_nan=True,
         err_msg="PDSI not computed as expected from monthly inputs",

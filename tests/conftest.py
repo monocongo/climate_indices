@@ -285,6 +285,16 @@ def palmer_pdsi_monthly():
 
 
 @pytest.fixture(scope="module")
+def palmer_pdsi_from_scpdsi_monthly():
+
+    return np.load(
+        os.path.join(
+            os.path.split(__file__)[0], "fixture", "palmer_pdsi_from_scpdsi.npy"
+        )
+    )
+
+
+@pytest.fixture(scope="module")
 def palmer_phdi_monthly():
 
     return np.load(

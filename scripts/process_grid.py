@@ -1029,23 +1029,23 @@ def _parallel_process(index, arrays_dict, input_var_names, output_var_name, args
     ) as pool:
 
         """
-         the function _unpacking_apply_along_axis() being applied in Pool.map() is separate
+         the function _apply_along_axis() being applied in Pool.map() is separate
          so that subprocesses can import it, and is simply a thin wrapper that handles the
          fact that Pool.map() only takes a single argument:
         """
 
         if index in ["spei", "pet"]:
-            pool.map(_unpacking_apply_along_axis_double, chunk_params)
+            pool.map(_apply_along_axis_double, chunk_params)
         elif index == "palmers":
-            pool.map(_unpacking_apply_along_axis_palmers, chunk_params)
+            pool.map(_apply_along_axis_palmers, chunk_params)
         else:
-            pool.map(_unpacking_apply_along_axis, chunk_params)
+            pool.map(_apply_along_axis, chunk_params)
 
 
 # ------------------------------------------------------------------------------
-def _unpacking_apply_along_axis(params):
+def _apply_along_axis(params):
     """
-    Like numpy.apply_along_axis(), but and with arguments in a dict instead.
+    Like numpy.apply_along_axis(), but with arguments in a dict instead.
     Applicable for applying a function across subarrays of a single input array.
 
     This function is useful with multiprocessing.Pool().map(): (1) map() only
@@ -1075,9 +1075,9 @@ def _unpacking_apply_along_axis(params):
 
 
 # ------------------------------------------------------------------------------
-def _unpacking_apply_along_axis_double(params):
+def _apply_along_axis_double(params):
     """
-    Like numpy.apply_along_axis(), but and with arguments in a dict instead.
+    Like numpy.apply_along_axis(), but with arguments in a dict instead.
     Applicable for applying a function across subarrays of two input arrays.
 
     This function is useful with multiprocessing.Pool().map(): (1) map() only
@@ -1130,9 +1130,9 @@ def _unpacking_apply_along_axis_double(params):
 
 
 # ------------------------------------------------------------------------------
-def _unpacking_apply_along_axis_palmers(params):
+def _apply_along_axis_palmers(params):
     """
-    Like numpy.apply_along_axis(), but and with arguments in a dict instead.
+    Like numpy.apply_along_axis(), but with arguments in a dict instead.
     Applicable for applying a function across subarrays of Palmer-specific
     input arrays.
 
@@ -1249,21 +1249,20 @@ def _prepare_file(netcdf_file, var_name):
 
 # ------------------------------------------------------------------------------
 if __name__ == "__main__":
-    """
-    This script is used to perform climate indices processing on NetCDF 
-    gridded datasets.
 
-    Example command line arguments for SPI only using monthly precipitation input:
-
-    --index spi
-    --periodicity monthly
-    --scales 1 2 3 6 9 12 24
-    --calibration_start_year 1998
-    --calibration_end_year 2016
-    --netcdf_precip example_data/nclimgrid_prcp_lowres.nc
-    --var_name_precip prcp
-    --output_file_base ~/data/test/spi/nclimgrid_lowres
-    """
+    # This script is used to perform climate indices processing on NetCDF
+    # gridded datasets.
+    #
+    # Example command line arguments for SPI only using monthly precipitation input:
+    #
+    # --index spi
+    # --periodicity monthly
+    # --scales 1 2 3 6 9 12 24
+    # --calibration_start_year 1998
+    # --calibration_end_year 2016
+    # --netcdf_precip example_data/nclimgrid_prcp_lowres.nc
+    # --var_name_precip prcp
+    # --output_file_base ~/data/test/spi/nclimgrid_lowres
 
     try:
 

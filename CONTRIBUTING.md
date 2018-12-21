@@ -9,7 +9,7 @@ Hopefully a clear, coherent style will emerge from a reading of the code. We opt
 * Indent using four spaces (no tabs)
 * Whitespaces after list items and method parameters (`[1, 2, 3]`, not `[1,2,3]`), around operators (`x += 1`, not `x+=1`), and around hash arrows.
 * Liberal use of whitespace and blank lines
-* Comment as much as necessary, more is better than less, and comments are code -- maintain the commentary as if it were being compiled
+* Comment as much as necessary, more is better than less, and comments are code \-- maintain the commentary as if it were being compiled
 * Underscores instead of camelCase
 * This is open source software. Consider the people who will read your code, and make it look nice for them. It's sort of like driving a car: Perhaps you love doing donuts when you're alone, but with passengers the goal is to make the ride as smooth as possible.
 
@@ -62,7 +62,7 @@ Then merge the changes that you fetched:
 For more info, see http://help.github.com/fork-a-repo/
 
 ## How to get your pull request accepted
-We want your submission. But we also want to provide a stable experience for our users and the community. 
+We want your submission. But we also want to provide a stable experience for our users and the community.
 Follow these rules and you should succeed without a problem.
 
 ### Run the tests
@@ -83,7 +83,7 @@ Also, keep your tests as simple as possible. Complex tests end up requiring thei
 Always write a clear log message for your commits. One-line messages are fine for small changes, but bigger changes should look like this:
 
 `$ git commit -m "A brief summary of the commit
-    \> 
+    \>
     \> A paragraph describing what changed and its impact.`
 
 ### Don’t mix code changes with whitespace cleanup
