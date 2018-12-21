@@ -11,11 +11,6 @@ from climate_indices import eto
 logging.disable(logging.CRITICAL)
 
 
-"""
-Tests for `eto.py`.
-"""
-
-
 # ------------------------------------------------------------------------------------------------------------------
 def test_eto_hargreaves():
 

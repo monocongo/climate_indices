@@ -10,9 +10,7 @@ from climate_indices import compute, indices
 logging.disable(logging.CRITICAL)
 
 
-"""
-Tests for `indices.py`.
-"""
+# Tests for `climate_indices.indices.py`.
 
 
 # ---------------------------------------------------------------------------------------

@@ -10,9 +10,7 @@ from scripts import netcdf_utils
 logging.disable(logging.CRITICAL)
 
 
-"""
-Tests for `netcdf_utils.py`.
-"""
+# Tests for `scripts.netcdf_utils.py`
 
 
 # ---------------------------------------------------------------------------------------
