@@ -11,7 +11,7 @@ import scipy.stats
 
 from climate_indices import utils
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # set up a basic, global _logger
 logging.basicConfig(
     level=logging.WARN,
@@ -21,7 +21,7 @@ logging.basicConfig(
 _logger = logging.getLogger(__name__)
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 class Periodicity(Enum):
     """
     Enumeration type for specifying dataset periodicity.
@@ -50,16 +50,62 @@ class Periodicity(Enum):
             raise ValueError()
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+@numba.jit
+def _validate_array(values, periodicity):
+    """
+
+    :param values:
+    :param periodicity:
+    :return:
+    """
+
+    # validate (and possibly reshape) the input array
+    if len(values.shape) == 1:
+
+        if periodicity is None:
+            message = "1-D input array requires a corresponding periodicity argument, none provided"
+            _logger.error(message)
+            raise ValueError(message)
+
+        elif periodicity is Periodicity.monthly:
+            # we've been passed a 1-D array with shape (months),
+            # reshape it to 2-D with shape (years, 12)
+            values = utils.reshape_to_2d(values, 12)
+
+        elif periodicity is Periodicity.daily:
+            # we've been passed a 1-D array with shape (days),
+            # reshape it to 2-D with shape (years, 366)
+            values = utils.reshape_to_2d(values, 366)
+
+        else:
+            message = "Unsupported periodicity argument: '{0}'".format(periodicity)
+            _logger.error(message)
+            raise ValueError(message)
+
+    elif (len(values.shape) != 2) or (values.shape[1] != 12 and values.shape[1] != 366):
+
+        # neither a 1-D nor a 2-D array with valid shape was passed in
+        message = "Invalid input array with shape: {0}".format(values.shape)
+        _logger.error(message)
+        raise ValueError(message)
+
+    return values
+
+
+# ------------------------------------------------------------------------------
 @numba.jit
 def sum_to_scale(values, scale):
     """
-    Compute a sliding sums array using 1-D convolution. The initial (scale - 1) elements
-    of the result array will be padded with np.NaN values. Missing values are not ignored, i.e. if a np.NaN
-    (missing) value is part of the group of values to be summed then the sum will be np.NaN
+    Compute a sliding sums array using 1-D convolution. The initial
+    (scale - 1) elements of the result array will be padded with np.NaN values.
+    Missing values are not ignored, i.e. if a np.NaN
+    (missing) value is part of the group of values to be summed then the sum
+    will be np.NaN
 
-    For example if the first array is [3, 4, 6, 2, 1, 3, 5, 8, 5] and the number of values to sum is 3 then
-    the resulting array will be [np.NaN, np.NaN, 13, 12, 9, 6, 9, 16, 18].
+    For example if the first array is [3, 4, 6, 2, 1, 3, 5, 8, 5] and
+    the number of values to sum is 3 then the resulting array
+    will be [np.NaN, np.NaN, 13, 12, 9, 6, 9, 16, 18].
 
     More generally:
 
@@ -95,7 +141,7 @@ def sum_to_scale(values, scale):
     # return convolve(values, np.ones(scale), mode='reflect', cval=0.0, origin=0)[start: end]
 
 
-# -----------------------------------------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------
 @numba.jit
 def _pearson3_fitting_values(values):
     """
@@ -191,7 +237,7 @@ def _minimum_possible(skew, loc, scale):
     return loc - ((alpha * scale * skew) / 2.0)
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 def _pearson_fit(values, probabilities_of_zero, skew, loc, scale):
     """
     Perform fitting of an array of value to a Pearson Type III distribution
@@ -254,7 +300,7 @@ def _pearson_fit(values, probabilities_of_zero, skew, loc, scale):
     return fitted_values
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 @numba.jit
 def transform_fitted_pearson(
     values, data_start_year, calibration_start_year, calibration_end_year, periodicity
@@ -285,39 +331,13 @@ def transform_fitted_pearson(
         return values
 
     # validate (and possibly reshape) the input array
-    if len(values.shape) == 1:
-
-        if periodicity is None:
-            message = "1-D input array requires a corresponding periodicity argument, none provided"
-            _logger.error(message)
-            raise ValueError(message)
-
-        elif periodicity is Periodicity.monthly:
-            # we've been passed a 1-D array with shape (months), reshape it to 2-D with shape (years, 12)
-            values = utils.reshape_to_2d(values, 12)
-
-        elif periodicity is Periodicity.daily:
-            # we've been passed a 1-D array with shape (days), reshape it to 2-D with shape (years, 366)
-            values = utils.reshape_to_2d(values, 366)
-
-        else:
-            message = "Unsupported periodicity argument: '{0}'".format(periodicity)
-            _logger.error(message)
-            raise ValueError(message)
-
-    elif (len(values.shape) != 2) or (
-        (values.shape[1] != 12) and (values.shape[1] != 366)
-    ):
-
-        # neither a 1-D nor a 2-D array with valid shape was passed in
-        message = "Invalid input array with shape: {0}".format(values.shape)
-        _logger.error(message)
-        raise ValueError(message)
+    values = _validate_array(values, periodicity)
 
     # determine the end year of the values array
     data_end_year = data_start_year + values.shape[0]
 
-    # make sure that we have data within the full calibration period, otherwise use the full period of record
+    # make sure that we have data within the full calibration period,
+    # otherwise use the full period of record
     if (calibration_start_year < data_start_year) or (
         calibration_end_year > data_end_year
     ):
@@ -344,7 +364,7 @@ def transform_fitted_pearson(
     return values
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 @numba.jit
 def transform_fitted_gamma(
     values, data_start_year, calibration_start_year, calibration_end_year, periodicity
@@ -374,32 +394,7 @@ def transform_fitted_gamma(
         return values
 
     # validate (and possibly reshape) the input array
-    if len(values.shape) == 1:
-
-        if periodicity is None:
-            message = "1-D input array requires a corresponding periodicity argument, none provided"
-            _logger.error(message)
-            raise ValueError(message)
-
-        elif periodicity is Periodicity.monthly:
-            # we've been passed a 1-D array with shape (months), reshape it to 2-D with shape (years, 12)
-            values = utils.reshape_to_2d(values, 12)
-
-        elif periodicity is Periodicity.daily:
-            # we've been passed a 1-D array with shape (days), reshape it to 2-D with shape (years, 366)
-            values = utils.reshape_to_2d(values, 366)
-
-        else:
-            message = "Unsupported periodicity argument: '{0}'".format(periodicity)
-            _logger.error(message)
-            raise ValueError(message)
-
-    elif (len(values.shape) != 2) or (values.shape[1] != 12 and values.shape[1] != 366):
-
-        # neither a 1-D nor a 2-D array with valid shape was passed in
-        message = "Invalid input array with shape: {0}".format(values.shape)
-        _logger.error(message)
-        raise ValueError(message)
+    values = _validate_array(values, periodicity)
 
     # find the percentage of zero values for each time step
     zeros = (values == 0).sum(axis=0)
