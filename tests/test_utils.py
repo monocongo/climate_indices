@@ -9,16 +9,12 @@ from climate_indices import utils
 logging.disable(logging.CRITICAL)
 
 
-"""
-Tests for `utils.py`.
-"""
+# Tests for `climate_indices.utils.py`
 
 
 # ---------------------------------------------------------------------------------------
 def test_compute_days():
-    """
-    Test for the utils.compute_days() function
-    """
+    # Test for the utils.compute_days() function
 
     days_array = np.array([0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334])
     results = utils.compute_days(1800, 12, 1, 1800)
@@ -66,9 +62,7 @@ def test_compute_days():
 
 # ---------------------------------------------------------------------------------------
 def test_count_zeros_and_non_missings():
-    """
-    Test for the utils.count_zeros_and_non_missings() function
-    """
+    # Test for the utils.count_zeros_and_non_missings() function
 
     # vanilla use case
     values_list = [3, 4, 0, 2, 3.1, 5, np.NaN, 8, 5, 6, 0.0, np.NaN, 5.6, 2]
@@ -100,9 +94,7 @@ def test_count_zeros_and_non_missings():
 
 # ---------------------------------------------------------------------------------------
 def test_is_data_valid():
-    """
-    Test for the utils.is_data_valid() function
-    """
+    # Test for the utils.is_data_valid() function
 
     valid_array = np.full((12,), 1.0)
     invalid_array = np.full((12,), np.NaN)
@@ -118,9 +110,7 @@ def test_is_data_valid():
 
 # ---------------------------------------------------------------------------------------
 def test_sign_change():
-    """
-    Test for the utils.sign_change() function
-    """
+    # Test for the utils.sign_change() function
 
     a = np.array([1.0, 2.0, 3.0, -4])
     b = np.array([1.0, -2.0, -3.0, -4])
@@ -153,9 +143,7 @@ def test_sign_change():
 
 # ---------------------------------------------------------------------------------------
 def test_reshape_to_2d():
-    """
-    Test for the utils.reshape_to_2d() function
-    """
+    # Test for the utils.reshape_to_2d() function
 
     # an array of monthly values
     values_1d = np.array(
@@ -270,9 +258,7 @@ def test_reshape_to_2d():
 
 # ----------------------------------------------------------------------------------------
 def test_reshape_to_divs_years_months():
-    """
-    Test for the utils.reshape_to_divs_years_months() function
-    """
+    # Test for the utils.reshape_to_divs_years_months() function
 
     # an array of monthly values
     values_1d = np.array(
@@ -373,9 +359,7 @@ def test_reshape_to_divs_years_months():
 
 # ---------------------------------------------------------------------------------------
 def test_rmse():
-    """
-    Test for the utils.rmse() function
-    """
+    # Test for the utils.rmse() function
 
     vals1 = np.array([32, 212, 100, 98.6, 150, -15])
     vals2 = np.array([35, 216, 90, 88.6, 153, -12])
@@ -389,9 +373,7 @@ def test_rmse():
 
 # ---------------------------------------------------------------------------------------
 def test_transform_to_gregorian():
-    """
-    Test for the utils.transform_to_gregorian() function
-    """
+    # Test for the utils.transform_to_gregorian() function
 
     # an array of 366 values, representing a year with 366 days, such as a leap year
     values_366 = np.array(range(366))
@@ -437,9 +419,7 @@ def test_transform_to_gregorian():
 
 # ---------------------------------------------------------------------------------------
 def test_transform_to_366day():
-    """
-    Test for the utils.transform_to_366day() function
-    """
+    # Test for the utils.transform_to_366day() function
 
     # an array of 366 values, representing a year with 366 days, such as a leap year
     values_366 = np.array(range(366))
