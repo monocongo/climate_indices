@@ -916,7 +916,7 @@ def _init_worker(shared_arrays_dict):
 # ------------------------------------------------------------------------------
 def _parallel_process(index, arrays_dict, input_var_names, output_var_name, args):
     """
-    Like numpy.apply_along_axis(), but takes advantage of multiple cores.
+    TODO document this function
 
     :param index:
     :param arrays_dict:
@@ -943,7 +943,8 @@ def _parallel_process(index, arrays_dict, input_var_names, output_var_name, args
         else:
             func1d = _pnp
 
-        # we have a single input array
+        # we have a single input array, create parameter dictionary objects
+        # appropriate to the _apply_along_axis function, one per worker process
         for i in range(_NUMBER_OF_WORKER_PROCESSES):
             params = {
                 "index": index,
@@ -962,6 +963,8 @@ def _parallel_process(index, arrays_dict, input_var_names, output_var_name, args
 
     elif index == "spei":
 
+        # we have two input arrays, create parameter dictionary objects
+        # appropriate to the _apply_along_axis_double function, one per worker process
         for i in range(_NUMBER_OF_WORKER_PROCESSES):
             params = {
                 "index": index,
@@ -981,6 +984,8 @@ def _parallel_process(index, arrays_dict, input_var_names, output_var_name, args
 
     elif index == "pet":
 
+        # we have two input arrays, create parameter dictionary objects
+        # appropriate to the _apply_along_axis_double function, one per worker process
         for i in range(_NUMBER_OF_WORKER_PROCESSES):
             params = {
                 "index": index,
@@ -1000,6 +1005,8 @@ def _parallel_process(index, arrays_dict, input_var_names, output_var_name, args
 
     elif index == "palmers":
 
+        # create parameter dictionary objects appropriate to
+        # the _apply_along_axis_palmer function, one per worker process
         for i in range(_NUMBER_OF_WORKER_PROCESSES):
             params = {
                 "index": index,
