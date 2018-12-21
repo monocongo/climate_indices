@@ -314,14 +314,12 @@ def test_reshape_to_divs_years_months():
     np.testing.assert_raises(ValueError, utils.reshape_to_divs_years_months, values_1d)
 
     # array of values for a single division, as 2-D
-    values_2d = np.array(
-        [[3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4], [6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2]]
-    )
+    row_1 = [3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4]
+    row_2 = [6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2]
+    values_2d = np.array([row_1, row_2])
 
     # the expected rearrangement of the above values from 2-D to 3-D
-    values_3d_expected = np.array(
-        [[[3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4]], [[6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2]]]
-    )
+    values_3d_expected = np.array([[row_1], [row_2]])
 
     # exercise the function
     values_3d_computed = utils.reshape_to_divs_years_months(values_2d)
@@ -360,8 +358,8 @@ def test_reshape_to_divs_years_months():
     values_2d = np.array(
         [
             [3, 4, 6, 2, 1, 3, 5, 3, 4],
-            [6, 2, 1, 3, 5, 8, 5, 6, 2],
-            [1, 3, 5, 8, 5, 6, 3, 8, 4],
+            [6, 2, 1, 3, 5, 9, 3, 6, 2],
+            [1, 3, 5, 8, 9, 6, 3, 8, 4],
         ]
     )
 
