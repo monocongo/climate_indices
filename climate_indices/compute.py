@@ -141,7 +141,7 @@ def sum_to_scale(values, scale):
     # return convolve(values, np.ones(scale), mode='reflect', cval=0.0, origin=0)[start: end]
 
 
-# -------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 @numba.jit
 def _pearson3_fitting_values(values):
     """
@@ -219,10 +219,11 @@ def _pearson3_fitting_values(values):
     return fitting_values
 
 
-# ---------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+@numba.jit
 def _minimum_possible(skew, loc, scale):
     """
-    Conpute the minimum possible value that can be fitted to a distribution described
+    Compute the minimum possible value that can be fitted to a distribution described
     by a set of skew, loc, and scale parameters.
 
     :param skew:
@@ -238,6 +239,7 @@ def _minimum_possible(skew, loc, scale):
 
 
 # ------------------------------------------------------------------------------
+@numba.jit
 def _pearson_fit(values, probabilities_of_zero, skew, loc, scale):
     """
     Perform fitting of an array of value to a Pearson Type III distribution
@@ -284,8 +286,9 @@ def _pearson_fit(values, probabilities_of_zero, skew, loc, scale):
                 1.0,
             )
 
-            # the values we'll return are the values at which the probabilities of a normal distribution are
-            # less than or equal to the computed probabilities, as determined by the normal distribution's
+            # the values we'll return are the values at which the probabilities
+            # of a normal distribution are less than or equal to the computed
+            # probabilities, as determined by the normal distribution's
             # quantile (or inverse cumulative distribution) function
             fitted_values = scipy.stats.norm.ppf(probabilities)
 
@@ -306,27 +309,33 @@ def transform_fitted_pearson(
     values, data_start_year, calibration_start_year, calibration_end_year, periodicity
 ):
     """
-    Fit values to a Pearson Type III distribution and transform the values to corresponding normalized sigmas.
+    Fit values to a Pearson Type III distribution and transform the values
+    to corresponding normalized sigmas.
 
     :param values: 2-D array of values, with each row representing a year containing
-                   twelve columns representing the respective calendar months, or 366 columns representing days
-                   as if all years were leap years
+                   twelve columns representing the respective calendar months,
+                   or 366 columns representing days as if all years were leap years
     :param data_start_year: the initial year of the input values array
     :param calibration_start_year: the initial year to use for the calibration period
     :param calibration_end_year: the final year to use for the calibration period
-    :param periodicity: the periodicity of the time series represented by the input data, valid/supported values are
-                        'monthly' and 'daily'
-                        'monthly' indicates an array of monthly values, assumed to span full years, i.e. the first
-                        value corresponds to January of the initial year and any missing final months of the final
-                        year filled with NaN values, with size == # of years * 12
-                        'daily' indicates an array of full years of daily values with 366 days per year, as if each
-                        year were a leap year and any missing final months of the final year filled with NaN values,
-                        with array size == (# years * 366)
-    :return: 2-D array of transformed/fitted values, corresponding in size and shape of the input array
+    :param periodicity: the periodicity of the time series represented by the input
+                        data, valid/supported values are 'monthly' and 'daily'
+                        'monthly' indicates an array of monthly values, assumed
+                        to span full years, i.e. the first value corresponds
+                        to January of the initial year and any missing final
+                        months of the final year filled with NaN values,
+                        with size == # of years * 12
+                        'daily' indicates an array of full years of daily values
+                        with 366 days per year, as if each year were a leap year
+                        and any missing final months of the final year filled
+                        with NaN values, with array size == (# years * 366)
+    :return: 2-D array of transformed/fitted values, corresponding in size
+             and shape of the input array
     :rtype: numpy.ndarray of floats
     """
 
-    # if we're passed all missing values then we can't compute anything, return the same array of missing values
+    # if we're passed all missing values then we can't compute anything,
+    # and we'll return the same array of missing values
     if (np.ma.is_masked(values) and values.mask.all()) or np.all(np.isnan(values)):
         return values
 
@@ -358,7 +367,7 @@ def transform_fitted_pearson(
     skew = pearson_values[3]
     probability_of_zero = pearson_values[0]
 
-    # fit each value using the Pearson Type III fitting universal function in a broadcast fashion
+    # fit each value to the Pearson Type III distribution
     values = _pearson_fit(values, probability_of_zero, skew, loc, scale)
 
     return values
@@ -370,11 +379,12 @@ def transform_fitted_gamma(
     values, data_start_year, calibration_start_year, calibration_end_year, periodicity
 ):
     """
-    Fit values to a gamma distribution and transform the values to corresponding normalized sigmas.
+    Fit values to a gamma distribution and transform the values to corresponding
+    normalized sigmas.
 
-    :param values: 2-D array of values, with each row typically representing a year containing
-                   twelve columns representing the respective calendar months, or 366 days per column
-                   as if all years were leap years
+    :param values: 2-D array of values, with each row typically representing a year
+                   containing twelve columns representing the respective calendar
+                   months, or 366 days per column as if all years were leap years
     :param data_start_year: the initial year of the input values array
     :param calibration_start_year: the initial year to use for the calibration period
     :param calibration_end_year: the final year to use for the calibration period
