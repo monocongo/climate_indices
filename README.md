@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/monocongo/climate_indices.svg?master)](https://travis-ci.org/monocongo)
+[![Build Status](https://travis-ci.com/monocongo/climate_indices.svg?master)](https://travis-ci.com/monocongo)
 [![Coverage Status](https://coveralls.io/repos/github/monocongo/climate_indices/badge.svg?branch=master)](https://coveralls.io/github/monocongo/climate_indices?branch=master)
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/48563cbc37504fc6aa72100370e71f58)](https://www.codacy.com/app/monocongo/climate_indices?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=monocongo/climate_indices&amp;utm_campaign=Badge_Grade)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black)
