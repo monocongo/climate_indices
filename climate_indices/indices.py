@@ -5,6 +5,9 @@ from enum import Enum
 
 from climate_indices import compute, eto, palmer, utils
 
+# declare the names that should be included in the public API for this module
+__all__ = ["pdsi", "percentage_of_normal", "pet", "scpdsi", "spei", "spi"]
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 class Distribution(Enum):
