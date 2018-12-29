@@ -11,6 +11,9 @@ import scipy.stats
 
 from climate_indices import utils
 
+# declare the names that should be included in the public API for this module
+__all__ = ["Periodicity"]
+
 # ------------------------------------------------------------------------------
 # set up a basic, global _logger
 logging.basicConfig(
