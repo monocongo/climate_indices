@@ -666,7 +666,9 @@ def _compute_write_index(keyword_arguments):
         # TODO set global attributes accordingly for this new dataset
 
         # write the dataset as NetCDF
-        netcdf_file_name = kwrgs["output_file_base"] + "_" + var_name_scpdsi + ".nc"
+        netcdf_file_name = (
+            keyword_arguments["output_file_base"] + "_" + var_name_scpdsi + ".nc"
+        )
         dataset.to_netcdf(netcdf_file_name)
 
         # create a new variable to contain the PDSI values, assign into the dataset
@@ -684,7 +686,9 @@ def _compute_write_index(keyword_arguments):
         # TODO set global attributes accordingly for this new dataset
 
         # write the dataset as NetCDF
-        netcdf_file_name = kwrgs["output_file_base"] + "_" + var_name_pdsi + ".nc"
+        netcdf_file_name = (
+            keyword_arguments["output_file_base"] + "_" + var_name_pdsi + ".nc"
+        )
         dataset.to_netcdf(netcdf_file_name)
 
         # create a new variable to contain the PHDI values, assign into the dataset
@@ -702,7 +706,9 @@ def _compute_write_index(keyword_arguments):
         # TODO set global attributes accordingly for this new dataset
 
         # write the dataset as NetCDF
-        netcdf_file_name = kwrgs["output_file_base"] + "_" + var_name_phdi + ".nc"
+        netcdf_file_name = (
+            keyword_arguments["output_file_base"] + "_" + var_name_phdi + ".nc"
+        )
         dataset.to_netcdf(netcdf_file_name)
 
         # create a new variable to contain the PMDI values, assign into the dataset
@@ -720,7 +726,9 @@ def _compute_write_index(keyword_arguments):
         # TODO set global attributes accordingly for this new dataset
 
         # write the dataset as NetCDF
-        netcdf_file_name = kwrgs["output_file_base"] + "_" + var_name_pmdi + ".nc"
+        netcdf_file_name = (
+            keyword_arguments["output_file_base"] + "_" + var_name_pmdi + ".nc"
+        )
         dataset.to_netcdf(netcdf_file_name)
 
         # create a new variable to contain the Z-Index values, assign into the dataset
@@ -738,7 +746,9 @@ def _compute_write_index(keyword_arguments):
         # TODO set global attributes accordingly for this new dataset
 
         # write the dataset as NetCDF
-        netcdf_file_name = kwrgs["output_file_base"] + "_" + var_name_zindex + ".nc"
+        netcdf_file_name = (
+            keyword_arguments["output_file_base"] + "_" + var_name_zindex + ".nc"
+        )
         dataset.to_netcdf(netcdf_file_name)
 
     else:
@@ -1263,6 +1273,20 @@ if __name__ == "__main__":
     # --netcdf_precip example_data/nclimgrid_prcp_lowres.nc
     # --var_name_precip prcp
     # --output_file_base ~/data/test/spi/nclimgrid_lowres
+
+    # # ==========================================================================
+    # # UNCOMMENT THE BELOW FOR PROFILING
+    # # ==========================================================================
+    # import cProfile
+    # import sys
+    #
+    # # if check avoids hackery when not profiling
+    # if sys.modules['__main__'].__file__ == cProfile.__file__:
+    #     import process_grid  # Imports you again (does *not* use cache or execute as __main__)
+    #
+    #     globals().update(vars(process_grid))  # Replaces current contents with newly imported stuff
+    #     sys.modules['__main__'] = process_grid  # Ensures pickle lookups on __main__ find matching version
+    # # ========== END OF PROFILING-SPECIFIC CODE ================================
 
     try:
 
