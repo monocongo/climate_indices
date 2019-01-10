@@ -1,5 +1,6 @@
 import logging
 import math
+import unittest
 
 import numpy as np
 import pytest
@@ -104,17 +105,19 @@ def test_sunset_hour_angle():
 
     expected_value = math.pi / 2
     computed_value = eto._sunset_hour_angle(0.0, np.deg2rad(0.0))
-    np.testing.assert_equal(
+    np.testing.assert_allclose(
         computed_value,
         expected_value,
+        atol=0.0001,
         err_msg="Sunset hour angle not computed as expected",
     )
 
     expected_value = 1.6018925422201806
     computed_value = eto._sunset_hour_angle(np.deg2rad(10.0), np.deg2rad(10.0))
-    np.testing.assert_equal(
+    np.testing.assert_allclose(
         computed_value,
         expected_value,
+        atol=0.0001,
         err_msg="Sunset hour angle not computed as expected",
     )
 
@@ -131,9 +134,10 @@ def test_solar_declination():
 
     expected_value = -0.313551072399921
     computed_value = eto._solar_declination(30)
-    np.testing.assert_equal(
+    np.testing.assert_allclose(
         computed_value,
         expected_value,
+        atol=0.0001,
         err_msg="Solar declination not computed as expected",
     )
 
