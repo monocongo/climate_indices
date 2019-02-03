@@ -1,6 +1,5 @@
 import logging
 import math
-import unittest
 
 import numpy as np
 import pytest
