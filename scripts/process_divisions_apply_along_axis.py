@@ -107,7 +107,7 @@ def _validate_args(args):
                 _logger.error(message)
                 raise ValueError(message)
 
-            # get the sizes of the latitude and longitude coordinate variables
+            # get the sizes of the division and time coordinate variables
             values_division = dataset["division"].values[:]
             values_time = dataset["time"].values[:]
 
@@ -223,21 +223,6 @@ def _validate_args(args):
 
 
 # ------------------------------------------------------------------------------
-def _get_scale_increment(args_dict):
-
-    if args_dict["periodicity"] == compute.Periodicity.daily:
-        scale_increment = "day"
-    elif args_dict["periodicity"] == compute.Periodicity.monthly:
-        scale_increment = "month"
-    else:
-        raise ValueError(
-            "Invalid periodicity argument: {}".format(args_dict["periodicity"])
-        )
-
-    return scale_increment
-
-
-# ------------------------------------------------------------------------------
 def _log_status(args_dict):
 
     # get the scale increment for use in later log messages
@@ -246,9 +231,8 @@ def _log_status(args_dict):
         if "distribution" in args_dict:
 
             _logger.info(
-                "Computing {scale}-{incr} {index}/{dist}".format(
+                "Computing {scale}-month {index}/{dist}".format(
                     scale=args_dict["scale"],
-                    incr=_get_scale_increment(args_dict),
                     index=args_dict["index"].upper(),
                     dist=args_dict["distribution"].value.capitalize(),
                 )
@@ -257,10 +241,8 @@ def _log_status(args_dict):
         else:
 
             _logger.info(
-                "Computing {scale}-{incr} {index}".format(
-                    scale=args_dict["scale"],
-                    incr=_get_scale_increment(args_dict),
-                    index=args_dict["index"].upper(),
+                "Computing {scale}-month {index}".format(
+                    scale=args_dict["scale"], index=args_dict["index"].upper()
                 )
             )
 
@@ -292,7 +274,6 @@ def _build_arguments(keyword_args):
         function_arguments["calibration_year_final"] = keyword_args[
             "calibration_end_year"
         ]
-        function_arguments["periodicity"] = keyword_args["periodicity"]
 
     elif keyword_args["index"] == "pnp":
         function_arguments["scale"] = keyword_args["scale"]
@@ -302,7 +283,6 @@ def _build_arguments(keyword_args):
         function_arguments["calibration_end_year"] = keyword_args[
             "calibration_end_year"
         ]
-        function_arguments["periodicity"] = keyword_args["periodicity"]
 
     elif keyword_args["index"] == "palmers":
         function_arguments["calibration_start_year"] = keyword_args[
@@ -327,9 +307,7 @@ def _get_variable_attributes(args_dict):
 
         long_name = "Standardized Precipitation Index ({dist} distribution), ".format(
             dist=args_dict["distribution"].value.capitalize()
-        ) + "{scale}-{increment}".format(
-            scale=args_dict["scale"], increment=_get_scale_increment(args_dict)
-        )
+        ) + "{scale}-month".format(scale=args_dict["scale"])
         attrs = {"long_name": long_name, "valid_min": -3.09, "valid_max": 3.09}
         var_name = (
             "spi_"
@@ -342,8 +320,8 @@ def _get_variable_attributes(args_dict):
 
         long_name = "Standardized Precipitation Evapotranspiration Index ({dist} distribution), ".format(
             dist=args_dict["distribution"].value.capitalize()
-        ) + "{scale}-{increment}".format(
-            scale=args_dict["scale"], increment=_get_scale_increment(args_dict)
+        ) + "{scale}-month".format(
+            scale=args_dict["scale"]
         )
         attrs = {"long_name": long_name, "valid_min": -3.09, "valid_max": 3.09}
         var_name = (
@@ -355,11 +333,8 @@ def _get_variable_attributes(args_dict):
 
     elif args_dict["index"] == "pnp":
 
-        long_name = (
-            "Percentage of Normal Precipitation, "
-            + "{scale}-{increment}".format(
-                scale=args_dict["scale"], increment=_get_scale_increment(args_dict)
-            )
+        long_name = "Percentage of Normal Precipitation, " + "{scale}-month".format(
+            scale=args_dict["scale"]
         )
         attrs = {"long_name": long_name, "valid_min": -1000.0, "valid_max": 1000.0}
         var_name = "pnp_" + str(args_dict["scale"]).zfill(2)
@@ -393,15 +368,8 @@ def _compute_write_index(keyword_arguments):
 
     _log_status(keyword_arguments)
 
-    # open the NetCDF files as an xarray DataSet object
-    files = []
-    if "netcdf_divs" in keyword_arguments:
-        files.append(keyword_arguments["netcdf_divs"])
-    if "netcdf_temp" in keyword_arguments:
-        files.append(keyword_arguments["netcdf_temp"])
-    if "netcdf_pet" in keyword_arguments:
-        files.append(keyword_arguments["netcdf_pet"])
-    dataset = xr.open_mfdataset(files, chunks={"lat": -1, "lon": -1})
+    # open the input NetCDF file as an xarray DataSet object
+    dataset = xr.open_dataset(keyword_arguments["netcdf_divs"])
 
     # trim out all data variables from the dataset except the ones we'll need
     input_var_names = []
@@ -409,8 +377,8 @@ def _compute_write_index(keyword_arguments):
         input_var_names.append(keyword_arguments["var_name_precip"])
     if "var_name_temp" in keyword_arguments:
         input_var_names.append(keyword_arguments["var_name_temp"])
-    if "var_name_pet" in keyword_arguments:
-        input_var_names.append(keyword_arguments["var_name_pet"])
+    if "var_name_awc" in keyword_arguments:
+        input_var_names.append(keyword_arguments["var_name_awc"])
     for var in dataset.data_vars:
         if var not in input_var_names:
             dataset = dataset.drop(var)
@@ -463,33 +431,22 @@ def _compute_write_index(keyword_arguments):
                 raise ValueError(
                     f"Unsupported temperature units: {dataset[temp_var_name].units}"
                 )
-    if "var_name_pet" in keyword_arguments:
-        pet_var_name = keyword_arguments["var_name_pet"]
-        pet_unit = dataset[pet_var_name].units.lower()
-        if pet_unit not in ("mm", "millimeters", "millimeter"):
-            if pet_unit in ("inches", "inch"):
-                # inches to mm conversion (1 inch == 25.4 mm)
-                dataset[pet_var_name].values *= 25.4
-            else:
-                raise ValueError(
-                    f"Unsupported PET units: {dataset[pet_var_name].units}"
-                )
 
     # get the data arrays we'll use later in the index computations
     global _global_shared_arrays
-    expected_dims_3d = (("lat", "lon", "time"), ("lon", "lat", "time"))
-    expected_dims_2d = (("lat", "lon"), ("lon", "lat"))
+    expected_dims_2d = ("division", "time")
+    expected_dims_1d = "division"
     for var_name in input_var_names:
 
         # confirm that the dimensions of the data array are valid
         dims = dataset[var_name].dims
-        if len(dims) == 3:
-            if dims not in expected_dims_3d:
+        if len(dims) == 2:
+            if dims != expected_dims_2d:
                 message = f"Invalid dimensions for variable '{var_name}': {dims}"
                 _logger.error(message)
                 raise ValueError(message)
-        elif len(dims) == 2:
-            if dims not in expected_dims_2d:
+        elif len(dims) == 1:
+            if dims not in expected_dims_1d:
                 message = f"Invalid dimensions for variable '{var_name}': {dims}"
                 _logger.error(message)
                 raise ValueError(message)
@@ -514,6 +471,9 @@ def _compute_write_index(keyword_arguments):
     # build an arguments dictionary appropriate to the index we'll compute
     args = _build_arguments(keyword_arguments)
 
+    # divisions are only monthly so add a periodicity
+    args["periodicity"] = compute.Periodicity.monthly
+
     # add output variable arrays into the shared memory arrays dictionary
     if keyword_arguments["index"] == "palmers":
 
@@ -521,20 +481,18 @@ def _compute_write_index(keyword_arguments):
         if ("netcdf_awc" not in keyword_arguments) or (
             "var_name_awc" not in keyword_arguments
         ):
-            raise ValueError("Missing the AWC file and/or variable name argument(s)")
+            raise ValueError("Missing the AWC variable name argument(s)")
 
         awc_dataset = xr.open_dataset(keyword_arguments["netcdf_awc"])
 
         # create a shared memory array, wrap it as a numpy array and copy
         # copy the data (values) from this variable's DataArray
         var_name = keyword_arguments["var_name_awc"]
-        shared_array = multiprocessing.Array(
-            "d", int(np.prod(awc_dataset[var_name].shape))
-        )
+        shared_array = multiprocessing.Array("d", int(np.prod(dataset[var_name].shape)))
         shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(
-            awc_dataset[var_name].shape
+            dataset[var_name].shape
         )
-        np.copyto(shared_array_np, awc_dataset[var_name].values)
+        np.copyto(shared_array_np, dataset[var_name].values)
 
         # add to the dictionary of arrays
         _global_shared_arrays[var_name] = {
@@ -587,7 +545,7 @@ def _compute_write_index(keyword_arguments):
         shape = _global_shared_arrays[_KEY_RESULT_SCPDSI][_KEY_SHAPE]
         scpdsi = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
 
-        # get the computedPDSI data as an array of float32 values
+        # get the computed PDSI data as an array of float32 values
         array = _global_shared_arrays[_KEY_RESULT_PDSI][_KEY_ARRAY]
         shape = _global_shared_arrays[_KEY_RESULT_PDSI][_KEY_SHAPE]
         pdsi = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
@@ -1034,7 +992,7 @@ def _apply_along_axis(params):
     sub_array = np_array[start_index:end_index]
     args = params["args"]
 
-    computed_array = np.apply_along_axis(func1d, axis=2, arr=sub_array, parameters=args)
+    computed_array = np.apply_along_axis(func1d, axis=1, arr=sub_array, parameters=args)
 
     output_array = _global_shared_arrays[params["output_var_name"]][_KEY_ARRAY]
     np_output_array = np.frombuffer(output_array.get_obj()).reshape(shape)
@@ -1184,11 +1142,8 @@ def _prepare_file(netcdf_file, var_name):
     # make sure we have lat, lon, and time as variable dimensions, regardless of order
     ds = xr.open_dataset(netcdf_file)
     if len(ds[var_name].dims) == 2:
-        expected_dims = ("lat", "lon")
-        dims = "lat,lon"
-    elif len(ds[var_name].dims) == 3:
-        expected_dims = ("lat", "lon", "time")
-        dims = "lat,lon,time"
+        expected_dims = ("division", "time")
+        dims = "division,time"
     else:
         raise ValueError(
             "Unsupported dimensions for variable '{var_name}': {dims}".format(
@@ -1253,6 +1208,12 @@ if __name__ == "__main__":
         # parse the command line arguments
         parser = argparse.ArgumentParser()
         parser.add_argument(
+            "--index",
+            help="Indices to compute",
+            choices=["spi", "spei", "pnp", "scaled", "pet", "palmers", "all"],
+            required=True,
+        )
+        parser.add_argument(
             "--netcdf_divs",
             help="Input dataset file (NetCDF) containing temperature, precipitation, and soil "
             "values for PDSI, SPI, SPEI, and PNP computations",
@@ -1266,14 +1227,14 @@ if __name__ == "__main__":
         parser.add_argument(
             "--var_name_temp",
             help="Temperature variable name used in the input NetCDF file",
-            required=True,
+            required=False,
         )
         parser.add_argument(
             "--var_name_awc",
             help="Available water capacity variable name used in the input NetCDF file",
             required=False,
         )
-        parser.add_argument("--output_file", help=" Output file path", required=True)
+        # parser.add_argument("--output_file", help=" Output file path", required=True)
         parser.add_argument(
             "--scales",
             help="Month scales over which the PNP, SPI, and SPEI values are to be computed",
@@ -1306,6 +1267,11 @@ if __name__ == "__main__":
             required=False,
         )
         parser.add_argument(
+            "--output_file_base",
+            help="Base output file path and name for the resulting output files",
+            required=True,
+        )
+        parser.add_argument(
             "--multiprocessing",
             help="Indices to compute",
             choices=["single", "all_but_one", "all"],
@@ -1313,80 +1279,6 @@ if __name__ == "__main__":
             default="all_but_one",
         )
         arguments = parser.parse_args()
-
-        # # parse the command line arguments
-        # parser = argparse.ArgumentParser()
-        # parser.add_argument(
-        #     "--index",
-        #     help="Indices to compute",
-        #     choices=["spi", "spei", "pnp", "scaled", "pet", "palmers", "all"],
-        #     required=True,
-        # )
-        # parser.add_argument(
-        #     "--periodicity",
-        #     help="Process input as either monthly or daily values",
-        #     choices=[compute.Periodicity.monthly, compute.Periodicity.daily],
-        #     type=compute.Periodicity.from_string,
-        #     required=True,
-        # )
-        # parser.add_argument(
-        #     "--scales",
-        #     help="Timestep scales over which the PNP, SPI, and SPEI values are to be computed",
-        #     type=int,
-        #     nargs="*",
-        # )
-        # parser.add_argument(
-        #     "--calibration_start_year",
-        #     help="Initial year of the calibration period",
-        #     type=int,
-        # )
-        # parser.add_argument(
-        #     "--calibration_end_year", help="Final year of calibration period", type=int
-        # )
-        # parser.add_argument(
-        #     "--netcdf_divs",
-        #     help="Precipitation NetCDF file to be used as input for indices computations",
-        # )
-        # parser.add_argument(
-        #     "--var_name_precip",
-        #     help="Precipitation variable name used in the precipitation NetCDF file",
-        # )
-        # parser.add_argument(
-        #     "--netcdf_temp",
-        #     help="Temperature NetCDF file to be used as input for indices computations",
-        # )
-        # parser.add_argument(
-        #     "--var_name_temp",
-        #     help="Temperature variable name used in the temperature NetCDF file",
-        # )
-        # parser.add_argument(
-        #     "--netcdf_pet",
-        #     help="PET NetCDF file to be used as input for SPEI and/or Palmer computations",
-        # )
-        # parser.add_argument(
-        #     "--var_name_pet", help="PET variable name used in the PET NetCDF file"
-        # )
-        # parser.add_argument(
-        #     "--netcdf_awc",
-        #     help="Available water capacity NetCDF file to be used as input for the Palmer computations",
-        # )
-        # parser.add_argument(
-        #     "--var_name_awc",
-        #     help="Available water capacity variable name used in the AWC NetCDF file",
-        # )
-        # parser.add_argument(
-        #     "--output_file_base",
-        #     help="Base output file path and name for the resulting output files",
-        #     required=True,
-        # )
-        # parser.add_argument(
-        #     "--multiprocessing",
-        #     help="Indices to compute",
-        #     choices=["single", "all_but_one", "all"],
-        #     required=False,
-        #     default="all_but_one",
-        # )
-        # arguments = parser.parse_args()
 
         # validate the arguments
         _validate_args(arguments)
@@ -1417,7 +1309,6 @@ if __name__ == "__main__":
                         "var_name_precip": arguments.var_name_precip,
                         "scale": scale,
                         "distribution": dist,
-                        "periodicity": arguments.periodicity,
                         "calibration_start_year": arguments.calibration_start_year,
                         "calibration_end_year": arguments.calibration_end_year,
                         "output_file_base": arguments.output_file_base,
