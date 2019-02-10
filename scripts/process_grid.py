@@ -7,6 +7,7 @@ import os
 
 from nco import Nco
 import numpy as np
+import scipy.constants
 import xarray as xr
 
 from climate_indices import compute, indices
@@ -105,7 +106,8 @@ def _validate_args(args):
                 _logger.error(message)
                 raise ValueError(message)
 
-            # get the sizes of the latitude and longitude coordinate variables
+            # get the values of the precipitation coordinate variables,
+            # for comparison against those of the other data variables
             lats_precip = dataset_precip["lat"].values[:]
             lons_precip = dataset_precip["lon"].values[:]
             times_precip = dataset_precip["time"].values[:]
@@ -515,6 +517,48 @@ def _compute_write_index(keyword_arguments):
             "or temperature variable name was specified."
         )
 
+    # convert data into the appropriate units, if necessary
+    # temperature should be in degrees Celsius
+    # precipitation and PET should be in millimeters
+    if "var_name_precip" in keyword_arguments:
+        precip_var_name = keyword_arguments["var_name_precip"]
+        precip_unit = dataset[precip_var_name].units.lower()
+        if precip_unit not in ("mm", "millimeters", "millimeter"):
+            if precip_unit in ("inches", "inch"):
+                # inches to mm conversion (1 inch == 25.4 mm)
+                dataset[precip_var_name].values *= 25.4
+            else:
+                raise ValueError(
+                    f"Unsupported precipitation units: {dataset[precip_var_name].units}"
+                )
+    if "var_name_temp" in keyword_arguments:
+        temp_var_name = keyword_arguments["var_name_temp"]
+        temp_unit = dataset[temp_var_name].units.lower()
+        if temp_unit not in ("degrees_celsius", "celsius", "c"):
+            if temp_unit in ("f", "fahrenheit"):
+                dataset[temp_var_name].values = scipy.constants.convert_temperature(
+                    dataset[temp_var_name].values, "f", "c"
+                )
+            elif temp_unit in ("k", "kelvin"):
+                dataset[temp_var_name].values = scipy.constants.convert_temperature(
+                    dataset[temp_var_name].values, "k", "c"
+                )
+            else:
+                raise ValueError(
+                    f"Unsupported temperature units: {dataset[temp_var_name].units}"
+                )
+    if "var_name_pet" in keyword_arguments:
+        pet_var_name = keyword_arguments["var_name_pet"]
+        pet_unit = dataset[pet_var_name].units.lower()
+        if pet_unit not in ("mm", "millimeters", "millimeter"):
+            if pet_unit in ("inches", "inch"):
+                # inches to mm conversion (1 inch == 25.4 mm)
+                dataset[pet_var_name].values *= 25.4
+            else:
+                raise ValueError(
+                    f"Unsupported PET units: {dataset[pet_var_name].units}"
+                )
+
     # get the data arrays we'll use later in the index computations
     global _global_shared_arrays
     expected_dims_3d = (("lat", "lon", "time"), ("lon", "lat", "time"))
@@ -525,16 +569,12 @@ def _compute_write_index(keyword_arguments):
         dims = dataset[var_name].dims
         if len(dims) == 3:
             if dims not in expected_dims_3d:
-                message = "Invalid dimensions for variable '{var_name}': {dims}".format(
-                    var_name=var_name, dims=dims
-                )
+                message = f"Invalid dimensions for variable '{var_name}': {dims}"
                 _logger.error(message)
                 raise ValueError(message)
         elif len(dims) == 2:
             if dims not in expected_dims_2d:
-                message = "Invalid dimensions for variable '{var_name}': {dims}".format(
-                    var_name=var_name, dims=dims
-                )
+                message = f"Invalid dimensions for variable '{var_name}': {dims}"
                 _logger.error(message)
                 raise ValueError(message)
 

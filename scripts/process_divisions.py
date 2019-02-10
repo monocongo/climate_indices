@@ -107,7 +107,7 @@ def _validate_args(args):
 
             # get the sizes of the division and time coordinate variables
             divisions_precip = dataset_precip["division"].values[:]
-            time_precip = dataset_precip["time"].values[:]
+            times_precip = dataset_precip["time"].values[:]
 
     else:
 
@@ -141,7 +141,7 @@ def _validate_args(args):
             # validate the PET file
             with xr.open_dataset(args.netcdf_pet) as dataset_pet:
 
-            # make sure we have a valid temperature variable name
+                # make sure we have a valid temperature variable name
                 if args.var_name_pet is None:
                     message = "Missing PET variable name"
                     _logger.error(message)
@@ -155,7 +155,7 @@ def _validate_args(args):
                     _logger.error(message)
                     raise ValueError(message)
 
-            # verify that the temperature variable's dimensions are as expected
+                # verify that the temperature variable's dimensions are as expected
                 dimensions = dataset_pet[args.var_name_pet].dims
                 if dimensions not in expected_dimensions:
                     message = "Invalid dimensions of the PET variable: {dims}, ".format(
@@ -472,7 +472,6 @@ def _compute_write_index(keyword_arguments):
         files.append(keyword_arguments["netcdf_pet"])
     dataset = xr.open_mfdataset(files, chunks={"division": -1})
 
-
     # trim out all data variables from the dataset except the ones we'll need
     input_var_names = []
     if "var_name_precip" in keyword_arguments:
@@ -536,8 +535,8 @@ def _compute_write_index(keyword_arguments):
 
     # get the data arrays we'll use later in the index computations
     global _global_shared_arrays
-    expected_dims_2d = [("division", "time"),("time", "division")]
-    expected_dims_1d = ["division",]
+    expected_dims_2d = [("division", "time"), ("time", "division")]
+    expected_dims_1d = ["division"]
     for var_name in input_var_names:
 
         # confirm that the dimensions of the data array are valid
@@ -1150,9 +1149,7 @@ def _apply_along_axis_double(params):
     ]
 
     for i, (x, y) in enumerate(zip(sub_array_1, sub_array_2)):
-        #if params["index"] == "pet":
         computed_array[i] = func1d(x, y, parameters=params["args"])
-
 
 
 # ------------------------------------------------------------------------------
