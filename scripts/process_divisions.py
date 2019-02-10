@@ -43,7 +43,6 @@ _logger = logging.getLogger(__name__)
 def init_worker(arrays_and_shapes):
     """
     Initialization function that assigns named arrays into the global variable.
-
     :param arrays_and_shapes: dictionary containing variable names as keys
         and two-element dictionaries containing RawArrays and associated shapes
         (i.e. each value of the dictionary is itself a dictionary with one key "array"
@@ -64,18 +63,17 @@ def _validate_args(args):
     :raise ValueError: if one or more of the command line arguments is invalid
     """
 
-    # make sure a precipitation file was specified
-    if args.netcdf_divs is None:
-        msg = "Missing the required precipitation file"
-        _logger.error(msg)
-        raise ValueError(msg)
-
-    # the dimensions we expect to find for each data variable
-    dims_timeseries = [("time", "division"), ("division", "time")]
-    dims_division = "division"
+    # the dimensions we expect to find for each data variable (precipitation, temperature, and/or PET)
+    expected_dimensions = [("time", "division"), ("division", "time")]
 
     # all indices except PET require a precipitation variable
     if args.index != "pet":
+
+        # make sure a precipitation file was specified
+        if args.netcdf_precip is None:
+            msg = "Missing the required precipitation file"
+            _logger.error(msg)
+            raise ValueError(msg)
 
         # make sure a precipitation variable name was specified
         if args.var_name_precip is None:
@@ -84,41 +82,48 @@ def _validate_args(args):
             raise ValueError(message)
 
         # validate the precipitation variable
-        with xr.open_dataset(args.netcdf_divs) as dataset:
+        with xr.open_dataset(args.netcdf_precip) as dataset_precip:
 
             # make sure we have a valid precipitation variable name
-            if args.var_name_precip not in dataset.variables:
-                message = (
-                    "Invalid precipitation variable name: "
-                    + f"'{args.var_name_precip}' does not exist "
-                    + f"in precipitation file '{args.netcdf_divs}'"
+            if args.var_name_precip not in dataset_precip.variables:
+                message = "Invalid precipitation variable name: '{var}' ".format(
+                    var=args.var_name_precip
+                ) + "does not exist in precipitation file '{file}'".format(
+                    file=args.netcdf_precip
                 )
                 _logger.error(message)
                 raise ValueError(message)
 
             # verify that the precipitation variable's dimensions are in the expected order
-            dimensions = dataset[args.var_name_precip].dims
-            if dimensions not in dims_timeseries:
-                message = (
-                    "Invalid dimensions of the precipitation "
-                    + f"variable: {dimensions}, "
-                    + f"(expected names and order: {dims_timeseries})"
+            dimensions = dataset_precip[args.var_name_precip].dims
+            if dimensions not in expected_dimensions:
+                message = "Invalid dimensions of the precipitation variable: {dims}, ".format(
+                    dims=dimensions
+                ) + "(expected names and order: {dims})".format(
+                    dims=expected_dimensions
                 )
                 _logger.error(message)
                 raise ValueError(message)
 
             # get the sizes of the division and time coordinate variables
-            values_division = dataset["division"].values[:]
-            values_time = dataset["time"].values[:]
+            divisions_precip = dataset_precip["division"].values[:]
+            times_precip = dataset_precip["time"].values[:]
 
     else:
 
+        # PET requires a temperature file
+        if args.netcdf_temp is None:
+            msg = "Missing the required temperature file argument"
+            _logger.error(msg)
+            raise ValueError(msg)
         # don't allow a daily periodicity for PET (yet, this will be
         # possible once we have Hargreaves or a daily Thornthwaite)
         if args.periodicity is not compute.Periodicity.monthly:
             msg = (
                 "Invalid periodicity argument for PET: "
-                + f"'{args.periodicity}' -- only monthly is supported"
+                + "'{period}' -- only monthly is supported".format(
+                    period=args.periodicity
+                )
             )
             _logger.error(msg)
             raise ValueError(msg)
@@ -126,82 +131,146 @@ def _validate_args(args):
     # SPEI and Palmer require temperature and latitude variables in order to compute PET
     if args.index in ["spei", "scaled", "palmers"]:
 
-        # validate the temperature variable
-        with xr.open_dataset(args.netcdf_divs) as dataset:
+        if args.netcdf_temp is None:
 
-            # make sure we have a valid temperature variable name
-            if args.var_name_temp is None:
-                message = "Missing temperature variable name"
-                _logger.error(message)
-                raise ValueError(message)
-            elif args.var_name_temp not in dataset.variables:
-                message = (
-                    f"Invalid temperature variable name: '{args.var_name_temp}' "
-                    + f"does not exist in the divisions file '{args.netcdf_divs}'"
-                )
-                _logger.error(message)
-                raise ValueError(message)
+            if args.netcdf_pet is None:
+                msg = "Missing the required temperature or PET files, neither were provided"
+                _logger.error(msg)
+                raise ValueError(msg)
 
-            # verify that the temperature variable's dimensions are as expected
-            dimensions = dataset[args.var_name_temp].dims
-            if dimensions not in dims_timeseries:
-                message = "Invalid dimensions of the temperature variable: {dims}, ".format(
-                    dims=dimensions
-                ) + "(expected names and order: {dims})".format(
-                    dims=dims_timeseries
-                )
-                _logger.error(message)
-                raise ValueError(message)
+            # validate the PET file
+            with xr.open_dataset(args.netcdf_pet) as dataset_pet:
 
-            # make sure we have a valid latitude variable name
-            if args.var_name_lat is None:
-                message = "Missing latitude variable name"
-                _logger.error(message)
-                raise ValueError(message)
-            elif args.var_name_lat not in dataset.variables:
-                message = (
-                    f"Invalid latitude variable name: '{args.var_name_lat}' "
-                    + f"does not exist in the divisions file '{args.netcdf_divs}'"
-                )
-                _logger.error(message)
-                raise ValueError(message)
+                # make sure we have a valid temperature variable name
+                if args.var_name_pet is None:
+                    message = "Missing PET variable name"
+                    _logger.error(message)
+                    raise ValueError(message)
+                elif args.var_name_pet not in dataset_pet.variables:
+                    message = "Invalid PET variable name: '{var_name}' ".format(
+                        var_name=args.var_name_pet
+                    ) + "does not exist in PET file '{file}'".format(
+                        file=args.netcdf_pet
+                    )
+                    _logger.error(message)
+                    raise ValueError(message)
 
-            # verify that the latitude variable's dimensions are as expected
-            dimensions = dataset[args.var_name_temp].dims
-            if dimensions != dims_division:
-                message = "Invalid dimensions of the latitude variable: {dims}, ".format(
-                    dims=dimensions
-                ) + "(expected names and order: {dims})".format(
-                    dims=dims_division
-                )
-                _logger.error(message)
-                raise ValueError(message)
+                # verify that the temperature variable's dimensions are as expected
+                dimensions = dataset_pet[args.var_name_pet].dims
+                if dimensions not in expected_dimensions:
+                    message = "Invalid dimensions of the PET variable: {dims}, ".format(
+                        dims=dimensions
+                    ) + "(expected names and order: {dims})".format(
+                        dims=expected_dimensions
+                    )
+                    _logger.error(message)
+                    raise ValueError(message)
 
-        # Palmers requires an available water capacity variable
+                # verify that the coordinate variables match with those of the precipitation dataset
+                if not np.array_equal(divisions_precip, dataset_pet["division"][:]):
+                    message = (
+                        "Precipitation and PET variables contain non-matching divisions"
+                    )
+                    _logger.error(message)
+                    raise ValueError(message)
+                elif not np.array_equal(times_precip, dataset_pet["time"][:]):
+                    message = (
+                        "Precipitation and PET variables contain non-matching times"
+                    )
+                    _logger.error(message)
+                    raise ValueError(message)
+
+        elif args.netcdf_pet is not None:
+
+            # we can't have both temperature and PET files specified, no way to determine which to use
+            msg = "Both temperature and PET files were specified, only one of these should be provided"
+            _logger.error(msg)
+            raise ValueError(msg)
+
+        else:
+
+            # validate the temperature file
+            with xr.open_dataset(args.netcdf_temp) as dataset_temp:
+
+                # make sure we have a valid temperature variable name
+                if args.var_name_temp is None:
+                    message = "Missing temperature variable name"
+                    _logger.error(message)
+                    raise ValueError(message)
+                elif args.var_name_temp not in dataset_temp.variables:
+                    message = "Invalid temperature variable name: '{var}' does ".format(
+                        var=args.var_name_temp
+                    ) + "not exist in temperature file '{file}'".format(
+                        file=args.netcdf_temp
+                    )
+                    _logger.error(message)
+                    raise ValueError(message)
+
+                # verify that the latitude variable's dimensions are as expected
+                dimensions = dataset_temp[args.var_name_temp].dims
+                if dimensions not in expected_dimensions:
+                    message = "Invalid dimensions of the temperature variable: {dims}, ".format(
+                        dims=dimensions
+                    ) + "(expected names and order: {dims})".format(
+                        dims=expected_dimensions
+                    )
+                    _logger.error(message)
+                    raise ValueError(message)
+
+                # verify that the coordinate variables match with those of the precipitation dataset
+                if not np.array_equal(divisions_precip, dataset_temp["division"][:]):
+                    message = "Precipitation and temperature variables contain non-matching divisions"
+                    _logger.error(message)
+                    raise ValueError(message)
+                elif not np.array_equal(times_precip, dataset_temp["time"][:]):
+                    message = "Precipitation and temperature variables contain non-matching times"
+                    _logger.error(message)
+                    raise ValueError(message)
+
+        # Palmers requires an available water capacity file
         if args.index in ["palmers"]:
 
-            # validate the AWC variable
+            if args.netcdf_awc is None:
+
+                msg = "Missing the required available water capacity file"
+                _logger.error(msg)
+                raise ValueError(msg)
+
+            # validate the AWC file
             with xr.open_dataset(args.netcdf_awc) as dataset_awc:
 
-                # make sure we have a valid AWC variable name
+                # make sure we have a valid PET variable name
                 if args.var_name_awc is None:
                     message = "Missing the AWC variable name"
                     _logger.error(message)
                     raise ValueError(message)
                 elif args.var_name_awc not in dataset_awc.variables:
-                    message = (
-                        f"Invalid AWC variable name: '{args.var_name_awc}' "
-                        + f"does not exist in AWC file '{args.netcdf_divs}'"
+                    message = "Invalid AWC variable name: '{var}' does not exist ".format(
+                        var=args.var_name_awc
+                    ) + "in AWC file '{file}'".format(
+                        file=args.netcdf_awc
                     )
                     _logger.error(message)
                     raise ValueError(message)
 
                 # verify that the AWC variable's dimensions are in the expected order
                 dimensions = dataset_awc[args.var_name_awc].dims
-                if dimensions not in dims_timeseries:
+                if len(dimensions) == 2:
+                    expected_dimensions = [("division",)]
+                if dimensions not in expected_dimensions:
+                    message = "Invalid dimensions of the AWC variable: {dims}, ".format(
+                        dims=dimensions
+                    ) + "(expected names and order: {dims})".format(
+                        dims=expected_dimensions
+                    )
+                    _logger.error(message)
+                    raise ValueError(message)
+
+                # verify that the lat and lon coordinate variable values
+                # match with those of the precipitation dataset
+                if not np.array_equal(divisions_precip, dataset_awc["division"][:]):
                     message = (
-                        f"Invalid dimensions of the AWC variable: {dimensions}, "
-                        + f"(expected names and order: {dims_timeseries})"
+                        "Precipitation and AWC variables contain non-matching divisions"
                     )
                     _logger.error(message)
                     raise ValueError(message)
@@ -223,6 +292,21 @@ def _validate_args(args):
 
 
 # ------------------------------------------------------------------------------
+def _get_scale_increment(args_dict):
+
+    if args_dict["periodicity"] == compute.Periodicity.daily:
+        scale_increment = "day"
+    elif args_dict["periodicity"] == compute.Periodicity.monthly:
+        scale_increment = "month"
+    else:
+        raise ValueError(
+            "Invalid periodicity argument: {}".format(args_dict["periodicity"])
+        )
+
+    return scale_increment
+
+
+# ------------------------------------------------------------------------------
 def _log_status(args_dict):
 
     # get the scale increment for use in later log messages
@@ -231,8 +315,9 @@ def _log_status(args_dict):
         if "distribution" in args_dict:
 
             _logger.info(
-                "Computing {scale}-month {index}/{dist}".format(
+                "Computing {scale}-{incr} {index}/{dist}".format(
                     scale=args_dict["scale"],
+                    incr=_get_scale_increment(args_dict),
                     index=args_dict["index"].upper(),
                     dist=args_dict["distribution"].value.capitalize(),
                 )
@@ -241,8 +326,10 @@ def _log_status(args_dict):
         else:
 
             _logger.info(
-                "Computing {scale}-month {index}".format(
-                    scale=args_dict["scale"], index=args_dict["index"].upper()
+                "Computing {scale}-{incr} {index}".format(
+                    scale=args_dict["scale"],
+                    incr=_get_scale_increment(args_dict),
+                    index=args_dict["index"].upper(),
                 )
             )
 
@@ -274,6 +361,7 @@ def _build_arguments(keyword_args):
         function_arguments["calibration_year_final"] = keyword_args[
             "calibration_end_year"
         ]
+        function_arguments["periodicity"] = keyword_args["periodicity"]
 
     elif keyword_args["index"] == "pnp":
         function_arguments["scale"] = keyword_args["scale"]
@@ -283,6 +371,7 @@ def _build_arguments(keyword_args):
         function_arguments["calibration_end_year"] = keyword_args[
             "calibration_end_year"
         ]
+        function_arguments["periodicity"] = keyword_args["periodicity"]
 
     elif keyword_args["index"] == "palmers":
         function_arguments["calibration_start_year"] = keyword_args[
@@ -307,7 +396,9 @@ def _get_variable_attributes(args_dict):
 
         long_name = "Standardized Precipitation Index ({dist} distribution), ".format(
             dist=args_dict["distribution"].value.capitalize()
-        ) + "{scale}-month".format(scale=args_dict["scale"])
+        ) + "{scale}-{increment}".format(
+            scale=args_dict["scale"], increment=_get_scale_increment(args_dict)
+        )
         attrs = {"long_name": long_name, "valid_min": -3.09, "valid_max": 3.09}
         var_name = (
             "spi_"
@@ -320,8 +411,8 @@ def _get_variable_attributes(args_dict):
 
         long_name = "Standardized Precipitation Evapotranspiration Index ({dist} distribution), ".format(
             dist=args_dict["distribution"].value.capitalize()
-        ) + "{scale}-month".format(
-            scale=args_dict["scale"]
+        ) + "{scale}-{increment}".format(
+            scale=args_dict["scale"], increment=_get_scale_increment(args_dict)
         )
         attrs = {"long_name": long_name, "valid_min": -3.09, "valid_max": 3.09}
         var_name = (
@@ -333,8 +424,11 @@ def _get_variable_attributes(args_dict):
 
     elif args_dict["index"] == "pnp":
 
-        long_name = "Percentage of Normal Precipitation, " + "{scale}-month".format(
-            scale=args_dict["scale"]
+        long_name = (
+            "Percentage of Normal Precipitation, "
+            + "{scale}-{increment}".format(
+                scale=args_dict["scale"], increment=_get_scale_increment(args_dict)
+            )
         )
         attrs = {"long_name": long_name, "valid_min": -1000.0, "valid_max": 1000.0}
         var_name = "pnp_" + str(args_dict["scale"]).zfill(2)
@@ -369,7 +463,14 @@ def _compute_write_index(keyword_arguments):
     _log_status(keyword_arguments)
 
     # open the input NetCDF file as an xarray DataSet object
-    dataset = xr.open_dataset(keyword_arguments["netcdf_divs"])
+    files = []
+    if "netcdf_precip" in keyword_arguments:
+        files.append(keyword_arguments["netcdf_precip"])
+    if "netcdf_temp" in keyword_arguments:
+        files.append(keyword_arguments["netcdf_temp"])
+    if "netcdf_pet" in keyword_arguments:
+        files.append(keyword_arguments["netcdf_pet"])
+    dataset = xr.open_mfdataset(files, chunks={"division": -1})
 
     # trim out all data variables from the dataset except the ones we'll need
     input_var_names = []
@@ -377,12 +478,12 @@ def _compute_write_index(keyword_arguments):
         input_var_names.append(keyword_arguments["var_name_precip"])
     if "var_name_temp" in keyword_arguments:
         input_var_names.append(keyword_arguments["var_name_temp"])
-    if "var_name_awc" in keyword_arguments:
-        input_var_names.append(keyword_arguments["var_name_awc"])
+    if "var_name_pet" in keyword_arguments:
+        input_var_names.append(keyword_arguments["var_name_pet"])
     for var in dataset.data_vars:
         if var not in input_var_names:
-            dataset = dataset.drop(var)
-
+            if var != "lat":
+                dataset = dataset.drop(var)
     # get the initial year of the data
     data_start_year = int(str(dataset["time"].values[0])[0:4])
     keyword_arguments["data_start_year"] = data_start_year
@@ -413,7 +514,7 @@ def _compute_write_index(keyword_arguments):
                 dataset[precip_var_name].values *= 25.4
             else:
                 raise ValueError(
-                    f"Unsupported precipitation units: {dataset[precip_var_name].units}"
+                    "Unsupported precipitation units: {var}".format(var=dataset[precip_var_name].units)
                 )
     if "var_name_temp" in keyword_arguments:
         temp_var_name = keyword_arguments["var_name_temp"]
@@ -429,25 +530,29 @@ def _compute_write_index(keyword_arguments):
                 )
             else:
                 raise ValueError(
-                    f"Unsupported temperature units: {dataset[temp_var_name].units}"
+                    "Unsupported temperature units: {var}".format(var=dataset[temp_var_name].units)
                 )
 
     # get the data arrays we'll use later in the index computations
     global _global_shared_arrays
-    expected_dims_2d = ("division", "time")
-    expected_dims_1d = "division"
+    expected_dims_2d = [("division", "time"), ("time", "division")]
+    expected_dims_1d = ["division"]
     for var_name in input_var_names:
 
         # confirm that the dimensions of the data array are valid
         dims = dataset[var_name].dims
         if len(dims) == 2:
-            if dims != expected_dims_2d:
-                message = f"Invalid dimensions for variable '{var_name}': {dims}"
+            if dims not in expected_dims_2d:
+                message = "Invalid dimensions for variable '{var_name}': {dims}".format(
+                    var_name=var_name, dims=dims
+                )
                 _logger.error(message)
                 raise ValueError(message)
         elif len(dims) == 1:
             if dims not in expected_dims_1d:
-                message = f"Invalid dimensions for variable '{var_name}': {dims}"
+                message = "Invalid dimensions for variable '{var_name}': {dims}".format(
+                    var_name=var_name, dims=dims
+                )
                 _logger.error(message)
                 raise ValueError(message)
 
@@ -471,9 +576,6 @@ def _compute_write_index(keyword_arguments):
     # build an arguments dictionary appropriate to the index we'll compute
     args = _build_arguments(keyword_arguments)
 
-    # divisions are only monthly so add a periodicity
-    args["periodicity"] = compute.Periodicity.monthly
-
     # add output variable arrays into the shared memory arrays dictionary
     if keyword_arguments["index"] == "palmers":
 
@@ -481,18 +583,20 @@ def _compute_write_index(keyword_arguments):
         if ("netcdf_awc" not in keyword_arguments) or (
             "var_name_awc" not in keyword_arguments
         ):
-            raise ValueError("Missing the AWC variable name argument(s)")
+            raise ValueError("Missing the AWC file and/or variable name argument(s)")
 
         awc_dataset = xr.open_dataset(keyword_arguments["netcdf_awc"])
 
         # create a shared memory array, wrap it as a numpy array and copy
         # copy the data (values) from this variable's DataArray
         var_name = keyword_arguments["var_name_awc"]
-        shared_array = multiprocessing.Array("d", int(np.prod(dataset[var_name].shape)))
-        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(
-            dataset[var_name].shape
+        shared_array = multiprocessing.Array(
+            "d", int(np.prod(awc_dataset[var_name].shape))
         )
-        np.copyto(shared_array_np, dataset[var_name].values)
+        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(
+            awc_dataset[var_name].shape
+        )
+        np.copyto(shared_array_np, awc_dataset[var_name].values)
 
         # add to the dictionary of arrays
         _global_shared_arrays[var_name] = {
@@ -703,6 +807,7 @@ def _compute_write_index(keyword_arguments):
 
             # create a shared memory array, wrap it as a numpy array and copy
             # copy the data (values) from this variable's DataArray
+
             da_lat = dataset["lat"]
             shared_array = multiprocessing.Array("d", int(np.prod(da_lat.shape)))
             shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(
@@ -767,7 +872,6 @@ def _compute_write_index(keyword_arguments):
 
 # ------------------------------------------------------------------------------
 def _pet(temperatures, latitude, parameters):
-
     return indices.pet(
         temperature_celsius=temperatures,
         latitude_degrees=latitude,
@@ -841,7 +945,6 @@ def _init_worker(shared_arrays_dict):
 def _parallel_process(index, arrays_dict, input_var_names, output_var_name, args):
     """
     TODO document this function
-
     :param index:
     :param arrays_dict:
     :param input_var_names:
@@ -972,11 +1075,9 @@ def _apply_along_axis(params):
     """
     Like numpy.apply_along_axis(), but with arguments in a dict instead.
     Applicable for applying a function across subarrays of a single input array.
-
     This function is useful with multiprocessing.Pool().map(): (1) map() only
     handles functions that take a single argument, and (2) this function can
     generally be imported from a module, as required by map().
-
     :param dict params: dictionary of parameters including a function name,
         "func1d", start and stop indices for specifying the subarray to which
         the function should be applied, "sub_array_start" and "sub_array_end",
@@ -1032,6 +1133,7 @@ def _apply_along_axis_double(params):
     first_array = _global_shared_arrays[first_array_key][_KEY_ARRAY]
     first_np_array = np.frombuffer(first_array.get_obj()).reshape(shape)
     sub_array_1 = first_np_array[start_index:end_index]
+
     if params["index"] == "pet":
         second_array = _global_shared_arrays[second_array_key][_KEY_ARRAY]
         second_np_array = np.frombuffer(second_array.get_obj()).reshape(shape[0])
@@ -1047,11 +1149,7 @@ def _apply_along_axis_double(params):
     ]
 
     for i, (x, y) in enumerate(zip(sub_array_1, sub_array_2)):
-        for j in range(x.shape[0]):
-            if params["index"] == "pet":
-                computed_array[i, j] = func1d(x[j], y, parameters=params["args"])
-            else:
-                computed_array[i, j] = func1d(x[j], y[j], parameters=params["args"])
+        computed_array[i] = func1d(x, y, parameters=params["args"])
 
 
 # ------------------------------------------------------------------------------
@@ -1087,7 +1185,7 @@ def _apply_along_axis_palmers(params):
     pet_np_array = np.frombuffer(pet_array.get_obj()).reshape(shape)
     sub_array_pet = pet_np_array[start_index:end_index]
     awc_array = _global_shared_arrays[awc_array_key][_KEY_ARRAY]
-    awc_np_array = np.frombuffer(awc_array.get_obj()).reshape([shape[0], shape[1]])
+    awc_np_array = np.frombuffer(awc_array.get_obj()).reshape(shape[0])
     sub_array_awc = awc_np_array[start_index:end_index]
 
     args = params["args"]
@@ -1121,10 +1219,9 @@ def _apply_along_axis_palmers(params):
     for i, (precip, pet, awc) in enumerate(
         zip(sub_array_precip, sub_array_pet, sub_array_awc)
     ):
-        for j in range(precip.shape[0]):
-            scpdsi[i, j], pdsi[i, j], phdi[i, j], pmdi[i, j], zindex[i, j] = func1d(
-                precip[j], pet[j], awc[j], parameters=args
-            )
+        scpdsi[i], pdsi[i], phdi[i], pmdi[i], zindex[i] = func1d(
+            precip, pet, awc, parameters=args
+        )
 
 
 # ------------------------------------------------------------------------------
@@ -1141,7 +1238,10 @@ def _prepare_file(netcdf_file, var_name):
 
     # make sure we have lat, lon, and time as variable dimensions, regardless of order
     ds = xr.open_dataset(netcdf_file)
-    if len(ds[var_name].dims) == 2:
+    if len(ds[var_name].dims) == 1:
+        expected_dims = ("division",)
+        dims = "division"
+    elif len(ds[var_name].dims) == 2:
         expected_dims = ("division", "time")
         dims = "division,time"
     else:
@@ -1214,57 +1314,56 @@ if __name__ == "__main__":
             required=True,
         )
         parser.add_argument(
-            "--netcdf_divs",
-            help="Input dataset file (NetCDF) containing temperature, precipitation, and soil "
-            "values for PDSI, SPI, SPEI, and PNP computations",
+            "--periodicity",
+            help="Process input as either monthly or daily values",
+            choices=[compute.Periodicity.monthly, compute.Periodicity.daily],
+            type=compute.Periodicity.from_string,
             required=True,
         )
-        parser.add_argument(
-            "--var_name_precip",
-            help="Precipitation variable name used in the input NetCDF file",
-            required=True,
-        )
-        parser.add_argument(
-            "--var_name_temp",
-            help="Temperature variable name used in the input NetCDF file",
-            required=False,
-        )
-        parser.add_argument(
-            "--var_name_awc",
-            help="Available water capacity variable name used in the input NetCDF file",
-            required=False,
-        )
-        # parser.add_argument("--output_file", help=" Output file path", required=True)
         parser.add_argument(
             "--scales",
-            help="Month scales over which the PNP, SPI, and SPEI values are to be computed",
+            help="Timestep scales over which the PNP, SPI, and SPEI values are to be computed",
             type=int,
             nargs="*",
-            choices=range(1, 73),
-            required=True,
         )
         parser.add_argument(
             "--calibration_start_year",
-            help="Initial year of calibration period",
+            help="Initial year of the calibration period",
             type=int,
-            choices=range(1870, start_datetime.year + 1),
-            required=True,
         )
         parser.add_argument(
-            "--calibration_end_year",
-            help="Final year of calibration period",
-            type=int,
-            choices=range(1870, start_datetime.year + 1),
-            required=True,
+            "--calibration_end_year", help="Final year of calibration period", type=int
         )
         parser.add_argument(
-            "--divisions",
-            help="Divisions for which the PNP, SPI, and SPEI values are to be computed "
-            "(useful for specifying a short list of divisions",
-            type=int,
-            nargs="*",
-            choices=range(101, 4811),
-            required=False,
+            "--netcdf_precip",
+            help="Precipitation NetCDF file to be used as input for indices computations",
+        )
+        parser.add_argument(
+            "--var_name_precip",
+            help="Precipitation variable name used in the precipitation NetCDF file",
+        )
+        parser.add_argument(
+            "--netcdf_temp",
+            help="Temperature NetCDF file to be used as input for indices computations",
+        )
+        parser.add_argument(
+            "--var_name_temp",
+            help="Temperature variable name used in the temperature NetCDF file",
+        )
+        parser.add_argument(
+            "--netcdf_pet",
+            help="PET NetCDF file to be used as input for SPEI and/or Palmer computations",
+        )
+        parser.add_argument(
+            "--var_name_pet", help="PET variable name used in the PET NetCDF file"
+        )
+        parser.add_argument(
+            "--netcdf_awc",
+            help="Available water capacity NetCDF file to be used as input for the Palmer computations",
+        )
+        parser.add_argument(
+            "--var_name_awc",
+            help="Available water capacity variable name used in the AWC NetCDF file",
         )
         parser.add_argument(
             "--output_file_base",
@@ -1294,8 +1393,8 @@ if __name__ == "__main__":
         if arguments.index in ["spi", "scaled", "all"]:
 
             # prepare the NetCDF in case the dimensions are not (time, divisions)
-            netcdf_divs = _prepare_file(
-                arguments.netcdf_divs, arguments.var_name_precip
+            netcdf_precip = _prepare_file(
+                arguments.netcdf_precip, arguments.var_name_precip
             )
 
             # run SPI computations for each scale/distribution in turn
@@ -1305,10 +1404,11 @@ if __name__ == "__main__":
                     # keyword arguments used for the SPI function
                     kwrgs = {
                         "index": "spi",
-                        "netcdf_divs": netcdf_divs,
+                        "netcdf_precip": netcdf_precip,
                         "var_name_precip": arguments.var_name_precip,
                         "scale": scale,
                         "distribution": dist,
+                        "periodicity": arguments.periodicity,
                         "calibration_start_year": arguments.calibration_start_year,
                         "calibration_end_year": arguments.calibration_end_year,
                         "output_file_base": arguments.output_file_base,
@@ -1318,8 +1418,8 @@ if __name__ == "__main__":
                     _compute_write_index(kwrgs)
 
             # remove temporary file if one was created
-            if netcdf_divs != arguments.netcdf_divs:
-                os.remove(netcdf_divs)
+            if netcdf_precip != arguments.netcdf_precip:
+                os.remove(netcdf_precip)
 
         if arguments.index in ["pet", "spei", "scaled", "palmers", "all"]:
 
@@ -1352,8 +1452,8 @@ if __name__ == "__main__":
         if arguments.index in ["spei", "scaled", "all"]:
 
             # prepare NetCDFs in case dimensions not (lat, lon, time) or if any coordinates are descending
-            netcdf_divs = _prepare_file(
-                arguments.netcdf_divs, arguments.var_name_precip
+            netcdf_precip = _prepare_file(
+                arguments.netcdf_precip, arguments.var_name_precip
             )
             netcdf_pet = _prepare_file(arguments.netcdf_pet, arguments.var_name_pet)
 
@@ -1364,7 +1464,7 @@ if __name__ == "__main__":
                     # keyword arguments used for the SPI function
                     kwrgs = {
                         "index": "spei",
-                        "netcdf_divs": netcdf_divs,
+                        "netcdf_precip": netcdf_precip,
                         "var_name_precip": arguments.var_name_precip,
                         "netcdf_pet": netcdf_pet,
                         "var_name_pet": arguments.var_name_pet,
@@ -1380,16 +1480,16 @@ if __name__ == "__main__":
                     _compute_write_index(kwrgs)
 
             # remove temporary file if one was created
-            if netcdf_divs != arguments.netcdf_divs:
-                os.remove(netcdf_divs)
+            if netcdf_precip != arguments.netcdf_precip:
+                os.remove(netcdf_precip)
             if netcdf_pet != arguments.netcdf_pet:
                 os.remove(netcdf_pet)
 
         if arguments.index in ["pnp", "scaled", "all"]:
 
             # prepare precipitation NetCDF in case dimensions not (lat, lon, time) or if any coordinates are descending
-            netcdf_divs = _prepare_file(
-                arguments.netcdf_divs, arguments.var_name_precip
+            netcdf_precip = _prepare_file(
+                arguments.netcdf_precip, arguments.var_name_precip
             )
 
             # run PNP computations for each scale in turn
@@ -1398,7 +1498,7 @@ if __name__ == "__main__":
                 # keyword arguments used for the SPI function
                 kwrgs = {
                     "index": "pnp",
-                    "netcdf_divs": netcdf_divs,
+                    "netcdf_precip": netcdf_precip,
                     "var_name_precip": arguments.var_name_precip,
                     "scale": scale,
                     "periodicity": arguments.periodicity,
@@ -1411,14 +1511,14 @@ if __name__ == "__main__":
                 _compute_write_index(kwrgs)
 
             # remove temporary precipitation file if one was created
-            if netcdf_divs != arguments.netcdf_divs:
-                os.remove(netcdf_divs)
+            if netcdf_precip != arguments.netcdf_precip:
+                os.remove(netcdf_precip)
 
         if arguments.index in ["palmers", "all"]:
 
             # prepare NetCDFs in case dimensions not (lat, lon, time)
-            netcdf_divs = _prepare_file(
-                arguments.netcdf_divs, arguments.var_name_precip
+            netcdf_precip = _prepare_file(
+                arguments.netcdf_precip, arguments.var_name_precip
             )
             netcdf_pet = _prepare_file(arguments.netcdf_pet, arguments.var_name_pet)
             netcdf_awc = _prepare_file(arguments.netcdf_awc, arguments.var_name_awc)
@@ -1426,7 +1526,7 @@ if __name__ == "__main__":
             # keyword arguments used for the SPI function
             kwrgs = {
                 "index": "palmers",
-                "netcdf_divs": netcdf_divs,
+                "netcdf_precip": netcdf_precip,
                 "var_name_precip": arguments.var_name_precip,
                 "netcdf_pet": netcdf_pet,
                 "var_name_pet": arguments.var_name_pet,
@@ -1441,8 +1541,8 @@ if __name__ == "__main__":
             _compute_write_index(kwrgs)
 
             # remove temporary files if they were created
-            if netcdf_divs != arguments.netcdf_divs:
-                os.remove(netcdf_divs)
+            if netcdf_precip != arguments.netcdf_precip:
+                os.remove(netcdf_precip)
             if netcdf_pet != arguments.netcdf_pet:
                 os.remove(netcdf_pet)
             if netcdf_awc != arguments.netcdf_awc:
