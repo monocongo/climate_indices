@@ -106,7 +106,8 @@ def _validate_args(args):
                 _logger.error(message)
                 raise ValueError(message)
 
-            # get the sizes of the latitude and longitude coordinate variables
+            # get the values of the precipitation coordinate variables,
+            # for comparison against those of the other data variables
             lats_precip = dataset_precip["lat"].values[:]
             lons_precip = dataset_precip["lon"].values[:]
             times_precip = dataset_precip["time"].values[:]
