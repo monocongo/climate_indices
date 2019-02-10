@@ -1,625 +1,1559 @@
 import argparse
+from collections import Counter
 from datetime import datetime
 import logging
 import multiprocessing
+import os
 
-import netCDF4
+from nco import Nco
 import numpy as np
 import scipy.constants
+import xarray as xr
 
 from climate_indices import compute, indices
-from scripts import netcdf_utils
 
-# ----------------------------------------------------------------------------------------------------------------------
-# set up a basic, global logger which will write to the console as standard error
+# the number of worker processes we'll use for process pools
+_NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count() - 1
+
+# shared memory array dictionary keys
+_KEY_ARRAY = "array"
+_KEY_SHAPE = "shape"
+_KEY_LAT = "lat"
+_KEY_RESULT = "result_array"
+_KEY_RESULT_SCPDSI = "result_array_scpdsi"
+_KEY_RESULT_PDSI = "result_array_pdsi"
+_KEY_RESULT_PHDI = "result_array_phdi"
+_KEY_RESULT_PMDI = "result_array_pmdi"
+_KEY_RESULT_ZINDEX = "result_array_zindex"
+
+# global dictionary to contain shared arrays for use by worker processes
+_global_shared_arrays = {}
+
+# ------------------------------------------------------------------------------
+# set up a basic, global _logger which will write to the console as standard error
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
     datefmt="%Y-%m-%d  %H:%M:%S",
 )
-logger = logging.getLogger(__name__)
-
-# ----------------------------------------------------------------------------------------------------------------------
-# static constants
-_VALID_MIN = -10.0
-_VALID_MAX = 10.0
-
-# ----------------------------------------------------------------------------------------------------------------------
-# multiprocessing lock we'll use to synchronize I/O writes to NetCDF files, one per each output file
-lock_output = multiprocessing.Lock()
+_logger = logging.getLogger(__name__)
 
 
-# ----------------------------------------------------------------------------------------------------------------------
-class DivisionsProcessor(object):
-    def __init__(
-        self,
-        input_file,
-        output_file,
-        var_name_precip,
-        var_name_temperature,
-        var_name_soil,
-        month_scales,
-        calibration_start_year,
-        calibration_end_year,
-        divisions=None,
-    ):
+# ------------------------------------------------------------------------------
+def init_worker(arrays_and_shapes):
+    """
+    Initialization function that assigns named arrays into the global variable.
+    :param arrays_and_shapes: dictionary containing variable names as keys
+        and two-element dictionaries containing RawArrays and associated shapes
+        (i.e. each value of the dictionary is itself a dictionary with one key "array"
+        and another key _KEY_SHAPE)
+    :return:
+    """
 
-        """
-        Constructor method.
+    global _global_shared_arrays
+    _global_shared_arrays = arrays_and_shapes
 
-        :param input_file:
-        :param var_name_precip:
-        :param var_name_temperature:
-        :param var_name_soil:
-        :param month_scales:
-        :param calibration_start_year:
-        :param calibration_end_year:
-        :param divisions:
-        """
 
-        self.input_file = input_file
-        self.output_file = output_file
-        self.var_name_precip = var_name_precip
-        self.var_name_temperature = var_name_temperature
-        self.var_name_soil = var_name_soil
-        self.scale_months = month_scales
-        self.calibration_start_year = calibration_start_year
-        self.calibration_end_year = calibration_end_year
-        self.divisions = divisions
+# ------------------------------------------------------------------------------
+def _validate_args(args):
+    """
+    Validate the processing settings to confirm that proper argument combinations have been provided.
 
-        # TODO get the initial year from the precipitation NetCDF, for now use hard-coded value specific to nClimDiv
-        self.data_start_year = 1895
+    :param args: an arguments object of the type returned by argparse.ArgumentParser.parse_args()
+    :raise ValueError: if one or more of the command line arguments is invalid
+    """
 
-        # create and populate the NetCDF we'll use to contain our results of a call to run()
-        self._initialize_netcdf()
+    # the dimensions we expect to find for each data variable (precipitation, temperature, and/or PET)
+    expected_dimensions = [("time", "division"), ("division", "time")]
 
-    # ------------------------------------------------------------------------------------------------------------------
-    def _initialize_netcdf(self):
+    # all indices except PET require a precipitation variable
+    if args.index != "pet":
 
-        netcdf_utils.initialize_netcdf_divisions(
-            self.output_file,
-            self.input_file,
-            self.var_name_precip,
-            _variable_info(self.scale_months),
-            True,
+        # make sure a precipitation file was specified
+        if args.netcdf_precip is None:
+            msg = "Missing the required precipitation file"
+            _logger.error(msg)
+            raise ValueError(msg)
+
+        # make sure a precipitation variable name was specified
+        if args.var_name_precip is None:
+            message = "Missing precipitation variable name"
+            _logger.error(message)
+            raise ValueError(message)
+
+        # validate the precipitation variable
+        with xr.open_dataset(args.netcdf_precip) as dataset_precip:
+
+            # make sure we have a valid precipitation variable name
+            if args.var_name_precip not in dataset_precip.variables:
+                message = "Invalid precipitation variable name: '{var}' ".format(
+                    var=args.var_name_precip
+                ) + "does not exist in precipitation file '{file}'".format(
+                    file=args.netcdf_precip
+                )
+                _logger.error(message)
+                raise ValueError(message)
+
+            # verify that the precipitation variable's dimensions are in the expected order
+            dimensions = dataset_precip[args.var_name_precip].dims
+            if dimensions not in expected_dimensions:
+                message = "Invalid dimensions of the precipitation variable: {dims}, ".format(
+                    dims=dimensions
+                ) + "(expected names and order: {dims})".format(
+                    dims=expected_dimensions
+                )
+                _logger.error(message)
+                raise ValueError(message)
+
+            # get the sizes of the division and time coordinate variables
+            divisions_precip = dataset_precip["division"].values[:]
+            times_precip = dataset_precip["time"].values[:]
+
+    else:
+
+        # PET requires a temperature file
+        if args.netcdf_temp is None:
+            msg = "Missing the required temperature file argument"
+            _logger.error(msg)
+            raise ValueError(msg)
+        # don't allow a daily periodicity for PET (yet, this will be
+        # possible once we have Hargreaves or a daily Thornthwaite)
+        if args.periodicity is not compute.Periodicity.monthly:
+            msg = (
+                "Invalid periodicity argument for PET: "
+                + "'{period}' -- only monthly is supported".format(
+                    period=args.periodicity
+                )
+            )
+            _logger.error(msg)
+            raise ValueError(msg)
+
+    # SPEI and Palmer require temperature and latitude variables in order to compute PET
+    if args.index in ["spei", "scaled", "palmers"]:
+
+        if args.netcdf_temp is None:
+
+            if args.netcdf_pet is None:
+                msg = "Missing the required temperature or PET files, neither were provided"
+                _logger.error(msg)
+                raise ValueError(msg)
+
+            # validate the PET file
+            with xr.open_dataset(args.netcdf_pet) as dataset_pet:
+
+                # make sure we have a valid temperature variable name
+                if args.var_name_pet is None:
+                    message = "Missing PET variable name"
+                    _logger.error(message)
+                    raise ValueError(message)
+                elif args.var_name_pet not in dataset_pet.variables:
+                    message = "Invalid PET variable name: '{var_name}' ".format(
+                        var_name=args.var_name_pet
+                    ) + "does not exist in PET file '{file}'".format(
+                        file=args.netcdf_pet
+                    )
+                    _logger.error(message)
+                    raise ValueError(message)
+
+                # verify that the temperature variable's dimensions are as expected
+                dimensions = dataset_pet[args.var_name_pet].dims
+                if dimensions not in expected_dimensions:
+                    message = "Invalid dimensions of the PET variable: {dims}, ".format(
+                        dims=dimensions
+                    ) + "(expected names and order: {dims})".format(
+                        dims=expected_dimensions
+                    )
+                    _logger.error(message)
+                    raise ValueError(message)
+
+                # verify that the coordinate variables match with those of the precipitation dataset
+                if not np.array_equal(divisions_precip, dataset_pet["division"][:]):
+                    message = (
+                        "Precipitation and PET variables contain non-matching divisions"
+                    )
+                    _logger.error(message)
+                    raise ValueError(message)
+                elif not np.array_equal(times_precip, dataset_pet["time"][:]):
+                    message = (
+                        "Precipitation and PET variables contain non-matching times"
+                    )
+                    _logger.error(message)
+                    raise ValueError(message)
+
+        elif args.netcdf_pet is not None:
+
+            # we can't have both temperature and PET files specified, no way to determine which to use
+            msg = "Both temperature and PET files were specified, only one of these should be provided"
+            _logger.error(msg)
+            raise ValueError(msg)
+
+        else:
+
+            # validate the temperature file
+            with xr.open_dataset(args.netcdf_temp) as dataset_temp:
+
+                # make sure we have a valid temperature variable name
+                if args.var_name_temp is None:
+                    message = "Missing temperature variable name"
+                    _logger.error(message)
+                    raise ValueError(message)
+                elif args.var_name_temp not in dataset_temp.variables:
+                    message = "Invalid temperature variable name: '{var}' does ".format(
+                        var=args.var_name_temp
+                    ) + "not exist in temperature file '{file}'".format(
+                        file=args.netcdf_temp
+                    )
+                    _logger.error(message)
+                    raise ValueError(message)
+
+                # verify that the latitude variable's dimensions are as expected
+                dimensions = dataset_temp[args.var_name_temp].dims
+                if dimensions not in expected_dimensions:
+                    message = "Invalid dimensions of the temperature variable: {dims}, ".format(
+                        dims=dimensions
+                    ) + "(expected names and order: {dims})".format(
+                        dims=expected_dimensions
+                    )
+                    _logger.error(message)
+                    raise ValueError(message)
+
+                # verify that the coordinate variables match with those of the precipitation dataset
+                if not np.array_equal(divisions_precip, dataset_temp["division"][:]):
+                    message = "Precipitation and temperature variables contain non-matching divisions"
+                    _logger.error(message)
+                    raise ValueError(message)
+                elif not np.array_equal(times_precip, dataset_temp["time"][:]):
+                    message = "Precipitation and temperature variables contain non-matching times"
+                    _logger.error(message)
+                    raise ValueError(message)
+
+        # Palmers requires an available water capacity file
+        if args.index in ["palmers"]:
+
+            if args.netcdf_awc is None:
+
+                msg = "Missing the required available water capacity file"
+                _logger.error(msg)
+                raise ValueError(msg)
+
+            # validate the AWC file
+            with xr.open_dataset(args.netcdf_awc) as dataset_awc:
+
+                # make sure we have a valid PET variable name
+                if args.var_name_awc is None:
+                    message = "Missing the AWC variable name"
+                    _logger.error(message)
+                    raise ValueError(message)
+                elif args.var_name_awc not in dataset_awc.variables:
+                    message = "Invalid AWC variable name: '{var}' does not exist ".format(
+                        var=args.var_name_awc
+                    ) + "in AWC file '{file}'".format(
+                        file=args.netcdf_awc
+                    )
+                    _logger.error(message)
+                    raise ValueError(message)
+
+                # verify that the AWC variable's dimensions are in the expected order
+                dimensions = dataset_awc[args.var_name_awc].dims
+                if len(dimensions) == 2:
+                    expected_dimensions = [("division",)]
+                if dimensions not in expected_dimensions:
+                    message = "Invalid dimensions of the AWC variable: {dims}, ".format(
+                        dims=dimensions
+                    ) + "(expected names and order: {dims})".format(
+                        dims=expected_dimensions
+                    )
+                    _logger.error(message)
+                    raise ValueError(message)
+
+                # verify that the lat and lon coordinate variable values
+                # match with those of the precipitation dataset
+                if not np.array_equal(divisions_precip, dataset_awc["division"][:]):
+                    message = (
+                        "Precipitation and AWC variables contain non-matching divisions"
+                    )
+                    _logger.error(message)
+                    raise ValueError(message)
+
+    if args.index in ["spi", "spei", "scaled", "pnp"]:
+
+        if args.scales is None:
+            message = (
+                "Scaled indices (SPI, SPEI, and/or PNP) specified without including "
+                + "one or more time scales (missing --scales argument)"
+            )
+            _logger.error(message)
+            raise ValueError(message)
+
+        if any(n < 0 for n in args.scales):
+            message = "One or more negative scale specified within --scales argument"
+            _logger.error(message)
+            raise ValueError(message)
+
+
+# ------------------------------------------------------------------------------
+def _get_scale_increment(args_dict):
+
+    if args_dict["periodicity"] == compute.Periodicity.daily:
+        scale_increment = "day"
+    elif args_dict["periodicity"] == compute.Periodicity.monthly:
+        scale_increment = "month"
+    else:
+        raise ValueError(
+            "Invalid periodicity argument: {}".format(args_dict["periodicity"])
         )
 
-    # ------------------------------------------------------------------------------------------------------------------
-    def _compute_and_write_division(self, div_index):
-        """
-        Computes indices for a single division, writing the output into NetCDF.
+    return scale_increment
 
-        :param div_index:
-        """
 
-        # only process specified divisions
-        if self.divisions is not None and div_index not in self.divisions:
-            return
+# ------------------------------------------------------------------------------
+def _log_status(args_dict):
 
-        # open the NetCDF files
-        with netCDF4.Dataset(self.input_file, "a") as input_divisions, netCDF4.Dataset(
-            self.output_file, "a"
-        ) as output_divisions:
+    # get the scale increment for use in later log messages
+    if "scale" in args_dict:
 
-            climdiv_id = input_divisions["division"][div_index]
+        if "distribution" in args_dict:
 
-            # only process divisions within CONUS, 101 - 4811
-            if climdiv_id > 4811:
-                return
-
-            logger.info("Processing indices for division %s", climdiv_id)
-
-            # read the division of input temperature values
-            temperature = input_divisions[self.var_name_temperature][
-                div_index, :
-            ]  # assuming dims (divisions, time)
-
-            # initialize the latitude outside of the valid range, in order to use
-            # this within a conditional below to verify a valid latitude
-            latitude = -100.0
-
-            # latitudes are only available for certain divisions, make sure we have one for this division index
-            if div_index < input_divisions["lat"][:].size:
-
-                # get the actual latitude value (assumed to be in degrees north)
-                # for the latitude slice specified by the index
-                latitude = input_divisions["lat"][div_index]
-
-            # only proceed if the latitude value is within valid range
-            if not np.isnan(latitude) and (latitude < 90.0) and (latitude > -90.0):
-
-                # convert temperatures from Fahrenheit to Celsius, if necessary
-                temperature_units = input_divisions[self.var_name_temperature].units
-                if temperature_units in [
-                    "degree_Fahrenheit",
-                    "degrees Fahrenheit",
-                    "degrees F",
-                    "fahrenheit",
-                    "Fahrenheit",
-                    "F",
-                ]:
-
-                    # TODO make sure this application of the ufunc is any faster  pylint: disable=fixme
-                    temperature = scipy.constants.convert_temperature(
-                        temperature, "F", "C"
-                    )
-
-                elif temperature_units not in [
-                    "degree_Celsius",
-                    "degrees Celsius",
-                    "degrees C",
-                    "celsius",
-                    "Celsius",
-                    "C",
-                ]:
-
-                    raise ValueError(
-                        "Unsupported temperature units: '{0}'".format(temperature_units)
-                    )
-
-                # TODO instead use the numpy.apply_along_axis() function for computing indices such as PET
-                # that take a single time series array as input (i.e. each division's time series is the initial
-                # 1-D array argument to the function we'll apply)
-
-                logger.info("\tComputing PET for division %s", climdiv_id)
-
-                logger.info("\t\tCalculating PET using Thornthwaite method")
-
-                # compute PET across all longitudes of the latitude slice
-                # Thornthwaite PE
-                pet_time_series = indices.pet(
-                    temperature,
-                    latitude_degrees=latitude,
-                    data_start_year=self.data_start_year,
+            _logger.info(
+                "Computing {scale}-{incr} {index}/{dist}".format(
+                    scale=args_dict["scale"],
+                    incr=_get_scale_increment(args_dict),
+                    index=args_dict["index"].upper(),
+                    dist=args_dict["distribution"].value.capitalize(),
                 )
+            )
 
-                # the above returns PET in millimeters, note this for further consideration
-                pet_units = "millimeter"
+        else:
 
-                # write the PET values to NetCDF
-                lock_output.acquire()
-                output_divisions["pet"][div_index, :] = np.reshape(
-                    pet_time_series, (1, pet_time_series.size)
+            _logger.info(
+                "Computing {scale}-{incr} {index}".format(
+                    scale=args_dict["scale"],
+                    incr=_get_scale_increment(args_dict),
+                    index=args_dict["index"].upper(),
                 )
-                output_divisions.sync()
-                lock_output.release()
+            )
 
-            else:
+    else:
 
-                pet_time_series = np.full(temperature.shape, np.NaN)
-                pet_units = None
+        _logger.info("Computing {index}".format(index=args_dict["index"].upper()))
 
-            # read the division's input precipitation and available water capacity values
-            precip_time_series = input_divisions[self.var_name_precip][
-                div_index, :
-            ]  # assuming dims (divisions, time)
+    return True
 
-            if div_index < input_divisions[self.var_name_soil][:].size:
 
-                awc = input_divisions[self.var_name_soil][
-                    div_index
-                ]  # assuming (divisions) dims orientation
+# ------------------------------------------------------------------------------
+def _build_arguments(keyword_args):
+    """
+    Builds a dictionary of function arguments appropriate to the index to be computed.
 
-                # AWC values need to include top inch, values from the soil file do not, so we add top inch here
-                awc += 1
+    :param dict keyword_args:
+    :return: dictionary of arguments keyed with names expected by the corresponding
+        index computation function
+    """
 
-            else:
-                awc = np.NaN
+    function_arguments = {"data_start_year": keyword_args["data_start_year"]}
 
-            # compute SPI and SPEI for the current division only if we have valid inputs
-            if not np.isnan(precip_time_series).all():
+    if keyword_args["index"] in ["spi", "spei"]:
+        function_arguments["scale"] = keyword_args["scale"]
+        function_arguments["distribution"] = keyword_args["distribution"]
+        function_arguments["calibration_year_initial"] = keyword_args[
+            "calibration_start_year"
+        ]
+        function_arguments["calibration_year_final"] = keyword_args[
+            "calibration_end_year"
+        ]
+        function_arguments["periodicity"] = keyword_args["periodicity"]
 
-                # put precipitation into inches if not already
-                mm_to_inches_multiplier = 0.0393701
-                possible_mm_units = ["millimeters", "millimeter", "mm"]
-                if input_divisions[self.var_name_precip].units in possible_mm_units:
-                    precip_time_series = precip_time_series * mm_to_inches_multiplier
+    elif keyword_args["index"] == "pnp":
+        function_arguments["scale"] = keyword_args["scale"]
+        function_arguments["calibration_start_year"] = keyword_args[
+            "calibration_start_year"
+        ]
+        function_arguments["calibration_end_year"] = keyword_args[
+            "calibration_end_year"
+        ]
+        function_arguments["periodicity"] = keyword_args["periodicity"]
 
-                # only compute Palmers if we have PET already
-                if not np.isnan(pet_time_series).all():
+    elif keyword_args["index"] == "palmers":
+        function_arguments["calibration_start_year"] = keyword_args[
+            "calibration_start_year"
+        ]
+        function_arguments["calibration_end_year"] = keyword_args[
+            "calibration_end_year"
+        ]
 
-                    # compute Palmer indices if we have valid inputs
-                    if not np.isnan(awc):
-
-                        # if PET is in mm, convert to inches
-                        if pet_units in possible_mm_units:
-                            pet_time_series = pet_time_series * mm_to_inches_multiplier
-
-                        # PET is in mm, convert to inches since the Palmer uses imperial units
-                        pet_time_series = pet_time_series * mm_to_inches_multiplier
-
-                        logger.info("\tComputing PDSI for division %s", climdiv_id)
-
-                        # compute Palmer indices
-                        palmer_values = indices.scpdsi(
-                            precip_time_series,
-                            pet_time_series,
-                            awc,
-                            self.data_start_year,
-                            self.calibration_start_year,
-                            self.calibration_end_year,
-                        )
-
-                        # pull Palmer indices out of the returned array (for code clarity)
-                        scpdsi = palmer_values[0]
-                        pdsi = palmer_values[1]
-                        phdi = palmer_values[2]
-                        pmdi = palmer_values[3]
-                        zindex = palmer_values[4]
-
-                        # write the Palmer index values to NetCDF
-                        lock_output.acquire()
-                        output_divisions["pdsi"][div_index, :] = np.reshape(
-                            pdsi, (1, pdsi.size)
-                        )
-                        output_divisions["phdi"][div_index, :] = np.reshape(
-                            phdi, (1, phdi.size)
-                        )
-                        output_divisions["pmdi"][div_index, :] = np.reshape(
-                            pmdi, (1, pmdi.size)
-                        )
-                        output_divisions["scpdsi"][div_index, :] = np.reshape(
-                            pdsi, (1, scpdsi.size)
-                        )
-                        output_divisions["zindex"][div_index, :] = np.reshape(
-                            zindex, (1, zindex.size)
-                        )
-                        output_divisions.sync()
-                        lock_output.release()
-
-                    # process the SPI, SPEI, and PNP at the specified month scales
-                    for months in self.scale_months:
-                        logger.info(
-                            "\tComputing SPI/SPEI/PNP at %s-month scale for division %s",
-                            months,
-                            climdiv_id,
-                        )
-
-                        # TODO ensure that the precipitation and PET values are using the same units
-
-                        # compute SPEI/Gamma
-                        spei_gamma = indices.spei(
-                            precip_time_series,
-                            pet_time_series,
-                            months,
-                            indices.Distribution.gamma,
-                            compute.Periodicity.monthly,
-                            self.data_start_year,
-                            self.calibration_start_year,
-                            self.calibration_end_year,
-                        )
-
-                        # compute SPEI/Pearson
-                        spei_pearson = indices.spei(
-                            precip_time_series,
-                            pet_time_series,
-                            months,
-                            indices.Distribution.pearson,
-                            compute.Periodicity.monthly,
-                            self.data_start_year,
-                            self.calibration_start_year,
-                            self.calibration_end_year,
-                        )
-
-                        # compute SPI/Gamma
-                        spi_gamma = indices.spi(
-                            precip_time_series,
-                            months,
-                            indices.Distribution.gamma,
-                            self.data_start_year,
-                            self.calibration_start_year,
-                            self.calibration_end_year,
-                            compute.Periodicity.monthly,
-                        )
-
-                        # compute SPI/Pearson
-                        spi_pearson = indices.spi(
-                            precip_time_series,
-                            months,
-                            indices.Distribution.pearson,
-                            self.data_start_year,
-                            self.calibration_start_year,
-                            self.calibration_end_year,
-                            compute.Periodicity.monthly,
-                        )
-
-                        # compute PNP
-                        pnp = indices.percentage_of_normal(
-                            precip_time_series,
-                            months,
-                            self.data_start_year,
-                            self.calibration_start_year,
-                            self.calibration_end_year,
-                            compute.Periodicity.monthly,
-                        )
-
-                        # create variable names which should correspond to the appropriate scaled index output variables
-                        scaled_name_suffix = str(months).zfill(2)
-                        spei_gamma_variable_name = "spei_gamma_" + scaled_name_suffix
-                        spei_pearson_variable_name = (
-                            "spei_pearson_" + scaled_name_suffix
-                        )
-                        spi_gamma_variable_name = "spi_gamma_" + scaled_name_suffix
-                        spi_pearson_variable_name = "spi_pearson_" + scaled_name_suffix
-                        pnp_variable_name = "pnp_" + scaled_name_suffix
-
-                        # write the SPI, SPEI, and PNP values to NetCDF
-                        lock_output.acquire()
-                        output_divisions[spei_gamma_variable_name][
-                            div_index, :
-                        ] = np.reshape(spei_gamma, (1, spei_gamma.size))
-                        output_divisions[spei_pearson_variable_name][
-                            div_index, :
-                        ] = np.reshape(spei_pearson, (1, spei_pearson.size))
-                        output_divisions[spi_gamma_variable_name][
-                            div_index, :
-                        ] = np.reshape(spi_gamma, (1, spi_gamma.size))
-                        output_divisions[spi_pearson_variable_name][
-                            div_index, :
-                        ] = np.reshape(spi_pearson, (1, spi_pearson.size))
-                        output_divisions[pnp_variable_name][div_index, :] = np.reshape(
-                            pnp, (1, pnp.size)
-                        )
-                        output_divisions.sync()
-                        lock_output.release()
-
-    # ------------------------------------------------------------------------------------------------------------------
-    def run(self):
-
-        # initialize the output NetCDF that will contain the computed indices
-        with netCDF4.Dataset(self.input_file) as input_dataset:
-
-            # get the initial and final year of the input datasets
-            time_variable = input_dataset.variables["time"]
-            self.data_start_year = netCDF4.num2date(
-                time_variable[0], time_variable.units
-            ).year
-
-            # get the number of divisions in the input dataset(s)
-            divisions_count = input_dataset.variables["division"].size
-
-        # --------------------------------------------------------------------------------------------------------------
-        # Create PET and Palmer index NetCDF files, computed from input temperature, precipitation, and soil constant.
-        # Compute SPI, SPEI, and PNP at all specified month scales.
-        # --------------------------------------------------------------------------------------------------------------
-
-        # create a process Pool for worker processes to compute indices for each division
-        pool = multiprocessing.Pool(
-            processes=multiprocessing.cpu_count()
-        )  # use single process here when debugging
-
-        # map the divisions indices as an arguments iterable to the compute function
-        result = pool.map_async(
-            self._compute_and_write_division, range(divisions_count)
+    elif keyword_args["index"] != "pet":
+        raise ValueError(
+            "Index {index} not yet supported.".format(index=keyword_args["index"])
         )
 
-        # get the exception(s) thrown, if any
-        result.get()
-
-        # close the pool and wait on all processes to finish
-        pool.close()
-        pool.join()
+    return function_arguments
 
 
-# ----------------------------------------------------------------------------------------------------------------------
-def _variable_info(month_scales):
+# ------------------------------------------------------------------------------
+def _get_variable_attributes(args_dict):
+
+    if args_dict["index"] == "spi":
+
+        long_name = "Standardized Precipitation Index ({dist} distribution), ".format(
+            dist=args_dict["distribution"].value.capitalize()
+        ) + "{scale}-{increment}".format(
+            scale=args_dict["scale"], increment=_get_scale_increment(args_dict)
+        )
+        attrs = {"long_name": long_name, "valid_min": -3.09, "valid_max": 3.09}
+        var_name = (
+            "spi_"
+            + args_dict["distribution"].value
+            + "_"
+            + str(args_dict["scale"]).zfill(2)
+        )
+
+    elif args_dict["index"] == "spei":
+
+        long_name = "Standardized Precipitation Evapotranspiration Index ({dist} distribution), ".format(
+            dist=args_dict["distribution"].value.capitalize()
+        ) + "{scale}-{increment}".format(
+            scale=args_dict["scale"], increment=_get_scale_increment(args_dict)
+        )
+        attrs = {"long_name": long_name, "valid_min": -3.09, "valid_max": 3.09}
+        var_name = (
+            "spei_"
+            + args_dict["distribution"].value
+            + "_"
+            + str(args_dict["scale"]).zfill(2)
+        )
+
+    elif args_dict["index"] == "pnp":
+
+        long_name = (
+            "Percentage of Normal Precipitation, "
+            + "{scale}-{increment}".format(
+                scale=args_dict["scale"], increment=_get_scale_increment(args_dict)
+            )
+        )
+        attrs = {"long_name": long_name, "valid_min": -1000.0, "valid_max": 1000.0}
+        var_name = "pnp_" + str(args_dict["scale"]).zfill(2)
+
+    elif args_dict["index"] == "pet":
+
+        long_name = "Potential Evapotranspiration (Thornthwaite)"
+        attrs = {
+            "long_name": long_name,
+            "valid_min": 0.0,
+            "valid_max": 10000.0,
+            "units": "millimeters",
+        }
+        var_name = "pet_thornthwaite"
+
+    else:
+
+        raise ValueError("Unsupported index: {index}".format(index=args_dict["index"]))
+
+    return var_name, attrs
+
+
+# ------------------------------------------------------------------------------
+def _compute_write_index(keyword_arguments):
+    """
+    Computes a climate index and writes the result into a corresponding NetCDF.
+
+    :param keyword_arguments:
+    :return:
     """
 
-    :param month_scales:
-    :return: for month-scaled indices (SPI, SPEI, and PNP) a list of the number of months to use as scale
-    """
+    _log_status(keyword_arguments)
 
-    # the dictionary of variable names (keys) to dictionaries of variable attributes (values) we'll populate and return
-    variable_attributes = {}
+    # open the input NetCDF file as an xarray DataSet object
+    files = []
+    if "netcdf_precip" in keyword_arguments:
+        files.append(keyword_arguments["netcdf_precip"])
+    if "netcdf_temp" in keyword_arguments:
+        files.append(keyword_arguments["netcdf_temp"])
+    if "netcdf_pet" in keyword_arguments:
+        files.append(keyword_arguments["netcdf_pet"])
+    dataset = xr.open_mfdataset(files, chunks={"division": -1})
 
-    variable_attributes["pet"] = {
-        "standard_name": "pet",
-        "long_name": "Potential Evapotranspiration (PET), from Thornthwaite's equation",
-        "valid_min": 0.0,
-        "valid_max": 2000.0,
-        "units": "millimeter",
-    }
-    variable_attributes["pdsi"] = {
-        "standard_name": "pdsi",
-        "long_name": "Palmer Drought Severity Index (PDSI)",
-        "valid_min": -10.0,
-        "valid_max": 10.0,
-    }
-    variable_attributes["scpdsi"] = {
-        "standard_name": "scpdsi",
-        "long_name": "Self-calibrated Palmer Drought Severity Index (PDSI)",
-        "valid_min": -10.0,
-        "valid_max": 10.0,
-    }
-    variable_attributes["phdi"] = {
-        "standard_name": "phdi",
-        "long_name": "Palmer Hydrological Drought Index (PHDI)",
-        "valid_min": -10.0,
-        "valid_max": 10.0,
-    }
-    variable_attributes["pmdi"] = {
-        "standard_name": "pmdi",
-        "long_name": "Palmer Modified Drought Index (PMDI)",
-        "valid_min": -10.0,
-        "valid_max": 10.0,
-    }
-    variable_attributes["zindex"] = {
-        "standard_name": "zindex",
-        "long_name": "Palmer Z-Index",
-        "valid_min": -10.0,
-        "valid_max": 10.0,
-    }
+    # trim out all data variables from the dataset except the ones we'll need
+    input_var_names = []
+    if "var_name_precip" in keyword_arguments:
+        input_var_names.append(keyword_arguments["var_name_precip"])
+    if "var_name_temp" in keyword_arguments:
+        input_var_names.append(keyword_arguments["var_name_temp"])
+    if "var_name_pet" in keyword_arguments:
+        input_var_names.append(keyword_arguments["var_name_pet"])
+    for var in dataset.data_vars:
+        if var not in input_var_names:
+            if var != "lat":
+                dataset = dataset.drop(var)
+    # get the initial year of the data
+    data_start_year = int(str(dataset["time"].values[0])[0:4])
+    keyword_arguments["data_start_year"] = data_start_year
 
-    for months in month_scales:
-        variable_name = "pnp_" + str(months).zfill(2)
-        variable_attributes[variable_name] = {
-            "standard_name": variable_name,
-            "long_name": "Percent average precipitation, {}-month scale".format(months),
-            "valid_min": 0,
-            "valid_max": 10.0,
-            "units": "percent of average",
+    # the shape of output variables is assumed to match that of the input,
+    # so use either precipitation or temperature variable's shape
+    if "var_name_precip" in keyword_arguments:
+        output_shape = dataset[keyword_arguments["var_name_precip"]].shape
+        output_dims = dataset[keyword_arguments["var_name_precip"]].dims
+    elif "var_name_temp" in keyword_arguments:
+        output_shape = dataset[keyword_arguments["var_name_temp"]].shape
+        output_dims = dataset[keyword_arguments["var_name_temp"]].dims
+    else:
+        raise ValueError(
+            "Unable to determine output shape, no precipitation "
+            "or temperature variable name was specified."
+        )
+
+    # convert data into the appropriate units, if necessary
+    # temperature should be in degrees Celsius
+    # precipitation and PET should be in millimeters
+    if "var_name_precip" in keyword_arguments:
+        precip_var_name = keyword_arguments["var_name_precip"]
+        precip_unit = dataset[precip_var_name].units.lower()
+        if precip_unit not in ("mm", "millimeters", "millimeter"):
+            if precip_unit in ("inches", "inch"):
+                # inches to mm conversion (1 inch == 25.4 mm)
+                dataset[precip_var_name].values *= 25.4
+            else:
+                raise ValueError(
+                    "Unsupported precipitation units: {var}".format(var=dataset[precip_var_name].units)
+                )
+    if "var_name_temp" in keyword_arguments:
+        temp_var_name = keyword_arguments["var_name_temp"]
+        temp_unit = dataset[temp_var_name].units.lower()
+        if temp_unit not in ("degrees_celsius", "celsius", "c"):
+            if temp_unit in ("f", "fahrenheit"):
+                dataset[temp_var_name].values = scipy.constants.convert_temperature(
+                    dataset[temp_var_name].values, "f", "c"
+                )
+            elif temp_unit in ("k", "kelvin"):
+                dataset[temp_var_name].values = scipy.constants.convert_temperature(
+                    dataset[temp_var_name].values, "k", "c"
+                )
+            else:
+                raise ValueError(
+                    "Unsupported temperature units: {var}".format(var=dataset[temp_var_name].units)
+                )
+
+    # get the data arrays we'll use later in the index computations
+    global _global_shared_arrays
+    expected_dims_2d = [("division", "time"), ("time", "division")]
+    expected_dims_1d = ["division"]
+    for var_name in input_var_names:
+
+        # confirm that the dimensions of the data array are valid
+        dims = dataset[var_name].dims
+        if len(dims) == 2:
+            if dims not in expected_dims_2d:
+                message = "Invalid dimensions for variable '{var_name}': {dims}".format(
+                    var_name=var_name, dims=dims
+                )
+                _logger.error(message)
+                raise ValueError(message)
+        elif len(dims) == 1:
+            if dims not in expected_dims_1d:
+                message = "Invalid dimensions for variable '{var_name}': {dims}".format(
+                    var_name=var_name, dims=dims
+                )
+                _logger.error(message)
+                raise ValueError(message)
+
+        # create a shared memory array, wrap it as a numpy array and copy
+        # copy the data (values) from this variable's DataArray
+        shared_array = multiprocessing.Array("d", int(np.prod(dataset[var_name].shape)))
+        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(
+            dataset[var_name].shape
+        )
+        np.copyto(shared_array_np, dataset[var_name].values)
+
+        # add to the dictionary of arrays
+        _global_shared_arrays[var_name] = {
+            _KEY_ARRAY: shared_array,
+            _KEY_SHAPE: dataset[var_name].shape,
         }
-        variable_name = "spi_gamma_" + str(months).zfill(2)
-        variable_attributes[variable_name] = {
-            "standard_name": variable_name,
-            "long_name": "SPI (Gamma), {}-month scale".format(months),
-            "valid_min": -3.09,
-            "valid_max": 3.09,
+
+        # drop the variable from the dataset (we're assuming this frees the memory)
+        dataset = dataset.drop(var_name)
+
+    # build an arguments dictionary appropriate to the index we'll compute
+    args = _build_arguments(keyword_arguments)
+
+    # add output variable arrays into the shared memory arrays dictionary
+    if keyword_arguments["index"] == "palmers":
+
+        # read AWC data into shared memory array
+        if ("netcdf_awc" not in keyword_arguments) or (
+            "var_name_awc" not in keyword_arguments
+        ):
+            raise ValueError("Missing the AWC file and/or variable name argument(s)")
+
+        awc_dataset = xr.open_dataset(keyword_arguments["netcdf_awc"])
+
+        # create a shared memory array, wrap it as a numpy array and copy
+        # copy the data (values) from this variable's DataArray
+        var_name = keyword_arguments["var_name_awc"]
+        shared_array = multiprocessing.Array(
+            "d", int(np.prod(awc_dataset[var_name].shape))
+        )
+        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(
+            awc_dataset[var_name].shape
+        )
+        np.copyto(shared_array_np, awc_dataset[var_name].values)
+
+        # add to the dictionary of arrays
+        _global_shared_arrays[var_name] = {
+            _KEY_ARRAY: shared_array,
+            _KEY_SHAPE: awc_dataset[var_name].shape,
         }
-        variable_name = "spi_pearson_" + str(months).zfill(2)
-        variable_attributes[variable_name] = {
-            "standard_name": variable_name,
-            "long_name": "SPI (Pearson), {}-month scale".format(months),
-            "valid_min": -3.09,
-            "valid_max": 3.09,
-        }
-        variable_name = "spei_gamma_" + str(months).zfill(2)
-        variable_attributes[variable_name] = {
-            "standard_name": variable_name,
-            "long_name": "SPEI (Gamma), {}-month scale".format(months),
-            "valid_min": -3.09,
-            "valid_max": 3.09,
-        }
-        variable_name = "spei_pearson_" + str(months).zfill(2)
-        variable_attributes[variable_name] = {
-            "standard_name": variable_name,
-            "long_name": "SPEI (Pearson), {}-month scale".format(months),
-            "valid_min": -3.09,
-            "valid_max": 3.09,
-        }
 
-    return variable_attributes
+        # add shared memory arrays for computed Palmers to the dictionary of shared arrays
+        if _KEY_RESULT_SCPDSI not in _global_shared_arrays:
+            _global_shared_arrays[_KEY_RESULT_SCPDSI] = {
+                _KEY_ARRAY: multiprocessing.Array("d", int(np.prod(output_shape))),
+                _KEY_SHAPE: output_shape,
+            }
+        if _KEY_RESULT_PDSI not in _global_shared_arrays:
+            _global_shared_arrays[_KEY_RESULT_PDSI] = {
+                _KEY_ARRAY: multiprocessing.Array("d", int(np.prod(output_shape))),
+                _KEY_SHAPE: output_shape,
+            }
+        if _KEY_RESULT_PHDI not in _global_shared_arrays:
+            _global_shared_arrays[_KEY_RESULT_PHDI] = {
+                _KEY_ARRAY: multiprocessing.Array("d", int(np.prod(output_shape))),
+                _KEY_SHAPE: output_shape,
+            }
+        if _KEY_RESULT_PMDI not in _global_shared_arrays:
+            _global_shared_arrays[_KEY_RESULT_PMDI] = {
+                _KEY_ARRAY: multiprocessing.Array("d", int(np.prod(output_shape))),
+                _KEY_SHAPE: output_shape,
+            }
+        if _KEY_RESULT_ZINDEX not in _global_shared_arrays:
+            _global_shared_arrays[_KEY_RESULT_ZINDEX] = {
+                _KEY_ARRAY: multiprocessing.Array("d", int(np.prod(output_shape))),
+                _KEY_SHAPE: output_shape,
+            }
+
+        # apply the Palmers function along the time axis (axis=2)
+        _parallel_process(
+            keyword_arguments["index"],
+            _global_shared_arrays,
+            {
+                "var_name_precip": keyword_arguments["var_name_precip"],
+                "var_name_pet": keyword_arguments["var_name_pet"],
+                "var_name_awc": keyword_arguments["var_name_awc"],
+            },
+            _KEY_RESULT_SCPDSI,
+            args,
+        )
+
+        # get the computed SCPDSI data as an array of float32 values
+        array = _global_shared_arrays[_KEY_RESULT_SCPDSI][_KEY_ARRAY]
+        shape = _global_shared_arrays[_KEY_RESULT_SCPDSI][_KEY_SHAPE]
+        scpdsi = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
+
+        # get the computed PDSI data as an array of float32 values
+        array = _global_shared_arrays[_KEY_RESULT_PDSI][_KEY_ARRAY]
+        shape = _global_shared_arrays[_KEY_RESULT_PDSI][_KEY_SHAPE]
+        pdsi = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
+
+        # get the computed PHDI data as an array of float32 values
+        array = _global_shared_arrays[_KEY_RESULT_PHDI][_KEY_ARRAY]
+        shape = _global_shared_arrays[_KEY_RESULT_PHDI][_KEY_SHAPE]
+        phdi = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
+
+        # get the computed PMDI data as an array of float32 values
+        array = _global_shared_arrays[_KEY_RESULT_PMDI][_KEY_ARRAY]
+        shape = _global_shared_arrays[_KEY_RESULT_PMDI][_KEY_SHAPE]
+        pmdi = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
+
+        # get the computed Z-Index data as an array of float32 values
+        array = _global_shared_arrays[_KEY_RESULT_ZINDEX][_KEY_ARRAY]
+        shape = _global_shared_arrays[_KEY_RESULT_ZINDEX][_KEY_SHAPE]
+        zindex = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
+
+        # create a new variable to contain the SCPDSI values, assign into the dataset
+        long_name = "Self-calibrated Palmer Drought Severity Index"
+        scpdsi_attrs = {"long_name": long_name, "valid_min": -10.0, "valid_max": 10.0}
+        var_name_scpdsi = "scpdsi"
+        scpdsi_var = xr.Variable(dims=output_dims, data=scpdsi, attrs=scpdsi_attrs)
+        dataset[var_name_scpdsi] = scpdsi_var
+
+        # remove all data variables except for the new SCPDSI variable
+        for var_name in dataset.data_vars:
+            if var_name != var_name_scpdsi:
+                dataset = dataset.drop(var_name)
+
+        # TODO set global attributes accordingly for this new dataset
+
+        # write the dataset as NetCDF
+        netcdf_file_name = (
+            keyword_arguments["output_file_base"] + "_" + var_name_scpdsi + ".nc"
+        )
+        dataset.to_netcdf(netcdf_file_name)
+
+        # create a new variable to contain the PDSI values, assign into the dataset
+        long_name = "Palmer Drought Severity Index"
+        pdsi_attrs = {"long_name": long_name, "valid_min": -10.0, "valid_max": 10.0}
+        var_name_pdsi = "pdsi"
+        pdsi_var = xr.Variable(dims=output_dims, data=pdsi, attrs=pdsi_attrs)
+        dataset[var_name_pdsi] = pdsi_var
+
+        # remove all data variables except for the new PDSI variable
+        for var_name in dataset.data_vars:
+            if var_name != var_name_pdsi:
+                dataset = dataset.drop(var_name)
+
+        # TODO set global attributes accordingly for this new dataset
+
+        # write the dataset as NetCDF
+        netcdf_file_name = (
+            keyword_arguments["output_file_base"] + "_" + var_name_pdsi + ".nc"
+        )
+        dataset.to_netcdf(netcdf_file_name)
+
+        # create a new variable to contain the PHDI values, assign into the dataset
+        long_name = "Palmer Hydrological Drought Index"
+        phdi_attrs = {"long_name": long_name, "valid_min": -10.0, "valid_max": 10.0}
+        var_name_phdi = "phdi"
+        phdi_var = xr.Variable(dims=output_dims, data=phdi, attrs=phdi_attrs)
+        dataset[var_name_phdi] = phdi_var
+
+        # remove all data variables except for the new PHDI variable
+        for var_name in dataset.data_vars:
+            if var_name != var_name_phdi:
+                dataset = dataset.drop(var_name)
+
+        # TODO set global attributes accordingly for this new dataset
+
+        # write the dataset as NetCDF
+        netcdf_file_name = (
+            keyword_arguments["output_file_base"] + "_" + var_name_phdi + ".nc"
+        )
+        dataset.to_netcdf(netcdf_file_name)
+
+        # create a new variable to contain the PMDI values, assign into the dataset
+        long_name = "Palmer Modified Drought Index"
+        pmdi_attrs = {"long_name": long_name, "valid_min": -10.0, "valid_max": 10.0}
+        var_name_pmdi = "pmdi"
+        pmdi_var = xr.Variable(dims=output_dims, data=pmdi, attrs=pmdi_attrs)
+        dataset[var_name_pmdi] = pmdi_var
+
+        # remove all data variables except for the new PMDI variable
+        for var_name in dataset.data_vars:
+            if var_name != var_name_pmdi:
+                dataset = dataset.drop(var_name)
+
+        # TODO set global attributes accordingly for this new dataset
+
+        # write the dataset as NetCDF
+        netcdf_file_name = (
+            keyword_arguments["output_file_base"] + "_" + var_name_pmdi + ".nc"
+        )
+        dataset.to_netcdf(netcdf_file_name)
+
+        # create a new variable to contain the Z-Index values, assign into the dataset
+        long_name = "Palmer Z-Index"
+        zindex_attrs = {"long_name": long_name, "valid_min": -10.0, "valid_max": 10.0}
+        var_name_zindex = "zindex"
+        zindex_var = xr.Variable(dims=output_dims, data=zindex, attrs=zindex_attrs)
+        dataset[var_name_zindex] = zindex_var
+
+        # remove all data variables except for the new Z-Index variable
+        for var_name in dataset.data_vars:
+            if var_name != var_name_zindex:
+                dataset = dataset.drop(var_name)
+
+        # TODO set global attributes accordingly for this new dataset
+
+        # write the dataset as NetCDF
+        netcdf_file_name = (
+            keyword_arguments["output_file_base"] + "_" + var_name_zindex + ".nc"
+        )
+        dataset.to_netcdf(netcdf_file_name)
+
+    else:
+
+        # add an array to hold results to the dictionary of arrays
+        if _KEY_RESULT not in _global_shared_arrays:
+            _global_shared_arrays[_KEY_RESULT] = {
+                _KEY_ARRAY: multiprocessing.Array("d", int(np.prod(output_shape))),
+                _KEY_SHAPE: output_shape,
+            }
+
+        if keyword_arguments["index"] in ["spi", "pnp"]:
+
+            # apply the SPI function along the time axis (axis=2)
+            _parallel_process(
+                keyword_arguments["index"],
+                _global_shared_arrays,
+                {"var_name_precip": keyword_arguments["var_name_precip"]},
+                _KEY_RESULT,
+                args,
+            )
+
+        elif keyword_arguments["index"] == "spei":
+
+            # apply the SPEI function along the time axis (axis=2)
+            _parallel_process(
+                keyword_arguments["index"],
+                _global_shared_arrays,
+                {
+                    "var_name_precip": keyword_arguments["var_name_precip"],
+                    "var_name_pet": keyword_arguments["var_name_pet"],
+                },
+                _KEY_RESULT,
+                args,
+            )
+
+        elif keyword_arguments["index"] == "pet":
+
+            # create a shared memory array, wrap it as a numpy array and copy
+            # copy the data (values) from this variable's DataArray
+
+            da_lat = dataset["lat"]
+            shared_array = multiprocessing.Array("d", int(np.prod(da_lat.shape)))
+            shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(
+                da_lat.shape
+            )
+            np.copyto(shared_array_np, da_lat.values)
+
+            # add to the dictionary of arrays
+            _global_shared_arrays[_KEY_LAT] = {
+                _KEY_ARRAY: shared_array,
+                _KEY_SHAPE: da_lat.shape,
+            }
+
+            # apply the PET function along the time axis (axis=2)
+            _parallel_process(
+                keyword_arguments["index"],
+                _global_shared_arrays,
+                {
+                    "var_name_temp": keyword_arguments["var_name_temp"],
+                    "var_name_lat": _KEY_LAT,
+                },
+                _KEY_RESULT,
+                args,
+            )
+
+        else:
+            raise ValueError(
+                "Unsupported index: '{index}'".format(index=keyword_arguments["index"])
+            )
+
+        # get the name and attributes to use for the index variable in the output NetCDF
+        output_var_name, output_var_attributes = _get_variable_attributes(
+            keyword_arguments
+        )
+
+        # get the shared memory results array and convert it to a numpy array
+        array = _global_shared_arrays[_KEY_RESULT][_KEY_ARRAY]
+        shape = _global_shared_arrays[_KEY_RESULT][_KEY_SHAPE]
+        index_values = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
+
+        # create a new variable to contain the index values, assign into the dataset
+        variable = xr.Variable(
+            dims=output_dims, data=index_values, attrs=output_var_attributes
+        )
+        dataset[output_var_name] = variable
+
+        # TODO set global attributes accordingly for this new dataset
+
+        # remove all data variables except for the new variable
+        for var_name in dataset.data_vars:
+            if var_name != output_var_name:
+                dataset = dataset.drop(var_name)
+
+        # write the dataset as NetCDF
+        netcdf_file_name = (
+            keyword_arguments["output_file_base"] + "_" + output_var_name + ".nc"
+        )
+        dataset.to_netcdf(netcdf_file_name)
+
+        return netcdf_file_name, output_var_name
 
 
-# ----------------------------------------------------------------------------------------------------------------------
-def process_divisions(
-    input_file,
-    output_file,
-    precip_var_name,
-    temp_var_name,
-    awc_var_name,
-    month_scales,
-    calibration_start_year,
-    calibration_end_year,
-    divisions=None,
-):
-
-    """
-    Performs indices processing from climate divisions inputs.
-
-    :param input_file
-    :param output_file
-    :param precip_var_name
-    :param temp_var_name
-    :param awc_var_name
-    :param month_scales
-    :param calibration_start_year
-    :param calibration_end_year
-    :param divisions: list of divisions to compute, if None (default) then all divisions are included
-    """
-
-    # perform the processing
-    divisions_processor = DivisionsProcessor(
-        input_file,
-        output_file,
-        precip_var_name,
-        temp_var_name,
-        awc_var_name,
-        month_scales,
-        calibration_start_year,
-        calibration_end_year,
-        divisions,
+# ------------------------------------------------------------------------------
+def _pet(temperatures, latitude, parameters):
+    return indices.pet(
+        temperature_celsius=temperatures,
+        latitude_degrees=latitude,
+        data_start_year=parameters["data_start_year"],
     )
-    divisions_processor.run()
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+def _spi(precips, parameters):
+
+    return indices.spi(
+        values=precips,
+        scale=parameters["scale"],
+        distribution=parameters["distribution"],
+        data_start_year=parameters["data_start_year"],
+        calibration_year_initial=parameters["calibration_year_initial"],
+        calibration_year_final=parameters["calibration_year_final"],
+        periodicity=parameters["periodicity"],
+    )
+
+
+# ------------------------------------------------------------------------------
+def _spei(precips, pet_mm, parameters):
+
+    return indices.spei(
+        precips_mm=precips,
+        pet_mm=pet_mm,
+        scale=parameters["scale"],
+        distribution=parameters["distribution"],
+        data_start_year=parameters["data_start_year"],
+        calibration_year_initial=parameters["calibration_year_initial"],
+        calibration_year_final=parameters["calibration_year_final"],
+        periodicity=parameters["periodicity"],
+    )
+
+
+# ------------------------------------------------------------------------------
+def _palmers(precips, pet_mm, awc, parameters):
+
+    return indices.scpdsi(
+        precip_time_series=precips,
+        pet_time_series=pet_mm,
+        awc=awc,
+        data_start_year=parameters["data_start_year"],
+        calibration_start_year=parameters["calibration_start_year"],
+        calibration_end_year=parameters["calibration_end_year"],
+    )
+
+
+# ------------------------------------------------------------------------------
+def _pnp(precips, parameters):
+
+    return indices.percentage_of_normal(
+        precips,
+        scale=parameters["scale"],
+        data_start_year=parameters["data_start_year"],
+        calibration_start_year=parameters["calibration_start_year"],
+        calibration_end_year=parameters["calibration_end_year"],
+        periodicity=parameters["periodicity"],
+    )
+
+
+# ------------------------------------------------------------------------------
+def _init_worker(shared_arrays_dict):
+
+    global _global_shared_arrays
+    _global_shared_arrays = shared_arrays_dict
+
+
+# ------------------------------------------------------------------------------
+def _parallel_process(index, arrays_dict, input_var_names, output_var_name, args):
+    """
+    TODO document this function
+    :param index:
+    :param arrays_dict:
+    :param input_var_names:
+    :param output_var_name:
+    :param args:
+    :return:
+    """
+
+    # find the start index of each sub-array we'll split out per worker process,
+    # assuming the shape of the output array is the same as all input arrays
+    shape = arrays_dict[output_var_name][_KEY_SHAPE]
+    d, m = divmod(shape[0], _NUMBER_OF_WORKER_PROCESSES)
+    split_indices = list(range(0, ((d + 1) * (m + 1)), (d + 1)))
+    if d != 0:
+        split_indices += list(range(split_indices[-1] + d, shape[0], d))
+
+    # build a list of parameters for each application of the function to an array chunk
+    chunk_params = []
+    if index in ["spi", "pnp"]:
+
+        if index == "spi":
+            func1d = _spi
+        else:
+            func1d = _pnp
+
+        # we have a single input array, create parameter dictionary objects
+        # appropriate to the _apply_along_axis function, one per worker process
+        for i in range(_NUMBER_OF_WORKER_PROCESSES):
+            params = {
+                "index": index,
+                "func1d": func1d,
+                "input_var_name": input_var_names["var_name_precip"],
+                "output_var_name": output_var_name,
+                "sub_array_start": split_indices[i],
+                "args": args,
+            }
+            if i < (_NUMBER_OF_WORKER_PROCESSES - 1):
+                params["sub_array_end"] = split_indices[i + 1]
+            else:
+                params["sub_array_end"] = None
+
+            chunk_params.append(params)
+
+    elif index == "spei":
+
+        # we have two input arrays, create parameter dictionary objects
+        # appropriate to the _apply_along_axis_double function, one per worker process
+        for i in range(_NUMBER_OF_WORKER_PROCESSES):
+            params = {
+                "index": index,
+                "func1d": _spei,
+                "var_name_precip": input_var_names["var_name_precip"],
+                "var_name_pet": input_var_names["var_name_pet"],
+                "output_var_name": output_var_name,
+                "sub_array_start": split_indices[i],
+                "args": args,
+            }
+            if i < (_NUMBER_OF_WORKER_PROCESSES - 1):
+                params["sub_array_end"] = split_indices[i + 1]
+            else:
+                params["sub_array_end"] = None
+
+            chunk_params.append(params)
+
+    elif index == "pet":
+
+        # we have two input arrays, create parameter dictionary objects
+        # appropriate to the _apply_along_axis_double function, one per worker process
+        for i in range(_NUMBER_OF_WORKER_PROCESSES):
+            params = {
+                "index": index,
+                "func1d": _pet,
+                "var_name_temp": input_var_names["var_name_temp"],
+                "var_name_lat": input_var_names["var_name_lat"],
+                "output_var_name": output_var_name,
+                "sub_array_start": split_indices[i],
+                "args": args,
+            }
+            if i < (_NUMBER_OF_WORKER_PROCESSES - 1):
+                params["sub_array_end"] = split_indices[i + 1]
+            else:
+                params["sub_array_end"] = None
+
+            chunk_params.append(params)
+
+    elif index == "palmers":
+
+        # create parameter dictionary objects appropriate to
+        # the _apply_along_axis_palmer function, one per worker process
+        for i in range(_NUMBER_OF_WORKER_PROCESSES):
+            params = {
+                "index": index,
+                "func1d": _palmers,
+                "var_name_precip": input_var_names["var_name_precip"],
+                "var_name_pet": input_var_names["var_name_pet"],
+                "var_name_awc": input_var_names["var_name_awc"],
+                "output_var_name": output_var_name,
+                "sub_array_start": split_indices[i],
+                "args": args,
+            }
+            if i < (_NUMBER_OF_WORKER_PROCESSES - 1):
+                params["sub_array_end"] = split_indices[i + 1]
+            else:
+                params["sub_array_end"] = None
+
+            chunk_params.append(params)
+
+    else:
+        raise ValueError("Unsupported index: {index}".format(index=index))
+
+    # instantiate a process pool
+    with multiprocessing.Pool(
+        processes=_NUMBER_OF_WORKER_PROCESSES,
+        initializer=_init_worker,
+        initargs=(arrays_dict,),
+    ) as pool:
+
+        if index in ["spei", "pet"]:
+            pool.map(_apply_along_axis_double, chunk_params)
+        elif index == "palmers":
+            pool.map(_apply_along_axis_palmers, chunk_params)
+        else:
+            pool.map(_apply_along_axis, chunk_params)
+
+
+# ------------------------------------------------------------------------------
+def _apply_along_axis(params):
+    """
+    Like numpy.apply_along_axis(), but with arguments in a dict instead.
+    Applicable for applying a function across subarrays of a single input array.
+    This function is useful with multiprocessing.Pool().map(): (1) map() only
+    handles functions that take a single argument, and (2) this function can
+    generally be imported from a module, as required by map().
+    :param dict params: dictionary of parameters including a function name,
+        "func1d", start and stop indices for specifying the subarray to which
+        the function should be applied, "sub_array_start" and "sub_array_end",
+        a dictionary of arguments to be passed to the function, "args", and
+        the key name of the shared array for output values, "output_var_name".
+    """
+    func1d = params["func1d"]
+    start_index = params["sub_array_start"]
+    end_index = params["sub_array_end"]
+    array = _global_shared_arrays[params["input_var_name"]][_KEY_ARRAY]
+    shape = _global_shared_arrays[params["input_var_name"]][_KEY_SHAPE]
+    np_array = np.frombuffer(array.get_obj()).reshape(shape)
+    sub_array = np_array[start_index:end_index]
+    args = params["args"]
+
+    computed_array = np.apply_along_axis(func1d, axis=1, arr=sub_array, parameters=args)
+
+    output_array = _global_shared_arrays[params["output_var_name"]][_KEY_ARRAY]
+    np_output_array = np.frombuffer(output_array.get_obj()).reshape(shape)
+    np.copyto(np_output_array[start_index:end_index], computed_array)
+
+
+# ------------------------------------------------------------------------------
+def _apply_along_axis_double(params):
+    """
+    Like numpy.apply_along_axis(), but with arguments in a dict instead.
+    Applicable for applying a function across subarrays of two input arrays.
+
+    This function is useful with multiprocessing.Pool().map(): (1) map() only
+    handles functions that take a single argument, and (2) this function can
+    generally be imported from a module, as required by map().
+
+    :param dict params: dictionary of parameters including a function name,
+        "func1d", start and stop indices for specifying the subarray to which
+        the function should be applied, "sub_array_start" and "sub_array_end",
+        a dictionary of arguments to be passed to the function, "args", and
+        the key name of the shared array for output values, "output_var_name".
+    """
+
+    func1d = params["func1d"]
+    start_index = params["sub_array_start"]
+    end_index = params["sub_array_end"]
+    if params["index"] == "pet":
+        first_array_key = params["var_name_temp"]
+        second_array_key = params["var_name_lat"]
+    elif params["index"] == "spei":
+        first_array_key = params["var_name_precip"]
+        second_array_key = params["var_name_pet"]
+    else:
+        raise ValueError("Unsupported index: {index}".format(index=params["index"]))
+
+    shape = _global_shared_arrays[params["output_var_name"]][_KEY_SHAPE]
+    first_array = _global_shared_arrays[first_array_key][_KEY_ARRAY]
+    first_np_array = np.frombuffer(first_array.get_obj()).reshape(shape)
+    sub_array_1 = first_np_array[start_index:end_index]
+
+    if params["index"] == "pet":
+        second_array = _global_shared_arrays[second_array_key][_KEY_ARRAY]
+        second_np_array = np.frombuffer(second_array.get_obj()).reshape(shape[0])
+    else:
+        second_array = _global_shared_arrays[second_array_key][_KEY_ARRAY]
+        second_np_array = np.frombuffer(second_array.get_obj()).reshape(shape)
+    sub_array_2 = second_np_array[start_index:end_index]
+
+    # get the output shared memory array, convert to numpy, and get the subarray slice
+    output_array = _global_shared_arrays[params["output_var_name"]][_KEY_ARRAY]
+    computed_array = np.frombuffer(output_array.get_obj()).reshape(shape)[
+        start_index:end_index
+    ]
+
+    for i, (x, y) in enumerate(zip(sub_array_1, sub_array_2)):
+        computed_array[i] = func1d(x, y, parameters=params["args"])
+
+
+# ------------------------------------------------------------------------------
+def _apply_along_axis_palmers(params):
+    """
+    Applies the Palmer computation function across subarrays of
+    the Palmer-specific input (shared-memory) arrays.
+
+    This function is useful with multiprocessing.Pool().map(): (1) map() only
+    handles functions that take a single argument, and (2) this function can
+    generally be imported from a module, as required by map().
+
+    :param dict params: dictionary of parameters including a function name,
+        "func1d", start and stop indices for specifying the subarray to which
+        the function should be applied, "sub_array_start" and "sub_array_end",
+        the variable names used for precipitation, PET, and AWC arrays,
+        "var_name_precip", "var_name_pet", and "var_name_awc", a dictionary
+        of arguments to be passed to the function, "args", and the key name of
+        the shared array for output values, "output_var_name".
+    """
+    func1d = params["func1d"]
+    start_index = params["sub_array_start"]
+    end_index = params["sub_array_end"]
+    precip_array_key = params["var_name_precip"]
+    pet_array_key = params["var_name_pet"]
+    awc_array_key = params["var_name_awc"]
+
+    shape = _global_shared_arrays[params["output_var_name"]][_KEY_SHAPE]
+    precip_array = _global_shared_arrays[precip_array_key][_KEY_ARRAY]
+    precip_np_array = np.frombuffer(precip_array.get_obj()).reshape(shape)
+    sub_array_precip = precip_np_array[start_index:end_index]
+    pet_array = _global_shared_arrays[pet_array_key][_KEY_ARRAY]
+    pet_np_array = np.frombuffer(pet_array.get_obj()).reshape(shape)
+    sub_array_pet = pet_np_array[start_index:end_index]
+    awc_array = _global_shared_arrays[awc_array_key][_KEY_ARRAY]
+    awc_np_array = np.frombuffer(awc_array.get_obj()).reshape(shape[0])
+    sub_array_awc = awc_np_array[start_index:end_index]
+
+    args = params["args"]
+
+    # get the output shared memory arrays, convert to numpy, and get the subarray slices
+    scpdsi_output_array = _global_shared_arrays[_KEY_RESULT_SCPDSI][_KEY_ARRAY]
+    scpdsi = np.frombuffer(scpdsi_output_array.get_obj()).reshape(shape)[
+        start_index:end_index
+    ]
+
+    pdsi_output_array = _global_shared_arrays[_KEY_RESULT_PDSI][_KEY_ARRAY]
+    pdsi = np.frombuffer(pdsi_output_array.get_obj()).reshape(shape)[
+        start_index:end_index
+    ]
+
+    phdi_output_array = _global_shared_arrays[_KEY_RESULT_PHDI][_KEY_ARRAY]
+    phdi = np.frombuffer(phdi_output_array.get_obj()).reshape(shape)[
+        start_index:end_index
+    ]
+
+    pmdi_output_array = _global_shared_arrays[_KEY_RESULT_PMDI][_KEY_ARRAY]
+    pmdi = np.frombuffer(pmdi_output_array.get_obj()).reshape(shape)[
+        start_index:end_index
+    ]
+
+    zindex_output_array = _global_shared_arrays[_KEY_RESULT_ZINDEX][_KEY_ARRAY]
+    zindex = np.frombuffer(zindex_output_array.get_obj()).reshape(shape)[
+        start_index:end_index
+    ]
+
+    for i, (precip, pet, awc) in enumerate(
+        zip(sub_array_precip, sub_array_pet, sub_array_awc)
+    ):
+        scpdsi[i], pdsi[i], phdi[i], pmdi[i], zindex[i] = func1d(
+            precip, pet, awc, parameters=args
+        )
+
+
+# ------------------------------------------------------------------------------
+def _prepare_file(netcdf_file, var_name):
+    """
+    Determine if the NetCDF file has the expected lat, lon, and time dimensions,
+    and if not correctly ordered then create a temporary NetCDF with dimensions
+    in (lat, lon, time) order, otherwise just return the input NetCDF unchanged.
+
+    :param str netcdf_file:
+    :param str var_name:
+    :return: name of the NetCDF file containing correct dimensions
+    """
+
+    # make sure we have lat, lon, and time as variable dimensions, regardless of order
+    ds = xr.open_dataset(netcdf_file)
+    if len(ds[var_name].dims) == 1:
+        expected_dims = ("division",)
+        dims = "division"
+    elif len(ds[var_name].dims) == 2:
+        expected_dims = ("division", "time")
+        dims = "division,time"
+    else:
+        raise ValueError(
+            "Unsupported dimensions for variable '{var_name}': {dims}".format(
+                var_name=var_name, dims=ds[var_name].dims
+            )
+        )
+
+    if Counter(ds[var_name].dims) != Counter(expected_dims):
+        message = "Invalid dimensions for variable '{var_name}': {dims}".format(
+            var_name=var_name, dims=ds[var_name].dims
+        )
+        _logger.error(message)
+        raise ValueError(message)
+
+    # perform reorder of dimensions if necessary
+    if ds[var_name].dims != expected_dims:
+        nco = Nco()
+        netcdf_file = nco.ncpdq(
+            input=netcdf_file, options=['-a "{dims}"'.format(dims=dims), "-O"]
+        )
+
+    return netcdf_file
+
+
+# ------------------------------------------------------------------------------
 if __name__ == "__main__":
 
-    # This module is used to perform climate indices processing on nClimGrid datasets in NetCDF.
+    # This script is used to perform climate indices processing on NetCDF
+    # gridded datasets.
+    #
+    # Example command line arguments for SPI only using monthly precipitation input:
+    #
+    # --index spi
+    # --periodicity monthly
+    # --scales 1 2 3 6 9 12 24
+    # --calibration_start_year 1998
+    # --calibration_end_year 2016
+    # --netcdf_divs example_data/nclimgrid_prcp_lowres.nc
+    # --var_name_precip prcp
+    # --output_file_base ~/data/test/spi/nclimgrid_lowres
+
+    # # ==========================================================================
+    # # UNCOMMENT THE BELOW FOR PROFILING
+    # # ==========================================================================
+    # import cProfile
+    # import sys
+    #
+    # # if check avoids hackery when not profiling
+    # if sys.modules['__main__'].__file__ == cProfile.__file__:
+    #     import process_grid  # Imports you again (does *not* use cache or execute as __main__)
+    #
+    #     globals().update(vars(process_grid))  # Replaces current contents with newly imported stuff
+    #     sys.modules['__main__'] = process_grid  # Ensures pickle lookups on __main__ find matching version
+    # # ========== END OF PROFILING-SPECIFIC CODE ================================
 
     try:
 
         # log some timing info, used later for elapsed time
         start_datetime = datetime.now()
-        logger.info("Start time:    %s", start_datetime)
+        _logger.info("Start time:    %s", start_datetime)
 
         # parse the command line arguments
         parser = argparse.ArgumentParser()
         parser.add_argument(
-            "--input_file",
-            help="Input dataset file (NetCDF) containing temperature, precipitation, and soil "
-            "values for PDSI, SPI, SPEI, and PNP computations",
+            "--index",
+            help="Indices to compute",
+            choices=["spi", "spei", "pnp", "scaled", "pet", "palmers", "all"],
             required=True,
         )
         parser.add_argument(
-            "--var_name_precip",
-            help="Precipitation variable name used in the input NetCDF file",
+            "--periodicity",
+            help="Process input as either monthly or daily values",
+            choices=[compute.Periodicity.monthly, compute.Periodicity.daily],
+            type=compute.Periodicity.from_string,
             required=True,
         )
-        parser.add_argument(
-            "--var_name_temp",
-            help="Temperature variable name used in the input NetCDF file",
-            required=True,
-        )
-        parser.add_argument(
-            "--var_name_awc",
-            help="Available water capacity variable name used in the input NetCDF file",
-            required=False,
-        )
-        parser.add_argument("--output_file", help=" Output file path", required=True)
         parser.add_argument(
             "--scales",
-            help="Month scales over which the PNP, SPI, and SPEI values are to be computed",
+            help="Timestep scales over which the PNP, SPI, and SPEI values are to be computed",
             type=int,
             nargs="*",
-            choices=range(1, 73),
-            required=True,
         )
         parser.add_argument(
             "--calibration_start_year",
-            help="Initial year of calibration period",
+            help="Initial year of the calibration period",
             type=int,
-            choices=range(1870, start_datetime.year + 1),
+        )
+        parser.add_argument(
+            "--calibration_end_year", help="Final year of calibration period", type=int
+        )
+        parser.add_argument(
+            "--netcdf_precip",
+            help="Precipitation NetCDF file to be used as input for indices computations",
+        )
+        parser.add_argument(
+            "--var_name_precip",
+            help="Precipitation variable name used in the precipitation NetCDF file",
+        )
+        parser.add_argument(
+            "--netcdf_temp",
+            help="Temperature NetCDF file to be used as input for indices computations",
+        )
+        parser.add_argument(
+            "--var_name_temp",
+            help="Temperature variable name used in the temperature NetCDF file",
+        )
+        parser.add_argument(
+            "--netcdf_pet",
+            help="PET NetCDF file to be used as input for SPEI and/or Palmer computations",
+        )
+        parser.add_argument(
+            "--var_name_pet", help="PET variable name used in the PET NetCDF file"
+        )
+        parser.add_argument(
+            "--netcdf_awc",
+            help="Available water capacity NetCDF file to be used as input for the Palmer computations",
+        )
+        parser.add_argument(
+            "--var_name_awc",
+            help="Available water capacity variable name used in the AWC NetCDF file",
+        )
+        parser.add_argument(
+            "--output_file_base",
+            help="Base output file path and name for the resulting output files",
             required=True,
         )
         parser.add_argument(
-            "--calibration_end_year",
-            help="Final year of calibration period",
-            type=int,
-            choices=range(1870, start_datetime.year + 1),
-            required=True,
-        )
-        parser.add_argument(
-            "--divisions",
-            help="Divisions for which the PNP, SPI, and SPEI values are to be computed "
-            "(useful for specifying a short list of divisions",
-            type=int,
-            nargs="*",
-            choices=range(101, 4811),
+            "--multiprocessing",
+            help="Indices to compute",
+            choices=["single", "all_but_one", "all"],
             required=False,
+            default="all_but_one",
         )
-        args = parser.parse_args()
+        arguments = parser.parse_args()
 
-        # perform the processing
-        process_divisions(
-            args.input_file,
-            args.output_file,
-            args.var_name_precip,
-            args.var_name_temp,
-            args.var_name_awc,
-            args.scales,
-            args.calibration_start_year,
-            args.calibration_end_year,
-            args.divisions,
-        )
+        # validate the arguments
+        _validate_args(arguments)
+
+        if arguments.multiprocessing == "single":
+            _NUMBER_OF_WORKER_PROCESSES = 1
+        elif arguments.multiprocessing == "all":
+            _NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count()
+        else:  # default ("all_but_one")
+            _NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count() - 1
+
+        # compute SPI if specified
+        if arguments.index in ["spi", "scaled", "all"]:
+
+            # prepare the NetCDF in case the dimensions are not (time, divisions)
+            netcdf_precip = _prepare_file(
+                arguments.netcdf_precip, arguments.var_name_precip
+            )
+
+            # run SPI computations for each scale/distribution in turn
+            for scale in arguments.scales:
+                for dist in indices.Distribution:
+
+                    # keyword arguments used for the SPI function
+                    kwrgs = {
+                        "index": "spi",
+                        "netcdf_precip": netcdf_precip,
+                        "var_name_precip": arguments.var_name_precip,
+                        "scale": scale,
+                        "distribution": dist,
+                        "periodicity": arguments.periodicity,
+                        "calibration_start_year": arguments.calibration_start_year,
+                        "calibration_end_year": arguments.calibration_end_year,
+                        "output_file_base": arguments.output_file_base,
+                    }
+
+                    # compute and write SPI
+                    _compute_write_index(kwrgs)
+
+            # remove temporary file if one was created
+            if netcdf_precip != arguments.netcdf_precip:
+                os.remove(netcdf_precip)
+
+        if arguments.index in ["pet", "spei", "scaled", "palmers", "all"]:
+
+            # run PET computation only if we've not been provided with a PET file
+            if arguments.netcdf_pet is None:
+
+                # prepare temperature NetCDF in case dimensions not (lat, lon, time)
+                # or if coordinates are descending
+                netcdf_temp = _prepare_file(
+                    arguments.netcdf_temp, arguments.var_name_temp
+                )
+
+                # keyword arguments used for the PET function
+                kwargs = {
+                    "index": "pet",
+                    "netcdf_temp": netcdf_temp,
+                    "var_name_temp": arguments.var_name_temp,
+                    "output_file_base": arguments.output_file_base,
+                }
+
+                # run PET computation, getting the PET file and corresponding variable name for later use
+                arguments.netcdf_pet, arguments.var_name_pet = _compute_write_index(
+                    kwargs
+                )
+
+                # remove temporary file
+                if netcdf_temp != arguments.netcdf_temp:
+                    os.remove(netcdf_temp)
+
+        if arguments.index in ["spei", "scaled", "all"]:
+
+            # prepare NetCDFs in case dimensions not (lat, lon, time) or if any coordinates are descending
+            netcdf_precip = _prepare_file(
+                arguments.netcdf_precip, arguments.var_name_precip
+            )
+            netcdf_pet = _prepare_file(arguments.netcdf_pet, arguments.var_name_pet)
+
+            # run SPEI computations for each scale/distribution in turn
+            for scale in arguments.scales:
+                for dist in indices.Distribution:
+
+                    # keyword arguments used for the SPI function
+                    kwrgs = {
+                        "index": "spei",
+                        "netcdf_precip": netcdf_precip,
+                        "var_name_precip": arguments.var_name_precip,
+                        "netcdf_pet": netcdf_pet,
+                        "var_name_pet": arguments.var_name_pet,
+                        "scale": scale,
+                        "distribution": dist,
+                        "periodicity": arguments.periodicity,
+                        "calibration_start_year": arguments.calibration_start_year,
+                        "calibration_end_year": arguments.calibration_end_year,
+                        "output_file_base": arguments.output_file_base,
+                    }
+
+                    # compute and write SPEI
+                    _compute_write_index(kwrgs)
+
+            # remove temporary file if one was created
+            if netcdf_precip != arguments.netcdf_precip:
+                os.remove(netcdf_precip)
+            if netcdf_pet != arguments.netcdf_pet:
+                os.remove(netcdf_pet)
+
+        if arguments.index in ["pnp", "scaled", "all"]:
+
+            # prepare precipitation NetCDF in case dimensions not (lat, lon, time) or if any coordinates are descending
+            netcdf_precip = _prepare_file(
+                arguments.netcdf_precip, arguments.var_name_precip
+            )
+
+            # run PNP computations for each scale in turn
+            for scale in arguments.scales:
+
+                # keyword arguments used for the SPI function
+                kwrgs = {
+                    "index": "pnp",
+                    "netcdf_precip": netcdf_precip,
+                    "var_name_precip": arguments.var_name_precip,
+                    "scale": scale,
+                    "periodicity": arguments.periodicity,
+                    "calibration_start_year": arguments.calibration_start_year,
+                    "calibration_end_year": arguments.calibration_end_year,
+                    "output_file_base": arguments.output_file_base,
+                }
+
+                # compute and write PNP
+                _compute_write_index(kwrgs)
+
+            # remove temporary precipitation file if one was created
+            if netcdf_precip != arguments.netcdf_precip:
+                os.remove(netcdf_precip)
+
+        if arguments.index in ["palmers", "all"]:
+
+            # prepare NetCDFs in case dimensions not (lat, lon, time)
+            netcdf_precip = _prepare_file(
+                arguments.netcdf_precip, arguments.var_name_precip
+            )
+            netcdf_pet = _prepare_file(arguments.netcdf_pet, arguments.var_name_pet)
+            netcdf_awc = _prepare_file(arguments.netcdf_awc, arguments.var_name_awc)
+
+            # keyword arguments used for the SPI function
+            kwrgs = {
+                "index": "palmers",
+                "netcdf_precip": netcdf_precip,
+                "var_name_precip": arguments.var_name_precip,
+                "netcdf_pet": netcdf_pet,
+                "var_name_pet": arguments.var_name_pet,
+                "netcdf_awc": netcdf_awc,
+                "var_name_awc": arguments.var_name_awc,
+                "calibration_start_year": arguments.calibration_start_year,
+                "calibration_end_year": arguments.calibration_end_year,
+                "output_file_base": arguments.output_file_base,
+            }
+
+            # compute and write Palmers
+            _compute_write_index(kwrgs)
+
+            # remove temporary files if they were created
+            if netcdf_precip != arguments.netcdf_precip:
+                os.remove(netcdf_precip)
+            if netcdf_pet != arguments.netcdf_pet:
+                os.remove(netcdf_pet)
+            if netcdf_awc != arguments.netcdf_awc:
+                os.remove(netcdf_awc)
 
         # report on the elapsed time
         end_datetime = datetime.now()
-        logger.info("End time:      %s", end_datetime)
+        _logger.info("End time:      %s", end_datetime)
         elapsed = end_datetime - start_datetime
-        logger.info("Elapsed time:  %s", elapsed)
+        _logger.info("Elapsed time:  %s", elapsed)
 
     except Exception as ex:
-        logger.exception("Failed to complete", exc_info=True)
+        _logger.exception("Failed to complete", exc_info=True)
         raise
