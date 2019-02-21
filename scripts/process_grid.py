@@ -518,9 +518,11 @@ def _compute_write_index(keyword_arguments):
         )
 
     # convert data into the appropriate units, if necessary
-    # temperature should be in degrees Celsius
-    # precipitation and PET should be in millimeters
-    if "var_name_precip" in keyword_arguments:
+    # * temperature should be in degrees Celsius for PET, SPEI, and Palmers
+    # * precipitation and PET should be in millimeters for SPEI and Palmers
+    #   (we permit non-millimeters units for SPI and PNP)
+    if (keyword_arguments["index"] not in ["spi", "pnp"]) and \
+            ("var_name_precip" in keyword_arguments):
         precip_var_name = keyword_arguments["var_name_precip"]
         precip_unit = dataset[precip_var_name].units.lower()
         if precip_unit not in ("mm", "millimeters", "millimeter"):
