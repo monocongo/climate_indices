@@ -1,6 +1,6 @@
 import argparse
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, date
 import logging
 import multiprocessing
 import os
@@ -10,7 +10,7 @@ import numpy as np
 import scipy.constants
 import xarray as xr
 
-from climate_indices import compute, indices
+from climate_indices import compute, indices, utils
 
 # the number of worker processes we'll use for process pools
 _NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count() - 1
@@ -578,18 +578,35 @@ def _compute_write_index(keyword_arguments):
                 _logger.error(message)
                 raise ValueError(message)
 
+        # convert daily values into 366-day years
+        if keyword_arguments["periodicity"] == compute.Periodicity.daily:
+            initial_year = int(str(dataset["time"][0].data)[0:4])
+            final_year = int(str(dataset["time"][-1].data)[0:4])
+            total_years = final_year - initial_year + 1
+            var_values = np.apply_along_axis(
+                utils.transform_to_366day,
+                2,
+                dataset[var_name].values,
+                keyword_arguments["data_start_year"],
+                total_years,
+            )
+            output_shape = var_values.shape
+
+        else:  # assumed to be monthly
+            var_values = dataset[var_name].values
+
         # create a shared memory array, wrap it as a numpy array and copy
         # copy the data (values) from this variable's DataArray
-        shared_array = multiprocessing.Array("d", int(np.prod(dataset[var_name].shape)))
+        shared_array = multiprocessing.Array("d", int(np.prod(var_values.shape)))
         shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(
-            dataset[var_name].shape
+            var_values.shape
         )
-        np.copyto(shared_array_np, dataset[var_name].values)
+        np.copyto(shared_array_np, var_values)
 
         # add to the dictionary of arrays
         _global_shared_arrays[var_name] = {
             _KEY_ARRAY: shared_array,
-            _KEY_SHAPE: dataset[var_name].shape,
+            _KEY_SHAPE: var_values.shape,
         }
 
         # drop the variable from the dataset (we're assuming this frees the memory)
@@ -670,6 +687,8 @@ def _compute_write_index(keyword_arguments):
         array = _global_shared_arrays[_KEY_RESULT_SCPDSI][_KEY_ARRAY]
         shape = _global_shared_arrays[_KEY_RESULT_SCPDSI][_KEY_SHAPE]
         scpdsi = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
+        # TODO once we support daily Palmers then we'll need to convert values
+        #  from a 366-day calendar back into a normal/Gregorian calendar
 
         # get the computedPDSI data as an array of float32 values
         array = _global_shared_arrays[_KEY_RESULT_PDSI][_KEY_ARRAY]
@@ -868,6 +887,15 @@ def _compute_write_index(keyword_arguments):
         array = _global_shared_arrays[_KEY_RESULT][_KEY_ARRAY]
         shape = _global_shared_arrays[_KEY_RESULT][_KEY_SHAPE]
         index_values = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
+
+        # convert daily values into normal/Gregorian calendar years
+        if keyword_arguments["periodicity"] == compute.Periodicity.daily:
+            index_values = np.apply_along_axis(
+                utils.transform_to_gregorian,
+                2,
+                index_values,
+                keyword_arguments["data_start_year"],
+            )
 
         # create a new variable to contain the index values, assign into the dataset
         variable = xr.Variable(
