@@ -536,7 +536,7 @@ def _compute_write_index(keyword_arguments):
     if "var_name_temp" in keyword_arguments:
         temp_var_name = keyword_arguments["var_name_temp"]
         temp_unit = dataset[temp_var_name].units.lower()
-        if temp_unit not in ("degrees_celsius", "celsius", "c"):
+        if temp_unit not in ("degrees_celsius", "degree_celsius", "celsius", "c"):
             if temp_unit in ("f", "fahrenheit"):
                 dataset[temp_var_name].values = scipy.constants.convert_temperature(
                     dataset[temp_var_name].values, "f", "c"
@@ -581,7 +581,7 @@ def _compute_write_index(keyword_arguments):
                 raise ValueError(message)
 
         # convert daily values into 366-day years
-        if keyword_arguments["periodicity"] == compute.Periodicity.daily:
+        if keyword_arguments.get("periodicity", None) == compute.Periodicity.daily:
             initial_year = int(str(dataset["time"][0].data)[0:4])
             final_year = int(str(dataset["time"][-1].data)[0:4])
             total_years = final_year - initial_year + 1
@@ -891,7 +891,7 @@ def _compute_write_index(keyword_arguments):
         index_values = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
 
         # convert daily values into normal/Gregorian calendar years
-        if keyword_arguments["periodicity"] == compute.Periodicity.daily:
+        if keyword_arguments.get("periodicity", None) == compute.Periodicity.daily:
             index_values = np.apply_along_axis(
                 utils.transform_to_gregorian,
                 2,
@@ -1496,6 +1496,7 @@ if __name__ == "__main__":
                     "index": "pet",
                     "netcdf_temp": netcdf_temp,
                     "var_name_temp": arguments.var_name_temp,
+                    "periodicity": arguments.periodicity,
                     "output_file_base": arguments.output_file_base,
                 }
 
@@ -1593,6 +1594,7 @@ if __name__ == "__main__":
                 "var_name_awc": arguments.var_name_awc,
                 "calibration_start_year": arguments.calibration_start_year,
                 "calibration_end_year": arguments.calibration_end_year,
+                "periodicity": arguments.periodicity,
                 "output_file_base": arguments.output_file_base,
             }
 
