@@ -1,6 +1,6 @@
 import argparse
 from collections import Counter
-from datetime import datetime, date
+from datetime import datetime
 import logging
 import multiprocessing
 import os
