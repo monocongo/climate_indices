@@ -514,7 +514,9 @@ def _compute_write_index(keyword_arguments):
                 dataset[precip_var_name].values *= 25.4
             else:
                 raise ValueError(
-                    "Unsupported precipitation units: {var}".format(var=dataset[precip_var_name].units)
+                    "Unsupported precipitation units: {var}".format(
+                        var=dataset[precip_var_name].units
+                    )
                 )
     if "var_name_temp" in keyword_arguments:
         temp_var_name = keyword_arguments["var_name_temp"]
@@ -530,7 +532,9 @@ def _compute_write_index(keyword_arguments):
                 )
             else:
                 raise ValueError(
-                    "Unsupported temperature units: {var}".format(var=dataset[temp_var_name].units)
+                    "Unsupported temperature units: {var}".format(
+                        var=dataset[temp_var_name].units
+                    )
                 )
 
     # get the data arrays we'll use later in the index computations
