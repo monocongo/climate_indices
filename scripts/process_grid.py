@@ -10,7 +10,7 @@ import numpy as np
 import scipy.constants
 import xarray as xr
 
-from climate_indices import compute, indices
+from climate_indices import compute, indices, utils
 
 # the number of worker processes we'll use for process pools
 _NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count() - 1
@@ -518,9 +518,11 @@ def _compute_write_index(keyword_arguments):
         )
 
     # convert data into the appropriate units, if necessary
-    # temperature should be in degrees Celsius
-    # precipitation and PET should be in millimeters
-    if "var_name_precip" in keyword_arguments:
+    # * temperature should be in degrees Celsius for PET, SPEI, and Palmers
+    # * precipitation and PET should be in millimeters for SPEI and Palmers
+    #   (we permit non-millimeters units for SPI and PNP)
+    if (keyword_arguments["index"] not in ["spi", "pnp"]) and \
+            ("var_name_precip" in keyword_arguments):
         precip_var_name = keyword_arguments["var_name_precip"]
         precip_unit = dataset[precip_var_name].units.lower()
         if precip_unit not in ("mm", "millimeters", "millimeter"):
@@ -534,7 +536,7 @@ def _compute_write_index(keyword_arguments):
     if "var_name_temp" in keyword_arguments:
         temp_var_name = keyword_arguments["var_name_temp"]
         temp_unit = dataset[temp_var_name].units.lower()
-        if temp_unit not in ("degrees_celsius", "celsius", "c"):
+        if temp_unit not in ("degrees_celsius", "degree_celsius", "celsius", "c"):
             if temp_unit in ("f", "fahrenheit"):
                 dataset[temp_var_name].values = scipy.constants.convert_temperature(
                     dataset[temp_var_name].values, "f", "c"
@@ -578,18 +580,35 @@ def _compute_write_index(keyword_arguments):
                 _logger.error(message)
                 raise ValueError(message)
 
+        # convert daily values into 366-day years
+        if keyword_arguments.get("periodicity", None) == compute.Periodicity.daily:
+            initial_year = int(str(dataset["time"][0].data)[0:4])
+            final_year = int(str(dataset["time"][-1].data)[0:4])
+            total_years = final_year - initial_year + 1
+            var_values = np.apply_along_axis(
+                utils.transform_to_366day,
+                2,
+                dataset[var_name].values,
+                keyword_arguments["data_start_year"],
+                total_years,
+            )
+            output_shape = var_values.shape
+
+        else:  # assumed to be monthly
+            var_values = dataset[var_name].values
+
         # create a shared memory array, wrap it as a numpy array and copy
         # copy the data (values) from this variable's DataArray
-        shared_array = multiprocessing.Array("d", int(np.prod(dataset[var_name].shape)))
+        shared_array = multiprocessing.Array("d", int(np.prod(var_values.shape)))
         shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(
-            dataset[var_name].shape
+            var_values.shape
         )
-        np.copyto(shared_array_np, dataset[var_name].values)
+        np.copyto(shared_array_np, var_values)
 
         # add to the dictionary of arrays
         _global_shared_arrays[var_name] = {
             _KEY_ARRAY: shared_array,
-            _KEY_SHAPE: dataset[var_name].shape,
+            _KEY_SHAPE: var_values.shape,
         }
 
         # drop the variable from the dataset (we're assuming this frees the memory)
@@ -670,6 +689,8 @@ def _compute_write_index(keyword_arguments):
         array = _global_shared_arrays[_KEY_RESULT_SCPDSI][_KEY_ARRAY]
         shape = _global_shared_arrays[_KEY_RESULT_SCPDSI][_KEY_SHAPE]
         scpdsi = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
+        # TODO once we support daily Palmers then we'll need to convert values
+        #  from a 366-day calendar back into a normal/Gregorian calendar
 
         # get the computedPDSI data as an array of float32 values
         array = _global_shared_arrays[_KEY_RESULT_PDSI][_KEY_ARRAY]
@@ -868,6 +889,15 @@ def _compute_write_index(keyword_arguments):
         array = _global_shared_arrays[_KEY_RESULT][_KEY_ARRAY]
         shape = _global_shared_arrays[_KEY_RESULT][_KEY_SHAPE]
         index_values = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
+
+        # convert daily values into normal/Gregorian calendar years
+        if keyword_arguments.get("periodicity", None) == compute.Periodicity.daily:
+            index_values = np.apply_along_axis(
+                utils.transform_to_gregorian,
+                2,
+                index_values,
+                keyword_arguments["data_start_year"],
+            )
 
         # create a new variable to contain the index values, assign into the dataset
         variable = xr.Variable(
@@ -1466,6 +1496,7 @@ if __name__ == "__main__":
                     "index": "pet",
                     "netcdf_temp": netcdf_temp,
                     "var_name_temp": arguments.var_name_temp,
+                    "periodicity": arguments.periodicity,
                     "output_file_base": arguments.output_file_base,
                 }
 
@@ -1563,6 +1594,7 @@ if __name__ == "__main__":
                 "var_name_awc": arguments.var_name_awc,
                 "calibration_start_year": arguments.calibration_start_year,
                 "calibration_end_year": arguments.calibration_end_year,
+                "periodicity": arguments.periodicity,
                 "output_file_base": arguments.output_file_base,
             }
 
