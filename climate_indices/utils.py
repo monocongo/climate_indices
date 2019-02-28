@@ -259,8 +259,8 @@ def transform_to_366day(original, year_start, total_years):
         if calendar.isleap(year):
 
             # write the next 366 days from the original time series into the all_leap array
-            all_leap[all_leap_index : all_leap_index + 366] = original[
-                original_index : original_index + 366
+            all_leap[all_leap_index:(all_leap_index + 366)] = original[
+                original_index:(original_index + 366)
             ]
 
             # increment the "start day of the current year" index for the original
@@ -270,8 +270,8 @@ def transform_to_366day(original, year_start, total_years):
         else:
 
             # write the first 59 days (Jan 1 through Feb 28) from the original time series into the all_leap array
-            all_leap[all_leap_index : all_leap_index + 59] = original[
-                original_index : original_index + 59
+            all_leap[all_leap_index:(all_leap_index + 59)] = original[
+                original_index:(original_index + 59)
             ]
 
             # average the Feb 28th and March 1st values as the faux Feb 29th value
@@ -280,9 +280,8 @@ def transform_to_366day(original, year_start, total_years):
             ) / 2
 
             # write the remaining days of the year (Mar 1 through Dec 31) from the original into the all_leap array
-            all_leap[all_leap_index + 60 : all_leap_index + 366] = original[
-                original_index + 59 : original_index + 365
-            ]
+            all_leap[all_leap_index + 60:(all_leap_index + 366)] = original[
+                original_index + 59:(original_index + 365)]
 
             # increment the "start day of the current year" index for the original
             # so the next iteration jumps ahead a full year
@@ -348,8 +347,8 @@ def transform_to_gregorian(original, year_start):
         if calendar.isleap(year):
 
             # write the next 366 days from the original time series into the gregorian array
-            gregorian[gregorian_index : gregorian_index + 366] = original[
-                original_index : original_index + 366
+            gregorian[gregorian_index:(gregorian_index + 366)] = original[
+                original_index:(original_index + 366)
             ]
 
             # increment the "start day of the current year" index for the original
@@ -359,13 +358,13 @@ def transform_to_gregorian(original, year_start):
         else:
 
             # write the first 59 days (Jan 1 through Feb 28) from the original time series into the gregorian array
-            gregorian[gregorian_index : gregorian_index + 59] = original[
-                original_index : original_index + 59
+            gregorian[gregorian_index:(gregorian_index + 59)] = original[
+                original_index:(original_index + 59)
             ]
 
             # write the remaining days of the year (Mar 1 through Dec 31) from the original into the gregorian array
-            gregorian[gregorian_index + 59 : gregorian_index + 365] = original[
-                original_index + 60 : original_index + 366
+            gregorian[(gregorian_index + 59):(gregorian_index + 365)] = original[
+                                                                        (original_index + 60):(original_index + 366)
             ]
 
             # increment the "start day of the current year" index for the original

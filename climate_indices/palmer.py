@@ -28,7 +28,7 @@ warnings.simplefilter("ignore", Warning)
 
 # ----------------------------------------------------------------------------------------------------------------------
 @numba.jit
-def _water_balance(awc, PET, P):
+def _water_balance(awc, pet, precip):
     """
     Performs a water balance accounting for a location which accounts
     for several monthly water balance variables, calculated based on
@@ -40,18 +40,18 @@ def _water_balance(awc, PET, P):
 
     :param awc: available water capacity (total, including top/surface inch),
         in inches
-    :param PET: potential evapotranspiration, in inches
-    :param P: precipitation, in inches
+    :param pet: potential evapotranspiration, in inches
+    :param precip: precipitation, in inches
     :return: seven numpy arrays with values for evapotranspiration,
         potential recharge, recharge, runoff, potential runoff, loss,
         and potential loss
     """
 
     # flatten timeseries to a 1-D array
-    PET = PET.flatten()
-    P = P.flatten()
+    pet = pet.flatten()
+    precip = precip.flatten()
 
-    total_months = PET.shape[0]
+    total_months = pet.shape[0]
 
     # allocate arrays for the water balance values
     ET = np.zeros((total_months,))
@@ -196,15 +196,15 @@ def _water_balance(awc, PET, P):
         PRO[k] = awc - PR[k]
 
         # A is the difference between the soil moisture in the surface soil layer and the potential evapotranspiration.
-        A[k] = Ss0 - PET[k]
+        A[k] = Ss0 - pet[k]
 
         # B is the difference between the precipitation and potential
         # evapotranspiration - it is the excess precipitation.
-        B[k] = P[k] - PET[k]
+        B[k] = precip[k] - pet[k]
 
         # calculate potential loss values
         PL[k], PLs[k], PLu[k] = _water_balance_potential_loss(
-            A[k], PET[k], Ss0, Su0, awc
+            A[k], pet[k], Ss0, Su0, awc
         )
 
         if B[k] >= 0:
@@ -271,7 +271,7 @@ def _water_balance(awc, PET, P):
 
             # Since there is sufficient precipitation during month k to satisfy the PET
             # requirement for month k, the actual evapotranspiration is equal to PET.
-            ET[k] = PET[k]
+            ET[k] = pet[k]
 
         else:
             # B < 0 indicates that there is not sufficient precipitation
@@ -316,7 +316,7 @@ def _water_balance(awc, PET, P):
             # the actual evapotranspiration is equal to precipitation plus any soil moisture loss from BOTH the surface
             # and underlying soil layers.
             RO[k] = 0
-            ET[k] = P[k] + Ls[k] + Lu[k]
+            ET[k] = precip[k] + Ls[k] + Lu[k]
 
         R[k] = Rs[k] + Ru[k]
         L[k] = Ls[k] + Lu[k]
@@ -1015,9 +1015,9 @@ def _pmdi(probability, X1, X2, X3):
     if X3 == 0:
 
         if abs(X2) > abs(X1):
-            _pmdi = X2
+            pmdi = X2
         else:
-            _pmdi = X1
+            pmdi = X1
 
     else:
         if (probability > 0) and (probability < 100):
@@ -1025,16 +1025,16 @@ def _pmdi(probability, X1, X2, X3):
             PRO = probability / 100.0
             if X3 <= 0:
                 # use the weighted sum of X3 and X1
-                _pmdi = ((1.0 - PRO) * X3) + (PRO * X1)
+                pmdi = ((1.0 - PRO) * X3) + (PRO * X1)
 
             else:
                 # use the weighted sum of X3 and X2
-                _pmdi = ((1.0 - PRO) * X3) + (PRO * X2)
+                pmdi = ((1.0 - PRO) * X3) + (PRO * X2)
         else:
             # a weather spell is established
-            _pmdi = X3
+            pmdi = X3
 
-    return _pmdi
+    return pmdi
 
 
 # -----------------------------------------------------------------------------------------------------------------
