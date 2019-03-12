@@ -565,7 +565,17 @@ def _compute_write_index(keyword_arguments):
         files.append(keyword_arguments["netcdf_temp"])
     if "netcdf_pet" in keyword_arguments:
         files.append(keyword_arguments["netcdf_pet"])
-    dataset = xr.open_mfdataset(files, chunks={"lat": -1, "lon": -1})
+    if "input_type" not in keyword_arguments:
+        raise ValueError("Missing the 'input_type' keyword argument")
+    else:
+        input_type = keyword_arguments["input_type"]
+        if input_type == InputType.grid:
+            chunks = {"lat": -1, "lon": -1}
+        elif input_type == InputType.divisions:
+            chunks = {"division": -1}
+        else:
+            raise ValueError(f"Invalid 'input_type' keyword argument: {input_type}")
+    dataset = xr.open_mfdataset(files, chunks=chunks)
 
     # trim out all data variables from the dataset except the ones we'll need
     input_var_names = []
