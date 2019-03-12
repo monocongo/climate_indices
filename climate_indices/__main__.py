@@ -1815,4 +1815,29 @@ def main():  # type: () -> None
 
 # ------------------------------------------------------------------------------
 if __name__ == "__main__":
+    # (please do not remove -- useful for running as a script when debugging)
+    #
+    # Example command line usage for US climate divisions:
+    #
+    #  $ python climate_indices/__main__.py --index all --scales 1 2 3 6 9 12 24
+    #  --netcdf_precip ../example_climate_indices/example/input/nclimdiv.nc
+    #  --netcdf_temp ../example_climate_indices/example/input/nclimdiv.nc
+    #  --netcdf_awc ../example_climate_indices/example/input/nclimdiv.nc
+    #  --output_file_base /home/data/test/nclimdiv
+    #  --var_name_precip prcp --var_name_temp tavg --var_name_awc awc
+    #  --calibration_start_year 1951 --calibration_end_year 2010
+    #  --multiprocessing all --periodicity monthly
+    #
+    #
+    # Example command line usage for gridded data (nClimGrid):
+    #
+    #  $ python climate_indices/__main__.py --index all --scales 1 2 3 6 9 12 24
+    #  --netcdf_precip ../example_climate_indices/example/input/nclimgrid_prcp.nc
+    #  --netcdf_temp ../example_climate_indices/example/input/nclimgrid_tavg.nc
+    #  --netcdf_awc ../example_climate_indices/example/input/nclimgrid_soil.nc
+    #  --output_file_base /home/data/test/nclimgrid
+    #  --var_name_precip prcp --var_name_temp tavg --var_name_awc awc
+    #  --calibration_start_year 1951 --calibration_end_year 2010
+    #  --multiprocessing all --periodicity monthly
+
     main()
