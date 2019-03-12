@@ -9,7 +9,7 @@ README = (BASE_DIR / "README.md").read_text()
 
 setup(
     name="climate_indices",
-    version="1.0.2",
+    version="1.0.3",
     url="https://github.com/monocongo/climate_indices",
     license="BSD",
     author="James Adams",
