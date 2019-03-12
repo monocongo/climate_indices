@@ -79,32 +79,13 @@ to follow the usage shown below. We recommended either
 `babun <https://babun.github.io/>`__ or `Cygwin <https://www.cygwin.com/>`__
 for this purpose.
 
-Download the code
-^^^^^^^^^^^^^^^^^
-
-Clone this repository:
-
-``$ git clone https://github.com/monocongo/climate_indices.git``
-
-Move into the source directory:
-
-``$ cd climate_indices``
-
-Within this directory, there are five subdirectories:
-
--  ``climate_indices``: main computational package
--  ``tests``: unit tests for the main package
--  ``scripts``: scripts and supporting utility modules used to perform processing of indices computations on climatological datasets (typically grids or US climate division datasets in NetCDF)
--  ``notebooks``: Jupyter Notebooks describing the internals of the computational modules
--  ``docs``: documentation files
-
 Configure the Python environment
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-This project's code is written in Python 3. It's recommended to use
+This project's code is written in Python 3. It is recommended to use
 either the `Miniconda3 <https://conda.io/miniconda.html>`__ (minimal Anaconda) or
 `Anaconda3 <https://www.continuum.io/downloads>`__ distribution. The below instructions
-will be Anaconda specific (although relevant to any Python `virtualenv <https://virtualenv.pypa.io/en/stable/>`_
+will be Anaconda specific (although relevant to any Python `virtual environment <https://virtualenv.pypa.io/en/stable/>`_
 ), and assume the use of a bash shell.
 
 A new Anaconda `environment <https://conda.io/docs/using/envs.html>`__ can be created
@@ -113,7 +94,7 @@ packaged with Anaconda. In the following examples, we'll use an environment name
 (any environment name can be used instead of *indices_env*) which will be created and
 populated with all required dependencies through the use of the provided ``setup.py`` file.
 
-First create the Python environment:
+First, create the Python environment:
 
 ``$ conda create -n indices_env``
 
@@ -127,38 +108,22 @@ in this environment where the package dependencies for this project are present.
 Now the package can be added to the environment along with all required modules
 (dependencies) via `pip <https://pip.pypa.io/en/stable/>`_:
 
-``$ pip install .``
+``$ pip install climate-indices``
 
-Testing
--------
-
-Initially, all tests should be run for validation:
-
-``$ export NUMBA_DISABLE_JIT=1``
-
-``$ pytest``
-
-``$ unset NUMBA_DISABLE_JIT``
-
-If you run the above from the main branch and get an error then please
-send a report and/or add an issue, as all tests should pass.
-
-The Numba environment variable is set/unset in order to bypass Numba's
-just-in-time compilation process, which significantly reduces testing times.
 
 Indices Processing
 ----------------------------------
 
-Included are scripts which interact with the core computational package to compute
-one or more climate indices. These are ``process_grid.py`` which is used
-to compute indices corresponding to gridded NetCDF datasets, and ``process_divisions.py``
-which is used to compute indices corresponding to US climate division NetCDF datasets.
+The installation will provide an "entry point" script which interacts with the core
+computational package to compute one or more climate indices. This script is 
+``process_climate_indices`` and is used to compute indices corresponding to gridded
+NetCDF datasets as well as US climate division NetCDF datasets.
 
-These Python scripts are written to be run via bash shell commands, i.e.
+This Python entry point script is written to be run via bash shell command, i.e.
 
-``$ python process_grid.py <options>``
+``$ process_climate_indices <options>``
 
-The options for these scripts are described below:
+The options for the entry point script are described below:
 
 
 +------------------------+-------------------------------------------------+
@@ -170,28 +135,11 @@ The options for these scripts are described below:
 |                        | three scaled indices (SPI, SPEI, and PNP) and   |
 |                        | 'palmers' indicates all Palmer indices (PDSI,   |
 |                        | PHDI, PMDI, SCPDSI, and Z-Index).               |
-|                        |                                                 |
-|                        | **NOTE**: Only used for grid processing, as     |
-|                        | the divisions processing will compute all       |
-|                        | indices.                                        |
 +------------------------+-------------------------------------------------+
 | periodicity            | The periodicity of the input dataset files.     |
 |                        | Valid values are 'monthly' and 'daily'.         |
 |                        |                                                 |
-|                        | **NOTE**: Only used for grid processing, and    |
-|                        | only SPI and PNP support daily inputs.          |
-+------------------------+-------------------------------------------------+
-| netcdf_divs            | Input NetCDF file containing a US climate       |
-|                        | divisions dataset with precipitation,           |
-|                        | temperature, and AWC variables. Computed indices|
-|                        | variables will be written into this file, with  |
-|                        | existing indices variables (if any) overwritten |
-|                        | with the computed values. This file serves as   |
-|                        | both input and output for the divisions         |
-|                        | processing.                                     |
-|                        |                                                 |
-|                        | **NOTE**: Only used for US climate divisions    |
-|                        | processing.                                     |
+|                        | **NOTE**: Only SPI and PNP support daily inputs.|
 +------------------------+-------------------------------------------------+
 | netcdf_precip          | Input NetCDF file containing a                  |
 |                        | precipitation dataset, required for all         |
@@ -217,8 +165,6 @@ The options for these scripts are described below:
 |                        | Palmers. Requires the use of                    |
 |                        | **var_name_temp** in conjunction so as to       |
 |                        | identify the NetCDF's temperature variable.     |
-|                        |                                                 |
-|                        | **NOTE**: Only used for grid processing.        |
 +------------------------+-------------------------------------------------+
 | var_name_temp          | Name of the temperature variable within the     |
 |                        | input temperature NetCDF.                       |
@@ -232,20 +178,14 @@ The options for these scripts are described below:
 |                        | Palmers. Requires the use of                    |
 |                        | **var_name_pet** in conjunction so as to        |
 |                        | identify the NetCDF's PET variable.             |
-|                        |                                                 |
-|                        | **NOTE**: Only used for grid processing.        |
 +------------------------+-------------------------------------------------+
 | var_name_pet           | Name of the PET variable within the input PET   |
 |                        | NetCDF.                                         |
-|                        |                                                 |
-|                        | **NOTE**: Only used for grid processing.        |
 +------------------------+-------------------------------------------------+
 | netcdf_awc             | Input NetCDF file containing an available water |
 |                        | capacity, required for Palmers. Requires the    |
 |                        | use of **var_name_awc** in conjunction so as to |
 |                        | identify the NetCDF's AWC variable.             |
-|                        |                                                 |
-|                        | **NOTE**: Only used for grid processing.        |
 +------------------------+-------------------------------------------------+
 | awc_var_name           | Name of the available water capacity variable   |
 |                        | within the input AWC NetCDF.                    |
@@ -263,8 +203,6 @@ The options for these scripts are described below:
 |                        | the resulting output files will be              |
 |                        | named **<output_file_base>_spi_gamma_03.nc**    |
 |                        | and **<output_file_base>_spi_pearson_03.nc**.   |
-|                        |                                                 |
-|                        | **NOTE**: Only used for grid processing.        |
 +------------------------+-------------------------------------------------+
 | scales                 | Time step scales over which the PNP, SPI, and   |
 |                        | SPEI values are to be computed. Required when   |
@@ -306,11 +244,12 @@ Example Command Line Invocations
 US Climate Divisions (all indices)
 """"""""""""""""""""""""""""""""""
 
-``$ python process_divisions.py --scales 3 6
---input_file /data/nclimdiv.nc
---output_file /data/nclimdiv_indices.nc
---var_name_precip prcp
---var_name_temp tavg --var_name_awc awc
+``$ process_climate_indices --index all --periodicity monthly --scales 3 6
+--netcdf_precip /data/nclimdiv.nc
+--netcdf_temp /data/nclimdiv.nc
+--netcdf_awc /data/nclimdiv.nc
+--output_file_base /data/nclimdiv
+--var_name_precip prcp --var_name_temp tavg --var_name_awc awc
 --calibration_start_year 1951 --calibration_end_year 2010``
 
 The above command will compute all indices from an input NetCDF dataset containing
@@ -318,18 +257,22 @@ precipitation, temperature, and available water capacity variables (in this case
 the US Climate Divisions NetCDF dataset provided in the example inputs directory).
 The input dataset is monthly data and the calibration period used will be
 Jan. 1951 through Dec. 2010. The indices will be computed at 3-month and 6-month scales.
-Upon completion the output NetCDF file (/data/nclimdiv_indices.nc
-in this example) will contain variables for all computed indices:
-`pet`, `pnp_03`, `pnp_06`, `spi_gamma_03`, `spi_gamma_06`, `spi_pearson_03`, `spi_pearson_06`,
-`spei_gamma_03`, `spei_gamma_06`, `spei_pearson_03`, `spei_pearson_06`, `pdsi`, `phdi`, `pmdi`,
-`scpdsi`, and `zindex`. Parallelization will occur utilizing all but one of the available CPUs
+Upon completion the individual NetCDF files will contain variables for all computed indices:
+`/data/nclimdiv_pet.nc`, `/data/nclimdiv_pnp_03.nc`, `/data/nclimdiv_pnp_06.nc`,
+`/data/nclimdiv_spi_gamma_03.nc`, `/data/nclimdiv_spi_gamma_06.nc`,
+`/data/nclimdiv_spi_pearson_03.nc`, `/data/nclimdiv_spi_pearson_06.nc`,
+`/data/nclimdiv_spei_gamma_03.nc`, `/data/nclimdiv_spei_gamma_06.nc`,
+`/data/nclimdiv_spei_pearson_03.nc`, `/data/nclimdiv_spei_pearson_06.nc`,
+`/data/nclimdiv_pdsi.nc`, `/data/nclimdiv_phdi.nc`, `/data/nclimdiv_pmdi.nc`,
+`/data/nclimdiv_scpdsi.nc`, and `/data/nclimdiv_zindex.nc`.
+Parallelization will occur utilizing all but one of the available CPUs
 (default since the `--multiprocessing` option is omitted).
 
 
 PET monthly
 """"""""""""
 
-``$ python process_grid.py --index pet --periodicity monthly --netcdf_temp
+``$ process_climate_indices --index pet --periodicity monthly --netcdf_temp
 /data/nclimgrid_lowres_tavg.nc --var_name_temp tavg --output_file_base
 <out_dir>/nclimgrid_lowres --multiprocessing all_but_one``
 
@@ -343,7 +286,7 @@ Parallelization will occur utilizing all but one of the available CPUs.
 SPI daily
 """"""""""
 
-``$ python process_grid.py --index spi  --periodicity daily --netcdf_precip
+``$ process_climate_indices --index spi  --periodicity daily --netcdf_precip
 /data/cmorph_lowres_daily_conus_prcp.nc --var_name_precip
 prcp --output_file_base <out_dir>/cmorph_lowres_daily_conus --scales 30 90
 --calibration_start_year 1998 --calibration_end_year 2016
@@ -363,7 +306,7 @@ all CPUs.
 SPI monthly
 """"""""""""
 
-``$ python process_grid.py --index spi --periodicity monthly --netcdf_precip
+``$ process_climate_indices --index spi --periodicity monthly --netcdf_precip
 /data/nclimgrid_lowres_prcp.nc --var_name_precip  prcp
 --output_file_base <out_dir>/nclimgrid_lowres --scales 6 12
 --calibration_start_year 1951 --calibration_end_year 2010
@@ -382,7 +325,7 @@ all CPUs.
 SPEI monthly
 """""""""""""
 
-``$ python process_grid.py --index spei --periodicity monthly --netcdf_precip
+``$ process_climate_indices --index spei --periodicity monthly --netcdf_precip
 /data/nclimgrid_lowres_prcp.nc --var_name_precip  prcp --netcdf_pet
 /data/nclimgrid_lowres_pet.nc --var_name_pet pet --output_file_base
 <out_dir>/nclimgrid_lowres --scales 9 18 --calibration_start_year 1951
@@ -399,7 +342,7 @@ Parallelization will occur utilizing all CPUs.
 
 Palmers monthly
 """"""""""""""""
-``$ python process_grid.py --index palmers --periodicity monthly --netcdf_precip
+``$ process_climate_indices --index palmers --periodicity monthly --netcdf_precip
 /data/nclimgrid_lowres_prcp.nc --var_name_precip prcp --netcdf_pet
 /data/nclimgrid_lowres_pet.nc --var_name_pet pet --netcdf_awc
 /data/nclimgrid_lowres_soil.nc  --var_name_awc awc --output_file_base
@@ -415,6 +358,45 @@ data and the calibration period used will be Jan. 1951 through Dec. 2010. The ou
 `<out_dir>/nclimgrid_lowres_pdsi.nc`, `<out_dir>/nclimgrid_lowres_phdi.nc`,
 `<out_dir>/nclimgrid_lowres_pmdi.nc`, `<out_dir>/nclimgrid_lowres_scpdsi.nc`, and `<out_dir>/nclimgrid_lowres_zindex.nc`.
 Parallelization will occur utilizing all CPUs.
+
+For Developers
+---------------
+
+Download the code
+^^^^^^^^^^^^^^^^^
+
+Clone this repository:
+
+``$ git clone https://github.com/monocongo/climate_indices.git``
+
+Move into the source directory:
+
+``$ cd climate_indices``
+
+Within this directory, there are four subdirectories:
+
+-  ``climate_indices``: main computational package
+-  ``tests``: unit tests for the main package
+-  ``notebooks``: Jupyter Notebooks describing the internals of the computational modules
+-  ``docs``: documentation files
+
+Testing
+^^^^^^^
+
+Initially, all tests should be run for validation:
+
+``$ export NUMBA_DISABLE_JIT=1``
+
+``$ pytest``
+
+``$ unset NUMBA_DISABLE_JIT``
+
+If you run the above from the main branch and get an error then please
+send a report and/or add an issue, as all tests should pass.
+
+The Numba environment variable is set/unset in order to bypass Numba's
+just-in-time compilation process, which significantly reduces testing times.
+
 
 Get involved
 -------------
@@ -445,5 +427,3 @@ NCEI/NOAA, official release version available on
 `drought.gov <https://www.drought.gov/drought/python-climate-indices>`__.
 This software is under BSD 3-Clause license, copyright James Adams, 2017.
 Please read more on our `license <LICENSE>`__ page.
-
-
