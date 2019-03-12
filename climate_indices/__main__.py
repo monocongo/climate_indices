@@ -317,7 +317,7 @@ def _validate_args(args):
             # validate the AWC file
             with xr.open_dataset(args.netcdf_awc) as dataset_awc:
 
-                # make sure we have a valid PET variable name
+                # make sure we have a valid AWC variable name
                 if args.var_name_awc is None:
                     msg = "Missing the AWC variable name"
                     _logger.error(msg)
@@ -333,37 +333,48 @@ def _validate_args(args):
 
                 # verify that the AWC variable's dimensions are in the expected order
                 dimensions = dataset_awc[args.var_name_awc].dims
-                if len(dimensions) == 2:
-                    expected_dimensions_grid = [("lat", "lon")]
-                if dimensions not in expected_dimensions_grid:
-                    msg = "Invalid dimensions of the AWC variable: {dims}, ".format(
-                        dims=dimensions
-                    ) + "(expected names and order: {dims})".format(
-                        dims=expected_dimensions_grid
-                    )
-                    _logger.error(msg)
-                    raise ValueError(msg)
+                if input_type == InputType.grid:
 
-                # verify that the lat and lon coordinate variable values
-                # match with those of the precipitation dataset
-                if not np.array_equal(lats_precip, dataset_awc["lat"][:]):
-                    msg = (
-                        "Precipitation and AWC variables contain non-matching latitudes"
-                    )
-                    _logger.error(msg)
-                    raise ValueError(msg)
-                elif not np.array_equal(lons_precip, dataset_awc["lon"][:]):
-                    msg = "Precipitation and AWC variables contain non-matching longitudes"
+                    if dimensions not in expected_dimensions_grid:
+                        msg = f"Invalid dimensions of the AWC variable: {dimensions}" + \
+                              f"(expected names and order: {expected_dimensions_grid}"
+                        _logger.error(msg)
+                        raise ValueError(msg)
+
+                    # verify that the coordinate variables match with those of the precipitation dataset
+                    if not np.array_equal(lats_precip, dataset_awc["lat"][:]):
+                        msg = "Precipitation and AWC variables contain non-matching latitudes"
+                        _logger.error(msg)
+                        raise ValueError(msg)
+                    elif not np.array_equal(lons_precip, dataset_awc["lon"][:]):
+                        msg = "Precipitation and AWC variables contain non-matching longitudes"
+                        _logger.error(msg)
+                        raise ValueError(msg)
+
+                elif input_type == InputType.divisions:
+
+                    if dimensions not in expected_dimensions_divisions:
+                        msg = f"Invalid dimensions of the AWC variable: {dimensions}" + \
+                              f"(expected names and order: {expected_dimensions_grid}"
+                        _logger.error(msg)
+                        raise ValueError(msg)
+
+                    # verify that the coordinate variables match with those of the precipitation dataset
+                    if not np.array_equal(divisions_precip, dataset_awc["division"][:]):
+                        msg = "Precipitation and AWC variables contain non-matching division IDs"
+                        _logger.error(msg)
+                        raise ValueError(msg)
+
+                else:
+                    msg = "Failed to determine the input type (gridded or US climate division)"
                     _logger.error(msg)
                     raise ValueError(msg)
 
     if args.index in ["spi", "spei", "scaled", "pnp"]:
 
         if args.scales is None:
-            msg = (
-                "Scaled indices (SPI, SPEI, and/or PNP) specified without including "
-                + "one or more time scales (missing --scales argument)"
-            )
+            msg = "Scaled indices (SPI, SPEI, and/or PNP) specified without " + \
+                  "including one or more time scales (missing --scales argument)"
             _logger.error(msg)
             raise ValueError(msg)
 
