@@ -739,8 +739,8 @@ def _compute_write_index(keyword_arguments):
     if "var_name_temp" in keyword_arguments:
         temp_var_name = keyword_arguments["var_name_temp"]
         temp_unit = dataset[temp_var_name].units.lower()
-        if temp_unit not in ("degrees_celsius", "celsius", "c"):
-            if temp_unit in ("f", "fahrenheit"):
+        if temp_unit not in ("degree_celsius", "degrees_celsius", "celsius", "c"):
+            if temp_unit in ("f", "fahrenheit", "degree_fahrenheit", "degrees_fahrenheit", ):
                 dataset[temp_var_name].values = scipy.constants.convert_temperature(
                     dataset[temp_var_name].values, "f", "c"
                 )
@@ -1786,6 +1786,7 @@ def main():  # type: () -> None
                 "netcdf_awc": netcdf_awc,
                 "var_name_awc": arguments.var_name_awc,
                 "input_type": input_type,
+                "periodicity": arguments.periodicity,
                 "calibration_start_year": arguments.calibration_start_year,
                 "calibration_end_year": arguments.calibration_end_year,
                 "output_file_base": arguments.output_file_base,
