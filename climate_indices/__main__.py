@@ -109,12 +109,12 @@ def _validate_args(args):
             dimensions = dataset_precip[args.var_name_precip].dims
             if dimensions in expected_dimensions_grid:
                 input_type = InputType.grid
-            elif dimensions not in expected_dimensions_divisions:
+            elif dimensions in expected_dimensions_divisions:
                 input_type = InputType.divisions
             else:
                 msg = "Invalid dimensions of the precipitation " + \
-                      f"variable: {dimensions}\n(valid dimension names and " + \
-                      f"order: {[expected_dimensions_grid, expected_dimensions_divisions]}"
+                      f"variable: {dimensions}\nValid dimension names and " + \
+                      f"order: {expected_dimensions_grid + expected_dimensions_divisions}"
                 _logger.error(msg)
                 raise ValueError(msg)
 
