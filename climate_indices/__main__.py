@@ -547,10 +547,10 @@ def _get_variable_attributes(args_dict):
 
 
 # ------------------------------------------------------------------------------
-def drop_data_into_shared_arrays_grid(dataset,
-                                      var_names,
-                                      periodicity,
-                                      data_start_year):
+def _drop_data_into_shared_arrays_grid(dataset,
+                                       var_names,
+                                       periodicity,
+                                       data_start_year):
 
     output_shape = None
 
@@ -610,15 +610,15 @@ def drop_data_into_shared_arrays_grid(dataset,
 
 
 # ------------------------------------------------------------------------------
-def drop_data_into_shared_arrays_divisions(dataset,
-                                           var_names):
+def _drop_data_into_shared_arrays_divisions(dataset,
+                                            var_names):
 
     output_shape = None
 
     # get the data arrays we'll use later in the index computations
     global _global_shared_arrays
     expected_dims_2d = [("division", "time"), ("time", "division")]
-    expected_dims_1d = ["division"]
+    expected_dims_1d = [("division",)]
     for var_name in var_names:
 
         # confirm that the dimensions of the data array are valid
@@ -652,7 +652,9 @@ def drop_data_into_shared_arrays_divisions(dataset,
             _KEY_SHAPE: dataset[var_name].shape,
         }
 
-        output_shape = dataset[var_name].shape
+        # we know we'll want the output for divisions to be 2-D
+        if len(dataset[var_name].shape) == 2:
+            output_shape = dataset[var_name].shape
 
         # drop the variable from the dataset (we're assuming this frees the memory)
         dataset = dataset.drop(var_name)
@@ -699,6 +701,9 @@ def _compute_write_index(keyword_arguments):
         input_var_names.append(keyword_arguments["var_name_temp"])
     if "var_name_pet" in keyword_arguments:
         input_var_names.append(keyword_arguments["var_name_pet"])
+    # keep the latitude variable if we're dealing with divisions
+    if input_type == InputType.divisions:
+        input_var_names.append("lat")
     for var in dataset.data_vars:
         if var not in input_var_names:
             dataset = dataset.drop(var)
@@ -760,14 +765,14 @@ def _compute_write_index(keyword_arguments):
                 )
 
     if input_type == InputType.divisions:
-        output_shape = drop_data_into_shared_arrays_divisions(dataset,
-                                                              input_var_names)
+        output_shape = _drop_data_into_shared_arrays_divisions(dataset,
+                                                               input_var_names)
     else:
         output_shape = \
-            drop_data_into_shared_arrays_grid(dataset,
-                                              input_var_names,
-                                              keyword_arguments["periodicity"],
-                                              keyword_arguments["data_start_year"])
+            _drop_data_into_shared_arrays_grid(dataset,
+                                               input_var_names,
+                                               keyword_arguments["periodicity"],
+                                               keyword_arguments["data_start_year"])
 
     # build an arguments dictionary appropriate to the index we'll compute
     args = _build_arguments(keyword_arguments)
@@ -1679,6 +1684,7 @@ def main():  # type: () -> None
                 # keyword arguments used for the PET function
                 kwargs = {
                     "index": "pet",
+                    "periodicity": arguments.periodicity,
                     "input_type": input_type,
                     "netcdf_temp": netcdf_temp,
                     "var_name_temp": arguments.var_name_temp,
@@ -1805,3 +1811,8 @@ def main():  # type: () -> None
     except Exception:
         _logger.exception("Failed to complete", exc_info=True)
         raise
+
+
+# ------------------------------------------------------------------------------
+if __name__ == "__main__":
+    main()
