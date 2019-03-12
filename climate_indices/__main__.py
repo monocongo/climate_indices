@@ -1,6 +1,7 @@
 import argparse
 from collections import Counter
 from datetime import datetime
+from enum import Enum
 import logging
 import multiprocessing
 import os
@@ -40,6 +41,17 @@ _logger = logging.getLogger(__name__)
 
 
 # ------------------------------------------------------------------------------
+class InputType(Enum):
+    """
+    Enumeration type for differentiating between gridded and US climate
+    division datasets.
+    """
+
+    grid = 1
+    divisions = 2
+
+
+# ------------------------------------------------------------------------------
 def init_worker(arrays_and_shapes):
     """
     Initialization function that assigns named arrays into the global variable.
@@ -65,7 +77,8 @@ def _validate_args(args):
     """
 
     # the dimensions we expect to find for each data variable (precipitation, temperature, and/or PET)
-    expected_dimensions = [("lat", "lon", "time"), ("time", "lat", "lon")]
+    expected_dimensions_grid = [("lat", "lon", "time"), ("time", "lat", "lon")]
+    expected_dimensions_divisions = [("time", "division"), ("division", "time")]
 
     # all indices except PET require a precipitation file
     if args.index != "pet":
@@ -78,38 +91,41 @@ def _validate_args(args):
 
         # make sure a precipitation variable name was specified
         if args.var_name_precip is None:
-            message = "Missing precipitation variable name"
-            _logger.error(message)
-            raise ValueError(message)
+            msg = "Missing precipitation variable name"
+            _logger.error(msg)
+            raise ValueError(msg)
 
         # validate the precipitation file itself
         with xr.open_dataset(args.netcdf_precip) as dataset_precip:
 
             # make sure we have a valid precipitation variable name
             if args.var_name_precip not in dataset_precip.variables:
-                message = "Invalid precipitation variable name: '{var}' ".format(
-                    var=args.var_name_precip
-                ) + "does not exist in precipitation file '{file}'".format(
-                    file=args.netcdf_precip
-                )
-                _logger.error(message)
-                raise ValueError(message)
+                msg = f"Invalid precipitation variable name: '{args.var_name_precip}'" + \
+                      f"does not exist in precipitation file '{args.netcdf_precip}'"
+                _logger.error(msg)
+                raise ValueError(msg)
 
             # verify that the precipitation variable's dimensions are in the expected order
             dimensions = dataset_precip[args.var_name_precip].dims
-            if dimensions not in expected_dimensions:
-                message = "Invalid dimensions of the precipitation variable: {dims}, ".format(
-                    dims=dimensions
-                ) + "(expected names and order: {dims})".format(
-                    dims=expected_dimensions
-                )
-                _logger.error(message)
-                raise ValueError(message)
+            if dimensions in expected_dimensions_grid:
+                input_type = InputType.grid
+            elif dimensions not in expected_dimensions_divisions:
+                input_type = InputType.divisions
+            else:
+                msg = "Invalid dimensions of the precipitation " + \
+                      f"variable: {dimensions}\n(valid dimension names and " + \
+                      f"order: {[expected_dimensions_grid, expected_dimensions_divisions]}"
+                _logger.error(msg)
+                raise ValueError(msg)
 
             # get the values of the precipitation coordinate variables,
             # for comparison against those of the other data variables
-            lats_precip = dataset_precip["lat"].values[:]
-            lons_precip = dataset_precip["lon"].values[:]
+            if input_type == InputType.grid:
+                lats_precip = dataset_precip["lat"].values[:]
+                lons_precip = dataset_precip["lon"].values[:]
+            else:
+                divisions_precip = dataset_precip["division"].values[:]
+
             times_precip = dataset_precip["time"].values[:]
 
     else:
@@ -120,16 +136,36 @@ def _validate_args(args):
             _logger.error(msg)
             raise ValueError(msg)
 
-        # don't allow a daily periodicity (yet, this will be possible once we have Hargreaves or a daily Thornthwaite)
+        # don't allow a daily periodicity (yet, this will be
+        # possible once we have Hargreaves or a daily Thornthwaite)
         if args.periodicity is not compute.Periodicity.monthly:
-            msg = (
-                "Invalid periodicity argument for PET: "
-                + "'{period}' -- only monthly is supported".format(
-                    period=args.periodicity
-                )
-            )
+            msg = "Invalid periodicity argument for PET: " + \
+                  f"'{args.periodicity}' -- only 'monthly'' is supported"
             _logger.error(msg)
             raise ValueError(msg)
+
+        # validate the temperature file
+        with xr.open_dataset(args.netcdf_temp) as dataset_temp:
+
+            # make sure we have a valid temperature variable name
+            if args.var_name_temp not in dataset_temp.variables:
+                msg = f"Invalid temperature variable name: '{args.var_name_temp}'" + \
+                      f"does not exist in temperature file '{args.netcdf_temp}'"
+                _logger.error(msg)
+                raise ValueError(msg)
+
+            # verify that the temperature variable's dimensions are in the expected order
+            dimensions = dataset_temp[args.var_name_temp].dims
+            if dimensions in expected_dimensions_grid:
+                input_type = InputType.grid
+            elif dimensions not in expected_dimensions_divisions:
+                input_type = InputType.divisions
+            else:
+                msg = "Invalid dimensions of the temperature variable: " + \
+                      f"{dimensions}\n(valid dimension names and " + \
+                      f"order: {[expected_dimensions_grid, expected_dimensions_divisions]}"
+                _logger.error(msg)
+                raise ValueError(msg)
 
     # SPEI and Palmers require either a PET file or a temperature file in order to compute PET
     if args.index in ["spei", "scaled", "palmers"]:
@@ -146,51 +182,65 @@ def _validate_args(args):
 
                 # make sure we have a valid PET variable name
                 if args.var_name_pet is None:
-                    message = "Missing PET variable name"
-                    _logger.error(message)
-                    raise ValueError(message)
+                    msg = "Missing PET variable name"
+                    _logger.error(msg)
+                    raise ValueError(msg)
                 elif args.var_name_pet not in dataset_pet.variables:
-                    message = "Invalid PET variable name: '{var_name}' ".format(
-                        var_name=args.var_name_pet
-                    ) + "does not exist in PET file '{file}'".format(
-                        file=args.netcdf_pet
-                    )
-                    _logger.error(message)
-                    raise ValueError(message)
+                    msg = f"Invalid PET variable name: '{args.var_name_pet}' " + \
+                          f"does not exist in PET file '{args.netcdf_pet}'"
+                    _logger.error(msg)
+                    raise ValueError(msg)
 
                 # verify that the PET variable's dimensions are in the expected order
                 dimensions = dataset_pet[args.var_name_pet].dims
-                if dimensions not in expected_dimensions:
-                    message = "Invalid dimensions of the PET variable: {dims}, ".format(
-                        dims=dimensions
-                    ) + "(expected names and order: {dims})".format(
-                        dims=expected_dimensions
-                    )
-                    _logger.error(message)
-                    raise ValueError(message)
+                if input_type == InputType.grid:
 
-                # verify that the coordinate variables match with those of the precipitation dataset
-                if not np.array_equal(lats_precip, dataset_pet["lat"][:]):
-                    message = (
-                        "Precipitation and PET variables contain non-matching latitudes"
-                    )
-                    _logger.error(message)
-                    raise ValueError(message)
-                elif not np.array_equal(lons_precip, dataset_pet["lon"][:]):
-                    message = "Precipitation and PET variables contain non-matching longitudes"
-                    _logger.error(message)
-                    raise ValueError(message)
-                elif not np.array_equal(times_precip, dataset_pet["time"][:]):
-                    message = (
-                        "Precipitation and PET variables contain non-matching times"
-                    )
-                    _logger.error(message)
-                    raise ValueError(message)
+                    if dimensions not in expected_dimensions_grid:
+                        msg = f"Invalid dimensions of the PET variable: {dimensions}" + \
+                              f"(expected names and order: {expected_dimensions_grid}"
+                        _logger.error(msg)
+                        raise ValueError(msg)
+
+                    # verify that the coordinate variables match with those of the precipitation dataset
+                    if not np.array_equal(lats_precip, dataset_pet["lat"][:]):
+                        msg = "Precipitation and PET variables contain non-matching latitudes"
+                        _logger.error(msg)
+                        raise ValueError(msg)
+                    elif not np.array_equal(lons_precip, dataset_pet["lon"][:]):
+                        msg = "Precipitation and PET variables contain non-matching longitudes"
+                        _logger.error(msg)
+                        raise ValueError(msg)
+
+                elif input_type == InputType.divisions:
+
+                    if dimensions not in expected_dimensions_divisions:
+                        msg = f"Invalid dimensions of the PET variable: {dimensions}" + \
+                              f"(expected names and order: {expected_dimensions_grid}"
+                        _logger.error(msg)
+                        raise ValueError(msg)
+
+                    # verify that the coordinate variables match with those of the precipitation dataset
+                    if not np.array_equal(divisions_precip, dataset_pet["division"][:]):
+                        msg = "Precipitation and PET variables contain non-matching division IDs"
+                        _logger.error(msg)
+                        raise ValueError(msg)
+
+                else:
+                    msg = "Failed to determine the input type (gridded or US climate division)"
+                    _logger.error(msg)
+                    raise ValueError(msg)
+
+                # make sure times match
+                if not np.array_equal(times_precip, dataset_pet["time"][:]):
+                    msg = "Precipitation and PET variables contain non-matching times"
+                    _logger.error(msg)
+                    raise ValueError(msg)
 
         elif args.netcdf_pet is not None:
 
             # we can't have both temperature and PET files specified, no way to determine which to use
-            msg = "Both temperature and PET files were specified, only one of these should be provided"
+            msg = "Both temperature and PET files were specified, " \
+                  "only one of these should be provided"
             _logger.error(msg)
             raise ValueError(msg)
 
@@ -201,42 +251,59 @@ def _validate_args(args):
 
                 # make sure we have a valid temperature variable name
                 if args.var_name_temp is None:
-                    message = "Missing temperature variable name"
-                    _logger.error(message)
-                    raise ValueError(message)
+                    msg = "Missing temperature variable name"
+                    _logger.error(msg)
+                    raise ValueError(msg)
                 elif args.var_name_temp not in dataset_temp.variables:
-                    message = "Invalid temperature variable name: '{var}' does ".format(
-                        var=args.var_name_temp
-                    ) + "not exist in temperature file '{file}'".format(
-                        file=args.netcdf_temp
-                    )
-                    _logger.error(message)
-                    raise ValueError(message)
+                    msg = f"Invalid temperature variable name: '{args.var_name_temp}' " + \
+                          f"does not exist in temperature file '{args.netcdf_temp}'"
+                    _logger.error(msg)
+                    raise ValueError(msg)
 
                 # verify that the temperature variable's dimensions are in the expected order
                 dimensions = dataset_temp[args.var_name_temp].dims
-                if dimensions not in expected_dimensions:
-                    message = "Invalid dimensions of the temperature variable: {dims}, ".format(
-                        dims=dimensions
-                    ) + "(expected names and order: {dims})".format(
-                        dims=expected_dimensions
-                    )
-                    _logger.error(message)
-                    raise ValueError(message)
+                if input_type == InputType.grid:
 
-                # verify that the coordinate variables match with those of the precipitation dataset
-                if not np.array_equal(lats_precip, dataset_temp["lat"][:]):
-                    message = "Precipitation and temperature variables contain non-matching latitudes"
-                    _logger.error(message)
-                    raise ValueError(message)
-                elif not np.array_equal(lons_precip, dataset_temp["lon"][:]):
-                    message = "Precipitation and temperature variables contain non-matching longitudes"
-                    _logger.error(message)
-                    raise ValueError(message)
-                elif not np.array_equal(times_precip, dataset_temp["time"][:]):
-                    message = "Precipitation and temperature variables contain non-matching times"
-                    _logger.error(message)
-                    raise ValueError(message)
+                    if dimensions not in expected_dimensions_grid:
+                        msg = f"Invalid dimensions of the temperature variable: {dimensions}" + \
+                              f"(expected names and order: {expected_dimensions_grid}"
+                        _logger.error(msg)
+                        raise ValueError(msg)
+
+                    # verify that the coordinate variables match with those of the precipitation dataset
+                    if not np.array_equal(lats_precip, dataset_temp["lat"][:]):
+                        msg = "Precipitation and temperature variables contain non-matching latitudes"
+                        _logger.error(msg)
+                        raise ValueError(msg)
+                    elif not np.array_equal(lons_precip, dataset_temp["lon"][:]):
+                        msg = "Precipitation and temperature variables contain non-matching longitudes"
+                        _logger.error(msg)
+                        raise ValueError(msg)
+
+                elif input_type == InputType.divisions:
+
+                    if dimensions not in expected_dimensions_divisions:
+                        msg = f"Invalid dimensions of the temperature variable: {dimensions}" + \
+                              f"(expected names and order: {expected_dimensions_grid}"
+                        _logger.error(msg)
+                        raise ValueError(msg)
+
+                    # verify that the coordinate variables match with those of the precipitation dataset
+                    if not np.array_equal(divisions_precip, dataset_temp["division"][:]):
+                        msg = "Precipitation and temperature variables contain non-matching division IDs"
+                        _logger.error(msg)
+                        raise ValueError(msg)
+
+                else:
+                    msg = "Failed to determine the input type (gridded or US climate division)"
+                    _logger.error(msg)
+                    raise ValueError(msg)
+
+                # make sure the times match to those of the precipitation dataset
+                if not np.array_equal(times_precip, dataset_temp["time"][:]):
+                    msg = "Precipitation and temperature variables contain non-matching times"
+                    _logger.error(msg)
+                    raise ValueError(msg)
 
         # Palmers requires an available water capacity file
         if args.index in ["palmers"]:
@@ -252,58 +319,60 @@ def _validate_args(args):
 
                 # make sure we have a valid PET variable name
                 if args.var_name_awc is None:
-                    message = "Missing the AWC variable name"
-                    _logger.error(message)
-                    raise ValueError(message)
+                    msg = "Missing the AWC variable name"
+                    _logger.error(msg)
+                    raise ValueError(msg)
                 elif args.var_name_awc not in dataset_awc.variables:
-                    message = "Invalid AWC variable name: '{var}' does not exist ".format(
+                    msg = "Invalid AWC variable name: '{var}' does not exist ".format(
                         var=args.var_name_awc
                     ) + "in AWC file '{file}'".format(
                         file=args.netcdf_awc
                     )
-                    _logger.error(message)
-                    raise ValueError(message)
+                    _logger.error(msg)
+                    raise ValueError(msg)
 
                 # verify that the AWC variable's dimensions are in the expected order
                 dimensions = dataset_awc[args.var_name_awc].dims
                 if len(dimensions) == 2:
-                    expected_dimensions = [("lat", "lon")]
-                if dimensions not in expected_dimensions:
-                    message = "Invalid dimensions of the AWC variable: {dims}, ".format(
+                    expected_dimensions_grid = [("lat", "lon")]
+                if dimensions not in expected_dimensions_grid:
+                    msg = "Invalid dimensions of the AWC variable: {dims}, ".format(
                         dims=dimensions
                     ) + "(expected names and order: {dims})".format(
-                        dims=expected_dimensions
+                        dims=expected_dimensions_grid
                     )
-                    _logger.error(message)
-                    raise ValueError(message)
+                    _logger.error(msg)
+                    raise ValueError(msg)
 
                 # verify that the lat and lon coordinate variable values
                 # match with those of the precipitation dataset
                 if not np.array_equal(lats_precip, dataset_awc["lat"][:]):
-                    message = (
+                    msg = (
                         "Precipitation and AWC variables contain non-matching latitudes"
                     )
-                    _logger.error(message)
-                    raise ValueError(message)
+                    _logger.error(msg)
+                    raise ValueError(msg)
                 elif not np.array_equal(lons_precip, dataset_awc["lon"][:]):
-                    message = "Precipitation and AWC variables contain non-matching longitudes"
-                    _logger.error(message)
-                    raise ValueError(message)
+                    msg = "Precipitation and AWC variables contain non-matching longitudes"
+                    _logger.error(msg)
+                    raise ValueError(msg)
 
     if args.index in ["spi", "spei", "scaled", "pnp"]:
 
         if args.scales is None:
-            message = (
+            msg = (
                 "Scaled indices (SPI, SPEI, and/or PNP) specified without including "
                 + "one or more time scales (missing --scales argument)"
             )
-            _logger.error(message)
-            raise ValueError(message)
+            _logger.error(msg)
+            raise ValueError(msg)
 
         if any(n < 0 for n in args.scales):
-            message = "One or more negative scale specified within --scales argument"
-            _logger.error(message)
-            raise ValueError(message)
+            msg = "One or more negative scale specified within --scales argument"
+            _logger.error(msg)
+            raise ValueError(msg)
+
+    return input_type
 
 
 # ------------------------------------------------------------------------------
@@ -1436,8 +1505,8 @@ def main():  # type: () -> None
         )
         arguments = parser.parse_args()
 
-        # validate the arguments
-        _validate_args(arguments)
+        # validate the arguments and determine the input type
+        input_type = _validate_args(arguments)
 
         if arguments.multiprocessing == "single":
             _NUMBER_OF_WORKER_PROCESSES = 1
@@ -1611,6 +1680,6 @@ def main():  # type: () -> None
         elapsed = end_datetime - start_datetime
         _logger.info("Elapsed time:  %s", elapsed)
 
-    except Exception as ex:
+    except Exception:
         _logger.exception("Failed to complete", exc_info=True)
         raise
