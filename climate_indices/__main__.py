@@ -547,6 +547,116 @@ def _get_variable_attributes(args_dict):
 
 
 # ------------------------------------------------------------------------------
+def drop_data_into_shared_arrays_grid(dataset,
+                                      var_names,
+                                      periodicity,
+                                      data_start_year):
+
+    # get the data arrays we'll use later in the index computations
+    global _global_shared_arrays
+    expected_dims_3d = (("lat", "lon", "time"), ("lon", "lat", "time"))
+    expected_dims_2d = (("lat", "lon"), ("lon", "lat"))
+    for var_name in var_names:
+
+        # confirm that the dimensions of the data array are valid
+        dims = dataset[var_name].dims
+        if len(dims) == 3:
+            if dims not in expected_dims_3d:
+                message = f"Invalid dimensions for variable '{var_name}': {dims}"
+                _logger.error(message)
+                raise ValueError(message)
+        elif len(dims) == 2:
+            if dims not in expected_dims_2d:
+                message = f"Invalid dimensions for variable '{var_name}': {dims}"
+                _logger.error(message)
+                raise ValueError(message)
+
+        # convert daily values into 366-day years
+        if periodicity == compute.Periodicity.daily:
+            initial_year = int(str(dataset["time"][0].data)[0:4])
+            final_year = int(str(dataset["time"][-1].data)[0:4])
+            total_years = final_year - initial_year + 1
+            var_values = np.apply_along_axis(utils.transform_to_366day,
+                                             2,
+                                             dataset[var_name].values,
+                                             data_start_year,
+                                             total_years)
+
+        else:  # assumed to be monthly
+            var_values = dataset[var_name].values
+
+        output_shape = var_values.shape
+
+        # create a shared memory array, wrap it as a numpy array and copy
+        # copy the data (values) from this variable's DataArray
+        shared_array = multiprocessing.Array("d", int(np.prod(var_values.shape)))
+        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(
+            var_values.shape
+        )
+        np.copyto(shared_array_np, var_values)
+
+        # add to the dictionary of arrays
+        _global_shared_arrays[var_name] = {
+            _KEY_ARRAY: shared_array,
+            _KEY_SHAPE: var_values.shape,
+        }
+
+        # drop the variable from the dataset (we're assuming this frees the memory)
+        dataset = dataset.drop(var_name)
+
+    return output_shape
+
+
+# ------------------------------------------------------------------------------
+def drop_data_into_shared_arrays_divisions(dataset,
+                                           var_names):
+
+    # get the data arrays we'll use later in the index computations
+    global _global_shared_arrays
+    expected_dims_2d = [("division", "time"), ("time", "division")]
+    expected_dims_1d = ["division"]
+    for var_name in var_names:
+
+        # confirm that the dimensions of the data array are valid
+        dims = dataset[var_name].dims
+        if len(dims) == 2:
+            if dims not in expected_dims_2d:
+                message = "Invalid dimensions for variable '{var_name}': {dims}".format(
+                    var_name=var_name, dims=dims
+                )
+                _logger.error(message)
+                raise ValueError(message)
+        elif len(dims) == 1:
+            if dims not in expected_dims_1d:
+                message = "Invalid dimensions for variable '{var_name}': {dims}".format(
+                    var_name=var_name, dims=dims
+                )
+                _logger.error(message)
+                raise ValueError(message)
+
+        # create a shared memory array, wrap it as a numpy array and copy
+        # copy the data (values) from this variable's DataArray
+        shared_array = multiprocessing.Array("d", int(np.prod(dataset[var_name].shape)))
+        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(
+            dataset[var_name].shape
+        )
+        np.copyto(shared_array_np, dataset[var_name].values)
+
+        # add to the dictionary of arrays
+        _global_shared_arrays[var_name] = {
+            _KEY_ARRAY: shared_array,
+            _KEY_SHAPE: dataset[var_name].shape,
+        }
+
+        output_shape = dataset[var_name].shape
+
+        # drop the variable from the dataset (we're assuming this frees the memory)
+        dataset = dataset.drop(var_name)
+
+    return output_shape
+
+
+# ------------------------------------------------------------------------------
 def _compute_write_index(keyword_arguments):
     """
     Computes a climate index and writes the result into a corresponding NetCDF.
@@ -602,10 +712,8 @@ def _compute_write_index(keyword_arguments):
         output_shape = dataset[keyword_arguments["var_name_temp"]].shape
         output_dims = dataset[keyword_arguments["var_name_temp"]].dims
     else:
-        raise ValueError(
-            "Unable to determine output shape, no precipitation "
-            "or temperature variable name was specified."
-        )
+        raise ValueError("Unable to determine output shape, no precipitation "
+                         "or temperature variable name was specified.")
 
     # convert data into the appropriate units, if necessary
     # temperature should be in degrees Celsius
@@ -649,58 +757,15 @@ def _compute_write_index(keyword_arguments):
                     f"Unsupported PET units: {dataset[pet_var_name].units}"
                 )
 
-    # get the data arrays we'll use later in the index computations
-    global _global_shared_arrays
-    expected_dims_3d = (("lat", "lon", "time"), ("lon", "lat", "time"))
-    expected_dims_2d = (("lat", "lon"), ("lon", "lat"))
-    for var_name in input_var_names:
-
-        # confirm that the dimensions of the data array are valid
-        dims = dataset[var_name].dims
-        if len(dims) == 3:
-            if dims not in expected_dims_3d:
-                message = f"Invalid dimensions for variable '{var_name}': {dims}"
-                _logger.error(message)
-                raise ValueError(message)
-        elif len(dims) == 2:
-            if dims not in expected_dims_2d:
-                message = f"Invalid dimensions for variable '{var_name}': {dims}"
-                _logger.error(message)
-                raise ValueError(message)
-
-        # convert daily values into 366-day years
-        if keyword_arguments["periodicity"] == compute.Periodicity.daily:
-            initial_year = int(str(dataset["time"][0].data)[0:4])
-            final_year = int(str(dataset["time"][-1].data)[0:4])
-            total_years = final_year - initial_year + 1
-            var_values = np.apply_along_axis(
-                utils.transform_to_366day,
-                2,
-                dataset[var_name].values,
-                keyword_arguments["data_start_year"],
-                total_years,
-            )
-            output_shape = var_values.shape
-
-        else:  # assumed to be monthly
-            var_values = dataset[var_name].values
-
-        # create a shared memory array, wrap it as a numpy array and copy
-        # copy the data (values) from this variable's DataArray
-        shared_array = multiprocessing.Array("d", int(np.prod(var_values.shape)))
-        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(
-            var_values.shape
-        )
-        np.copyto(shared_array_np, var_values)
-
-        # add to the dictionary of arrays
-        _global_shared_arrays[var_name] = {
-            _KEY_ARRAY: shared_array,
-            _KEY_SHAPE: var_values.shape,
-        }
-
-        # drop the variable from the dataset (we're assuming this frees the memory)
-        dataset = dataset.drop(var_name)
+    if input_type == InputType.divisions:
+        output_shape = drop_data_into_shared_arrays_divisions(dataset,
+                                                              input_var_names)
+    else:
+        output_shape = \
+            drop_data_into_shared_arrays_grid(dataset,
+                                              input_var_names,
+                                              keyword_arguments["periodicity"],
+                                              keyword_arguments["data_start_year"])
 
     # build an arguments dictionary appropriate to the index we'll compute
     args = _build_arguments(keyword_arguments)
