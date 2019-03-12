@@ -54,7 +54,6 @@ setup(
         "Topic :: Scientific/Engineering :: Atmospheric Science",
         "Topic :: Scientific/Engineering :: Physics",
     ],
-    scripts=["scripts/process_divisions.py", "scripts/process_grid.py"],
     entry_points={
         "console_scripts": [
             "process_climate_indices=climate_indices.__main__:main",
