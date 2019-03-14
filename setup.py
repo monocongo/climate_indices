@@ -1,10 +1,17 @@
+import pathlib
 from setuptools import setup
+
+# the directory containing this file
+BASE_DIR = pathlib.Path(__file__).parent
+
+# the text of the README file
+README = (BASE_DIR / "README.md").read_text()
 
 setup(
     name="climate_indices",
-    version="1.0.0",
+    version="1.0.3",
     url="https://github.com/monocongo/climate_indices",
-    license="Unlicense",
+    license="BSD",
     author="James Adams",
     author_email="monocongo@gmail.com",
     description=(
@@ -12,7 +19,10 @@ setup(
         "algorithms in Python. Including Palmers (PDSI, scPDSI,  "
         "PHDI, and Z-Index), SPI, SPEI, PET, and PNP."
     ),
+    long_description=README,
+    long_description_content_type="text/markdown",
     packages=["climate_indices"],
+    include_package_data=True,
     install_requires=[
         "dask",
         "lmoments3",
@@ -33,15 +43,20 @@ setup(
         "spi spei evapotranspiration"
     ),
     classifiers=[
-        "Development Status :: 2 - Pre-Alpha",
+        "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Developers",
         "Intended Audience :: Education",
         "Intended Audience :: Science/Research",
-        "License :: Public Domain",
-        "Programming Language :: Python :: 3.5",
-        "Programming Language :: Python :: 3.6",
+        'License :: OSI Approved :: BSD License',
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.7",
+        "Topic :: Software Development :: Libraries :: Python Modules",
         "Topic :: Scientific/Engineering :: Atmospheric Science",
         "Topic :: Scientific/Engineering :: Physics",
     ],
-    scripts=["scripts/process_divisions.py", "scripts/process_grid.py"],
+    entry_points={
+        "console_scripts": [
+            "process_climate_indices=climate_indices.__main__:main",
+        ]
+    },
 )
