@@ -355,11 +355,11 @@ def _validate_args(args):
                         raise ValueError(msg)
 
                     # verify that the coordinate variables match with those of the precipitation dataset
-                    if not np.array_equal(lats_precip, dataset_awc["lat"][:]):
+                    if not np.allclose(lats_precip, dataset_awc["lat"][:], atol=0.01):
                         msg = "Precipitation and AWC variables contain non-matching latitudes"
                         _logger.error(msg)
                         raise ValueError(msg)
-                    elif not np.array_equal(lons_precip, dataset_awc["lon"][:]):
+                    elif not np.allclose(lons_precip, dataset_awc["lon"][:], atol=0.01):
                         msg = "Precipitation and AWC variables contain non-matching longitudes"
                         _logger.error(msg)
                         raise ValueError(msg)
