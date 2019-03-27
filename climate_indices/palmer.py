@@ -1728,7 +1728,10 @@ def _z_sum(
     # then we need to be using negative numbers, so we introduce a sign variable to help with this
     if "WET" == wet_or_dry:
 
-        largest_sum = _highest_reasonable_value(values_to_sum)
+        if values_to_sum:
+            largest_sum = _highest_reasonable_value(values_to_sum)
+        else:
+            largest_sum = 0.0
 
     else:  # DRY
 
