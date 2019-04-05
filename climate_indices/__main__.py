@@ -70,15 +70,28 @@ def init_worker(arrays_and_shapes):
 # ------------------------------------------------------------------------------
 def _validate_args(args):
     """
-    Validate the processing settings to confirm that proper argument combinations have been provided.
+    Validate the processing settings to confirm that proper argument
+    combinations have been provided.
 
-    :param args: an arguments object of the type returned by argparse.ArgumentParser.parse_args()
+    :param args: an arguments object of the type returned by
+        argparse.ArgumentParser.parse_args()
     :raise ValueError: if one or more of the command line arguments is invalid
     """
 
-    # the dimensions we expect to find for each data variable (precipitation, temperature, and/or PET)
+    # the dimensions we expect to find for each data variable
+    # (precipitation, temperature, and/or PET)
     expected_dimensions_grid = [("lat", "lon", "time"), ("time", "lat", "lon")]
     expected_dimensions_divisions = [("time", "division"), ("division", "time")]
+
+    # the dimensions we expect to find for the AWC data variable
+    # (i.e. should be the same as the P, T, and PET but "time" is optional)
+    expected_dimensions_grid_awc = [("lat", "lon", "time"),
+                                    ("time", "lat", "lon"),
+                                    ("lat", "lon"),
+                                    ("lat", "lon")]
+    expected_dimensions_divisions_awc = [("time", "division"),
+                                         ("division", "time"),
+                                         ("division")]
 
     # all indices except PET require a precipitation file
     if args.index != "pet":
@@ -335,25 +348,25 @@ def _validate_args(args):
                 dimensions = dataset_awc[args.var_name_awc].dims
                 if input_type == InputType.grid:
 
-                    if dimensions not in expected_dimensions_grid:
+                    if dimensions not in expected_dimensions_grid_awc:
                         msg = f"Invalid dimensions of the AWC variable: {dimensions}" + \
                               f"(expected names and order: {expected_dimensions_grid}"
                         _logger.error(msg)
                         raise ValueError(msg)
 
                     # verify that the coordinate variables match with those of the precipitation dataset
-                    if not np.array_equal(lats_precip, dataset_awc["lat"][:]):
+                    if not np.allclose(lats_precip, dataset_awc["lat"][:], atol=0.01):
                         msg = "Precipitation and AWC variables contain non-matching latitudes"
                         _logger.error(msg)
                         raise ValueError(msg)
-                    elif not np.array_equal(lons_precip, dataset_awc["lon"][:]):
+                    elif not np.allclose(lons_precip, dataset_awc["lon"][:], atol=0.01):
                         msg = "Precipitation and AWC variables contain non-matching longitudes"
                         _logger.error(msg)
                         raise ValueError(msg)
 
                 elif input_type == InputType.divisions:
 
-                    if dimensions not in expected_dimensions_divisions:
+                    if dimensions not in expected_dimensions_divisions_awc:
                         msg = f"Invalid dimensions of the AWC variable: {dimensions}" + \
                               f"(expected names and order: {expected_dimensions_grid}"
                         _logger.error(msg)
