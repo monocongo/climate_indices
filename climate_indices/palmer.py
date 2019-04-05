@@ -662,31 +662,44 @@ def _z_index(P: np.ndarray,
              calibration_start_year: int,
              calibration_end_year: int) -> np.ndarray:
     """
-    This function calculates Palmer's Z index using inputs from the water balance function.
+    This function calculates Palmer's Z index using inputs from
+    the water balance function.
 
-    :param P: 1-D numpy.ndarray of monthly precipitation observations, in inches, the number of array elements
-              (array size) should be a multiple of 12 (representing an ordinal number of full years)
-    :param PET: 1-D numpy.ndarray of monthly potential evapotranspiration values, in inches, the number of array elements
-                (array size) should be a multiple of 12 (representing an ordinal number of full years)
-    :param ET: 1-D numpy.ndarray of monthly evapotranspiration values, in inches, the number of array elements
-               (array size) should be a multiple of 12 (representing an ordinal number of full years)
-    :param PR: 1-D numpy.ndarray of monthly potential recharge values, in inches, the number of array elements
-               (array size) should be a multiple of 12 (representing an ordinal number of full years)
-    :param R: 1-D numpy.ndarray of monthly recharge values, in inches, the number of array elements
-              (array size) should be a multiple of 12 (representing an ordinal number of full years)
-    :param RO: 1-D numpy.ndarray of monthly runoff values, in inches, the number of array elements
-               (array size) should be a multiple of 12 (representing an ordinal number of full years)
-    :param PRO: 1-D numpy.ndarray of monthly potential runoff values, in inches, the number of array elements
-                (array size) should be a multiple of 12 (representing an ordinal number of full years)
-    :param L: 1-D numpy.ndarray of monthly loss values, in inches, the number of array elements
-              (array size) should be a multiple of 12 (representing an ordinal number of full years)
-    :param PL: 1-D numpy.ndarray of monthly potential loss values, in inches, the number of array elements
-               (array size) should be a multiple of 12 (representing an ordinal number of full years)
-    :param data_start_year: initial year of the input arrays, i.e. the first element of each of the input arrays
-                            is assumed to correspond to January of this initial year
-    :param calibration_start_year: initial year of the calibration period, should be >= data_start_year
+    :param P: 1-D numpy.ndarray of monthly precipitation observations, in inches,
+        the number of array elements, (array size) should be a multiple of 12
+        (representing an ordinal number of full years)
+    :param PET: 1-D numpy.ndarray of monthly potential evapotranspiration values,
+        in inches, the number of array elements (array size) should be
+        a multiple of 12 (representing an ordinal number of full years)
+    :param ET: 1-D numpy.ndarray of monthly evapotranspiration values, in inches,
+        the number of array elements (array size) should be a multiple of 12
+        (representing an ordinal number of full years)
+    :param PR: 1-D numpy.ndarray of monthly potential recharge values, in inches,
+        the number of array elements (array size) should be a multiple of 12
+        (representing an ordinal number of full years)
+    :param R: 1-D numpy.ndarray of monthly recharge values, in inches,
+        the number of array elements (array size) should be a multiple of 12
+        (representing an ordinal number of full years)
+    :param RO: 1-D numpy.ndarray of monthly runoff values, in inches, the number
+        of array elements (array size) should be a multiple of 12 (representing
+        an ordinal number of full years)
+    :param PRO: 1-D numpy.ndarray of monthly potential runoff values, in inches,
+        the number of array elements (array size) should be a multiple of 12
+        (representing an ordinal number of full years)
+    :param L: 1-D numpy.ndarray of monthly loss values, in inches, the number of
+        array elements (array size) should be a multiple of 12 (representing an
+        ordinal number of full years)
+    :param PL: 1-D numpy.ndarray of monthly potential loss values, in inches,
+        the number of array elements (array size) should be a multiple of 12
+        (representing an ordinal number of full years)
+    :param data_start_year: initial year of the input arrays, i.e. the first
+        element of each of the input arrays is assumed to correspond to January
+        of this initial year
+    :param calibration_start_year: initial year of the calibration period,
+        should be >= data_start_year
     :param calibration_end_year: final year of the calibration period
-    :return 1-D numpy.ndarray of Z-Index values, with shape corresponding to the input arrays
+    :return 1-D numpy.ndarray of Z-Index values, with shape corresponding to
+        that of the input arrays
     :rtype: numpy.ndarray of floats
     """
 
@@ -1156,7 +1169,7 @@ def _assign_X_backtracking(X,
     # backtrack value is switched and the corresponding
     # X values are assigned (see _assign() in pdinew.f/pdinew.py)
     for i in range(current_month_index - 1, previous_nonzero_index - 1, -1):
-        backtrack[i] = backtrack[i + 1] # Assign backtrack to next month's backtrack value.
+        backtrack[i] = backtrack[i + 1]  # Assign backtrack to next month's backtrack value.
         if backtrack[i] == 2:
             # If backtrack = 2, X = preliminary_X2 unless
             # preliminary_X2 = 0, then X = preliminary_X1.
@@ -2270,7 +2283,7 @@ def pdsi(
 
         return PDSI, PHDI, PMDI, zindex
 
-    except:
+    except Exception:
         # catch all exceptions, log rudimentary error information
         _logger.error("Failed to complete", exc_info=True)
         raise
