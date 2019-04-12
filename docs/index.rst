@@ -188,8 +188,7 @@ The options for the entry point script are described below:
 | awc_var_name           | Name of the available water capacity variable   |
 |                        | within the input AWC NetCDF.                    |
 +------------------------+-------------------------------------------------+
-| output_file_base       | Base file name for all grid processing          |
-|                        | output files.                                   |
+| output_file_base       | Base file name for all output files.            |
 |                        |                                                 |
 |                        | Each computed index will have a corresponding   |
 |                        | output file whose name will begin with          |
@@ -205,10 +204,9 @@ The options for the entry point script are described below:
 | scales                 | Time step scales over which the PNP, SPI, and   |
 |                        | SPEI values are to be computed. Required when   |
 |                        | the **index** argument is 'spi', 'spei',        |
-|                        | 'pnp', or 'scaled'. If the **periodicity**      |
-|                        | option is specified then that option will infer |
-|                        | that the scales used here either month or day   |
-|                        | scales.                                         |
+|                        | 'pnp', or 'scaled'. The **periodicity**         |
+|                        | option will infer whether the scales used are   |
+|                        | month or day scales.                            |
 |                        |                                                 |
 |                        | **NOTE**: When used for US climate divisions    |
 |                        | processing this option specifies month scales   | +------------------------+-------------------------------------------------+
