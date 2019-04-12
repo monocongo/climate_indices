@@ -144,10 +144,8 @@ The options for the entry point script are described below:
 | netcdf_precip          | Input NetCDF file containing a                  |
 |                        | precipitation dataset, required for all         |
 |                        | indices except for PET. Requires the use of     |
-|                        | **var_name_temp** in conjunction so as to       |
+|                        | **var_name_precip** in conjunction so as to     |
 |                        | identify the NetCDF's precipitation variable.   |
-|                        |                                                 |
-|                        | **NOTE**: Only used for grid processing.        |
 +------------------------+-------------------------------------------------+
 | var_name_precip        | Name of the precipitation variable within       |
 |                        | the input precipitation NetCDF.                 |
@@ -213,9 +211,7 @@ The options for the entry point script are described below:
 |                        | scales.                                         |
 |                        |                                                 |
 |                        | **NOTE**: When used for US climate divisions    |
-|                        | processing this option specifies to month       |
-|                        | scales.                                         |
-+------------------------+-------------------------------------------------+
+|                        | processing this option specifies month scales   | +------------------------+-------------------------------------------------+
 | calibration_start_year | Initial year of the calibration period.         |
 +------------------------+-------------------------------------------------+
 | calibration_end_year   | Final year of the calibration period            |
