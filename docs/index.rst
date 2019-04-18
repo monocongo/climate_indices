@@ -13,13 +13,11 @@
    :target: https://coveralls.io/github/monocongo/climate_indices?branch=master
 .. |Quality| image:: https://api.codacy.com/project/badge/Grade/48563cbc37504fc6aa72100370e71f58
    :target: https://www.codacy.com/app/monocongo/climate_indices?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=monocongo/climate_indices&amp;utm_campaign=Badge_Grade
-.. |Style| image:: https://img.shields.io/badge/code%20style-black-000000.svg
-   :target: https://github.com/ambv/black
 .. |License| image:: https://img.shields.io/badge/license-BSD%203--Clause-green.svg
    :target: https://opensource.org/licenses/BSD-3-Clause
 
 
-|Build| |Coverage| |Quality| |Style| |License|
+|Build| |Coverage| |Quality| |License|
 
 Climate Indices in Python
 =============================================
@@ -180,7 +178,7 @@ The options for the entry point script are described below:
 | var_name_pet           | Name of the PET variable within the input PET   |
 |                        | NetCDF.                                         |
 +------------------------+-------------------------------------------------+
-| netcdf_awc             | Input NetCDF file containing an available water |
+| netcdf_awc             | Input NetCDF file containing available water    |
 |                        | capacity, required for Palmers. Requires the    |
 |                        | use of **var_name_awc** in conjunction so as to |
 |                        | identify the NetCDF's AWC variable.             |
@@ -209,7 +207,8 @@ The options for the entry point script are described below:
 |                        | month or day scales.                            |
 |                        |                                                 |
 |                        | **NOTE**: When used for US climate divisions    |
-|                        | processing this option specifies month scales   | +------------------------+-------------------------------------------------+
+|                        | processing this option specifies month scales   |
++------------------------+-------------------------------------------------+
 | calibration_start_year | Initial year of the calibration period.         |
 +------------------------+-------------------------------------------------+
 | calibration_end_year   | Final year of the calibration period            |
