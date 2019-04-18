@@ -93,7 +93,8 @@ def _sunset_hour_angle(latitude_radians, solar_declination_radians):
                          f"to {_SOLAR_DECLINATION_RADIANS_MAX!r}]: "
                          f"{solar_declination_radians!r}")
 
-    # calculate the cosine of the sunset hour angle (*Ws* in FAO 25) from latitude and solar declination
+    # calculate the cosine of the sunset hour angle (*Ws* in FAO 25)
+    # from latitude and solar declination
     cos_sunset_hour_angle = \
         -math.tan(latitude_radians) * math.tan(solar_declination_radians)
 
@@ -104,7 +105,7 @@ def _sunset_hour_angle(latitude_radians, solar_declination_radians):
     return math.acos(min(max(cos_sunset_hour_angle, -1.0), 1.0))
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 @numba.jit
 def _solar_declination(day_of_year):
     """
@@ -125,7 +126,7 @@ def _solar_declination(day_of_year):
     return 0.409 * math.sin(((2.0 * math.pi / 365.0) * day_of_year - 1.39))
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 @numba.jit
 def _daylight_hours(sunset_hour_angle_radians):
     """
@@ -189,13 +190,14 @@ def _monthly_mean_daylight_hours(latitude_radians: float, leap=False):
     return monthly_mean_dlh
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 @numba.jit
 def eto_thornthwaite(monthly_temps_celsius: np.ndarray,
                      latitude_degrees: float,
                      data_start_year: int):
     """
-    Compute monthly potential evapotranspiration (PET) using the Thornthwaite (1948) method.
+    Compute monthly potential evapotranspiration (PET) using the
+    Thornthwaite (1948) method.
 
     Thornthwaite's equation:
 
@@ -203,22 +205,25 @@ def eto_thornthwaite(monthly_temps_celsius: np.ndarray,
 
     where:
 
-    * *Ta* is the mean daily air temperature, in degrees Celsius (if negative use 0.0), of the month being calculated
+    * *Ta* is the mean daily air temperature, in degrees Celsius (if negative
+        then use 0.0), of the month being calculated
     * *N* is the number of days in the month being calculated
     * *L* is the mean day length, in hours, of the month being calculated
     * *a* = (6.75 x 10-7)*I***3 - (7.71 x 10-5)*I***2 + (1.792 x 10-2)*I* + 0.49239
-    * *I* is a heat index which depends on the 12 monthly mean temperatures and is calculated as
-        the sum of (*Tai* / 5)**1.514 for each month, where *Tai* is the air temperature for each month in the year
+    * *I* is a heat index which depends on the 12 monthly mean temperatures and
+        is calculated as the sum of (*Tai* / 5)**1.514 for each month, where
+        *Tai* is the air temperature for each month in the year
 
     Reference:
-    Thornthwaite, C.W. (1948) An approach toward a rational classification of climate.
-    Geographical Review, Vol. 38, 55-94.
+    Thornthwaite, C.W. (1948) An approach toward a rational classification
+    of climate. Geographical Review, Vol. 38, 55-94.
     https://www.jstor.org/stable/210739
 
-    :param monthly_temps_celsius: array containing a time series (monthly time steps) of mean daily air temperatures
-                                  in degrees Celsius. This input dataset is assumed to start at January of the initial
-                                  year, and can have any length. Both 1-D (months) and 2-D (years, 12) input datasets
-                                  are supported.
+    :param monthly_temps_celsius: array containing a time series (monthly time
+        steps) of mean daily air temperatures in degrees Celsius. This input
+        dataset is assumed to start at January of the initial year, and can have
+        any length. Both 1-D (months) and 2-D (years, 12) input datasets
+        are supported.
     :param latitude_degrees: latitude of the location, in degrees north (-90..90)
     :param data_start_year: year corresponding to the start of the dataset
     :return: estimated potential evapotranspiration, in millimeters/month
@@ -244,7 +249,8 @@ def eto_thornthwaite(monthly_temps_celsius: np.ndarray,
     #  pre-check to eliminate the cause of this warning
     monthly_temps_celsius[monthly_temps_celsius < 0] = 0.0
 
-    # mean the monthly temperature values over the month axis, giving us 12 monthly means for the period of record
+    # mean the monthly temperature values over the month axis,
+    # giving us 12 monthly means for the period of record
     mean_monthly_temps = np.nanmean(monthly_temps_celsius, axis=0)
 
     # calculate the heat index (I)
@@ -286,22 +292,26 @@ def eto_thornthwaite(monthly_temps_celsius: np.ndarray,
     return pet.reshape(-1)[0:original_length]
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 @numba.jit
 def eto_hargreaves(daily_tmin_celsius: np.ndarray,
                    daily_tmax_celsius: np.ndarray,
                    daily_tmean_celsius: np.ndarray,
                    latitude_degrees: float):
     """
-    Compute daily potential evapotranspiration (PET) using the Hargreaves (1985) method.
-    Based on equation 52 in Allen et al (1998).
+    Compute daily potential evapotranspiration (PET) using the Hargreaves
+    (1985) method. Based on equation 52 in Allen et al (1998).
 
-    Input arrays are assumed to be 1-D (an arbitrary number of days) or 2-D (years x 366 days per year).
+    Input arrays are assumed to be 1-D (an arbitrary number of days) or 2-D
+    (years x 366 days per year).
 
-    :param daily_tmin_celsius: array of daily minimum temperature values, in degrees Celsius
-    :param daily_tmax_celsius: array of daily maximum temperature values, in degrees Celsius
-    :param daily_tmean_celsius: array of daily mean temperature values, in degrees Celsius
-    :param latitude_degrees: latitude of location, in degrees
+    :param daily_tmin_celsius: array of daily minimum temperature values,
+        in degrees Celsius
+    :param daily_tmax_celsius: array of daily maximum temperature values,
+        in degrees Celsius
+    :param daily_tmean_celsius: array of daily mean temperature values,
+        in degrees Celsius
+    :param latitude_degrees: latitude of location, in degrees north
     :return: potential evapotranspiration over grass (ETo), in millimeters per day
     """
 
@@ -331,8 +341,9 @@ def eto_hargreaves(daily_tmin_celsius: np.ndarray,
         solar_declination = _solar_declination(day_of_year)
         sunset_hour_angle = _sunset_hour_angle(latitude, solar_declination)
 
-        # calculate the inverse relative distance between earth and sun from the day of the year
-        # Based on FAO equation 23 in Allen et al (1998).
+        # calculate the inverse relative distance between earth and sun
+        # from the day of the year, based on FAO equation 23 in
+        # Allen et al (1998).
         inv_rel_distance = 1 + (0.033 * math.cos((2.0 * math.pi / 365.0) * day_of_year))
 
         # extraterrestrial radiation

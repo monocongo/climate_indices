@@ -178,7 +178,7 @@ The options for the entry point script are described below:
 | var_name_pet           | Name of the PET variable within the input PET   |
 |                        | NetCDF.                                         |
 +------------------------+-------------------------------------------------+
-| netcdf_awc             | Input NetCDF file containing an available water |
+| netcdf_awc             | Input NetCDF file containing available water    |
 |                        | capacity, required for Palmers. Requires the    |
 |                        | use of **var_name_awc** in conjunction so as to |
 |                        | identify the NetCDF's AWC variable.             |
@@ -207,7 +207,8 @@ The options for the entry point script are described below:
 |                        | month or day scales.                            |
 |                        |                                                 |
 |                        | **NOTE**: When used for US climate divisions    |
-|                        | processing this option specifies month scales   | +------------------------+-------------------------------------------------+
+|                        | processing this option specifies month scales   |
++------------------------+-------------------------------------------------+
 | calibration_start_year | Initial year of the calibration period.         |
 +------------------------+-------------------------------------------------+
 | calibration_end_year   | Final year of the calibration period            |
