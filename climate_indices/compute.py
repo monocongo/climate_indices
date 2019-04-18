@@ -101,7 +101,8 @@ def _validate_array(values: np.ndarray,
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def sum_to_scale(values, scale):
+def sum_to_scale(values: np.ndarray,
+                 scale: int):
     """
     Compute a sliding sums array using 1-D convolution. The initial
     (scale - 1) elements of the result array will be padded with np.NaN values.
@@ -118,17 +119,21 @@ def sum_to_scale(values, scale):
     Y = f(X, n)
 
     Y[i] == np.NaN, where i < n
-    Y[i] == sum(X[i - n + 1:i + 1]), where i >= n - 1 and X[i - n + 1:i + 1] contains no NaN values
-    Y[i] == np.NaN, where i >= n - 1 and X[i - n + 1:i + 1] contains one or more NaN values
+    Y[i] == sum(X[i - n + 1:i + 1]), where i >= n - 1 and X[i - n + 1:i + 1]
+        contains no NaN values
+    Y[i] == np.NaN, where i >= n - 1 and X[i - n + 1:i + 1] contains
+        one or more NaN values
 
     :param values: the array of values over which we'll compute sliding sums
-    :param scale: the number of values for which each sliding summation will encompass, for example if this value
-                  is 3 then the first two elements of the output array will contain the pad value and the third
-                  element of the output array will contain the sum of the first three elements, and so on
-    :return: an array of sliding sums, equal in length to the input values array, left padded with NaN values
+    :param scale: the number of values for which each sliding summation will
+        encompass, for example if this value is 3 then the first two elements of
+        the output array will contain the pad value and the third element of the
+        output array will contain the sum of the first three elements, and so on
+    :return: an array of sliding sums, equal in length to the input values
+        array, left padded with NaN values
     """
 
-    # don't bother if the number of values to sum is 1 (will result in duplicate array)
+    # don't bother if the number of values to sum is 1
     if scale == 1:
         return values
 
@@ -151,20 +156,26 @@ def sum_to_scale(values, scale):
 @numba.jit
 def _pearson3_fitting_values(values):
     """
-    This function computes the probability of zero and Pearson Type III distribution parameters
-    corresponding to an array of values.
+    This function computes the probability of zero and Pearson Type III
+    distribution parameters corresponding to an array of values.
 
-    :param values: 2-D array of values, with each row representing a year containing either 12 values corresponding
-                   to the calendar months of that year, or 366 values corresponding to the days of the year
-                   (with Feb. 29th being an average of the Feb. 28th and Mar. 1st values for non-leap years)
-                   and assuming that the first value of the array is January of the initial year for an input array
-                   of monthly values or Jan. 1st of initial year for an input array daily values
-    :return: a 2-D array of fitting values for the Pearson Type III distribution, with shape (4, 12) for monthly
-             or (4, 366) for daily
-             returned_array[0] == probability of zero for each of the calendar time steps
-             returned_array[1] == the first Pearson Type III distribution parameter for each of the calendar time steps
-             returned_array[2] == the second Pearson Type III distribution parameter for each of the calendar time steps
-             returned_array[3] == the third Pearson Type III distribution parameter for each of the calendar time steps
+    :param values: 2-D array of values, with each row representing a year
+        containing either 12 values corresponding to the calendar months of
+        that year, or 366 values corresponding to the days of the year
+        (with Feb. 29th being an average of the Feb. 28th and Mar. 1st values for
+        non-leap years) and assuming that the first value of the array is
+        January of the initial year for an input array of monthly values or
+        Jan. 1st of initial year for an input array daily values
+    :return: a 2-D array of fitting values for the Pearson Type III
+        distribution, with shape (4, 12) for monthly or (4, 366) for daily
+
+        returned_array[0] == probability of zero for each of the calendar time steps
+        returned_array[1] == the first Pearson Type III distribution parameter
+            for each of the calendar time steps
+        returned_array[2] == the second Pearson Type III distribution parameter
+            for each of the calendar time steps
+        returned_array[3] == the third Pearson Type III distribution parameter
+            for each of the calendar time steps
     """
 
     # validate that the values array has shape: (years, 12) for monthly or (years, 366) for daily
@@ -467,9 +478,8 @@ def transform_fitted_gamma(values: np.ndarray,
 
     # TODO explain this
     # (normalize including the probability of zero, putting into the range [0..1]?)
-    probabilities = probabilities_of_zero + (
-        (1 - probabilities_of_zero) * gamma_probabilities
-    )
+    probabilities = probabilities_of_zero + \
+                    ((1 - probabilities_of_zero) * gamma_probabilities)
 
     # the values we'll return are the values at which the probabilities of
     # a normal distribution are less than or equal to the computed probabilities,

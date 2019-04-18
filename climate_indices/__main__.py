@@ -314,7 +314,8 @@ def _validate_args(args):
 
                 # make sure the times match to those of the precipitation dataset
                 if not np.array_equal(times_precip, dataset_temp["time"][:]):
-                    msg = "Precipitation and temperature variables contain non-matching times"
+                    msg = "Precipitation and temperature variables " + \
+                          "contain non-matching times"
                     _logger.error(msg)
                     raise ValueError(msg)
 
@@ -336,11 +337,8 @@ def _validate_args(args):
                     _logger.error(msg)
                     raise ValueError(msg)
                 elif args.var_name_awc not in dataset_awc.variables:
-                    msg = "Invalid AWC variable name: '{var}' does not exist ".format(
-                        var=args.var_name_awc
-                    ) + "in AWC file '{file}'".format(
-                        file=args.netcdf_awc
-                    )
+                    msg = f"Invalid AWC variable name: '{args.var_name_awc}' " + \
+                          f"does not exist in AWC file '{args.netcdf_awc}'"
                     _logger.error(msg)
                     raise ValueError(msg)
 
@@ -372,9 +370,11 @@ def _validate_args(args):
                         _logger.error(msg)
                         raise ValueError(msg)
 
-                    # verify that the coordinate variables match with those of the precipitation dataset
+                    # verify that the coordinate variables match
+                    # with those of the precipitation dataset
                     if not np.array_equal(divisions_precip, dataset_awc["division"][:]):
-                        msg = "Precipitation and AWC variables contain non-matching division IDs"
+                        msg = "Precipitation and AWC variables contain "\
+                              "non-matching division IDs"
                         _logger.error(msg)
                         raise ValueError(msg)
 
@@ -407,9 +407,7 @@ def _get_scale_increment(args_dict):
     elif args_dict["periodicity"] == compute.Periodicity.monthly:
         scale_increment = "month"
     else:
-        raise ValueError(
-            "Invalid periodicity argument: {}".format(args_dict["periodicity"])
-        )
+        raise ValueError(f"Invalid periodicity argument: {args_dict['periodicity']}")
 
     return scale_increment
 
@@ -463,31 +461,25 @@ def _build_arguments(keyword_args):
     if keyword_args["index"] in ["spi", "spei"]:
         function_arguments["scale"] = keyword_args["scale"]
         function_arguments["distribution"] = keyword_args["distribution"]
-        function_arguments["calibration_year_initial"] = keyword_args[
-            "calibration_start_year"
-        ]
-        function_arguments["calibration_year_final"] = keyword_args[
-            "calibration_end_year"
-        ]
+        function_arguments["calibration_year_initial"] = \
+            keyword_args["calibration_start_year"]
+        function_arguments["calibration_year_final"] = \
+            keyword_args["calibration_end_year"]
         function_arguments["periodicity"] = keyword_args["periodicity"]
 
     elif keyword_args["index"] == "pnp":
         function_arguments["scale"] = keyword_args["scale"]
-        function_arguments["calibration_start_year"] = keyword_args[
-            "calibration_start_year"
-        ]
-        function_arguments["calibration_end_year"] = keyword_args[
-            "calibration_end_year"
-        ]
+        function_arguments["calibration_start_year"] = \
+            keyword_args["calibration_start_year"]
+        function_arguments["calibration_end_year"] = \
+            keyword_args["calibration_end_year"]
         function_arguments["periodicity"] = keyword_args["periodicity"]
 
     elif keyword_args["index"] == "palmers":
-        function_arguments["calibration_start_year"] = keyword_args[
-            "calibration_start_year"
-        ]
-        function_arguments["calibration_end_year"] = keyword_args[
-            "calibration_end_year"
-        ]
+        function_arguments["calibration_start_year"] = \
+            keyword_args["calibration_start_year"]
+        function_arguments["calibration_end_year"] = \
+            keyword_args["calibration_end_year"]
 
     elif keyword_args["index"] != "pet":
         raise ValueError(
@@ -554,7 +546,7 @@ def _get_variable_attributes(args_dict):
 
     else:
 
-        raise ValueError("Unsupported index: {index}".format(index=args_dict["index"]))
+        raise ValueError(f"Unsupported index: {args_dict['index']}")
 
     return var_name, attrs
 
@@ -605,9 +597,8 @@ def _drop_data_into_shared_arrays_grid(dataset,
         # create a shared memory array, wrap it as a numpy array and copy
         # copy the data (values) from this variable's DataArray
         shared_array = multiprocessing.Array("d", int(np.prod(var_values.shape)))
-        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(
-            var_values.shape
-        )
+        shared_array_np = \
+            np.frombuffer(shared_array.get_obj()).reshape(var_values.shape)
         np.copyto(shared_array_np, var_values)
 
         # add to the dictionary of arrays
@@ -638,25 +629,19 @@ def _drop_data_into_shared_arrays_divisions(dataset,
         dims = dataset[var_name].dims
         if len(dims) == 2:
             if dims not in expected_dims_2d:
-                message = "Invalid dimensions for variable '{var_name}': {dims}".format(
-                    var_name=var_name, dims=dims
-                )
+                message = f"Invalid dimensions for variable '{var_name}': {dims}"
                 _logger.error(message)
                 raise ValueError(message)
         elif len(dims) == 1:
             if dims not in expected_dims_1d:
-                message = "Invalid dimensions for variable '{var_name}': {dims}".format(
-                    var_name=var_name, dims=dims
-                )
+                message = f"Invalid dimensions for variable '{var_name}': {dims}"
                 _logger.error(message)
                 raise ValueError(message)
 
         # create a shared memory array, wrap it as a numpy array and copy
         # copy the data (values) from this variable's DataArray
         shared_array = multiprocessing.Array("d", int(np.prod(dataset[var_name].shape)))
-        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(
-            dataset[var_name].shape
-        )
+        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(dataset[var_name].shape)
         np.copyto(shared_array_np, dataset[var_name].values)
 
         # add to the dictionary of arrays
@@ -736,7 +721,6 @@ def _compute_write_index(keyword_arguments):
                          "or temperature variable name was specified.")
 
     # convert data into the appropriate units, if necessary
-    # temperature should be in degrees Celsius
     # precipitation and PET should be in millimeters
     if "var_name_precip" in keyword_arguments:
         precip_var_name = keyword_arguments["var_name_precip"]
@@ -746,9 +730,10 @@ def _compute_write_index(keyword_arguments):
                 # inches to mm conversion (1 inch == 25.4 mm)
                 dataset[precip_var_name].values *= 25.4
             else:
-                raise ValueError(
-                    f"Unsupported precipitation units: {dataset[precip_var_name].units}"
-                )
+                raise ValueError(f"Unsupported precipitation units: {precip_unit}")
+
+    # convert data into the appropriate units, if necessary
+    # temperature should be in degrees Celsius
     if "var_name_temp" in keyword_arguments:
         temp_var_name = keyword_arguments["var_name_temp"]
         temp_unit = dataset[temp_var_name].units.lower()
@@ -758,13 +743,13 @@ def _compute_write_index(keyword_arguments):
                     dataset[temp_var_name].values, "f", "c"
                 )
             elif temp_unit in ("k", "kelvin"):
-                dataset[temp_var_name].values = scipy.constants.convert_temperature(
-                    dataset[temp_var_name].values, "k", "c"
-                )
+                dataset[temp_var_name].values = \
+                    scipy.constants.convert_temperature(dataset[temp_var_name].values,
+                                                        "k",
+                                                        "c")
             else:
-                raise ValueError(
-                    f"Unsupported temperature units: {dataset[temp_var_name].units}"
-                )
+                raise ValueError(f"Unsupported temperature units: {temp_unit}")
+
     if "var_name_pet" in keyword_arguments:
         pet_var_name = keyword_arguments["var_name_pet"]
         pet_unit = dataset[pet_var_name].units.lower()
@@ -773,9 +758,7 @@ def _compute_write_index(keyword_arguments):
                 # inches to mm conversion (1 inch == 25.4 mm)
                 dataset[pet_var_name].values *= 25.4
             else:
-                raise ValueError(
-                    f"Unsupported PET units: {dataset[pet_var_name].units}"
-                )
+                raise ValueError(f"Unsupported PET units: {dataset[pet_var_name].units}")
 
     if input_type == InputType.divisions:
         output_shape = _drop_data_into_shared_arrays_divisions(dataset,

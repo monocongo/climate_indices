@@ -1,7 +1,8 @@
+from enum import Enum
 import logging
+
 import numba
 import numpy as np
-from enum import Enum
 
 from climate_indices import compute, eto, palmer, utils
 
@@ -46,9 +47,9 @@ def spi(values: np.ndarray,
     """
     Computes SPI (Standardized Precipitation Index).
 
-    :param values: 1-D numpy array of precipitation values, in any units, first value assumed to correspond
-                   to January of the initial year if the periodicity is monthly, or January 1st of the initial
-                   year if daily
+    :param values: 1-D numpy array of precipitation values, in any units,
+        first value assumed to correspond to January of the initial year if
+        the periodicity is monthly, or January 1st of the initial year if daily
     :param scale: number of time steps over which the values should be scaled
         before the index is computed
     :param distribution: distribution type to be used for the internal
@@ -154,9 +155,10 @@ def spei(precips_mm: np.ndarray,
     """
     Compute SPEI fitted to the gamma distribution.
 
-    PET values are subtracted from the precipitation values to come up with an array of (P - PET) values, which is
-    then scaled to the specified months scale and finally fitted/transformed to SPEI values corresponding to the
-    input precipitation time series.
+    PET values are subtracted from the precipitation values to come up with an array
+    of (P - PET) values, which is then scaled to the specified months scale and
+    finally fitted/transformed to SPEI values corresponding to the input
+    precipitation time series.
 
     :param precips_mm: an array of monthly total precipitation values,
         in millimeters, should be of the same size (and shape?) as the input PET array
@@ -389,14 +391,16 @@ def percentage_of_normal(values: np.ndarray,
     # time step plus the values of the two previous time steps
     scale_sums = compute.sum_to_scale(values, scale)
 
-    # extract the timesteps over which we'll compute the normal average for each time step of the year
+    # extract the timesteps over which we'll compute the normal
+    # average for each time step of the year
     calibration_years = calibration_end_year - calibration_start_year + 1
     calibration_start_index = (calibration_start_year - data_start_year) * periodicity
     calibration_end_index = calibration_start_index + (calibration_years * periodicity)
     calibration_period_sums = scale_sums[calibration_start_index:calibration_end_index]
 
-    # for each time step in the calibration period, get the average of the scale sum
-    # for that calendar time step (i.e. average all January sums, then all February sums, etc.)
+    # for each time step in the calibration period, get the average of
+    # the scale sum for that calendar time step (i.e. average all January sums,
+    # then all February sums, etc.)
     averages = np.full((periodicity,), np.nan)
     for i in range(periodicity):
         averages[i] = np.nanmean(calibration_period_sums[i::periodicity])
@@ -422,14 +426,17 @@ def pet(temperature_celsius: np.ndarray,
         latitude_degrees: float,
         data_start_year: int):
     """
-    This function computes potential evapotranspiration (PET) using Thornthwaite's equation.
+    This function computes potential evapotranspiration (PET) using
+    Thornthwaite's equation.
 
-    :param temperature_celsius: an array of average temperature values, in degrees Celsius
-    :param latitude_degrees: the latitude of the location, in degrees north, must be within
-                             range [-90.0 ... 90.0] (inclusive), otherwise a ValueError is raised
+    :param temperature_celsius: an array of average temperature values,
+        in degrees Celsius
+    :param latitude_degrees: the latitude of the location, in degrees north,
+        must be within range [-90.0 ... 90.0] (inclusive), otherwise a
+        ValueError is raised
     :param data_start_year: the initial year of the input dataset
-    :return: an array of PET values, of the same size and shape as the input temperature values array,
-             in millimeters/time step
+    :return: an array of PET values, of the same size and shape as the input
+        temperature values array, in millimeters/time step
     :rtype: 1-D numpy.ndarray of floats
     """
 
