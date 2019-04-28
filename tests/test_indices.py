@@ -14,70 +14,62 @@ logging.disable(logging.CRITICAL)
 
 
 # ---------------------------------------------------------------------------------------
-@pytest.mark.usefixtures(
-    "precips_mm_monthly",
-    "pet_thornthwaite_mm",
-    "awc_inches",
-    "data_year_start_monthly",
-    "calibration_year_start_monthly",
-    "calibration_year_end_monthly",
-)
-def test_pdsi(
-    precips_mm_monthly,
-    pet_thornthwaite_mm,
-    awc_inches,
-    data_year_start_monthly,
-    calibration_year_start_monthly,
-    calibration_year_end_monthly,
-):
+@pytest.mark.usefixtures("precips_mm_monthly",
+                         "pet_thornthwaite_mm",
+                         "awc_inches",
+                         "data_year_start_monthly",
+                         "calibration_year_start_monthly",
+                         "calibration_year_end_monthly")
+def test_pdsi(precips_mm_monthly,
+              pet_thornthwaite_mm,
+              awc_inches,
+              data_year_start_monthly,
+              calibration_year_start_monthly,
+              calibration_year_end_monthly):
 
     # the indices.pdsi() function is a wrapper for palmer.pdsi(), so we'll
     # just confirm that this function can be called without raising an error and
     # the palmer.pdsi() function itself is being tested within test_palmer.py
-    indices.pdsi(
-        precips_mm_monthly,
-        pet_thornthwaite_mm,
-        awc_inches,
-        data_year_start_monthly,
-        calibration_year_start_monthly,
-        calibration_year_end_monthly,
-    )
+    indices.pdsi(precips_mm_monthly,
+                 pet_thornthwaite_mm,
+                 awc_inches,
+                 data_year_start_monthly,
+                 calibration_year_start_monthly,
+                 calibration_year_end_monthly)
 
 
 # ---------------------------------------------------------------------------------------
-@pytest.mark.usefixtures(
-    "precips_mm_monthly",
-    "pet_thornthwaite_mm",
-    "awc_inches",
-    "data_year_start_monthly",
-    "calibration_year_start_monthly",
-    "calibration_year_end_monthly",
-)
-def test_scpdsi(
-    precips_mm_monthly,
-    pet_thornthwaite_mm,
-    awc_inches,
-    data_year_start_monthly,
-    calibration_year_start_monthly,
-    calibration_year_end_monthly,
-):
+@pytest.mark.usefixtures("precips_mm_monthly",
+                         "pet_thornthwaite_mm",
+                         "awc_inches",
+                         "data_year_start_monthly",
+                         "calibration_year_start_monthly",
+                         "calibration_year_end_monthly")
+def test_scpdsi(precips_mm_monthly,
+                pet_thornthwaite_mm,
+                awc_inches,
+                data_year_start_monthly,
+                calibration_year_start_monthly,
+                calibration_year_end_monthly):
 
     # the indices.scpdsi() function is a wrapper for palmer.scpdsi(), so we'll
     # just confirm that this function can be called without raising an error and
     # the palmer.scpdsi() function itself is being tested within test_palmer.py
-    indices.scpdsi(
-        precips_mm_monthly,
-        pet_thornthwaite_mm,
-        awc_inches,
-        data_year_start_monthly,
-        calibration_year_start_monthly,
-        calibration_year_end_monthly,
-    )
+    indices.scpdsi(precips_mm_monthly,
+                   pet_thornthwaite_mm,
+                   awc_inches,
+                   data_year_start_monthly,
+                   calibration_year_start_monthly,
+                   calibration_year_end_monthly)
 
 
 # ----------------------------------------------------------------------------------------
-@pytest.mark.usefixtures("temps_celsius", "latitude_degrees", "data_year_start_monthly")
-def test_pet(temps_celsius, latitude_degrees, data_year_start_monthly):
+@pytest.mark.usefixtures("temps_celsius",
+                         "latitude_degrees",
+                         "data_year_start_monthly")
+def test_pet(temps_celsius,
+             latitude_degrees,
+             data_year_start_monthly):
 
     # confirm that an input array of all NaNs for temperature results in the same array returned
     all_nan_temps = np.full(temps_celsius.shape, np.NaN)
