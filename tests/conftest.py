@@ -95,33 +95,37 @@ def palmer_awc():
 
 @pytest.fixture(scope="module")
 def precips_mm_monthly():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "precips_mm_monthly.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "precips_mm_monthly.npy")
     )
 
 
 @pytest.fixture(scope="module")
 def precips_mm_daily():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "precips_mm_daily.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "precips_mm_daily.npy")
     )
 
 
 @pytest.fixture(scope="module")
 def transformed_pearson3():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "pearson3_monthly.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "pearson3_monthly.npy")
     )
 
 
 @pytest.fixture(scope="module")
 def transformed_pearson3_monthly_fullperiod():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "pearson3_monthly_full.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "pearson3_monthly_full.npy")
     )
 
 
@@ -135,7 +139,8 @@ def transformed_gamma_monthly():
     :return:
     """
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "gamma_monthly.npy")
+        os.path.join(os.path.split(__file__)[0], "fixture",
+                     "gamma_monthly.npy")
     )
 
 
@@ -150,247 +155,297 @@ def transformed_gamma_daily():
     """
 
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "gamma_daily.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "gamma_daily.npy")
     )
 
 
 @pytest.fixture(scope="module")
 def pet_thornthwaite_mm():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "pet_thornthwaite.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "pet_thornthwaite.npy")
     )
 
 
 @pytest.fixture(scope="module")
 def temps_celsius():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "temp_celsius.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "temp_celsius.npy")
     )
 
 
 @pytest.fixture(scope="module")
 def pnp_6month():
-
-    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "pnp_06.npy"))
+    return np.load(
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "pnp_06.npy")
+    )
 
 
 @pytest.fixture(scope="module")
 def spei_6_month_gamma():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "spei_06_gamma.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "spei_06_gamma.npy")
     )
 
 
 @pytest.fixture(scope="module")
 def spei_6_month_pearson3():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "spei_06_pearson3.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "spei_06_pearson3.npy")
     )
 
 
 @pytest.fixture(scope="module")
 def spi_1_month_gamma():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "spi_01_gamma.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "spi_01_gamma.npy")
     )
 
 
 @pytest.fixture(scope="module")
 def spi_6_month_gamma():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "spi_06_gamma.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "spi_06_gamma.npy")
     )
 
 
 @pytest.fixture(scope="module")
 def spi_6_month_pearson3():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "spi_06_pearson3.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "spi_06_pearson3.npy")
     )
 
 
 @pytest.fixture(scope="module")
 def palmer_pet():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "palmer_pet.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "palmer_pet.npy")
     )
 
 
 @pytest.fixture(scope="module")
 def palmer_precip():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "palmer_precip.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "palmer_precip.npy")
     )
 
 
 @pytest.fixture(scope="module")
 def palmer_et():
-
-    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "palmer_et.npy"))
+    return np.load(
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "palmer_et.npy")
+    )
 
 
 @pytest.fixture(scope="module")
 def palmer_pr():
-
-    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "palmer_pr.npy"))
+    return np.load(
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "palmer_pr.npy")
+    )
 
 
 @pytest.fixture(scope="module")
 def palmer_r():
-
-    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "palmer_r.npy"))
+    return np.load(
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "palmer_r.npy")
+    )
 
 
 @pytest.fixture(scope="module")
 def palmer_ro():
-
-    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "palmer_ro.npy"))
+    return np.load(
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "palmer_ro.npy")
+    )
 
 
 @pytest.fixture(scope="module")
 def palmer_pro():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "palmer_pro.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "palmer_pro.npy")
     )
 
 
 @pytest.fixture(scope="module")
 def palmer_l():
-
-    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "palmer_l.npy"))
+    return np.load(
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "palmer_l.npy")
+    )
 
 
 @pytest.fixture(scope="module")
 def palmer_pl():
-
-    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "palmer_pl.npy"))
+    return np.load(
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "palmer_pl.npy")
+    )
 
 
 @pytest.fixture(scope="module")
 def palmer_pdsi_monthly():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "palmer_pdsi.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "palmer_pdsi.npy")
     )
 
 
 @pytest.fixture(scope="module")
 def palmer_pdsi_from_scpdsi_monthly():
-
     return np.load(
         os.path.join(
-            os.path.split(__file__)[0], "fixture", "palmer_pdsi_from_scpdsi.npy"
+            os.path.split(__file__)[0],
+            "fixture",
+            "palmer_pdsi_from_scpdsi.npy"
         )
     )
 
 
 @pytest.fixture(scope="module")
 def palmer_phdi_monthly():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "palmer_phdi.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "palmer_phdi.npy")
     )
 
 
 @pytest.fixture(scope="module")
 def palmer_pmdi_monthly():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "palmer_pmdi.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "palmer_pmdi.npy")
     )
 
 
 @pytest.fixture(scope="module")
 def palmer_zindex():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "palmer_zindex_0.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "palmer_zindex_0.npy")
     )
 
 
 @pytest.fixture(scope="module")
 def palmer_alpha():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "palmer_alpha.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "palmer_alpha.npy")
     )
 
 
 @pytest.fixture(scope="module")
 def palmer_beta():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "palmer_beta.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "palmer_beta.npy")
     )
 
 
 @pytest.fixture(scope="module")
 def palmer_gamma():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "palmer_gamma.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "palmer_gamma.npy")
     )
 
 
 @pytest.fixture(scope="module")
 def palmer_delta():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "palmer_delta.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "palmer_delta.npy")
     )
 
 
 @pytest.fixture(scope="module")
 def palmer_K():
-
-    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "palmer_k.npy"))
+    return np.load(
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "palmer_k.npy")
+    )
 
 
 @pytest.fixture(scope="module")
 def palmer_zindex_monthly():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "palmer_zindex_1.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "palmer_zindex_1.npy")
     )
 
 
 @pytest.fixture(scope="module")
 def palmer_scpdsi_monthly():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "palmer_scpdsi.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "palmer_scpdsi.npy")
     )
 
 
 @pytest.fixture(scope="module")
 def palmer_scphdi_monthly():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "palmer_scphdi.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "palmer_scphdi.npy")
     )
 
 
 @pytest.fixture(scope="module")
 def palmer_scpmdi_monthly():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "palmer_scpmdi.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "palmer_scpmdi.npy")
     )
 
 
 @pytest.fixture(scope="module")
 def palmer_sczindex_monthly():
-
     return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture", "palmer_sczindex.npy")
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "palmer_sczindex.npy")
     )
