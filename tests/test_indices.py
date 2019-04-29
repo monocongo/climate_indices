@@ -5,7 +5,7 @@ import pytest
 
 from climate_indices import compute, indices
 
-# ----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # disable logging messages
 logging.disable(logging.CRITICAL)
 
@@ -13,7 +13,7 @@ logging.disable(logging.CRITICAL)
 # Tests for `climate_indices.indices.py`.
 
 
-# ---------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 @pytest.mark.usefixtures("precips_mm_monthly",
                          "pet_thornthwaite_mm",
                          "awc_inches",
@@ -26,6 +26,7 @@ def test_pdsi(precips_mm_monthly,
               data_year_start_monthly,
               calibration_year_start_monthly,
               calibration_year_end_monthly):
+
     # the indices.pdsi() function is a wrapper for palmer.pdsi(), so we'll
     # just confirm that this function can be called without raising an error and
     # the palmer.pdsi() function itself is being tested within test_palmer.py
@@ -37,7 +38,7 @@ def test_pdsi(precips_mm_monthly,
                  calibration_year_end_monthly)
 
 
-# ---------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 @pytest.mark.usefixtures("precips_mm_monthly",
                          "pet_thornthwaite_mm",
                          "awc_inches",
@@ -50,6 +51,7 @@ def test_scpdsi(precips_mm_monthly,
                 data_year_start_monthly,
                 calibration_year_start_monthly,
                 calibration_year_end_monthly):
+
     # the indices.scpdsi() function is a wrapper for palmer.scpdsi(), so we'll
     # just confirm that this function can be called without raising an error and
     # the palmer.scpdsi() function itself is being tested within test_palmer.py
@@ -61,14 +63,16 @@ def test_scpdsi(precips_mm_monthly,
                    calibration_year_end_monthly)
 
 
-# ----------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 @pytest.mark.usefixtures("temps_celsius",
                          "latitude_degrees",
                          "data_year_start_monthly")
 def test_pet(temps_celsius,
              latitude_degrees,
              data_year_start_monthly):
-    # confirm that an input array of all NaNs for temperature results in the same array returned
+
+    # confirm that an input temperature array of only NaNs
+    # results in the same all NaNs array being returned
     all_nan_temps = np.full(temps_celsius.shape, np.NaN)
     computed_pet = indices.pet(all_nan_temps, latitude_degrees, data_year_start_monthly)
     np.testing.assert_equal(computed_pet,
@@ -76,7 +80,8 @@ def test_pet(temps_celsius,
                             "All-NaN input array does not result in "
                             "the expected all-NaN result")
 
-    # confirm that a masked input array of all NaNs for temperature results in the same masked array returned
+    # confirm that a masked input temperature array of
+    # only NaNs results in the same masked array being returned
     masked_all_nan_temps = np.ma.array(all_nan_temps)
     computed_pet = indices.pet(masked_all_nan_temps,
                                latitude_degrees,
@@ -125,7 +130,7 @@ def test_pet(temps_celsius,
     indices.pet(temps_celsius, np.array([latitude_degrees]), data_year_start_monthly)
 
 
-# ----------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 @pytest.mark.usefixtures("precips_mm_monthly",
                          "precips_mm_daily",
                          "data_year_start_monthly",
@@ -144,7 +149,9 @@ def test_pnp(precips_mm_monthly,
              calibration_year_start_daily,
              calibration_year_end_daily,
              pnp_6month):
-    # confirm that an input array of all NaNs for precipitation results in the same array returned
+
+    # confirm that an input precipitation array containing
+    # only NaNs results in the same array returned
     all_nan_precips = np.full(precips_mm_monthly.shape, np.NaN)
     computed_pnp = indices.percentage_of_normal(all_nan_precips,
                                                 1,
@@ -179,8 +186,7 @@ def test_pnp(precips_mm_monthly,
                                  data_year_start_daily,
                                  calibration_year_start_daily,
                                  calibration_year_end_daily,
-                                 compute.Periodicity.daily,
-                                 )
+                                 compute.Periodicity.daily)
 
     # invalid periodicity argument should raise an Error
     np.testing.assert_raises(ValueError,
@@ -190,8 +196,7 @@ def test_pnp(precips_mm_monthly,
                              data_year_start_daily,
                              calibration_year_start_daily,
                              calibration_year_end_daily,
-                             "unsupported_value",
-                             )
+                             "unsupported_value")
 
     # invalid scale argument should raise an Error
     np.testing.assert_raises(ValueError,
@@ -201,8 +206,7 @@ def test_pnp(precips_mm_monthly,
                              data_year_start_daily,
                              calibration_year_start_daily,
                              calibration_year_end_daily,
-                             compute.Periodicity.daily,
-                             )
+                             compute.Periodicity.daily)
     np.testing.assert_raises(ValueError,
                              indices.percentage_of_normal,
                              precips_mm_daily.flatten(),
@@ -210,11 +214,10 @@ def test_pnp(precips_mm_monthly,
                              data_year_start_daily,
                              calibration_year_start_daily,
                              calibration_year_end_daily,
-                             compute.Periodicity.daily,
-                             )
+                             compute.Periodicity.daily)
 
 
-# ----------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 @pytest.mark.usefixtures("precips_mm_monthly",
                          "precips_mm_daily",
                          "data_year_start_monthly",
@@ -226,8 +229,7 @@ def test_pnp(precips_mm_monthly,
                          "calibration_year_end_daily",
                          "spi_1_month_gamma",
                          "spi_6_month_gamma",
-                         "spi_6_month_pearson3",
-                         )
+                         "spi_6_month_pearson3")
 def test_spi(precips_mm_monthly,
              precips_mm_daily,
              data_year_start_monthly,
@@ -239,9 +241,10 @@ def test_spi(precips_mm_monthly,
              calibration_year_end_daily,
              spi_1_month_gamma,
              spi_6_month_gamma,
-             spi_6_month_pearson3,
-             ):
-    # confirm that an input array of all NaNs for precipitation results in the same array returned
+             spi_6_month_pearson3):
+
+    # confirm that an input array of all NaNs for
+    # precipitation results in the same array returned
     all_nans = np.full(precips_mm_monthly.shape, np.NaN)
     computed_spi = indices.spi(all_nans,
                                1,
@@ -249,13 +252,12 @@ def test_spi(precips_mm_monthly,
                                data_year_start_monthly,
                                data_year_start_monthly,
                                data_year_end_monthly,
-                               compute.Periodicity.monthly,
-                               )
+                               compute.Periodicity.monthly)
     np.testing.assert_allclose(computed_spi,
                                all_nans.flatten(),
                                equal_nan=True,
-                               err_msg="SPI/Gamma not handling all-NaN arrays as expected",
-                               )
+                               err_msg="SPI/Gamma not handling "
+                                       "all-NaN arrays as expected")
 
     # confirm SPI/gamma is being computed as expected
     computed_spi = indices.spi(precips_mm_monthly,
@@ -264,13 +266,12 @@ def test_spi(precips_mm_monthly,
                                data_year_start_monthly,
                                data_year_start_monthly,
                                data_year_end_monthly,
-                               compute.Periodicity.monthly,
-                               )
+                               compute.Periodicity.monthly)
     np.testing.assert_allclose(computed_spi,
                                spi_1_month_gamma,
                                atol=0.001,
-                               err_msg="SPI/Gamma values for 1-month scale not computed as expected",
-                               )
+                               err_msg="SPI/Gamma values for 1-month "
+                                       "scale not computed as expected")
 
     # confirm SPI/gamma is being computed as expected
     computed_spi = indices.spi(precips_mm_monthly.flatten(),
@@ -279,16 +280,17 @@ def test_spi(precips_mm_monthly,
                                data_year_start_monthly,
                                data_year_start_monthly,
                                data_year_end_monthly,
-                               compute.Periodicity.monthly,
-                               )
+                               compute.Periodicity.monthly)
 
     # confirm SPI/gamma is being computed as expected
     np.testing.assert_allclose(computed_spi,
                                spi_6_month_gamma,
                                atol=0.001,
-                               err_msg="SPI/Gamma values for 6-month scale not computed as expected")
+                               err_msg="SPI/Gamma values for 6-month "
+                                       "scale not computed as expected")
 
-    # confirm we can also call the function with daily data, if this completes without error then test passes
+    # confirm we can also call the function with daily data,
+    # if this completes without error then test passes
     indices.spi(precips_mm_daily,
                 30,
                 indices.Distribution.gamma,
@@ -375,7 +377,7 @@ def test_spi(precips_mm_monthly,
                              "unsupported_value")
 
 
-# ----------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 @pytest.mark.usefixtures("precips_mm_monthly",
                          "pet_thornthwaite_mm",
                          "data_year_start_monthly",
@@ -452,7 +454,8 @@ def test_spei(precips_mm_monthly,
                              data_year_start_monthly,
                              data_year_end_monthly)
 
-    # having both precipitation and PET input array arguments with incongruent dimensions should raise a ValueError
+    # having both precipitation and PET input array arguments
+    # with incongruent dimensions should raise a ValueError
     np.testing.assert_raises(ValueError,
                              indices.spei,
                              precips_mm_monthly,
