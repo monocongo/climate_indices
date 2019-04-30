@@ -43,12 +43,13 @@ _logger = logging.getLogger(__name__)
 # ------------------------------------------------------------------------------
 class InputType(Enum):
     """
-    Enumeration type for differentiating between gridded and US climate
-    division datasets.
+    Enumeration type for differentiating between gridded, timeseriesn and US
+    climate division datasets.
     """
 
     grid = 1
     divisions = 2
+    timeseries = 3
 
 
 # ------------------------------------------------------------------------------
@@ -80,8 +81,9 @@ def _validate_args(args):
 
     # the dimensions we expect to find for each data variable
     # (precipitation, temperature, and/or PET)
-    expected_dimensions_grid = [("lat", "lon", "time"), ("time", "lat", "lon")]
     expected_dimensions_divisions = [("time", "division"), ("division", "time")]
+    expected_dimensions_grid = [("lat", "lon", "time"), ("time", "lat", "lon")]
+    expected_dimensions_timeseries = [("time",)]
 
     # the dimensions we expect to find for the AWC data variable
     # (i.e. should be the same as the P, T, and PET but "time" is optional)
@@ -124,6 +126,8 @@ def _validate_args(args):
                 input_type = InputType.grid
             elif dimensions in expected_dimensions_divisions:
                 input_type = InputType.divisions
+            elif dimensions in expected_dimensions_timeseries:
+                input_type = InputType.timeseries
             else:
                 msg = "Invalid dimensions of the precipitation " + \
                       f"variable: {dimensions}\nValid dimension names and " + \
@@ -136,7 +140,7 @@ def _validate_args(args):
             if input_type == InputType.grid:
                 lats_precip = dataset_precip["lat"].values[:]
                 lons_precip = dataset_precip["lon"].values[:]
-            else:
+            elif input_type == InputType.divisions:
                 divisions_precip = dataset_precip["division"].values[:]
 
             times_precip = dataset_precip["time"].values[:]
@@ -171,8 +175,10 @@ def _validate_args(args):
             dimensions = dataset_temp[args.var_name_temp].dims
             if dimensions in expected_dimensions_grid:
                 input_type = InputType.grid
-            elif dimensions not in expected_dimensions_divisions:
+            elif dimensions in expected_dimensions_divisions:
                 input_type = InputType.divisions
+            elif dimensions in expected_dimensions_timeseries:
+                input_type = InputType.timeseries
             else:
                 msg = "Invalid dimensions of the temperature variable: " + \
                       f"{dimensions}\n(valid dimension names and " + \
@@ -232,14 +238,27 @@ def _validate_args(args):
                         _logger.error(msg)
                         raise ValueError(msg)
 
-                    # verify that the coordinate variables match with those of the precipitation dataset
-                    if not np.array_equal(divisions_precip, dataset_pet["division"][:]):
-                        msg = "Precipitation and PET variables contain non-matching division IDs"
+                    # verify that the coordinate variables match
+                    # with those of the precipitation dataset
+                    if not np.array_equal(divisions_precip,
+                                          dataset_pet["division"][:]):
+                        msg = "Precipitation and PET variables " + \
+                              "contain non-matching division IDs"
+                        _logger.error(msg)
+                        raise ValueError(msg)
+
+                elif input_type == InputType.divisions:
+
+                    if dimensions not in expected_dimensions_divisions:
+
+                        msg = f"Invalid dimensions of the PET variable: {dimensions}" + \
+                              f"(expected names and order: {expected_dimensions_grid}"
                         _logger.error(msg)
                         raise ValueError(msg)
 
                 else:
-                    msg = "Failed to determine the input type (gridded or US climate division)"
+                    msg = "Failed to determine the input type " + \
+                          "(gridded, timeseries, or US climate division)"
                     _logger.error(msg)
                     raise ValueError(msg)
 
@@ -1485,10 +1504,13 @@ def _prepare_file(netcdf_file, var_name):
             dims = "division,time"
         else:
             raise ValueError(f"Unsupported dimensions for variable '{var_name}': {dimensions}")
-    else:  # gridded
-        if len(dimensions) == 2:
-            expected_dims = ("lat", "lon")
-            dims = "lat,lon"
+    else:  # timeseries or gridded
+        if len(dimensions) == 1:
+            expected_dims = ("time")
+            dims = "time"
+        elif len(dimensions) == 2:
+                expected_dims = ("lat", "lon")
+                dims = "lat,lon"
         elif len(dimensions) == 3:
             expected_dims = ("lat", "lon", "time")
             dims = "lat,lon,time"
