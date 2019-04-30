@@ -754,7 +754,7 @@ def _compute_write_index(keyword_arguments):
     if "var_name_precip" in keyword_arguments:
         precip_var_name = keyword_arguments["var_name_precip"]
         precip_unit = dataset[precip_var_name].units.lower()
-        if precip_unit not in ("mm", "millimeters", "millimeter"):
+        if precip_unit not in ("mm", "millimeters", "millimeter", "mm/dy"):
             if precip_unit in ("inches", "inch"):
                 # inches to mm conversion (1 inch == 25.4 mm)
                 dataset[precip_var_name].values *= 25.4
