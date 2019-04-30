@@ -78,8 +78,8 @@ def spi(values: np.ndarray,
     if len(shape) == 2:
         values = values.flatten()
     elif len(shape) != 1:
-        message = f"Invalid shape of input array: {shape} -- " + \
-                  "only 1-D and 2-D arrays are supported"
+        message = "Invalid shape of input array: {shape}".format(shape=shape) + \
+                  " -- only 1-D and 2-D arrays are supported"
         _logger.error(message)
         raise ValueError(message)
 
@@ -131,7 +131,7 @@ def spi(values: np.ndarray,
 
     else:
 
-        message = f"Unsupported distribution argument: {distribution}"
+        message = "Unsupported distribution argument: {dist}".format(dist=distribution)
         _logger.error(message)
         raise ValueError(message)
 
