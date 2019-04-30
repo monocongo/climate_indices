@@ -142,7 +142,6 @@ def _validate_args(args):
                 lons_precip = dataset_precip["lon"].values[:]
             elif input_type == InputType.divisions:
                 divisions_precip = dataset_precip["division"].values[:]
-
             times_precip = dataset_precip["time"].values[:]
 
     else:
@@ -234,7 +233,7 @@ def _validate_args(args):
 
                     if dimensions not in expected_dimensions_divisions:
                         msg = f"Invalid dimensions of the PET variable: {dimensions}" + \
-                              f"(expected names and order: {expected_dimensions_grid}"
+                              f"(expected names and order: {expected_dimensions_divisions}"
                         _logger.error(msg)
                         raise ValueError(msg)
 
@@ -247,12 +246,12 @@ def _validate_args(args):
                         _logger.error(msg)
                         raise ValueError(msg)
 
-                elif input_type == InputType.divisions:
+                elif input_type == InputType.timeseries:
 
-                    if dimensions not in expected_dimensions_divisions:
+                    if dimensions not in expected_dimensions_timeseries:
 
                         msg = f"Invalid dimensions of the PET variable: {dimensions}" + \
-                              f"(expected names and order: {expected_dimensions_grid}"
+                              f"(expected names and order: {expected_dimensions_timeseries}"
                         _logger.error(msg)
                         raise ValueError(msg)
 
@@ -316,7 +315,7 @@ def _validate_args(args):
 
                     if dimensions not in expected_dimensions_divisions:
                         msg = f"Invalid dimensions of the temperature variable: {dimensions}" + \
-                              f"(expected names and order: {expected_dimensions_grid}"
+                              f"(expected names and order: {expected_dimensions_divisions}"
                         _logger.error(msg)
                         raise ValueError(msg)
 
@@ -326,8 +325,17 @@ def _validate_args(args):
                         _logger.error(msg)
                         raise ValueError(msg)
 
+                elif input_type == InputType.timeseries:
+
+                    if dimensions not in expected_dimensions_timeseries:
+                        msg = f"Invalid dimensions of the temperature variable: {dimensions}" + \
+                              f"(expected names and order: {expected_dimensions_timeseries}"
+                        _logger.error(msg)
+                        raise ValueError(msg)
+
                 else:
-                    msg = "Failed to determine the input type (gridded or US climate division)"
+                    msg = "Failed to determine the input type " + \
+                          "(gridded, timeseries, or US climate division)"
                     _logger.error(msg)
                     raise ValueError(msg)
 
@@ -706,6 +714,8 @@ def _compute_write_index(keyword_arguments):
             chunks = {"lat": -1, "lon": -1}
         elif input_type == InputType.divisions:
             chunks = {"division": -1}
+        elif input_type == InputType.timeseries:
+            chunks = {"time": -1}
         else:
             raise ValueError(f"Invalid 'input_type' keyword argument: {input_type}")
     dataset = xr.open_mfdataset(files, chunks=chunks)
@@ -1506,30 +1516,29 @@ def _prepare_file(netcdf_file, var_name):
             raise ValueError(f"Unsupported dimensions for variable '{var_name}': {dimensions}")
     else:  # timeseries or gridded
         if len(dimensions) == 1:
-            expected_dims = ("time")
+            expected_dims = ("time",)
             dims = "time"
         elif len(dimensions) == 2:
-                expected_dims = ("lat", "lon")
-                dims = "lat,lon"
+            expected_dims = ("lat", "lon")
+            dims = "lat,lon"
         elif len(dimensions) == 3:
             expected_dims = ("lat", "lon", "time")
             dims = "lat,lon,time"
         else:
-            raise ValueError(f"Unsupported dimensions for variable '{var_name}': {dimensions}")
+            message = f"Unsupported dimensions for variable '{var_name}': {dimensions}"
+            _logger.error(message)
+            raise ValueError()
 
     if Counter(ds[var_name].dims) != Counter(expected_dims):
-        message = "Invalid dimensions for variable '{var_name}': {dims}".format(
-            var_name=var_name, dims=ds[var_name].dims
-        )
+        message = f"Invalid dimensions for variable '{var_name}': {ds[var_name].dims}"
         _logger.error(message)
         raise ValueError(message)
 
     # perform reorder of dimensions if necessary
     if ds[var_name].dims != expected_dims:
         nco = Nco()
-        netcdf_file = nco.ncpdq(
-            input=netcdf_file, options=['-a "{dims}"'.format(dims=dims), "-O"]
-        )
+        netcdf_file = nco.ncpdq(input=netcdf_file,
+                                options=[f'-a "{dims}"', "-O"])
 
     return netcdf_file
 
@@ -1659,27 +1668,24 @@ def main():  # type: () -> None
         if arguments.index in ["spi", "scaled", "all"]:
 
             # prepare precipitation NetCDF in case dimensions not (lat, lon, time) or if any coordinates are descending
-            netcdf_precip = _prepare_file(
-                arguments.netcdf_precip, arguments.var_name_precip
-            )
+            netcdf_precip = _prepare_file(arguments.netcdf_precip,
+                                          arguments.var_name_precip)
 
             # run SPI computations for each scale/distribution in turn
             for scale in arguments.scales:
                 for dist in indices.Distribution:
 
                     # keyword arguments used for the SPI function
-                    kwrgs = {
-                        "index": "spi",
-                        "netcdf_precip": netcdf_precip,
-                        "var_name_precip": arguments.var_name_precip,
-                        "input_type": input_type,
-                        "scale": scale,
-                        "distribution": dist,
-                        "periodicity": arguments.periodicity,
-                        "calibration_start_year": arguments.calibration_start_year,
-                        "calibration_end_year": arguments.calibration_end_year,
-                        "output_file_base": arguments.output_file_base,
-                    }
+                    kwrgs = {"index": "spi",
+                             "netcdf_precip": netcdf_precip,
+                             "var_name_precip": arguments.var_name_precip,
+                             "input_type": input_type,
+                             "scale": scale,
+                             "distribution": dist,
+                             "periodicity": arguments.periodicity,
+                             "calibration_start_year": arguments.calibration_start_year,
+                             "calibration_end_year": arguments.calibration_end_year,
+                             "output_file_base": arguments.output_file_base}
 
                     # compute and write SPI
                     _compute_write_index(kwrgs)
