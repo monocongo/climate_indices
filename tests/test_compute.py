@@ -11,8 +11,7 @@ logging.disable(logging.CRITICAL)
 
 
 # ------------------------------------------------------------------------------
-@pytest.mark.usefixtures(
-    "precips_mm_monthly",
+@pytest.mark.usefixtures("precips_mm_monthly",
     "precips_mm_daily",
     "data_year_start_monthly",
     "data_year_end_monthly",
@@ -23,8 +22,7 @@ logging.disable(logging.CRITICAL)
     "calibration_year_end_daily",
     "transformed_gamma_monthly",
     "transformed_gamma_daily")
-def test_transform_fitted_gamma(
-        precips_mm_monthly,
+def test_transform_fitted_gamma(precips_mm_monthly,
         precips_mm_daily,
         data_year_start_monthly,
         data_year_end_monthly,
@@ -259,9 +257,7 @@ def test_pearson3_fitting_values(precips_mm_monthly):
                              ))
     np.testing.assert_raises(ValueError,
                              compute._pearson3_fitting_values,
-                             np.array(
-                                 [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN]
-                             ))
+                             np.array([np.NaN]*9))
     np.testing.assert_raises(AttributeError, compute._pearson3_fitting_values, None)
 
     # try using a subset of the precipitation dataset (1897 - 1915, year indices 2 - 20)
@@ -316,7 +312,8 @@ def test_pearson3_fitting_values(precips_mm_monthly):
                                expected_values,
                                atol=0.001,
                                equal_nan=True,
-                               err_msg="Failed to accurately compute Pearson Type III fitting values")
+                               err_msg="Failed to accurately compute "
+                                       "Pearson Type III fitting values")
 
     # add some zeros in order to exercise the parts where it gets a percentage of zeros
     precips_mm = np.array(precips_mm_monthly, copy=True)
@@ -330,38 +327,18 @@ def test_pearson3_fitting_values(precips_mm_monthly):
     precips_mm[11, 4] = 0.0
     precips_mm[13, 5] = 0.0
     computed_values = compute._pearson3_fitting_values(precips_mm)
-    expected_values = np.array([[0.0, 0.008, 0.0, 0.008, 0.0164, 0.0164,
-                                 0.0, 0.0, 0.0, 0.0164, 0.0, 0.008],
-                                [45.85,
-                                 46.35,
-                                 48.32,
-                                 67.64,
-                                 121.17,
-                                 184.13,
-                                 154.97,
-                                 170.29,
-                                 196.43,
-                                 153.53,
-                                 58.40,
-                                 38.86],
-                                [38.87,
-                                 35.33,
-                                 34.32,
-                                 50.26,
-                                 73.52,
-                                 100.18,
-                                 50.63,
-                                 63.07,
-                                 75.26,
-                                 93.67,
-                                 48.75,
-                                 33.01],
-                                [1.76, 1.25, 1.17, 1.19, 0.76, 0.83, 0.18, 0.996, 0.83, 1.16, 1.85, 1.81]])
+    expected_values = np.array([
+        [0.0, 0.008, 0.0, 0.008, 0.0164, 0.0164, 0.0, 0.0, 0.0, 0.0164, 0.0, 0.008],
+        [45.85, 46.35, 48.32, 67.64, 121.17, 184.13, 154.97, 170.29, 196.43, 153.53, 58.40, 38.86],
+        [38.87, 35.33, 34.32, 50.26, 73.52, 100.18, 50.63, 63.07, 75.26, 93.67, 48.75, 33.01],
+        [1.76, 1.25, 1.17, 1.19, 0.76, 0.83, 0.18, 0.996, 0.83, 1.16, 1.85, 1.81]
+    ])
     np.testing.assert_allclose(computed_values,
                                expected_values,
                                atol=0.01,
                                equal_nan=True,
-                               err_msg="Failed to accurately compute Pearson Type III fitting values")
+                               err_msg="Failed to accurately compute "
+                                       "Pearson Type III fitting values")
 
 
 # ------------------------------------------------------------------------------
