@@ -109,11 +109,17 @@ Now the package can be added to the environment along with all required modules
 ``$ pip install climate-indices``
 
 
+NCO
+^^^^
+
+Install `NCO <http://nco.sourceforge.net#Executables//>`_
+
+
 Indices Processing
 ----------------------------------
 
 The installation will provide an "entry point" script which interacts with the core
-computational package to compute one or more climate indices. This script is 
+computational package to compute one or more climate indices. This script is
 ``process_climate_indices`` and is used to compute indices corresponding to gridded
 NetCDF datasets as well as US climate division NetCDF datasets.
 
