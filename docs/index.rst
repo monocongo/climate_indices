@@ -108,12 +108,22 @@ Now the package can be added to the environment along with all required modules
 
 ``$ pip install climate-indices``
 
+NCO
+^^^^
+
+NetCDF Operators is requirement and must be installed. Instructions for
+installation on various platforms is available `here <http://nco.sourceforge.net#Executables//>`_.
+If using an Anaconda environment as advised above then it's as simple as running
+the following command within the activated conda environment:
+
+``$ conda install -c conda-forge nco``
+
 
 Indices Processing
 ----------------------------------
 
 The installation will provide an "entry point" script which interacts with the core
-computational package to compute one or more climate indices. This script is 
+computational package to compute one or more climate indices. This script is
 ``process_climate_indices`` and is used to compute indices corresponding to gridded
 NetCDF datasets as well as US climate division NetCDF datasets.
 
