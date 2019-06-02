@@ -3,13 +3,12 @@ import logging
 
 # from dask.array import pad
 # from dask_image.ndfilters import convolve
-from lmoments3 import distr
 import numba
 import numpy as np
 import scipy.special
 import scipy.stats
 
-from climate_indices import utils
+from climate_indices import lmoments, utils
 
 # declare the names that should be included in the public API for this module
 __all__ = ["Periodicity"]
@@ -180,7 +179,7 @@ def _pearson3_fitting_values(values):
 
     # validate that the values array has shape: (years, 12) for monthly or (years, 366) for daily
     if len(values.shape) != 2:
-        message = f"Invalid shape of input data array: {values.shape}"
+        message = "Invalid shape of input data array: {shape}".format(shape=values.shape)
         _logger.error(message)
         raise ValueError(message)
 
@@ -188,7 +187,7 @@ def _pearson3_fitting_values(values):
 
         time_steps_per_year = values.shape[1]
         if (time_steps_per_year != 12) and (time_steps_per_year != 366):
-            message = f"Invalid shape of input data array: {values.shape}"
+            message = "Invalid shape of input data array: {shape}".format(shape=values.shape)
             _logger.error(message)
             raise ValueError(message)
 
@@ -225,13 +224,13 @@ def _pearson3_fitting_values(values):
         # more than three non-missing/non-zero values
         if (number_of_non_missing - number_of_zeros) > 3:
 
-            # remove NaN values from the array, as this invalidates
-            # the calculation within the lmoments3 function
-            time_step_values = time_step_values[~np.isnan(time_step_values)]
+            # # remove NaN values from the array, as this invalidates
+            # # the calculation within the lmoments fitting function
+            # time_step_values = time_step_values[~np.isnan(time_step_values)]
 
-            # get the Pearson Tyoe III parameters for this calendar
-            # month's values within the calibration period
-            params = distr.pe3.lmom_fit(time_step_values)
+            # get the Pearson Type III parameters for this time
+            # step's values within the calibration period
+            params = lmoments.fit(time_step_values)
             fitting_values[0, time_step_index] = probability_of_zero
             fitting_values[1, time_step_index] = params["loc"]
             fitting_values[2, time_step_index] = params["scale"]

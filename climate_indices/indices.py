@@ -78,8 +78,8 @@ def spi(values: np.ndarray,
     if len(shape) == 2:
         values = values.flatten()
     elif len(shape) != 1:
-        message = f"Invalid shape of input array: {shape} -- " + \
-                  "only 1-D and 2-D arrays are supported"
+        message = "Invalid shape of input array: {shape}".format(shape=shape) + \
+                  " -- only 1-D and 2-D arrays are supported"
         _logger.error(message)
         raise ValueError(message)
 
@@ -87,6 +87,11 @@ def spi(values: np.ndarray,
     # anything, so we return the same array of missing values
     if (np.ma.is_masked(values) and values.mask.all()) or np.all(np.isnan(values)):
         return values
+
+    # clip any negative values to zero
+    if np.amin(values) < 0.0:
+        _logger.warn("Input contains negative values -- all negatives clipped to zero")
+        values = np.clip(values, a_min=0.0, a_max=None)
 
     # remember the original length of the array, in order to facilitate
     # returning an array of the same size
@@ -131,7 +136,8 @@ def spi(values: np.ndarray,
 
     else:
 
-        message = f"Unsupported distribution argument: {distribution}"
+        message = "Unsupported distribution argument: " + \
+                  "{dist}".format(dist=distribution)
         _logger.error(message)
         raise ValueError(message)
 
@@ -198,6 +204,11 @@ def spei(precips_mm: np.ndarray,
         _logger.error(message)
         raise ValueError(message)
 
+    # clip any negative values to zero
+    if np.amin(precips_mm) < 0.0:
+        _logger.warn("Input contains negative values -- all negatives clipped to zero")
+        precips_mm = np.clip(precips_mm, a_min=0.0, a_max=None)
+
     # subtract the PET from precipitation, adding an offset
     # to ensure that all values are positive
     p_minus_pet = (precips_mm.flatten() - pet_mm.flatten()) + 1000.0
@@ -233,7 +244,8 @@ def spei(precips_mm: np.ndarray,
                                              periodicity)
 
     else:
-        message = f"Unsupported distribution argument: {distribution}"
+        message = "Unsupported distribution argument: " + \
+                  "{dist}".format(dist=distribution)
         _logger.error(message)
         raise ValueError(message)
 
