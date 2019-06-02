@@ -25,7 +25,6 @@ setup(
     include_package_data=True,
     install_requires=[
         "dask",
-        "lmoments3",
         "nco",
         "netcdf4",
         "numba",
