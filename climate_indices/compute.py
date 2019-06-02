@@ -179,7 +179,7 @@ def _pearson3_fitting_values(values):
 
     # validate that the values array has shape: (years, 12) for monthly or (years, 366) for daily
     if len(values.shape) != 2:
-        message = f"Invalid shape of input data array: {values.shape}"
+        message = "Invalid shape of input data array: {shape}".format(shape=values.shape)
         _logger.error(message)
         raise ValueError(message)
 
@@ -187,7 +187,7 @@ def _pearson3_fitting_values(values):
 
         time_steps_per_year = values.shape[1]
         if (time_steps_per_year != 12) and (time_steps_per_year != 366):
-            message = f"Invalid shape of input data array: {values.shape}"
+            message = "Invalid shape of input data array: {shape}".format(shape=values.shape)
             _logger.error(message)
             raise ValueError(message)
 

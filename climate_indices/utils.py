@@ -150,14 +150,16 @@ def reshape_to_2d(values: np.ndarray,
             # data is already in the shape we want, return it unaltered
             return values
         else:
-            message = "Values array has an invalid shape (2-D but " + \
-                      f"second dimension not {second_axis_length}): {shape}"
+            message = "Values array has an invalid shape (2-D but second " + \
+                      "dimension not {dim}".format(dim=second_axis_length) + \
+                      "): {shape}".format(shape=shape)
             _logger.error(message)
             raise ValueError(message)
 
     # otherwise make sure that we've been passed a flat (1-D) array of values
     elif len(shape) != 1:
-        message = f"Values array has an invalid shape (not 1-D or 2-D): {shape}"
+        message = "Values array has an invalid shape (not 1-D " + \
+                  "or 2-D): {shape}".format(shape=shape)
         _logger.error(message)
         raise ValueError(message)
 
