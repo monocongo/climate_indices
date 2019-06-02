@@ -43,12 +43,13 @@ _logger = logging.getLogger(__name__)
 # ------------------------------------------------------------------------------
 class InputType(Enum):
     """
-    Enumeration type for differentiating between gridded and US climate
-    division datasets.
+    Enumeration type for differentiating between gridded, timeseriesn and US
+    climate division datasets.
     """
 
     grid = 1
     divisions = 2
+    timeseries = 3
 
 
 # ------------------------------------------------------------------------------
@@ -80,8 +81,9 @@ def _validate_args(args):
 
     # the dimensions we expect to find for each data variable
     # (precipitation, temperature, and/or PET)
-    expected_dimensions_grid = [("lat", "lon", "time"), ("time", "lat", "lon")]
     expected_dimensions_divisions = [("time", "division"), ("division", "time")]
+    expected_dimensions_grid = [("lat", "lon", "time"), ("time", "lat", "lon")]
+    expected_dimensions_timeseries = [("time",)]
 
     # the dimensions we expect to find for the AWC data variable
     # (i.e. should be the same as the P, T, and PET but "time" is optional)
@@ -124,6 +126,8 @@ def _validate_args(args):
                 input_type = InputType.grid
             elif dimensions in expected_dimensions_divisions:
                 input_type = InputType.divisions
+            elif dimensions in expected_dimensions_timeseries:
+                input_type = InputType.timeseries
             else:
                 msg = "Invalid dimensions of the precipitation " + \
                       f"variable: {dimensions}\nValid dimension names and " + \
@@ -136,9 +140,8 @@ def _validate_args(args):
             if input_type == InputType.grid:
                 lats_precip = dataset_precip["lat"].values[:]
                 lons_precip = dataset_precip["lon"].values[:]
-            else:
+            elif input_type == InputType.divisions:
                 divisions_precip = dataset_precip["division"].values[:]
-
             times_precip = dataset_precip["time"].values[:]
 
     else:
@@ -171,8 +174,10 @@ def _validate_args(args):
             dimensions = dataset_temp[args.var_name_temp].dims
             if dimensions in expected_dimensions_grid:
                 input_type = InputType.grid
-            elif dimensions not in expected_dimensions_divisions:
+            elif dimensions in expected_dimensions_divisions:
                 input_type = InputType.divisions
+            elif dimensions in expected_dimensions_timeseries:
+                input_type = InputType.timeseries
             else:
                 msg = "Invalid dimensions of the temperature variable: " + \
                       f"{dimensions}\n(valid dimension names and " + \
@@ -228,18 +233,31 @@ def _validate_args(args):
 
                     if dimensions not in expected_dimensions_divisions:
                         msg = f"Invalid dimensions of the PET variable: {dimensions}" + \
-                              f"(expected names and order: {expected_dimensions_grid}"
+                              f"(expected names and order: {expected_dimensions_divisions}"
                         _logger.error(msg)
                         raise ValueError(msg)
 
-                    # verify that the coordinate variables match with those of the precipitation dataset
-                    if not np.array_equal(divisions_precip, dataset_pet["division"][:]):
-                        msg = "Precipitation and PET variables contain non-matching division IDs"
+                    # verify that the coordinate variables match
+                    # with those of the precipitation dataset
+                    if not np.array_equal(divisions_precip,
+                                          dataset_pet["division"][:]):
+                        msg = "Precipitation and PET variables " + \
+                              "contain non-matching division IDs"
+                        _logger.error(msg)
+                        raise ValueError(msg)
+
+                elif input_type == InputType.timeseries:
+
+                    if dimensions not in expected_dimensions_timeseries:
+
+                        msg = f"Invalid dimensions of the PET variable: {dimensions}" + \
+                              f"(expected names and order: {expected_dimensions_timeseries}"
                         _logger.error(msg)
                         raise ValueError(msg)
 
                 else:
-                    msg = "Failed to determine the input type (gridded or US climate division)"
+                    msg = "Failed to determine the input type " + \
+                          "(gridded, timeseries, or US climate division)"
                     _logger.error(msg)
                     raise ValueError(msg)
 
@@ -297,7 +315,7 @@ def _validate_args(args):
 
                     if dimensions not in expected_dimensions_divisions:
                         msg = f"Invalid dimensions of the temperature variable: {dimensions}" + \
-                              f"(expected names and order: {expected_dimensions_grid}"
+                              f"(expected names and order: {expected_dimensions_divisions}"
                         _logger.error(msg)
                         raise ValueError(msg)
 
@@ -307,8 +325,17 @@ def _validate_args(args):
                         _logger.error(msg)
                         raise ValueError(msg)
 
+                elif input_type == InputType.timeseries:
+
+                    if dimensions not in expected_dimensions_timeseries:
+                        msg = f"Invalid dimensions of the temperature variable: {dimensions}" + \
+                              f"(expected names and order: {expected_dimensions_timeseries}"
+                        _logger.error(msg)
+                        raise ValueError(msg)
+
                 else:
-                    msg = "Failed to determine the input type (gridded or US climate division)"
+                    msg = "Failed to determine the input type " + \
+                          "(gridded, timeseries, or US climate division)"
                     _logger.error(msg)
                     raise ValueError(msg)
 
@@ -552,10 +579,10 @@ def _get_variable_attributes(args_dict):
 
 
 # ------------------------------------------------------------------------------
-def _drop_data_into_shared_arrays_grid(dataset,
-                                       var_names,
-                                       periodicity,
-                                       data_start_year):
+def _drop_data_into_shared_arrays_grid(dataset: xr.Dataset,
+                                       var_names: list,
+                                       periodicity: compute.Periodicity,
+                                       data_start_year: int):
 
     output_shape = None
 
@@ -563,6 +590,7 @@ def _drop_data_into_shared_arrays_grid(dataset,
     global _global_shared_arrays
     expected_dims_3d = (("lat", "lon", "time"), ("lon", "lat", "time"))
     expected_dims_2d = (("lat", "lon"), ("lon", "lat"))
+    expected_dims_1d = (("time",),)
     for var_name in var_names:
 
         # confirm that the dimensions of the data array are valid
@@ -577,6 +605,11 @@ def _drop_data_into_shared_arrays_grid(dataset,
                 message = f"Invalid dimensions for variable '{var_name}': {dims}"
                 _logger.error(message)
                 raise ValueError(message)
+        elif len(dims) == 1:
+            if dims not in expected_dims_1d:
+                message = f"Invalid dimensions for variable '{var_name}': {dims}"
+                _logger.error(message)
+                raise ValueError(message)
 
         # convert daily values into 366-day years
         if periodicity == compute.Periodicity.daily:
@@ -584,7 +617,7 @@ def _drop_data_into_shared_arrays_grid(dataset,
             final_year = int(str(dataset["time"][-1].data)[0:4])
             total_years = final_year - initial_year + 1
             var_values = np.apply_along_axis(utils.transform_to_366day,
-                                             2,
+                                             len(dims) - 1,
                                              dataset[var_name].values,
                                              data_start_year,
                                              total_years)
@@ -687,6 +720,8 @@ def _compute_write_index(keyword_arguments):
             chunks = {"lat": -1, "lon": -1}
         elif input_type == InputType.divisions:
             chunks = {"division": -1}
+        elif input_type == InputType.timeseries:
+            chunks = {"time": -1}
         else:
             raise ValueError(f"Invalid 'input_type' keyword argument: {input_type}")
     dataset = xr.open_mfdataset(files, chunks=chunks)
@@ -725,7 +760,7 @@ def _compute_write_index(keyword_arguments):
     if "var_name_precip" in keyword_arguments:
         precip_var_name = keyword_arguments["var_name_precip"]
         precip_unit = dataset[precip_var_name].units.lower()
-        if precip_unit not in ("mm", "millimeters", "millimeter"):
+        if precip_unit not in ("mm", "millimeters", "millimeter", "mm/dy"):
             if precip_unit in ("inches", "inch"):
                 # inches to mm conversion (1 inch == 25.4 mm)
                 dataset[precip_var_name].values *= 25.4
@@ -978,29 +1013,23 @@ def _compute_write_index(keyword_arguments):
         if keyword_arguments["index"] in ["spi", "pnp"]:
 
             # apply the SPI function along the time axis (axis=2)
-            _parallel_process(
-                keyword_arguments["index"],
-                _global_shared_arrays,
-                {"var_name_precip": keyword_arguments["var_name_precip"]},
-                _KEY_RESULT,
-                input_type=input_type,
-                args=args,
-            )
+            _parallel_process(keyword_arguments["index"],
+                              _global_shared_arrays,
+                              {"var_name_precip": keyword_arguments["var_name_precip"]},
+                              _KEY_RESULT,
+                              input_type=input_type,
+                              args=args)
 
         elif keyword_arguments["index"] == "spei":
 
             # apply the SPEI function along the time axis (axis=2)
-            _parallel_process(
-                keyword_arguments["index"],
-                _global_shared_arrays,
-                {
-                    "var_name_precip": keyword_arguments["var_name_precip"],
-                    "var_name_pet": keyword_arguments["var_name_pet"],
-                },
-                _KEY_RESULT,
-                input_type=input_type,
-                args=args,
-            )
+            _parallel_process(keyword_arguments["index"],
+                              _global_shared_arrays,
+                              {"var_name_precip": keyword_arguments["var_name_precip"],
+                               "var_name_pet": keyword_arguments["var_name_pet"]},
+                              _KEY_RESULT,
+                              input_type=input_type,
+                              args=args)
 
         elif keyword_arguments["index"] == "pet":
 
@@ -1033,14 +1062,11 @@ def _compute_write_index(keyword_arguments):
             )
 
         else:
-            raise ValueError(
-                "Unsupported index: '{index}'".format(index=keyword_arguments["index"])
-            )
+            raise ValueError(f"Unsupported index: \'{keyword_arguments['index']}\'")
 
         # get the name and attributes to use for the index variable in the output NetCDF
-        output_var_name, output_var_attributes = _get_variable_attributes(
-            keyword_arguments
-        )
+        output_var_name, output_var_attributes = \
+            _get_variable_attributes(keyword_arguments)
 
         # get the shared memory results array and convert it to a numpy array
         array = _global_shared_arrays[_KEY_RESULT][_KEY_ARRAY]
@@ -1051,15 +1077,15 @@ def _compute_write_index(keyword_arguments):
         if keyword_arguments["periodicity"] == compute.Periodicity.daily:
             index_values = np.apply_along_axis(
                 utils.transform_to_gregorian,
-                2,
+                len(output_dims) - 1,
                 index_values,
                 keyword_arguments["data_start_year"],
             )
 
         # create a new variable to contain the index values, assign into the dataset
-        variable = xr.Variable(
-            dims=output_dims, data=index_values, attrs=output_var_attributes
-        )
+        variable = xr.Variable(dims=output_dims,
+                               data=index_values,
+                               attrs=output_var_attributes)
         dataset[output_var_name] = variable
 
         # TODO set global attributes accordingly for this new dataset
@@ -1070,9 +1096,8 @@ def _compute_write_index(keyword_arguments):
                 dataset = dataset.drop(var_name)
 
         # write the dataset as NetCDF
-        netcdf_file_name = (
+        netcdf_file_name = \
             keyword_arguments["output_file_base"] + "_" + output_var_name + ".nc"
-        )
         dataset.to_netcdf(netcdf_file_name)
 
         return netcdf_file_name, output_var_name
@@ -1081,66 +1106,56 @@ def _compute_write_index(keyword_arguments):
 # ------------------------------------------------------------------------------
 def _pet(temperatures, latitude, parameters):
 
-    return indices.pet(
-        temperature_celsius=temperatures,
-        latitude_degrees=latitude,
-        data_start_year=parameters["data_start_year"],
-    )
+    return indices.pet(temperature_celsius=temperatures,
+                       latitude_degrees=latitude,
+                       data_start_year=parameters["data_start_year"])
 
 
 # ------------------------------------------------------------------------------
 def _spi(precips, parameters):
 
-    return indices.spi(
-        values=precips,
-        scale=parameters["scale"],
-        distribution=parameters["distribution"],
-        data_start_year=parameters["data_start_year"],
-        calibration_year_initial=parameters["calibration_year_initial"],
-        calibration_year_final=parameters["calibration_year_final"],
-        periodicity=parameters["periodicity"],
-    )
+    return indices.spi(values=precips,
+                       scale=parameters["scale"],
+                       distribution=parameters["distribution"],
+                       data_start_year=parameters["data_start_year"],
+                       calibration_year_initial=parameters["calibration_year_initial"],
+                       calibration_year_final=parameters["calibration_year_final"],
+                       periodicity=parameters["periodicity"])
 
 
 # ------------------------------------------------------------------------------
 def _spei(precips, pet_mm, parameters):
 
-    return indices.spei(
-        precips_mm=precips,
-        pet_mm=pet_mm,
-        scale=parameters["scale"],
-        distribution=parameters["distribution"],
-        data_start_year=parameters["data_start_year"],
-        calibration_year_initial=parameters["calibration_year_initial"],
-        calibration_year_final=parameters["calibration_year_final"],
-        periodicity=parameters["periodicity"],
-    )
+    return indices.spei(precips_mm=precips,
+                        pet_mm=pet_mm,
+                        scale=parameters["scale"],
+                        distribution=parameters["distribution"],
+                        data_start_year=parameters["data_start_year"],
+                        calibration_year_initial=parameters["calibration_year_initial"],
+                        calibration_year_final=parameters["calibration_year_final"],
+                        periodicity=parameters["periodicity"])
 
 
 # ------------------------------------------------------------------------------
 def _palmers(precips, pet_mm, awc, parameters):
 
-    return indices.scpdsi(
-        precip_time_series=precips,
-        pet_time_series=pet_mm,
-        awc=awc,
-        data_start_year=parameters["data_start_year"],
-        calibration_start_year=parameters["calibration_start_year"],
-        calibration_end_year=parameters["calibration_end_year"],
-    )
+    return indices.scpdsi(precip_time_series=precips,
+                          pet_time_series=pet_mm,
+                          awc=awc,
+                          data_start_year=parameters["data_start_year"],
+                          calibration_start_year=parameters["calibration_start_year"],
+                          calibration_end_year=parameters["calibration_end_year"])
 
 
 # ------------------------------------------------------------------------------
 def _pnp(precips, parameters):
 
-    return indices.percentage_of_normal(
-        precips,
-        scale=parameters["scale"],
-        data_start_year=parameters["data_start_year"],
-        calibration_start_year=parameters["calibration_start_year"],
-        calibration_end_year=parameters["calibration_end_year"],
-        periodicity=parameters["periodicity"],
-    )
+    return indices.percentage_of_normal(precips,
+                                        scale=parameters["scale"],
+                                        data_start_year=parameters["data_start_year"],
+                                        calibration_start_year=parameters["calibration_start_year"],
+                                        calibration_end_year=parameters["calibration_end_year"],
+                                        periodicity=parameters["periodicity"])
 
 
 # ------------------------------------------------------------------------------
@@ -1151,7 +1166,12 @@ def _init_worker(shared_arrays_dict):
 
 
 # ------------------------------------------------------------------------------
-def _parallel_process(index, arrays_dict, input_var_names, output_var_name, input_type, args):
+def _parallel_process(index: str,
+                      arrays_dict: dict,
+                      input_var_names: dict,
+                      output_var_name: str,
+                      input_type: InputType,
+                      args):
     """
     TODO document this function
 
@@ -1271,11 +1291,9 @@ def _parallel_process(index, arrays_dict, input_var_names, output_var_name, inpu
         raise ValueError("Unsupported index: {index}".format(index=index))
 
     # instantiate a process pool
-    with multiprocessing.Pool(
-        processes=_NUMBER_OF_WORKER_PROCESSES,
-        initializer=_init_worker,
-        initargs=(arrays_dict,),
-    ) as pool:
+    with multiprocessing.Pool(processes=_NUMBER_OF_WORKER_PROCESSES,
+                              initializer=_init_worker,
+                              initargs=(arrays_dict,)) as pool:
 
         if index in ["spei", "pet"]:
             pool.map(_apply_along_axis_double, chunk_params)
@@ -1311,11 +1329,18 @@ def _apply_along_axis(params):
     args = params["args"]
 
     if params["input_type"] == InputType.grid:
-        computed_array = np.apply_along_axis(func1d, axis=2, arr=sub_array, parameters=args)
+        axis_index = 2
     elif params["input_type"] == InputType.divisions:
-        computed_array = np.apply_along_axis(func1d, axis=1, arr=sub_array, parameters=args)
+        axis_index = 1
+    elif params["input_type"] == InputType.timeseries:
+        axis_index = 0
     else:
         raise ValueError(f"Invalid input type argument: {params['input_type']}")
+
+    computed_array = np.apply_along_axis(func1d,
+                                         axis=axis_index,
+                                         arr=sub_array,
+                                         parameters=args)
 
     output_array = _global_shared_arrays[params["output_var_name"]][_KEY_ARRAY]
     np_output_array = np.frombuffer(output_array.get_obj()).reshape(shape)
@@ -1376,8 +1401,10 @@ def _apply_along_axis_double(params):
                     computed_array[i, j] = func1d(x[j], y, parameters=params["args"])
                 else:
                     computed_array[i, j] = func1d(x[j], y[j], parameters=params["args"])
-        else:  # divisions
+        elif params["input_type"] == InputType.divisions:
             computed_array[i] = func1d(x, y, parameters=params["args"])
+        else:
+            raise ValueError(f"Unsupported input type: \'{params['input_type']}\'")
 
 
 # ------------------------------------------------------------------------------
@@ -1485,29 +1512,31 @@ def _prepare_file(netcdf_file, var_name):
             dims = "division,time"
         else:
             raise ValueError(f"Unsupported dimensions for variable '{var_name}': {dimensions}")
-    else:  # gridded
-        if len(dimensions) == 2:
+    else:  # timeseries or gridded
+        if len(dimensions) == 1:
+            expected_dims = ("time",)
+            dims = "time"
+        elif len(dimensions) == 2:
             expected_dims = ("lat", "lon")
             dims = "lat,lon"
         elif len(dimensions) == 3:
             expected_dims = ("lat", "lon", "time")
             dims = "lat,lon,time"
         else:
-            raise ValueError(f"Unsupported dimensions for variable '{var_name}': {dimensions}")
+            message = f"Unsupported dimensions for variable '{var_name}': {dimensions}"
+            _logger.error(message)
+            raise ValueError()
 
     if Counter(ds[var_name].dims) != Counter(expected_dims):
-        message = "Invalid dimensions for variable '{var_name}': {dims}".format(
-            var_name=var_name, dims=ds[var_name].dims
-        )
+        message = f"Invalid dimensions for variable '{var_name}': {ds[var_name].dims}"
         _logger.error(message)
         raise ValueError(message)
 
     # perform reorder of dimensions if necessary
     if ds[var_name].dims != expected_dims:
         nco = Nco()
-        netcdf_file = nco.ncpdq(
-            input=netcdf_file, options=['-a "{dims}"'.format(dims=dims), "-O"]
-        )
+        netcdf_file = nco.ncpdq(input=netcdf_file,
+                                options=[f'-a "{dims}"', "-O"])
 
     return netcdf_file
 
@@ -1637,27 +1666,24 @@ def main():  # type: () -> None
         if arguments.index in ["spi", "scaled", "all"]:
 
             # prepare precipitation NetCDF in case dimensions not (lat, lon, time) or if any coordinates are descending
-            netcdf_precip = _prepare_file(
-                arguments.netcdf_precip, arguments.var_name_precip
-            )
+            netcdf_precip = _prepare_file(arguments.netcdf_precip,
+                                          arguments.var_name_precip)
 
             # run SPI computations for each scale/distribution in turn
             for scale in arguments.scales:
                 for dist in indices.Distribution:
 
                     # keyword arguments used for the SPI function
-                    kwrgs = {
-                        "index": "spi",
-                        "netcdf_precip": netcdf_precip,
-                        "var_name_precip": arguments.var_name_precip,
-                        "input_type": input_type,
-                        "scale": scale,
-                        "distribution": dist,
-                        "periodicity": arguments.periodicity,
-                        "calibration_start_year": arguments.calibration_start_year,
-                        "calibration_end_year": arguments.calibration_end_year,
-                        "output_file_base": arguments.output_file_base,
-                    }
+                    kwrgs = {"index": "spi",
+                             "netcdf_precip": netcdf_precip,
+                             "var_name_precip": arguments.var_name_precip,
+                             "input_type": input_type,
+                             "scale": scale,
+                             "distribution": dist,
+                             "periodicity": arguments.periodicity,
+                             "calibration_start_year": arguments.calibration_start_year,
+                             "calibration_end_year": arguments.calibration_end_year,
+                             "output_file_base": arguments.output_file_base}
 
                     # compute and write SPI
                     _compute_write_index(kwrgs)
