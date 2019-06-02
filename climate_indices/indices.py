@@ -88,6 +88,11 @@ def spi(values: np.ndarray,
     if (np.ma.is_masked(values) and values.mask.all()) or np.all(np.isnan(values)):
         return values
 
+    # clip any negative values to zero
+    if np.amin(values) < 0.0:
+        _logger.warn("Input contains negative values -- all negatives clipped to zero")
+        values = np.clip(values, a_min=0.0, a_max=None)
+
     # remember the original length of the array, in order to facilitate
     # returning an array of the same size
     original_length = values.size
@@ -198,6 +203,11 @@ def spei(precips_mm: np.ndarray,
         message = "Incompatible precipitation and PET arrays"
         _logger.error(message)
         raise ValueError(message)
+
+    # clip any negative values to zero
+    if np.amin(precips_mm) < 0.0:
+        _logger.warn("Input contains negative values -- all negatives clipped to zero")
+        precips_mm = np.clip(precips_mm, a_min=0.0, a_max=None)
 
     # subtract the PET from precipitation, adding an offset
     # to ensure that all values are positive
