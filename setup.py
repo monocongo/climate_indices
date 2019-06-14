@@ -26,7 +26,7 @@ setup(
     install_requires=[
         "dask",
         "nco",
-        # "netcdf4",
+        "netcdf4",
         "numba",
         "numpy",
         "pandas",
