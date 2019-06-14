@@ -24,9 +24,9 @@ project = "climate_indices"
 author = "James Adams"
 
 # The short X.Y version
-version = "0.1"
+version = "1.0"
 # The full version, including alpha/beta/rc tags
-release = "0.1.0_beta"
+release = "1.0.5"
 
 
 # -- General configuration ---------------------------------------------------
@@ -133,8 +133,8 @@ latex_documents = [
     (
         master_doc,
         "climate_indices.tex",
-        "indices\\_python Documentation",
-        "James Adams",
+        "climate\\_indices Documentation",
+        author,
         "manual",
     )
 ]
@@ -159,9 +159,9 @@ texinfo_documents = [
         master_doc,
         "climate_indices",
         "climate_indices Documentation",
-        author,
+        "James Adams",
         "climate_indices",
-        "One line description of project.",
+        "Climate indices useful for drought monitoring",
         "Miscellaneous",
     )
 ]

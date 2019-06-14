@@ -111,8 +111,8 @@ Now the package can be added to the environment along with all required modules
 NCO
 ^^^^
 
-NetCDF Operators is requirement and must be installed. Instructions for
-installation on various platforms is available `here <http://nco.sourceforge.net#Executables//>`_.
+NetCDF Operators is a requirement and must be installed for utilization of this package.
+Instructions for installation on various platforms is available `here <http://nco.sourceforge.net#Executables//>`_.
 If using an Anaconda environment as advised above then it's as simple as running
 the following command within the activated conda environment:
 
