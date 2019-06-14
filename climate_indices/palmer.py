@@ -1,9 +1,10 @@
 import collections
 import logging
 import math
+import warnings
+
 import numba
 import numpy as np
-import warnings
 
 from climate_indices import utils
 
