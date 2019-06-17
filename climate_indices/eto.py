@@ -62,7 +62,7 @@ _SOLAR_DECLINATION_RADIANS_MAX = np.deg2rad(23.45)
 
 
 # ------------------------------------------------------------------------------
-@numba.jit
+@numba.njit
 def _sunset_hour_angle(latitude_radians, solar_declination_radians):
     """
     Calculate sunset hour angle (*Ws*) from latitude and solar declination.
@@ -106,7 +106,7 @@ def _sunset_hour_angle(latitude_radians, solar_declination_radians):
 
 
 # ------------------------------------------------------------------------------
-@numba.jit
+@numba.njit
 def _solar_declination(day_of_year):
     """
     Calculate the angle of solar declination from day of the year.
@@ -127,7 +127,7 @@ def _solar_declination(day_of_year):
 
 
 # ------------------------------------------------------------------------------
-@numba.jit
+@numba.njit
 def _daylight_hours(sunset_hour_angle_radians):
     """
     Calculate daylight hours from a sunset hour angle.
@@ -152,7 +152,7 @@ def _daylight_hours(sunset_hour_angle_radians):
 
 
 # ------------------------------------------------------------------------------
-@numba.jit
+@numba.njit
 def _monthly_mean_daylight_hours(latitude_radians: float, leap=False):
     """
     :param latitude_radians: latitude in radians
@@ -191,7 +191,7 @@ def _monthly_mean_daylight_hours(latitude_radians: float, leap=False):
 
 
 # ------------------------------------------------------------------------------
-@numba.jit
+@numba.njit
 def eto_thornthwaite(monthly_temps_celsius: np.ndarray,
                      latitude_degrees: float,
                      data_start_year: int):
@@ -293,7 +293,7 @@ def eto_thornthwaite(monthly_temps_celsius: np.ndarray,
 
 
 # ------------------------------------------------------------------------------
-@numba.jit
+@numba.njit
 def eto_hargreaves(daily_tmin_celsius: np.ndarray,
                    daily_tmax_celsius: np.ndarray,
                    daily_tmean_celsius: np.ndarray,

@@ -36,7 +36,7 @@ _FITTED_INDEX_VALID_MAX = 3.09
 
 
 # ------------------------------------------------------------------------------
-@numba.jit
+@numba.njit
 def spi(values: np.ndarray,
         scale: int,
         distribution,
@@ -88,6 +88,11 @@ def spi(values: np.ndarray,
     if (np.ma.is_masked(values) and values.mask.all()) or np.all(np.isnan(values)):
         return values
 
+    # clip any negative values to zero
+    if np.amin(values) < 0.0:
+        _logger.warn("Input contains negative values -- all negatives clipped to zero")
+        values = np.clip(values, a_min=0.0, a_max=None)
+
     # remember the original length of the array, in order to facilitate
     # returning an array of the same size
     original_length = values.size
@@ -131,7 +136,8 @@ def spi(values: np.ndarray,
 
     else:
 
-        message = "Unsupported distribution argument: {dist}".format(dist=distribution)
+        message = "Unsupported distribution argument: " + \
+                  "{dist}".format(dist=distribution)
         _logger.error(message)
         raise ValueError(message)
 
@@ -143,7 +149,7 @@ def spi(values: np.ndarray,
 
 
 # ------------------------------------------------------------------------------
-@numba.jit
+@numba.njit
 def spei(precips_mm: np.ndarray,
          pet_mm: np.ndarray,
          scale: int,
@@ -198,6 +204,11 @@ def spei(precips_mm: np.ndarray,
         _logger.error(message)
         raise ValueError(message)
 
+    # clip any negative values to zero
+    if np.amin(precips_mm) < 0.0:
+        _logger.warn("Input contains negative values -- all negatives clipped to zero")
+        precips_mm = np.clip(precips_mm, a_min=0.0, a_max=None)
+
     # subtract the PET from precipitation, adding an offset
     # to ensure that all values are positive
     p_minus_pet = (precips_mm.flatten() - pet_mm.flatten()) + 1000.0
@@ -233,7 +244,8 @@ def spei(precips_mm: np.ndarray,
                                              periodicity)
 
     else:
-        message = f"Unsupported distribution argument: {distribution}"
+        message = "Unsupported distribution argument: " + \
+                  "{dist}".format(dist=distribution)
         _logger.error(message)
         raise ValueError(message)
 
@@ -248,7 +260,7 @@ def spei(precips_mm: np.ndarray,
 
 
 # ------------------------------------------------------------------------------
-@numba.jit
+@numba.njit
 def scpdsi(precip_time_series: np.ndarray,
            pet_time_series: np.ndarray,
            awc,
@@ -279,7 +291,7 @@ def scpdsi(precip_time_series: np.ndarray,
 
 
 # ------------------------------------------------------------------------------
-@numba.jit
+@numba.njit
 def pdsi(precip_time_series: np.ndarray,
          pet_time_series: np.ndarray,
          awc,
@@ -309,7 +321,7 @@ def pdsi(precip_time_series: np.ndarray,
 
 
 # ------------------------------------------------------------------------------
-@numba.jit
+@numba.njit
 def percentage_of_normal(values: np.ndarray,
                          scale: int,
                          data_start_year: int,
@@ -421,7 +433,7 @@ def percentage_of_normal(values: np.ndarray,
 
 
 # ------------------------------------------------------------------------------
-@numba.jit
+@numba.njit
 def pet(temperature_celsius: np.ndarray,
         latitude_degrees: float,
         data_start_year: int):

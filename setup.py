@@ -9,7 +9,7 @@ README = (BASE_DIR / "README.md").read_text()
 
 setup(
     name="climate_indices",
-    version="1.0.4",
+    version="1.0.5",
     url="https://github.com/monocongo/climate_indices",
     license="BSD",
     author="James Adams",
@@ -25,12 +25,10 @@ setup(
     include_package_data=True,
     install_requires=[
         "dask",
-        "lmoments3",
         "nco",
         "netcdf4",
         "numba",
         "numpy",
-        "pandas",
         "pytest",
         "scipy",
         "toolz",

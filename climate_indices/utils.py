@@ -132,7 +132,7 @@ def compute_days(initial_year: int,
 
 
 # ------------------------------------------------------------------------------
-@numba.jit
+@numba.njit
 def reshape_to_2d(values: np.ndarray,
                   second_axis_length: int) -> np.ndarray:
     """
@@ -150,15 +150,16 @@ def reshape_to_2d(values: np.ndarray,
             # data is already in the shape we want, return it unaltered
             return values
         else:
-            message = "Values array has an invalid shape (2-D but " + \
-                      "second dimension not {length}): {shape}".format(length=second_axis_length,
-                                                                       shape=shape)
+            message = "Values array has an invalid shape (2-D but second " + \
+                      "dimension not {dim}".format(dim=second_axis_length) + \
+                      "): {shape}".format(shape=shape)
             _logger.error(message)
             raise ValueError(message)
 
     # otherwise make sure that we've been passed a flat (1-D) array of values
     elif len(shape) != 1:
-        message = "Values array has an invalid shape (not 1-D or 2-D): {shape}".format(shape=shape)
+        message = "Values array has an invalid shape (not 1-D " + \
+                  "or 2-D): {shape}".format(shape=shape)
         _logger.error(message)
         raise ValueError(message)
 
@@ -181,7 +182,7 @@ def reshape_to_2d(values: np.ndarray,
 
 
 # ------------------------------------------------------------------------------
-@numba.jit
+@numba.njit
 def reshape_to_divs_years_months(monthly_values: np.ndarray):
     """
     :param monthly_values: an 2-D numpy.ndarray of monthly values,
@@ -228,7 +229,7 @@ def reshape_to_divs_years_months(monthly_values: np.ndarray):
 
 
 # ------------------------------------------------------------------------------
-@numba.jit
+@numba.njit
 def transform_to_366day(original: np.ndarray,
                         year_start: int,
                         total_years: int):
@@ -312,7 +313,7 @@ def transform_to_366day(original: np.ndarray,
 
 
 # ------------------------------------------------------------------------------
-@numba.jit
+@numba.njit
 def transform_to_gregorian(original: np.ndarray,
                            year_start: int):
     """
