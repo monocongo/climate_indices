@@ -436,12 +436,12 @@ def transform_fitted_gamma(values: np.ndarray,
     # validate (and possibly reshape) the input array
     values = _validate_array(values, periodicity)
 
-    # find the percentage of zero values for each time step
-    zeros = (values == 0).sum(axis=0)
-    probabilities_of_zero = zeros / values.shape[0]
+    # # find the percentage of zero values for each time step
+    # zeros = (values == 0).sum(axis=0)
+    # probabilities_of_zero = zeros / values.shape[0]
 
-    # replace zeros with NaNs
-    values[values == 0] = np.NaN
+    # # replace zeros with NaNs
+    # values[values == 0] = np.NaN
 
     # determine the end year of the values array
     data_end_year = data_start_year + values.shape[0]
@@ -461,6 +461,13 @@ def transform_fitted_gamma(values: np.ndarray,
     # get the values for the current calendar time step
     # that fall within the calibration years period
     calibration_values = values[calibration_begin_index:calibration_end_index, :]
+
+    # find the percentage of zero values for each time step
+    zeros = (calibration_values == 0).sum(axis=0)
+    probabilities_of_zero = zeros / calibration_values.shape[0]
+
+    # replace zeros with NaNs
+    values[values == 0] = np.NaN
 
     # compute the gamma distribution's shape and scale parameters, alpha and beta
     # TODO explain this better
