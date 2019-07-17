@@ -468,6 +468,7 @@ def transform_fitted_gamma(values: np.ndarray,
 
     # replace zeros with NaNs
     values[values == 0] = np.NaN
+    calibration_values[calibration_values == 0] = np.NaN
 
     # compute the gamma distribution's shape and scale parameters, alpha and beta
     # TODO explain this better
