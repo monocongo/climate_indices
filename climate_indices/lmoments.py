@@ -83,6 +83,7 @@ def _estimate_pearson3_parameters(lmoments: np.ndarray) -> dict:
     if t3 <= 1e-6:
         # skewness is effectively zero
         scale = lmoments[1] * sqrt(pi)
+        skew = 0.0
         # pearson3_parameters[1] = lmoments[1] * sqrt(pi)
 
     else:
