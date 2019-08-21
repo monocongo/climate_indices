@@ -63,14 +63,17 @@ _SOLAR_DECLINATION_RADIANS_MAX = np.deg2rad(23.45)
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def _sunset_hour_angle(latitude_radians, solar_declination_radians):
+def _sunset_hour_angle(
+        latitude_radians: float,
+        solar_declination_radians: float,
+) -> float:
     """
     Calculate sunset hour angle (*Ws*) from latitude and solar declination.
 
     Based on FAO equation 25 in Allen et al (1998).
 
-    :param latitude_radians: latitude in radians
-    :param solar_declination_radians: angle of solar declination in radians
+    :param float latitude_radians: latitude in radians
+    :param float solar_declination_radians: angle of solar declination in radians
     :return: sunset hour angle in radians
     :rtype: float
     """
@@ -107,7 +110,9 @@ def _sunset_hour_angle(latitude_radians, solar_declination_radians):
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def _solar_declination(day_of_year):
+def _solar_declination(
+        day_of_year: int,
+) -> float:
     """
     Calculate the angle of solar declination from day of the year.
 
@@ -128,7 +133,9 @@ def _solar_declination(day_of_year):
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def _daylight_hours(sunset_hour_angle_radians):
+def _daylight_hours(
+        sunset_hour_angle_radians: float,
+) -> float:
     """
     Calculate daylight hours from a sunset hour angle.
 
@@ -153,7 +160,10 @@ def _daylight_hours(sunset_hour_angle_radians):
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def _monthly_mean_daylight_hours(latitude_radians: float, leap=False):
+def _monthly_mean_daylight_hours(
+        latitude_radians: float,
+        leap=False,
+) -> np.ndarray:
     """
     :param latitude_radians: latitude in radians
     :param leap: whether or not values should be computed specific to leap years
@@ -192,9 +202,11 @@ def _monthly_mean_daylight_hours(latitude_radians: float, leap=False):
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def eto_thornthwaite(monthly_temps_celsius: np.ndarray,
-                     latitude_degrees: float,
-                     data_start_year: int):
+def eto_thornthwaite(
+        monthly_temps_celsius: np.ndarray,
+        latitude_degrees: float,
+        data_start_year: int,
+) -> np.ndarray:
     """
     Compute monthly potential evapotranspiration (PET) using the
     Thornthwaite (1948) method.
@@ -228,7 +240,6 @@ def eto_thornthwaite(monthly_temps_celsius: np.ndarray,
     :param data_start_year: year corresponding to the start of the dataset
     :return: estimated potential evapotranspiration, in millimeters/month
     :rtype: 1-D numpy.ndarray of floats with shape: (total # of months)
-
     """
 
     original_length = monthly_temps_celsius.size
@@ -294,10 +305,12 @@ def eto_thornthwaite(monthly_temps_celsius: np.ndarray,
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def eto_hargreaves(daily_tmin_celsius: np.ndarray,
-                   daily_tmax_celsius: np.ndarray,
-                   daily_tmean_celsius: np.ndarray,
-                   latitude_degrees: float):
+def eto_hargreaves(
+        daily_tmin_celsius: np.ndarray,
+        daily_tmax_celsius: np.ndarray,
+        daily_tmean_celsius: np.ndarray,
+        latitude_degrees: float,
+) -> np.ndarray:
     """
     Compute daily potential evapotranspiration (PET) using the Hargreaves
     (1985) method. Based on equation 52 in Allen et al (1998).
@@ -312,7 +325,8 @@ def eto_hargreaves(daily_tmin_celsius: np.ndarray,
     :param daily_tmean_celsius: array of daily mean temperature values,
         in degrees Celsius
     :param latitude_degrees: latitude of location, in degrees north
-    :return: potential evapotranspiration over grass (ETo), in millimeters per day
+    :return: 1-D array of potential evapotranspiration over grass (ETo),
+        in millimeters per day
     """
 
     # validate the input data arrays
