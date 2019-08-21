@@ -39,11 +39,11 @@ _FITTED_INDEX_VALID_MAX = 3.09
 @numba.jit
 def spi(values: np.ndarray,
         scale: int,
-        distribution,
+        distribution: Distribution,
         data_start_year: int,
         calibration_year_initial: int,
         calibration_year_final: int,
-        periodicity):
+        periodicity: compute.Periodicity):
     """
     Computes SPI (Standardized Precipitation Index).
 
@@ -153,11 +153,11 @@ def spi(values: np.ndarray,
 def spei(precips_mm: np.ndarray,
          pet_mm: np.ndarray,
          scale: int,
-         distribution,
-         periodicity,
+         distribution: Distribution,
+         periodicity: compute.Periodicity,
          data_start_year: int,
          calibration_year_initial: int,
-         calibration_year_final: int):
+         calibration_year_final: int) -> np.ndarray:
     """
     Compute SPEI fitted to the gamma distribution.
 
@@ -263,7 +263,7 @@ def spei(precips_mm: np.ndarray,
 @numba.jit
 def scpdsi(precip_time_series: np.ndarray,
            pet_time_series: np.ndarray,
-           awc,
+           awc: float,
            data_start_year: int,
            calibration_start_year: int,
            calibration_end_year: int):
@@ -294,7 +294,7 @@ def scpdsi(precip_time_series: np.ndarray,
 @numba.jit
 def pdsi(precip_time_series: np.ndarray,
          pet_time_series: np.ndarray,
-         awc,
+         awc: float,
          data_start_year: int,
          calibration_start_year: int,
          calibration_end_year: int):
@@ -327,7 +327,7 @@ def percentage_of_normal(values: np.ndarray,
                          data_start_year: int,
                          calibration_start_year: int,
                          calibration_end_year: int,
-                         periodicity):
+                         periodicity: compute.Periodicity) -> np.ndarray:
     """
     This function finds the percent of normal values (average of each calendar
     month or day over a specified calibration period of years) for a specified
@@ -436,7 +436,7 @@ def percentage_of_normal(values: np.ndarray,
 @numba.jit
 def pet(temperature_celsius: np.ndarray,
         latitude_degrees: float,
-        data_start_year: int):
+        data_start_year: int) -> np.ndarray:
     """
     This function computes potential evapotranspiration (PET) using
     Thornthwaite's equation.

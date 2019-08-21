@@ -54,8 +54,10 @@ class Periodicity(Enum):
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def _validate_array(values: np.ndarray,
-                    periodicity):
+def _validate_array(
+        values: np.ndarray,
+        periodicity: Periodicity,
+) -> np.ndarray:
     """
 
     :param values:
@@ -100,8 +102,10 @@ def _validate_array(values: np.ndarray,
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def sum_to_scale(values: np.ndarray,
-                 scale: int):
+def sum_to_scale(
+        values: np.ndarray,
+        scale: int,
+) -> np.ndarray:
     """
     Compute a sliding sums array using 1-D convolution. The initial
     (scale - 1) elements of the result array will be padded with np.NaN values.
@@ -153,7 +157,9 @@ def sum_to_scale(values: np.ndarray,
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def _pearson3_fitting_values(values):
+def _pearson3_fitting_values(
+        values: np.ndarray,
+) -> np.ndarray:
     """
     This function computes the probability of zero and Pearson Type III
     distribution parameters corresponding to an array of values.
@@ -241,7 +247,11 @@ def _pearson3_fitting_values(values):
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def _minimum_possible(skew, loc, scale):
+def _minimum_possible(
+        skew: float,
+        loc: float,
+        scale: float,
+) -> float:
     """
     Compute the minimum possible value that can be fitted to a distribution
     described by a set of skew, loc, and scale parameters.
@@ -261,7 +271,13 @@ def _minimum_possible(skew, loc, scale):
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def _pearson_fit(values: np.ndarray, probabilities_of_zero, skew, loc, scale):
+def _pearson_fit(
+        values: np.ndarray,
+        probabilities_of_zero: np.ndarray,
+        skew: float,
+        loc: float,
+        scale: float,
+) -> np.ndarray:
     """
     Perform fitting of an array of value to a Pearson Type III distribution
     as described by the Pearson Type III parameters and probability of zero arguments.
@@ -329,11 +345,13 @@ def _pearson_fit(values: np.ndarray, probabilities_of_zero, skew, loc, scale):
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def transform_fitted_pearson(values: np.ndarray,
-                             data_start_year: int,
-                             calibration_start_year: int,
-                             calibration_end_year: int,
-                             periodicity):
+def transform_fitted_pearson(
+        values: np.ndarray,
+        data_start_year: int,
+        calibration_start_year: int,
+        calibration_end_year: int,
+        periodicity: Periodicity,
+) -> np.ndarray:
     """
     Fit values to a Pearson Type III distribution and transform the values
     to corresponding normalized sigmas.
@@ -399,11 +417,13 @@ def transform_fitted_pearson(values: np.ndarray,
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def transform_fitted_gamma(values: np.ndarray,
-                           data_start_year: int,
-                           calibration_start_year: int,
-                           calibration_end_year: int,
-                           periodicity):
+def transform_fitted_gamma(
+        values: np.ndarray,
+        data_start_year: int,
+        calibration_start_year: int,
+        calibration_end_year: int,
+        periodicity: Periodicity,
+) -> np.ndarray:
     """
     Fit values to a gamma distribution and transform the values to corresponding
     normalized sigmas.
@@ -475,7 +495,7 @@ def transform_fitted_gamma(values: np.ndarray,
     # find the gamma probability values using the gamma CDF
     gamma_probabilities = scipy.stats.gamma.cdf(values, a=alphas, scale=betas)
 
-    # TODO explain this
+    # TODO explain this better
     # (normalize including the probability of zero, putting into the range [0..1]?)
     probabilities = probabilities_of_zero + \
                     ((1 - probabilities_of_zero) * gamma_probabilities)
