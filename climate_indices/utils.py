@@ -16,7 +16,10 @@ _logger = logging.getLogger(__name__)
 
 
 # ------------------------------------------------------------------------------
-def sign_change(a, b):
+def sign_change(
+        a: np.ndarray,
+        b: np.ndarray,
+) -> np.ndarray:
     """
     Given two same-sized arrays of floats return an array of booleans indicating
     if a sign change occurs at the corresponding index.
@@ -43,7 +46,9 @@ def sign_change(a, b):
 
 
 # ------------------------------------------------------------------------------
-def is_data_valid(data):
+def is_data_valid(
+        data: np.ndarray,
+) -> bool:
     """
     Returns whether or not an array is valid, i.e. a supported array type
     (ndarray or MaskArray) which is not all-NaN.
@@ -71,7 +76,10 @@ def is_data_valid(data):
 
 
 # ------------------------------------------------------------------------------
-def rmse(predictions: np.ndarray, targets: np.ndarray):
+def rmse(
+        predictions: np.ndarray,
+        targets: np.ndarray,
+) -> np.ndarray:
     """
     Root mean square error
 
@@ -83,10 +91,12 @@ def rmse(predictions: np.ndarray, targets: np.ndarray):
 
 
 # ------------------------------------------------------------------------------
-def compute_days(initial_year: int,
-                 total_months: int,
-                 initial_month=1,
-                 units_start_year=1800):
+def compute_days(
+        initial_year: int,
+        total_months: int,
+        initial_month=1,
+        units_start_year=1800,
+) -> np.ndarray:
     """
     Computes the "number of days" equivalent for regular, incremental monthly
     time steps given an initial year/month. Useful when using "days since
@@ -133,8 +143,10 @@ def compute_days(initial_year: int,
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def reshape_to_2d(values: np.ndarray,
-                  second_axis_length: int) -> np.ndarray:
+def reshape_to_2d(
+        values: np.ndarray,
+        second_axis_length: int,
+) -> np.ndarray:
     """
     :param values: an 1-D numpy.ndarray of values
     :param second_axis_length:
@@ -183,7 +195,9 @@ def reshape_to_2d(values: np.ndarray,
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def reshape_to_divs_years_months(monthly_values: np.ndarray):
+def reshape_to_divs_years_months(
+        monthly_values: np.ndarray,
+) -> np.ndarray:
     """
     :param monthly_values: an 2-D numpy.ndarray of monthly values,
         assumed to start at January of the first year for each division,
@@ -230,9 +244,11 @@ def reshape_to_divs_years_months(monthly_values: np.ndarray):
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def transform_to_366day(original: np.ndarray,
-                        year_start: int,
-                        total_years: int):
+def transform_to_366day(
+        original: np.ndarray,
+        year_start: int,
+        total_years: int,
+) -> np.ndarray:
     """
     Takes an array of daily values with only actual leap years represented
     as 366 day years (non-leap years with 365 days) and converts it to an array
@@ -314,8 +330,10 @@ def transform_to_366day(original: np.ndarray,
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def transform_to_gregorian(original: np.ndarray,
-                           year_start: int):
+def transform_to_gregorian(
+        original: np.ndarray,
+        year_start: int,
+) -> np.ndarray:
     """
     Takes an array of daily values represented as full 366 day years (as if each
     year is a leap year with fill/faux values for the Feb. 29th of each non-leap
@@ -406,7 +424,9 @@ def transform_to_gregorian(original: np.ndarray,
 
 
 # ------------------------------------------------------------------------------
-def count_zeros_and_non_missings(values: np.ndarray):
+def count_zeros_and_non_missings(
+        values: np.ndarray,
+) -> (int, int):
     """
     Given an input array of values return a count of the zeros
     and non-missing values. Missing values assumed to be numpy.NaNs.
