@@ -216,13 +216,13 @@ def reshape_to_divs_years_months(
             return monthly_values
         else:
             message = "Values array has an invalid shape (3-D but " + \
-                      f"third dimension not 12): {shape}"
+                      "third dimension is not 12): " + str(shape)
             _logger.error(message)
             raise ValueError(message)
 
     # otherwise make sure that we've been passed in a 2-D array of values
     elif len(shape) != 2:
-        message = f"Values array has an invalid shape (not 2-D or 3-D): {shape}"
+        message = "Values array has an invalid shape (not 2-D or 3-D): " + str(shape)
         _logger.error(message)
         raise ValueError(message)
 
@@ -230,7 +230,7 @@ def reshape_to_divs_years_months(
     # of values with the final dimension size == 12
     elif shape[1] != 12:
         message = "Values array has an invalid shape (second dimension " + \
-                  f"should be 12, but is not): {shape}"
+                  "should be 12, but is not): " + str(shape)
         _logger.error(message)
         raise ValueError(message)
 

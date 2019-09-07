@@ -91,10 +91,10 @@ def _sunset_hour_angle(
     # http://www.itacanet.org/the-sun-as-a-source-of-energy/part-1-solar-astronomy/
     if (not _SOLAR_DECLINATION_RADIANS_MIN
             <= solar_declination_radians <= _SOLAR_DECLINATION_RADIANS_MAX):
-        raise ValueError("solar declination angle outside "
-                         f"valid range [{_SOLAR_DECLINATION_RADIANS_MIN!r} "
-                         f"to {_SOLAR_DECLINATION_RADIANS_MAX!r}]: "
-                         f"{solar_declination_radians!r}")
+        raise ValueError("solar declination angle outside the valid range [" +
+                         str(_SOLAR_DECLINATION_RADIANS_MIN) + " to " +
+                         str(_SOLAR_DECLINATION_RADIANS_MAX) + "]: " +
+                         str(solar_declination_radians) + " (actual value)")
 
     # calculate the cosine of the sunset hour angle (*Ws* in FAO 25)
     # from latitude and solar declination
@@ -151,8 +151,9 @@ def _daylight_hours(
     # range of 0 to pi radians (180 degrees), inclusive
     # see http://mypages.iit.edu/~maslanka/SolarGeo.pdf
     if not 0.0 <= sunset_hour_angle_radians <= math.pi:
-        raise ValueError(f"sunset hour angle outside valid range [0.0 to {math.pi!r}]"
-                         f": {sunset_hour_angle_radians!r}")
+        raise ValueError("sunset hour angle outside valid range [0.0 to " +
+                         str(math.pi) + "] : " +
+                         str(sunset_hour_angle_radians) + " (actual value)")
 
     # calculate daylight hours from the sunset hour angle
     return (24.0 / math.pi) * sunset_hour_angle_radians
