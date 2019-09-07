@@ -36,10 +36,10 @@ setup(
     ],
     tests_require=["pytest"],
     test_suite="tests",
-    keywords=(
-        "indices climate climate_indices drought drought_indices pdsi "
-        "spi spei evapotranspiration"
-    ),
+    keywords=[
+        "indices", "climate", "climate indices", "drought",
+        "drought indices", "pdsi ", "spi", "spei", "evapotranspiration",
+    ],
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Developers",

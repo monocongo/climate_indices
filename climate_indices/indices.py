@@ -485,7 +485,8 @@ def pet(temperature_celsius: np.ndarray,
                                     data_start_year)
 
     else:
-        message = (f"Invalid latitude value: {latitude_degrees} (must be " +
-                   "in degrees north, between -90.0 and 90.0 inclusive)")
+        message = ("Invalid latitude value: " + str(latitude_degrees) +
+                   " (must be in degrees north, between -90.0 and " +
+                   "90.0 inclusive)")
         _logger.error(message)
         raise ValueError(message)
