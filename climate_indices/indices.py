@@ -21,13 +21,8 @@ class Distribution(Enum):
 
 
 # ------------------------------------------------------------------------------
-# set up a basic, global _logger
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s %(levelname)s %(message)s",
-    datefmt="%Y-%m-%d  %H:%M:%S",
-)
-_logger = logging.getLogger(__name__)
+# Retrieve logger and set desired logging level
+_logger = utils.get_logger(__name__, logging.DEBUG)
 
 # ------------------------------------------------------------------------------
 # valid upper and lower bounds for indices that are fitted/transformed to a distribution (SPI and SPEI)

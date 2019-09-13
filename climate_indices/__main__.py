@@ -31,13 +31,8 @@ _KEY_RESULT_ZINDEX = "result_array_zindex"
 _global_shared_arrays = {}
 
 # ------------------------------------------------------------------------------
-# set up a basic, global _logger which will write to the console as standard error
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
-    datefmt="%Y-%m-%d  %H:%M:%S",
-)
-_logger = logging.getLogger(__name__)
+# Retrieve logger and set desired logging level
+_logger = utils.get_logger(__name__, logging.INFO)
 
 
 # ------------------------------------------------------------------------------
