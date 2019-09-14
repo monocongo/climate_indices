@@ -5,14 +5,17 @@ import logging
 import numba
 import numpy as np
 
+
 # ------------------------------------------------------------------------------
 # set up a basic, global _logger
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s %(levelname)s %(message)s",
-    datefmt="%Y-%m-%d  %H:%M:%S",
-)
-_logger = logging.getLogger(__name__)
+def get_logger(name, level):
+    logging.basicConfig(
+        format="%(asctime)s %(levelname)s %(message)s",
+        datefmt="%Y-%m-%d  %H:%M:%S",
+    )
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    return logger
 
 
 # ------------------------------------------------------------------------------
@@ -444,3 +447,6 @@ def count_zeros_and_non_missings(
     non_missings = np.count_nonzero(~np.isnan(values))
 
     return zeros, non_missings
+
+
+_logger = get_logger(__name__, logging.DEBUG)
