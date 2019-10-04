@@ -215,9 +215,9 @@ def _probability_of_zero(
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def _pearson3_fitting_values(
+def pearson_parameters(
         values: np.ndarray,
-) -> np.ndarray:
+) -> (np.ndarray, np.ndarray, np.ndarray, np.ndarray):
     """
     This function computes the probability of zero and Pearson Type III
     distribution parameters corresponding to an array of values.
@@ -229,16 +229,13 @@ def _pearson3_fitting_values(
         non-leap years) and assuming that the first value of the array is
         January of the initial year for an input array of monthly values or
         Jan. 1st of initial year for an input array daily values
-    :return: a 2-D array of fitting values for the Pearson Type III
-        distribution, with shape (4, 12) for monthly or (4, 366) for daily
+    :return: four 1-D array of fitting values for the Pearson Type III
+        distribution, with shape (12,) for monthly or (366,) for daily
 
-        returned_array[0] == probability of zero for each of the calendar time steps
-        returned_array[1] == the first Pearson Type III distribution parameter
-            for each of the calendar time steps
-        returned_array[2] == the second Pearson Type III distribution parameter
-            for each of the calendar time steps
-        returned_array[3] == the third Pearson Type III distribution parameter
-            for each of the calendar time steps
+        returned array 1: probability of zero
+        returned array 2: first Pearson Type III distribution parameter (loc)
+        returned array 3 :second Pearson Type III distribution parameter (scale)
+        returned array 4: third Pearson Type III distribution parameter (skew)
     """
 
     # validate that the values array has shape: (years, 12) for monthly or (years, 366) for daily
@@ -256,7 +253,10 @@ def _pearson3_fitting_values(
             raise ValueError(message)
 
     # the values we'll compute and return
-    fitting_values = np.zeros((4, time_steps_per_year))
+    probabilities_of_zero = np.zeros((time_steps_per_year,))
+    locs = np.zeros((time_steps_per_year,))
+    scales = np.zeros((time_steps_per_year,))
+    skews = np.zeros((time_steps_per_year,))
 
     # compute the probability of zero and Pearson
     # parameters for each calendar time step
@@ -276,7 +276,8 @@ def _pearson3_fitting_values(
         if (number_of_non_missing - number_of_zeros) < 4:
 
             # we can't proceed, bail out using zeros
-            return fitting_values
+            continue
+            # return fitting_values
 
         # calculate the probability of zero for the calendar time step
         probability_of_zero = 0.0
@@ -295,12 +296,12 @@ def _pearson3_fitting_values(
             # get the Pearson Type III parameters for this time
             # step's values within the calibration period
             params = lmoments.fit(time_step_values)
-            fitting_values[0, time_step_index] = probability_of_zero
-            fitting_values[1, time_step_index] = params["loc"]
-            fitting_values[2, time_step_index] = params["scale"]
-            fitting_values[3, time_step_index] = params["skew"]
+            probabilities_of_zero[time_step_index] = probability_of_zero
+            locs[time_step_index] = params["loc"]
+            scales[time_step_index] = params["scale"]
+            skews[time_step_index] = params["skew"]
 
-    return fitting_values
+    return probabilities_of_zero, locs, scales, skews
 
 
 # ------------------------------------------------------------------------------
@@ -459,13 +460,8 @@ def transform_fitted_pearson(
     calibration_end_index = (calibration_end_year - data_start_year) + 1
 
     # compute the values we'll use to fit to the Pearson Type III distribution
-    pearson_values = \
-        _pearson3_fitting_values(values[calibration_begin_index:calibration_end_index, :])
-
-    loc = pearson_values[1]
-    scale = pearson_values[2]
-    skew = pearson_values[3]
-    probability_of_zero = pearson_values[0]
+    probability_of_zero, loc, scale, skew = \
+        pearson_parameters(values[calibration_begin_index:calibration_end_index, :])
 
     # fit each value to the Pearson Type III distribution
     values = _pearson_fit(values, probability_of_zero, skew, loc, scale)
