@@ -410,6 +410,10 @@ def transform_fitted_pearson(
         calibration_start_year: int,
         calibration_end_year: int,
         periodicity: Periodicity,
+        probabilities_of_zero: np.ndarray=None,
+        locs: np.ndarray=None,
+        scales: np.ndarray=None,
+        skews: np.ndarray=None,
 ) -> np.ndarray:
     """
     Fit values to a Pearson Type III distribution and transform the values
@@ -437,6 +441,15 @@ def transform_fitted_pearson(
     :rtype: numpy.ndarray of floats
     """
 
+    # sanity check for the fitting parameters arguments
+    pearson_param_args = [probabilities_of_zero, locs, scales, skews]
+    if any(param_arg is None for param_arg in pearson_param_args):
+        if pearson_param_args.count(None) < len(pearson_param_args):
+            raise ValueError(
+                "At least one but not all of the Pearson Type III fitting "
+                "parameters are specified -- either none or all of "
+                "these must be specified")
+
     # if we're passed all missing values then we can't compute anything,
     # and we'll return the same array of missing values
     if (np.ma.is_masked(values) and values.mask.all()) or np.all(np.isnan(values)):
@@ -445,26 +458,29 @@ def transform_fitted_pearson(
     # validate (and possibly reshape) the input array
     values = _validate_array(values, periodicity)
 
-    # determine the end year of the values array
-    data_end_year = data_start_year + values.shape[0]
+    # compute the Pearson Type III fitting values if none were provided
+    if any(param_arg is None for param_arg in pearson_param_args):
 
-    # make sure that we have data within the full calibration period,
-    # otherwise use the full period of record
-    if (calibration_start_year < data_start_year) \
-            or (calibration_end_year > data_end_year):
-        calibration_start_year = data_start_year
-        calibration_end_year = data_end_year
+        # determine the end year of the values array
+        data_end_year = data_start_year + values.shape[0]
 
-    # get the year axis indices corresponding to the calibration start and end years
-    calibration_begin_index = calibration_start_year - data_start_year
-    calibration_end_index = (calibration_end_year - data_start_year) + 1
+        # make sure that we have data within the full calibration period,
+        # otherwise use the full period of record
+        if (calibration_start_year < data_start_year) \
+                or (calibration_end_year > data_end_year):
+            calibration_start_year = data_start_year
+            calibration_end_year = data_end_year
 
-    # compute the values we'll use to fit to the Pearson Type III distribution
-    probability_of_zero, loc, scale, skew = \
-        pearson_parameters(values[calibration_begin_index:calibration_end_index, :])
+        # get the year axis indices corresponding to the calibration start and end years
+        calibration_begin_index = calibration_start_year - data_start_year
+        calibration_end_index = (calibration_end_year - data_start_year) + 1
+
+        # compute the values we'll use to fit to the Pearson Type III distribution
+        probabilities_of_zero, locs, scales, skews = \
+            pearson_parameters(values[calibration_begin_index:calibration_end_index, :])
 
     # fit each value to the Pearson Type III distribution
-    values = _pearson_fit(values, probability_of_zero, skew, loc, scale)
+    values = _pearson_fit(values, probabilities_of_zero, skews, locs, scales)
 
     return values
 
