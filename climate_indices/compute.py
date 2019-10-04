@@ -514,6 +514,8 @@ def transform_fitted_gamma(
         'daily': array of full years of daily values with 366 days per year,
         as if each year were a leap year and any missing final months of the final
         year filled with NaN values, with array size == (# years * 366)
+    :param alphas: pre-computed gamma fitting parameters
+    :param betas: pre-computed gamma fitting parameters
     :return: 2-D array of transformed/fitted values, corresponding in size
         and shape of the input array
     :rtype: numpy.ndarray of floats
