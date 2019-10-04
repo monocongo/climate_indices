@@ -40,8 +40,7 @@ def spi(
         calibration_year_initial: int,
         calibration_year_final: int,
         periodicity: compute.Periodicity,
-        alphas: np.ndarray = None,
-        betas: np.ndarray = None,
+        fitting_params: dict = None,
 ) -> np.ndarray:
     """
     Computes SPI (Standardized Precipitation Index).
@@ -65,8 +64,7 @@ def spi(
          'daily' indicates an array of full years of daily values with 366 days
          per year, as if each year were a leap year and any missing final months
          of the final year filled with NaN values, with array size == (# years * 366)
-    :param alphas: pre-computed gamma fitting parameters
-    :param betas: pre-computed gamma fitting parameters
+    :param fitting_params: pre-computed fitting parameters
     :return SPI values fitted to the gamma distribution at the specified time
         step scale, unitless
     :rtype: 1-D numpy.ndarray of floats of the same length as the input array
@@ -118,6 +116,14 @@ def spi(
 
     if distribution is Distribution.gamma:
 
+        # get (optional) fitting parameters if provided
+        if fitting_params is not None:
+            alphas = fitting_params["alphas"]
+            betas = fitting_params["betas"]
+        else:
+            alphas = None
+            betas = None
+
         # fit the scaled values to a gamma distribution
         # and transform to corresponding normalized sigmas
         values = compute.transform_fitted_gamma(
@@ -131,6 +137,18 @@ def spi(
         )
     elif distribution is Distribution.pearson:
 
+        # get (optional) fitting parameters if provided
+        if fitting_params is not None:
+            probabilities_of_zero = fitting_params["probabilities_of_zero"]
+            locs = fitting_params["locs"]
+            scales = fitting_params["scales"]
+            skews = fitting_params["skews"]
+        else:
+            probabilities_of_zero = None
+            locs = None
+            scales = None
+            skews = None
+
         # fit the scaled values to a Pearson Type III distribution
         # and transform to corresponding normalized sigmas
         values = compute.transform_fitted_pearson(
@@ -139,6 +157,10 @@ def spi(
             calibration_year_initial,
             calibration_year_final,
             periodicity,
+            probabilities_of_zero,
+            locs,
+            scales,
+            skews,
         )
 
     else:
