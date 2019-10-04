@@ -333,12 +333,12 @@ def _minimum_possible(
 def _pearson_fit(
         values: np.ndarray,
         probabilities_of_zero: np.ndarray,
-        skew: float,
-        loc: float,
-        scale: float,
+        skew: np.ndarray,
+        loc: np.ndarray,
+        scale: np.ndarray,
 ) -> np.ndarray:
     """
-    Perform fitting of an array of value to a Pearson Type III distribution
+    Perform fitting of an array of values to a Pearson Type III distribution
     as described by the Pearson Type III parameters and probability of zero arguments.
 
     :param values: an array of values to fit to the Pearson Type III
@@ -436,6 +436,11 @@ def transform_fitted_pearson(
                         with 366 days per year, as if each year were a leap year
                         and any missing final months of the final year filled
                         with NaN values, with array size == (# years * 366)
+    :param probabilities_of_zero: pre-computed probabilities of zero for each
+        month or day of the year
+    :param locs: pre-computed loc values for each month or day of the year
+    :param scales: pre-computed scale values for each month or day of the year
+    :param skews: pre-computed skew values for each month or day of the year
     :return: 2-D array of transformed/fitted values, corresponding in size
              and shape of the input array
     :rtype: numpy.ndarray of floats
