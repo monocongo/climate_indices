@@ -64,7 +64,11 @@ def spi(
          'daily' indicates an array of full years of daily values with 366 days
          per year, as if each year were a leap year and any missing final months
          of the final year filled with NaN values, with array size == (# years * 366)
-    :param fitting_params: pre-computed fitting parameters
+    :param fitting_params: optional dictionary of pre-computed distribution
+        fitting parameters, if the distribution is gamma then this dict should
+        contain two arrays, keyed as "alphas" and "betas", and if the
+        distribution is Pearson then this dict should contain four arrays keyed
+        as "probabilities_of_zero", "locs", "scales", and "skews"
     :return SPI values fitted to the gamma distribution at the specified time
         step scale, unitless
     :rtype: 1-D numpy.ndarray of floats of the same length as the input array
@@ -219,6 +223,11 @@ def spei(
         the two inputs cover the same period)
     :param calibration_year_initial: initial year of the calibration period
     :param calibration_year_final: final year of the calibration period
+    :param fitting_params: optional dictionary of pre-computed distribution
+        fitting parameters, if the distribution is gamma then this dict should
+        contain two arrays, keyed as "alphas" and "betas", and if the
+        distribution is Pearson then this dict should contain four arrays keyed
+        as "probabilities_of_zero", "locs", "scales", and "skews"
     :return: an array of SPEI values
     :rtype: numpy.ndarray of type float, of the same size and shape as the input
         PET and precipitation arrays
