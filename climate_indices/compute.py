@@ -152,6 +152,69 @@ def sum_to_scale(
 
 # ------------------------------------------------------------------------------
 @numba.jit
+def _probability_of_zero(
+        values: np.ndarray,
+) -> np.ndarray:
+    """
+    This function computes the probability of zero and Pearson Type III
+    distribution parameters corresponding to an array of values.
+
+    :param values: 2-D array of values, with each row representing a year
+        containing either 12 values corresponding to the calendar months of
+        that year, or 366 values corresponding to the days of the year
+        (with Feb. 29th being an average of the Feb. 28th and Mar. 1st values for
+        non-leap years) and assuming that the first value of the array is
+        January of the initial year for an input array of monthly values or
+        Jan. 1st of initial year for an input array daily values
+    :return: a 1-D array of probability of zero values, with shape (12,) for
+        monthly or (366,) for daily
+    """
+
+    # validate that the values array has shape: (years, 12) for monthly or (years, 366) for daily
+    if len(values.shape) != 2:
+        message = "Invalid shape of input data array: {shape}".format(shape=values.shape)
+        _logger.error(message)
+        raise ValueError(message)
+
+    else:
+
+        # determine the number of time steps per year
+        # (we expect 12 for monthly, 366 for daiy)
+        time_steps_per_year = values.shape[1]
+        if (time_steps_per_year != 12) and (time_steps_per_year != 366):
+            message = "Invalid shape of input data array: {shape}".format(shape=values.shape)
+            _logger.error(message)
+            raise ValueError(message)
+
+    # the values we'll compute and return
+    probabilities_of_zero = np.zeros((time_steps_per_year,))
+
+    # compute the probability of zero for each calendar time step
+    # TODO vectorize the below loop? create a @numba.vectorize() ufunc
+    #  for application over the second axis
+    for time_step_index in range(time_steps_per_year):
+
+        # get the values for the current calendar time step
+        time_step_values = values[:, time_step_index]
+
+        # count the number of zeros and valid (non-missing/non-NaN) values
+        number_of_zeros, number_of_non_missing = \
+            utils.count_zeros_and_non_missings(time_step_values)
+
+        # calculate the probability of zero for the calendar time step
+        if (number_of_zeros > 0) and (number_of_non_missing > 0):
+
+            probabilities_of_zero[time_step_index] = number_of_zeros / number_of_non_missing
+
+        else:
+            # fill with NaN
+            probabilities_of_zero[time_step_index] = np.NaN
+
+    return probabilities_of_zero
+
+
+# ------------------------------------------------------------------------------
+@numba.jit
 def _pearson3_fitting_values(
         values: np.ndarray,
 ) -> np.ndarray:
