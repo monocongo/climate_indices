@@ -179,14 +179,17 @@ def spi(
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def spei(precips_mm: np.ndarray,
-         pet_mm: np.ndarray,
-         scale: int,
-         distribution: Distribution,
-         periodicity: compute.Periodicity,
-         data_start_year: int,
-         calibration_year_initial: int,
-         calibration_year_final: int) -> np.ndarray:
+def spei(
+        precips_mm: np.ndarray,
+        pet_mm: np.ndarray,
+        scale: int,
+        distribution: Distribution,
+        periodicity: compute.Periodicity,
+        data_start_year: int,
+        calibration_year_initial: int,
+        calibration_year_final: int,
+        fitting_params: dict = None,
+) -> np.ndarray:
     """
     Compute SPEI fitted to the gamma distribution.
 
@@ -252,25 +255,55 @@ def spei(precips_mm: np.ndarray,
 
     if distribution is Distribution.gamma:
 
+        # get (optional) fitting parameters if provided
+        if fitting_params is not None:
+            alphas = fitting_params["alphas"]
+            betas = fitting_params["betas"]
+        else:
+            alphas = None
+            betas = None
+
         # fit the scaled values to a gamma distribution and
         # transform to corresponding normalized sigmas
         transformed_fitted_values = \
-            compute.transform_fitted_gamma(scaled_values,
-                                           data_start_year,
-                                           calibration_year_initial,
-                                           calibration_year_final,
-                                           periodicity)
+            compute.transform_fitted_gamma(
+                scaled_values,
+                data_start_year,
+                calibration_year_initial,
+                calibration_year_final,
+                periodicity,
+                alphas,
+                betas,
+            )
 
     elif distribution is Distribution.pearson:
+
+        # get (optional) fitting parameters if provided
+        if fitting_params is not None:
+            probabilities_of_zero = fitting_params["probabilities_of_zero"]
+            locs = fitting_params["locs"]
+            scales = fitting_params["scales"]
+            skews = fitting_params["skews"]
+        else:
+            probabilities_of_zero = None
+            locs = None
+            scales = None
+            skews = None
 
         # fit the scaled values to a Pearson Type III distribution
         # and transform to corresponding normalized sigmas
         transformed_fitted_values = \
-            compute.transform_fitted_pearson(scaled_values,
-                                             data_start_year,
-                                             calibration_year_initial,
-                                             calibration_year_final,
-                                             periodicity)
+            compute.transform_fitted_pearson(
+                scaled_values,
+                data_start_year,
+                calibration_year_initial,
+                calibration_year_final,
+                periodicity,
+                probabilities_of_zero,
+                locs,
+                scales,
+                skews,
+            )
 
     else:
         message = "Unsupported distribution argument: " + \
