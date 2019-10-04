@@ -412,12 +412,88 @@ def transform_fitted_pearson(
 
 # ------------------------------------------------------------------------------
 @numba.jit
+def gamma_parameters(
+        values: np.ndarray,
+        data_start_year: int,
+        calibration_start_year: int,
+        calibration_end_year: int,
+        periodicity: Periodicity,
+) -> (np.ndarray, np.ndarray):
+    """
+
+    :param values: 2-D array of values, with each row typically representing a year
+                   containing twelve columns representing the respective calendar
+                   months, or 366 days per column as if all years were leap years
+    :param data_start_year: the initial year of the input values array
+    :param calibration_start_year: the initial year to use for the calibration period
+    :param calibration_end_year: the final year to use for the calibration period
+    :param periodicity: the type of time series represented by the input data,
+        valid values are 'monthly' or 'daily'
+        'monthly': array of monthly values, assumed to span full years,
+        i.e. the first value corresponds to January of the initial year and any
+        missing final months of the final year filled with NaN values, with
+        size == # of years * 12
+        'daily': array of full years of daily values with 366 days per year,
+        as if each year were a leap year and any missing final months of the final
+        year filled with NaN values, with array size == (# years * 366)
+    :return: two 2-D arrays of gamma fitting parameter values, corresponding in size
+        and shape of the input array
+    :rtype: tuple of two 2-D numpy.ndarrays of floats
+    """
+
+    # if we're passed all missing values then we can't compute anything,
+    # then we return the same array of missing values
+    if (np.ma.is_masked(values) and values.mask.all()) or np.all(np.isnan(values)):
+        raise ValueError("All missing/NaN values provided as input")
+
+    # validate (and possibly reshape) the input array
+    values = _validate_array(values, periodicity)
+
+    # replace zeros with NaNs
+    values[values == 0] = np.NaN
+
+    # determine the end year of the values array
+    data_end_year = data_start_year + values.shape[0]
+
+    # make sure that we have data within the full calibration period,
+    # otherwise use the full period of record
+    if (calibration_start_year < data_start_year) or \
+            (calibration_end_year > data_end_year):
+        calibration_start_year = data_start_year
+        calibration_end_year = data_end_year
+
+    # get the year axis indices corresponding to
+    # the calibration start and end years
+    calibration_begin_index = calibration_start_year - data_start_year
+    calibration_end_index = (calibration_end_year - data_start_year) + 1
+
+    # get the values for the current calendar time step
+    # that fall within the calibration years period
+    calibration_values = values[calibration_begin_index:calibration_end_index, :]
+
+    # compute the gamma distribution's shape and scale parameters, alpha and beta
+    # TODO explain this better
+    means = np.nanmean(calibration_values, axis=0)
+    log_means = np.log(means)
+    logs = np.log(calibration_values)
+    mean_logs = np.nanmean(logs, axis=0)
+    a = log_means - mean_logs
+    alphas = (1 + np.sqrt(1 + 4 * a / 3)) / (4 * a)
+    betas = means / alphas
+
+    return alphas, betas
+
+
+# ------------------------------------------------------------------------------
+@numba.jit
 def transform_fitted_gamma(
         values: np.ndarray,
         data_start_year: int,
         calibration_start_year: int,
         calibration_end_year: int,
         periodicity: Periodicity,
+        alphas: np.ndarray=None,
+        betas: np.ndarray=None,
 ) -> np.ndarray:
     """
     Fit values to a gamma distribution and transform the values to corresponding
@@ -458,34 +534,16 @@ def transform_fitted_gamma(
     # replace zeros with NaNs
     values[values == 0] = np.NaN
 
-    # determine the end year of the values array
-    data_end_year = data_start_year + values.shape[0]
-
-    # make sure that we have data within the full calibration period,
-    # otherwise use the full period of record
-    if (calibration_start_year < data_start_year) or \
-            (calibration_end_year > data_end_year):
-        calibration_start_year = data_start_year
-        calibration_end_year = data_end_year
-
-    # get the year axis indices corresponding to
-    # the calibration start and end years
-    calibration_begin_index = calibration_start_year - data_start_year
-    calibration_end_index = (calibration_end_year - data_start_year) + 1
-
-    # get the values for the current calendar time step
-    # that fall within the calibration years period
-    calibration_values = values[calibration_begin_index:calibration_end_index, :]
-
-    # compute the gamma distribution's shape and scale parameters, alpha and beta
-    # TODO explain this better
-    means = np.nanmean(calibration_values, axis=0)
-    log_means = np.log(means)
-    logs = np.log(calibration_values)
-    mean_logs = np.nanmean(logs, axis=0)
-    a = log_means - mean_logs
-    alphas = (1 + np.sqrt(1 + 4 * a / 3)) / (4 * a)
-    betas = means / alphas
+    # compute fitting parameters if none were provided
+    if (alphas is None) or (betas is None):
+        alphas, betas = \
+            gamma_parameters(
+                values,
+                data_start_year,
+                calibration_start_year,
+                calibration_end_year,
+                periodicity,
+            )
 
     # find the gamma probability values using the gamma CDF
     gamma_probabilities = scipy.stats.gamma.cdf(values, a=alphas, scale=betas)
