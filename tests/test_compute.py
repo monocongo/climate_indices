@@ -240,80 +240,77 @@ def test_transform_fitted_pearson(precips_mm_monthly,
 
 # ------------------------------------------------------------------------------
 @pytest.mark.usefixtures("precips_mm_monthly")
-def test_pearson3_fitting_values(precips_mm_monthly):
+def test_pearson_parameters(precips_mm_monthly):
     """
     Test for the compute._pearson3_fitting_values() function
     """
     # provide some bogus inputs to make sure these raise expected errors
     np.testing.assert_raises(ValueError,
-                             compute._pearson3_fitting_values,
+                             compute.pearson_parameters,
                              np.array([1.0, 0.0, 0.0]))
     np.testing.assert_raises(ValueError,
-                             compute._pearson3_fitting_values,
+                             compute.pearson_parameters,
                              np.array([1.0, 0.0, 0.0, 1.0, 0.0, 0.0]))
     np.testing.assert_raises(ValueError,
-                             compute._pearson3_fitting_values,
+                             compute.pearson_parameters,
                              np.array(
                                  [[1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 5.0],
                                   [1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 4.7]]
                              ))
     np.testing.assert_raises(ValueError,
-                             compute._pearson3_fitting_values,
+                             compute.pearson_parameters,
                              np.array(
                                  [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN]
                              ))
-    np.testing.assert_raises(AttributeError, compute._pearson3_fitting_values, None)
+    np.testing.assert_raises(AttributeError, compute.pearson_parameters, None)
 
     # try using a subset of the precipitation dataset (1897 - 1915, year indices 2 - 20)
-    computed_values = compute._pearson3_fitting_values(precips_mm_monthly[2:21, :])
-    expected_values = np.array([
-        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-        [
-            48.539987664499996,
-            53.9852487665,
-            44.284745065842102,
-            62.583727384894736,
-            125.72157689160528,
-            182.03053042784214,
-            159.00575657926319,
-            170.92269736865791,
-            189.8925781252895,
-            155.13420024692104,
-            72.953125000026319,
-            43.31532689144737,
-        ],
-        [
-            33.781507724523095,
-            43.572151699968387,
-            40.368173442404107,
-            44.05329691434887,
-            60.10621716019174,
-            59.343178125457186,
-            49.228795303727473,
-            66.775653341386999,
-            65.362977393206421,
-            94.467597091088265,
-            72.63706898364299,
-            34.250906049301463,
-        ],
-        [
-            0.76530966976335302,
-            1.2461447518219784,
-            2.275517179222323,
-            0.8069305098698194,
-            -0.6783037020197018,
-            1.022194696224529,
-            0.40876120732817578,
-            1.2372551346168916,
-            0.73881116931924118,
-            0.91911763257003465,
-            2.3846715887263725,
-            1.4700559294571962,
-        ],
-    ]
-    )
+    computed_values = compute.pearson_parameters(precips_mm_monthly[2:21, :])
+    expected_probs_of_zero = np.zeros((12,))
+    expected_locs = np.array([
+        48.539987664499996,
+        53.9852487665,
+        44.284745065842102,
+        62.583727384894736,
+        125.72157689160528,
+        182.03053042784214,
+        159.00575657926319,
+        170.92269736865791,
+        189.8925781252895,
+        155.13420024692104,
+        72.953125000026319,
+        43.31532689144737,
+    ])
+    expected_scales = np.array([
+        33.781507724523095,
+        43.572151699968387,
+        40.368173442404107,
+        44.05329691434887,
+        60.10621716019174,
+        59.343178125457186,
+        49.228795303727473,
+        66.775653341386999,
+        65.362977393206421,
+        94.467597091088265,
+        72.63706898364299,
+        34.250906049301463,
+    ])
+    expected_skews = np.array([
+        0.76530966976335302,
+        1.2461447518219784,
+        2.275517179222323,
+        0.8069305098698194,
+        -0.6783037020197018,
+        1.022194696224529,
+        0.40876120732817578,
+        1.2372551346168916,
+        0.73881116931924118,
+        0.91911763257003465,
+        2.3846715887263725,
+        1.4700559294571962,
+    ])
     np.testing.assert_allclose(computed_values,
-                               expected_values,
+                               (expected_probs_of_zero, expected_locs, expected_scales, expected_skews),
                                atol=0.001,
                                equal_nan=True,
                                err_msg="Failed to accurately compute Pearson Type III fitting values")
@@ -329,36 +326,13 @@ def test_pearson3_fitting_values(precips_mm_monthly):
     precips_mm[3, 9] = 0.0
     precips_mm[11, 4] = 0.0
     precips_mm[13, 5] = 0.0
-    computed_values = compute._pearson3_fitting_values(precips_mm)
-    expected_values = np.array([[0.0, 0.008, 0.0, 0.008, 0.0164, 0.0164,
-                                 0.0, 0.0, 0.0, 0.0164, 0.0, 0.008],
-                                [45.85,
-                                 46.35,
-                                 48.32,
-                                 67.64,
-                                 121.17,
-                                 184.13,
-                                 154.97,
-                                 170.29,
-                                 196.43,
-                                 153.53,
-                                 58.40,
-                                 38.86],
-                                [38.87,
-                                 35.33,
-                                 34.32,
-                                 50.26,
-                                 73.52,
-                                 100.18,
-                                 50.63,
-                                 63.07,
-                                 75.26,
-                                 93.67,
-                                 48.75,
-                                 33.01],
-                                [1.76, 1.25, 1.17, 1.19, 0.76, 0.83, 0.18, 0.996, 0.83, 1.16, 1.85, 1.81]])
+    computed_values = compute.pearson_parameters(precips_mm)
+    expected_probs_of_zero = np.array([0.0, 0.008, 0.0, 0.008, 0.0164, 0.0164, 0.0, 0.0, 0.0, 0.0164, 0.0, 0.008])
+    expected_locs = np.array([45.85, 46.35, 48.32, 67.64, 121.17, 184.13, 154.97, 170.29, 196.43, 153.53, 58.40, 38.86])
+    expected_scales = np.array([38.87,35.33, 34.32, 50.26, 73.52, 100.18, 50.63, 63.07, 75.26, 93.67, 48.75, 33.01])
+    expected_skews = np.array([1.76, 1.25, 1.17, 1.19, 0.76, 0.83, 0.18, 0.996, 0.83, 1.16, 1.85, 1.81])
     np.testing.assert_allclose(computed_values,
-                               expected_values,
+                               (expected_probs_of_zero, expected_locs, expected_scales, expected_skews),
                                atol=0.01,
                                equal_nan=True,
                                err_msg="Failed to accurately compute Pearson Type III fitting values")
