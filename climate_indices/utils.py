@@ -5,18 +5,24 @@ import logging
 import numba
 import numpy as np
 
+
 # ------------------------------------------------------------------------------
 # set up a basic, global _logger
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s %(levelname)s %(message)s",
-    datefmt="%Y-%m-%d  %H:%M:%S",
-)
-_logger = logging.getLogger(__name__)
+def get_logger(name, level):
+    logging.basicConfig(
+        format="%(asctime)s %(levelname)s %(message)s",
+        datefmt="%Y-%m-%d  %H:%M:%S",
+    )
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    return logger
 
 
 # ------------------------------------------------------------------------------
-def sign_change(a, b):
+def sign_change(
+        a: np.ndarray,
+        b: np.ndarray,
+) -> np.ndarray:
     """
     Given two same-sized arrays of floats return an array of booleans indicating
     if a sign change occurs at the corresponding index.
@@ -43,7 +49,9 @@ def sign_change(a, b):
 
 
 # ------------------------------------------------------------------------------
-def is_data_valid(data):
+def is_data_valid(
+        data: np.ndarray,
+) -> bool:
     """
     Returns whether or not an array is valid, i.e. a supported array type
     (ndarray or MaskArray) which is not all-NaN.
@@ -71,7 +79,10 @@ def is_data_valid(data):
 
 
 # ------------------------------------------------------------------------------
-def rmse(predictions: np.ndarray, targets: np.ndarray):
+def rmse(
+        predictions: np.ndarray,
+        targets: np.ndarray,
+) -> np.ndarray:
     """
     Root mean square error
 
@@ -83,10 +94,12 @@ def rmse(predictions: np.ndarray, targets: np.ndarray):
 
 
 # ------------------------------------------------------------------------------
-def compute_days(initial_year: int,
-                 total_months: int,
-                 initial_month=1,
-                 units_start_year=1800):
+def compute_days(
+        initial_year: int,
+        total_months: int,
+        initial_month=1,
+        units_start_year=1800,
+) -> np.ndarray:
     """
     Computes the "number of days" equivalent for regular, incremental monthly
     time steps given an initial year/month. Useful when using "days since
@@ -133,8 +146,10 @@ def compute_days(initial_year: int,
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def reshape_to_2d(values: np.ndarray,
-                  second_axis_length: int) -> np.ndarray:
+def reshape_to_2d(
+        values: np.ndarray,
+        second_axis_length: int,
+) -> np.ndarray:
     """
     :param values: an 1-D numpy.ndarray of values
     :param second_axis_length:
@@ -150,14 +165,16 @@ def reshape_to_2d(values: np.ndarray,
             # data is already in the shape we want, return it unaltered
             return values
         else:
-            message = "Values array has an invalid shape (2-D but " + \
-                      f"second dimension not {second_axis_length}): {shape}"
+            message = "Values array has an invalid shape (2-D but second " + \
+                      "dimension not {dim}".format(dim=second_axis_length) + \
+                      "): {shape}".format(shape=shape)
             _logger.error(message)
             raise ValueError(message)
 
     # otherwise make sure that we've been passed a flat (1-D) array of values
     elif len(shape) != 1:
-        message = f"Values array has an invalid shape (not 1-D or 2-D): {shape}"
+        message = "Values array has an invalid shape (not 1-D " + \
+                  "or 2-D): {shape}".format(shape=shape)
         _logger.error(message)
         raise ValueError(message)
 
@@ -181,7 +198,9 @@ def reshape_to_2d(values: np.ndarray,
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def reshape_to_divs_years_months(monthly_values: np.ndarray):
+def reshape_to_divs_years_months(
+        monthly_values: np.ndarray,
+) -> np.ndarray:
     """
     :param monthly_values: an 2-D numpy.ndarray of monthly values,
         assumed to start at January of the first year for each division,
@@ -200,13 +219,13 @@ def reshape_to_divs_years_months(monthly_values: np.ndarray):
             return monthly_values
         else:
             message = "Values array has an invalid shape (3-D but " + \
-                      f"third dimension not 12): {shape}"
+                      "third dimension is not 12): " + str(shape)
             _logger.error(message)
             raise ValueError(message)
 
     # otherwise make sure that we've been passed in a 2-D array of values
     elif len(shape) != 2:
-        message = f"Values array has an invalid shape (not 2-D or 3-D): {shape}"
+        message = "Values array has an invalid shape (not 2-D or 3-D): " + str(shape)
         _logger.error(message)
         raise ValueError(message)
 
@@ -214,7 +233,7 @@ def reshape_to_divs_years_months(monthly_values: np.ndarray):
     # of values with the final dimension size == 12
     elif shape[1] != 12:
         message = "Values array has an invalid shape (second dimension " + \
-                  f"should be 12, but is not): {shape}"
+                  "should be 12, but is not): " + str(shape)
         _logger.error(message)
         raise ValueError(message)
 
@@ -228,9 +247,11 @@ def reshape_to_divs_years_months(monthly_values: np.ndarray):
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def transform_to_366day(original: np.ndarray,
-                        year_start: int,
-                        total_years: int):
+def transform_to_366day(
+        original: np.ndarray,
+        year_start: int,
+        total_years: int,
+) -> np.ndarray:
     """
     Takes an array of daily values with only actual leap years represented
     as 366 day years (non-leap years with 365 days) and converts it to an array
@@ -312,8 +333,10 @@ def transform_to_366day(original: np.ndarray,
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def transform_to_gregorian(original: np.ndarray,
-                           year_start: int):
+def transform_to_gregorian(
+        original: np.ndarray,
+        year_start: int,
+) -> np.ndarray:
     """
     Takes an array of daily values represented as full 366 day years (as if each
     year is a leap year with fill/faux values for the Feb. 29th of each non-leap
@@ -404,7 +427,9 @@ def transform_to_gregorian(original: np.ndarray,
 
 
 # ------------------------------------------------------------------------------
-def count_zeros_and_non_missings(values: np.ndarray):
+def count_zeros_and_non_missings(
+        values: np.ndarray,
+) -> (int, int):
     """
     Given an input array of values return a count of the zeros
     and non-missing values. Missing values assumed to be numpy.NaNs.
@@ -422,3 +447,6 @@ def count_zeros_and_non_missings(values: np.ndarray):
     non_missings = np.count_nonzero(~np.isnan(values))
 
     return zeros, non_missings
+
+
+_logger = get_logger(__name__, logging.DEBUG)

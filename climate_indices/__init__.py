@@ -1,2 +1,2 @@
-# version of the climate_indices package
-__version__ = "1.0.4"
+# version of the climate_indices package, should match with setup.py
+__version__ = "1.0.7"

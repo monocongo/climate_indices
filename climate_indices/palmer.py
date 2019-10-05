@@ -1,20 +1,16 @@
 import collections
 import logging
 import math
+import warnings
+
 import numba
 import numpy as np
-import warnings
 
 from climate_indices import utils
 
 # ------------------------------------------------------------------------------
-# set up a basic, global _logger
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
-    datefmt="%Y-%m-%d  %H:%M:%S",
-)
-_logger = logging.getLogger(__name__)
+# Retrieve logger and set desired logging level
+_logger = utils.get_logger(__name__, logging.INFO)
 
 
 # ------------------------------------------------------------------------------
@@ -1259,7 +1255,14 @@ def _assign_X_backtracking(X,
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def _assign_X(k, number_of_months, BT, PX1, PX2, PX3, X):
+def _assign_X(
+        k: int,
+        number_of_months: int,
+        BT: np.ndarray,
+        PX1: np.ndarray,
+        PX2: np.ndarray,
+        PX3: np.ndarray,
+        X: np.ndarray):
     """
     Assign X values using backtracking.
 
@@ -1300,7 +1303,9 @@ def _assign_X(k, number_of_months, BT, PX1, PX2, PX3, X):
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def _pdsi_from_zindex(Z: np.ndarray):
+def _pdsi_from_zindex(
+        Z: np.ndarray,
+) -> (np.ndarray, np.ndarray, np.ndarray):
     """
 
     :param Z:
@@ -1449,7 +1454,10 @@ def _pdsi_from_zindex(Z: np.ndarray):
 
 # ------------------------------------------------------------------------------
 @numba.vectorize([numba.f8(numba.f8, numba.f8)])
-def _phdi_select_ufunc(px3, x):
+def _phdi_select_ufunc(
+        px3,
+        x,
+):
     """
 
     :param px3:
@@ -1470,20 +1478,22 @@ def _phdi_select_ufunc(px3, x):
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def _compute_scpdsi(established_index_values: np.ndarray,
-                    sczindex_values: np.ndarray,
-                    scpdsi_values: np.ndarray,
-                    pdsi_values: np.ndarray,
-                    wet_index_values: np.ndarray,
-                    dry_index_values: np.ndarray,
-                    wet_M,
-                    wet_B,
-                    dry_M,
-                    dry_B,
-                    calibration_complete,
-                    tolerance=0.0):
+def _compute_scpdsi(
+        established_index_values: np.ndarray,
+        sczindex_values: np.ndarray,
+        scpdsi_values: np.ndarray,
+        pdsi_values: np.ndarray,
+        wet_index_values: np.ndarray,
+        dry_index_values: np.ndarray,
+        wet_M: float,
+        wet_B: float,
+        dry_M: float,
+        dry_B: float,
+        calibration_complete: bool,
+        tolerance: float=0.0,
+) -> (np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray,):
     """
-    This function computes X values
+    This function computes self-calibrated PDSI and related intermediate values.
 
     :param established_index_values
     :param sczindex_values
@@ -1497,6 +1507,8 @@ def _compute_scpdsi(established_index_values: np.ndarray,
     :param dry_B
     :param calibration_complete
     :param tolerance
+    :return PDSI, scPDSI, wet index, dry index, and established index values,
+        all of which are arrays of the same size/shape as the corresponding input arrays
      """
     # empty all X lists
     wet_index_deque = collections.deque([])
@@ -1643,30 +1655,34 @@ def _compute_scpdsi(established_index_values: np.ndarray,
         previous_key = period
         period += 1
 
-    return (pdsi_values,
-            scpdsi_values,
-            wet_index_values,
-            dry_index_values,
-            established_index_values,)
+    return (
+        pdsi_values,
+        scpdsi_values,
+        wet_index_values,
+        dry_index_values,
+        established_index_values,
+    )
 
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def _choose_X(pdsi_values: np.ndarray,
-              established_index_values: np.ndarray,
-              wet_index_values: np.ndarray,
-              dry_index_values: np.ndarray,
-              sczindex_values: np.ndarray,
-              wet_index_deque,
-              dry_index_deque,
-              wet_M,
-              wet_B,
-              dry_M,
-              dry_B,
-              new_X3,
-              month_index: int,
-              previous_key,
-              tolerance=0.0):
+def _choose_X(
+        pdsi_values: np.ndarray,
+        established_index_values: np.ndarray,
+        wet_index_values: np.ndarray,
+        dry_index_values: np.ndarray,
+        sczindex_values: np.ndarray,
+        wet_index_deque,
+        dry_index_deque,
+        wet_M: float,
+        wet_B: float,
+        dry_M: float,
+        dry_B: float,
+        new_X3: float,
+        month_index: int,
+        previous_key: int,
+        tolerance=0.0,
+) -> (float, float, float, float):
 
     previous_wet_index_X1 = 0
     previous_dry_index_X2 = 0
@@ -1763,12 +1779,14 @@ def _choose_X(pdsi_values: np.ndarray,
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def _backtrack_self_calibrated(pdsi_values: np.ndarray,
-                               wet_index_deque,
-                               dry_index_deque,
-                               tolerance: float,
-                               new_X: float,
-                               month_index: int):
+def _backtrack_self_calibrated(
+        pdsi_values: np.ndarray,
+        wet_index_deque,
+        dry_index_deque,
+        tolerance: float,
+        new_X: float,
+        month_index: int,
+):
     """
     :param pdsi_values
     :param wet_index_deque
@@ -1800,7 +1818,14 @@ def _backtrack_self_calibrated(pdsi_values: np.ndarray,
 
 
 # ------------------------------------------------------------------------------
-def _highest_reasonable_value(summed_values):
+def _highest_reasonable_value(
+        summed_values,
+) -> float:
+    """
+
+    :param summed_values:
+    :return:
+    """
 
     # Determine the highest reasonable value that isn't due to a freak anomaly
     # in the data. A "freak anomaly" is defined as a value that is either
@@ -1832,13 +1857,15 @@ def _highest_reasonable_value(summed_values):
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def _z_sum(interval,
-           wet_or_dry,
-           sczindex_values: np.ndarray,
-           periods_per_year: int,
-           calibration_start_year: int,
-           calibration_end_year: int,
-           input_start_year: int):
+def _z_sum(
+        interval: int,
+        wet_or_dry: str,
+        sczindex_values: np.ndarray,
+        periods_per_year: int,
+        calibration_start_year: int,
+        calibration_end_year: int,
+        input_start_year: int,
+) -> float:
 
     z_temporary = collections.deque()
     values_to_sum = collections.deque()
@@ -1933,10 +1960,12 @@ def _z_sum(interval,
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def _least_squares(x: np.ndarray,
-                   y: np.ndarray,
-                   n,
-                   wet_or_dry: str):
+def _least_squares(
+        x: np.ndarray,
+        y: np.ndarray,
+        n: int,
+        wet_or_dry: str,
+) -> (float, float):
 
     correlation = 0.0
     c_tol = 0.85
@@ -2010,11 +2039,13 @@ def _least_squares(x: np.ndarray,
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def _duration_factors(zindex_values: np.ndarray,
-                      calibration_start_year: int,
-                      calibration_end_year: int,
-                      data_start_year: int,
-                      wet_or_dry: str):
+def _duration_factors(
+        zindex_values: np.ndarray,
+        calibration_start_year: int,
+        calibration_end_year: int,
+        data_start_year: int,
+        wet_or_dry: str,
+) -> (float, float):
     """
     This functions calculates m and b, which are used to calculated X(i)
     based on the Z index.  These constants will determine the
@@ -2075,8 +2106,10 @@ def _duration_factors(zindex_values: np.ndarray,
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def _pdsi_at_percentile(pdsi_values,
-                        percentile: float):
+def _pdsi_at_percentile(
+        pdsi_values: np.ndarray,
+        percentile: float,
+) -> np.ndarray:
 
     pdsi_sorted = sorted(pdsi_values)
     return pdsi_sorted[int(len(pdsi_values) * percentile)]
@@ -2084,11 +2117,13 @@ def _pdsi_at_percentile(pdsi_values,
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def _self_calibrate(pdsi_values,
-                    sczindex_values,
-                    calibration_start_year: int,
-                    calibration_end_year: int,
-                    input_start_year: int):
+def _self_calibrate(
+        pdsi_values: np.ndarray,
+        sczindex_values,
+        calibration_start_year: int,
+        calibration_end_year: int,
+        input_start_year: int,
+) -> (np.ndarray, np.ndarray, np.ndarray):
 
     # remove periods before the end of the interval
     # calibrate using upper and lower 2% of values within the user-defined calibration interval
@@ -2161,12 +2196,14 @@ def _self_calibrate(pdsi_values,
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def scpdsi(precip_time_series: np.ndarray,
-           pet_time_series: np.ndarray,
-           awc,
-           data_start_year: int,
-           calibration_start_year: int,
-           calibration_end_year: int):
+def scpdsi(
+        precip_time_series: np.ndarray,
+        pet_time_series: np.ndarray,
+        awc: float,
+        data_start_year: int,
+        calibration_start_year: int,
+        calibration_end_year: int,
+) -> (np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray,):
     """
     Computes the Self-calibrated Palmer Drought Severity Index (SCPDSI),
     Palmer Drought Severity Index (PDSI), Palmer Hydrological Drought Index (PHDI),
@@ -2288,12 +2325,14 @@ def scpdsi(precip_time_series: np.ndarray,
 
 
 # ------------------------------------------------------------------------------
-def pdsi(precip_time_series: np.ndarray,  # pragma: no cover
-         pet_time_series: np.ndarray,
-         awc,
-         data_start_year: int,
-         calibration_start_year: int=1931,
-         calibration_end_year: int=1990):
+def pdsi(
+        precip_time_series: np.ndarray,  # pragma: no cover
+        pet_time_series: np.ndarray,
+        awc: float,
+        data_start_year: int,
+        calibration_start_year: int=1931,
+        calibration_end_year: int=1990,
+) -> (np.ndarray, np.ndarray, np.ndarray, np.ndarray,):
     """
     This function computes the Palmer Drought Severity Index (PDSI),
     Palmer Hydrological Drought Index (PHDI), Palmer Modified Drought Index (PMDI),

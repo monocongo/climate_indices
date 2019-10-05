@@ -21,13 +21,8 @@ class Distribution(Enum):
 
 
 # ------------------------------------------------------------------------------
-# set up a basic, global _logger
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s %(levelname)s %(message)s",
-    datefmt="%Y-%m-%d  %H:%M:%S",
-)
-_logger = logging.getLogger(__name__)
+# Retrieve logger and set desired logging level
+_logger = utils.get_logger(__name__, logging.DEBUG)
 
 # ------------------------------------------------------------------------------
 # valid upper and lower bounds for indices that are fitted/transformed to a distribution (SPI and SPEI)
@@ -37,13 +32,16 @@ _FITTED_INDEX_VALID_MAX = 3.09
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def spi(values: np.ndarray,
+def spi(
+        values: np.ndarray,
         scale: int,
-        distribution,
+        distribution: Distribution,
         data_start_year: int,
         calibration_year_initial: int,
         calibration_year_final: int,
-        periodicity):
+        periodicity: compute.Periodicity,
+        fitting_params: dict = None,
+) -> np.ndarray:
     """
     Computes SPI (Standardized Precipitation Index).
 
@@ -66,6 +64,11 @@ def spi(values: np.ndarray,
          'daily' indicates an array of full years of daily values with 366 days
          per year, as if each year were a leap year and any missing final months
          of the final year filled with NaN values, with array size == (# years * 366)
+    :param fitting_params: optional dictionary of pre-computed distribution
+        fitting parameters, if the distribution is gamma then this dict should
+        contain two arrays, keyed as "alphas" and "betas", and if the
+        distribution is Pearson then this dict should contain four arrays keyed
+        as "probabilities_of_zero", "locs", "scales", and "skews"
     :return SPI values fitted to the gamma distribution at the specified time
         step scale, unitless
     :rtype: 1-D numpy.ndarray of floats of the same length as the input array
@@ -78,8 +81,8 @@ def spi(values: np.ndarray,
     if len(shape) == 2:
         values = values.flatten()
     elif len(shape) != 1:
-        message = f"Invalid shape of input array: {shape} -- " + \
-                  "only 1-D and 2-D arrays are supported"
+        message = "Invalid shape of input array: {shape}".format(shape=shape) + \
+                  " -- only 1-D and 2-D arrays are supported"
         _logger.error(message)
         raise ValueError(message)
 
@@ -87,6 +90,11 @@ def spi(values: np.ndarray,
     # anything, so we return the same array of missing values
     if (np.ma.is_masked(values) and values.mask.all()) or np.all(np.isnan(values)):
         return values
+
+    # clip any negative values to zero
+    if np.amin(values) < 0.0:
+        _logger.warn("Input contains negative values -- all negatives clipped to zero")
+        values = np.clip(values, a_min=0.0, a_max=None)
 
     # remember the original length of the array, in order to facilitate
     # returning an array of the same size
@@ -112,26 +120,57 @@ def spi(values: np.ndarray,
 
     if distribution is Distribution.gamma:
 
+        # get (optional) fitting parameters if provided
+        if fitting_params is not None:
+            alphas = fitting_params["alphas"]
+            betas = fitting_params["betas"]
+        else:
+            alphas = None
+            betas = None
+
         # fit the scaled values to a gamma distribution
         # and transform to corresponding normalized sigmas
-        values = compute.transform_fitted_gamma(values,
-                                                data_start_year,
-                                                calibration_year_initial,
-                                                calibration_year_final,
-                                                periodicity)
+        values = compute.transform_fitted_gamma(
+            values,
+            data_start_year,
+            calibration_year_initial,
+            calibration_year_final,
+            periodicity,
+            alphas,
+            betas,
+        )
     elif distribution is Distribution.pearson:
+
+        # get (optional) fitting parameters if provided
+        if fitting_params is not None:
+            probabilities_of_zero = fitting_params["probabilities_of_zero"]
+            locs = fitting_params["locs"]
+            scales = fitting_params["scales"]
+            skews = fitting_params["skews"]
+        else:
+            probabilities_of_zero = None
+            locs = None
+            scales = None
+            skews = None
 
         # fit the scaled values to a Pearson Type III distribution
         # and transform to corresponding normalized sigmas
-        values = compute.transform_fitted_pearson(values,
-                                                  data_start_year,
-                                                  calibration_year_initial,
-                                                  calibration_year_final,
-                                                  periodicity)
+        values = compute.transform_fitted_pearson(
+            values,
+            data_start_year,
+            calibration_year_initial,
+            calibration_year_final,
+            periodicity,
+            probabilities_of_zero,
+            locs,
+            scales,
+            skews,
+        )
 
     else:
 
-        message = f"Unsupported distribution argument: {distribution}"
+        message = "Unsupported distribution argument: " + \
+                  "{dist}".format(dist=distribution)
         _logger.error(message)
         raise ValueError(message)
 
@@ -144,14 +183,17 @@ def spi(values: np.ndarray,
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def spei(precips_mm: np.ndarray,
-         pet_mm: np.ndarray,
-         scale: int,
-         distribution,
-         periodicity,
-         data_start_year: int,
-         calibration_year_initial: int,
-         calibration_year_final: int):
+def spei(
+        precips_mm: np.ndarray,
+        pet_mm: np.ndarray,
+        scale: int,
+        distribution: Distribution,
+        periodicity: compute.Periodicity,
+        data_start_year: int,
+        calibration_year_initial: int,
+        calibration_year_final: int,
+        fitting_params: dict = None,
+) -> np.ndarray:
     """
     Compute SPEI fitted to the gamma distribution.
 
@@ -181,6 +223,11 @@ def spei(precips_mm: np.ndarray,
         the two inputs cover the same period)
     :param calibration_year_initial: initial year of the calibration period
     :param calibration_year_final: final year of the calibration period
+    :param fitting_params: optional dictionary of pre-computed distribution
+        fitting parameters, if the distribution is gamma then this dict should
+        contain two arrays, keyed as "alphas" and "betas", and if the
+        distribution is Pearson then this dict should contain four arrays keyed
+        as "probabilities_of_zero", "locs", "scales", and "skews"
     :return: an array of SPEI values
     :rtype: numpy.ndarray of type float, of the same size and shape as the input
         PET and precipitation arrays
@@ -198,6 +245,11 @@ def spei(precips_mm: np.ndarray,
         _logger.error(message)
         raise ValueError(message)
 
+    # clip any negative values to zero
+    if np.amin(precips_mm) < 0.0:
+        _logger.warn("Input contains negative values -- all negatives clipped to zero")
+        precips_mm = np.clip(precips_mm, a_min=0.0, a_max=None)
+
     # subtract the PET from precipitation, adding an offset
     # to ensure that all values are positive
     p_minus_pet = (precips_mm.flatten() - pet_mm.flatten()) + 1000.0
@@ -212,28 +264,59 @@ def spei(precips_mm: np.ndarray,
 
     if distribution is Distribution.gamma:
 
+        # get (optional) fitting parameters if provided
+        if fitting_params is not None:
+            alphas = fitting_params["alphas"]
+            betas = fitting_params["betas"]
+        else:
+            alphas = None
+            betas = None
+
         # fit the scaled values to a gamma distribution and
         # transform to corresponding normalized sigmas
         transformed_fitted_values = \
-            compute.transform_fitted_gamma(scaled_values,
-                                           data_start_year,
-                                           calibration_year_initial,
-                                           calibration_year_final,
-                                           periodicity)
+            compute.transform_fitted_gamma(
+                scaled_values,
+                data_start_year,
+                calibration_year_initial,
+                calibration_year_final,
+                periodicity,
+                alphas,
+                betas,
+            )
 
     elif distribution is Distribution.pearson:
+
+        # get (optional) fitting parameters if provided
+        if fitting_params is not None:
+            probabilities_of_zero = fitting_params["probabilities_of_zero"]
+            locs = fitting_params["locs"]
+            scales = fitting_params["scales"]
+            skews = fitting_params["skews"]
+        else:
+            probabilities_of_zero = None
+            locs = None
+            scales = None
+            skews = None
 
         # fit the scaled values to a Pearson Type III distribution
         # and transform to corresponding normalized sigmas
         transformed_fitted_values = \
-            compute.transform_fitted_pearson(scaled_values,
-                                             data_start_year,
-                                             calibration_year_initial,
-                                             calibration_year_final,
-                                             periodicity)
+            compute.transform_fitted_pearson(
+                scaled_values,
+                data_start_year,
+                calibration_year_initial,
+                calibration_year_final,
+                periodicity,
+                probabilities_of_zero,
+                locs,
+                scales,
+                skews,
+            )
 
     else:
-        message = f"Unsupported distribution argument: {distribution}"
+        message = "Unsupported distribution argument: " + \
+                  "{dist}".format(dist=distribution)
         _logger.error(message)
         raise ValueError(message)
 
@@ -251,7 +334,7 @@ def spei(precips_mm: np.ndarray,
 @numba.jit
 def scpdsi(precip_time_series: np.ndarray,
            pet_time_series: np.ndarray,
-           awc,
+           awc: float,
            data_start_year: int,
            calibration_start_year: int,
            calibration_end_year: int):
@@ -282,7 +365,7 @@ def scpdsi(precip_time_series: np.ndarray,
 @numba.jit
 def pdsi(precip_time_series: np.ndarray,
          pet_time_series: np.ndarray,
-         awc,
+         awc: float,
          data_start_year: int,
          calibration_start_year: int,
          calibration_end_year: int):
@@ -315,7 +398,7 @@ def percentage_of_normal(values: np.ndarray,
                          data_start_year: int,
                          calibration_start_year: int,
                          calibration_end_year: int,
-                         periodicity):
+                         periodicity: compute.Periodicity) -> np.ndarray:
     """
     This function finds the percent of normal values (average of each calendar
     month or day over a specified calibration period of years) for a specified
@@ -424,7 +507,7 @@ def percentage_of_normal(values: np.ndarray,
 @numba.jit
 def pet(temperature_celsius: np.ndarray,
         latitude_degrees: float,
-        data_start_year: int):
+        data_start_year: int) -> np.ndarray:
     """
     This function computes potential evapotranspiration (PET) using
     Thornthwaite's equation.
@@ -473,7 +556,8 @@ def pet(temperature_celsius: np.ndarray,
                                     data_start_year)
 
     else:
-        message = (f"Invalid latitude value: {latitude_degrees} (must be " +
-                   "in degrees north, between -90.0 and 90.0 inclusive)")
+        message = ("Invalid latitude value: " + str(latitude_degrees) +
+                   " (must be in degrees north, between -90.0 and " +
+                   "90.0 inclusive)")
         _logger.error(message)
         raise ValueError(message)

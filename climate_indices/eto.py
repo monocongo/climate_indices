@@ -31,13 +31,8 @@ import numpy as np
 from climate_indices import utils
 
 # ------------------------------------------------------------------------------
-# set up a basic, global _logger
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s %(levelname)s %(message)s",
-    datefmt="%Y-%m-%d  %H:%M:%S",
-)
-_logger = logging.getLogger(__name__)
+# Retrieve logger and set desired logging level
+_logger = utils.get_logger(__name__, logging.DEBUG)
 
 # ------------------------------------------------------------------------------
 
@@ -63,14 +58,17 @@ _SOLAR_DECLINATION_RADIANS_MAX = np.deg2rad(23.45)
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def _sunset_hour_angle(latitude_radians, solar_declination_radians):
+def _sunset_hour_angle(
+        latitude_radians: float,
+        solar_declination_radians: float,
+) -> float:
     """
     Calculate sunset hour angle (*Ws*) from latitude and solar declination.
 
     Based on FAO equation 25 in Allen et al (1998).
 
-    :param latitude_radians: latitude in radians
-    :param solar_declination_radians: angle of solar declination in radians
+    :param float latitude_radians: latitude in radians
+    :param float solar_declination_radians: angle of solar declination in radians
     :return: sunset hour angle in radians
     :rtype: float
     """
@@ -88,10 +86,10 @@ def _sunset_hour_angle(latitude_radians, solar_declination_radians):
     # http://www.itacanet.org/the-sun-as-a-source-of-energy/part-1-solar-astronomy/
     if (not _SOLAR_DECLINATION_RADIANS_MIN
             <= solar_declination_radians <= _SOLAR_DECLINATION_RADIANS_MAX):
-        raise ValueError("solar declination angle outside "
-                         f"valid range [{_SOLAR_DECLINATION_RADIANS_MIN!r} "
-                         f"to {_SOLAR_DECLINATION_RADIANS_MAX!r}]: "
-                         f"{solar_declination_radians!r}")
+        raise ValueError("solar declination angle outside the valid range [" +
+                         str(_SOLAR_DECLINATION_RADIANS_MIN) + " to " +
+                         str(_SOLAR_DECLINATION_RADIANS_MAX) + "]: " +
+                         str(solar_declination_radians) + " (actual value)")
 
     # calculate the cosine of the sunset hour angle (*Ws* in FAO 25)
     # from latitude and solar declination
@@ -107,7 +105,9 @@ def _sunset_hour_angle(latitude_radians, solar_declination_radians):
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def _solar_declination(day_of_year):
+def _solar_declination(
+        day_of_year: int,
+) -> float:
     """
     Calculate the angle of solar declination from day of the year.
 
@@ -128,7 +128,9 @@ def _solar_declination(day_of_year):
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def _daylight_hours(sunset_hour_angle_radians):
+def _daylight_hours(
+        sunset_hour_angle_radians: float,
+) -> float:
     """
     Calculate daylight hours from a sunset hour angle.
 
@@ -144,8 +146,9 @@ def _daylight_hours(sunset_hour_angle_radians):
     # range of 0 to pi radians (180 degrees), inclusive
     # see http://mypages.iit.edu/~maslanka/SolarGeo.pdf
     if not 0.0 <= sunset_hour_angle_radians <= math.pi:
-        raise ValueError(f"sunset hour angle outside valid range [0.0 to {math.pi!r}]"
-                         f": {sunset_hour_angle_radians!r}")
+        raise ValueError("sunset hour angle outside valid range [0.0 to " +
+                         str(math.pi) + "] : " +
+                         str(sunset_hour_angle_radians) + " (actual value)")
 
     # calculate daylight hours from the sunset hour angle
     return (24.0 / math.pi) * sunset_hour_angle_radians
@@ -153,7 +156,10 @@ def _daylight_hours(sunset_hour_angle_radians):
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def _monthly_mean_daylight_hours(latitude_radians: float, leap=False):
+def _monthly_mean_daylight_hours(
+        latitude_radians: float,
+        leap=False,
+) -> np.ndarray:
     """
     :param latitude_radians: latitude in radians
     :param leap: whether or not values should be computed specific to leap years
@@ -192,9 +198,11 @@ def _monthly_mean_daylight_hours(latitude_radians: float, leap=False):
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def eto_thornthwaite(monthly_temps_celsius: np.ndarray,
-                     latitude_degrees: float,
-                     data_start_year: int):
+def eto_thornthwaite(
+        monthly_temps_celsius: np.ndarray,
+        latitude_degrees: float,
+        data_start_year: int,
+) -> np.ndarray:
     """
     Compute monthly potential evapotranspiration (PET) using the
     Thornthwaite (1948) method.
@@ -228,7 +236,6 @@ def eto_thornthwaite(monthly_temps_celsius: np.ndarray,
     :param data_start_year: year corresponding to the start of the dataset
     :return: estimated potential evapotranspiration, in millimeters/month
     :rtype: 1-D numpy.ndarray of floats with shape: (total # of months)
-
     """
 
     original_length = monthly_temps_celsius.size
@@ -294,10 +301,12 @@ def eto_thornthwaite(monthly_temps_celsius: np.ndarray,
 
 # ------------------------------------------------------------------------------
 @numba.jit
-def eto_hargreaves(daily_tmin_celsius: np.ndarray,
-                   daily_tmax_celsius: np.ndarray,
-                   daily_tmean_celsius: np.ndarray,
-                   latitude_degrees: float):
+def eto_hargreaves(
+        daily_tmin_celsius: np.ndarray,
+        daily_tmax_celsius: np.ndarray,
+        daily_tmean_celsius: np.ndarray,
+        latitude_degrees: float,
+) -> np.ndarray:
     """
     Compute daily potential evapotranspiration (PET) using the Hargreaves
     (1985) method. Based on equation 52 in Allen et al (1998).
@@ -312,7 +321,8 @@ def eto_hargreaves(daily_tmin_celsius: np.ndarray,
     :param daily_tmean_celsius: array of daily mean temperature values,
         in degrees Celsius
     :param latitude_degrees: latitude of location, in degrees north
-    :return: potential evapotranspiration over grass (ETo), in millimeters per day
+    :return: 1-D array of potential evapotranspiration over grass (ETo),
+        in millimeters per day
     """
 
     # validate the input data arrays
