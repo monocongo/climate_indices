@@ -130,6 +130,38 @@ def transformed_pearson3_monthly_fullperiod():
 
 
 @pytest.fixture(scope="module")
+def gamma_monthly():
+    """
+    Array of values corresponding to the gamma fitting parameters computed
+    from the precips_mm_monthly array using an application of the gamma
+    conversion/fitting algorithm provided in compute.py.
+
+    :return:
+    """
+    return np.load(
+        os.path.join(os.path.split(__file__)[0], "fixture",
+                     "gamma_monthly.npy")
+    )
+
+
+@pytest.fixture(scope="module")
+def gamma_daily():
+    """
+    Array of values corresponding to the gamma fitting parameters computed
+    from the precips_mm_daily array using an application of the gamma
+    conversion/fitting algorithm provided in compute.py.
+
+    :return:
+    """
+
+    return np.load(
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "gamma_daily.npy")
+    )
+
+
+@pytest.fixture(scope="module")
 def transformed_gamma_monthly():
     """
     Array of values corresponding to the precips_mm_monthly array, i.e. those
@@ -140,7 +172,7 @@ def transformed_gamma_monthly():
     """
     return np.load(
         os.path.join(os.path.split(__file__)[0], "fixture",
-                     "gamma_monthly.npy")
+                     "transformed_gamma_monthly.npy")
     )
 
 
@@ -157,7 +189,7 @@ def transformed_gamma_daily():
     return np.load(
         os.path.join(os.path.split(__file__)[0],
                      "fixture",
-                     "gamma_daily.npy")
+                     "transformed_gamma_daily.npy")
     )
 
 
