@@ -1577,6 +1577,7 @@ def main():  # type: () -> None
         parser = argparse.ArgumentParser()
         parser.add_argument(
             "--index",
+            type=str,
             help="Indices to compute",
             choices=["spi", "spei", "pnp", "scaled", "pet", "palmers", "all"],
             required=True,
@@ -1600,50 +1601,76 @@ def main():  # type: () -> None
             type=int,
         )
         parser.add_argument(
-            "--calibration_end_year", help="Final year of calibration period", type=int
+            "--calibration_end_year",
+            help="Final year of calibration period",
+            type=int,
         )
         parser.add_argument(
             "--netcdf_precip",
+            type=str,
             help="Precipitation NetCDF file to be used as input for indices computations",
         )
         parser.add_argument(
             "--var_name_precip",
+            type=str,
             help="Precipitation variable name used in the precipitation NetCDF file",
         )
         parser.add_argument(
             "--netcdf_temp",
+            type=str,
             help="Temperature NetCDF file to be used as input for indices computations",
         )
         parser.add_argument(
             "--var_name_temp",
+            type=str,
             help="Temperature variable name used in the temperature NetCDF file",
         )
         parser.add_argument(
             "--netcdf_pet",
+            type=str,
             help="PET NetCDF file to be used as input for SPEI and/or Palmer computations",
         )
         parser.add_argument(
-            "--var_name_pet", help="PET variable name used in the PET NetCDF file"
+            "--var_name_pet",
+            type=str,
+            help="PET variable name used in the PET NetCDF file",
         )
         parser.add_argument(
             "--netcdf_awc",
+            type=str,
             help="Available water capacity NetCDF file to be used as input for the Palmer computations",
         )
         parser.add_argument(
             "--var_name_awc",
+            type=str,
             help="Available water capacity variable name used in the AWC NetCDF file",
         )
         parser.add_argument(
             "--output_file_base",
+            type=str,
             help="Base output file path and name for the resulting output files",
             required=True,
         )
         parser.add_argument(
             "--multiprocessing",
-            help="Indices to compute",
+            help="options for multiprocessing -- single core, all cores but one, or all cores",
             choices=["single", "all_but_one", "all"],
             required=False,
             default="all_but_one",
+        )
+        parser.add_argument(
+            "--load_params",
+            type=str,
+            required=False,
+            help="path to input NetCDF file (to be read) "
+                 "containing distribution fitting parameters",
+        )
+        parser.add_argument(
+            "--save_params",
+            type=str,
+            required=False,
+            help="path to output NetCDF file (to be written) "
+                 "containing distribution fitting parameters",
         )
         arguments = parser.parse_args()
 
