@@ -121,6 +121,63 @@ def test_transform_fitted_gamma(
 
 
 # ------------------------------------------------------------------------------
+@pytest.mark.usefixtures(
+    "precips_mm_monthly",
+    "precips_mm_daily",
+    "data_year_start_monthly",
+    "data_year_end_monthly",
+    "data_year_start_daily",
+    "calibration_year_start_monthly",
+    "calibration_year_end_monthly",
+    "calibration_year_start_daily",
+    "calibration_year_end_daily",
+    "transformed_gamma_monthly",
+    "transformed_gamma_daily",
+)
+def test_gamma_parameters(
+        precips_mm_monthly,
+        precips_mm_daily,
+        data_year_start_monthly,
+        data_year_end_monthly,
+        data_year_start_daily,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
+        calibration_year_start_daily,
+        calibration_year_end_daily,
+        transformed_gamma_monthly,
+        transformed_gamma_daily,
+):
+    """
+    Test for the compute.gamma_parameters() function
+    """
+
+    # confirm that an input array of all NaNs results in the same array returned
+    all_nans = np.full(precips_mm_monthly.shape, np.NaN)
+    pytest.raises(
+        ValueError,
+        compute.gamma_parameters,
+        all_nans,
+        data_year_start_monthly,
+        data_year_start_monthly,
+        data_year_end_monthly,
+        compute.Periodicity.monthly,
+    )
+
+    computed_values = \
+        compute.gamma_parameters(
+            precips_mm_monthly,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            compute.Periodicity.monthly,
+        )
+    np.testing.assert_allclose(
+        computed_values,
+        transformed_gamma_monthly,
+        equal_nan=True,
+        err_msg="Pearson fit/transform not handling all-NaN arrays as expected")
+
+# ------------------------------------------------------------------------------
 @pytest.mark.usefixtures("precips_mm_monthly",
                          "precips_mm_daily",
                          "data_year_start_monthly",
