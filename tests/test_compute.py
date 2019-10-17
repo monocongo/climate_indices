@@ -131,8 +131,8 @@ def test_transform_fitted_gamma(
     "calibration_year_end_monthly",
     "calibration_year_start_daily",
     "calibration_year_end_daily",
-    "transformed_gamma_monthly",
-    "transformed_gamma_daily",
+    "gamma_monthly",
+    "gamma_daily",
 )
 def test_gamma_parameters(
         precips_mm_monthly,
@@ -144,8 +144,8 @@ def test_gamma_parameters(
         calibration_year_end_monthly,
         calibration_year_start_daily,
         calibration_year_end_daily,
-        transformed_gamma_monthly,
-        transformed_gamma_daily,
+        gamma_monthly,
+        gamma_daily,
 ):
     """
     Test for the compute.gamma_parameters() function
