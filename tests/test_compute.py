@@ -171,11 +171,30 @@ def test_gamma_parameters(
             calibration_year_end_monthly,
             compute.Periodicity.monthly,
         )
+
     np.testing.assert_allclose(
         computed_values,
-        transformed_gamma_monthly,
+        gamma_monthly,
         equal_nan=True,
-        err_msg="Pearson fit/transform not handling all-NaN arrays as expected")
+        err_msg="Monthly gamma fitting parameters not being computed as expected",
+    )
+
+    computed_values = \
+        compute.gamma_parameters(
+            precips_mm_daily,
+            data_year_start_daily,
+            calibration_year_start_daily,
+            calibration_year_end_daily,
+            compute.Periodicity.daily,
+        )
+
+    np.testing.assert_allclose(
+        computed_values,
+        gamma_daily,
+        equal_nan=True,
+        err_msg="Daily gamma fitting parameters not being computed as expected",
+    )
+
 
 # ------------------------------------------------------------------------------
 @pytest.mark.usefixtures("precips_mm_monthly",
