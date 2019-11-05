@@ -16,6 +16,9 @@ from climate_indices import compute, indices, utils
 # the number of worker processes we'll use for process pools
 _NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count() - 1
 
+# variable names for the distribution fitting parameters
+_FITTING_PARAMETER_VARIABLES = ("alpha", "beta", "skew", "loc", "scale", "prob_zero")
+
 # shared memory array dictionary keys
 _KEY_ARRAY = "array"
 _KEY_SHAPE = "shape"
@@ -102,8 +105,8 @@ def _validate_args(args):
         else:
             mesg = f"Invalid dimensions of the {variable_plain_name} " + \
                    f"variable: {dims}\nValid dimension names and " + \
-                   f"order: {expected_dimensions_grid} or "\
-                   f"{expected_dimensions_divisions} or "\
+                   f"order: {expected_dimensions_grid} or " + \
+                   f"{expected_dimensions_divisions} or " + \
                    f"{expected_dimensions_timeseries}"
             _logger.error(mesg)
             raise ValueError(mesg)
@@ -126,7 +129,7 @@ def _validate_args(args):
                                          ("division", "time"),
                                          ("division")]
 
-    # we can either compute and save or load from file, but not both
+    # for fitting parameters we can either compute and save or load from file, but not both
     if args.load_params and args.save_params:
         msg = "Both of the mutually exclusive fitting parameter "\
               "file options were specified (both load and save)"
@@ -134,6 +137,7 @@ def _validate_args(args):
         raise ValueError(msg)
 
     if args.load_params:
+
         # make sure the specified fitting parameters file exists
         if not os.path.exists(args.load_params):
             msg = f"The specified fitting parameters file {args.load_params} "\
@@ -146,7 +150,7 @@ def _validate_args(args):
 
             # confirm that all the fitting parameter variables are present
             missing_variables = []
-            for var in ("alpha", "beta", "skew", "loc", "scale", "prob_zero"):
+            for var in _FITTING_PARAMETER_VARIABLES:
                 if var not in dataset_fittings.variables:
                     missing_variables.append(var)
             if len(missing_variables) > 0:
@@ -762,6 +766,8 @@ def _compute_write_index(keyword_arguments):
         files.append(keyword_arguments["netcdf_temp"])
     if "netcdf_pet" in keyword_arguments:
         files.append(keyword_arguments["netcdf_pet"])
+    if "load_params" in keyword_arguments:
+        files.append(keyword_arguments["load_params"])
     if "input_type" not in keyword_arguments:
         raise ValueError("Missing the 'input_type' keyword argument")
     else:
@@ -784,6 +790,10 @@ def _compute_write_index(keyword_arguments):
         input_var_names.append(keyword_arguments["var_name_temp"])
     if "var_name_pet" in keyword_arguments:
         input_var_names.append(keyword_arguments["var_name_pet"])
+    # keep the parameter fitting variables if relevant
+    if ("load_params" in keyword_arguments) and \
+            (keyword_arguments["index"] not in ("pet", "palmers")):
+        input_var_names += _FITTING_PARAMETER_VARIABLES
     # keep the latitude variable if we're dealing with divisions
     if input_type == InputType.divisions:
         input_var_names.append("lat")
@@ -1751,16 +1761,20 @@ def main():  # type: () -> None
                 for dist in indices.Distribution:
 
                     # keyword arguments used for the SPI function
-                    kwrgs = {"index": "spi",
-                             "netcdf_precip": netcdf_precip,
-                             "var_name_precip": arguments.var_name_precip,
-                             "input_type": input_type,
-                             "scale": scale,
-                             "distribution": dist,
-                             "periodicity": arguments.periodicity,
-                             "calibration_start_year": arguments.calibration_start_year,
-                             "calibration_end_year": arguments.calibration_end_year,
-                             "output_file_base": arguments.output_file_base}
+                    kwrgs = {
+                        "index": "spi",
+                        "netcdf_precip": netcdf_precip,
+                        "var_name_precip": arguments.var_name_precip,
+                        "input_type": input_type,
+                        "scale": scale,
+                        "distribution": dist,
+                        "periodicity": arguments.periodicity,
+                        "calibration_start_year": arguments.calibration_start_year,
+                        "calibration_end_year": arguments.calibration_end_year,
+                        "output_file_base": arguments.output_file_base,
+                        "load_fitting_params": arguments.load_params,
+                        "save_fitting_params": arguments.save_params,
+                    }
 
                     # compute and write SPI
                     _compute_write_index(kwrgs)
