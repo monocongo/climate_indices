@@ -74,6 +74,31 @@ def _validate_args(args):
     :raise ValueError: if one or more of the command line arguments is invalid
     """
 
+    def validate_dimensions(
+            ds: xr.Dataset,
+            var_name: str,
+            variable_plain_name: str,
+    ):
+
+        # verify that the precipitation variable's dimensions are in the expected order
+        dims = ds[var_name].dims
+        if dims in expected_dimensions_grid:
+            _input_type = InputType.grid
+        elif dimensions in expected_dimensions_divisions:
+            _input_type = InputType.divisions
+        elif dimensions in expected_dimensions_timeseries:
+            _input_type = InputType.timeseries
+        else:
+            mesg = f"Invalid dimensions of the {variable_plain_name} " + \
+                   f"variable: {dims}\nValid dimension names and " + \
+                   f"order: {expected_dimensions_grid} or "\
+                   f"{expected_dimensions_divisions} or "\
+                   f"{expected_dimensions_timeseries}"
+            _logger.error(mesg)
+            raise ValueError(mesg)
+
+        return _input_type
+
     # the dimensions we expect to find for each data variable
     # (precipitation, temperature, and/or PET)
     expected_dimensions_divisions = [("time", "division"), ("division", "time")]
@@ -89,6 +114,36 @@ def _validate_args(args):
     expected_dimensions_divisions_awc = [("time", "division"),
                                          ("division", "time"),
                                          ("division")]
+
+    # we can either compute and save or load from file, but not both
+    if args.load_params and args.save_params:
+        msg = "Both of the mutually exclusive fitting parameter "\
+              "file options were specified (both load and save)"
+        _logger.error(msg)
+        raise ValueError(msg)
+
+    if args.load_params:
+        # make sure the specified fitting parameters file exists
+        if not os.path.exists(args.load_params):
+            msg = f"The specified fitting parameters file {args.load_params} "\
+                  "does not exist"
+            _logger.error(msg)
+            raise ValueError(msg)
+
+        # open the fitting parameters file and make sure it looks reasonable
+        with xr.open_dataset(args.load_params) as dataset_fittings:
+
+            # confirm that all the fitting parameter variables are present
+            missing_variables = []
+            for var in ("alpha", "beta", "skew", "loc", "scale", "prob_zero"):
+                if var not in dataset_fittings.variables:
+                    missing_variables.append(var)
+            if len(missing_variables) > 0:
+                msg = "The following fitting parameter variables are expected "\
+                      "but not present in the specified fitting parameters "\
+                      f"dataset ({args.load_params}): {missing_variables}"
+                _logger.error(msg)
+                raise ValueError(msg)
 
     # all indices except PET require a precipitation file
     if args.index != "pet":
@@ -115,20 +170,14 @@ def _validate_args(args):
                 _logger.error(msg)
                 raise ValueError(msg)
 
-            # verify that the precipitation variable's dimensions are in the expected order
-            dimensions = dataset_precip[args.var_name_precip].dims
-            if dimensions in expected_dimensions_grid:
-                input_type = InputType.grid
-            elif dimensions in expected_dimensions_divisions:
-                input_type = InputType.divisions
-            elif dimensions in expected_dimensions_timeseries:
-                input_type = InputType.timeseries
-            else:
-                msg = "Invalid dimensions of the precipitation " + \
-                      f"variable: {dimensions}\nValid dimension names and " + \
-                      f"order: {expected_dimensions_grid + expected_dimensions_divisions}"
-                _logger.error(msg)
-                raise ValueError(msg)
+            # verify that the precipitation variable's dimensions are in
+            # the expected order, and if so then determine the input type
+            input_type = \
+                validate_dimensions(
+                    dataset_precip,
+                    args.var_name_precip,
+                    "precipitation",
+                )
 
             # get the values of the precipitation coordinate variables,
             # for comparison against those of the other data variables
@@ -137,6 +186,7 @@ def _validate_args(args):
                 lons_precip = dataset_precip["lon"].values[:]
             elif input_type == InputType.divisions:
                 divisions_precip = dataset_precip["division"].values[:]
+            # TODO what if input_type == InputType.timeseries?
             times_precip = dataset_precip["time"].values[:]
 
     else:
@@ -165,23 +215,17 @@ def _validate_args(args):
                 _logger.error(msg)
                 raise ValueError(msg)
 
-            # verify that the temperature variable's dimensions are in the expected order
-            dimensions = dataset_temp[args.var_name_temp].dims
-            if dimensions in expected_dimensions_grid:
-                input_type = InputType.grid
-            elif dimensions in expected_dimensions_divisions:
-                input_type = InputType.divisions
-            elif dimensions in expected_dimensions_timeseries:
-                input_type = InputType.timeseries
-            else:
-                msg = "Invalid dimensions of the temperature variable: " + \
-                      f"{dimensions}\n(valid dimension names and " + \
-                      f"order: {[expected_dimensions_grid, expected_dimensions_divisions]}"
-                _logger.error(msg)
-                raise ValueError(msg)
+            # verify that the temperature variable's dimensions are in
+            # the expected order, and if so then determine the input type
+            input_type = \
+                validate_dimensions(
+                    dataset_temp,
+                    args.var_name_temp,
+                    "temperature",
+                )
 
     # SPEI and Palmers require either a PET file or a temperature file in order to compute PET
-    if args.index in ["spei", "scaled", "palmers"]:
+    if args.index in ("spei", "scaled", "palmers"):
 
         if args.netcdf_temp is None:
 
