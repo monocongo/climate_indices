@@ -79,8 +79,19 @@ def _validate_args(args):
             var_name: str,
             variable_plain_name: str,
     ):
+        """
+        Function to verify that a variable's dimensions are in one of the expected
+        dimension orders and if so then it will return the corresponding InputType.
 
-        # verify that the precipitation variable's dimensions are in the expected order
+        :param ds: xarray Dataset
+        :param var_name: variable name
+        :param variable_plain_name: plain English name/description of the variable
+        :return: the InputType matching to the variable's dimensions
+        :raises ValueError if the dimensions of the variable don't match with
+            one of the expected dimension orders
+        """
+
+        # verify that the variable's dimensions are in the expected order
         dims = ds[var_name].dims
         if dims in expected_dimensions_grid:
             _input_type = InputType.grid
