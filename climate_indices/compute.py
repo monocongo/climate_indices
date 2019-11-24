@@ -566,7 +566,56 @@ def gamma_parameters(
 
 
 # ------------------------------------------------------------------------------
-@numba.jit
+def scale_values(
+        values: np.ndarray,
+        scale: int,
+        periodicity: Periodicity,
+):
+
+    # we expect to operate upon a 1-D array, so if we've been passed a 2-D array
+    # then we flatten it, otherwise raise an error
+    shape = values.shape
+    if len(shape) == 2:
+        values = values.flatten()
+    elif len(shape) != 1:
+        message = "Invalid shape of input array: {shape}".format(shape=shape) + \
+                  " -- only 1-D and 2-D arrays are supported"
+        _logger.error(message)
+        raise ValueError(message)
+
+    # if we're passed all missing values then we can't compute
+    # anything, so we return the same array of missing values
+    if (np.ma.is_masked(values) and values.mask.all()) or np.all(np.isnan(values)):
+        return values
+
+    # clip any negative values to zero
+    if np.amin(values) < 0.0:
+        _logger.warn("Input contains negative values -- all negatives clipped to zero")
+        values = np.clip(values, a_min=0.0, a_max=None)
+
+    # get a sliding sums array, with each time step's value scaled
+    # by the specified number of time steps
+    scaled_values = sum_to_scale(values, scale)
+
+    # reshape precipitation values to (years, 12) for monthly,
+    # or to (years, 366) for daily
+    if periodicity is Periodicity.monthly:
+
+        scaled_values = utils.reshape_to_2d(scaled_values, 12)
+
+    elif periodicity is Periodicity.daily:
+
+        scaled_values = utils.reshape_to_2d(scaled_values, 366)
+
+    else:
+
+        raise ValueError("Invalid periodicity argument: %s" % periodicity)
+
+    return scaled_values
+
+
+# ------------------------------------------------------------------------------
+#@numba.jit
 def transform_fitted_gamma(
         values: np.ndarray,
         data_start_year: int,
