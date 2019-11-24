@@ -7,7 +7,7 @@ from climate_indices import compute, indices
 
 
 # ------------------------------------------------------------------------------
-def main():
+if __name__ == "__main__":
 
     # parse the command line arguments
     parser = argparse.ArgumentParser()
@@ -108,7 +108,7 @@ def main():
         help="path to output NetCDF file (to be written) "
              "containing distribution fitting parameters",
     )
-    cli_args = parser.parse_args()
+    cli_args = vars(parser.parse_args())
 
     if cli_args["index"] == "spi":
 
@@ -133,8 +133,8 @@ def main():
             spi = np.full(shape=da_prcp.shape, fill_value=np.NaN)
 
             # loop over each grid cell
-            for lat_index in range(da_prcp.shape[0]):
-                for lon_index in range(da_prcp.shape[1]):
+            for lat_index in range(total_lats):
+                for lon_index in range(total_lons):
 
                     # get the values for the lat/lon grid cell
                     values = da_prcp[lat_index, lon_index]
@@ -162,8 +162,8 @@ def main():
                         )
 
                     gamma_parameters = {
-                        "alphas": alphas,
-                        "betas": betas,
+                        "alphas": alphas[lat_index, lon_index],
+                        "betas": betas[lat_index, lon_index],
                     }
                     spi[lat_index, lon_index] = \
                         indices.spi(
@@ -182,10 +182,20 @@ def main():
 
             # create a new DataArray for this scale's SPI and write as NetCDF
             da_spi = da_prcp.copy(data=spi)
+
+            # copy the original Dataset and drop all the variables
             ds_spi = ds.copy()
-            # TODO drop all variables and add SPI as a data variable with
-            #  corresponding attributes to describe the variable
-            ds_spi.to_netcdf()
+            for var in ds_spi.data_vars:
+                ds_spi = ds_spi.drop(var)
+
+            # add the SPI DataArray as the only data variable in the Dataset
+            spi_var_name = f'spi_gamma_{str(scale).zfill(2)}'
+            ds_spi[spi_var_name] = da_spi
+
+            # TODO create attributes to describe the SPI variable
+
+            # write the SPI as NetCDF
+            ds_spi.to_netcdf(f"{cli_args['output_file_base']}_{spi_var_name}.nc")
 
     else:
         raise ValueError(f"Unsupported index computation: {cli_args['index']}")
