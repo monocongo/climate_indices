@@ -1490,7 +1490,7 @@ def _compute_scpdsi(
         dry_M: float,
         dry_B: float,
         calibration_complete: bool,
-        tolerance: float=0.0,
+        tolerance: float = 0.0,
 ) -> (np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray,):
     """
     This function computes self-calibrated PDSI and related intermediate values.
@@ -2330,8 +2330,8 @@ def pdsi(
         pet_time_series: np.ndarray,
         awc: float,
         data_start_year: int,
-        calibration_start_year: int=1931,
-        calibration_end_year: int=1990,
+        calibration_start_year: int = 1931,
+        calibration_end_year: int = 1990,
 ) -> (np.ndarray, np.ndarray, np.ndarray, np.ndarray,):
     """
     This function computes the Palmer Drought Severity Index (PDSI),

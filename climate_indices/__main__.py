@@ -839,9 +839,11 @@ def _compute_write_index(keyword_arguments):
                 )
             elif temp_unit in ("k", "kelvin"):
                 dataset[temp_var_name].values = \
-                    scipy.constants.convert_temperature(dataset[temp_var_name].values,
-                                                        "k",
-                                                        "c")
+                    scipy.constants.convert_temperature(
+                        dataset[temp_var_name].values,
+                        "k",
+                        "c",
+                    )
             else:
                 raise ValueError(f"Unsupported temperature units: {temp_unit}")
 
@@ -860,10 +862,12 @@ def _compute_write_index(keyword_arguments):
                                                                input_var_names)
     else:
         output_shape = \
-            _drop_data_into_shared_arrays_grid(dataset,
-                                               input_var_names,
-                                               keyword_arguments["periodicity"],
-                                               keyword_arguments["data_start_year"])
+            _drop_data_into_shared_arrays_grid(
+                dataset,
+                input_var_names,
+                keyword_arguments["periodicity"],
+                keyword_arguments["data_start_year"],
+            )
 
     # build an arguments dictionary appropriate to the index we'll compute
     args = _build_arguments(keyword_arguments)

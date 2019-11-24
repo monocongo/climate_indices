@@ -410,10 +410,10 @@ def transform_fitted_pearson(
         calibration_start_year: int,
         calibration_end_year: int,
         periodicity: Periodicity,
-        probabilities_of_zero: np.ndarray=None,
-        locs: np.ndarray=None,
-        scales: np.ndarray=None,
-        skews: np.ndarray=None,
+        probabilities_of_zero: np.ndarray = None,
+        locs: np.ndarray = None,
+        scales: np.ndarray = None,
+        skews: np.ndarray = None,
 ) -> np.ndarray:
     """
     Fit values to a Pearson Type III distribution and transform the values
@@ -500,6 +500,7 @@ def gamma_parameters(
         periodicity: Periodicity,
 ) -> (np.ndarray, np.ndarray):
     """
+    Computes the gamma distribution parameters alpha and beta.
 
     :param values: 2-D array of values, with each row typically representing a year
                    containing twelve columns representing the respective calendar
@@ -518,7 +519,7 @@ def gamma_parameters(
         year filled with NaN values, with array size == (# years * 366)
     :return: two 2-D arrays of gamma fitting parameter values, corresponding in size
         and shape of the input array
-    :rtype: tuple of two 2-D numpy.ndarrays of floats
+    :rtype: tuple of two 2-D numpy.ndarrays of floats, alphas and betas
     """
 
     # if we're passed all missing values then we can't compute anything,
@@ -572,8 +573,8 @@ def transform_fitted_gamma(
         calibration_start_year: int,
         calibration_end_year: int,
         periodicity: Periodicity,
-        alphas: np.ndarray=None,
-        betas: np.ndarray=None,
+        alphas: np.ndarray = None,
+        betas: np.ndarray = None,
 ) -> np.ndarray:
     """
     Fit values to a gamma distribution and transform the values to corresponding
