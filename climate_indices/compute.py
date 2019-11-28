@@ -615,7 +615,7 @@ def scale_values(
 
 
 # ------------------------------------------------------------------------------
-#@numba.jit
+@numba.jit
 def transform_fitted_gamma(
         values: np.ndarray,
         data_start_year: int,
