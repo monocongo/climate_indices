@@ -44,7 +44,17 @@ class Periodicity(Enum):
         try:
             return Periodicity[s]
         except KeyError:
-            raise ValueError()
+            raise ValueError(f"No periodicity enumeration corresponding to {s}")
+
+    def unit(self):
+        if self.name == "monthly":
+            unit = "month"
+        elif self.name == "daily":
+            unit = "day"
+        else:
+            raise ValueError(f"No periodicity unit corresponding to {self.name}")
+
+        return unit
 
 
 # ------------------------------------------------------------------------------
@@ -403,7 +413,7 @@ def _pearson_fit(
 
 
 # ------------------------------------------------------------------------------
-@numba.jit
+#@numba.jit
 def transform_fitted_pearson(
         values: np.ndarray,
         data_start_year: int,
