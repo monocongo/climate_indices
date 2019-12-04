@@ -262,7 +262,6 @@ def _drop_data_into_shared_arrays_grid(
         var_names_climate: List[str],
         var_names_fitting: List[str],
         periodicity: compute.Periodicity,
-        data_start_year: int,
 ):
     """
     Copies arrays from an xarray Dataset into shared memory arrays.
@@ -272,7 +271,6 @@ def _drop_data_into_shared_arrays_grid(
     :param var_names_climate: names of variables to be copied into shared memory
     :param var_names_fitting: names of variables to be copied into shared memory
     :param periodicity: monthly or daily
-    :param data_start_year: initial year of the data
     """
 
     # get the data arrays we'll use later in the index computations
@@ -313,13 +311,13 @@ def _drop_data_into_shared_arrays_grid(
 
         # convert daily values into 366-day years
         if periodicity == compute.Periodicity.daily:
-            initial_year = int(str(dataset_climatology["time"][0].data)[0:4])
-            final_year = int(str(dataset_climatology["time"][-1].data)[0:4])
+            initial_year = int(dataset_climatology["time"][0].dt.year)
+            final_year = int(dataset_climatology["time"][-1].dt.year)
             total_years = final_year - initial_year + 1
             var_values = np.apply_along_axis(utils.transform_to_366day,
                                              len(dims) - 1,
                                              dataset_climatology[var_name].values,
-                                             data_start_year,
+                                             initial_year,
                                              total_years)
 
         else:  # assumed to be monthly
@@ -364,13 +362,13 @@ def _drop_data_into_shared_arrays_grid(
 
         # convert daily values into 366-day years
         if periodicity == compute.Periodicity.daily:
-            initial_year = int(str(dataset_climatology["time"][0].data)[0:4])
-            final_year = int(str(dataset_climatology["time"][-1].data)[0:4])
+            initial_year = int(dataset_climatology["time"][0].dt.year)
+            final_year = int(dataset_climatology["time"][-1].dt.year)
             total_years = final_year - initial_year + 1
             var_values = np.apply_along_axis(utils.transform_to_366day,
                                              len(dims) - 1,
                                              dataset_fitting[var_name].values,
-                                             data_start_year,
+                                             initial_year,
                                              total_years)
 
         else:  # assumed to be monthly
@@ -534,88 +532,118 @@ def _compute_write_index(keyword_arguments):
                 attrs=global_attrs,
             )
 
+        # build DataArrays for the parameter fittings we'll compute
+        # (only if not already in the Dataset when loading from existing file)
+        fitting_var_name_suffix = f"{keyword_arguments['scale']}_{keyword_arguments['periodicity'].unit()}"
         if keyword_arguments["distribution"] == indices.Distribution.gamma:
 
-            alpha_attrs = {
-                'description': 'shape parameter of the gamma distribution (also referred to as the concentration) ' + \
-                               f'computed from the {keyword_arguments["scale"]}-month scaled precipitation values',
-            }
-            alpha_var_name = f"alpha_{str(keyword_arguments['scale']).zfill(2)}"
-            da_alpha = xr.DataArray(
-                data=np.full(shape=data_shape, fill_value=np.NaN),
-                coords=fitting_coords,
-                dims=tuple(fitting_coords.keys()),
-                name=alpha_var_name,
-                attrs=alpha_attrs,
-            )
-            beta_attrs = {
-                'description': '1 / scale of the distribution (also referred to as the rate) ' + \
-                               f'computed from the {keyword_arguments["scale"]}-month scaled precipitation values',
-            }
-            beta_var_name = f"beta_{str(keyword_arguments['scale']).zfill(2)}"
-            da_beta = xr.DataArray(
-                data=np.full(shape=data_shape, fill_value=np.NaN),
-                coords=fitting_coords,
-                dims=tuple(fitting_coords.keys()),
-                name=beta_var_name,
-                attrs=beta_attrs,
-            )
-            ds_fitting[alpha_var_name] = da_alpha
-            ds_fitting[beta_var_name] = da_beta
+            # add an empty DataArray to the fitting Dataset for alpha if not present
+            alpha_var_name = f"alpha_{fitting_var_name_suffix}"
+            if (keyword_arguments["load_params"] is None) and (alpha_var_name not in ds_fitting.data_vars):
+
+                alpha_attrs = {
+                    'description': 'shape parameter of the gamma distribution (also referred to as the concentration) ' + \
+                                   f'computed from the {keyword_arguments["scale"]}-month scaled precipitation values',
+                }
+                da_alpha = xr.DataArray(
+                    data=np.full(shape=data_shape, fill_value=np.NaN),
+                    coords=fitting_coords,
+                    dims=tuple(fitting_coords.keys()),
+                    name=alpha_var_name,
+                    attrs=alpha_attrs,
+                )
+                ds_fitting[alpha_var_name] = da_alpha
+
+            # add an empty DataArray to the fitting Dataset for beta if not present
+            beta_var_name = f"beta_{fitting_var_name_suffix}"
+            if (keyword_arguments["load_params"] is None) and (beta_var_name not in ds_fitting.data_vars):
+
+                beta_attrs = {
+                    'description': '1 / scale of the distribution (also referred to as the rate) ' + \
+                                   f'computed from the {keyword_arguments["scale"]}-month scaled precipitation values',
+                }
+                da_beta = xr.DataArray(
+                    data=np.full(shape=data_shape, fill_value=np.NaN),
+                    coords=fitting_coords,
+                    dims=tuple(fitting_coords.keys()),
+                    name=beta_var_name,
+                    attrs=beta_attrs,
+                )
+                ds_fitting[beta_var_name] = da_beta
 
         elif keyword_arguments["distribution"] == indices.Distribution.pearson:
 
-            prob_zero_attrs = {
-                'description': 'probability of zero values within calibration period',
-            }
-            prob_zero_var_name = f"prob_zero_{keyword_arguments['scale']}_{keyword_arguments['periodicity'].unit()}"
-            da_prob_zero = xr.DataArray(
-                data=np.full(shape=data_shape, fill_value=np.NaN),
-                coords=fitting_coords,
-                dims=tuple(fitting_coords.keys()),
-                name=prob_zero_var_name,
-                attrs=prob_zero_attrs,
-            )
-            ds_fitting[prob_zero_var_name] = da_prob_zero
-            scale_attrs = {
-                'description': 'scale parameter for Pearson Type III',
-            }
-            scale_var_name = f"scale_{keyword_arguments['scale']}_{keyword_arguments['periodicity'].unit()}"
-            da_scale = xr.DataArray(
-                data=np.full(shape=data_shape, fill_value=np.NaN),
-                coords=fitting_coords,
-                dims=tuple(fitting_coords.keys()),
-                name=scale_var_name,
-                attrs=scale_attrs,
-            )
-            ds_fitting[scale_var_name] = da_scale
-            skew_attrs = {
-                'description': 'skew parameter for Pearson Type III',
-            }
-            skew_var_name = f"skew_{keyword_arguments['scale']}_{keyword_arguments['periodicity'].unit()}"
-            da_skew = xr.DataArray(
-                data=np.full(shape=data_shape, fill_value=np.NaN),
-                coords=fitting_coords,
-                dims=tuple(fitting_coords.keys()),
-                name=skew_var_name,
-                attrs=skew_attrs,
-            )
-            ds_fitting[skew_var_name] = da_skew
-            loc_attrs = {
-                'description': 'loc parameter for Pearson Type III',
-            }
-            loc_var_name = f"loc_{keyword_arguments['scale']}_{keyword_arguments['periodicity'].unit()}"
-            da_loc = xr.DataArray(
-                data=np.full(shape=data_shape, fill_value=np.NaN),
-                coords=fitting_coords,
-                dims=tuple(fitting_coords.keys()),
-                name=loc_var_name,
-                attrs=loc_attrs,
-            )
-            ds_fitting[loc_var_name] = da_loc
+            # add an empty DataArray to the fitting Dataset for probability of zero if not present
+            prob_zero_var_name = f"prob_zero_{fitting_var_name_suffix}"
+            if (keyword_arguments["load_params"] is None) and \
+                    (prob_zero_var_name not in ds_fitting.data_vars):
+
+                prob_zero_attrs = {
+                    'description': 'probability of zero values within calibration period',
+                }
+                da_prob_zero = xr.DataArray(
+                    data=np.full(shape=data_shape, fill_value=np.NaN),
+                    coords=fitting_coords,
+                    dims=tuple(fitting_coords.keys()),
+                    name=prob_zero_var_name,
+                    attrs=prob_zero_attrs,
+                )
+                ds_fitting[prob_zero_var_name] = da_prob_zero
+
+            # add an empty DataArray to the fitting Dataset for scale parameter if not present
+            scale_var_name = f"scale_{fitting_var_name_suffix}"
+            if (keyword_arguments["load_params"] is None) and \
+                    (scale_var_name not in ds_fitting.data_vars):
+
+                scale_attrs = {
+                    'description': 'scale parameter for Pearson Type III',
+                }
+                scale_var_name = f"scale_{keyword_arguments['scale']}_{keyword_arguments['periodicity'].unit()}"
+                da_scale = xr.DataArray(
+                    data=np.full(shape=data_shape, fill_value=np.NaN),
+                    coords=fitting_coords,
+                    dims=tuple(fitting_coords.keys()),
+                    name=scale_var_name,
+                    attrs=scale_attrs,
+                )
+                ds_fitting[scale_var_name] = da_scale
+
+            # add an empty DataArray to the fitting Dataset for skew parameter if not present
+            skew_var_name = f"skew_{fitting_var_name_suffix}"
+            if (keyword_arguments["load_params"] is None) and \
+                    (skew_var_name not in ds_fitting.data_vars):
+
+                skew_attrs = {
+                    'description': 'skew parameter for Pearson Type III',
+                }
+                da_skew = xr.DataArray(
+                    data=np.full(shape=data_shape, fill_value=np.NaN),
+                    coords=fitting_coords,
+                    dims=tuple(fitting_coords.keys()),
+                    name=skew_var_name,
+                    attrs=skew_attrs,
+                )
+                ds_fitting[skew_var_name] = da_skew
+
+            # add an empty DataArray to the fitting Dataset for loc parameter if not present
+            loc_var_name = f"loc_{fitting_var_name_suffix}"
+            if (keyword_arguments["load_params"] is None) and \
+                    (loc_var_name not in ds_fitting.data_vars):
+
+                loc_attrs = {
+                    'description': 'loc parameter for Pearson Type III',
+                }
+                da_loc = xr.DataArray(
+                    data=np.full(shape=data_shape, fill_value=np.NaN),
+                    coords=fitting_coords,
+                    dims=tuple(fitting_coords.keys()),
+                    name=loc_var_name,
+                    attrs=loc_attrs,
+                )
+                ds_fitting[loc_var_name] = da_loc
 
     # get the initial year of the data
-    data_start_year = int(str(ds_precip["time"].values[0])[0:4])
+    data_start_year = int(ds_precip['time'][0].dt.year)
     keyword_arguments["data_start_year"] = data_start_year
 
     # the shape of output variables is assumed to match that of the input,
@@ -645,20 +673,18 @@ def _compute_write_index(keyword_arguments):
             ds_precip,
             ds_fitting,
             input_var_names,
+            ds_fitting.data_vars,
             keyword_arguments["periodicity"],
-            keyword_arguments["data_start_year"],
         )
 
-    # use the temperature shape if computing PET, otherwise precipitation
-    if keyword_arguments["index"] == "pet":
-        output_shape = ds_precip[keyword_arguments["var_name_temp"]].shape
-    else:
-        output_shape = ds_precip[keyword_arguments["var_name_precip"]].shape
+    # use the precipitation shape as the output shape for the index values
+    output_shape = ds_precip[keyword_arguments["var_name_precip"]].shape
 
     # build an arguments dictionary appropriate to the index we'll compute
     args = _build_arguments(keyword_arguments)
 
-    # add an array to hold results to the dictionary of arrays
+    # add an array to hold index computation results
+    # to our dictionary of shared memory arrays
     if _KEY_RESULT not in _global_shared_arrays:
         _global_shared_arrays[_KEY_RESULT] = {
             _KEY_ARRAY: multiprocessing.Array("d", int(np.prod(output_shape))),
