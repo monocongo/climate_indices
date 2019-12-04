@@ -256,24 +256,32 @@ def _get_variable_attributes(args_dict):
 
 
 # ------------------------------------------------------------------------------
-def _drop_data_into_shared_arrays_grid(dataset: xr.Dataset,
-                                       var_names: list,
-                                       periodicity: compute.Periodicity,
-                                       data_start_year: int):
+def _drop_data_into_shared_arrays_grid(
+        dataset_climatology: xr.Dataset,
+        dataset_fitting: xr.Dataset,
+        var_names_climate: List[str],
+        var_names_fitting: List[str],
+        periodicity: compute.Periodicity,
+        data_start_year: int,
+):
     """
     Copies arrays from an xarray Dataset into shared memory arrays.
 
-    :param dataset:
-    :param var_names: names of variables to be copied into shared memory
+    :param dataset_climatology: Dataset containing climatology value arrays
+    :param dataset_fitting: Dataset containing distribution fitting parameter arrays
+    :param var_names_climate: names of variables to be copied into shared memory
+    :param var_names_fitting: names of variables to be copied into shared memory
     :param periodicity: monthly or daily
     :param data_start_year: initial year of the data
     """
 
     # get the data arrays we'll use later in the index computations
     global _global_shared_arrays
-    expected_dims_3d = (
+    expected_dims_3d_climate = (
         ("lat", "lon", "time"),
         ("lon", "lat", "time"),
+    )
+    expected_dims_3d_fitting = (
         ("lat", "lon", "month"),
         ("lon", "lat", "month"),
         ("lat", "lon", "day"),
@@ -281,12 +289,14 @@ def _drop_data_into_shared_arrays_grid(dataset: xr.Dataset,
     )
     expected_dims_2d = (("lat", "lon"), ("lon", "lat"))
     expected_dims_1d = (("time",),)
-    for var_name in var_names:
+
+    # copy all variables from climatology Dataset into shared memory arrays
+    for var_name in var_names_climate:
 
         # confirm that the dimensions of the data array are valid
-        dims = dataset[var_name].dims
+        dims = dataset_climatology[var_name].dims
         if len(dims) == 3:
-            if dims not in expected_dims_3d:
+            if dims not in expected_dims_3d_climate:
                 message = f"Invalid dimensions for variable '{var_name}': {dims}"
                 _logger.error(message)
                 raise ValueError(message)
@@ -303,17 +313,17 @@ def _drop_data_into_shared_arrays_grid(dataset: xr.Dataset,
 
         # convert daily values into 366-day years
         if periodicity == compute.Periodicity.daily:
-            initial_year = int(str(dataset["time"][0].data)[0:4])
-            final_year = int(str(dataset["time"][-1].data)[0:4])
+            initial_year = int(str(dataset_climatology["time"][0].data)[0:4])
+            final_year = int(str(dataset_climatology["time"][-1].data)[0:4])
             total_years = final_year - initial_year + 1
             var_values = np.apply_along_axis(utils.transform_to_366day,
                                              len(dims) - 1,
-                                             dataset[var_name].values,
+                                             dataset_climatology[var_name].values,
                                              data_start_year,
                                              total_years)
 
         else:  # assumed to be monthly
-            var_values = dataset[var_name].values
+            var_values = dataset_climatology[var_name].values
 
         # create a shared memory array, wrap it as a numpy array and copy
         # copy the data (values) from this variable's DataArray
@@ -329,7 +339,55 @@ def _drop_data_into_shared_arrays_grid(dataset: xr.Dataset,
         }
 
         # drop the variable from the xarray Dataset (we're assuming this frees the memory)
-        dataset = dataset.drop(var_name)
+        dataset_climatology = dataset_climatology.drop(var_name)
+
+    # copy all variables from fitting parameters Dataset into shared memory arrays
+    for var_name in var_names_fitting:
+
+        # confirm that the dimensions of the data array are valid
+        dims = dataset_fitting[var_name].dims
+        if len(dims) == 3:
+            if dims not in expected_dims_3d_fitting:
+                message = f"Invalid dimensions for variable '{var_name}': {dims}"
+                _logger.error(message)
+                raise ValueError(message)
+        elif len(dims) == 2:
+            if dims not in expected_dims_2d:
+                message = f"Invalid dimensions for variable '{var_name}': {dims}"
+                _logger.error(message)
+                raise ValueError(message)
+        elif len(dims) == 1:
+            if dims not in expected_dims_1d:
+                message = f"Invalid dimensions for variable '{var_name}': {dims}"
+                _logger.error(message)
+                raise ValueError(message)
+
+        # convert daily values into 366-day years
+        if periodicity == compute.Periodicity.daily:
+            initial_year = int(str(dataset_climatology["time"][0].data)[0:4])
+            final_year = int(str(dataset_climatology["time"][-1].data)[0:4])
+            total_years = final_year - initial_year + 1
+            var_values = np.apply_along_axis(utils.transform_to_366day,
+                                             len(dims) - 1,
+                                             dataset_fitting[var_name].values,
+                                             data_start_year,
+                                             total_years)
+
+        else:  # assumed to be monthly
+            var_values = dataset_fitting[var_name].values
+
+        # create a shared memory array, wrap it as a numpy array and copy
+        # copy the data (values) from this variable's DataArray
+        shared_array = multiprocessing.Array("d", int(np.prod(var_values.shape)))
+        shared_array_np = \
+            np.frombuffer(shared_array.get_obj()).reshape(var_values.shape)
+        np.copyto(shared_array_np, var_values)
+
+        # add to the dictionary of arrays
+        _global_shared_arrays[var_name] = {
+            _KEY_ARRAY: shared_array,
+            _KEY_SHAPE: var_values.shape,
+        }
 
 
 # ------------------------------------------------------------------------------
@@ -413,7 +471,7 @@ def _compute_write_index(keyword_arguments):
             chunks = {"time": -1}
         else:
             raise ValueError(f"Invalid 'input_type' keyword argument: {input_type}")
-    dataset = xr.open_mfdataset(files, chunks=chunks)
+    ds_precip = xr.open_mfdataset(files, chunks=chunks)
 
     # trim out all data variables from the dataset except the ones we'll need
     input_var_names = []
@@ -422,9 +480,9 @@ def _compute_write_index(keyword_arguments):
     # only keep the latitude variable if we're dealing with divisions
     if input_type == InputType.divisions:
         input_var_names.append("lat")
-    for var in dataset.data_vars:
+    for var in ds_precip.data_vars:
         if var not in input_var_names:
-            dataset = dataset.drop(var)
+            ds_precip = ds_precip.drop(var)
 
     # add placeholder variables in the Dataset to hold the fitting parameters we'll compute
     if (("save_params" in keyword_arguments) and \
@@ -440,11 +498,11 @@ def _compute_write_index(keyword_arguments):
 
         time_coord_name = keyword_arguments['periodicity'].unit()
         if input_type == InputType.grid:
-            fitting_coords = {"lat": dataset.lat, "lon": dataset.lon, time_coord_name: range(period_times)}
-            data_shape = (len(dataset.lat), len(dataset.lon), period_times)
+            fitting_coords = {"lat": ds_precip.lat, "lon": ds_precip.lon, time_coord_name: range(period_times)}
+            data_shape = (len(ds_precip.lat), len(ds_precip.lon), period_times)
         elif input_type == InputType.divisions:
-            fitting_coords = {"division": dataset.division, time_coord_name: range(period_times)}
-            data_shape = (len(dataset.division), period_times)
+            fitting_coords = {"division": ds_precip.division, time_coord_name: range(period_times)}
+            data_shape = (len(ds_precip.division), period_times)
         elif input_type == InputType.timeseries:
             fitting_coords = {time_coord_name: range(period_times)}
             data_shape = (period_times,)
@@ -453,9 +511,9 @@ def _compute_write_index(keyword_arguments):
 
         # open the dataset if it's already been written to file, otherwise create it
         if os.path.exists(keyword_arguments["save_params"]):
-            dataset_fitting = xr.open_dataset(keyword_arguments["save_params"])
+            ds_fitting = xr.open_dataset(keyword_arguments["save_params"])
         elif keyword_arguments["load_params"] is not None:
-            dataset_fitting = xr.open_dataset(keyword_arguments["load_params"])
+            ds_fitting = xr.open_dataset(keyword_arguments["load_params"])
         else:
             attrs_to_copy = [
                 'Conventions',
@@ -470,8 +528,8 @@ def _compute_write_index(keyword_arguments):
                 'geospatial_lat_units',
                 'geospatial_lon_units',
             ]
-            global_attrs = {key: value for (key, value) in dataset.attrs.items() if key in attrs_to_copy}
-            dataset_fitting = xr.Dataset(
+            global_attrs = {key: value for (key, value) in ds_precip.attrs.items() if key in attrs_to_copy}
+            ds_fitting = xr.Dataset(
                 coords=fitting_coords,
                 attrs=global_attrs,
             )
@@ -502,8 +560,8 @@ def _compute_write_index(keyword_arguments):
                 name=beta_var_name,
                 attrs=beta_attrs,
             )
-            dataset_fitting[alpha_var_name] = da_alpha
-            dataset_fitting[beta_var_name] = da_beta
+            ds_fitting[alpha_var_name] = da_alpha
+            ds_fitting[beta_var_name] = da_beta
 
         elif keyword_arguments["distribution"] == indices.Distribution.pearson:
 
@@ -518,7 +576,7 @@ def _compute_write_index(keyword_arguments):
                 name=prob_zero_var_name,
                 attrs=prob_zero_attrs,
             )
-            dataset_fitting[prob_zero_var_name] = da_prob_zero
+            ds_fitting[prob_zero_var_name] = da_prob_zero
             scale_attrs = {
                 'description': 'scale parameter for Pearson Type III',
             }
@@ -530,7 +588,7 @@ def _compute_write_index(keyword_arguments):
                 name=scale_var_name,
                 attrs=scale_attrs,
             )
-            dataset_fitting[scale_var_name] = da_scale
+            ds_fitting[scale_var_name] = da_scale
             skew_attrs = {
                 'description': 'skew parameter for Pearson Type III',
             }
@@ -542,7 +600,7 @@ def _compute_write_index(keyword_arguments):
                 name=skew_var_name,
                 attrs=skew_attrs,
             )
-            dataset_fitting[skew_var_name] = da_skew
+            ds_fitting[skew_var_name] = da_skew
             loc_attrs = {
                 'description': 'loc parameter for Pearson Type III',
             }
@@ -554,37 +612,38 @@ def _compute_write_index(keyword_arguments):
                 name=loc_var_name,
                 attrs=loc_attrs,
             )
-            dataset_fitting[loc_var_name] = da_loc
+            ds_fitting[loc_var_name] = da_loc
 
     # get the initial year of the data
-    data_start_year = int(str(dataset["time"].values[0])[0:4])
+    data_start_year = int(str(ds_precip["time"].values[0])[0:4])
     keyword_arguments["data_start_year"] = data_start_year
 
     # the shape of output variables is assumed to match that of the input,
     # so use either precipitation or temperature variable's shape
     if "var_name_precip" in keyword_arguments:
-        output_dims = dataset[keyword_arguments["var_name_precip"]].dims
+        output_dims = ds_precip[keyword_arguments["var_name_precip"]].dims
     else:
         raise ValueError("Unable to determine output dimensions, no "
                          "precipitation variable name was specified.")
 
-    # convert data into the appropriate units, if necessary
-    # precipitation and PET should be in millimeters
+    # convert precipitation data into the appropriate units,
+    # should be in millimeters
     if "var_name_precip" in keyword_arguments:
         precip_var_name = keyword_arguments["var_name_precip"]
-        precip_unit = dataset[precip_var_name].units.lower()
+        precip_unit = ds_precip[precip_var_name].units.lower()
         if precip_unit not in ("mm", "millimeters", "millimeter", "mm/dy"):
             if precip_unit in ("inches", "inch"):
                 # inches to mm conversion (1 inch == 25.4 mm)
-                dataset[precip_var_name].values *= 25.4
+                ds_precip[precip_var_name].values *= 25.4
             else:
                 raise ValueError(f"Unsupported precipitation units: {precip_unit}")
 
     if input_type == InputType.divisions:
-        _drop_data_into_shared_arrays_divisions(dataset, input_var_names)
+        _drop_data_into_shared_arrays_divisions(ds_precip, input_var_names)
     else:
         _drop_data_into_shared_arrays_grid(
-            dataset,
+            ds_precip,
+            ds_fitting,
             input_var_names,
             keyword_arguments["periodicity"],
             keyword_arguments["data_start_year"],
@@ -592,9 +651,9 @@ def _compute_write_index(keyword_arguments):
 
     # use the temperature shape if computing PET, otherwise precipitation
     if keyword_arguments["index"] == "pet":
-        output_shape = dataset[keyword_arguments["var_name_temp"]].shape
+        output_shape = ds_precip[keyword_arguments["var_name_temp"]].shape
     else:
-        output_shape = dataset[keyword_arguments["var_name_precip"]].shape
+        output_shape = ds_precip[keyword_arguments["var_name_precip"]].shape
 
     # build an arguments dictionary appropriate to the index we'll compute
     args = _build_arguments(keyword_arguments)
@@ -639,19 +698,19 @@ def _compute_write_index(keyword_arguments):
     variable = xr.Variable(dims=output_dims,
                            data=index_values,
                            attrs=output_var_attributes)
-    dataset[output_var_name] = variable
+    ds_precip[output_var_name] = variable
 
     # TODO set global attributes accordingly for this new dataset
 
     # remove all data variables except for the new variable
-    for var_name in dataset.data_vars:
+    for var_name in ds_precip.data_vars:
         if var_name != output_var_name:
-            dataset = dataset.drop(var_name)
+            ds_precip = ds_precip.drop(var_name)
 
     # write the dataset as NetCDF
     netcdf_file_name = \
         keyword_arguments["output_file_base"] + "_" + output_var_name + ".nc"
-    dataset.to_netcdf(netcdf_file_name)
+    ds_precip.to_netcdf(netcdf_file_name)
 
     return netcdf_file_name, output_var_name
 
