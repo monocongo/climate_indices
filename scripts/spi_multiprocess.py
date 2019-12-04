@@ -519,7 +519,42 @@ def _compute_write_index(keyword_arguments):
                 attrs=prob_zero_attrs,
             )
             dataset_fitting[prob_zero_var_name] = da_prob_zero
-            # TODO add DataArrays for scale, skew, and loc variables
+            scale_attrs = {
+                'description': 'scale parameter for Pearson Type III',
+            }
+            scale_var_name = f"scale_{keyword_arguments['scale']}_{keyword_arguments['periodicity'].unit()}"
+            da_scale = xr.DataArray(
+                data=np.full(shape=data_shape, fill_value=np.NaN),
+                coords=fitting_coords,
+                dims=tuple(fitting_coords.keys()),
+                name=scale_var_name,
+                attrs=scale_attrs,
+            )
+            dataset_fitting[scale_var_name] = da_scale
+            skew_attrs = {
+                'description': 'skew parameter for Pearson Type III',
+            }
+            skew_var_name = f"skew_{keyword_arguments['scale']}_{keyword_arguments['periodicity'].unit()}"
+            da_skew = xr.DataArray(
+                data=np.full(shape=data_shape, fill_value=np.NaN),
+                coords=fitting_coords,
+                dims=tuple(fitting_coords.keys()),
+                name=skew_var_name,
+                attrs=skew_attrs,
+            )
+            dataset_fitting[skew_var_name] = da_skew
+            loc_attrs = {
+                'description': 'loc parameter for Pearson Type III',
+            }
+            loc_var_name = f"loc_{keyword_arguments['scale']}_{keyword_arguments['periodicity'].unit()}"
+            da_loc = xr.DataArray(
+                data=np.full(shape=data_shape, fill_value=np.NaN),
+                coords=fitting_coords,
+                dims=tuple(fitting_coords.keys()),
+                name=loc_var_name,
+                attrs=loc_attrs,
+            )
+            dataset_fitting[loc_var_name] = da_loc
 
     # get the initial year of the data
     data_start_year = int(str(dataset["time"].values[0])[0:4])
