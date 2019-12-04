@@ -145,6 +145,8 @@ def _validate_args(args):
                 _logger.error(msg)
                 raise ValueError(msg)
 
+            # TODO compare against the lats_precip, lons_precip, etc.
+
     # make sure a precipitation file was specified
     if args.netcdf_precip is None:
         msg = "Missing the required precipitation file"
@@ -399,8 +401,6 @@ def _compute_write_index(keyword_arguments):
     files = []
     if "netcdf_precip" in keyword_arguments:
         files.append(keyword_arguments["netcdf_precip"])
-    if "load_params" in keyword_arguments:
-        files.append(keyword_arguments["load_params"])
     if "input_type" not in keyword_arguments:
         raise ValueError("Missing the 'input_type' keyword argument")
     else:
@@ -415,76 +415,111 @@ def _compute_write_index(keyword_arguments):
             raise ValueError(f"Invalid 'input_type' keyword argument: {input_type}")
     dataset = xr.open_mfdataset(files, chunks=chunks)
 
-    # add placeholder variables in the Dataset to hold the fitting parameters we'll compute
-    if ("save_params" in keyword_arguments) and \
-            (keyword_arguments["save_params"] is not None) and \
-            (keyword_arguments["index"] not in ("pet", "palmers")):
-
-        if keyword_arguments["periodicity"] == compute.Periodicity.monthly:
-            period_times = 12
-            time_coord_name = "month"
-        elif keyword_arguments["periodicity"] == compute.Periodicity.daily:
-            period_times = 366
-            time_coord_name = "day"
-        else:
-            raise ValueError(f"Unsupported periodicity: {keyword_arguments['periodicity']}")
-
-        if input_type == InputType.grid:
-            gamma_coords = {"lat": dataset.lat, "lon": dataset.lon, time_coord_name: range(period_times)}
-            data_shape = (len(dataset.lat), len(dataset.lon), period_times)
-        elif input_type == InputType.divisions:
-            gamma_coords = {"division": dataset.division, time_coord_name: range(period_times)}
-            data_shape = (len(dataset.division), period_times)
-        elif input_type == InputType.timeseries:
-            gamma_coords = {time_coord_name: range(period_times)}
-            data_shape = (period_times,)
-        else:
-            raise ValueError(f"Invalid 'input_type' keyword argument: {input_type}")
-
-        alpha_attrs = {
-            'description': 'shape parameter of the gamma distribution (also referred to as the concentration) ' + \
-                           f'computed from the {keyword_arguments["scale"]}-month scaled precipitation values',
-        }
-        alpha_var_name = f"alpha_{str(keyword_arguments['scale']).zfill(2)}"
-        da_alpha = xr.DataArray(
-            data=np.full(shape=data_shape, fill_value=np.NaN),
-            coords=gamma_coords,
-            dims=tuple(gamma_coords.keys()),
-            name=alpha_var_name,
-            attrs=alpha_attrs,
-        )
-        beta_attrs = {
-            'description': '1 / scale of the distribution (also referred to as the rate) ' + \
-                           f'computed from the {keyword_arguments["scale"]}-month scaled precipitation values',
-        }
-        beta_var_name = f"beta_{str(keyword_arguments['scale']).zfill(2)}"
-        da_beta = xr.DataArray(
-            data=np.full(shape=data_shape, fill_value=np.NaN),
-            coords=gamma_coords,
-            dims=tuple(gamma_coords.keys()),
-            name=beta_var_name,
-            attrs=beta_attrs,
-        )
-        dataset[alpha_var_name] = da_alpha
-        dataset[beta_var_name] = da_beta
-
     # trim out all data variables from the dataset except the ones we'll need
     input_var_names = []
     if "var_name_precip" in keyword_arguments:
         input_var_names.append(keyword_arguments["var_name_precip"])
-    # keep the parameter fitting variables if relevant
-    if (("load_params" in keyword_arguments) or \
-            ("save_params" in keyword_arguments)) and \
-            (keyword_arguments["index"] not in ("pet", "palmers")):
-        for fitting_param_name in _FITTING_PARAMETER_VARIABLES:
-            fitting_param_var_name = "_".join((fitting_param_name, str(keyword_arguments["scale"]).zfill(2)))
-            input_var_names.append(fitting_param_var_name)
     # only keep the latitude variable if we're dealing with divisions
     if input_type == InputType.divisions:
         input_var_names.append("lat")
     for var in dataset.data_vars:
         if var not in input_var_names:
             dataset = dataset.drop(var)
+
+    # add placeholder variables in the Dataset to hold the fitting parameters we'll compute
+    if (("save_params" in keyword_arguments) and \
+            (keyword_arguments["save_params"] is not None)) or \
+            keyword_arguments["load_params"] is not None:
+
+        if keyword_arguments["periodicity"] == compute.Periodicity.monthly:
+            period_times = 12
+        elif keyword_arguments["periodicity"] == compute.Periodicity.daily:
+            period_times = 366
+        else:
+            raise ValueError(f"Unsupported periodicity: {keyword_arguments['periodicity']}")
+
+        time_coord_name = keyword_arguments['periodicity'].unit()
+        if input_type == InputType.grid:
+            fitting_coords = {"lat": dataset.lat, "lon": dataset.lon, time_coord_name: range(period_times)}
+            data_shape = (len(dataset.lat), len(dataset.lon), period_times)
+        elif input_type == InputType.divisions:
+            fitting_coords = {"division": dataset.division, time_coord_name: range(period_times)}
+            data_shape = (len(dataset.division), period_times)
+        elif input_type == InputType.timeseries:
+            fitting_coords = {time_coord_name: range(period_times)}
+            data_shape = (period_times,)
+        else:
+            raise ValueError(f"Invalid 'input_type' keyword argument: {input_type}")
+
+        # open the dataset if it's already been written to file, otherwise create it
+        if os.path.exists(keyword_arguments["save_params"]):
+            dataset_fitting = xr.open_dataset(keyword_arguments["save_params"])
+        elif keyword_arguments["load_params"] is not None:
+            dataset_fitting = xr.open_dataset(keyword_arguments["load_params"])
+        else:
+            attrs_to_copy = [
+                'Conventions',
+                'ncei_template_version',
+                'naming_authority',
+                'standard_name_vocabulary',
+                'institution',
+                'geospatial_lat_min',
+                'geospatial_lat_max',
+                'geospatial_lon_min',
+                'geospatial_lon_max',
+                'geospatial_lat_units',
+                'geospatial_lon_units',
+            ]
+            global_attrs = {key: value for (key, value) in dataset.attrs.items() if key in attrs_to_copy}
+            dataset_fitting = xr.Dataset(
+                coords=fitting_coords,
+                attrs=global_attrs,
+            )
+
+        if keyword_arguments["distribution"] == indices.Distribution.gamma:
+
+            alpha_attrs = {
+                'description': 'shape parameter of the gamma distribution (also referred to as the concentration) ' + \
+                               f'computed from the {keyword_arguments["scale"]}-month scaled precipitation values',
+            }
+            alpha_var_name = f"alpha_{str(keyword_arguments['scale']).zfill(2)}"
+            da_alpha = xr.DataArray(
+                data=np.full(shape=data_shape, fill_value=np.NaN),
+                coords=fitting_coords,
+                dims=tuple(fitting_coords.keys()),
+                name=alpha_var_name,
+                attrs=alpha_attrs,
+            )
+            beta_attrs = {
+                'description': '1 / scale of the distribution (also referred to as the rate) ' + \
+                               f'computed from the {keyword_arguments["scale"]}-month scaled precipitation values',
+            }
+            beta_var_name = f"beta_{str(keyword_arguments['scale']).zfill(2)}"
+            da_beta = xr.DataArray(
+                data=np.full(shape=data_shape, fill_value=np.NaN),
+                coords=fitting_coords,
+                dims=tuple(fitting_coords.keys()),
+                name=beta_var_name,
+                attrs=beta_attrs,
+            )
+            dataset_fitting[alpha_var_name] = da_alpha
+            dataset_fitting[beta_var_name] = da_beta
+
+        elif keyword_arguments["distribution"] == indices.Distribution.pearson:
+
+            prob_zero_attrs = {
+                'description': 'probability of zero values within calibration period',
+            }
+            prob_zero_var_name = f"prob_zero_{keyword_arguments['scale']}_{keyword_arguments['periodicity'].unit()}"
+            da_prob_zero = xr.DataArray(
+                data=np.full(shape=data_shape, fill_value=np.NaN),
+                coords=fitting_coords,
+                dims=tuple(fitting_coords.keys()),
+                name=prob_zero_var_name,
+                attrs=prob_zero_attrs,
+            )
+            dataset_fitting[prob_zero_var_name] = da_prob_zero
+            # TODO add DataArrays for scale, skew, and loc variables
 
     # get the initial year of the data
     data_start_year = int(str(dataset["time"].values[0])[0:4])
