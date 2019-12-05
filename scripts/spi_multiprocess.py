@@ -202,19 +202,6 @@ def _validate_args(args):
 
 
 # ------------------------------------------------------------------------------
-def _log_status(args_dict):
-
-    # get the scale increment for use in later log messages
-    _logger.info(
-        f"Computing {args_dict['scale']}-"
-        f"{args_dict['periodicity'].unit()} SPI/"
-        f"{args_dict['distribution'].value.capitalize()}",
-    )
-
-    return True
-
-
-# ------------------------------------------------------------------------------
 def _build_arguments(keyword_args):
     """
     Builds a dictionary of function arguments appropriate to the index to be computed.
@@ -502,7 +489,7 @@ def _compute_write_index(keyword_arguments):
     :return:
     """
 
-    _log_status(keyword_arguments)
+    _logger.info(f"Computing {keyword_arguments['periodicity']} SPI")
 
     # open the NetCDF files as an xarray DataSet object
     if "netcdf_precip" not in keyword_arguments:
@@ -1376,30 +1363,25 @@ def main():  # type: () -> None
         netcdf_precip = _prepare_file(arguments.netcdf_precip,
                                       arguments.var_name_precip)
 
-        # run SPI computations for each scale/distribution in turn
-        for scale in arguments.scales:
-            for dist in indices.Distribution:
+        # keyword arguments used for the SPI function
+        kwrgs = {
+            "index": "spi",
+            "netcdf_precip": netcdf_precip,
+            "var_name_precip": arguments.var_name_precip,
+            "input_type": input_type,
+            "scales": arguments.scales,
+            "periodicity": arguments.periodicity,
+            "calibration_start_year": arguments.calibration_start_year,
+            "calibration_end_year": arguments.calibration_end_year,
+            "output_file_base": arguments.output_file_base,
+            "load_params": arguments.load_params,
+            "save_params": arguments.save_params,
+            "number_of_workers": number_of_workers,
+            "overwrite": arguments.overwrite,
+        }
 
-                # keyword arguments used for the SPI function
-                kwrgs = {
-                    "index": "spi",
-                    "netcdf_precip": netcdf_precip,
-                    "var_name_precip": arguments.var_name_precip,
-                    "input_type": input_type,
-                    "scale": scale,
-                    "distribution": dist,
-                    "periodicity": arguments.periodicity,
-                    "calibration_start_year": arguments.calibration_start_year,
-                    "calibration_end_year": arguments.calibration_end_year,
-                    "output_file_base": arguments.output_file_base,
-                    "load_params": arguments.load_params,
-                    "save_params": arguments.save_params,
-                    "number_of_workers": number_of_workers,
-                    "overwrite": arguments.overwrite,
-                }
-
-                # compute and write SPI
-                _compute_write_index(kwrgs)
+        # compute and write SPI
+        _compute_write_index(kwrgs)
 
         # remove temporary file if one was created
         if netcdf_precip != arguments.netcdf_precip:
