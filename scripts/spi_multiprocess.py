@@ -462,15 +462,17 @@ def build_fitting_dataset_grid(
                        "example usage.",
         'geospatial_lat_min': min(ds_example.lat),
         'geospatial_lat_max': max(ds_example.lat),
-        'geospatial_lat_units': ds_example.lat.unit,
+        'geospatial_lat_units': ds_example.lat.units,
         'geospatial_lon_min': min(ds_example.lon),
         'geospatial_lon_max': max(ds_example.lon),
-        'geospatial_lon_units': ds_example.lon.unit,
+        'geospatial_lon_units': ds_example.lon.units,
     }
+    times = np.array(range(period_times))
+    time_coord = periodicity.unit()
     coords = {
         "lat": ds_example.lat,
         "lon": ds_example.lon,
-        periodicity.unit(): range(period_times),
+        time_coord: xr.DataArray(data=times, coords=[times], dims=time_coord),
     }
     ds_fitting_params = xr.Dataset(
         coords=coords,
