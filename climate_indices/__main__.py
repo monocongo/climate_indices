@@ -5,7 +5,6 @@ from enum import Enum
 import logging
 import multiprocessing
 import os
-from typing import List
 
 from nco import Nco
 import numpy as np
@@ -16,9 +15,6 @@ from climate_indices import compute, indices, utils
 
 # the number of worker processes we'll use for process pools
 _NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count() - 1
-
-# variable names for the distribution fitting parameters
-_FITTING_PARAMETER_VARIABLES = ("alpha", "beta", "skew", "loc", "scale", "prob_zero")
 
 # shared memory array dictionary keys
 _KEY_ARRAY = "array"
@@ -78,48 +74,6 @@ def _validate_args(args):
     :raise ValueError: if one or more of the command line arguments is invalid
     """
 
-    def validate_dimensions(
-            ds: xr.Dataset,
-            var_name: str,
-            variable_plain_name: str,
-            expected_dims_grid: List[tuple],
-            expected_dims_divisions: List[tuple],
-            expected_dims_timeseries: List[tuple],
-    ):
-        """
-        Function to verify that a variable's dimensions are in one of the expected
-        dimension orders and if so then it will return the corresponding InputType.
-
-        :param ds: xarray Dataset
-        :param var_name: variable name
-        :param variable_plain_name: plain English name/description of the variable
-        :param expected_dims_grid:
-        :param expected_dims_divisions:
-        :param expected_dims_timeseries:
-        :return: the InputType matching to the variable's dimensions
-        :raises ValueError if the dimensions of the variable don't match with
-            one of the expected dimension orders
-        """
-
-        # verify that the variable's dimensions are in the expected order
-        dims = ds[var_name].dims
-        if dims in expected_dims_grid:
-            _input_type = InputType.grid
-        elif dimensions in expected_dims_divisions:
-            _input_type = InputType.divisions
-        elif dimensions in expected_dims_timeseries:
-            _input_type = InputType.timeseries
-        else:
-            mesg = f"Invalid dimensions of the {variable_plain_name} " + \
-                   f"variable: {dims}\nValid dimension names and " + \
-                   f"order: {expected_dimensions_grid} or " + \
-                   f"{expected_dimensions_divisions} or " + \
-                   f"{expected_dimensions_timeseries}"
-            _logger.error(mesg)
-            raise ValueError(mesg)
-
-        return _input_type
-
     # the dimensions we expect to find for each data variable
     # (precipitation, temperature, and/or PET)
     expected_dimensions_divisions = [("time", "division"), ("division", "time")]
@@ -135,37 +89,6 @@ def _validate_args(args):
     expected_dimensions_divisions_awc = [("time", "division"),
                                          ("division", "time"),
                                          ("division")]
-
-    # for fitting parameters we can either compute and save or load from file, but not both
-    if args.load_params and args.save_params:
-        msg = "Both of the mutually exclusive fitting parameter "\
-              "file options were specified (both load and save)"
-        _logger.error(msg)
-        raise ValueError(msg)
-
-    if args.load_params:
-
-        # make sure the specified fitting parameters file exists
-        if not os.path.exists(args.load_params):
-            msg = f"The specified fitting parameters file {args.load_params} "\
-                  "does not exist"
-            _logger.error(msg)
-            raise ValueError(msg)
-
-        # open the fitting parameters file and make sure it looks reasonable
-        with xr.open_dataset(args.load_params) as dataset_fittings:
-
-            # confirm that all the fitting parameter variables are present
-            missing_variables = []
-            for var in _FITTING_PARAMETER_VARIABLES:
-                if var not in dataset_fittings.variables:
-                    missing_variables.append(var)
-            if len(missing_variables) > 0:
-                msg = "The following fitting parameter variables are expected "\
-                      "but not present in the specified fitting parameters "\
-                      f"dataset ({args.load_params}): {missing_variables}"
-                _logger.error(msg)
-                raise ValueError(msg)
 
     # all indices except PET require a precipitation file
     if args.index != "pet":
@@ -192,17 +115,20 @@ def _validate_args(args):
                 _logger.error(msg)
                 raise ValueError(msg)
 
-            # verify that the precipitation variable's dimensions are in
-            # the expected order, and if so then determine the input type
-            input_type = \
-                validate_dimensions(
-                    dataset_precip,
-                    args.var_name_precip,
-                    "precipitation",
-                    expected_dimensions_grid,
-                    expected_dimensions_divisions,
-                    expected_dimensions_timeseries,
-                )
+            # verify that the precipitation variable's dimensions are in the expected order
+            dimensions = dataset_precip[args.var_name_precip].dims
+            if dimensions in expected_dimensions_grid:
+                input_type = InputType.grid
+            elif dimensions in expected_dimensions_divisions:
+                input_type = InputType.divisions
+            elif dimensions in expected_dimensions_timeseries:
+                input_type = InputType.timeseries
+            else:
+                msg = "Invalid dimensions of the precipitation " + \
+                      f"variable: {dimensions}\nValid dimension names and " + \
+                      f"order: {expected_dimensions_grid + expected_dimensions_divisions}"
+                _logger.error(msg)
+                raise ValueError(msg)
 
             # get the values of the precipitation coordinate variables,
             # for comparison against those of the other data variables
@@ -211,7 +137,6 @@ def _validate_args(args):
                 lons_precip = dataset_precip["lon"].values[:]
             elif input_type == InputType.divisions:
                 divisions_precip = dataset_precip["division"].values[:]
-            # TODO what if input_type == InputType.timeseries?
             times_precip = dataset_precip["time"].values[:]
 
     else:
@@ -240,20 +165,23 @@ def _validate_args(args):
                 _logger.error(msg)
                 raise ValueError(msg)
 
-            # verify that the temperature variable's dimensions are in
-            # the expected order, and if so then determine the input type
-            input_type = \
-                validate_dimensions(
-                    dataset_temp,
-                    args.var_name_temp,
-                    "temperature",
-                    expected_dimensions_grid,
-                    expected_dimensions_divisions,
-                    expected_dimensions_timeseries,
-                )
+            # verify that the temperature variable's dimensions are in the expected order
+            dimensions = dataset_temp[args.var_name_temp].dims
+            if dimensions in expected_dimensions_grid:
+                input_type = InputType.grid
+            elif dimensions in expected_dimensions_divisions:
+                input_type = InputType.divisions
+            elif dimensions in expected_dimensions_timeseries:
+                input_type = InputType.timeseries
+            else:
+                msg = "Invalid dimensions of the temperature variable: " + \
+                      f"{dimensions}\n(valid dimension names and " + \
+                      f"order: {[expected_dimensions_grid, expected_dimensions_divisions]}"
+                _logger.error(msg)
+                raise ValueError(msg)
 
     # SPEI and Palmers require either a PET file or a temperature file in order to compute PET
-    if args.index in ("spei", "scaled", "palmers"):
+    if args.index in ["spei", "scaled", "palmers"]:
 
         if args.netcdf_temp is None:
 
@@ -779,8 +707,6 @@ def _compute_write_index(keyword_arguments):
         files.append(keyword_arguments["netcdf_temp"])
     if "netcdf_pet" in keyword_arguments:
         files.append(keyword_arguments["netcdf_pet"])
-    if "load_params" in keyword_arguments:
-        files.append(keyword_arguments["load_params"])
     if "input_type" not in keyword_arguments:
         raise ValueError("Missing the 'input_type' keyword argument")
     else:
@@ -803,10 +729,6 @@ def _compute_write_index(keyword_arguments):
         input_var_names.append(keyword_arguments["var_name_temp"])
     if "var_name_pet" in keyword_arguments:
         input_var_names.append(keyword_arguments["var_name_pet"])
-    # keep the parameter fitting variables if relevant
-    if ("load_params" in keyword_arguments) and \
-            (keyword_arguments["index"] not in ("pet", "palmers")):
-        input_var_names += _FITTING_PARAMETER_VARIABLES
     # keep the latitude variable if we're dealing with divisions
     if input_type == InputType.divisions:
         input_var_names.append("lat")
@@ -852,11 +774,9 @@ def _compute_write_index(keyword_arguments):
                 )
             elif temp_unit in ("k", "kelvin"):
                 dataset[temp_var_name].values = \
-                    scipy.constants.convert_temperature(
-                        dataset[temp_var_name].values,
-                        "k",
-                        "c",
-                    )
+                    scipy.constants.convert_temperature(dataset[temp_var_name].values,
+                                                        "k",
+                                                        "c")
             else:
                 raise ValueError(f"Unsupported temperature units: {temp_unit}")
 
@@ -875,12 +795,10 @@ def _compute_write_index(keyword_arguments):
                                                                input_var_names)
     else:
         output_shape = \
-            _drop_data_into_shared_arrays_grid(
-                dataset,
-                input_var_names,
-                keyword_arguments["periodicity"],
-                keyword_arguments["data_start_year"],
-            )
+            _drop_data_into_shared_arrays_grid(dataset,
+                                               input_var_names,
+                                               keyword_arguments["periodicity"],
+                                               keyword_arguments["data_start_year"])
 
     # build an arguments dictionary appropriate to the index we'll compute
     args = _build_arguments(keyword_arguments)
@@ -1659,7 +1577,6 @@ def main():  # type: () -> None
         parser = argparse.ArgumentParser()
         parser.add_argument(
             "--index",
-            type=str,
             help="Indices to compute",
             choices=["spi", "spei", "pnp", "scaled", "pet", "palmers", "all"],
             required=True,
@@ -1683,76 +1600,50 @@ def main():  # type: () -> None
             type=int,
         )
         parser.add_argument(
-            "--calibration_end_year",
-            help="Final year of calibration period",
-            type=int,
+            "--calibration_end_year", help="Final year of calibration period", type=int
         )
         parser.add_argument(
             "--netcdf_precip",
-            type=str,
             help="Precipitation NetCDF file to be used as input for indices computations",
         )
         parser.add_argument(
             "--var_name_precip",
-            type=str,
             help="Precipitation variable name used in the precipitation NetCDF file",
         )
         parser.add_argument(
             "--netcdf_temp",
-            type=str,
             help="Temperature NetCDF file to be used as input for indices computations",
         )
         parser.add_argument(
             "--var_name_temp",
-            type=str,
             help="Temperature variable name used in the temperature NetCDF file",
         )
         parser.add_argument(
             "--netcdf_pet",
-            type=str,
             help="PET NetCDF file to be used as input for SPEI and/or Palmer computations",
         )
         parser.add_argument(
-            "--var_name_pet",
-            type=str,
-            help="PET variable name used in the PET NetCDF file",
+            "--var_name_pet", help="PET variable name used in the PET NetCDF file"
         )
         parser.add_argument(
             "--netcdf_awc",
-            type=str,
             help="Available water capacity NetCDF file to be used as input for the Palmer computations",
         )
         parser.add_argument(
             "--var_name_awc",
-            type=str,
             help="Available water capacity variable name used in the AWC NetCDF file",
         )
         parser.add_argument(
             "--output_file_base",
-            type=str,
             help="Base output file path and name for the resulting output files",
             required=True,
         )
         parser.add_argument(
             "--multiprocessing",
-            help="options for multiprocessing -- single core, all cores but one, or all cores",
+            help="Indices to compute",
             choices=["single", "all_but_one", "all"],
             required=False,
             default="all_but_one",
-        )
-        parser.add_argument(
-            "--load_params",
-            type=str,
-            required=False,
-            help="path to input NetCDF file (to be read) "
-                 "containing distribution fitting parameters",
-        )
-        parser.add_argument(
-            "--save_params",
-            type=str,
-            required=False,
-            help="path to output NetCDF file (to be written) "
-                 "containing distribution fitting parameters",
         )
         arguments = parser.parse_args()
 
@@ -1778,20 +1669,16 @@ def main():  # type: () -> None
                 for dist in indices.Distribution:
 
                     # keyword arguments used for the SPI function
-                    kwrgs = {
-                        "index": "spi",
-                        "netcdf_precip": netcdf_precip,
-                        "var_name_precip": arguments.var_name_precip,
-                        "input_type": input_type,
-                        "scale": scale,
-                        "distribution": dist,
-                        "periodicity": arguments.periodicity,
-                        "calibration_start_year": arguments.calibration_start_year,
-                        "calibration_end_year": arguments.calibration_end_year,
-                        "output_file_base": arguments.output_file_base,
-                        "load_fitting_params": arguments.load_params,
-                        "save_fitting_params": arguments.save_params,
-                    }
+                    kwrgs = {"index": "spi",
+                             "netcdf_precip": netcdf_precip,
+                             "var_name_precip": arguments.var_name_precip,
+                             "input_type": input_type,
+                             "scale": scale,
+                             "distribution": dist,
+                             "periodicity": arguments.periodicity,
+                             "calibration_start_year": arguments.calibration_start_year,
+                             "calibration_end_year": arguments.calibration_end_year,
+                             "output_file_base": arguments.output_file_base}
 
                     # compute and write SPI
                     _compute_write_index(kwrgs)
