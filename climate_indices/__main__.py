@@ -5,6 +5,7 @@ from enum import Enum
 import logging
 import multiprocessing
 import os
+from typing import List
 
 from nco import Nco
 import numpy as np
@@ -81,6 +82,9 @@ def _validate_args(args):
             ds: xr.Dataset,
             var_name: str,
             variable_plain_name: str,
+            expected_dims_grid: List[tuple],
+            expected_dims_divisions: List[tuple],
+            expected_dims_timeseries: List[tuple],
     ):
         """
         Function to verify that a variable's dimensions are in one of the expected
@@ -89,6 +93,9 @@ def _validate_args(args):
         :param ds: xarray Dataset
         :param var_name: variable name
         :param variable_plain_name: plain English name/description of the variable
+        :param expected_dims_grid:
+        :param expected_dims_divisions:
+        :param expected_dims_timeseries:
         :return: the InputType matching to the variable's dimensions
         :raises ValueError if the dimensions of the variable don't match with
             one of the expected dimension orders
@@ -96,11 +103,11 @@ def _validate_args(args):
 
         # verify that the variable's dimensions are in the expected order
         dims = ds[var_name].dims
-        if dims in expected_dimensions_grid:
+        if dims in expected_dims_grid:
             _input_type = InputType.grid
-        elif dimensions in expected_dimensions_divisions:
+        elif dimensions in expected_dims_divisions:
             _input_type = InputType.divisions
-        elif dimensions in expected_dimensions_timeseries:
+        elif dimensions in expected_dims_timeseries:
             _input_type = InputType.timeseries
         else:
             mesg = f"Invalid dimensions of the {variable_plain_name} " + \
@@ -192,6 +199,9 @@ def _validate_args(args):
                     dataset_precip,
                     args.var_name_precip,
                     "precipitation",
+                    expected_dimensions_grid,
+                    expected_dimensions_divisions,
+                    expected_dimensions_timeseries,
                 )
 
             # get the values of the precipitation coordinate variables,
@@ -237,6 +247,9 @@ def _validate_args(args):
                     dataset_temp,
                     args.var_name_temp,
                     "temperature",
+                    expected_dimensions_grid,
+                    expected_dimensions_divisions,
+                    expected_dimensions_timeseries,
                 )
 
     # SPEI and Palmers require either a PET file or a temperature file in order to compute PET

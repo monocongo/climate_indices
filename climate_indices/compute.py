@@ -161,7 +161,7 @@ def sum_to_scale(
 
 
 # ------------------------------------------------------------------------------
-@numba.jit
+# @numba.jit
 def _probability_of_zero(
         values: np.ndarray,
 ) -> np.ndarray:
@@ -224,9 +224,10 @@ def _probability_of_zero(
 
 
 # ------------------------------------------------------------------------------
-@numba.jit
+# @numba.jit
 def pearson_parameters(
         values: np.ndarray,
+        periodicity: Periodicity,
 ) -> (np.ndarray, np.ndarray, np.ndarray, np.ndarray):
     """
     This function computes the probability of zero and Pearson Type III
@@ -239,6 +240,7 @@ def pearson_parameters(
         non-leap years) and assuming that the first value of the array is
         January of the initial year for an input array of monthly values or
         Jan. 1st of initial year for an input array daily values
+    :param periodicity: monthly or daily
     :return: four 1-D array of fitting values for the Pearson Type III
         distribution, with shape (12,) for monthly or (366,) for daily
 
@@ -247,6 +249,20 @@ def pearson_parameters(
         returned array 3 :second Pearson Type III distribution parameter (scale)
         returned array 4: third Pearson Type III distribution parameter (skew)
     """
+
+    # reshape precipitation values to (years, 12) for monthly,
+    # or to (years, 366) for daily
+    if periodicity is Periodicity.monthly:
+
+        values = utils.reshape_to_2d(values, 12)
+
+    elif periodicity is Periodicity.daily:
+
+        values = utils.reshape_to_2d(values, 366)
+
+    else:
+
+        raise ValueError("Invalid periodicity argument: %s" % periodicity)
 
     # validate that the values array has shape: (years, 12) for monthly or (years, 366) for daily
     if len(values.shape) != 2:
@@ -339,7 +355,7 @@ def _minimum_possible(
 
 
 # ------------------------------------------------------------------------------
-@numba.jit
+# @numba.jit
 def _pearson_fit(
         values: np.ndarray,
         probabilities_of_zero: np.ndarray,
@@ -413,7 +429,7 @@ def _pearson_fit(
 
 
 # ------------------------------------------------------------------------------
-#@numba.jit
+# @numba.jit
 def transform_fitted_pearson(
         values: np.ndarray,
         data_start_year: int,
@@ -533,9 +549,18 @@ def gamma_parameters(
     """
 
     # if we're passed all missing values then we can't compute anything,
-    # then we return the same array of missing values
+    # then we return an array of missing values
     if (np.ma.is_masked(values) and values.mask.all()) or np.all(np.isnan(values)):
-        raise ValueError("All missing/NaN values provided as input")
+        if periodicity is Periodicity.monthly:
+            shape = (12,)
+        elif periodicity is Periodicity.daily:
+            shape = (366,)
+        else:
+            raise ValueError("Unsupported periodicity: {periodicity}".format(periodicity=periodicity))
+        alphas = np.full(shape=shape, fill_value=np.NaN)
+        betas = np.full(shape=shape, fill_value=np.NaN)
+        return alphas, betas
+        # raise ValueError("All missing/NaN values provided as input")
 
     # validate (and possibly reshape) the input array
     values = _validate_array(values, periodicity)

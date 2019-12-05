@@ -766,42 +766,10 @@ def _compute_write_index(keyword_arguments):
         # TODO copy the values from the fitting variable shared arrays into
         #  the fitting Dataset since we'll need to write it out later
 
-        ds_fitting.to_netcdf(keyword_arguments["save_params"])
+        # ds_fitting.to_netcdf(keyword_arguments["save_params"])
+        pass
 
     return netcdf_file_name, output_var_name
-
-
-# ------------------------------------------------------------------------------
-def _gamma(
-        values: np.ndarray,
-        parameters: Dict,
-) -> (np.ndarray, np.ndarray):
-
-    return compute.gamma_parameters(
-        values=values,
-        data_start_year=parameters["data_start_year"],
-        calibration_start_year=parameters["calibration_year_initial"],
-        calibration_end_year=parameters["calibration_year_final"],
-        periodicity=parameters["periodicity"]
-    )
-
-
-# ------------------------------------------------------------------------------
-def _spi(
-        precips: np.ndarray,
-        parameters: Dict,
-) -> np.ndarray:
-
-    return indices.spi(
-        values=precips,
-        scale=parameters["scale"],
-        distribution=parameters["distribution"],
-        data_start_year=parameters["data_start_year"],
-        calibration_year_initial=parameters["calibration_year_initial"],
-        calibration_year_final=parameters["calibration_year_final"],
-        periodicity=parameters["periodicity"],
-        fitting_params=parameters["fitting_params"],
-    )
 
 
 # ------------------------------------------------------------------------------
@@ -844,14 +812,12 @@ def _parallel_spi(
 
     # build a list of parameters for each application of the function to an array chunk
     chunk_params = []
-    func1d = _spi
 
     # we have a single input array, create parameter dictionary objects
     # appropriate to the _apply_along_axis function, one per worker process
     for i in range(number_of_workers):
         params = {
             "index": index,
-            "func1d": func1d,
             "input_var_name": input_var_names["var_name_precip"],
             "output_var_name": output_var_name,
             "sub_array_start": split_indices[i],
@@ -880,7 +846,7 @@ def _parallel_spi(
                               initializer=_init_worker,
                               initargs=(arrays_dict,)) as pool:
 
-        pool.map(_apply_along_axis_spi, chunk_params)
+        pool.map(_apply_to_subarray_spi, chunk_params)
 
 
 # ------------------------------------------------------------------------------
@@ -941,15 +907,15 @@ def _parallel_fitting(
                               initargs=(shared_arrays,)) as pool:
 
         if distribution == indices.Distribution.gamma:
-            pool.map(_apply_along_axis_gamma, chunk_params)
+            pool.map(_apply_to_subarray_gamma, chunk_params)
         elif distribution == indices.Distribution.pearson:
-            pool.map(_apply_along_axis_pearson, chunk_params)
+            pool.map(_apply_to_subarray_pearson, chunk_params)
         else:
             raise ValueError(f"Unsupported distribution: {distribution}")
 
 
 # ------------------------------------------------------------------------------
-def _apply_along_axis_spi(params):
+def _apply_to_subarray_spi(params):
     """
     Like numpy.apply_along_axis(), but with arguments in a dict instead.
     Applicable for applying a function across subarrays of a single input array.
@@ -971,15 +937,6 @@ def _apply_along_axis_spi(params):
     np_array = np.frombuffer(array.get_obj()).reshape(shape)
     values_sub_array = np_array[start_index:end_index]
     args = params["args"]
-
-    if params["input_type"] == InputType.grid:
-        axis_index = 2
-    elif params["input_type"] == InputType.divisions:
-        axis_index = 1
-    elif params["input_type"] == InputType.timeseries:
-        axis_index = 0
-    else:
-        raise ValueError(f"Invalid input type argument: {params['input_type']}")
 
     if args["distribution"] == indices.Distribution.gamma:
 
@@ -1102,7 +1059,7 @@ def _apply_along_axis_spi(params):
 
 
 # ------------------------------------------------------------------------------
-def _apply_along_axis_gamma(params):
+def _apply_to_subarray_gamma(params):
     """
     Applies the gamma fitting computation function across subarrays
     of the input (shared-memory) arrays.
@@ -1121,14 +1078,14 @@ def _apply_along_axis_gamma(params):
     """
     start_index = params["sub_array_start"]
     end_index = params["sub_array_end"]
-    precip_array_key = params["var_name_precip"]
-    alpha_array_key = params["var_name_alpha"]
-    beta_array_key = params["var_name_beta"]
+    values_array_key = params["input_var_name"]
+    alpha_array_key = params["output_var_names"]["alpha"]
+    beta_array_key = params["output_var_names"]["beta"]
 
-    precip_shape = _global_shared_arrays[precip_array_key][_KEY_SHAPE]
-    precip_array = _global_shared_arrays[precip_array_key][_KEY_ARRAY]
-    precip_np_array = np.frombuffer(precip_array.get_obj()).reshape(precip_shape)
-    sub_array_precip = precip_np_array[start_index:end_index]
+    values_shape = _global_shared_arrays[values_array_key][_KEY_SHAPE]
+    values_array = _global_shared_arrays[values_array_key][_KEY_ARRAY]
+    values_np_array = np.frombuffer(values_array.get_obj()).reshape(values_shape)
+    sub_array_values = values_np_array[start_index:end_index]
 
     args = params["args"]
 
@@ -1142,18 +1099,30 @@ def _apply_along_axis_gamma(params):
     beta_np_array = np.frombuffer(beta_output_array.get_obj()).reshape(fitting_shape)
     sub_array_beta = beta_np_array[start_index:end_index]
 
-    for i, precip in enumerate(sub_array_precip):
+    for i, values in enumerate(sub_array_values):
         if params["input_type"] == InputType.grid:
-            for j in range(precip.shape[0]):
+            for j in range(values.shape[0]):
                 sub_array_alpha[i, j], sub_array_beta[i, j] = \
-                    _gamma(precip[j], parameters=args)
+                compute.gamma_parameters(
+                    values=values[j],
+                    data_start_year=args["data_start_year"],
+                    calibration_start_year=args["calibration_year_initial"],
+                    calibration_end_year=args["calibration_year_final"],
+                    periodicity=args["periodicity"]
+                )
         else:  # divisions
             sub_array_alpha[i], sub_array_beta[i] = \
-                _gamma(precip, parameters=args)
+                compute.gamma_parameters(
+                    values=values,
+                    data_start_year=args["data_start_year"],
+                    calibration_start_year=args["calibration_year_initial"],
+                    calibration_end_year=args["calibration_year_final"],
+                    periodicity=args["periodicity"]
+                )
 
 
 # ------------------------------------------------------------------------------
-def _apply_along_axis_pearson(params):
+def _apply_to_subarray_pearson(params):
     """
     Applies the Pearson Type III distribution fitting computation function
     across subarrays of the input (shared-memory) arrays.
