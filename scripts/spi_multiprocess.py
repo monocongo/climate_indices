@@ -14,8 +14,10 @@ import xarray as xr
 from climate_indices import compute, indices, utils
 
 # variable names for the distribution fitting parameters
-_FITTING_PARAMETER_VARIABLES = ("alpha", "beta")
-# _FITTING_PARAMETER_VARIABLES = ("alpha", "beta", "skew", "loc", "scale", "prob_zero")
+_FITTING_VARIABLES = ("alpha", "beta", "skew", "loc", "scale", "prob_zero")
+
+# location of the package on GitHub (for documentation within NetCDFs)
+_GITHUB_URL = "https://github.com/monocongo/climate_indices"
 
 # shared memory array dictionary keys
 _KEY_ARRAY = "array"
@@ -113,11 +115,18 @@ def _validate_args(args):
     expected_dimensions_timeseries = [("time",)]
 
     # for fitting parameters we can either compute and save or load from file, but not both
-    if args.load_params and args.save_params:
-        msg = "Both of the mutually exclusive fitting parameter "\
-              "file options were specified (both load and save)"
-        _logger.error(msg)
-        raise ValueError(msg)
+    if args.save_params:
+        if args.load_params:
+            msg = "Both of the mutually exclusive fitting parameter "\
+                  "file options were specified (both load and save)"
+            _logger.error(msg)
+            raise ValueError(msg)
+
+        elif os.path.exists(args.save_params) and not args.overwrite:
+            msg = "The distribution fitting parameters file to save is present and "\
+                  "overwrite was not specified"
+            _logger.error(msg)
+            raise ValueError(msg)
 
     if args.load_params:
 
@@ -133,9 +142,10 @@ def _validate_args(args):
 
             # confirm that all the fitting parameter variables are present
             missing_variables = []
-            for var in _FITTING_PARAMETER_VARIABLES:
+            for var in _FITTING_VARIABLES:
                 for scale in args.scales:
-                    fitting_var = "_".join((var, str(scale).zfill(2)))
+                    fitting_var_name_suffix = f"{scale}_{args.periodicity.unit()}"
+                    fitting_var = "_".join((var, fitting_var_name_suffix))
                     if fitting_var not in dataset_fittings.variables:
                         missing_variables.append(fitting_var)
             if len(missing_variables) > 0:
@@ -149,13 +159,13 @@ def _validate_args(args):
 
     # make sure a precipitation file was specified
     if args.netcdf_precip is None:
-        msg = "Missing the required precipitation file"
+        msg = "Missing the required precipitation file argument"
         _logger.error(msg)
         raise ValueError(msg)
 
     # make sure a precipitation variable name was specified
     if args.var_name_precip is None:
-        msg = "Missing precipitation variable name"
+        msg = "Missing the precipitation variable name argument"
         _logger.error(msg)
         raise ValueError(msg)
 
@@ -177,16 +187,6 @@ def _validate_args(args):
                 args.var_name_precip,
                 "precipitation",
             )
-
-        # get the values of the precipitation coordinate variables,
-        # for comparison against those of the other data variables
-        if input_type == InputType.grid:
-            lats_precip = dataset_precip["lat"].values[:]
-            lons_precip = dataset_precip["lon"].values[:]
-        elif input_type == InputType.divisions:
-            divisions_precip = dataset_precip["division"].values[:]
-        # TODO what if input_type == InputType.timeseries?
-        times_precip = dataset_precip["time"].values[:]
 
     if args.scales is None:
         msg = "Missing one or more time scales (missing --scales argument)"
@@ -237,22 +237,21 @@ def _build_arguments(keyword_args):
 
 
 # ------------------------------------------------------------------------------
-def _get_variable_attributes(args_dict):
+def _get_variable_attributes(
+        distribution: indices.Distribution,
+        scale: int,
+        periodicity: compute.Periodicity,
+):
 
-    long_name = "Standardized Precipitation Index ({dist} distribution), ".format(
-        dist=args_dict["distribution"].value.capitalize()
-    ) + "{scale}-{increment}".format(
-        scale=args_dict["scale"], increment=args_dict["periodicity"].unit()
-    )
-    attrs = {"long_name": long_name, "valid_min": -3.09, "valid_max": 3.09}
-    var_name = (
-        "spi_"
-        + args_dict["distribution"].value
-        + "_"
-        + str(args_dict["scale"]).zfill(2)
-    )
+    attrs = {
+        "long_name": "Standardized Precipitation Index ("
+                     f"{distribution.value.capitalize()}), "
+                     f"{scale}-{periodicity.unit()}",
+        "valid_min": -3.09,
+        "valid_max": 3.09,
+    }
 
-    return var_name, attrs
+    return attrs
 
 
 # ------------------------------------------------------------------------------
@@ -444,6 +443,57 @@ def _drop_data_into_shared_arrays_divisions(
 
 
 # ------------------------------------------------------------------------------
+def build_fitting_dataset_grid(
+        ds_example: xr.Dataset,
+        periodicity: compute.Periodicity,
+) -> xr.Dataset:
+    """
+    Builds a new Dataset object based on an example Dataset. Essentially copies
+    the lat and lon values and sets these along with period-specific times
+    as coordinates.
+
+    :param ds_example:
+    :param periodicity:
+    :return:
+    """
+
+    if periodicity == compute.Periodicity.monthly:
+        period_times = 12
+    elif periodicity == compute.Periodicity.daily:
+        period_times = 366
+    else:
+        raise ValueError(f"Unsupported periodicity: {periodicity}")
+
+    usage_url = "https://climate-indices.readthedocs.io/en/latest/#spi-monthly"
+    global_attrs = {
+        'description': f"Distribution fitting parameters for various {periodicity.unit()} "
+                       f"scales computed from {periodicity} precipitation input "
+                       "by the climate_indices package available from "
+                       f"{_GITHUB_URL}. The variables contained herein are meant "
+                       "to be used as inputs for computing SPI datasets using "
+                       f"the climate_indices package. See {usage_url} for "
+                       "example usage.",
+        'geospatial_lat_min': min(ds_example.lat),
+        'geospatial_lat_max': max(ds_example.lat),
+        'geospatial_lat_units': ds_example.lat.unit,
+        'geospatial_lon_min': min(ds_example.lon),
+        'geospatial_lon_max': max(ds_example.lon),
+        'geospatial_lon_units': ds_example.lon.unit,
+    }
+    coords = {
+        "lat": ds_example.lat,
+        "lon": ds_example.lon,
+        periodicity.unit(): range(period_times),
+    }
+    ds_fitting_params = xr.Dataset(
+        coords=coords,
+        attrs=global_attrs,
+    )
+
+    return ds_fitting_params
+
+
+# ------------------------------------------------------------------------------
 def _compute_write_index(keyword_arguments):
     """
     Computes a climate index and writes the result into a corresponding NetCDF.
@@ -455,9 +505,8 @@ def _compute_write_index(keyword_arguments):
     _log_status(keyword_arguments)
 
     # open the NetCDF files as an xarray DataSet object
-    files = []
-    if "netcdf_precip" in keyword_arguments:
-        files.append(keyword_arguments["netcdf_precip"])
+    if "netcdf_precip" not in keyword_arguments:
+        raise ValueError("Missing the 'netcdf_precip' keyword argument")
     if "input_type" not in keyword_arguments:
         raise ValueError("Missing the 'input_type' keyword argument")
     else:
@@ -470,7 +519,7 @@ def _compute_write_index(keyword_arguments):
             chunks = {"time": -1}
         else:
             raise ValueError(f"Invalid 'input_type' keyword argument: {input_type}")
-    ds_precip = xr.open_mfdataset(files, chunks=chunks)
+    ds_precip = xr.open_dataset(keyword_arguments["netcdf_precip"], chunks=chunks)
 
     # trim out all data variables from the dataset except the ones we'll need
     input_var_names = []
@@ -483,11 +532,14 @@ def _compute_write_index(keyword_arguments):
         if var not in input_var_names:
             ds_precip = ds_precip.drop(var)
 
-    # add placeholder variables in the Dataset to hold the fitting parameters we'll compute
-    if (("save_params" in keyword_arguments) and \
-            (keyword_arguments["save_params"] is not None)) or \
-            keyword_arguments["load_params"] is not None:
+    # if we're not loading fitting parameters
+    # then we'll build a Dataset to contain them
+    if keyword_arguments["load_params"] is not None:
+        ds_fitting = xr.open_dataset(keyword_arguments["load_params"])
+    else:
+        ds_fitting = build_fitting_dataset_grid(ds_precip, keyword_arguments['periodicity'])
 
+        # get the fitting parameter times and coordinates
         if keyword_arguments["periodicity"] == compute.Periodicity.monthly:
             period_times = 12
         elif keyword_arguments["periodicity"] == compute.Periodicity.daily:
@@ -498,157 +550,67 @@ def _compute_write_index(keyword_arguments):
         time_coord_name = keyword_arguments['periodicity'].unit()
         if input_type == InputType.grid:
             fitting_coords = {"lat": ds_precip.lat, "lon": ds_precip.lon, time_coord_name: range(period_times)}
-            data_shape = (len(ds_precip.lat), len(ds_precip.lon), period_times)
+            fitting_data_shape = (len(ds_precip.lat), len(ds_precip.lon), period_times)
         elif input_type == InputType.divisions:
             fitting_coords = {"division": ds_precip.division, time_coord_name: range(period_times)}
-            data_shape = (len(ds_precip.division), period_times)
+            fitting_data_shape = (len(ds_precip.division), period_times)
         elif input_type == InputType.timeseries:
             fitting_coords = {time_coord_name: range(period_times)}
-            data_shape = (period_times,)
+            fitting_data_shape = (period_times,)
         else:
             raise ValueError(f"Invalid 'input_type' keyword argument: {input_type}")
 
-        # open the dataset if it's already been written to file, otherwise create it
-        if os.path.exists(keyword_arguments["save_params"]):
-            ds_fitting = xr.open_dataset(keyword_arguments["save_params"])
-        elif keyword_arguments["load_params"] is not None:
-            ds_fitting = xr.open_dataset(keyword_arguments["load_params"])
-        else:
-            attrs_to_copy = [
-                'Conventions',
-                'ncei_template_version',
-                'naming_authority',
-                'standard_name_vocabulary',
-                'institution',
-                'geospatial_lat_min',
-                'geospatial_lat_max',
-                'geospatial_lon_min',
-                'geospatial_lon_max',
-                'geospatial_lat_units',
-                'geospatial_lon_units',
-            ]
-            global_attrs = {key: value for (key, value) in ds_precip.attrs.items() if key in attrs_to_copy}
-            ds_fitting = xr.Dataset(
-                coords=fitting_coords,
-                attrs=global_attrs,
-            )
+    # open the dataset if it's already been written to file, otherwise create it
 
-        # build DataArrays for the parameter fittings we'll compute
-        # (only if not already in the Dataset when loading from existing file)
-        fitting_var_names = {}
-        fitting_var_name_suffix = f"{keyword_arguments['scale']}_{keyword_arguments['periodicity'].unit()}"
-        if keyword_arguments["distribution"] == indices.Distribution.gamma:
+    # build DataArrays for the parameter fittings we'll compute
+    # (only if not already in the Dataset when loading from existing file)
+    scale_fitting_var_names = {}
+    for scale in keyword_arguments['scales']:
 
-            # add an empty DataArray to the fitting Dataset for alpha if not present
-            alpha_var_name = f"alpha_{fitting_var_name_suffix}"
-            fitting_var_names["alpha"] = alpha_var_name
-            if (keyword_arguments["save_params"] is not None) or (alpha_var_name not in ds_fitting.data_vars):
+        # create a dictionary of fitting variable names for this scale
+        suffix = f"{scale}_{keyword_arguments['periodicity'].unit()}"
+        fitting_var_names = {var: f"{var}_{suffix}" for var in _FITTING_VARIABLES}
 
-                alpha_attrs = {
-                    'description': 'shape parameter of the gamma distribution (also referred to as the concentration) ' + \
-                                   f'computed from the {keyword_arguments["scale"]}-month scaled precipitation values',
-                }
-                da_alpha = xr.DataArray(
-                    data=np.full(shape=data_shape, fill_value=np.NaN),
-                    coords=fitting_coords,
-                    dims=tuple(fitting_coords.keys()),
-                    name=alpha_var_name,
-                    attrs=alpha_attrs,
-                )
-                ds_fitting[alpha_var_name] = da_alpha
+        # add an empty DataArray to the fitting Dataset if it's not been loaded
+        if keyword_arguments["load_params"] is None:
 
-            # add an empty DataArray to the fitting Dataset for beta if not present
-            beta_var_name = f"beta_{fitting_var_name_suffix}"
-            fitting_var_names["beta"] = beta_var_name
-            if (keyword_arguments["save_params"] is not None) or (beta_var_name not in ds_fitting.data_vars):
-
-                beta_attrs = {
-                    'description': '1 / scale of the distribution (also referred to as the rate) ' + \
-                                   f'computed from the {keyword_arguments["scale"]}-month scaled precipitation values',
-                }
-                da_beta = xr.DataArray(
-                    data=np.full(shape=data_shape, fill_value=np.NaN),
-                    coords=fitting_coords,
-                    dims=tuple(fitting_coords.keys()),
-                    name=beta_var_name,
-                    attrs=beta_attrs,
-                )
-                ds_fitting[beta_var_name] = da_beta
-
-        elif keyword_arguments["distribution"] == indices.Distribution.pearson:
-
-            # add an empty DataArray to the fitting Dataset for probability of zero if not present
-            prob_zero_var_name = f"prob_zero_{fitting_var_name_suffix}"
-            fitting_var_names["prob_zero"] = prob_zero_var_name
-            if (keyword_arguments["save_params"] is not None) or \
-                    (prob_zero_var_name not in ds_fitting.data_vars):
-
-                prob_zero_attrs = {
-                    'description': 'probability of zero values within calibration period',
-                }
-                da_prob_zero = xr.DataArray(
-                    data=np.full(shape=data_shape, fill_value=np.NaN),
-                    coords=fitting_coords,
-                    dims=tuple(fitting_coords.keys()),
-                    name=prob_zero_var_name,
-                    attrs=prob_zero_attrs,
-                )
-                ds_fitting[prob_zero_var_name] = da_prob_zero
-
-            # add an empty DataArray to the fitting Dataset for scale parameter if not present
-            scale_var_name = f"scale_{fitting_var_name_suffix}"
-            fitting_var_names["scale"] = scale_var_name
-            if (keyword_arguments["save_params"] is not None) or \
-                    (scale_var_name not in ds_fitting.data_vars):
-
-                scale_attrs = {
-                    'description': 'scale parameter for Pearson Type III',
-                }
-                scale_var_name = f"scale_{keyword_arguments['scale']}_{keyword_arguments['periodicity'].unit()}"
-                da_scale = xr.DataArray(
-                    data=np.full(shape=data_shape, fill_value=np.NaN),
-                    coords=fitting_coords,
-                    dims=tuple(fitting_coords.keys()),
-                    name=scale_var_name,
-                    attrs=scale_attrs,
-                )
-                ds_fitting[scale_var_name] = da_scale
-
-            # add an empty DataArray to the fitting Dataset for skew parameter if not present
-            skew_var_name = f"skew_{fitting_var_name_suffix}"
-            fitting_var_names["skew"] = skew_var_name
-            if (keyword_arguments["save_params"] is not None) or \
-                    (skew_var_name not in ds_fitting.data_vars):
-
-                skew_attrs = {
-                    'description': 'skew parameter for Pearson Type III',
-                }
-                da_skew = xr.DataArray(
-                    data=np.full(shape=data_shape, fill_value=np.NaN),
-                    coords=fitting_coords,
-                    dims=tuple(fitting_coords.keys()),
-                    name=skew_var_name,
-                    attrs=skew_attrs,
-                )
-                ds_fitting[skew_var_name] = da_skew
-
-            # add an empty DataArray to the fitting Dataset for loc parameter if not present
-            loc_var_name = f"loc_{fitting_var_name_suffix}"
-            fitting_var_names["loc"] = loc_var_name
-            if (keyword_arguments["save_params"] is not None) or \
-                    (loc_var_name not in ds_fitting.data_vars):
-
-                loc_attrs = {
+            fitting_var_attrs = {
+                "alpha": {
+                    'description': 'shape parameter of the gamma distribution (also '
+                                   'referred to as the concentration) computed from '
+                                   f'the {scale}-month scaled precipitation values',
+                },
+                "beta": {
+                    'description': '1 / scale of the distribution (also referred to '
+                                   f'as the rate) computed from the {scale}-month '
+                                   'scaled precipitation values',
+                },
+                "prob_zero": {
+                    'description': 'probability of zero values within calibration period'
+                },
+                "loc": {
                     'description': 'loc parameter for Pearson Type III',
-                }
-                da_loc = xr.DataArray(
-                    data=np.full(shape=data_shape, fill_value=np.NaN),
+                },
+                "scale": {
+                    'description': 'scale parameter for Pearson Type III',
+                },
+                "skew": {
+                    'description': 'skew parameter for Pearson Type III',
+                },
+            }
+
+            for var in _FITTING_VARIABLES:
+                da_fitting = xr.DataArray(
+                    data=np.full(shape=fitting_data_shape, fill_value=np.NaN),
                     coords=fitting_coords,
                     dims=tuple(fitting_coords.keys()),
-                    name=loc_var_name,
-                    attrs=loc_attrs,
+                    name=fitting_var_names[var],
+                    attrs=fitting_var_attrs[var],
                 )
-                ds_fitting[loc_var_name] = da_loc
+                ds_fitting[fitting_var_names[var]] = da_fitting
+
+        # map the fitting variable names dictionary for this scale
+        scale_fitting_var_names[str(scale)] = fitting_var_names
 
     # get the initial year of the data
     data_start_year = int(ds_precip['time'][0].dt.year)
@@ -697,34 +659,99 @@ def _compute_write_index(keyword_arguments):
             _KEY_SHAPE: output_shape,
         }
 
-    # compute the distribution fitting parameters if necessary (i.e. not loaded)
-    if keyword_arguments["load_params"] is None:
-        _parallel_fitting(
-            keyword_arguments["distribution"],
-            _global_shared_arrays,
-            {"var_name_values": keyword_arguments["var_name_precip"]},
-            fitting_var_names,
-            input_type=input_type,
-            number_of_workers=keyword_arguments["number_of_workers"],
-            args=args,
-        )
+    for scale in keyword_arguments['scales']:
+        for distribution in [indices.Distribution.gamma, indices.Distribution.pearson]:
 
-    # apply the SPI function along the time axis (axis=2)
-    var_names_spi = fitting_var_names
-    var_names_spi["var_name_precip"] = keyword_arguments["var_name_precip"]
-    _parallel_spi(
-        keyword_arguments["index"],
-        _global_shared_arrays,
-        var_names_spi,
-        _KEY_RESULT,
-        input_type=input_type,
-        number_of_workers=keyword_arguments["number_of_workers"],
-        args=args,
+            # TODO we may want to initialize the shared memory array
+            #  for SPI with NaNs so it starts off empty at each iteration
+
+            # compute the distribution fitting parameters if necessary (i.e. not loaded)
+            if keyword_arguments["load_params"] is None:
+                _parallel_fitting(
+                    distribution,
+                    _global_shared_arrays,
+                    {"var_name_values": keyword_arguments["var_name_precip"]},
+                    fitting_var_names,
+                    input_type=input_type,
+                    number_of_workers=keyword_arguments["number_of_workers"],
+                    args=args,
+                )
+            else:
+                # TODO load the fitting parameter arrays into shared memory
+                pass
+
+            # compute SPI in parallel
+            var_names_spi = scale_fitting_var_names[str(scale)]
+            var_names_spi["var_name_precip"] = keyword_arguments["var_name_precip"]
+            _parallel_spi(
+                keyword_arguments["index"],
+                _global_shared_arrays,
+                var_names_spi,
+                _KEY_RESULT,
+                input_type=input_type,
+                number_of_workers=keyword_arguments["number_of_workers"],
+                args=args,
+            )
+
+            spi_var_name = f"spi_{distribution}_{scale}_{periodicity.unit()}"
+            ds_spi = build_dataset_spi(
+                ds_precip,
+                scale,
+                periodicity,
+                distribution,
+                data_start_year,
+                output_dims,
+                spi_var_name,
+            )
+
+            # write the SPI dataset to NetCDF file
+            netcdf_file_name = \
+                keyword_arguments["output_file_base"] + "_" + spi_var_name + ".nc"
+            ds_spi.to_netcdf(netcdf_file_name)
+
+            # TODO dump the fitting variable arrays from shared-memory
+            #  into the DataArrays and add to the fitting Dataset
+
+    # if requested then we write the distribution fittings dataset to NetCDF
+    if keyword_arguments["save_params"] is not None:
+
+        # write the fitting parameters dataset to NetCDF file
+        # ds_fitting.to_netcdf(keyword_arguments["save_params"])
+        pass
+
+
+# ------------------------------------------------------------------------------
+def build_dataset_spi(
+        ds_example: xr.Dataset,
+        scale: int,
+        periodicity: compute.Periodicity,
+        distribution: indices.Distribution,
+        data_start_year: int,
+        output_dims: List,
+        spi_var_name: str,
+) -> xr.Dataset:
+
+    global_attrs = {
+        'description': f"SPI for {scale}-{periodicity.unit()} scale computed "
+                       f"from {periodicity} precipitation input "
+                       "by the climate_indices package available from "
+                       f"{_GITHUB_URL}.",
+        'geospatial_lat_min': min(ds_example.lat),
+        'geospatial_lat_max': max(ds_example.lat),
+        'geospatial_lat_units': ds_example.lat.unit,
+        'geospatial_lon_min': min(ds_example.lon),
+        'geospatial_lon_max': max(ds_example.lon),
+        'geospatial_lon_units': ds_example.lon.unit,
+    }
+    coords = {
+        "lat": ds_example.lat,
+        "lon": ds_example.lon,
+        "time": ds_example.time,
+    }
+    ds_spi = xr.Dataset(
+        coords=coords,
+        attrs=global_attrs,
     )
-
-    # get the name and attributes to use for the index variable in the output NetCDF
-    output_var_name, output_var_attributes = \
-        _get_variable_attributes(keyword_arguments)
 
     # get the shared memory results array and convert it to a numpy array
     array = _global_shared_arrays[_KEY_RESULT][_KEY_ARRAY]
@@ -732,45 +759,28 @@ def _compute_write_index(keyword_arguments):
     index_values = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
 
     # convert daily values into normal/Gregorian calendar years
-    if keyword_arguments["periodicity"] == compute.Periodicity.daily:
+    if periodicity == compute.Periodicity.daily:
         index_values = np.apply_along_axis(
             utils.transform_to_gregorian,
             len(output_dims) - 1,
             index_values,
-            keyword_arguments["data_start_year"],
+            data_start_year,
         )
 
     # create a new variable to contain the SPI values, assign into the dataset
-    # TODO create a separate Dataset instead with only relevant attributes etc.
-    #   rather than hijacking the precipitation dataset
+    var_attrs = {
+        "long_name": "Standardized Precipitation Index ("
+                     f"{distribution.value.capitalize()}), "
+                     f"{scale}-{periodicity.unit()}",
+        "valid_min": -3.09,
+        "valid_max": 3.09,
+    }
     variable = xr.Variable(dims=output_dims,
                            data=index_values,
-                           attrs=output_var_attributes)
-    ds_precip[output_var_name] = variable
+                           attrs=var_attrs)
+    ds_spi[spi_var_name] = variable
 
-    # TODO set global attributes accordingly for this new dataset
-
-    # remove all data variables except for the new variable
-    for var_name in ds_precip.data_vars:
-        if var_name != output_var_name:
-            ds_precip = ds_precip.drop(var_name)
-
-    # write the dataset as NetCDF
-    netcdf_file_name = \
-        keyword_arguments["output_file_base"] + "_" + output_var_name + ".nc"
-    ds_precip.to_netcdf(netcdf_file_name)
-
-    # if requested then we write the distribution fittings dataset to NetCDF
-    if keyword_arguments["save_params"] is not None:
-
-        # TODO copy the values from the fitting variable shared arrays into
-        #  the fitting Dataset since we'll need to write it out later
-
-        # ds_fitting.to_netcdf(keyword_arguments["save_params"])
-        pass
-
-    return netcdf_file_name, output_var_name
-
+    return ds_spi
 
 # ------------------------------------------------------------------------------
 def _init_worker(shared_arrays_dict):
@@ -1343,6 +1353,13 @@ def main():  # type: () -> None
             help="path to output NetCDF file (to be written) "
                  "containing distribution fitting parameters",
         )
+        parser.add_argument(
+            "--overwrite",
+            # type=bool,
+            default=False,
+            action='store_true',
+            help="overwrite existing files if they exist",
+        )
         arguments = parser.parse_args()
 
         # validate the arguments and determine the input type
@@ -1378,6 +1395,7 @@ def main():  # type: () -> None
                     "load_params": arguments.load_params,
                     "save_params": arguments.save_params,
                     "number_of_workers": number_of_workers,
+                    "overwrite": arguments.overwrite,
                 }
 
                 # compute and write SPI
