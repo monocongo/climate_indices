@@ -710,10 +710,12 @@ def _compute_write_index(keyword_arguments):
         )
 
     # apply the SPI function along the time axis (axis=2)
+    var_names_spi = fitting_var_names
+    var_names_spi["var_name_precip"] = keyword_arguments["var_name_precip"]
     _parallel_spi(
         keyword_arguments["index"],
         _global_shared_arrays,
-        {"var_name_precip": keyword_arguments["var_name_precip"]},
+        var_names_spi,
         _KEY_RESULT,
         input_type=input_type,
         number_of_workers=keyword_arguments["number_of_workers"],
@@ -790,13 +792,16 @@ def _spi(
         parameters: Dict,
 ) -> np.ndarray:
 
-    return indices.spi(values=precips,
-                       scale=parameters["scale"],
-                       distribution=parameters["distribution"],
-                       data_start_year=parameters["data_start_year"],
-                       calibration_year_initial=parameters["calibration_year_initial"],
-                       calibration_year_final=parameters["calibration_year_final"],
-                       periodicity=parameters["periodicity"])
+    return indices.spi(
+        values=precips,
+        scale=parameters["scale"],
+        distribution=parameters["distribution"],
+        data_start_year=parameters["data_start_year"],
+        calibration_year_initial=parameters["calibration_year_initial"],
+        calibration_year_final=parameters["calibration_year_final"],
+        periodicity=parameters["periodicity"],
+        fitting_params=parameters["fitting_params"],
+    )
 
 
 # ------------------------------------------------------------------------------
@@ -857,6 +862,16 @@ def _parallel_spi(
             params["sub_array_end"] = split_indices[i + 1]
         else:
             params["sub_array_end"] = None
+
+        # set the distribution fitting variable name parameters
+        if args["distribution"] is indices.Distribution.gamma:
+            params["var_name_alpha"] = input_var_names["alpha"]
+            params["var_name_beta"] = input_var_names["beta"]
+        elif args["distribution"] is indices.Distribution.pearson:
+            params["var_name_prob_zero"] = input_var_names["prob_zero"]
+            params["var_name_loc"] = input_var_names["loc"]
+            params["var_name_scale"] = input_var_names["scale"]
+            params["var_name_skew"] = input_var_names["skew"]
 
         chunk_params.append(params)
 
@@ -949,13 +964,12 @@ def _apply_along_axis_spi(params):
         a dictionary of arguments to be passed to the function, "args", and
         the key name of the shared array for output values, "output_var_name".
     """
-    func1d = params["func1d"]
     start_index = params["sub_array_start"]
     end_index = params["sub_array_end"]
     array = _global_shared_arrays[params["input_var_name"]][_KEY_ARRAY]
     shape = _global_shared_arrays[params["input_var_name"]][_KEY_SHAPE]
     np_array = np.frombuffer(array.get_obj()).reshape(shape)
-    sub_array = np_array[start_index:end_index]
+    values_sub_array = np_array[start_index:end_index]
     args = params["args"]
 
     if params["input_type"] == InputType.grid:
@@ -1013,16 +1027,78 @@ def _apply_along_axis_spi(params):
             "skew": sub_array_skew,
         }
 
+    else:
+        raise ValueError(f"Unsupported distribution: {args['distribution']}")
+
     args["fitting_params"] = fitting_params
 
-    computed_array = np.apply_along_axis(func1d,
-                                         axis=axis_index,
-                                         arr=sub_array,
-                                         parameters=args)
+    # get the output shared memory array, convert to numpy, and get the subarray slice
+    output_array = _global_shared_arrays[params["output_var_name"]][_KEY_ARRAY]
+    computed_array = np.frombuffer(output_array.get_obj()).reshape(shape)[
+        start_index:end_index
+    ]
 
-    output_array = _global_shared_arrays[params["spi_var_name"]][_KEY_ARRAY]
-    np_output_array = np.frombuffer(output_array.get_obj()).reshape(shape)
-    np.copyto(np_output_array[start_index:end_index], computed_array)
+    for i, values in enumerate(values_sub_array):
+        if params["input_type"] == InputType.grid:
+            for j in range(values.shape[0]):
+
+                if args["distribution"] == indices.Distribution.gamma:
+
+                    fitting_params = {
+                        "alpha": sub_array_alpha[i, j],
+                        "beta": sub_array_beta[i, j],
+                    }
+
+                elif args["distribution"] == indices.Distribution.pearson:
+
+                    fitting_params = {
+                        "prob_zero": sub_array_prob_zero[i, j],
+                        "loc": sub_array_loc[i, j],
+                        "scale": sub_array_scale[i, j],
+                        "skew": sub_array_skew[i, j],
+                    }
+
+                computed_array[i, j] = \
+                    indices.spi(
+                        values[j],
+                        scale=args["scale"],
+                        distribution=args["distribution"],
+                        data_start_year=args["data_start_year"],
+                        calibration_year_initial=args["calibration_year_initial"],
+                        calibration_year_final=args["calibration_year_final"],
+                        periodicity=args["periodicity"],
+                        fitting_params=fitting_params,
+                    )
+
+        else:  # divisions
+
+            if args["distribution"] == indices.Distribution.gamma:
+
+                fitting_params = {
+                    "alpha": sub_array_alpha[i],
+                    "beta": sub_array_beta[i],
+                }
+
+            elif args["distribution"] == indices.Distribution.pearson:
+
+                fitting_params = {
+                    "prob_zero": sub_array_prob_zero[i],
+                    "loc": sub_array_loc[i],
+                    "scale": sub_array_scale[i],
+                    "skew": sub_array_skew[i],
+                }
+
+            computed_array[i] = \
+                indices.spi(
+                    values_sub_array,
+                    scale=args["scale"],
+                    distribution=args["distribution"],
+                    data_start_year=args["data_start_year"],
+                    calibration_year_initial=args["calibration_year_initial"],
+                    calibration_year_final=args["calibration_year_final"],
+                    periodicity=args["periodicity"],
+                    fitting_params=fitting_params,
+                )
 
 
 # ------------------------------------------------------------------------------
