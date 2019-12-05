@@ -346,14 +346,6 @@ def test_pearson_parameters(precips_mm_monthly):
         ),
         compute.Periodicity.monthly,
     )
-    # np.testing.assert_raises(
-    #     ValueError,
-    #     compute.pearson_parameters,
-    #     np.array(
-    #         [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN],
-    #     ),
-    #     compute.Periodicity.monthly,
-    # )
     np.testing.assert_raises(ValueError, compute.pearson_parameters, None, None)
 
     # try using a subset of the precipitation dataset (1897 - 1915, year indices 2 - 20)
