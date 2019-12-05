@@ -153,15 +153,16 @@ def test_gamma_parameters(
 
     # confirm that an input array of all NaNs results in the same array returned
     all_nans = np.full(precips_mm_monthly.shape, np.NaN)
-    pytest.raises(
-        ValueError,
-        compute.gamma_parameters,
-        all_nans,
+    nan_alphas = np.full(shape=(12,), fill_value=np.NaN)
+    nan_betas = np.full(shape=(12,), fill_value=np.NaN)
+    alphas, betas = compute.gamma_parameters(all_nans,
         data_year_start_monthly,
         data_year_start_monthly,
         data_year_end_monthly,
         compute.Periodicity.monthly,
     )
+    assert np.allclose(alphas, nan_alphas, equal_nan=True)
+    assert np.allclose(betas, nan_betas, equal_nan=True)
 
     computed_values = \
         compute.gamma_parameters(
