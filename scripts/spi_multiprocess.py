@@ -634,7 +634,7 @@ def _compute_write_index(keyword_arguments):
 
             # add an empty DataArray to the fitting Dataset for loc parameter if not present
             loc_var_name = f"loc_{fitting_var_name_suffix}"
-            fitting_var_names.append(loc_var_name)
+            fitting_var_names["loc"] = loc_var_name
             if (keyword_arguments["save_params"] is not None) or \
                     (loc_var_name not in ds_fitting.data_vars):
 
@@ -654,18 +654,13 @@ def _compute_write_index(keyword_arguments):
     data_start_year = int(ds_precip['time'][0].dt.year)
     keyword_arguments["data_start_year"] = data_start_year
 
-    # the shape of output variables is assumed to match that of the input,
-    # so use either precipitation or temperature variable's shape
-    if "var_name_precip" in keyword_arguments:
-        output_dims = ds_precip[keyword_arguments["var_name_precip"]].dims
-    else:
-        raise ValueError("Unable to determine output dimensions, no "
-                         "precipitation variable name was specified.")
-
-    # convert precipitation data into the appropriate units,
-    # should be in millimeters
+    # the shape of output variables is assumed to match that
+    # of the input, so use the precipitation variable's shape
     if "var_name_precip" in keyword_arguments:
         precip_var_name = keyword_arguments["var_name_precip"]
+        output_dims = ds_precip[precip_var_name].dims
+
+        # convert precipitation data into millimeters
         precip_unit = ds_precip[precip_var_name].units.lower()
         if precip_unit not in ("mm", "millimeters", "millimeter", "mm/dy"):
             if precip_unit in ("inches", "inch"):
@@ -673,6 +668,9 @@ def _compute_write_index(keyword_arguments):
                 ds_precip[precip_var_name].values *= 25.4
             else:
                 raise ValueError(f"Unsupported precipitation units: {precip_unit}")
+
+    else:
+        raise ValueError("No precipitation variable name was specified.")
 
     if input_type == InputType.divisions:
         _drop_data_into_shared_arrays_divisions(ds_precip, input_var_names)
@@ -699,12 +697,12 @@ def _compute_write_index(keyword_arguments):
             _KEY_SHAPE: output_shape,
         }
 
-    # compute the distribution fitting parameters if necessary
-    if keyword_arguments["save_params"] is not None:
-        _compute_fitting_parallel(
+    # compute the distribution fitting parameters if necessary (i.e. not loaded)
+    if keyword_arguments["load_params"] is None:
+        _parallel_fitting(
             keyword_arguments["distribution"],
             _global_shared_arrays,
-            {"var_name_precip": keyword_arguments["var_name_precip"]},
+            {"var_name_values": keyword_arguments["var_name_precip"]},
             fitting_var_names,
             input_type=input_type,
             number_of_workers=keyword_arguments["number_of_workers"],
@@ -712,7 +710,7 @@ def _compute_write_index(keyword_arguments):
         )
 
     # apply the SPI function along the time axis (axis=2)
-    _parallel_process(
+    _parallel_spi(
         keyword_arguments["index"],
         _global_shared_arrays,
         {"var_name_precip": keyword_arguments["var_name_precip"]},
@@ -762,205 +760,11 @@ def _compute_write_index(keyword_arguments):
 
     # if requested then we write the distribution fittings dataset to NetCDF
     if keyword_arguments["save_params"] is not None:
+
+        # TODO copy the values from the fitting variable shared arrays into
+        #  the fitting Dataset since we'll need to write it out later
+
         ds_fitting.to_netcdf(keyword_arguments["save_params"])
-
-    return netcdf_file_name, output_var_name
-
-
-# ------------------------------------------------------------------------------
-def _compute_write_fittings(keyword_arguments):
-    """
-    Computes a distribution fitting parameters and writes the result into a
-    corresponding NetCDF.
-
-    :param keyword_arguments:
-    :return:
-    """
-
-    _log_status(keyword_arguments)
-
-    # open the NetCDF files as an xarray DataSet object
-    files = []
-    if "netcdf_precip" in keyword_arguments:
-        files.append(keyword_arguments["netcdf_precip"])
-    if "input_type" not in keyword_arguments:
-        raise ValueError("Missing the 'input_type' keyword argument")
-    else:
-        input_type = keyword_arguments["input_type"]
-        if input_type == InputType.grid:
-            chunks = {"lat": -1, "lon": -1}
-        elif input_type == InputType.divisions:
-            chunks = {"division": -1}
-        elif input_type == InputType.timeseries:
-            chunks = {"time": -1}
-        else:
-            raise ValueError(f"Invalid 'input_type' keyword argument: {input_type}")
-    dataset = xr.open_mfdataset(files, chunks=chunks)
-
-    # add placeholder variables in the Dataset to hold the fitting parameters we'll compute
-    if ("save_params" in keyword_arguments) and \
-            (keyword_arguments["save_params"] is not None) and \
-            (keyword_arguments["index"] not in ("pet", "palmers")):
-
-        if keyword_arguments["periodicity"] == compute.Periodicity.monthly:
-            period_times = 12
-            time_coord_name = "month"
-        elif keyword_arguments["periodicity"] == compute.Periodicity.daily:
-            period_times = 366
-            time_coord_name = "day"
-        else:
-            raise ValueError(f"Unsupported periodicity: {keyword_arguments['periodicity']}")
-
-        if input_type == InputType.grid:
-            gamma_coords = {"lat": dataset.lat, "lon": dataset.lon, time_coord_name: range(period_times)}
-            data_shape = (len(dataset.lat), len(dataset.lon), period_times)
-        elif input_type == InputType.divisions:
-            gamma_coords = {"division": dataset.division, time_coord_name: range(period_times)}
-            data_shape = (len(dataset.division), period_times)
-        elif input_type == InputType.timeseries:
-            gamma_coords = {time_coord_name: range(period_times)}
-            data_shape = (period_times,)
-        else:
-            raise ValueError(f"Invalid 'input_type' keyword argument: {input_type}")
-
-        alpha_attrs = {
-            'description': 'shape parameter of the gamma distribution (also referred to as the concentration) ' + \
-                           f'computed from the {keyword_arguments["scale"]}-month scaled precipitation values',
-        }
-        alpha_var_name = f"alpha_{str(keyword_arguments['scale']).zfill(2)}"
-        da_alpha = xr.DataArray(
-            data=np.full(shape=data_shape, fill_value=np.NaN),
-            coords=gamma_coords,
-            dims=tuple(gamma_coords.keys()),
-            name=alpha_var_name,
-            attrs=alpha_attrs,
-        )
-        beta_attrs = {
-            'description': '1 / scale of the distribution (also referred to as the rate) ' + \
-                           f'computed from the {keyword_arguments["scale"]}-month scaled precipitation values',
-        }
-        beta_var_name = f"beta_{str(keyword_arguments['scale']).zfill(2)}"
-        da_beta = xr.DataArray(
-            data=np.full(shape=data_shape, fill_value=np.NaN),
-            coords=gamma_coords,
-            dims=tuple(gamma_coords.keys()),
-            name=beta_var_name,
-            attrs=beta_attrs,
-        )
-        dataset[alpha_var_name] = da_alpha
-        dataset[beta_var_name] = da_beta
-
-    # trim out all data variables from the dataset except the ones we'll need
-    input_var_names = []
-    if "var_name_precip" in keyword_arguments:
-        input_var_names.append(keyword_arguments["var_name_precip"])
-    # keep the parameter fitting variables if relevant
-    if (("load_params" in keyword_arguments) or \
-            ("save_params" in keyword_arguments)) and \
-            (keyword_arguments["index"] not in ("pet", "palmers")):
-        for fitting_param_name in _FITTING_PARAMETER_VARIABLES:
-            fitting_param_var_name = "_".join((fitting_param_name, str(keyword_arguments["scale"]).zfill(2)))
-            input_var_names.append(fitting_param_var_name)
-    # only keep the latitude variable if we're dealing with divisions
-    if input_type == InputType.divisions:
-        input_var_names.append("lat")
-    for var in dataset.data_vars:
-        if var not in input_var_names:
-            dataset = dataset.drop(var)
-
-    # get the initial year of the data
-    data_start_year = int(str(dataset["time"].values[0])[0:4])
-    keyword_arguments["data_start_year"] = data_start_year
-
-    # the shape of output variables is assumed to match that of the input,
-    # so use either precipitation or temperature variable's shape
-    if "var_name_precip" in keyword_arguments:
-        output_dims = dataset[keyword_arguments["var_name_precip"]].dims
-    else:
-        raise ValueError("Unable to determine output dimensions, no "
-                         "precipitation variable name was specified.")
-
-    # convert data into the appropriate units, if necessary
-    # precipitation and PET should be in millimeters
-    if "var_name_precip" in keyword_arguments:
-        precip_var_name = keyword_arguments["var_name_precip"]
-        precip_unit = dataset[precip_var_name].units.lower()
-        if precip_unit not in ("mm", "millimeters", "millimeter", "mm/dy"):
-            if precip_unit in ("inches", "inch"):
-                # inches to mm conversion (1 inch == 25.4 mm)
-                dataset[precip_var_name].values *= 25.4
-            else:
-                raise ValueError(f"Unsupported precipitation units: {precip_unit}")
-
-    if input_type == InputType.divisions:
-        _drop_data_into_shared_arrays_divisions(dataset, input_var_names)
-    else:
-        _drop_data_into_shared_arrays_grid(
-            dataset,
-            input_var_names,
-            keyword_arguments["periodicity"],
-            keyword_arguments["data_start_year"],
-        )
-
-    # use the precipitation shape as the corresponding output array shape
-    output_shape = dataset[keyword_arguments["var_name_precip"]].shape
-
-    # build an arguments dictionary appropriate to the index we'll compute
-    args = _build_arguments(keyword_arguments)
-
-    # add output variable arrays into the shared memory arrays dictionary
-    if _KEY_RESULT not in _global_shared_arrays:
-        _global_shared_arrays[_KEY_RESULT] = {
-            _KEY_ARRAY: multiprocessing.Array("d", int(np.prod(output_shape))),
-            _KEY_SHAPE: output_shape,
-        }
-
-    # apply the SPI function along the time axis (axis=2)
-    _parallel_process(
-        keyword_arguments["index"],
-        _global_shared_arrays,
-        {"var_name_precip": keyword_arguments["var_name_precip"]},
-        _KEY_RESULT,
-        input_type=input_type,
-        number_of_workers=keyword_arguments["number_of_workers"],
-        args=args,
-    )
-
-    # get the name and attributes to use for the index variable in the output NetCDF
-    output_var_name, output_var_attributes = \
-        _get_variable_attributes(keyword_arguments)
-
-    # get the shared memory results array and convert it to a numpy array
-    array = _global_shared_arrays[_KEY_RESULT][_KEY_ARRAY]
-    shape = _global_shared_arrays[_KEY_RESULT][_KEY_SHAPE]
-    index_values = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
-
-    # convert daily values into normal/Gregorian calendar years
-    if keyword_arguments["periodicity"] == compute.Periodicity.daily:
-        index_values = np.apply_along_axis(
-            utils.transform_to_gregorian,
-            len(output_dims) - 1,
-            index_values,
-            keyword_arguments["data_start_year"],
-        )
-
-    # create a new variable to contain the index values, assign into the dataset
-    variable = xr.Variable(dims=output_dims,
-                           data=index_values,
-                           attrs=output_var_attributes)
-    dataset[output_var_name] = variable
-
-    # TODO set global attributes accordingly for this new dataset
-
-    # remove all data variables except for the new variable
-    for var_name in dataset.data_vars:
-        if var_name != output_var_name:
-            dataset = dataset.drop(var_name)
-
-    # write the dataset as NetCDF
-    netcdf_file_name = \
-        keyword_arguments["output_file_base"] + "_" + output_var_name + ".nc"
-    dataset.to_netcdf(netcdf_file_name)
 
     return netcdf_file_name, output_var_name
 
@@ -1003,7 +807,7 @@ def _init_worker(shared_arrays_dict):
 
 
 # ------------------------------------------------------------------------------
-def _parallel_process(
+def _parallel_spi(
         index: str,
         arrays_dict: dict,
         input_var_names: dict,
@@ -1065,7 +869,7 @@ def _parallel_process(
 
 
 # ------------------------------------------------------------------------------
-def _compute_fitting_parallel(
+def _parallel_fitting(
         distribution: indices.Distribution,
         shared_arrays: Dict,
         input_var_names: Dict,
@@ -1087,9 +891,12 @@ def _compute_fitting_parallel(
     :return:
     """
 
+    # TODO somehow account for the calibration period, i.e. only compute
+    #  fitting parameters on values within the calibration period
+
     # find the start index of each sub-array we'll split out per worker process,
     # assuming the shape of the output array is the same as all input arrays
-    for output_var_name in output_var_names:
+    for output_var_name in output_var_names.values():
         shape = shared_arrays[output_var_name][_KEY_SHAPE]
         d, m = divmod(shape[0], number_of_workers)
         split_indices = list(range(0, ((d + 1) * (m + 1)), (d + 1)))
@@ -1100,7 +907,7 @@ def _compute_fitting_parallel(
     chunk_params = []
     for i in range(number_of_workers):
         params = {
-            "input_var_name": input_var_names["var_name_precip"],
+            "input_var_name": input_var_names["var_name_values"],
             "output_var_names": output_var_names,
             "sub_array_start": split_indices[i],
             "input_type": input_type,
@@ -1159,6 +966,54 @@ def _apply_along_axis_spi(params):
         axis_index = 0
     else:
         raise ValueError(f"Invalid input type argument: {params['input_type']}")
+
+    if args["distribution"] == indices.Distribution.gamma:
+
+        array_alpha = _global_shared_arrays[params["var_name_alpha"]][_KEY_ARRAY]
+        shape_alpha = _global_shared_arrays[params["var_name_alpha"]][_KEY_SHAPE]
+        np_array_alpha = np.frombuffer(array_alpha.get_obj()).reshape(shape_alpha)
+        sub_array_alpha = np_array_alpha[start_index:end_index]
+
+        array_beta = _global_shared_arrays[params["var_name_beta"]][_KEY_ARRAY]
+        shape_beta = _global_shared_arrays[params["var_name_beta"]][_KEY_SHAPE]
+        np_array_beta = np.frombuffer(array_beta.get_obj()).reshape(shape_beta)
+        sub_array_beta = np_array_beta[start_index:end_index]
+
+        fitting_params = {
+            "alpha": sub_array_alpha,
+            "beta": sub_array_beta,
+        }
+
+    elif args["distribution"] == indices.Distribution.pearson:
+
+        array_prob_zero = _global_shared_arrays[params["var_name_prob_zero"]][_KEY_ARRAY]
+        shape_prob_zero = _global_shared_arrays[params["var_name_prob_zero"]][_KEY_SHAPE]
+        np_array_prob_zero = np.frombuffer(array_prob_zero.get_obj()).reshape(shape_prob_zero)
+        sub_array_prob_zero = np_array_prob_zero[start_index:end_index]
+
+        array_loc = _global_shared_arrays[params["var_name_loc"]][_KEY_ARRAY]
+        shape_loc = _global_shared_arrays[params["var_name_loc"]][_KEY_SHAPE]
+        np_array_loc = np.frombuffer(array_loc.get_obj()).reshape(shape_loc)
+        sub_array_loc = np_array_loc[start_index:end_index]
+
+        array_scale = _global_shared_arrays[params["var_name_scale"]][_KEY_ARRAY]
+        shape_scale = _global_shared_arrays[params["var_name_scale"]][_KEY_SHAPE]
+        np_array_scale = np.frombuffer(array_scale.get_obj()).reshape(shape_scale)
+        sub_array_scale = np_array_scale[start_index:end_index]
+
+        array_skew = _global_shared_arrays[params["var_name_skew"]][_KEY_ARRAY]
+        shape_skew = _global_shared_arrays[params["var_name_skew"]][_KEY_SHAPE]
+        np_array_skew = np.frombuffer(array_skew.get_obj()).reshape(shape_skew)
+        sub_array_skew = np_array_skew[start_index:end_index]
+
+        fitting_params = {
+            "prob_zero": sub_array_prob_zero,
+            "loc": sub_array_loc,
+            "scale": sub_array_scale,
+            "skew": sub_array_skew,
+        }
+
+    args["fitting_params"] = fitting_params
 
     computed_array = np.apply_along_axis(func1d,
                                          axis=axis_index,
@@ -1243,16 +1098,16 @@ def _apply_along_axis_pearson(params):
     """
     start_index = params["sub_array_start"]
     end_index = params["sub_array_end"]
-    precip_array_key = params["var_name_precip"]
-    prob_zero_array_key = params["var_name_prob_zero"]
-    scale_array_key = params["var_name_scale"]
-    skew_array_key = params["var_name_skew"]
-    loc_array_key = params["var_name_loc"]
+    values_array_key = params["input_var_name"]
+    prob_zero_array_key = params["output_var_names"]["prob_zero"]
+    scale_array_key = params["output_var_names"]["scale"]
+    skew_array_key = params["output_var_names"]["skew"]
+    loc_array_key = params["output_var_names"]["loc"]
 
-    precip_shape = _global_shared_arrays[precip_array_key][_KEY_SHAPE]
-    precip_array = _global_shared_arrays[precip_array_key][_KEY_ARRAY]
-    precip_np_array = np.frombuffer(precip_array.get_obj()).reshape(precip_shape)
-    sub_array_precip = precip_np_array[start_index:end_index]
+    values_shape = _global_shared_arrays[values_array_key][_KEY_SHAPE]
+    values_array = _global_shared_arrays[values_array_key][_KEY_ARRAY]
+    values_np_array = np.frombuffer(values_array.get_obj()).reshape(values_shape)
+    sub_array_values = values_np_array[start_index:end_index]
 
     args = params["args"]
 
@@ -1274,14 +1129,14 @@ def _apply_along_axis_pearson(params):
     loc_np_array = np.frombuffer(loc_output_array.get_obj()).reshape(fitting_shape)
     sub_array_loc = loc_np_array[start_index:end_index]
 
-    for i, precip in enumerate(sub_array_precip):
+    for i, values in enumerate(sub_array_values):
         if params["input_type"] == InputType.grid:
-            for j in range(precip.shape[0]):
+            for j in range(values.shape[0]):
                 sub_array_prob_zero[i, j], sub_array_loc[i, j], sub_array_scale[i, j], sub_array_skew[i, j] = \
-                    compute.pearson_parameters(precip[j])
+                    compute.pearson_parameters(values[j], args["periodicity"])
         else:  # divisions
             sub_array_prob_zero[i], sub_array_loc[i], sub_array_scale[i], sub_array_skew[i] = \
-                compute.pearson_parameters(precip)
+                compute.pearson_parameters(values, args["periodicity"])
 
 
 # ------------------------------------------------------------------------------
