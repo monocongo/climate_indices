@@ -508,7 +508,7 @@ def transform_fitted_pearson(
 
         # compute the values we'll use to fit to the Pearson Type III distribution
         probabilities_of_zero, locs, scales, skews = \
-            pearson_parameters(values[calibration_begin_index:calibration_end_index, :])
+            pearson_parameters(values[calibration_begin_index:calibration_end_index, :], periodicity)
 
     # fit each value to the Pearson Type III distribution
     values = _pearson_fit(values, probabilities_of_zero, skews, locs, scales)
