@@ -246,7 +246,6 @@ def _drop_data_into_shared_arrays_grid(
         dataset_climatology: xr.Dataset,
         dataset_fitting: xr.Dataset,
         var_names_climate: List[str],
-        var_names_fitting: List[str],
         periodicity: compute.Periodicity,
 ):
     """
@@ -255,7 +254,6 @@ def _drop_data_into_shared_arrays_grid(
     :param dataset_climatology: Dataset containing climatology value arrays
     :param dataset_fitting: Dataset containing distribution fitting parameter arrays
     :param var_names_climate: names of variables to be copied into shared memory
-    :param var_names_fitting: names of variables to be copied into shared memory
     :param periodicity: monthly or daily
     """
 
@@ -326,7 +324,7 @@ def _drop_data_into_shared_arrays_grid(
         dataset_climatology = dataset_climatology.drop(var_name)
 
     # copy all variables from fitting parameters Dataset into shared memory arrays
-    for var_name in var_names_fitting:
+    for var_name in dataset_fitting.data_vars:
 
         # confirm that the dimensions of the data array are valid
         dims = dataset_fitting[var_name].dims
@@ -536,21 +534,6 @@ def _compute_write_index(keyword_arguments):
         else:
             raise ValueError(f"Unsupported periodicity: {keyword_arguments['periodicity']}")
 
-        time_coord_name = keyword_arguments['periodicity'].unit()
-        if input_type == InputType.grid:
-            fitting_coords = {"lat": ds_precip.lat, "lon": ds_precip.lon, time_coord_name: range(period_times)}
-            fitting_data_shape = (len(ds_precip.lat), len(ds_precip.lon), period_times)
-        elif input_type == InputType.divisions:
-            fitting_coords = {"division": ds_precip.division, time_coord_name: range(period_times)}
-            fitting_data_shape = (len(ds_precip.division), period_times)
-        elif input_type == InputType.timeseries:
-            fitting_coords = {time_coord_name: range(period_times)}
-            fitting_data_shape = (period_times,)
-        else:
-            raise ValueError(f"Invalid 'input_type' keyword argument: {input_type}")
-
-    # open the dataset if it's already been written to file, otherwise create it
-
     # build DataArrays for the parameter fittings we'll compute
     # (only if not already in the Dataset when loading from existing file)
     scale_fitting_var_names = {}
@@ -590,9 +573,9 @@ def _compute_write_index(keyword_arguments):
 
             for var in _FITTING_VARIABLES:
                 da_fitting = xr.DataArray(
-                    data=np.full(shape=fitting_data_shape, fill_value=np.NaN),
-                    coords=fitting_coords,
-                    dims=tuple(fitting_coords.keys()),
+                    data=np.full(shape=tuple(ds_fitting.sizes.values()), fill_value=np.NaN),
+                    coords=ds_fitting.coords,
+                    dims=ds_fitting.dims,
                     name=fitting_var_names[var],
                     attrs=fitting_var_attrs[var],
                 )
@@ -630,7 +613,6 @@ def _compute_write_index(keyword_arguments):
             ds_precip,
             ds_fitting,
             input_var_names,
-            fitting_var_names.values(),
             keyword_arguments["periodicity"],
         )
 
