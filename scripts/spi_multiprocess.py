@@ -5,7 +5,7 @@ from enum import Enum
 import logging
 import multiprocessing
 import os
-from typing import List
+from typing import Dict, List
 
 from nco import Nco
 import numpy as np
@@ -393,6 +393,7 @@ def _drop_data_into_shared_arrays_divisions(
         dataset: xr.Dataset,
         var_names: List[str],
 ):
+    # TODO add fitting variables as we've done in _drop_data_into_shared_arrays_grid
     """
     Copies arrays from an xarray Dataset into shared memory arrays.
 
@@ -534,12 +535,14 @@ def _compute_write_index(keyword_arguments):
 
         # build DataArrays for the parameter fittings we'll compute
         # (only if not already in the Dataset when loading from existing file)
+        fitting_var_names = {}
         fitting_var_name_suffix = f"{keyword_arguments['scale']}_{keyword_arguments['periodicity'].unit()}"
         if keyword_arguments["distribution"] == indices.Distribution.gamma:
 
             # add an empty DataArray to the fitting Dataset for alpha if not present
             alpha_var_name = f"alpha_{fitting_var_name_suffix}"
-            if (keyword_arguments["load_params"] is None) and (alpha_var_name not in ds_fitting.data_vars):
+            fitting_var_names["alpha"] = alpha_var_name
+            if (keyword_arguments["save_params"] is not None) or (alpha_var_name not in ds_fitting.data_vars):
 
                 alpha_attrs = {
                     'description': 'shape parameter of the gamma distribution (also referred to as the concentration) ' + \
@@ -556,7 +559,8 @@ def _compute_write_index(keyword_arguments):
 
             # add an empty DataArray to the fitting Dataset for beta if not present
             beta_var_name = f"beta_{fitting_var_name_suffix}"
-            if (keyword_arguments["load_params"] is None) and (beta_var_name not in ds_fitting.data_vars):
+            fitting_var_names["beta"] = beta_var_name
+            if (keyword_arguments["save_params"] is not None) or (beta_var_name not in ds_fitting.data_vars):
 
                 beta_attrs = {
                     'description': '1 / scale of the distribution (also referred to as the rate) ' + \
@@ -575,7 +579,8 @@ def _compute_write_index(keyword_arguments):
 
             # add an empty DataArray to the fitting Dataset for probability of zero if not present
             prob_zero_var_name = f"prob_zero_{fitting_var_name_suffix}"
-            if (keyword_arguments["load_params"] is None) and \
+            fitting_var_names["prob_zero"] = prob_zero_var_name
+            if (keyword_arguments["save_params"] is not None) or \
                     (prob_zero_var_name not in ds_fitting.data_vars):
 
                 prob_zero_attrs = {
@@ -592,7 +597,8 @@ def _compute_write_index(keyword_arguments):
 
             # add an empty DataArray to the fitting Dataset for scale parameter if not present
             scale_var_name = f"scale_{fitting_var_name_suffix}"
-            if (keyword_arguments["load_params"] is None) and \
+            fitting_var_names["scale"] = scale_var_name
+            if (keyword_arguments["save_params"] is not None) or \
                     (scale_var_name not in ds_fitting.data_vars):
 
                 scale_attrs = {
@@ -610,7 +616,8 @@ def _compute_write_index(keyword_arguments):
 
             # add an empty DataArray to the fitting Dataset for skew parameter if not present
             skew_var_name = f"skew_{fitting_var_name_suffix}"
-            if (keyword_arguments["load_params"] is None) and \
+            fitting_var_names["skew"] = skew_var_name
+            if (keyword_arguments["save_params"] is not None) or \
                     (skew_var_name not in ds_fitting.data_vars):
 
                 skew_attrs = {
@@ -627,7 +634,8 @@ def _compute_write_index(keyword_arguments):
 
             # add an empty DataArray to the fitting Dataset for loc parameter if not present
             loc_var_name = f"loc_{fitting_var_name_suffix}"
-            if (keyword_arguments["load_params"] is None) and \
+            fitting_var_names.append(loc_var_name)
+            if (keyword_arguments["save_params"] is not None) or \
                     (loc_var_name not in ds_fitting.data_vars):
 
                 loc_attrs = {
@@ -673,7 +681,7 @@ def _compute_write_index(keyword_arguments):
             ds_precip,
             ds_fitting,
             input_var_names,
-            ds_fitting.data_vars,
+            fitting_var_names.values(),
             keyword_arguments["periodicity"],
         )
 
@@ -690,6 +698,18 @@ def _compute_write_index(keyword_arguments):
             _KEY_ARRAY: multiprocessing.Array("d", int(np.prod(output_shape))),
             _KEY_SHAPE: output_shape,
         }
+
+    # compute the distribution fitting parameters if necessary
+    if keyword_arguments["save_params"] is not None:
+        _compute_fitting_parallel(
+            keyword_arguments["distribution"],
+            _global_shared_arrays,
+            {"var_name_precip": keyword_arguments["var_name_precip"]},
+            fitting_var_names,
+            input_type=input_type,
+            number_of_workers=keyword_arguments["number_of_workers"],
+            args=args,
+        )
 
     # apply the SPI function along the time axis (axis=2)
     _parallel_process(
@@ -720,7 +740,9 @@ def _compute_write_index(keyword_arguments):
             keyword_arguments["data_start_year"],
         )
 
-    # create a new variable to contain the index values, assign into the dataset
+    # create a new variable to contain the SPI values, assign into the dataset
+    # TODO create a separate Dataset instead with only relevant attributes etc.
+    #   rather than hijacking the precipitation dataset
     variable = xr.Variable(dims=output_dims,
                            data=index_values,
                            attrs=output_var_attributes)
@@ -737,6 +759,10 @@ def _compute_write_index(keyword_arguments):
     netcdf_file_name = \
         keyword_arguments["output_file_base"] + "_" + output_var_name + ".nc"
     ds_precip.to_netcdf(netcdf_file_name)
+
+    # if requested then we write the distribution fittings dataset to NetCDF
+    if keyword_arguments["save_params"] is not None:
+        ds_fitting.to_netcdf(keyword_arguments["save_params"])
 
     return netcdf_file_name, output_var_name
 
@@ -940,7 +966,25 @@ def _compute_write_fittings(keyword_arguments):
 
 
 # ------------------------------------------------------------------------------
-def _spi(precips, parameters):
+def _gamma(
+        values: np.ndarray,
+        parameters: Dict,
+) -> (np.ndarray, np.ndarray):
+
+    return compute.gamma_parameters(
+        values=values,
+        data_start_year=parameters["data_start_year"],
+        calibration_start_year=parameters["calibration_year_initial"],
+        calibration_end_year=parameters["calibration_year_final"],
+        periodicity=parameters["periodicity"]
+    )
+
+
+# ------------------------------------------------------------------------------
+def _spi(
+        precips: np.ndarray,
+        parameters: Dict,
+) -> np.ndarray:
 
     return indices.spi(values=precips,
                        scale=parameters["scale"],
@@ -1017,11 +1061,73 @@ def _parallel_process(
                               initializer=_init_worker,
                               initargs=(arrays_dict,)) as pool:
 
-        pool.map(_apply_along_axis, chunk_params)
+        pool.map(_apply_along_axis_spi, chunk_params)
 
 
 # ------------------------------------------------------------------------------
-def _apply_along_axis(params):
+def _compute_fitting_parallel(
+        distribution: indices.Distribution,
+        shared_arrays: Dict,
+        input_var_names: Dict,
+        output_var_names: Dict,
+        input_type: InputType,
+        number_of_workers: int,
+        args: Dict,
+):
+    """
+    TODO document this function
+
+    :param distribution:
+    :param Dict shared_arrays:
+    :param Dict input_var_names:
+    :param Dict output_var_names:
+    :param InputType input_type:
+    :param number_of_workers: number of worker processes to use
+    :param args:
+    :return:
+    """
+
+    # find the start index of each sub-array we'll split out per worker process,
+    # assuming the shape of the output array is the same as all input arrays
+    for output_var_name in output_var_names:
+        shape = shared_arrays[output_var_name][_KEY_SHAPE]
+        d, m = divmod(shape[0], number_of_workers)
+        split_indices = list(range(0, ((d + 1) * (m + 1)), (d + 1)))
+        if d != 0:
+            split_indices += list(range(split_indices[-1] + d, shape[0], d))
+
+    # build a list of parameters for each application of the function to an array chunk
+    chunk_params = []
+    for i in range(number_of_workers):
+        params = {
+            "input_var_name": input_var_names["var_name_precip"],
+            "output_var_names": output_var_names,
+            "sub_array_start": split_indices[i],
+            "input_type": input_type,
+            "args": args,
+        }
+        if i < (number_of_workers - 1):
+            params["sub_array_end"] = split_indices[i + 1]
+        else:
+            params["sub_array_end"] = None
+
+        chunk_params.append(params)
+
+    # instantiate a process pool
+    with multiprocessing.Pool(processes=number_of_workers,
+                              initializer=_init_worker,
+                              initargs=(shared_arrays,)) as pool:
+
+        if distribution == indices.Distribution.gamma:
+            pool.map(_apply_along_axis_gamma, chunk_params)
+        elif distribution == indices.Distribution.pearson:
+            pool.map(_apply_along_axis_pearson, chunk_params)
+        else:
+            raise ValueError(f"Unsupported distribution: {distribution}")
+
+
+# ------------------------------------------------------------------------------
+def _apply_along_axis_spi(params):
     """
     Like numpy.apply_along_axis(), but with arguments in a dict instead.
     Applicable for applying a function across subarrays of a single input array.
@@ -1059,71 +1165,9 @@ def _apply_along_axis(params):
                                          arr=sub_array,
                                          parameters=args)
 
-    output_array = _global_shared_arrays[params["output_var_name"]][_KEY_ARRAY]
+    output_array = _global_shared_arrays[params["spi_var_name"]][_KEY_ARRAY]
     np_output_array = np.frombuffer(output_array.get_obj()).reshape(shape)
     np.copyto(np_output_array[start_index:end_index], computed_array)
-
-
-# ------------------------------------------------------------------------------
-def _apply_along_axis_double(params):
-    """
-    Like numpy.apply_along_axis(), but with arguments in a dict instead.
-    Applicable for applying a function across subarrays of two input arrays.
-
-    This function is useful with multiprocessing.Pool().map(): (1) map() only
-    handles functions that take a single argument, and (2) this function can
-    generally be imported from a module, as required by map().
-
-    :param dict params: dictionary of parameters including a function name,
-        "func1d", start and stop indices for specifying the subarray to which
-        the function should be applied, "sub_array_start" and "sub_array_end",
-        a dictionary of arguments to be passed to the function, "args", and
-        the key name of the shared array for output values, "output_var_name".
-    """
-
-    func1d = params["func1d"]
-    start_index = params["sub_array_start"]
-    end_index = params["sub_array_end"]
-    if params["index"] == "pet":
-        first_array_key = params["var_name_temp"]
-        second_array_key = params["var_name_lat"]
-    elif params["index"] == "spei":
-        first_array_key = params["var_name_precip"]
-        second_array_key = params["var_name_pet"]
-    else:
-        raise ValueError("Unsupported index: {index}".format(index=params["index"]))
-
-    shape = _global_shared_arrays[params["output_var_name"]][_KEY_SHAPE]
-    first_array = _global_shared_arrays[first_array_key][_KEY_ARRAY]
-    first_np_array = np.frombuffer(first_array.get_obj()).reshape(shape)
-    sub_array_1 = first_np_array[start_index:end_index]
-    if params["index"] == "pet":
-        second_array = _global_shared_arrays[second_array_key][_KEY_ARRAY]
-        second_np_array = np.frombuffer(second_array.get_obj()).reshape(shape[0])
-    else:
-        second_array = _global_shared_arrays[second_array_key][_KEY_ARRAY]
-        second_np_array = np.frombuffer(second_array.get_obj()).reshape(shape)
-    sub_array_2 = second_np_array[start_index:end_index]
-
-    # get the output shared memory array, convert to numpy, and get the subarray slice
-    output_array = _global_shared_arrays[params["output_var_name"]][_KEY_ARRAY]
-    computed_array = np.frombuffer(output_array.get_obj()).reshape(shape)[
-        start_index:end_index
-    ]
-
-    for i, (x, y) in enumerate(zip(sub_array_1, sub_array_2)):
-        if params["input_type"] == InputType.grid:
-            for j in range(x.shape[0]):
-                if params["index"] == "pet":
-                    # array x is temperature (2-D) and array y is lat (1-D)
-                    computed_array[i, j] = func1d(x[j], y, parameters=params["args"])
-                else:
-                    # array x is precipitation and array y is PET (both 2-D)
-                    computed_array[i, j] = func1d(x[j], y[j], parameters=params["args"])
-        elif params["input_type"] == InputType.divisions:
-            computed_array[i] = func1d(x, y, parameters=params["args"])
-        else:
-            raise ValueError(f"Unsupported input type: \'{params['input_type']}\'")
 
 
 # ------------------------------------------------------------------------------
@@ -1140,41 +1184,104 @@ def _apply_along_axis_gamma(params):
         "func1d", start and stop indices for specifying the subarray to which
         the function should be applied, "sub_array_start" and "sub_array_end",
         the variable names used for precipitation, alpha, and beta arrays,
-        "var_name_precip", "var_name_pet", and "var_name_awc", a dictionary
+        "var_name_precip", "var_name_alpha", and "var_name_beta", a dictionary
         of arguments to be passed to the function, "args", and the key name of
         the shared arrays for output values, "alpha_var_name" and "beta_var_name".
     """
-    func1d = params["func1d"]
     start_index = params["sub_array_start"]
     end_index = params["sub_array_end"]
     precip_array_key = params["var_name_precip"]
     alpha_array_key = params["var_name_alpha"]
     beta_array_key = params["var_name_beta"]
 
-    shape = _global_shared_arrays[params["output_var_name"]][_KEY_SHAPE]
+    precip_shape = _global_shared_arrays[precip_array_key][_KEY_SHAPE]
     precip_array = _global_shared_arrays[precip_array_key][_KEY_ARRAY]
-    precip_np_array = np.frombuffer(precip_array.get_obj()).reshape(shape)
+    precip_np_array = np.frombuffer(precip_array.get_obj()).reshape(precip_shape)
     sub_array_precip = precip_np_array[start_index:end_index]
 
     args = params["args"]
 
     # get the output shared memory arrays, convert to numpy, and get the subarray slices
+    fitting_shape = _global_shared_arrays[alpha_array_key][_KEY_SHAPE]
     alpha_output_array = _global_shared_arrays[alpha_array_key][_KEY_ARRAY]
-    alpha_np_array = np.frombuffer(alpha_output_array.get_obj()).reshape(shape)
+    alpha_np_array = np.frombuffer(alpha_output_array.get_obj()).reshape(fitting_shape)
     sub_array_alpha = alpha_np_array[start_index:end_index]
 
     beta_output_array = _global_shared_arrays[beta_array_key][_KEY_ARRAY]
-    beta_np_array = np.frombuffer(beta_output_array.get_obj()).reshape(shape)
+    beta_np_array = np.frombuffer(beta_output_array.get_obj()).reshape(fitting_shape)
     sub_array_beta = beta_np_array[start_index:end_index]
 
     for i, precip in enumerate(sub_array_precip):
         if params["input_type"] == InputType.grid:
             for j in range(precip.shape[0]):
                 sub_array_alpha[i, j], sub_array_beta[i, j] = \
-                    compute.gamma_parameters(precip[j], parameters=args)
+                    _gamma(precip[j], parameters=args)
         else:  # divisions
             sub_array_alpha[i], sub_array_beta[i] = \
-                compute.gamma_parameters(precip, parameters=args)
+                _gamma(precip, parameters=args)
+
+
+# ------------------------------------------------------------------------------
+def _apply_along_axis_pearson(params):
+    """
+    Applies the Pearson Type III distribution fitting computation function
+    across subarrays of the input (shared-memory) arrays.
+
+    This function is useful with multiprocessing.Pool().map(): (1) map() only
+    handles functions that take a single argument, and (2) this function can
+    generally be imported from a module, as required by map().
+
+    :param dict params: dictionary of parameters including a function name,
+        "func1d", start and stop indices for specifying the subarray to which
+        the function should be applied, "sub_array_start" and "sub_array_end",
+        the variable names used for precipitation, probability of zero, scale,
+        skew, and loc arrays ("var_name_precip", "var_name_prob_zero",
+        "var_name_scale", "var_name_skew", and "var_name_loc"), a dictionary of
+        arguments to be passed to the function, "args", and the key name of
+        the shared arrays for output values, "prob_zero_var_name" "scale_var_name",
+        "skew_var_name", and "loc_var_name".
+    """
+    start_index = params["sub_array_start"]
+    end_index = params["sub_array_end"]
+    precip_array_key = params["var_name_precip"]
+    prob_zero_array_key = params["var_name_prob_zero"]
+    scale_array_key = params["var_name_scale"]
+    skew_array_key = params["var_name_skew"]
+    loc_array_key = params["var_name_loc"]
+
+    precip_shape = _global_shared_arrays[precip_array_key][_KEY_SHAPE]
+    precip_array = _global_shared_arrays[precip_array_key][_KEY_ARRAY]
+    precip_np_array = np.frombuffer(precip_array.get_obj()).reshape(precip_shape)
+    sub_array_precip = precip_np_array[start_index:end_index]
+
+    args = params["args"]
+
+    # get the output shared memory arrays, convert to numpy, and get the subarray slices
+    fitting_shape = _global_shared_arrays[prob_zero_array_key][_KEY_SHAPE]
+    prob_zero_output_array = _global_shared_arrays[prob_zero_array_key][_KEY_ARRAY]
+    prob_zero_np_array = np.frombuffer(prob_zero_output_array.get_obj()).reshape(fitting_shape)
+    sub_array_prob_zero = prob_zero_np_array[start_index:end_index]
+
+    scale_output_array = _global_shared_arrays[scale_array_key][_KEY_ARRAY]
+    scale_np_array = np.frombuffer(scale_output_array.get_obj()).reshape(fitting_shape)
+    sub_array_scale = scale_np_array[start_index:end_index]
+
+    skew_output_array = _global_shared_arrays[skew_array_key][_KEY_ARRAY]
+    skew_np_array = np.frombuffer(skew_output_array.get_obj()).reshape(fitting_shape)
+    sub_array_skew = skew_np_array[start_index:end_index]
+
+    loc_output_array = _global_shared_arrays[loc_array_key][_KEY_ARRAY]
+    loc_np_array = np.frombuffer(loc_output_array.get_obj()).reshape(fitting_shape)
+    sub_array_loc = loc_np_array[start_index:end_index]
+
+    for i, precip in enumerate(sub_array_precip):
+        if params["input_type"] == InputType.grid:
+            for j in range(precip.shape[0]):
+                sub_array_prob_zero[i, j], sub_array_loc[i, j], sub_array_scale[i, j], sub_array_skew[i, j] = \
+                    compute.pearson_parameters(precip[j])
+        else:  # divisions
+            sub_array_prob_zero[i], sub_array_loc[i], sub_array_scale[i], sub_array_skew[i] = \
+                compute.pearson_parameters(precip)
 
 
 # ------------------------------------------------------------------------------
