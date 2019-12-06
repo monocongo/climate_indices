@@ -316,8 +316,18 @@ def test_transform_fitted_pearson(precips_mm_monthly,
 
 
 # ------------------------------------------------------------------------------
-@pytest.mark.usefixtures("precips_mm_monthly")
-def test_pearson_parameters(precips_mm_monthly):
+@pytest.mark.usefixtures(
+    "precips_mm_monthly",
+    "data_year_start_monthly",
+    "calibration_year_start_monthly",
+    "calibration_year_end_monthly",
+)
+def test_pearson_parameters(
+        precips_mm_monthly,
+        data_year_start_monthly,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
+):
     """
     Test for the compute._pearson3_fitting_values() function
     """
@@ -344,12 +354,29 @@ def test_pearson_parameters(precips_mm_monthly):
             [[1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 5.0],
              [1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 4.7]],
         ),
+        data_year_start_monthly,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
         compute.Periodicity.monthly,
     )
-    np.testing.assert_raises(ValueError, compute.pearson_parameters, None, None)
+    np.testing.assert_raises(
+        ValueError,
+        compute.pearson_parameters,
+        None,
+        data_year_start_monthly,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
+        None)
 
     # try using a subset of the precipitation dataset (1897 - 1915, year indices 2 - 20)
-    computed_values = compute.pearson_parameters(precips_mm_monthly[2:21, :], compute.Periodicity.monthly)
+    computed_values = \
+        compute.pearson_parameters(
+            precips_mm_monthly[2:21, :],
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            compute.Periodicity.monthly,
+        )
     expected_probs_of_zero = np.zeros((12,))
     expected_locs = np.array([
         48.539987664499996,
@@ -410,11 +437,18 @@ def test_pearson_parameters(precips_mm_monthly):
     precips_mm[3, 9] = 0.0
     precips_mm[11, 4] = 0.0
     precips_mm[13, 5] = 0.0
-    computed_values = compute.pearson_parameters(precips_mm, compute.Periodicity.monthly)
-    expected_probs_of_zero = np.array([0.0, 0.008, 0.0, 0.008, 0.0164, 0.0164, 0.0, 0.0, 0.0, 0.0164, 0.0, 0.008])
-    expected_locs = np.array([45.85, 46.35, 48.32, 67.64, 121.17, 184.13, 154.97, 170.29, 196.43, 153.53, 58.40, 38.86])
-    expected_scales = np.array([38.87,35.33, 34.32, 50.26, 73.52, 100.18, 50.63, 63.07, 75.26, 93.67, 48.75, 33.01])
-    expected_skews = np.array([1.76, 1.25, 1.17, 1.19, 0.76, 0.83, 0.18, 0.996, 0.83, 1.16, 1.85, 1.81])
+    computed_values = \
+        compute.pearson_parameters(
+            precips_mm,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            compute.Periodicity.monthly,
+        )
+    expected_probs_of_zero = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    expected_locs = np.array([45.07, 51.86, 62.71, 57.52, 101.46, 195.25, 145.89, 188.22, 203.33, 125.49, 65.22, 41.81])
+    expected_scales = np.array([45.67, 49.47, 35.25, 38.97, 59.21, 117.08, 56.17, 68.33, 72.65, 85.53, 53.99, 35.14])
+    expected_skews = np.array([2.28, 1.98, 0.74, 0.87, 0.21, 0.97, 1.2, 1.29, 1.06, 1.58, 1.86, 1.85])
     np.testing.assert_allclose(computed_values,
                                (expected_probs_of_zero, expected_locs, expected_scales, expected_skews),
                                atol=0.01,
