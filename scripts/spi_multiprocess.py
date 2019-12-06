@@ -429,7 +429,7 @@ def _drop_data_into_shared_arrays_divisions(
 
 
 # ------------------------------------------------------------------------------
-def build_fitting_dataset_grid(
+def build_dataset_fitting_grid(
         ds_example: xr.Dataset,
         periodicity: compute.Periodicity,
 ) -> xr.Dataset:
@@ -471,6 +471,52 @@ def build_fitting_dataset_grid(
     coords = {
         "lat": ds_example.lat,
         "lon": ds_example.lon,
+        time_coord: xr.DataArray(data=times, coords=[times], dims=time_coord),
+    }
+    ds_fitting_params = xr.Dataset(
+        coords=coords,
+        attrs=global_attrs,
+    )
+
+    return ds_fitting_params
+
+
+# ------------------------------------------------------------------------------
+def build_dataset_fitting_divisions(
+        ds_example: xr.Dataset,
+        periodicity: compute.Periodicity,
+) -> xr.Dataset:
+    """
+    Builds a new Dataset object based on an example Dataset. Essentially copies
+    the lat and lon values and sets these along with period-specific times
+    as coordinates.
+
+    :param ds_example:
+    :param periodicity:
+    :return:
+    """
+
+    if periodicity == compute.Periodicity.monthly:
+        period_times = 12
+    elif periodicity == compute.Periodicity.daily:
+        period_times = 366
+    else:
+        raise ValueError(f"Unsupported periodicity: {periodicity}")
+
+    usage_url = "https://climate-indices.readthedocs.io/en/latest/#spi-monthly"
+    global_attrs = {
+        'description': f"Distribution fitting parameters for various {periodicity.unit()} "
+                       f"scales computed from {periodicity} precipitation input "
+                       "by the climate_indices package available from "
+                       f"{_GITHUB_URL}. The variables contained herein are meant "
+                       "to be used as inputs for computing SPI datasets using "
+                       f"the climate_indices package. See {usage_url} for "
+                       "example usage.",
+    }
+    times = np.array(range(period_times))
+    time_coord = periodicity.unit()
+    coords = {
+        "division": ds_example.division,
         time_coord: xr.DataArray(data=times, coords=[times], dims=time_coord),
     }
     ds_fitting_params = xr.Dataset(
@@ -525,7 +571,7 @@ def _compute_write_index(keyword_arguments):
     if keyword_arguments["load_params"] is not None:
         ds_fitting = xr.open_dataset(keyword_arguments["load_params"])
     else:
-        ds_fitting = build_fitting_dataset_grid(ds_precip, keyword_arguments['periodicity'])
+        ds_fitting = build_dataset_fitting_grid(ds_precip, keyword_arguments['periodicity'])
 
         # get the fitting parameter times and coordinates
         if keyword_arguments["periodicity"] == compute.Periodicity.monthly:
@@ -592,10 +638,9 @@ def _compute_write_index(keyword_arguments):
     # the shape of output variables is assumed to match that
     # of the input, so use the precipitation variable's shape
     if "var_name_precip" in keyword_arguments:
-        precip_var_name = keyword_arguments["var_name_precip"]
-        output_dims = ds_precip[precip_var_name].dims
 
         # convert precipitation data into millimeters
+        precip_var_name = keyword_arguments["var_name_precip"]
         precip_unit = ds_precip[precip_var_name].units.lower()
         if precip_unit not in ("mm", "millimeters", "millimeter", "mm/dy"):
             if precip_unit in ("inches", "inch"):
@@ -671,14 +716,15 @@ def _compute_write_index(keyword_arguments):
                 args=args,
             )
 
+            # build a Dataset for the SPI values, copying the just
+            # computed values into it from the shared memory array
             spi_var_name = f"spi_{distribution.value}_{scale}_{keyword_arguments['periodicity'].unit()}"
-            ds_spi = build_dataset_spi(
+            ds_spi = build_dataset_spi_grid(
                 ds_precip,
                 scale,
                 keyword_arguments["periodicity"],
                 distribution,
                 data_start_year,
-                output_dims,
                 spi_var_name,
             )
 
@@ -687,25 +733,30 @@ def _compute_write_index(keyword_arguments):
                 keyword_arguments["output_file_base"] + "_" + spi_var_name + ".nc"
             ds_spi.to_netcdf(netcdf_file_name)
 
-            # TODO dump the fitting variable arrays from shared-memory
-            #  into the DataArrays and add to the fitting Dataset
+        # TODO dump the fitting variable arrays from shared-memory
+        #  into the DataArrays and add to the fitting Dataset
+        for var_name in scale_fitting_var_names[str(scale)].values():
+
+            # get the shared memory results array and convert it to a numpy array
+            array = _global_shared_arrays[var_name][_KEY_ARRAY]
+            shape = _global_shared_arrays[var_name][_KEY_SHAPE]
+            index_values = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
+            ds_fitting[var_name].data = index_values
 
     # if requested then we write the distribution fittings dataset to NetCDF
     if keyword_arguments["save_params"] is not None:
 
         # write the fitting parameters dataset to NetCDF file
-        # ds_fitting.to_netcdf(keyword_arguments["save_params"])
-        pass
+        ds_fitting.to_netcdf(keyword_arguments["save_params"])
 
 
 # ------------------------------------------------------------------------------
-def build_dataset_spi(
+def build_dataset_spi_grid(
         ds_example: xr.Dataset,
         scale: int,
         periodicity: compute.Periodicity,
         distribution: indices.Distribution,
         data_start_year: int,
-        output_dims: List,
         spi_var_name: str,
 ) -> xr.Dataset:
 
@@ -740,7 +791,66 @@ def build_dataset_spi(
     if periodicity == compute.Periodicity.daily:
         index_values = np.apply_along_axis(
             utils.transform_to_gregorian,
-            len(output_dims) - 1,
+            len(ds_example.dims) - 1,
+            index_values,
+            data_start_year,
+        )
+
+    # create a new variable to contain the SPI values, assign into the dataset
+    var_attrs = {
+        "long_name": "Standardized Precipitation Index ("
+                     f"{distribution.value.capitalize()}), "
+                     f"{scale}-{periodicity.unit()}",
+        "valid_min": -3.09,
+        "valid_max": 3.09,
+    }
+    da_spi = xr.DataArray(
+        data=index_values,
+        coords=ds_example.coords,
+        dims=ds_example.dims,
+        name=spi_var_name,
+        attrs=var_attrs,
+    )
+    ds_spi[spi_var_name] = da_spi
+
+    return ds_spi
+
+
+# ------------------------------------------------------------------------------
+def build_dataset_spi_divisions(
+        ds_example: xr.Dataset,
+        scale: int,
+        periodicity: compute.Periodicity,
+        distribution: indices.Distribution,
+        data_start_year: int,
+        spi_var_name: str,
+) -> xr.Dataset:
+
+    global_attrs = {
+        'description': f"SPI for {scale}-{periodicity.unit()} scale computed "
+                       f"from {periodicity} precipitation input "
+                       "by the climate_indices package available from "
+                       f"{_GITHUB_URL}.",
+    }
+    coords = {
+        "division": ds_example.division,
+        "time": ds_example.time,
+    }
+    ds_spi = xr.Dataset(
+        coords=coords,
+        attrs=global_attrs,
+    )
+
+    # get the shared memory results array and convert it to a numpy array
+    array = _global_shared_arrays[_KEY_RESULT][_KEY_ARRAY]
+    shape = _global_shared_arrays[_KEY_RESULT][_KEY_SHAPE]
+    index_values = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
+
+    # convert daily values into normal/Gregorian calendar years
+    if periodicity == compute.Periodicity.daily:
+        index_values = np.apply_along_axis(
+            utils.transform_to_gregorian,
+            len(ds_example.dims) - 1,
             index_values,
             data_start_year,
         )
