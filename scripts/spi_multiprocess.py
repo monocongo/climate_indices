@@ -1200,12 +1200,25 @@ def _apply_to_subarray_gamma(params):
     beta_np_array = np.frombuffer(beta_output_array.get_obj()).reshape(fitting_shape)
     sub_array_beta = beta_np_array[start_index:end_index]
 
+    # get the time indices for the calibration period
+    if "calibration_index_start" in args:
+        time_start = args["calibration_index_start"]
+    else:
+        time_start = 0
+    if "calibration_index_end" in args:
+        time_end = args["calibration_index_end"]
+    else:
+        time_end = values_shape[-1]  # assuming time is the final dimension
+
     for i, values in enumerate(sub_array_values):
         if params["input_type"] == InputType.grid:
             for j in range(values.shape[0]):
 
+                # extract the calibration period values
+                calibration_values = values[j][time_start:time_end]
+
                 # scale the values
-                scaled_values = compute.scale_values(values[j], args["scale"], args["periodicity"])
+                scaled_values = compute.scale_values(calibration_values, args["scale"], args["periodicity"])
 
                 sub_array_alpha[i, j], sub_array_beta[i, j] = \
                 compute.gamma_parameters(
@@ -1217,12 +1230,15 @@ def _apply_to_subarray_gamma(params):
                 )
         else:  # divisions
 
+            # extract the calibration period values
+            calibration_values = values[time_start:time_end]
+
             # scale the values
-            scaled_values = compute.scale_values(values, args["scale"], args["periodicity"])
+            scaled_values = compute.scale_values(calibration_values, args["scale"], args["periodicity"])
 
             sub_array_alpha[i], sub_array_beta[i] = \
                 compute.gamma_parameters(
-                    values=values,
+                    values=scaled_values,
                     data_start_year=args["data_start_year"],
                     calibration_start_year=args["calibration_year_initial"],
                     calibration_end_year=args["calibration_year_final"],
@@ -1283,19 +1299,46 @@ def _apply_to_subarray_pearson(params):
     loc_np_array = np.frombuffer(loc_output_array.get_obj()).reshape(fitting_shape)
     sub_array_loc = loc_np_array[start_index:end_index]
 
+    # get the time indices for the calibration period
+    if "calibration_index_start" in args:
+        time_start = args["calibration_index_start"]
+    else:
+        time_start = 0
+    if "calibration_index_end" in args:
+        time_end = args["calibration_index_end"]
+    else:
+        time_end = values_shape[-1]  # assuming time is the final dimension
+
     for i, values in enumerate(sub_array_values):
         if params["input_type"] == InputType.grid:
             for j in range(values.shape[0]):
 
+                # extract the calibration period values
+                calibration_values = values[j][time_start:time_end]
+
                 # scale the values
-                scaled_values = compute.scale_values(values[j], args["scale"], args["periodicity"])
+                scaled_values = \
+                    compute.scale_values(
+                        calibration_values,
+                        args["scale"],
+                        args["periodicity"],
+                    )
 
                 sub_array_prob_zero[i, j], sub_array_loc[i, j], sub_array_scale[i, j], sub_array_skew[i, j] = \
                     compute.pearson_parameters(scaled_values, args["periodicity"])
+
         else:  # divisions
 
+            # extract the calibration period values
+            calibration_values = values[time_start:time_end]
+
             # scale the values
-            scaled_values = compute.scale_values(values, args["scale"], args["periodicity"])
+            scaled_values = \
+                compute.scale_values(
+                    calibration_values,
+                    args["scale"],
+                    args["periodicity"],
+                )
 
             sub_array_prob_zero[i], sub_array_loc[i], sub_array_scale[i], sub_array_skew[i] = \
                 compute.pearson_parameters(scaled_values, args["periodicity"])
