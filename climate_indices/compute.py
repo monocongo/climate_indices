@@ -227,6 +227,9 @@ def _probability_of_zero(
 # @numba.jit
 def pearson_parameters(
         values: np.ndarray,
+        data_start_year: int,
+        calibration_start_year: int,
+        calibration_end_year: int,
         periodicity: Periodicity,
 ) -> (np.ndarray, np.ndarray, np.ndarray, np.ndarray):
     """
@@ -278,6 +281,25 @@ def pearson_parameters(
             _logger.error(message)
             raise ValueError(message)
 
+    # determine the end year of the values array
+    data_end_year = data_start_year + values.shape[0]
+
+    # make sure that we have data within the full calibration period,
+    # otherwise use the full period of record
+    if (calibration_start_year < data_start_year) or \
+            (calibration_end_year > data_end_year):
+        calibration_start_year = data_start_year
+        calibration_end_year = data_end_year
+
+    # get the year axis indices corresponding to
+    # the calibration start and end years
+    calibration_begin_index = calibration_start_year - data_start_year
+    calibration_end_index = (calibration_end_year - data_start_year) + 1
+
+    # get the values for the current calendar time step
+    # that fall within the calibration years period
+    calibration_values = values[calibration_begin_index:calibration_end_index, :]
+
     # the values we'll compute and return
     probabilities_of_zero = np.zeros((time_steps_per_year,))
     locs = np.zeros((time_steps_per_year,))
@@ -291,7 +313,7 @@ def pearson_parameters(
     for time_step_index in range(time_steps_per_year):
 
         # get the values for the current calendar time step
-        time_step_values = values[:, time_step_index]
+        time_step_values = calibration_values[:, time_step_index]
 
         # count the number of zeros and valid (non-missing/non-NaN) values
         number_of_zeros, number_of_non_missing = \
@@ -303,7 +325,6 @@ def pearson_parameters(
 
             # we can't proceed, bail out using zeros
             continue
-            # return fitting_values
 
         # calculate the probability of zero for the calendar time step
         probability_of_zero = 0.0
@@ -314,10 +335,6 @@ def pearson_parameters(
         # get the estimated L-moments, if we have
         # more than three non-missing/non-zero values
         if (number_of_non_missing - number_of_zeros) > 3:
-
-            # # remove NaN values from the array, as this invalidates
-            # # the calculation within the lmoments fitting function
-            # time_step_values = time_step_values[~np.isnan(time_step_values)]
 
             # get the Pearson Type III parameters for this time
             # step's values within the calibration period
@@ -502,13 +519,19 @@ def transform_fitted_pearson(
             calibration_start_year = data_start_year
             calibration_end_year = data_end_year
 
-        # get the year axis indices corresponding to the calibration start and end years
-        calibration_begin_index = calibration_start_year - data_start_year
-        calibration_end_index = (calibration_end_year - data_start_year) + 1
+        # # get the year axis indices corresponding to the calibration start and end years
+        # calibration_begin_index = calibration_start_year - data_start_year
+        # calibration_end_index = (calibration_end_year - data_start_year) + 1
 
         # compute the values we'll use to fit to the Pearson Type III distribution
         probabilities_of_zero, locs, scales, skews = \
-            pearson_parameters(values[calibration_begin_index:calibration_end_index, :], periodicity)
+            pearson_parameters(
+                values,
+                data_start_year,
+                calibration_start_year,
+                calibration_end_year,
+                periodicity,
+            )
 
     # fit each value to the Pearson Type III distribution
     values = _pearson_fit(values, probabilities_of_zero, skews, locs, scales)
