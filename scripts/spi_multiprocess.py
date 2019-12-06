@@ -1203,15 +1203,23 @@ def _apply_to_subarray_gamma(params):
     for i, values in enumerate(sub_array_values):
         if params["input_type"] == InputType.grid:
             for j in range(values.shape[0]):
+
+                # scale the values
+                scaled_values = compute.scale_values(values[j], args["scale"], args["periodicity"])
+
                 sub_array_alpha[i, j], sub_array_beta[i, j] = \
                 compute.gamma_parameters(
-                    values=values[j],
+                    values=scaled_values,
                     data_start_year=args["data_start_year"],
                     calibration_start_year=args["calibration_year_initial"],
                     calibration_end_year=args["calibration_year_final"],
-                    periodicity=args["periodicity"]
+                    periodicity=args["periodicity"],
                 )
         else:  # divisions
+
+            # scale the values
+            scaled_values = compute.scale_values(values, args["scale"], args["periodicity"])
+
             sub_array_alpha[i], sub_array_beta[i] = \
                 compute.gamma_parameters(
                     values=values,
