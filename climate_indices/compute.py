@@ -519,10 +519,6 @@ def transform_fitted_pearson(
             calibration_start_year = data_start_year
             calibration_end_year = data_end_year
 
-        # # get the year axis indices corresponding to the calibration start and end years
-        # calibration_begin_index = calibration_start_year - data_start_year
-        # calibration_end_index = (calibration_end_year - data_start_year) + 1
-
         # compute the values we'll use to fit to the Pearson Type III distribution
         probabilities_of_zero, locs, scales, skews = \
             pearson_parameters(
