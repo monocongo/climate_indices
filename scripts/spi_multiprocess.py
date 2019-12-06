@@ -459,11 +459,11 @@ def build_dataset_fitting_grid(
                        "to be used as inputs for computing SPI datasets using "
                        f"the climate_indices package. See {usage_url} for "
                        "example usage.",
-        'geospatial_lat_min': min(ds_example.lat),
-        'geospatial_lat_max': max(ds_example.lat),
+        'geospatial_lat_min': float(np.amin(ds_example.lat)),
+        'geospatial_lat_max': float(np.amax(ds_example.lat)),
         'geospatial_lat_units': ds_example.lat.units,
-        'geospatial_lon_min': min(ds_example.lon),
-        'geospatial_lon_max': max(ds_example.lon),
+        'geospatial_lon_min': float(np.amin(ds_example.lon)),
+        'geospatial_lon_max': float(np.amax(ds_example.lon)),
         'geospatial_lon_units': ds_example.lon.units,
     }
     times = np.array(range(period_times))
@@ -676,6 +676,8 @@ def _compute_write_index(keyword_arguments):
     for scale in keyword_arguments['scales']:
         for distribution in [indices.Distribution.gamma, indices.Distribution.pearson]:
 
+            _logger.info(f"Computing {scale}-{keyword_arguments['periodicity'].unit()} SPI ({distribution.value})")
+
             # TODO we may want to initialize the shared memory array
             #  for SPI with NaNs so it starts off empty at each iteration
 
@@ -733,8 +735,8 @@ def _compute_write_index(keyword_arguments):
                 keyword_arguments["output_file_base"] + "_" + spi_var_name + ".nc"
             ds_spi.to_netcdf(netcdf_file_name)
 
-        # TODO dump the fitting variable arrays from shared-memory
-        #  into the DataArrays and add to the fitting Dataset
+        # dump the fitting variable arrays from shared-memory
+        # into the DataArrays of the fitting Dataset
         for var_name in scale_fitting_var_names[str(scale)].values():
 
             # get the shared memory results array and convert it to a numpy array
