@@ -25,7 +25,7 @@ import calendar
 import logging
 import math
 
-# import numba
+import numba
 import numpy as np
 
 from climate_indices import utils
@@ -57,7 +57,7 @@ _SOLAR_DECLINATION_RADIANS_MAX = np.deg2rad(23.45)
 
 
 # ------------------------------------------------------------------------------
-# @numba.jit
+@numba.jit
 def _sunset_hour_angle(
         latitude_radians: float,
         solar_declination_radians: float,
@@ -104,7 +104,7 @@ def _sunset_hour_angle(
 
 
 # ------------------------------------------------------------------------------
-# @numba.jit
+@numba.jit
 def _solar_declination(
         day_of_year: int,
 ) -> float:
@@ -127,7 +127,7 @@ def _solar_declination(
 
 
 # ------------------------------------------------------------------------------
-# @numba.jit
+@numba.jit
 def _daylight_hours(
         sunset_hour_angle_radians: float,
 ) -> float:
@@ -155,7 +155,7 @@ def _daylight_hours(
 
 
 # ------------------------------------------------------------------------------
-# @numba.jit
+@numba.jit
 def _monthly_mean_daylight_hours(
         latitude_radians: float,
         leap=False,
@@ -197,7 +197,7 @@ def _monthly_mean_daylight_hours(
 
 
 # ------------------------------------------------------------------------------
-# @numba.jit
+@numba.jit
 def eto_thornthwaite(
         monthly_temps_celsius: np.ndarray,
         latitude_degrees: float,
@@ -300,7 +300,7 @@ def eto_thornthwaite(
 
 
 # ------------------------------------------------------------------------------
-# @numba.jit
+@numba.jit
 def eto_hargreaves(
         daily_tmin_celsius: np.ndarray,
         daily_tmax_celsius: np.ndarray,

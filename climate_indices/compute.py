@@ -224,7 +224,7 @@ def _probability_of_zero(
 
 
 # ------------------------------------------------------------------------------
-@numba.jit
+# @numba.jit
 def pearson_parameters(
         values: np.ndarray,
         periodicity: Periodicity,

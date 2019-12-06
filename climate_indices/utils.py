@@ -145,7 +145,7 @@ def compute_days(
 
 
 # ------------------------------------------------------------------------------
-# @numba.jit
+@numba.jit
 def reshape_to_2d(
         values: np.ndarray,
         second_axis_length: int,
@@ -197,7 +197,7 @@ def reshape_to_2d(
 
 
 # ------------------------------------------------------------------------------
-# @numba.jit
+@numba.jit
 def reshape_to_divs_years_months(
         monthly_values: np.ndarray,
 ) -> np.ndarray:
@@ -246,7 +246,7 @@ def reshape_to_divs_years_months(
 
 
 # ------------------------------------------------------------------------------
-# @numba.jit
+@numba.jit
 def transform_to_366day(
         original: np.ndarray,
         year_start: int,
@@ -332,7 +332,7 @@ def transform_to_366day(
 
 
 # ------------------------------------------------------------------------------
-# @numba.jit
+@numba.jit
 def transform_to_gregorian(
         original: np.ndarray,
         year_start: int,

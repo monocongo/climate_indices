@@ -32,7 +32,7 @@ _FITTED_INDEX_VALID_MAX = 3.09
 
 
 # ------------------------------------------------------------------------------
-#@numba.jit
+@numba.jit
 def spi(
         values: np.ndarray,
         scale: int,

@@ -1,7 +1,7 @@
 import logging
 from math import exp, lgamma, pi, sqrt
 
-# import numba
+import numba
 import numpy as np
 from climate_indices import utils
 
