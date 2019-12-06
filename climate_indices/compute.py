@@ -161,7 +161,7 @@ def sum_to_scale(
 
 
 # ------------------------------------------------------------------------------
-# @numba.jit
+@numba.jit
 def _probability_of_zero(
         values: np.ndarray,
 ) -> np.ndarray:
@@ -224,7 +224,7 @@ def _probability_of_zero(
 
 
 # ------------------------------------------------------------------------------
-# @numba.jit
+@numba.jit
 def pearson_parameters(
         values: np.ndarray,
         periodicity: Periodicity,
@@ -355,7 +355,7 @@ def _minimum_possible(
 
 
 # ------------------------------------------------------------------------------
-# @numba.jit
+@numba.jit
 def _pearson_fit(
         values: np.ndarray,
         probabilities_of_zero: np.ndarray,
