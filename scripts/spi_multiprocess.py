@@ -573,14 +573,6 @@ def _compute_write_index(keyword_arguments):
     else:
         ds_fitting = build_dataset_fitting_grid(ds_precip, keyword_arguments['periodicity'])
 
-        # get the fitting parameter times and coordinates
-        if keyword_arguments["periodicity"] == compute.Periodicity.monthly:
-            period_times = 12
-        elif keyword_arguments["periodicity"] == compute.Periodicity.daily:
-            period_times = 366
-        else:
-            raise ValueError(f"Unsupported periodicity: {keyword_arguments['periodicity']}")
-
     # build DataArrays for the parameter fittings we'll compute
     # (only if not already in the Dataset when loading from existing file)
     scale_fitting_var_names = {}
