@@ -668,7 +668,7 @@ def _compute_write_index(keyword_arguments):
     for scale in keyword_arguments['scales']:
         for distribution in [indices.Distribution.gamma, indices.Distribution.pearson]:
 
-            _logger.info(f"Computing {scale}-{keyword_arguments['periodicity'].unit()} SPI ({distribution.value})")
+            _logger.info(f"Computing {scale}-{keyword_arguments['periodicity'].unit()} SPI ({distribution.value.capitalize()})")
 
             # TODO we may want to initialize the shared memory array
             #  for SPI with NaNs so it starts off empty at each iteration
@@ -1286,11 +1286,19 @@ def _apply_to_subarray_pearson(params):
     for i, values in enumerate(sub_array_values):
         if params["input_type"] == InputType.grid:
             for j in range(values.shape[0]):
+
+                # scale the values
+                scaled_values = compute.scale_values(values[j], args["scale"], args["periodicity"])
+
                 sub_array_prob_zero[i, j], sub_array_loc[i, j], sub_array_scale[i, j], sub_array_skew[i, j] = \
-                    compute.pearson_parameters(values[j], args["periodicity"])
+                    compute.pearson_parameters(scaled_values, args["periodicity"])
         else:  # divisions
+
+            # scale the values
+            scaled_values = compute.scale_values(values, args["scale"], args["periodicity"])
+
             sub_array_prob_zero[i], sub_array_loc[i], sub_array_scale[i], sub_array_skew[i] = \
-                compute.pearson_parameters(values, args["periodicity"])
+                compute.pearson_parameters(scaled_values, args["periodicity"])
 
 
 # ------------------------------------------------------------------------------
