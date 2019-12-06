@@ -1,5 +1,6 @@
 import argparse
 from collections import Counter
+import copy
 from datetime import datetime
 from enum import Enum
 import logging
@@ -619,9 +620,6 @@ def _compute_write_index(keyword_arguments):
     # use the precipitation shape as the output shape for the index values
     output_shape = ds_precip[keyword_arguments["var_name_precip"]].shape
 
-    # build an arguments dictionary appropriate to the index we'll compute
-    args = _build_arguments(keyword_arguments)
-
     # add an array to hold index computation results
     # to our dictionary of shared memory arrays
     if _KEY_RESULT not in _global_shared_arrays:
@@ -636,13 +634,22 @@ def _compute_write_index(keyword_arguments):
             # TODO we may want to initialize the shared memory array
             #  for SPI with NaNs so it starts off empty at each iteration
 
+            args = {
+                "data_start_year": data_start_year,
+                "scale": scale,
+                "distribution": distribution,
+                "calibration_year_initial": keyword_arguments["calibration_start_year"],
+                "calibration_year_final": keyword_arguments["calibration_end_year"],
+                "periodicity": keyword_arguments["periodicity"],
+            }
+
             # compute the distribution fitting parameters if necessary (i.e. not loaded)
             if keyword_arguments["load_params"] is None:
                 _parallel_fitting(
                     distribution,
                     _global_shared_arrays,
                     {"var_name_values": keyword_arguments["var_name_precip"]},
-                    fitting_var_names,
+                    scale_fitting_var_names[str(scale)],
                     input_type=input_type,
                     number_of_workers=keyword_arguments["number_of_workers"],
                     args=args,
@@ -652,7 +659,7 @@ def _compute_write_index(keyword_arguments):
                 pass
 
             # compute SPI in parallel
-            var_names_spi = scale_fitting_var_names[str(scale)]
+            var_names_spi = copy.deepcopy(scale_fitting_var_names[str(scale)])
             var_names_spi["var_name_precip"] = keyword_arguments["var_name_precip"]
             _parallel_spi(
                 keyword_arguments["index"],
@@ -664,11 +671,11 @@ def _compute_write_index(keyword_arguments):
                 args=args,
             )
 
-            spi_var_name = f"spi_{distribution}_{scale}_{periodicity.unit()}"
+            spi_var_name = f"spi_{distribution.value}_{scale}_{keyword_arguments['periodicity'].unit()}"
             ds_spi = build_dataset_spi(
                 ds_precip,
                 scale,
-                periodicity,
+                keyword_arguments["periodicity"],
                 distribution,
                 data_start_year,
                 output_dims,
@@ -707,12 +714,12 @@ def build_dataset_spi(
                        f"from {periodicity} precipitation input "
                        "by the climate_indices package available from "
                        f"{_GITHUB_URL}.",
-        'geospatial_lat_min': min(ds_example.lat),
-        'geospatial_lat_max': max(ds_example.lat),
-        'geospatial_lat_units': ds_example.lat.unit,
-        'geospatial_lon_min': min(ds_example.lon),
-        'geospatial_lon_max': max(ds_example.lon),
-        'geospatial_lon_units': ds_example.lon.unit,
+        'geospatial_lat_min': float(np.amin(ds_example.lat)),
+        'geospatial_lat_max': float(np.amax(ds_example.lat)),
+        'geospatial_lat_units': ds_example.lat.units,
+        'geospatial_lon_min': float(np.amin(ds_example.lon)),
+        'geospatial_lon_max': float(np.amax(ds_example.lon)),
+        'geospatial_lon_units': ds_example.lon.units,
     }
     coords = {
         "lat": ds_example.lat,
@@ -746,12 +753,17 @@ def build_dataset_spi(
         "valid_min": -3.09,
         "valid_max": 3.09,
     }
-    variable = xr.Variable(dims=output_dims,
-                           data=index_values,
-                           attrs=var_attrs)
-    ds_spi[spi_var_name] = variable
+    da_spi = xr.DataArray(
+        data=index_values,
+        coords=ds_example.coords,
+        dims=ds_example.dims,
+        name=spi_var_name,
+        attrs=var_attrs,
+    )
+    ds_spi[spi_var_name] = da_spi
 
     return ds_spi
+
 
 # ------------------------------------------------------------------------------
 def _init_worker(shared_arrays_dict):
@@ -856,14 +868,18 @@ def _parallel_fitting(
     # TODO somehow account for the calibration period, i.e. only compute
     #  fitting parameters on values within the calibration period
 
+    # make sure we have the same size arrays for all fitting parameter arrays
+    if len(set([shared_arrays[var][_KEY_SHAPE] for var in output_var_names.values()])) != 1:
+        raise ValueError("Unexpected differences in shared memory array shapes")
+
     # find the start index of each sub-array we'll split out per worker process,
     # assuming the shape of the output array is the same as all input arrays
-    for output_var_name in output_var_names.values():
-        shape = shared_arrays[output_var_name][_KEY_SHAPE]
-        d, m = divmod(shape[0], number_of_workers)
-        split_indices = list(range(0, ((d + 1) * (m + 1)), (d + 1)))
-        if d != 0:
-            split_indices += list(range(split_indices[-1] + d, shape[0], d))
+    output_var_name = list(output_var_names.values())[0]
+    shape = shared_arrays[output_var_name][_KEY_SHAPE]
+    d, m = divmod(shape[0], number_of_workers)
+    split_indices = list(range(0, ((d + 1) * (m + 1)), (d + 1)))
+    if d != 0:
+        split_indices += list(range(split_indices[-1] + d, shape[0], d))
 
     # build a list of parameters for each application of the function to an array chunk
     chunk_params = []
