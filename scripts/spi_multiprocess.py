@@ -322,7 +322,7 @@ def _drop_data_into_shared_arrays_grid(
         }
 
         # drop the variable from the xarray Dataset (we're assuming this frees the memory)
-        dataset_climatology = dataset_climatology.drop(var_name)
+        dataset_climatology = dataset_climatology.drop_vars(var_name)
 
     # copy all variables from fitting parameters Dataset into shared memory arrays
     for var_name in dataset_fitting.data_vars:
@@ -425,7 +425,7 @@ def _drop_data_into_shared_arrays_divisions(
         }
 
         # drop the variable from the dataset (we're assuming this frees the memory)
-        dataset = dataset.drop(var_name)
+        dataset = dataset.drop_vars(var_name)
 
 
 # ------------------------------------------------------------------------------
@@ -564,7 +564,7 @@ def _compute_write_index(keyword_arguments):
         input_var_names.append("lat")
     for var in ds_precip.data_vars:
         if var not in input_var_names:
-            ds_precip = ds_precip.drop(var)
+            ds_precip = ds_precip.drop_vars(var)
 
     # if we're not loading fitting parameters
     # then we'll build a Dataset to contain them
@@ -668,7 +668,10 @@ def _compute_write_index(keyword_arguments):
     for scale in keyword_arguments['scales']:
         for distribution in [indices.Distribution.gamma, indices.Distribution.pearson]:
 
-            _logger.info(f"Computing {scale}-{keyword_arguments['periodicity'].unit()} SPI ({distribution.value.capitalize()})")
+            _logger.info(
+                f"Computing {scale}-{keyword_arguments['periodicity'].unit()} "
+                f"SPI ({distribution.value.capitalize()})",
+            )
 
             # TODO we may want to initialize the shared memory array
             #  for SPI with NaNs so it starts off empty at each iteration
@@ -1200,41 +1203,25 @@ def _apply_to_subarray_gamma(params):
     beta_np_array = np.frombuffer(beta_output_array.get_obj()).reshape(fitting_shape)
     sub_array_beta = beta_np_array[start_index:end_index]
 
-    # get the time indices for the calibration period
-    if "calibration_index_start" in args:
-        time_start = args["calibration_index_start"]
-    else:
-        time_start = 0
-    if "calibration_index_end" in args:
-        time_end = args["calibration_index_end"]
-    else:
-        time_end = values_shape[-1]  # assuming time is the final dimension
-
     for i, values in enumerate(sub_array_values):
         if params["input_type"] == InputType.grid:
             for j in range(values.shape[0]):
 
-                # extract the calibration period values
-                calibration_values = values[j][time_start:time_end]
-
                 # scale the values
-                scaled_values = compute.scale_values(calibration_values, args["scale"], args["periodicity"])
+                scaled_values = compute.scale_values(values[j], args["scale"], args["periodicity"])
 
                 sub_array_alpha[i, j], sub_array_beta[i, j] = \
-                compute.gamma_parameters(
-                    values=scaled_values,
-                    data_start_year=args["data_start_year"],
-                    calibration_start_year=args["calibration_year_initial"],
-                    calibration_end_year=args["calibration_year_final"],
-                    periodicity=args["periodicity"],
-                )
+                    compute.gamma_parameters(
+                        values=scaled_values,
+                        data_start_year=args["data_start_year"],
+                        calibration_start_year=args["calibration_year_initial"],
+                        calibration_end_year=args["calibration_year_final"],
+                        periodicity=args["periodicity"],
+                    )
         else:  # divisions
 
-            # extract the calibration period values
-            calibration_values = values[time_start:time_end]
-
             # scale the values
-            scaled_values = compute.scale_values(calibration_values, args["scale"], args["periodicity"])
+            scaled_values = compute.scale_values(values, args["scale"], args["periodicity"])
 
             sub_array_alpha[i], sub_array_beta[i] = \
                 compute.gamma_parameters(
@@ -1299,49 +1286,45 @@ def _apply_to_subarray_pearson(params):
     loc_np_array = np.frombuffer(loc_output_array.get_obj()).reshape(fitting_shape)
     sub_array_loc = loc_np_array[start_index:end_index]
 
-    # get the time indices for the calibration period
-    if "calibration_index_start" in args:
-        time_start = args["calibration_index_start"]
-    else:
-        time_start = 0
-    if "calibration_index_end" in args:
-        time_end = args["calibration_index_end"]
-    else:
-        time_end = values_shape[-1]  # assuming time is the final dimension
-
     for i, values in enumerate(sub_array_values):
         if params["input_type"] == InputType.grid:
             for j in range(values.shape[0]):
 
-                # extract the calibration period values
-                calibration_values = values[j][time_start:time_end]
-
                 # scale the values
                 scaled_values = \
                     compute.scale_values(
-                        calibration_values,
+                        values[j],
                         args["scale"],
                         args["periodicity"],
                     )
 
                 sub_array_prob_zero[i, j], sub_array_loc[i, j], sub_array_scale[i, j], sub_array_skew[i, j] = \
-                    compute.pearson_parameters(scaled_values, args["periodicity"])
+                    compute.pearson_parameters(
+                        values=scaled_values,
+                        data_start_year=args["data_start_year"],
+                        calibration_start_year=args["calibration_year_initial"],
+                        calibration_end_year=args["calibration_year_final"],
+                        periodicity=args["periodicity"],
+                    )
 
         else:  # divisions
-
-            # extract the calibration period values
-            calibration_values = values[time_start:time_end]
 
             # scale the values
             scaled_values = \
                 compute.scale_values(
-                    calibration_values,
+                    values,
                     args["scale"],
                     args["periodicity"],
                 )
 
             sub_array_prob_zero[i], sub_array_loc[i], sub_array_scale[i], sub_array_skew[i] = \
-                compute.pearson_parameters(scaled_values, args["periodicity"])
+                compute.pearson_parameters(
+                    values=scaled_values,
+                    data_start_year=args["data_start_year"],
+                    calibration_start_year=args["calibration_year_initial"],
+                    calibration_end_year=args["calibration_year_final"],
+                    periodicity=args["periodicity"],
+                )
 
 
 # ------------------------------------------------------------------------------
