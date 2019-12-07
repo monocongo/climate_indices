@@ -110,6 +110,19 @@ def test_is_data_valid():
 
 
 # ------------------------------------------------------------------------------
+def test_gregorian_length_as_366day():
+    # Test for the utils.sign_change() function
+
+    assert utils.gregorian_length_as_366day(365, 1980) == 365
+    assert utils.gregorian_length_as_366day(366, 1980) == 366
+    assert utils.gregorian_length_as_366day(731, 1980) == 732
+    assert utils.gregorian_length_as_366day(732, 1980) == 733
+    assert utils.gregorian_length_as_366day(1096, 1980) == 1098
+    assert utils.gregorian_length_as_366day(1855, 1980) == 1858
+
+
+
+# ------------------------------------------------------------------------------
 def test_sign_change():
     # Test for the utils.sign_change() function
 

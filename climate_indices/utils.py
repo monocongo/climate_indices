@@ -246,6 +246,33 @@ def reshape_to_divs_years_months(
 
 
 # ------------------------------------------------------------------------------
+def gregorian_length_as_366day(
+        length_gregorian: int,
+        year_start: int,
+) -> int:
+
+    year = year_start
+    remaining = length_gregorian
+    length_366day = 0
+    while remaining > 0:
+
+        if calendar.isleap(year):
+            days_in_current_year = 366
+        else:
+            days_in_current_year = 365
+
+        if remaining >= days_in_current_year:
+            length_366day += 366
+        else:
+            length_366day += remaining
+
+        remaining -= days_in_current_year
+        year += 1
+
+    return length_366day
+
+
+# ------------------------------------------------------------------------------
 @numba.jit
 def transform_to_366day(
         original: np.ndarray,
