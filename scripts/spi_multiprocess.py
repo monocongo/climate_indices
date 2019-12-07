@@ -661,9 +661,15 @@ def _compute_write_index(keyword_arguments):
         )
 
     # use the precipitation shape as the output shape for the index values
-    output_shape = ds_precip[keyword_arguments["var_name_precip"]].shape
+    if keyword_arguments["periodicity"] == compute.Periodicity.monthly:
+        output_shape = ds_precip[keyword_arguments["var_name_precip"]].shape
+    elif keyword_arguments["periodicity"] == compute.Periodicity.daily:
+        # TODO convert the data to 366 days in order to
+        #  get the correct intermediate output shape
+        time_length_366day = utils.gregorian_length_as_366day(len(ds_precip['time']), data_start_year)
+        output_shape = (len(ds_precip['lat']), len(ds_precip['lon']), time_length_366day)
 
-    # add an array to hold index computation results
+        # add an array to hold index computation results
     # to our dictionary of shared memory arrays
     if _KEY_RESULT not in _global_shared_arrays:
         _global_shared_arrays[_KEY_RESULT] = {
