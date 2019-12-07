@@ -260,36 +260,31 @@ def _drop_data_into_shared_arrays_grid(
 
     # get the data arrays we'll use later in the index computations
     global _global_shared_arrays
-    expected_dims_3d_climate = (
-        ("lat", "lon", "time"),
-        ("lon", "lat", "time"),
-    )
-    expected_dims_3d_fitting = (
-        ("lat", "lon", "month"),
-        ("lon", "lat", "month"),
-        ("lat", "lon", "day"),
-        ("lon", "lat", "day"),
-    )
-    expected_dims_2d = (("lat", "lon"), ("lon", "lat"))
-    expected_dims_1d = (("time",),)
+    expected_dims_3d_climate = {"lat", "lon", "time"}
+    expected_dims_3d_fitting = {
+        frozenset(["lat", "lon", "month"]),
+        frozenset(["lat", "lon", "day"]),
+    }
+    expected_dims_2d = {"lat", "lon"}
+    expected_dims_1d = {"time"}
 
     # copy all variables from climatology Dataset into shared memory arrays
     for var_name in var_names_climate:
 
         # confirm that the dimensions of the data array are valid
-        dims = dataset_climatology[var_name].dims
+        dims = set(dataset_climatology[var_name].dims)
         if len(dims) == 3:
-            if dims not in expected_dims_3d_climate:
+            if dims != expected_dims_3d_climate:
                 message = f"Invalid dimensions for variable '{var_name}': {dims}"
                 _logger.error(message)
                 raise ValueError(message)
         elif len(dims) == 2:
-            if dims not in expected_dims_2d:
+            if dims != expected_dims_2d:
                 message = f"Invalid dimensions for variable '{var_name}': {dims}"
                 _logger.error(message)
                 raise ValueError(message)
         elif len(dims) == 1:
-            if dims not in expected_dims_1d:
+            if dims != expected_dims_1d:
                 message = f"Invalid dimensions for variable '{var_name}': {dims}"
                 _logger.error(message)
                 raise ValueError(message)
@@ -328,36 +323,38 @@ def _drop_data_into_shared_arrays_grid(
     for var_name in dataset_fitting.data_vars:
 
         # confirm that the dimensions of the data array are valid
-        dims = dataset_fitting[var_name].dims
+        dims = set(dataset_fitting[var_name].dims)
         if len(dims) == 3:
             if dims not in expected_dims_3d_fitting:
                 message = f"Invalid dimensions for variable '{var_name}': {dims}"
                 _logger.error(message)
                 raise ValueError(message)
         elif len(dims) == 2:
-            if dims not in expected_dims_2d:
+            if dims != expected_dims_2d:
                 message = f"Invalid dimensions for variable '{var_name}': {dims}"
                 _logger.error(message)
                 raise ValueError(message)
         elif len(dims) == 1:
-            if dims not in expected_dims_1d:
+            if dims != expected_dims_1d:
                 message = f"Invalid dimensions for variable '{var_name}': {dims}"
                 _logger.error(message)
                 raise ValueError(message)
 
-        # convert daily values into 366-day years
-        if periodicity == compute.Periodicity.daily:
-            initial_year = int(dataset_climatology["time"][0].dt.year)
-            final_year = int(dataset_climatology["time"][-1].dt.year)
-            total_years = final_year - initial_year + 1
-            var_values = np.apply_along_axis(utils.transform_to_366day,
-                                             len(dims) - 1,
-                                             dataset_fitting[var_name].values,
-                                             initial_year,
-                                             total_years)
+        # # convert daily values into 366-day years
+        # if periodicity == compute.Periodicity.daily:
+        #     initial_year = int(dataset_climatology["time"][0].dt.year)
+        #     final_year = int(dataset_climatology["time"][-1].dt.year)
+        #     total_years = final_year - initial_year + 1
+        #     var_values = np.apply_along_axis(utils.transform_to_366day,
+        #                                      len(dims) - 1,
+        #                                      dataset_fitting[var_name].values,
+        #                                      initial_year,
+        #                                      total_years)
+        #
+        # else:  # assumed to be monthly
+        #     var_values = dataset_fitting[var_name].values
 
-        else:  # assumed to be monthly
-            var_values = dataset_fitting[var_name].values
+        var_values = dataset_fitting[var_name].values
 
         # create a shared memory array, wrap it as a numpy array and copy
         # copy the data (values) from this variable's DataArray
@@ -474,8 +471,8 @@ def build_dataset_fitting_grid(
         time_coord: xr.DataArray(data=times, coords=[times], dims=time_coord),
     }
     ds_fitting_params = xr.Dataset(
-        coords=coords,
         attrs=global_attrs,
+        coords=coords,
     )
 
     return ds_fitting_params
@@ -585,6 +582,14 @@ def _compute_write_index(keyword_arguments):
         # add an empty DataArray to the fitting Dataset if it's not been loaded
         if keyword_arguments["load_params"] is None:
 
+            dims = list(ds_precip.dims)
+            time_index = dims.index("time")
+            if keyword_arguments['periodicity'] == compute.Periodicity.monthly:
+                dims[time_index] = "month"
+            else:  # daily
+                dims[time_index] = "day"
+
+
             fitting_var_attrs = {
                 "alpha": {
                     'description': 'shape parameter of the gamma distribution (also '
@@ -611,10 +616,11 @@ def _compute_write_index(keyword_arguments):
             }
 
             for var in _FITTING_VARIABLES:
+                fitting_shape = [len(x) for x in ds_fitting.coords.values()]
                 da_fitting = xr.DataArray(
-                    data=np.full(shape=tuple(ds_fitting.sizes.values()), fill_value=np.NaN),
+                    data=np.full(shape=fitting_shape, fill_value=np.NaN),
                     coords=ds_fitting.coords,
-                    dims=ds_fitting.dims,
+                    dims=dims,
                     name=fitting_var_names[var],
                     attrs=fitting_var_attrs[var],
                 )
