@@ -1,5 +1,6 @@
 from enum import Enum
 import logging
+from typing import Dict
 
 import numba
 import numpy as np
@@ -40,7 +41,7 @@ def spi(
         calibration_year_initial: int,
         calibration_year_final: int,
         periodicity: compute.Periodicity,
-        fitting_params: dict = None,
+        fitting_params: Dict = None,
 ) -> np.ndarray:
     """
     Computes SPI (Standardized Precipitation Index).
@@ -122,8 +123,8 @@ def spi(
 
         # get (optional) fitting parameters if provided
         if fitting_params is not None:
-            alphas = fitting_params["alphas"]
-            betas = fitting_params["betas"]
+            alphas = fitting_params["alpha"]
+            betas = fitting_params["beta"]
         else:
             alphas = None
             betas = None
@@ -143,10 +144,10 @@ def spi(
 
         # get (optional) fitting parameters if provided
         if fitting_params is not None:
-            probabilities_of_zero = fitting_params["probabilities_of_zero"]
-            locs = fitting_params["locs"]
-            scales = fitting_params["scales"]
-            skews = fitting_params["skews"]
+            probabilities_of_zero = fitting_params["prob_zero"]
+            locs = fitting_params["loc"]
+            scales = fitting_params["scale"]
+            skews = fitting_params["skew"]
         else:
             probabilities_of_zero = None
             locs = None
@@ -457,14 +458,14 @@ def percentage_of_normal(values: np.ndarray,
 
     # make sure we've been provided with sane calibration limits
     if data_start_year > calibration_start_year:
-        raise ValueError("Invalid start year arguments (data and/or "
-                         "calibration): calibration start year is before "
-                         "the data start year"
+        raise ValueError(
+            "Invalid start year arguments (data and/or calibration): "
+            "calibration start year is before the data start year",
         )
     elif ((calibration_end_year - calibration_start_year + 1) * 12) > values.size:
-        raise ValueError("Invalid calibration period specified: total "
-                         "calibration years exceeds the actual "
-                         "number of years of data"
+        raise ValueError(
+            "Invalid calibration period specified: total calibration years "
+            "exceeds the actual number of years of data",
         )
 
     # get an array containing a sliding sum on the specified time step
@@ -546,14 +547,16 @@ def pet(temperature_celsius: np.ndarray,
 
     # make sure we're not dealing with a NaN or out-of-range latitude value
     if ((latitude_degrees is not None)
-        and not np.isnan(latitude_degrees)
-        and (latitude_degrees < 90.0)
-        and (latitude_degrees > -90.0)):
+            and not np.isnan(latitude_degrees)
+            and (latitude_degrees < 90.0)
+            and (latitude_degrees > -90.0)):
 
         # compute and return the PET values using Thornthwaite's equation
-        return eto.eto_thornthwaite(temperature_celsius,
-                                    latitude_degrees,
-                                    data_start_year)
+        return eto.eto_thornthwaite(
+            temperature_celsius,
+            latitude_degrees,
+            data_start_year,
+        )
 
     else:
         message = ("Invalid latitude value: " + str(latitude_degrees) +

@@ -44,7 +44,17 @@ class Periodicity(Enum):
         try:
             return Periodicity[s]
         except KeyError:
-            raise ValueError()
+            raise ValueError(f"No periodicity enumeration corresponding to {s}")
+
+    def unit(self):
+        if self.name == "monthly":
+            unit = "month"
+        elif self.name == "daily":
+            unit = "day"
+        else:
+            raise ValueError(f"No periodicity unit corresponding to {self.name}")
+
+        return unit
 
 
 # ------------------------------------------------------------------------------
@@ -214,9 +224,13 @@ def _probability_of_zero(
 
 
 # ------------------------------------------------------------------------------
-@numba.jit
+# @numba.jit
 def pearson_parameters(
         values: np.ndarray,
+        data_start_year: int,
+        calibration_start_year: int,
+        calibration_end_year: int,
+        periodicity: Periodicity,
 ) -> (np.ndarray, np.ndarray, np.ndarray, np.ndarray):
     """
     This function computes the probability of zero and Pearson Type III
@@ -229,6 +243,7 @@ def pearson_parameters(
         non-leap years) and assuming that the first value of the array is
         January of the initial year for an input array of monthly values or
         Jan. 1st of initial year for an input array daily values
+    :param periodicity: monthly or daily
     :return: four 1-D array of fitting values for the Pearson Type III
         distribution, with shape (12,) for monthly or (366,) for daily
 
@@ -237,6 +252,20 @@ def pearson_parameters(
         returned array 3 :second Pearson Type III distribution parameter (scale)
         returned array 4: third Pearson Type III distribution parameter (skew)
     """
+
+    # reshape precipitation values to (years, 12) for monthly,
+    # or to (years, 366) for daily
+    if periodicity is Periodicity.monthly:
+
+        values = utils.reshape_to_2d(values, 12)
+
+    elif periodicity is Periodicity.daily:
+
+        values = utils.reshape_to_2d(values, 366)
+
+    else:
+
+        raise ValueError("Invalid periodicity argument: %s" % periodicity)
 
     # validate that the values array has shape: (years, 12) for monthly or (years, 366) for daily
     if len(values.shape) != 2:
@@ -252,6 +281,25 @@ def pearson_parameters(
             _logger.error(message)
             raise ValueError(message)
 
+    # determine the end year of the values array
+    data_end_year = data_start_year + values.shape[0]
+
+    # make sure that we have data within the full calibration period,
+    # otherwise use the full period of record
+    if (calibration_start_year < data_start_year) or \
+            (calibration_end_year > data_end_year):
+        calibration_start_year = data_start_year
+        calibration_end_year = data_end_year
+
+    # get the year axis indices corresponding to
+    # the calibration start and end years
+    calibration_begin_index = calibration_start_year - data_start_year
+    calibration_end_index = (calibration_end_year - data_start_year) + 1
+
+    # get the values for the current calendar time step
+    # that fall within the calibration years period
+    calibration_values = values[calibration_begin_index:calibration_end_index, :]
+
     # the values we'll compute and return
     probabilities_of_zero = np.zeros((time_steps_per_year,))
     locs = np.zeros((time_steps_per_year,))
@@ -265,7 +313,7 @@ def pearson_parameters(
     for time_step_index in range(time_steps_per_year):
 
         # get the values for the current calendar time step
-        time_step_values = values[:, time_step_index]
+        time_step_values = calibration_values[:, time_step_index]
 
         # count the number of zeros and valid (non-missing/non-NaN) values
         number_of_zeros, number_of_non_missing = \
@@ -277,7 +325,6 @@ def pearson_parameters(
 
             # we can't proceed, bail out using zeros
             continue
-            # return fitting_values
 
         # calculate the probability of zero for the calendar time step
         probability_of_zero = 0.0
@@ -288,10 +335,6 @@ def pearson_parameters(
         # get the estimated L-moments, if we have
         # more than three non-missing/non-zero values
         if (number_of_non_missing - number_of_zeros) > 3:
-
-            # # remove NaN values from the array, as this invalidates
-            # # the calculation within the lmoments fitting function
-            # time_step_values = time_step_values[~np.isnan(time_step_values)]
 
             # get the Pearson Type III parameters for this time
             # step's values within the calibration period
@@ -403,17 +446,17 @@ def _pearson_fit(
 
 
 # ------------------------------------------------------------------------------
-@numba.jit
+# @numba.jit
 def transform_fitted_pearson(
         values: np.ndarray,
         data_start_year: int,
         calibration_start_year: int,
         calibration_end_year: int,
         periodicity: Periodicity,
-        probabilities_of_zero: np.ndarray=None,
-        locs: np.ndarray=None,
-        scales: np.ndarray=None,
-        skews: np.ndarray=None,
+        probabilities_of_zero: np.ndarray = None,
+        locs: np.ndarray = None,
+        scales: np.ndarray = None,
+        skews: np.ndarray = None,
 ) -> np.ndarray:
     """
     Fit values to a Pearson Type III distribution and transform the values
@@ -476,13 +519,15 @@ def transform_fitted_pearson(
             calibration_start_year = data_start_year
             calibration_end_year = data_end_year
 
-        # get the year axis indices corresponding to the calibration start and end years
-        calibration_begin_index = calibration_start_year - data_start_year
-        calibration_end_index = (calibration_end_year - data_start_year) + 1
-
         # compute the values we'll use to fit to the Pearson Type III distribution
         probabilities_of_zero, locs, scales, skews = \
-            pearson_parameters(values[calibration_begin_index:calibration_end_index, :])
+            pearson_parameters(
+                values,
+                data_start_year,
+                calibration_start_year,
+                calibration_end_year,
+                periodicity,
+            )
 
     # fit each value to the Pearson Type III distribution
     values = _pearson_fit(values, probabilities_of_zero, skews, locs, scales)
@@ -500,6 +545,7 @@ def gamma_parameters(
         periodicity: Periodicity,
 ) -> (np.ndarray, np.ndarray):
     """
+    Computes the gamma distribution parameters alpha and beta.
 
     :param values: 2-D array of values, with each row typically representing a year
                    containing twelve columns representing the respective calendar
@@ -518,13 +564,22 @@ def gamma_parameters(
         year filled with NaN values, with array size == (# years * 366)
     :return: two 2-D arrays of gamma fitting parameter values, corresponding in size
         and shape of the input array
-    :rtype: tuple of two 2-D numpy.ndarrays of floats
+    :rtype: tuple of two 2-D numpy.ndarrays of floats, alphas and betas
     """
 
     # if we're passed all missing values then we can't compute anything,
-    # then we return the same array of missing values
+    # then we return an array of missing values
     if (np.ma.is_masked(values) and values.mask.all()) or np.all(np.isnan(values)):
-        raise ValueError("All missing/NaN values provided as input")
+        if periodicity is Periodicity.monthly:
+            shape = (12,)
+        elif periodicity is Periodicity.daily:
+            shape = (366,)
+        else:
+            raise ValueError("Unsupported periodicity: {periodicity}".format(periodicity=periodicity))
+        alphas = np.full(shape=shape, fill_value=np.NaN)
+        betas = np.full(shape=shape, fill_value=np.NaN)
+        return alphas, betas
+        # raise ValueError("All missing/NaN values provided as input")
 
     # validate (and possibly reshape) the input array
     values = _validate_array(values, periodicity)
@@ -565,6 +620,55 @@ def gamma_parameters(
 
 
 # ------------------------------------------------------------------------------
+def scale_values(
+        values: np.ndarray,
+        scale: int,
+        periodicity: Periodicity,
+):
+
+    # we expect to operate upon a 1-D array, so if we've been passed a 2-D array
+    # then we flatten it, otherwise raise an error
+    shape = values.shape
+    if len(shape) == 2:
+        values = values.flatten()
+    elif len(shape) != 1:
+        message = "Invalid shape of input array: {shape}".format(shape=shape) + \
+                  " -- only 1-D and 2-D arrays are supported"
+        _logger.error(message)
+        raise ValueError(message)
+
+    # if we're passed all missing values then we can't compute
+    # anything, so we return the same array of missing values
+    if (np.ma.is_masked(values) and values.mask.all()) or np.all(np.isnan(values)):
+        return values
+
+    # clip any negative values to zero
+    if np.amin(values) < 0.0:
+        _logger.warn("Input contains negative values -- all negatives clipped to zero")
+        values = np.clip(values, a_min=0.0, a_max=None)
+
+    # get a sliding sums array, with each time step's value scaled
+    # by the specified number of time steps
+    scaled_values = sum_to_scale(values, scale)
+
+    # reshape precipitation values to (years, 12) for monthly,
+    # or to (years, 366) for daily
+    if periodicity is Periodicity.monthly:
+
+        scaled_values = utils.reshape_to_2d(scaled_values, 12)
+
+    elif periodicity is Periodicity.daily:
+
+        scaled_values = utils.reshape_to_2d(scaled_values, 366)
+
+    else:
+
+        raise ValueError("Invalid periodicity argument: %s" % periodicity)
+
+    return scaled_values
+
+
+# ------------------------------------------------------------------------------
 @numba.jit
 def transform_fitted_gamma(
         values: np.ndarray,
@@ -572,8 +676,8 @@ def transform_fitted_gamma(
         calibration_start_year: int,
         calibration_end_year: int,
         periodicity: Periodicity,
-        alphas: np.ndarray=None,
-        betas: np.ndarray=None,
+        alphas: np.ndarray = None,
+        betas: np.ndarray = None,
 ) -> np.ndarray:
     """
     Fit values to a gamma distribution and transform the values to corresponding
