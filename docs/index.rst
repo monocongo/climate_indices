@@ -370,6 +370,32 @@ data and the calibration period used will be Jan. 1951 through Dec. 2010. The ou
 `<out_dir>/nclimgrid_lowres_pmdi.nc`, `<out_dir>/nclimgrid_lowres_scpdsi.nc`, and `<out_dir>/nclimgrid_lowres_zindex.nc`.
 Parallelization will occur utilizing all CPUs.
 
+Pre-compute SPI distribution fitting variables
+"""""""""""""""""""""""""""""""""""""""""""""""
+``$ python --index spi --periodicity monthly --scales 1 2 3 6 9 12 24 36 48 60 72
+--calibration_start_year 1998 --calibration_end_year 2016
+--netcdf_precip /data/nclimgrid/nclimgrid_prcp.nc --var_name_precip prcp
+--output_file_base /data/nclimgrid/nclimgrid
+--multiprocessing all
+--save_params /data/nclimgrid/nclimgrid_fitting.nc
+--overwrite``
+
+``$ python --index spi --periodicity monthly --scales 1 2 3 6 9 12 24 36 48 60 72
+--calibration_start_year 1998 --calibration_end_year 2016
+--netcdf_precip /data/nclimgrid/nclimgrid_prcp.nc --var_name_precip prcp
+--output_file_base /data/nclimgrid/nclimgrid
+--multiprocessing all
+--load_params /data/nclimgrid/nclimgrid_fitting.nc``
+
+In the above example we demonstrate how distribution fitting parameters can be saved as NetCDF.
+This fittings NetCDF can then be used as pre-computed variables in subsequent SPI computations.
+Inital command computes both distribution fitting values and SPI for various month scales.
+The distribution fitting variables are written to the file specified by the `--save_params` option.
+The second command also computes SPI but instead of computing the distribution fitting values
+it loads the pre-computed fitting values from the NetCDF file specified by the `--load_params`
+option.
+
+
 For Developers
 ---------------
 
