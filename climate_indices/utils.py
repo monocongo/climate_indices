@@ -247,6 +247,34 @@ def reshape_to_divs_years_months(
 
 # ------------------------------------------------------------------------------
 @numba.jit
+def gregorian_length_as_366day(
+        length_gregorian: int,
+        year_start: int,
+) -> int:
+
+    year = year_start
+    remaining = length_gregorian
+    length_366day = 0
+    while remaining > 0:
+
+        if calendar.isleap(year):
+            days_in_current_year = 366
+        else:
+            days_in_current_year = 365
+
+        if remaining >= days_in_current_year:
+            length_366day += 366
+        else:
+            length_366day += remaining
+
+        remaining -= days_in_current_year
+        year += 1
+
+    return length_366day
+
+
+# ------------------------------------------------------------------------------
+@numba.jit
 def transform_to_366day(
         original: np.ndarray,
         year_start: int,
@@ -319,8 +347,22 @@ def transform_to_366day(
 
             # write the remaining days of the year (Mar 1 through Dec 31)
             # from the original into the all_leap array
-            all_leap[all_leap_index + 60:(all_leap_index + 366)] = original[
-                original_index + 59:(original_index + 365)]
+            original_year_end_index = original_index + 365
+            if len(original) < original_year_end_index:
+                # this should be the final year and we're just adding the remained days
+                remainder = original[original_index + 59:]
+                difference = len(all_leap[all_leap_index + 60:]) - len(remainder)
+                if difference > 0:
+                    final_days = np.pad(remainder, (0, difference,), mode='constant', constant_values=np.NaN)
+                elif difference != 0:
+                    raise ValueError("Incompatible shapes")
+                else:
+                    final_days = remainder
+                all_leap[all_leap_index + 60:] = final_days
+                continue
+            else:
+                all_leap[all_leap_index + 60:(all_leap_index + 366)] = \
+                    original[original_index + 59:original_year_end_index]
 
             # increment the "start day of the current year" index for the original
             # so the next iteration jumps ahead a full year
