@@ -224,7 +224,7 @@ def _probability_of_zero(
 
 
 # ------------------------------------------------------------------------------
-# @numba.jit
+@numba.jit
 def pearson_parameters(
         values: np.ndarray,
         data_start_year: int,
@@ -446,7 +446,7 @@ def _pearson_fit(
 
 
 # ------------------------------------------------------------------------------
-# @numba.jit
+#@numba.jit
 def transform_fitted_pearson(
         values: np.ndarray,
         data_start_year: int,
@@ -579,7 +579,6 @@ def gamma_parameters(
         alphas = np.full(shape=shape, fill_value=np.NaN)
         betas = np.full(shape=shape, fill_value=np.NaN)
         return alphas, betas
-        # raise ValueError("All missing/NaN values provided as input")
 
     # validate (and possibly reshape) the input array
     values = _validate_array(values, periodicity)

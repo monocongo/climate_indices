@@ -589,7 +589,6 @@ def _compute_write_index(keyword_arguments):
             else:  # daily
                 dims[time_index] = "day"
 
-
             fitting_var_attrs = {
                 "alpha": {
                     'description': 'shape parameter of the gamma distribution (also '
@@ -669,7 +668,7 @@ def _compute_write_index(keyword_arguments):
         time_length_366day = utils.gregorian_length_as_366day(len(ds_precip['time']), data_start_year)
         output_shape = (len(ds_precip['lat']), len(ds_precip['lon']), time_length_366day)
 
-        # add an array to hold index computation results
+    # add an array to hold index computation results
     # to our dictionary of shared memory arrays
     if _KEY_RESULT not in _global_shared_arrays:
         _global_shared_arrays[_KEY_RESULT] = {
@@ -936,10 +935,6 @@ def _parallel_spi(
             "input_type": input_type,
             "args": args,
         }
-        if i < (number_of_workers - 1):
-            params["sub_array_end"] = split_indices[i + 1]
-        else:
-            params["sub_array_end"] = None
 
         # set the distribution fitting variable name parameters
         if args["distribution"] is indices.Distribution.gamma:
@@ -950,6 +945,14 @@ def _parallel_spi(
             params["var_name_loc"] = input_var_names["loc"]
             params["var_name_scale"] = input_var_names["scale"]
             params["var_name_skew"] = input_var_names["skew"]
+
+        if i < (number_of_workers - 1) and (len(split_indices) > (i + 1)):
+            params["sub_array_end"] = split_indices[i + 1]
+        else:
+            # end of the line
+            params["sub_array_end"] = None
+            chunk_params.append(params)
+            break
 
         chunk_params.append(params)
 
@@ -1010,10 +1013,12 @@ def _parallel_fitting(
             "input_type": input_type,
             "args": args,
         }
-        if i < (number_of_workers - 1):
+        if i < (number_of_workers - 1) and (len(split_indices) > (i + 1)):
             params["sub_array_end"] = split_indices[i + 1]
         else:
             params["sub_array_end"] = None
+            chunk_params.append(params)
+            break
 
         chunk_params.append(params)
 
