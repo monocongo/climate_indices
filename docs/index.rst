@@ -372,7 +372,11 @@ Parallelization will occur utilizing all CPUs.
 
 Pre-compute SPI distribution fitting variables
 """""""""""""""""""""""""""""""""""""""""""""""
-``$ python --index spi --periodicity monthly --scales 1 2 3 6 9 12 24 36 48 60 72
+In order to pre-compute fititng parameters for later use as inputs to subsequent
+SPI calculations we can save both gamma and Pearson distributinon fitting parameters
+to NetCDF, and later use this file as input for SPI calculations over the same
+calibration period.
+``$ python scripts/spi.py --periodicity monthly --scales 1 2 3 6 9 12 24 36 48 60 72
 --calibration_start_year 1998 --calibration_end_year 2016
 --netcdf_precip /data/nclimgrid/nclimgrid_prcp.nc --var_name_precip prcp
 --output_file_base /data/nclimgrid/nclimgrid
@@ -380,7 +384,7 @@ Pre-compute SPI distribution fitting variables
 --save_params /data/nclimgrid/nclimgrid_fitting.nc
 --overwrite``
 
-``$ python --index spi --periodicity monthly --scales 1 2 3 6 9 12 24 36 48 60 72
+``$ python scripts/spi.py --periodicity monthly --scales 1 2 3 6 9 12 24 36 48 60 72
 --calibration_start_year 1998 --calibration_end_year 2016
 --netcdf_precip /data/nclimgrid/nclimgrid_prcp.nc --var_name_precip prcp
 --output_file_base /data/nclimgrid/nclimgrid
