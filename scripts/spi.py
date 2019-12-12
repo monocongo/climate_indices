@@ -715,7 +715,6 @@ def _compute_write_index(keyword_arguments):
             var_names_spi = copy.deepcopy(scale_fitting_var_names[str(scale)])
             var_names_spi["var_name_precip"] = keyword_arguments["var_name_precip"]
             _parallel_spi(
-                keyword_arguments["index"],
                 _global_shared_arrays,
                 var_names_spi,
                 _KEY_RESULT,
@@ -892,7 +891,6 @@ def _init_worker(shared_arrays_dict):
 
 # ------------------------------------------------------------------------------
 def _parallel_spi(
-        index: str,
         arrays_dict: dict,
         input_var_names: dict,
         output_var_name: str,
@@ -903,7 +901,6 @@ def _parallel_spi(
     """
     TODO document this function
 
-    :param str index:
     :param dict arrays_dict:
     :param dict input_var_names:
     :param str output_var_name:
@@ -928,7 +925,6 @@ def _parallel_spi(
     # appropriate to the _apply_along_axis function, one per worker process
     for i in range(number_of_workers):
         params = {
-            "index": index,
             "input_var_name": input_var_names["var_name_precip"],
             "output_var_name": output_var_name,
             "sub_array_start": split_indices[i],
@@ -1437,13 +1433,6 @@ def main():  # type: () -> None
         # parse the command line arguments
         parser = argparse.ArgumentParser()
         parser.add_argument(
-            "--index",
-            type=str,
-            help="Indices to compute",
-            choices=["spi", "spei", "pnp", "scaled", "pet", "palmers", "all"],
-            required=True,
-        )
-        parser.add_argument(
             "--periodicity",
             help="Process input as either monthly or daily values",
             choices=[compute.Periodicity.monthly, compute.Periodicity.daily],
@@ -1528,7 +1517,6 @@ def main():  # type: () -> None
 
         # keyword arguments used for the SPI function
         kwrgs = {
-            "index": "spi",
             "netcdf_precip": netcdf_precip,
             "var_name_precip": arguments.var_name_precip,
             "input_type": input_type,
