@@ -804,13 +804,7 @@ def build_dataset_spi_grid(
         )
 
     # create a new variable to contain the SPI values, assign into the dataset
-    var_attrs = {
-        "long_name": "Standardized Precipitation Index ("
-                     f"{distribution.value.capitalize()}), "
-                     f"{scale}-{periodicity.unit()}",
-        "valid_min": -3.09,
-        "valid_max": 3.09,
-    }
+    var_attrs = _get_variable_attributes(distribution, scale, periodicity)
     da_spi = xr.DataArray(
         data=index_values,
         coords=ds_example.coords,
@@ -863,13 +857,7 @@ def build_dataset_spi_divisions(
         )
 
     # create a new variable to contain the SPI values, assign into the dataset
-    var_attrs = {
-        "long_name": "Standardized Precipitation Index ("
-                     f"{distribution.value.capitalize()}), "
-                     f"{scale}-{periodicity.unit()}",
-        "valid_min": -3.09,
-        "valid_max": 3.09,
-    }
+    var_attrs = _get_variable_attributes(distribution, scale, periodicity)
     da_spi = xr.DataArray(
         data=index_values,
         coords=ds_example.coords,
