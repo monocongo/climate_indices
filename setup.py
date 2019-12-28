@@ -55,6 +55,7 @@ setup(
     entry_points={
         "console_scripts": [
             "process_climate_indices=climate_indices.__main__:main",
+            "spi=climate_indices.__spi__:main",
         ]
     },
 )

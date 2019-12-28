@@ -231,11 +231,13 @@ The options for the entry point script are described below:
 +------------------------+-------------------------------------------------+
 | save_params            | Save distribution fitting variables to this file|
 |                        | path. The fittings NetCDF is to be used as input|
-|                        | when using the `load_params` option.            |
+|                        | when using the `load_params` option. [NOTE:     |
+|                        | only for use with the `spi` entrypoint for SPI.]|
 +------------------------+-------------------------------------------------+
 | load_params            | Load distribution fitting variables from this   |
 |                        | filepath. The fittings NetCDF file is one that  |
-|                        | was created by the `save_params` option.        |
+|                        | was created by the `save_params` option. [NOTE: |
+|                        | only for use with the `spi` entrypoint for SPI.]|
 +------------------------+-------------------------------------------------+
 
 Example Input and Output Datasets
@@ -376,7 +378,8 @@ In order to pre-compute fititng parameters for later use as inputs to subsequent
 SPI calculations we can save both gamma and Pearson distributinon fitting parameters
 to NetCDF, and later use this file as input for SPI calculations over the same
 calibration period.
-``$ python scripts/spi.py --periodicity monthly --scales 1 2 3 6 9 12 24 36 48 60 72
+
+``$ spi --periodicity monthly --scales 1 2 3 6 9 12 24 36 48 60 72
 --calibration_start_year 1998 --calibration_end_year 2016
 --netcdf_precip /data/nclimgrid/nclimgrid_prcp.nc --var_name_precip prcp
 --output_file_base /data/nclimgrid/nclimgrid
@@ -384,7 +387,7 @@ calibration period.
 --save_params /data/nclimgrid/nclimgrid_fitting.nc
 --overwrite``
 
-``$ python scripts/spi.py --periodicity monthly --scales 1 2 3 6 9 12 24 36 48 60 72
+``$ spi --periodicity monthly --scales 1 2 3 6 9 12 24 36 48 60 72
 --calibration_start_year 1998 --calibration_end_year 2016
 --netcdf_precip /data/nclimgrid/nclimgrid_prcp.nc --var_name_precip prcp
 --output_file_base /data/nclimgrid/nclimgrid

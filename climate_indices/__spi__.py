@@ -77,7 +77,7 @@ def _validate_args(args):
             ds: xr.Dataset,
             var_name: str,
             variable_plain_name: str,
-    ):
+    ) -> InputType:
         """
         Function to verify that a variable's dimensions are in one of the expected
         dimension orders and if so then it will return the corresponding InputType.
@@ -804,13 +804,7 @@ def build_dataset_spi_grid(
         )
 
     # create a new variable to contain the SPI values, assign into the dataset
-    var_attrs = {
-        "long_name": "Standardized Precipitation Index ("
-                     f"{distribution.value.capitalize()}), "
-                     f"{scale}-{periodicity.unit()}",
-        "valid_min": -3.09,
-        "valid_max": 3.09,
-    }
+    var_attrs = _get_variable_attributes(distribution, scale, periodicity)
     da_spi = xr.DataArray(
         data=index_values,
         coords=ds_example.coords,
@@ -863,13 +857,7 @@ def build_dataset_spi_divisions(
         )
 
     # create a new variable to contain the SPI values, assign into the dataset
-    var_attrs = {
-        "long_name": "Standardized Precipitation Index ("
-                     f"{distribution.value.capitalize()}), "
-                     f"{scale}-{periodicity.unit()}",
-        "valid_min": -3.09,
-        "valid_max": 3.09,
-    }
+    var_attrs = _get_variable_attributes(distribution, scale, periodicity)
     da_spi = xr.DataArray(
         data=index_values,
         coords=ds_example.coords,
@@ -1401,7 +1389,6 @@ def main():  # type: () -> None
     #
     # Example command line arguments for SPI only using monthly precipitation input:
     #
-    # --index spi
     # --periodicity monthly
     # --scales 1 2 3 6 9 12 24
     # --calibration_start_year 1998
@@ -1441,7 +1428,7 @@ def main():  # type: () -> None
         )
         parser.add_argument(
             "--scales",
-            help="Timestep scales over which the PNP, SPI, and SPEI values are to be computed",
+            help="Timestep scales over which the SPI values are to be computed",
             type=int,
             nargs="*",
         )
@@ -1555,24 +1542,20 @@ if __name__ == "__main__":
     #
     # Example command line usage for US climate divisions:
     #
-    #  $ python climate_indices/__main__.py --index all --scales 1 2 3 6 9 12 24
+    #  $ spi --scales 1 2 3 6 9 12 24
     #  --netcdf_precip ../example_climate_indices/example/input/nclimdiv.nc
-    #  --netcdf_temp ../example_climate_indices/example/input/nclimdiv.nc
-    #  --netcdf_awc ../example_climate_indices/example/input/nclimdiv.nc
     #  --output_file_base /home/data/test/nclimdiv
-    #  --var_name_precip prcp --var_name_temp tavg --var_name_awc awc
+    #  --var_name_precip prcp
     #  --calibration_start_year 1951 --calibration_end_year 2010
     #  --multiprocessing all --periodicity monthly
     #
     #
     # Example command line usage for gridded data (nClimGrid):
     #
-    #  $ python climate_indices/__main__.py --index all --scales 1 2 3 6 9 12 24
+    #  $ spi --scales 1 2 3 6 9 12 24
     #  --netcdf_precip ../example_climate_indices/example/input/nclimgrid_prcp.nc
-    #  --netcdf_temp ../example_climate_indices/example/input/nclimgrid_tavg.nc
-    #  --netcdf_awc ../example_climate_indices/example/input/nclimgrid_soil.nc
     #  --output_file_base /home/data/test/nclimgrid
-    #  --var_name_precip prcp --var_name_temp tavg --var_name_awc awc
+    #  --var_name_precip prcp
     #  --calibration_start_year 1951 --calibration_end_year 2010
     #  --multiprocessing all --periodicity monthly
 
