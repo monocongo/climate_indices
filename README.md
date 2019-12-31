@@ -55,3 +55,16 @@ maintained by NIDIS/NCEI/NOAA. The official release version is available at
 - [__Documentation__](https://climate-indices.readthedocs.io/en/latest/)
 - [__License__](LICENSE)
 - [__Disclaimer__](DISCLAIMER)
+
+#### Citation
+You can cite `climate_indices` in your projects and research papers via the BibTeX 
+entry below.
+```
+@misc {climate_indices,
+    author = "James Adams",
+    title  = "climate_indices, an open source Python library providing reference implementations of commonly used climate indices",
+    url    = "https://github.com/monocongo/climate_indices",
+    month  = "may",
+    year   = "2017--"
+}
+```
