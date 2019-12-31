@@ -471,3 +471,17 @@ NCEI/NOAA, official release version available on
 `drought.gov <https://www.drought.gov/drought/python-climate-indices>`__.
 This software is under BSD 3-Clause license, copyright James Adams, 2017.
 Please read more on our `license <LICENSE>`__ page.
+
+Citation
+---------
+You can cite `climate_indices` in your projects and research papers via the BibTeX
+entry below.
+::
+
+ @misc {climate_indices,
+      author = "James Adams",
+      title  = "climate_indices, an open source Python library providing reference implementations of commonly used climate indices",
+      url    = "https://github.com/monocongo/climate_indices",
+      month  = "may",
+      year   = "2017--"
+ }
