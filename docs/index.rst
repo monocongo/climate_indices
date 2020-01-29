@@ -429,17 +429,10 @@ Testing
 
 Initially, all tests should be run for validation:
 
-``$ export NUMBA_DISABLE_JIT=1``
-
-``$ pytest``
-
-``$ unset NUMBA_DISABLE_JIT``
+``$ tox``
 
 If you run the above from the main branch and get an error then please
 send a report and/or add an issue, as all tests should pass.
-
-The Numba environment variable is set/unset in order to bypass Numba's
-just-in-time compilation process, which significantly reduces testing times.
 
 
 Get involved
