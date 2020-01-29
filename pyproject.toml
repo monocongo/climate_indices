@@ -1,18 +1,5 @@
-[tool.black]
-line-length = 88
-py36 = true
-skip-numeric-underscore-normalization = true
-include = '\.pyi?$'
-exclude = '''
-/(
-    \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | _build
-  | buck-out
-  | build
-  | dist
-)/
-'''
+[build-system]
+# These are the assumed default build requirements from pip:
+# https://pip.pypa.io/en/stable/reference/pip/#pep-517-and-518-support
+requires = ["setuptools>=40.8.0", "wheel"]
+build-backend = "setuptools.build_meta"
