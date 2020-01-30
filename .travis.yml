@@ -4,15 +4,16 @@ language: python
 cache: pip
 
 python:
-  - 3.6
+  - 3.7
 
 install:
-  # install the core climate_indices package
+  # install the climate_indices package
   - pip install .
 
   # install packages required for test coverage and reporting via Coveralls
   - pip install coverage
   - pip install coveralls
+  - pip install tox
 
 script:
   # run all tests with coverage
