@@ -8,7 +8,7 @@ import numpy as np
 import scipy.special
 import scipy.stats
 
-from climate_indices import lmoments, utils
+from src.climate_indices import utils, lmoments
 
 # declare the names that should be included in the public API for this module
 __all__ = ["Periodicity"]

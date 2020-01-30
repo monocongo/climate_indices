@@ -12,7 +12,8 @@ from nco import Nco
 import numpy as np
 import xarray as xr
 
-from climate_indices import compute, indices, utils
+from src.climate_indices import compute
+from src.climate_indices import utils, indices
 
 # variable names for the distribution fitting parameters
 _FITTING_VARIABLES = ("alpha", "beta", "skew", "loc", "scale", "prob_zero")
