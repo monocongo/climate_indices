@@ -5,8 +5,7 @@ from typing import Dict
 import numba
 import numpy as np
 
-from src.climate_indices import compute, eto, palmer
-from src.climate_indices import utils
+from climate_indices import compute, eto, palmer, utils
 
 # declare the names that should be included in the public API for this module
 __all__ = ["pdsi", "percentage_of_normal", "pet", "scpdsi", "spei", "spi"]
