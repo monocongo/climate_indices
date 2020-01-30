@@ -1,5 +1,5 @@
 import pathlib
-from setuptools import setup
+from setuptools import find_packages, setup
 
 # the directory containing this file
 BASE_DIR = pathlib.Path(__file__).parent
@@ -21,8 +21,8 @@ setup(
     ),
     long_description=README,
     long_description_content_type="text/markdown",
-    packages=["climate_indices"],
-    include_package_data=True,
+    package_dir={'': 'src'},
+    packages=find_packages(where='src'),    include_package_data=True,
     install_requires=[
         "dask",
         "nco",
