@@ -3,12 +3,15 @@
 # Check https://circleci.com/docs/2.0/language-python/ for more details
 #
 jobs:
-    build:
+#    build:
+    test:
         docker:
             # specify the version you desire here
             # CircleCI maintains a library of pre-built images
             # documented at https://circleci.com/docs/2.0/circleci-images/
             - image: circleci/python:3.7
+
+        parallelism: 4
 
         working_directory: ~/repo
 
