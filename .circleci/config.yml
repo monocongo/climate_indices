@@ -3,8 +3,8 @@
 # Check https://circleci.com/docs/2.0/language-python/ for more details
 #
 jobs:
-#    build:
-    test:
+    build:
+#    test:
         docker:
             # specify the version you desire here
             # CircleCI maintains a library of pre-built images
