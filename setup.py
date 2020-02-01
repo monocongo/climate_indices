@@ -24,7 +24,7 @@ setup(
     package_dir={'': 'src'},
     packages=find_packages(where='src'),
     include_package_data=True,
-    python_requires=">=3.7",
+    python_requires=">=3.6",
     install_requires=[
         "dask",
         "nco",
@@ -45,7 +45,9 @@ setup(
         "Intended Audience :: Education",
         "Intended Audience :: Science/Research",
         'License :: OSI Approved :: BSD License',
+        "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
         "Topic :: Software Development :: Libraries :: Python Modules",
         "Topic :: Scientific/Engineering :: Atmospheric Science",
         "Topic :: Scientific/Engineering :: Physics",
