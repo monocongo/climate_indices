@@ -1,0 +1,50 @@
+# Python CircleCI 2.0 configuration file
+#
+# Check https://circleci.com/docs/2.0/language-python/ for more details
+#
+jobs:
+    build:
+        docker:
+            # specify the version you desire here
+            # CircleCI maintains a library of pre-built images
+            # documented at https://circleci.com/docs/2.0/circleci-images/
+            - image: circleci/python:3.7
+
+        working_directory: ~/repo
+
+        steps:
+            - checkout
+
+            # Download and cache dependencies
+            - restore_cache:
+                keys:
+                    - v1-dependencies-{{ checksum "requirements.txt" }}
+                    # fallback to using the latest cache if no exact match is found
+                    - v1-dependencies-
+
+            - run:
+                name: install dependencies
+                command: |
+                    python3 -m venv venv
+                    . venv/bin/activate
+                    pip install -e .
+                    pip install codecov
+                    pip install coverage
+                    pip install tox
+
+            - save_cache:
+                paths:
+                    - ./venv
+                key: v1-dependencies-{{ checksum "requirements.txt" }}
+
+            # run tests with tox
+            - run:
+                name: run tests
+                command: |
+                    . venv/bin/activate
+                    tox
+
+            # store artifacts (for example logs, binaries, etc)
+            # to be available in the web app or through the API
+            - store_artifacts:
+                path: test-reports
