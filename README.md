@@ -1,7 +1,6 @@
-[![Actions Status](https://github.com/monocongo/climate_indices/workflows/build/badge.svg)](https://github.com/monocongo/climate_indices/actions)
-[![Build Status](https://travis-ci.com/monocongo/climate_indices.svg?master)](https://travis-ci.com/monocongo)
+[![Actions Status](https://github.com/monocongo/climate_indices/workflows/build/badge.svg?branch=master)](https://github.com/monocongo/climate_indices/actions?query=branch%3Amaster)
 [![Coverage Status](https://coveralls.io/repos/github/monocongo/climate_indices/badge.svg?branch=master)](https://coveralls.io/github/monocongo/climate_indices?branch=master)
-[![Codacy Badge](https://api.codacy.com/project/badge/Grade/48563cbc37504fc6aa72100370e71f58)](https://www.codacy.com/app/monocongo/climate_indices?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=monocongo/climate_indices&amp;utm_campaign=Badge_Grade)
+[![Codacy Status](https://api.codacy.com/project/badge/Grade/48563cbc37504fc6aa72100370e71f58)](https://www.codacy.com/app/monocongo/climate_indices?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=monocongo/climate_indices&amp;utm_campaign=Badge_Grade)
 [![License](https://img.shields.io/badge/License-BSD%203--Clause-green.svg)](https://opensource.org/licenses/BSD-3-Clause)
 
 # Climate Indices in Python
