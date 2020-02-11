@@ -7,17 +7,17 @@
    :maxdepth: 2
    :caption: Contents:
 
-.. |Build| image:: https://travis-ci.com/monocongo/climate_indices.svg?master
-   :target: https://travis-ci.com/monocongo
+.. |Build| image:: https://github.com/monocongo/climate_indices/workflows/build/badge.svg
+   :target: https://github.com/monocongo/climate_indices/actions
 .. |Coverage| image:: https://coveralls.io/repos/github/monocongo/climate_indices/badge.svg?branch=master
    :target: https://coveralls.io/github/monocongo/climate_indices?branch=master
 .. |Quality| image:: https://api.codacy.com/project/badge/Grade/48563cbc37504fc6aa72100370e71f58
    :target: https://www.codacy.com/app/monocongo/climate_indices?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=monocongo/climate_indices&amp;utm_campaign=Badge_Grade
 .. |License| image:: https://img.shields.io/badge/license-BSD%203--Clause-green.svg
    :target: https://opensource.org/licenses/BSD-3-Clause
+.. |Python| image:: https://img.shields.io/pypi/pyversions/climate-indices
 
-
-|Build| |Coverage| |Quality| |License|
+|Build| |Coverage| |Quality| |License| |Python|
 
 Climate Indices in Python
 =============================================
