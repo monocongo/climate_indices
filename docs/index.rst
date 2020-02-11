@@ -320,7 +320,7 @@ SPI monthly
 """"""""""""
 
 ``$ process_climate_indices --index spi --periodicity monthly --netcdf_precip
-/data/nclimgrid_lowres_prcp.nc --var_name_precip  prcp
+/data/nclimgrid_lowres_prcp.nc --var_name_precip prcp
 --output_file_base <out_dir>/nclimgrid_lowres --scales 6 12
 --calibration_start_year 1951 --calibration_end_year 2010
 --multiprocessing all``
@@ -339,7 +339,7 @@ SPEI monthly
 """""""""""""
 
 ``$ process_climate_indices --index spei --periodicity monthly --netcdf_precip
-/data/nclimgrid_lowres_prcp.nc --var_name_precip  prcp --netcdf_pet
+/data/nclimgrid_lowres_prcp.nc --var_name_precip prcp --netcdf_pet
 /data/nclimgrid_lowres_pet.nc --var_name_pet pet --output_file_base
 <out_dir>/nclimgrid_lowres --scales 9 18 --calibration_start_year 1951
 --calibration_end_year 2010 --multiprocessing all``
@@ -382,16 +382,13 @@ calibration period.
 ``$ spi --periodicity monthly --scales 1 2 3 6 9 12 24 36 48 60 72
 --calibration_start_year 1998 --calibration_end_year 2016
 --netcdf_precip /data/nclimgrid/nclimgrid_prcp.nc --var_name_precip prcp
---output_file_base /data/nclimgrid/nclimgrid
---multiprocessing all
---save_params /data/nclimgrid/nclimgrid_fitting.nc
---overwrite``
+--output_file_base /data/nclimgrid/nclimgrid --multiprocessing all
+--save_params /data/nclimgrid/nclimgrid_fitting.nc --overwrite``
 
 ``$ spi --periodicity monthly --scales 1 2 3 6 9 12 24 36 48 60 72
 --calibration_start_year 1998 --calibration_end_year 2016
 --netcdf_precip /data/nclimgrid/nclimgrid_prcp.nc --var_name_precip prcp
---output_file_base /data/nclimgrid/nclimgrid
---multiprocessing all
+--output_file_base /data/nclimgrid/nclimgrid --multiprocessing all
 --load_params /data/nclimgrid/nclimgrid_fitting.nc``
 
 In the above example we demonstrate how distribution fitting parameters can be saved as NetCDF.
