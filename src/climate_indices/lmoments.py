@@ -2,7 +2,7 @@ import logging
 from math import exp, lgamma, pi, sqrt
 
 import numpy as np
-from src.climate_indices import utils
+from climate_indices import utils
 
 # ------------------------------------------------------------------------------
 # Retrieve logger and set desired logging level

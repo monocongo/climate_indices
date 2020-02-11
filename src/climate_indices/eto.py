@@ -28,7 +28,7 @@ import math
 import numba
 import numpy as np
 
-from src.climate_indices import utils
+from climate_indices import utils
 
 # ------------------------------------------------------------------------------
 # Retrieve logger and set desired logging level
