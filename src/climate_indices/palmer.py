@@ -425,7 +425,6 @@ def _cafec_coeff_ufunc(actual, potential):
 
 
 # ------------------------------------------------------------------------------
-@numba.jit
 def _cafec_coefficients(potential_evapotranspiration: np.ndarray,
                         evapotranspiration: np.ndarray,
                         potential_recharge: np.ndarray,
