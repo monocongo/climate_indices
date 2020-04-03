@@ -177,7 +177,8 @@ def spi(
 
     # clip values to within the valid range, reshape the array back to 1-D
     values = np.clip(values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
-
+    # recut the initial (scale -1) elements values
+    values[:scale-1] = np.NaN
     # return the original size array
     return values[0:original_length]
 
