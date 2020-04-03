@@ -732,7 +732,9 @@ def transform_fitted_gamma(
 
     # find the gamma probability values using the gamma CDF
     gamma_probabilities = scipy.stats.gamma.cdf(values, a=alphas, scale=betas)
-
+    # fill the NaN with 0 probablity
+    gamma_probabilities[np.isnan(gamma_probabilities)] = 0
+    
     # TODO explain this better
     # (normalize including the probability of zero, putting into the range [0..1]?)
     probabilities = probabilities_of_zero + \
