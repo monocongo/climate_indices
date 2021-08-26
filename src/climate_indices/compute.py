@@ -743,3 +743,292 @@ def transform_fitted_gamma(
     # as determined by the normal distribution's quantile (or inverse
     # cumulative distribution) function
     return scipy.stats.norm.ppf(probabilities)
+
+
+# ------------------------------------------------------------------------------
+@numba.jit
+def fisk_parameters(
+        values: np.ndarray,
+        data_start_year: int,
+        calibration_start_year: int,
+        calibration_end_year: int,
+        periodicity: Periodicity,
+) -> (np.ndarray, np.ndarray, np.ndarray, np.ndarray):
+    """
+    This function computes the probability of zero and fisk
+    distribution parameters corresponding to an array of values.
+
+    :param values: 2-D array of values, with each row representing a year
+        containing either 12 values corresponding to the calendar months of
+        that year, or 366 values corresponding to the days of the year
+        (with Feb. 29th being an average of the Feb. 28th and Mar. 1st values for
+        non-leap years) and assuming that the first value of the array is
+        January of the initial year for an input array of monthly values or
+        Jan. 1st of initial year for an input array daily values
+    :param periodicity: monthly or daily
+    :return: four 1-D array of fitting values for the fisk
+        distribution, with shape (12,) for monthly or (366,) for daily
+
+        returned array 1: probability of zero
+        returned array 2: first fisk distribution parameter (c)
+        returned array 3: second fisk distribution parameter (scale)
+        returned array 4: third fisk distribution parameter (loc)
+    """
+
+    # reshape precipitation values to (years, 12) for monthly,
+    # or to (years, 366) for daily
+    if periodicity is Periodicity.monthly:
+
+        values = utils.reshape_to_2d(values, 12)
+
+    elif periodicity is Periodicity.daily:
+
+        values = utils.reshape_to_2d(values, 366)
+
+    else:
+
+        raise ValueError("Invalid periodicity argument: %s" % periodicity)
+
+    # validate that the values array has shape: (years, 12) for monthly or (years, 366) for daily
+    if len(values.shape) != 2:
+        message = "Invalid shape of input data array: {shape}".format(shape=values.shape)
+        _logger.error(message)
+        raise ValueError(message)
+
+    else:
+
+        time_steps_per_year = values.shape[1]
+        if (time_steps_per_year != 12) and (time_steps_per_year != 366):
+            message = "Invalid shape of input data array: {shape}".format(shape=values.shape)
+            _logger.error(message)
+            raise ValueError(message)
+
+    # determine the end year of the values array
+    data_end_year = data_start_year + values.shape[0]
+
+    # make sure that we have data within the full calibration period,
+    # otherwise use the full period of record
+    if (calibration_start_year < data_start_year) or \
+            (calibration_end_year > data_end_year):
+        calibration_start_year = data_start_year
+        calibration_end_year = data_end_year
+
+    # get the year axis indices corresponding to
+    # the calibration start and end years
+    calibration_begin_index = calibration_start_year - data_start_year
+    calibration_end_index = (calibration_end_year - data_start_year) + 1
+
+    # get the values for the current calendar time step
+    # that fall within the calibration years period
+    calibration_values = values[calibration_begin_index:calibration_end_index, :]
+
+    # the values we'll compute and return
+    probabilities_of_zero = np.zeros((time_steps_per_year,))
+    c = np.zeros((time_steps_per_year,))
+    scales = np.zeros((time_steps_per_year,))
+    locs = np.zeros((time_steps_per_year,))
+
+    # compute the probability of zero and Pearson
+    # parameters for each calendar time step
+    # TODO vectorize the below loop? create a @numba.vectorize() ufunc
+    #  for application over the second axis
+    for time_step_index in range(time_steps_per_year):
+
+        # get the values for the current calendar time step
+        time_step_values = calibration_values[:, time_step_index]
+
+        # count the number of zeros and valid (non-missing/non-NaN) values
+        number_of_zeros, number_of_non_missing = \
+            utils.count_zeros_and_non_missings(time_step_values)
+
+        # make sure we have at least four values that are both non-missing (i.e. non-NaN)
+        # and non-zero, otherwise use the entire period of record
+        if (number_of_non_missing - number_of_zeros) < 4:
+
+            # we can't proceed, bail out using zeros
+            continue
+
+        # calculate the probability of zero for the calendar time step
+        probability_of_zero = 0.0
+        if number_of_zeros > 0:
+
+            probability_of_zero = number_of_zeros / number_of_non_missing
+
+        # get the estimated parameters, if we have
+        # more than three non-missing/non-zero values
+        if (number_of_non_missing - number_of_zeros) > 3:
+
+            # get the fisk parameters for this time
+            # step's values within the calibration period
+            c[time_step_index], scales[time_step_index], locs[time_step_index], = \
+                scipy.stats.fisk.fit(time_step_values)
+            probabilities_of_zero[time_step_index] = probability_of_zero
+
+    return probabilities_of_zero, c, scales, locs
+
+
+# ------------------------------------------------------------------------------
+@numba.jit
+def _fisk_fit(
+        values: np.ndarray,
+        probabilities_of_zero: np.ndarray,
+        c: np.ndarray,
+        scale: np.ndarray,
+        loc: np.ndarray,
+) -> np.ndarray:
+    """
+    Perform fitting of an array of values to a log-logistic/fisk distribution
+    as described by the fisk parameters and probability of zero arguments.
+
+    :param values: an array of values to fit to the fisk
+        distribution described by the c, loc, and scale
+    :param probabilities_of_zero: probability that the value is zero
+    :param c: first fisk parameter, the shape of the distribution
+    :param scale: second fisk parameter, the scale of the distribution
+    :param loc: third fisk parameter, the location of the distribution
+    """
+
+    # only fit to the distribution if the values array is valid/not missing
+    if not np.all(np.isnan(values)):
+
+        # minimums_possible = _minimum_possible(c, loc, scale)
+        # minimums_mask = values <= minimums_possible
+        zero_mask = np.logical_and((values < 0.0005), (probabilities_of_zero > 0.0))
+        trace_mask = np.logical_and((values < 0.0005), (probabilities_of_zero <= 0.0))
+
+        # get the log-logistic/fisk cumulative density function value
+        probabilities = scipy.stats.fisk.cdf(values, c, scale, loc)
+
+        # block copied from pearson functions, doesn't seem necessary!
+        # # turn zero, trace, or minimum values either into either zero
+        # # or minimum value based on the probability of zero
+        # probabilities[zero_mask] = 0.0
+        # probabilities[trace_mask] = 0.0005
+
+        # # compute the minimum value possible, and if any values are below
+        # # that threshold then we set the corresponding CDF to a floor value
+        # # TODO ask Richard Heim why the use of this floor value, matching
+        # #  that used for the trace amount?
+        # nans_mask = np.isnan(probabilities)
+        # probabilities[np.logical_and(minimums_mask, nans_mask)] = 0.0005
+
+        # # account for negative skew
+        # c_mask = c < 0.0
+        # probabilities[:, c_mask] = 1 - probabilities[:, c_mask]
+
+        if not np.all(np.isnan(probabilities)):
+
+            # not necassary for log-logistic/fisk:
+            # # calculate the probability value, clipped between 0 and 1
+            # probabilities = np.clip(
+            #     (probabilities_of_zero + ((1.0 - probabilities_of_zero) * probabilities)),
+            #     0.0,
+            #     1.0,
+            # )
+
+            # the values we'll return are the values at which the probabilities
+            # of a normal distribution are less than or equal to the computed
+            # probabilities, as determined by the normal distribution's
+            # quantile (or inverse cumulative distribution) function
+            fitted_values = scipy.stats.norm.ppf(probabilities)
+
+        else:
+
+            fitted_values = values
+
+    else:
+
+        fitted_values = values
+
+    return fitted_values
+
+
+# ------------------------------------------------------------------------------
+# TODO uncommenting numba.jit leads to problems here...
+# @numba.jit
+def transform_fitted_fisk(
+        values: np.ndarray,
+        data_start_year: int,
+        calibration_start_year: int,
+        calibration_end_year: int,
+        periodicity: Periodicity,
+        probabilities_of_zero: np.ndarray = None,
+        locs: np.ndarray = None,
+        scales: np.ndarray = None,
+        c: np.ndarray = None,
+) -> np.ndarray:
+    """
+    Fit values to a log-logistic/fisk distribution and transform the values
+    to corresponding normalized sigmas.
+
+    :param values: 2-D array of values, with each row representing a year containing
+                   twelve columns representing the respective calendar months,
+                   or 366 columns representing days as if all years were leap years
+    :param data_start_year: the initial year of the input values array
+    :param calibration_start_year: the initial year to use for the calibration period
+    :param calibration_end_year: the final year to use for the calibration period
+    :param periodicity: the periodicity of the time series represented by the input
+                        data, valid/supported values are 'monthly' and 'daily'
+                        'monthly' indicates an array of monthly values, assumed
+                        to span full years, i.e. the first value corresponds
+                        to January of the initial year and any missing final
+                        months of the final year filled with NaN values,
+                        with size == # of years * 12
+                        'daily' indicates an array of full years of daily values
+                        with 366 days per year, as if each year were a leap year
+                        and any missing final months of the final year filled
+                        with NaN values, with array size == (# years * 366)
+    :param probabilities_of_zero: pre-computed probabilities of zero for each
+        month or day of the year
+    :param locs: pre-computed loc values for each month or day of the year
+    :param scales: pre-computed scale values for each month or day of the year
+    :param skews: pre-computed skew values for each month or day of the year
+    :return: 2-D array of transformed/fitted values, corresponding in size
+             and shape of the input array
+    :rtype: numpy.ndarray of floats
+    """
+
+    # sanity check for the fitting parameters arguments
+    fisk_param_args = [probabilities_of_zero, locs, scales, c]
+    if any(param_arg is None for param_arg in fisk_param_args):
+        if fisk_param_args.count(None) < len(fisk_param_args):
+            raise ValueError(
+                "At least one but not all of the log-logistic/fisk fitting "
+                "parameters are specified -- either none or all of "
+                "these must be specified")
+
+    # if we're passed all missing values then we can't compute anything,
+    # and we'll return the same array of missing values
+    if (np.ma.is_masked(values) and values.mask.all()) or np.all(np.isnan(values)):
+        return values
+
+    # validate (and possibly reshape) the input array
+    values = _validate_array(values, periodicity)
+    breakpoint()
+    # compute the log-logistic/fisk fitting values if none were provided
+    if any(param_arg is None for param_arg in fisk_param_args):
+
+        # determine the end year of the values array
+        data_end_year = data_start_year + values.shape[0]
+
+        # make sure that we have data within the full calibration period,
+        # otherwise use the full period of record
+        if (calibration_start_year < data_start_year) \
+                or (calibration_end_year > data_end_year):
+            calibration_start_year = data_start_year
+            calibration_end_year = data_end_year
+
+        # compute the values we'll use to fit to the log-logistic/fisk distribution
+        probabilities_of_zero, c, scales, locs = \
+            fisk_parameters(
+                values,
+                data_start_year,
+                calibration_start_year,
+                calibration_end_year,
+                periodicity,
+            )
+
+    # fit each value to the log-logistic/fisk distribution
+    values = _fisk_fit(values, probabilities_of_zero, c, scales, locs)
+
+    return values

@@ -19,6 +19,7 @@ class Distribution(Enum):
 
     pearson = "pearson"
     gamma = "gamma"
+    fisk = "fisk"
 
 
 # ------------------------------------------------------------------------------
@@ -313,6 +314,35 @@ def spei(
                 locs,
                 scales,
                 skews,
+            )
+
+    elif distribution is Distribution.fisk:
+
+        # get (optional) fitting parameters if provided
+        if fitting_params is not None:
+            probabilities_of_zero = fitting_params["probabilities_of_zero"]
+            locs = fitting_params["locs"]
+            scales = fitting_params["scales"]
+            c = fitting_params["c"]
+        else:
+            probabilities_of_zero = None
+            locs = None
+            scales = None
+            c = None
+
+        # fit the scaled values to a log-logistic/fisk distribution
+        # and transform to corresponding normalized sigmas
+        transformed_fitted_values = \
+            compute.transform_fitted_fisk(
+                scaled_values,
+                data_start_year,
+                calibration_year_initial,
+                calibration_year_final,
+                periodicity,
+                probabilities_of_zero,
+                locs,
+                scales,
+                c,
             )
 
     else:
