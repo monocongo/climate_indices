@@ -899,32 +899,7 @@ def _fisk_fit(
         # get the log-logistic/fisk cumulative density function value
         probabilities = scipy.stats.fisk.cdf(values, c, scale, loc)
 
-        # block copied from pearson functions, doesn't seem necessary!
-        # # turn zero, trace, or minimum values either into either zero
-        # # or minimum value based on the probability of zero
-        # probabilities[zero_mask] = 0.0
-        # probabilities[trace_mask] = 0.0005
-
-        # # compute the minimum value possible, and if any values are below
-        # # that threshold then we set the corresponding CDF to a floor value
-        # # TODO ask Richard Heim why the use of this floor value, matching
-        # #  that used for the trace amount?
-        # nans_mask = np.isnan(probabilities)
-        # probabilities[np.logical_and(minimums_mask, nans_mask)] = 0.0005
-
-        # # account for negative skew
-        # c_mask = c < 0.0
-        # probabilities[:, c_mask] = 1 - probabilities[:, c_mask]
-
         if not np.all(np.isnan(probabilities)):
-
-            # not necassary for log-logistic/fisk:
-            # # calculate the probability value, clipped between 0 and 1
-            # probabilities = np.clip(
-            #     (probabilities_of_zero + ((1.0 - probabilities_of_zero) * probabilities)),
-            #     0.0,
-            #     1.0,
-            # )
 
             # the values we'll return are the values at which the probabilities
             # of a normal distribution are less than or equal to the computed
@@ -1004,7 +979,7 @@ def transform_fitted_fisk(
 
     # validate (and possibly reshape) the input array
     values = _validate_array(values, periodicity)
-    breakpoint()
+
     # compute the log-logistic/fisk fitting values if none were provided
     if any(param_arg is None for param_arg in fisk_param_args):
 
