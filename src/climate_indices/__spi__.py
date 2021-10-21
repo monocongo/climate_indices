@@ -582,14 +582,6 @@ def _compute_write_index(keyword_arguments):
 
         # add an empty DataArray to the fitting Dataset if it's not been loaded
         if keyword_arguments["load_params"] is None:
-
-            dims = list(ds_precip.dims)
-            time_index = dims.index("time")
-            if keyword_arguments['periodicity'] == compute.Periodicity.monthly:
-                dims[time_index] = "month"
-            else:  # daily
-                dims[time_index] = "day"
-
             fitting_var_attrs = {
                 "alpha": {
                     'description': 'shape parameter of the gamma distribution (also '
@@ -615,12 +607,12 @@ def _compute_write_index(keyword_arguments):
                 },
             }
 
+            fitting_shape = [len(x) for x in ds_fitting.coords.values()]
             for var in _FITTING_VARIABLES:
-                fitting_shape = [len(x) for x in ds_fitting.coords.values()]
                 da_fitting = xr.DataArray(
                     data=np.full(shape=fitting_shape, fill_value=np.NaN),
+                    # Assumes it is in the proper order.
                     coords=ds_fitting.coords,
-                    dims=dims,
                     name=fitting_var_names[var],
                     attrs=fitting_var_attrs[var],
                 )
@@ -809,7 +801,7 @@ def build_dataset_spi_grid(
     da_spi = xr.DataArray(
         data=index_values,
         coords=ds_example.coords,
-        dims=ds_example.dims,
+        dims=("lat", "lon", "time"),
         name=spi_var_name,
         attrs=var_attrs,
     )
@@ -862,7 +854,7 @@ def build_dataset_spi_divisions(
     da_spi = xr.DataArray(
         data=index_values,
         coords=ds_example.coords,
-        dims=ds_example.dims,
+        dims=("division", "time"),
         name=spi_var_name,
         attrs=var_attrs,
     )
