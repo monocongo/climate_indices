@@ -412,8 +412,7 @@ def _pearson_fit(
         # that threshold then we set the corresponding CDF to a floor value
         # TODO ask Richard Heim why the use of this floor value, matching
         #  that used for the trace amount?
-        nans_mask = np.isnan(values)
-        values[np.logical_and(minimums_mask, nans_mask)] = 0.0005
+        values[minimums_mask] = 0.0005
 
         # account for negative skew
         skew_mask = skew < 0.0
