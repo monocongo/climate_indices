@@ -1,11 +1,11 @@
 from enum import Enum
 import logging
-from typing import Dict
+from typing import Dict, Union
 
 import numba
 import numpy as np
 
-from climate_indices import compute, eto, palmer, utils
+from climate_indices import compute, eto, palmer, utils, fittings
 
 # declare the names that should be included in the public API for this module
 __all__ = ["pdsi", "percentage_of_normal", "pet", "scpdsi", "spei", "spi"]
@@ -41,7 +41,7 @@ def spi(
         calibration_year_initial: int,
         calibration_year_final: int,
         periodicity: compute.Periodicity,
-        fitting_params: Dict = None,
+        fitting_params: Union[fittings.FittingParams,Dict] = None,
 ) -> np.ndarray:
     """
     Computes SPI (Standardized Precipitation Index).
@@ -65,11 +65,10 @@ def spi(
          'daily' indicates an array of full years of daily values with 366 days
          per year, as if each year were a leap year and any missing final months
          of the final year filled with NaN values, with array size == (# years * 366)
-    :param fitting_params: optional dictionary of pre-computed distribution
-        fitting parameters, if the distribution is gamma then this dict should
-        contain two arrays, keyed as "alphas" and "betas", and if the
-        distribution is Pearson then this dict should contain four arrays keyed
-        as "probabilities_of_zero", "locs", "scales", and "skews"
+    :param fitting_params: optional `fittings.FittingParams` instance or
+        dictionary of pre-computed distribution fitting parameters.
+        See documentation for the respective `FittingParams` for what parameters are
+        expected.
     :return SPI values fitted to the gamma distribution at the specified time
         step scale, unitless
     :rtype: 1-D numpy.ndarray of floats of the same length as the input array
@@ -119,61 +118,25 @@ def spi(
 
         raise ValueError("Invalid periodicity argument: %s" % periodicity)
 
-    if distribution is Distribution.gamma:
-
-        # get (optional) fitting parameters if provided
-        if fitting_params is not None:
-            alphas = fitting_params["alpha"]
-            betas = fitting_params["beta"]
+    if not isinstance(fitting_params, fittings.FittingParams):
+        if distribution is Distribution.gamma:
+            fits = fittings.GammaFit(fitting_params)
+        elif distribution is Distribution.pearson:
+            fits = fittings.PearsonFit(fitting_params)
         else:
-            alphas = None
-            betas = None
 
-        # fit the scaled values to a gamma distribution
-        # and transform to corresponding normalized sigmas
-        values = compute.transform_fitted_gamma(
-            values,
-            data_start_year,
-            calibration_year_initial,
-            calibration_year_final,
-            periodicity,
-            alphas,
-            betas,
-        )
-    elif distribution is Distribution.pearson:
+            message = "Unsupported distribution argument: " + \
+                      "{dist}".format(dist=distribution)
+            _logger.error(message)
+            raise ValueError(message)
 
-        # get (optional) fitting parameters if provided
-        if fitting_params is not None:
-            probabilities_of_zero = fitting_params["prob_zero"]
-            locs = fitting_params["loc"]
-            scales = fitting_params["scale"]
-            skews = fitting_params["skew"]
-        else:
-            probabilities_of_zero = None
-            locs = None
-            scales = None
-            skews = None
-
-        # fit the scaled values to a Pearson Type III distribution
-        # and transform to corresponding normalized sigmas
-        values = compute.transform_fitted_pearson(
-            values,
-            data_start_year,
-            calibration_year_initial,
-            calibration_year_final,
-            periodicity,
-            probabilities_of_zero,
-            locs,
-            scales,
-            skews,
-        )
-
-    else:
-
-        message = "Unsupported distribution argument: " + \
-                  "{dist}".format(dist=distribution)
-        _logger.error(message)
-        raise ValueError(message)
+    values = fits.transform(
+        values,
+        data_start_year,
+        calibration_year_initial,
+        calibration_year_final,
+        periodicity,
+    )
 
     # clip values to within the valid range, reshape the array back to 1-D
     values = np.clip(values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
@@ -263,63 +226,25 @@ def spei(
     # scaled by the specified number of time steps
     scaled_values = compute.sum_to_scale(p_minus_pet, scale)
 
-    if distribution is Distribution.gamma:
-
-        # get (optional) fitting parameters if provided
-        if fitting_params is not None:
-            alphas = fitting_params["alphas"]
-            betas = fitting_params["betas"]
+    if not isinstance(fitting_params, fittings.FittingParams):
+        if distribution is Distribution.gamma:
+            fits = fittings.GammaFit(fitting_params)
+        elif distribution is Distribution.pearson:
+            fits = fittings.PearsonFit(fitting_params)
         else:
-            alphas = None
-            betas = None
 
-        # fit the scaled values to a gamma distribution and
-        # transform to corresponding normalized sigmas
-        transformed_fitted_values = \
-            compute.transform_fitted_gamma(
-                scaled_values,
-                data_start_year,
-                calibration_year_initial,
-                calibration_year_final,
-                periodicity,
-                alphas,
-                betas,
-            )
+            message = "Unsupported distribution argument: " + \
+                      "{dist}".format(dist=distribution)
+            _logger.error(message)
+            raise ValueError(message)
 
-    elif distribution is Distribution.pearson:
-
-        # get (optional) fitting parameters if provided
-        if fitting_params is not None:
-            probabilities_of_zero = fitting_params["probabilities_of_zero"]
-            locs = fitting_params["locs"]
-            scales = fitting_params["scales"]
-            skews = fitting_params["skews"]
-        else:
-            probabilities_of_zero = None
-            locs = None
-            scales = None
-            skews = None
-
-        # fit the scaled values to a Pearson Type III distribution
-        # and transform to corresponding normalized sigmas
-        transformed_fitted_values = \
-            compute.transform_fitted_pearson(
-                scaled_values,
-                data_start_year,
-                calibration_year_initial,
-                calibration_year_final,
-                periodicity,
-                probabilities_of_zero,
-                locs,
-                scales,
-                skews,
-            )
-
-    else:
-        message = "Unsupported distribution argument: " + \
-                  "{dist}".format(dist=distribution)
-        _logger.error(message)
-        raise ValueError(message)
+    transformed_fitted_values = fits.transform(
+        scaled_values,
+        data_start_year,
+        calibration_year_initial,
+        calibration_year_final,
+        periodicity,
+    )
 
     # clip values to within the valid range, reshape the array back to 1-D
     values = \
