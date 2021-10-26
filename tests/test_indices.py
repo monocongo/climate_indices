@@ -401,7 +401,8 @@ def test_spei(precips_mm_monthly,
                                  compute.Periodicity.monthly,
                                  data_year_start_monthly,
                                  data_year_start_monthly,
-                                 data_year_end_monthly)
+                                 data_year_end_monthly,
+                                 {'alpha': None, 'beta': None})
     np.testing.assert_allclose(computed_spei,
                                all_nans,
                                equal_nan=True,
@@ -416,7 +417,10 @@ def test_spei(precips_mm_monthly,
                                  compute.Periodicity.monthly,
                                  data_year_start_monthly,
                                  data_year_start_monthly,
-                                 data_year_end_monthly)
+                                 data_year_end_monthly,
+                                 # Deprecated fitting keys
+                                 {'alphas': None,
+                                  'betas': None})
 
     # confirm SPEI/gamma is being computed as expected
     np.testing.assert_allclose(computed_spei,
@@ -433,7 +437,12 @@ def test_spei(precips_mm_monthly,
                                  compute.Periodicity.monthly,
                                  data_year_start_monthly,
                                  data_year_start_monthly,
-                                 data_year_end_monthly)
+                                 data_year_end_monthly,
+                                 # Deprecated fitting keys
+                                 {'probabilities_of_zero': None,
+                                  'locs': None,
+                                  'scales': None,
+                                  'skews': None})
 
     # confirm SPEI/Pearson is being computed as expected
     np.testing.assert_allclose(computed_spei,
