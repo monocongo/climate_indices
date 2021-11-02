@@ -1,4 +1,5 @@
 from enum import Enum
+from distutils.version import LooseVersion
 import logging
 
 # from dask.array import pad
@@ -7,6 +8,9 @@ import numba
 import numpy as np
 import scipy.special
 import scipy.stats
+import scipy.version
+
+_do_pearson3_workaround = LooseVersion(scipy.version.version) < '1.6.0'
 
 from climate_indices import utils, lmoments
 
@@ -394,9 +398,16 @@ def _pearson_fit(
 
     # only fit to the distribution if the values array is valid/not missing
     if not np.all(np.isnan(values)):
-
+        # This is a misnomer of sorts. For positively skewed Pearson Type III
+        # distributions, there is a hard lower limit. For negatively skewed
+        # distributions, the limit is on the upper end.
         minimums_possible = _minimum_possible(skew, loc, scale)
-        minimums_mask = values <= minimums_possible
+        minimums_mask = (values <= minimums_possible) & (skew >= 0)
+        maximums_mask = (values >= minimums_possible) & (skew < 0)
+
+        # Not sure what the logic is here given that the inputs aren't
+        # standardized values and Pearson III distributions could handle
+        # these sorts of values just fine given the proper parameters.
         zero_mask = np.logical_and((values < 0.0005), (probabilities_of_zero > 0.0))
         trace_mask = np.logical_and((values < 0.0005), (probabilities_of_zero <= 0.0))
 
@@ -408,16 +419,30 @@ def _pearson_fit(
         values[zero_mask] = 0.0
         values[trace_mask] = 0.0005
 
-        # compute the minimum value possible, and if any values are below
-        # that threshold then we set the corresponding CDF to a floor value
-        # TODO ask Richard Heim why the use of this floor value, matching
-        #  that used for the trace amount?
-        nans_mask = np.isnan(values)
-        values[np.logical_and(minimums_mask, nans_mask)] = 0.0005
+        if _do_pearson3_workaround:
+            # Before scipy 1.6.0, there were a few bugs in pearson3.
+            # Looks like https://github.com/scipy/scipy/pull/12640 fixed them.
 
-        # account for negative skew
-        skew_mask = skew < 0.0
-        values[:, skew_mask] = 1 - values[:, skew_mask]
+            # compute the minimum value possible, and if any values are below
+            # that threshold then we set the corresponding CDF to a floor value.
+            # This was not properly done in older scipy releases.
+            # TODO ask Richard Heim why the use of this floor value, matching
+            #  that used for the trace amount?
+            nans_mask = np.isnan(values)
+            values[np.logical_and(minimums_mask, nans_mask)] = 0.0005
+            # This will get turned into 0.9995 when the negative
+            # skew bug is worked around a few lines from here.
+            values[np.logical_and(maximums_mask, nans_mask)] = 0.0005
+
+            # account for negative skew
+            skew_mask = skew < 0.0
+            values[:, skew_mask] = 1 - values[:, skew_mask]
+        else:
+            # The original values were found to be outside the
+            # range of the fitted distribution, so we will set
+            # the probabilities to something just within the range.
+            values[minimums_mask] = 0.0005
+            values[maximums_mask] = 0.9995
 
         if not np.all(np.isnan(values)):
 
