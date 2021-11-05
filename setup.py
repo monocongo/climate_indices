@@ -9,7 +9,7 @@ README = (BASE_DIR / "README.md").read_text()
 
 setup(
     name="climate_indices",
-    version="1.0.9",
+    version="1.0.10",
     url="https://github.com/monocongo/climate_indices",
     license="BSD",
     author="James Adams",
@@ -48,6 +48,7 @@ setup(
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
         "Topic :: Software Development :: Libraries :: Python Modules",
         "Topic :: Scientific/Engineering :: Atmospheric Science",
         "Topic :: Scientific/Engineering :: Physics",
