@@ -1,1 +1,5 @@
+# run this file through pip-compile in order to generate a requirements.txt
+# see https://github.com/jazzband/pip-tools
+nco
 numba
+scipy
