@@ -26,7 +26,7 @@ author = "James Adams"
 # The short X.Y version
 version = "1.0"
 # The full version, including alpha/beta/rc tags
-release = "1.0.8"
+release = "1.0.10"
 
 
 # -- General configuration ---------------------------------------------------
