@@ -478,12 +478,12 @@ def test_spei(precips_mm_monthly,
 
 
 # ------------------------------------------------------------------------------
-@pytest.mark.usefixtures("rainfall_mm")
-def test_pet(rainfall_mm):
+@pytest.mark.usefixtures("rain_mm")
+def test_pet(rain_mm):
 
-    # confirm that an input temperature array of only NaNs
+    # confirm that an input rainfall array of only NaNs
     # results in the same all NaNs array being returned
-    all_nan_rainfall = np.full(rainfall_mm.shape, np.NaN)
+    all_nan_rainfall = np.full(rain_mm.shape, np.NaN)
     computed_pci = indices.pci(all_nan_rainfall)
     np.testing.assert_equal(computed_pci,
                             all_nan_rainfall,
