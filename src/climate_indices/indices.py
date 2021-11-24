@@ -615,18 +615,16 @@ def pci(rainfall_mm: np.ndarray) -> np.ndarray:
 
         # we started with all NaNs for the temperature, so just return the same
         return rainfall_mm
-
-    else:
-
-        # we were passed a vanilla Numpy array, look for indices where the value == NaN
-        if np.all(np.isnan(rainfall_mm)):
-
-            # we started with all NaNs for the temperature, so just return the same
-            return rainfall_mm
+        
+    # we were passed a vanilla Numpy array, look for indices where the value == NaN
+    elif np.all(np.isnan(rainfall_mm)):
+    
+        # we started with all NaNs for the temperature, so just return the same
+        return rainfall_mm
 
 
     # make sure we're not dealing with a NaN or out-of-range or less than the expected rainfall value
-    if (len(rainfall_mm) == 366 and not sum( np.isnan(rainfall_mm) )):
+    elif (len(rainfall_mm) == 366 and not sum( np.isnan(rainfall_mm) )):
         m = [31, 29, 91, 121, 152, 182, 213, 244, 274, 305, 335, 366]
         start = 0
         numerator = 0

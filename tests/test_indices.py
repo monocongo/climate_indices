@@ -479,7 +479,7 @@ def test_spei(precips_mm_monthly,
 
 # ------------------------------------------------------------------------------
 @pytest.mark.usefixtures("rain_mm")
-def test_pet(rain_mm):
+def test_pci(rain_mm):
 
     # confirm that an input rainfall array of only NaNs
     # results in the same all NaNs array being returned
