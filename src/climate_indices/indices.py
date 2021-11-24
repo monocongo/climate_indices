@@ -617,14 +617,14 @@ def pci(rainfall_mm: np.ndarray) -> np.ndarray:
         return rainfall_mm
         
     # we were passed a vanilla Numpy array, look for indices where the value == NaN
-    elif np.all(np.isnan(rainfall_mm)):
+    if np.all(np.isnan(rainfall_mm)):
     
         # we started with all NaNs for the temperature, so just return the same
         return rainfall_mm
 
 
     # make sure we're not dealing with a NaN or out-of-range or less than the expected rainfall value
-    elif (len(rainfall_mm) == 366 and not sum( np.isnan(rainfall_mm) )):
+    if (len(rainfall_mm) == 366 and not sum( np.isnan(rainfall_mm) )):
         m = [31, 29, 91, 121, 152, 182, 213, 244, 274, 305, 335, 366]
         start = 0
         numerator = 0
@@ -639,7 +639,7 @@ def pci(rainfall_mm: np.ndarray) -> np.ndarray:
         return np.array([ (numerator/(denominator**2)) * 100 ])
 
 
-    elif (len(rainfall_mm) == 365 and not sum( np.isnan(rainfall_mm) )):
+    if (len(rainfall_mm) == 365 and not sum( np.isnan(rainfall_mm) )):
         m = [31, 28, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365]
         start = 0
         numerator = 0
@@ -652,7 +652,7 @@ def pci(rainfall_mm: np.ndarray) -> np.ndarray:
             start = m[month]
 
         return np.array([ (numerator/(denominator**2)) * 100])
-    else:
-        message = ("NaN values in time-series or Total Number of days not in year not available, total days should be 366 or 365")
-        _logger.error(message)
-        raise ValueError(message)
+    
+    message = ("NaN values in time-series or Total Number of days not in year not available, total days should be 366 or 365")
+    _logger.error(message)
+    raise ValueError(message)
