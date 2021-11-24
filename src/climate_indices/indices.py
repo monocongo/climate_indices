@@ -596,3 +596,65 @@ def pet(temperature_celsius: np.ndarray,
                    "90.0 inclusive)")
         _logger.error(message)
         raise ValueError(message)
+
+
+# ------------------------------------------------------------------------------
+@numba.jit
+def pci(rainfall_mm: np.ndarray) -> np.ndarray:
+    """
+    This function computes Precipitation Concentration Index(PCI, Oliver, 1980).
+
+    :param rainfall_mm: an array of daily rainfall value in a year,
+        in mm
+    :return: PCI value for the year in aa numpy array
+    :rtype: 1-D numpy.ndarray of float
+    """
+
+    # make sure we're not dealing with all NaN values
+    if np.ma.isMaskedArray(rainfall_mm) and (rainfall_mm.count() == 0):
+
+        # we started with all NaNs for the temperature, so just return the same
+        return rainfall_mm
+
+    else:
+
+        # we were passed a vanilla Numpy array, look for indices where the value == NaN
+        if np.all(np.isnan(rainfall_mm)):
+
+            # we started with all NaNs for the temperature, so just return the same
+            return rainfall_mm
+
+
+    # make sure we're not dealing with a NaN or out-of-range or less than the expected rainfall value
+    if (len(rainfall_mm) == 366 and not sum( np.isnan(rainfall_mm) )):
+        m = [31, 29, 91, 121, 152, 182, 213, 244, 274, 305, 335, 366]
+        start = 0
+        numerator = 0
+        denominator = 0
+
+        for month in range(12):
+            numerator = numerator + ( sum(rainfall_mm[start : m[month]]) ** 2 )
+            denominator = denominator + sum(rainfall_mm[start : m[month]])
+
+            start = m[month]
+
+        return np.array([ (numerator/(denominator**2)) * 100 ])
+
+
+    elif (len(rainfall_mm) == 365 and not sum( np.isnan(rainfall_mm) )):
+        m = [31, 28, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365]
+        start = 0
+        numerator = 0
+        denominator = 0
+
+        for month in range(12):
+            numerator = numerator + ( sum(rainfall_mm[start : m[month]]) ** 2 )
+            denominator = denominator + sum(rainfall_mm[start : m[month]])
+
+            start = m[month]
+
+        return np.array([ (numerator/(denominator**2)) * 100])
+    else:
+        message = ("NaN values in time-series or Total Number of days not in year not available, total days should be 366 or 365")
+        _logger.error(message)
+        raise ValueError(message)

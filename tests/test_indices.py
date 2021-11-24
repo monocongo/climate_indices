@@ -475,3 +475,40 @@ def test_spei(precips_mm_monthly,
                              data_year_start_monthly,
                              data_year_start_monthly,
                              data_year_end_monthly)
+
+
+# ------------------------------------------------------------------------------
+@pytest.mark.usefixtures("rainfall_mm")
+def test_pet(rainfall_mm):
+
+    # confirm that an input temperature array of only NaNs
+    # results in the same all NaNs array being returned
+    all_nan_rainfall = np.full(rainfall_mm.shape, np.NaN)
+    computed_pci = indices.pci(all_nan_rainfall)
+    np.testing.assert_equal(computed_pci,
+                            all_nan_rainfall,
+                            "All-NaN input array does not result in "
+                            "the expected all-NaN result")
+
+    # confirm that a masked input rainfall array of
+    # only NaNs results in the same masked array being returned
+    masked_all_nan_rainfall = np.ma.array(all_nan_rainfall)
+    computed_pci = indices.pci(masked_all_nan_rainfall)
+    np.testing.assert_equal(computed_pci,
+                            masked_all_nan_rainfall,
+                            "All-NaN masked input array does not result in "
+                            "the expected all-NaN masked result")
+
+    # confirm that an invalid latitude value raises an error
+    np.testing.assert_raises(ValueError,
+                             indices.pci,
+                             np.array(list(range(300))))
+
+    #Compute PCI for 366 days
+    rainfall_data = np.array(list(range(366)))
+    indices.pci(rainfall_data)
+
+    # Compute PCI for 365 days
+    rainfall_data = np.array(list(range(365)))
+    indices.pci(rainfall_data)
+
