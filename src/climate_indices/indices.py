@@ -494,7 +494,7 @@ def percentage_of_normal(values: np.ndarray,
             "Invalid start year arguments (data and/or calibration): "
             "calibration start year is before the data start year",
         )
-    elif ((calibration_end_year - calibration_start_year + 1) * 12) > values.size:
+    if ((calibration_end_year - calibration_start_year + 1) * 12) > values.size:
         raise ValueError(
             "Invalid calibration period specified: total calibration years "
             "exceeds the actual number of years of data",
@@ -562,13 +562,12 @@ def pet(temperature_celsius: np.ndarray,
         # we started with all NaNs for the temperature, so just return the same as PET
         return temperature_celsius
 
-    else:
 
-        # we were passed a vanilla Numpy array, look for indices where the value == NaN
-        if np.all(np.isnan(temperature_celsius)):
+    # we were passed a vanilla Numpy array, look for indices where the value == NaN
+    if np.all(np.isnan(temperature_celsius)):
 
-            # we started with all NaNs for the temperature, so just return the same
-            return temperature_celsius
+        # we started with all NaNs for the temperature, so just return the same
+        return temperature_celsius
 
     # If we've been passed an array of latitude values then just use
     # the first one -- useful when applying this function with xarray.GroupBy
@@ -578,10 +577,7 @@ def pet(temperature_celsius: np.ndarray,
         latitude_degrees = latitude_degrees.flat[0]
 
     # make sure we're not dealing with a NaN or out-of-range latitude value
-    if ((latitude_degrees is not None)
-            and not np.isnan(latitude_degrees)
-            and (latitude_degrees < 90.0)
-            and (latitude_degrees > -90.0)):
+    if ((latitude_degrees is not None) and not np.isnan(latitude_degrees) and (-90.0 < latitude_degrees < 90.0) ):
 
         # compute and return the PET values using Thornthwaite's equation
         return eto.eto_thornthwaite(
@@ -590,12 +586,12 @@ def pet(temperature_celsius: np.ndarray,
             data_start_year,
         )
 
-    else:
-        message = ("Invalid latitude value: " + str(latitude_degrees) +
-                   " (must be in degrees north, between -90.0 and " +
-                   "90.0 inclusive)")
-        _logger.error(message)
-        raise ValueError(message)
+
+    message = ("Invalid latitude value: " + str(latitude_degrees) +
+               " (must be in degrees north, between -90.0 and " +
+               "90.0 inclusive)")
+    _logger.error(message)
+    raise ValueError(message)
 
 
 # ------------------------------------------------------------------------------
