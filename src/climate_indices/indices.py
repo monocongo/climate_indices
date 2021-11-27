@@ -609,13 +609,13 @@ def pci(rainfall_mm: np.ndarray) -> np.ndarray:
     # make sure we're not dealing with all NaN values
     if np.ma.isMaskedArray(rainfall_mm) and (rainfall_mm.count() == 0):
 
-        # we started with all NaNs for the temperature, so just return the same
+        # we started with all NaNs for the rainfall, so just return the same
         return rainfall_mm
         
     # we were passed a vanilla Numpy array, look for indices where the value == NaN
     if np.all(np.isnan(rainfall_mm)):
     
-        # we started with all NaNs for the temperature, so just return the same
+        # we started with all NaNs for the rainfall, so just return the same
         return rainfall_mm
 
 
