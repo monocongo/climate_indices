@@ -499,7 +499,7 @@ def test_pci(rain_mm, rain_mm_365, rain_mm_366):
                             "All-NaN masked input array does not result in "
                             "the expected all-NaN masked result")
 
-    # confirm that an invalid latitude value raises an error
+    # confirm that an invalid number of days raises an error
     np.testing.assert_raises(ValueError,
                              indices.pci,
                              np.array(list(range(300))))
