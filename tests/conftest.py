@@ -481,3 +481,30 @@ def palmer_sczindex_monthly():
                      "fixture",
                      "palmer_sczindex.npy")
     )
+
+
+@pytest.fixture(scope="module")
+def rain_mm():
+    return np.load(
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "rain_mm.npy")
+    )
+
+
+@pytest.fixture(scope="module")
+def rain_mm_365():
+    return np.load(
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "rain_mm_365.npy")
+    )
+
+
+@pytest.fixture(scope="module")
+def rain_mm_366():
+    return np.load(
+        os.path.join(os.path.split(__file__)[0],
+                     "fixture",
+                     "rain_mm_366.npy")
+    )

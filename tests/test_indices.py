@@ -478,8 +478,8 @@ def test_spei(precips_mm_monthly,
 
 
 # ------------------------------------------------------------------------------
-@pytest.mark.usefixtures("rain_mm")
-def test_pci(rain_mm):
+@pytest.mark.usefixtures("rain_mm", "rain_mm_365", "rain_mm_366")
+def test_pci(rain_mm, rain_mm_365, rain_mm_366):
 
     # confirm that an input rainfall array of only NaNs
     # results in the same all NaNs array being returned
@@ -505,10 +505,10 @@ def test_pci(rain_mm):
                              np.array(list(range(300))))
 
     #Compute PCI for 366 days
-    rainfall_data = np.array(list(range(366)))
+    rainfall_data = rain_mm_366
     indices.pci(rainfall_data)
 
     # Compute PCI for 365 days
-    rainfall_data = np.array(list(range(365)))
+    rainfall_data = rain_mm_365
     indices.pci(rainfall_data)
 
