@@ -499,16 +499,13 @@ def test_pci(rain_mm, rain_mm_365, rain_mm_366):
                             "All-NaN masked input array does not result in "
                             "the expected all-NaN masked result")
 
+    #Compute PCI for 366 days
+    indices.pci(rain_mm_366[0])
+
+    # Compute PCI for 365 days
+    indices.pci(rain_mm_365[0])
+
     # confirm that an invalid number of days raises an error
     np.testing.assert_raises(ValueError,
                              indices.pci,
                              np.array(list(range(300))))
-
-    #Compute PCI for 366 days
-    rainfall_data = rain_mm_366
-    indices.pci(rainfall_data)
-
-    # Compute PCI for 365 days
-    rainfall_data = rain_mm_365
-    indices.pci(rainfall_data)
-
