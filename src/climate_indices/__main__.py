@@ -15,7 +15,8 @@ from climate_indices import compute, indices, utils
 
 # the number of worker processes we'll use for process pools
 _NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count() - 1
-
+# threshold absolute tolerance parameter np.allclose
+ATOL_THRESH = 0.01
 # shared memory array dictionary keys
 _KEY_ARRAY = "array"
 _KEY_SHAPE = "shape"
@@ -215,11 +216,11 @@ def _validate_args(args):
                         raise ValueError(msg)
 
                     # verify that the coordinate variables match with those of the precipitation dataset
-                    if not np.array_equal(lats_precip, dataset_pet["lat"][:]):
+                    if not np.allclose(lats_precip, dataset_pet["lat"][:], atol=ATOL_THRESH):
                         msg = "Precipitation and PET variables contain non-matching latitudes"
                         _logger.error(msg)
                         raise ValueError(msg)
-                    elif not np.array_equal(lons_precip, dataset_pet["lon"][:]):
+                    elif not np.allclose(lons_precip, dataset_pet["lon"][:], atol=ATOL_THRESH):
                         msg = "Precipitation and PET variables contain non-matching longitudes"
                         _logger.error(msg)
                         raise ValueError(msg)
@@ -297,11 +298,11 @@ def _validate_args(args):
                         raise ValueError(msg)
 
                     # verify that the coordinate variables match with those of the precipitation dataset
-                    if not np.array_equal(lats_precip, dataset_temp["lat"][:]):
+                    if not np.allclose(lats_precip, dataset_temp["lat"][:], atol=ATOL_THRESH):
                         msg = "Precipitation and temperature variables contain non-matching latitudes"
                         _logger.error(msg)
                         raise ValueError(msg)
-                    elif not np.array_equal(lons_precip, dataset_temp["lon"][:]):
+                    elif not np.allclose(lons_precip, dataset_temp["lon"][:], atol=ATOL_THRESH):
                         msg = "Precipitation and temperature variables contain non-matching longitudes"
                         _logger.error(msg)
                         raise ValueError(msg)
@@ -375,11 +376,11 @@ def _validate_args(args):
                         raise ValueError(msg)
 
                     # verify that the coordinate variables match with those of the precipitation dataset
-                    if not np.allclose(lats_precip, dataset_awc["lat"][:], atol=0.01):
+                    if not np.allclose(lats_precip, dataset_awc["lat"][:], atol=ATOL_THRESH):
                         msg = "Precipitation and AWC variables contain non-matching latitudes"
                         _logger.error(msg)
                         raise ValueError(msg)
-                    elif not np.allclose(lons_precip, dataset_awc["lon"][:], atol=0.01):
+                    elif not np.allclose(lons_precip, dataset_awc["lon"][:], atol=ATOL_THRESH):
                         msg = "Precipitation and AWC variables contain non-matching longitudes"
                         _logger.error(msg)
                         raise ValueError(msg)
