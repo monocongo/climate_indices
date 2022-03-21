@@ -219,8 +219,7 @@ def _validate_args(args):
                         raise ValueError(msg)
 
                     # verify that the coordinate variables match with those of the precipitation dataset
-                    if not np.allclose(lats_precip, dataset_pet["lat"][:], atol=get_
-                    (lats_precip)):
+                    if not np.allclose(lats_precip, dataset_pet["lat"][:], atol=get_tolerance(lats_precip)):
                         msg = "Precipitation and PET variables contain non-matching latitudes"
                         _logger.error(msg)
                         raise ValueError(msg)
