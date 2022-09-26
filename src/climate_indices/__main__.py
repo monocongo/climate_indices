@@ -709,6 +709,8 @@ def _compute_write_index(keyword_arguments):
         files.append(keyword_arguments["netcdf_pet"])
     if "input_type" not in keyword_arguments:
         raise ValueError("Missing the 'input_type' keyword argument")
+    if "chunksizes" not in keyword_arguments:
+        raise ValueError("Missing the 'chunksizes' keyword argument")
     else:
         input_type = keyword_arguments["input_type"]
         if input_type == InputType.grid:
@@ -719,7 +721,19 @@ def _compute_write_index(keyword_arguments):
             chunks = {"time": -1}
         else:
             raise ValueError(f"Invalid 'input_type' keyword argument: {input_type}")
-    dataset = xr.open_mfdataset(files, chunks=chunks)
+    # Since multiple variables can be in the same file, de-duplicate the filelist.
+    dataset = xr.open_mfdataset(list(set(files)), chunks=chunks)
+    output_chunksizes = {}
+    if keyword_arguments['chunksizes'] == 'input':
+        # Find the first variable with chunksizes set and use that
+        # Note that the netcdf spec doesn't require that all data variables
+        # have the same chunk sizes.
+        for da in dataset.data_vars.values():
+            if not da.encoding.get("contiguous", True):
+                # tuple of chunksizes, respectively by dimension
+                output_chunksizes = da.encoding.get("chunksizes", ())
+            if output_chunksizes:
+                break
 
     # trim out all data variables from the dataset except the ones we'll need
     input_var_names = []
@@ -802,6 +816,9 @@ def _compute_write_index(keyword_arguments):
 
     # build an arguments dictionary appropriate to the index we'll compute
     args = _build_arguments(keyword_arguments)
+
+    output_encodings = ({'chunksizes': output_chunksizes}
+                        if output_chunksizes else None)
 
     # add output variable arrays into the shared memory arrays dictionary
     if keyword_arguments["index"] == "palmers":
@@ -900,7 +917,8 @@ def _compute_write_index(keyword_arguments):
         long_name = "Self-calibrated Palmer Drought Severity Index"
         scpdsi_attrs = {"long_name": long_name, "valid_min": -10.0, "valid_max": 10.0}
         var_name_scpdsi = "scpdsi"
-        scpdsi_var = xr.Variable(dims=output_dims, data=scpdsi, attrs=scpdsi_attrs)
+        scpdsi_var = xr.Variable(dims=output_dims, data=scpdsi, attrs=scpdsi_attrs,
+                                 encoding=output_encodings)
         dataset[var_name_scpdsi] = scpdsi_var
 
         # remove all data variables except for the new SCPDSI variable
@@ -920,7 +938,8 @@ def _compute_write_index(keyword_arguments):
         long_name = "Palmer Drought Severity Index"
         pdsi_attrs = {"long_name": long_name, "valid_min": -10.0, "valid_max": 10.0}
         var_name_pdsi = "pdsi"
-        pdsi_var = xr.Variable(dims=output_dims, data=pdsi, attrs=pdsi_attrs)
+        pdsi_var = xr.Variable(dims=output_dims, data=pdsi, attrs=pdsi_attrs,
+                               encoding=output_encodings)
         dataset[var_name_pdsi] = pdsi_var
 
         # remove all data variables except for the new PDSI variable
@@ -940,7 +959,8 @@ def _compute_write_index(keyword_arguments):
         long_name = "Palmer Hydrological Drought Index"
         phdi_attrs = {"long_name": long_name, "valid_min": -10.0, "valid_max": 10.0}
         var_name_phdi = "phdi"
-        phdi_var = xr.Variable(dims=output_dims, data=phdi, attrs=phdi_attrs)
+        phdi_var = xr.Variable(dims=output_dims, data=phdi, attrs=phdi_attrs,
+                               encoding=output_encodings)
         dataset[var_name_phdi] = phdi_var
 
         # remove all data variables except for the new PHDI variable
@@ -960,7 +980,8 @@ def _compute_write_index(keyword_arguments):
         long_name = "Palmer Modified Drought Index"
         pmdi_attrs = {"long_name": long_name, "valid_min": -10.0, "valid_max": 10.0}
         var_name_pmdi = "pmdi"
-        pmdi_var = xr.Variable(dims=output_dims, data=pmdi, attrs=pmdi_attrs)
+        pmdi_var = xr.Variable(dims=output_dims, data=pmdi, attrs=pmdi_attrs,
+                               encoding=output_encodings)
         dataset[var_name_pmdi] = pmdi_var
 
         # remove all data variables except for the new PMDI variable
@@ -980,7 +1001,8 @@ def _compute_write_index(keyword_arguments):
         long_name = "Palmer Z-Index"
         zindex_attrs = {"long_name": long_name, "valid_min": -10.0, "valid_max": 10.0}
         var_name_zindex = "zindex"
-        zindex_var = xr.Variable(dims=output_dims, data=zindex, attrs=zindex_attrs)
+        zindex_var = xr.Variable(dims=output_dims, data=zindex, attrs=zindex_attrs,
+                                 encoding=output_encodings)
         dataset[var_name_zindex] = zindex_var
 
         # remove all data variables except for the new Z-Index variable
@@ -1080,7 +1102,8 @@ def _compute_write_index(keyword_arguments):
         # create a new variable to contain the index values, assign into the dataset
         variable = xr.Variable(dims=output_dims,
                                data=index_values,
-                               attrs=output_var_attributes)
+                               attrs=output_var_attributes,
+                               encoding=output_encodings)
         dataset[output_var_name] = variable
 
         # TODO set global attributes accordingly for this new dataset
@@ -1648,6 +1671,14 @@ def main():  # type: () -> None
             required=False,
             default="all_but_one",
         )
+        parser.add_argument(
+            "--chunksizes",
+            help="Output file chunksizes. Can be 'none' (default), or 'input' to match input chunks",
+            choices=["none", "input"],
+            required=False,
+            default="none",
+        )
+
         arguments = parser.parse_args()
 
         # validate the arguments and determine the input type
@@ -1682,7 +1713,9 @@ def main():  # type: () -> None
                              "periodicity": arguments.periodicity,
                              "calibration_start_year": arguments.calibration_start_year,
                              "calibration_end_year": arguments.calibration_end_year,
-                             "output_file_base": arguments.output_file_base}
+                             "output_file_base": arguments.output_file_base,
+                             "chunksizes": arguments.chunksizes,
+                    }
 
                     # compute and write SPI
                     _compute_write_index(kwrgs)
@@ -1710,6 +1743,7 @@ def main():  # type: () -> None
                     "netcdf_temp": netcdf_temp,
                     "var_name_temp": arguments.var_name_temp,
                     "output_file_base": arguments.output_file_base,
+                    "chunksizes": arguments.chunksizes,
                 }
 
                 # run PET computation, getting the PET file and corresponding variable name for later use
@@ -1747,6 +1781,7 @@ def main():  # type: () -> None
                         "calibration_start_year": arguments.calibration_start_year,
                         "calibration_end_year": arguments.calibration_end_year,
                         "output_file_base": arguments.output_file_base,
+                        "chunksizes": arguments.chunksizes,
                     }
 
                     # compute and write SPEI
@@ -1779,6 +1814,7 @@ def main():  # type: () -> None
                     "calibration_start_year": arguments.calibration_start_year,
                     "calibration_end_year": arguments.calibration_end_year,
                     "output_file_base": arguments.output_file_base,
+                    "chunksizes": arguments.chunksizes,
                 }
 
                 # compute and write PNP
@@ -1811,6 +1847,7 @@ def main():  # type: () -> None
                 "calibration_start_year": arguments.calibration_start_year,
                 "calibration_end_year": arguments.calibration_end_year,
                 "output_file_base": arguments.output_file_base,
+                "chunksizes": arguments.chunksizes,
             }
 
             # compute and write Palmers
