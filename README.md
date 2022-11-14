@@ -18,6 +18,11 @@ The following indices are provided:
   Standardized Precipitation Evapotranspiration Index, utilizing both gamma and Pearson Type III distributions
 - [PET](https://www.ncdc.noaa.gov/monitoring-references/dyk/potential-evapotranspiration), Potential Evapotranspiration, utilizing either [Thornthwaite](http://dx.doi.org/10.2307/21073)
   or [Hargreaves](http://dx.doi.org/10.13031/2013.26773) equations
+- [PNP](http://www.droughtmanagement.info/percent-of-normal-precipitation/),
+  Percentage of Normal Precipitation
+
+The following are provided as experimental/development versions only, not fully vetted nor suitable for research purposes:
+
 - [PDSI](http://www.droughtmanagement.info/palmer-drought-severity-index-pdsi/),
   Palmer Drought Severity Index
 - [scPDSI](http://www.droughtmanagement.info/self-calibrated-palmer-drought-severity-index-sc-pdsi/),
@@ -28,8 +33,6 @@ The following indices are provided:
   Palmer moisture anomaly index (Z-index)
 - [PMDI](https://climate.ncsu.edu/climate/climdiv), Palmer Modified
   Drought Index
-- [PNP](http://www.droughtmanagement.info/percent-of-normal-precipitation/),
-  Percentage of Normal Precipitation
 
 This Python implementation of the above climate index algorithms is being developed
 with the following goals in mind:

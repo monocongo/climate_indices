@@ -1,5 +1,95 @@
 [build-system]
 # These are the assumed default build requirements from pip:
 # https://pip.pypa.io/en/stable/reference/pip/#pep-517-and-518-support
-requires = ["setuptools>=40.8.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ['setuptools>=40.8.0', 'wheel']
+build-backend = 'setuptools.build_meta'
+
+[project]
+name = 'climate_indices'
+version = '1.0.11'
+readme = 'README.md'
+requires-python = '>=3.7'
+classifiers = [
+     'Development Status :: 5 - Production/Stable',
+     'Intended Audience :: Developers',
+     'Intended Audience :: Education',
+     'Intended Audience :: Science/Research',
+     'License :: OSI Approved :: BSD License',
+     'Programming Language :: Python :: 3.7',
+     'Programming Language :: Python :: 3.8',
+     'Programming Language :: Python :: 3.9',
+     'Programming Language :: Python :: 3.10',
+     'Topic :: Software Development :: Libraries :: Python Modules',
+     'Topic :: Scientific/Engineering :: Atmospheric Science',
+     'Topic :: Scientific/Engineering :: Physics'
+]
+dependencies = [
+    'dask',
+    'nco',
+    'netCDF4',
+    'numba',
+    'scipy',
+    'xarray',
+]
+
+[project.optional-dependencies]
+dev = ['build', 'pytest', 'tox',]
+
+[tool.distutils.bdist_wheel]
+universal = true
+
+[project.scripts]
+process_climate_indices = 'climate_indices.__main__:main'
+spi = 'climate_indices.__spi__:main'
+
+#     name='climate_indices',
+#     version='1.0.10',
+#     url='https://github.com/monocongo/climate_indices',
+#     license='BSD',
+#     author='James Adams',
+#     author_email='monocongo@gmail.com',
+#     description=(
+#         'Community reference implementations of climate index '
+#         'algorithms in Python. Including Palmers (PDSI, scPDSI,  '
+#         'PHDI, and Z-Index), SPI, SPEI, PET, and PNP.'
+#     ),
+#     long_description=README,
+#     long_description_content_type='text/markdown',
+#     package_dir={'': 'src'},
+#     packages=find_packages(where='src'),
+#     include_package_data=True,
+#     python_requires='>=3.6',
+#     install_requires=[
+#         'dask',
+#         'nco',
+#         'netcdf4',
+#         'numba',
+#         'numpy',
+#         'scipy',
+#         'toolz',
+#         'xarray',
+#     ],
+#     keywords=[
+#         'indices', 'climate', 'climate indices', 'drought',
+#         'drought indices', 'pdsi ', 'spi', 'spei', 'evapotranspiration',
+#     ],
+#     classifiers=[
+#         'Development Status :: 5 - Production/Stable',
+#         'Intended Audience :: Developers',
+#         'Intended Audience :: Education',
+#         'Intended Audience :: Science/Research',
+#         'License :: OSI Approved :: BSD License',
+#         'Programming Language :: Python :: 3.6',
+#         'Programming Language :: Python :: 3.7',
+#         'Programming Language :: Python :: 3.8',
+#         'Programming Language :: Python :: 3.9',
+#         'Topic :: Software Development :: Libraries :: Python Modules',
+#         'Topic :: Scientific/Engineering :: Atmospheric Science',
+#         'Topic :: Scientific/Engineering :: Physics',
+#     ],
+#     entry_points={
+#         'console_scripts': [
+#             'process_climate_indices=climate_indices.__main__:main',
+#             'spi=climate_indices.__spi__:main',
+#         ]
+#     },
