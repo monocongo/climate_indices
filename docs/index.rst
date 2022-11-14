@@ -106,7 +106,18 @@ in this environment where the package dependencies for this project are present.
 Now the package can be added to the environment along with all required modules
 (dependencies) via `pip <https://pip.pypa.io/en/stable/>`_:
 
-``$ pip install climate-indices``
+``$ python -m pip install climate-indices``
+
+For development of the package itself it pays to install the dependencies via
+the `requirements.txt` file:
+
+``$ python -m pip install -r requirements.txt``
+
+When adding dependencies to the package they should be added to the `pyproject.toml`
+file in the dependencies section, then we can rebuild the requirements.txt file using pip-tools:
+
+``$ python -m piptools compile -o requirements.txt pyproject.toml``
+
 
 NCO
 ^^^^
