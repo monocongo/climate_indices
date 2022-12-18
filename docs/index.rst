@@ -64,7 +64,7 @@ with the following goals in mind:
 -  to provide transparency into the operational code used for climate
    monitoring activities at NCEI/NOAA, and consequent reproducibility
    of published datasets computed from this package
--  to incorporate modern software engineering principles and programming
+-  to incorporate modern software engineering principles and scientific programming
    best practices
 
 
@@ -98,7 +98,7 @@ First, create the Python environment:
 
 ``$ conda create -n indices_env``
 
-The environment created can now be 'activated':
+The environment can now be 'activated':
 
 ``$ source activate indices_env``
 
