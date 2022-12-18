@@ -6,7 +6,6 @@ import logging
 import multiprocessing
 import os
 
-from nco import Nco
 import numpy as np
 import scipy.constants
 import xarray as xr
@@ -52,11 +51,11 @@ def init_worker(arrays_and_shapes):
     """
     Initialization function that assigns named arrays into the global variable.
 
-    :param arrays_and_shapes: dictionary containing variable names as keys
+    param arrays_and_shapes: dictionary containing variable names as keys
         and two-element dictionaries containing RawArrays and associated shapes
         (i.e. each value of the dictionary is itself a dictionary with one key "array"
         and another key _KEY_SHAPE)
-    :return:
+    return:
     """
 
     global _global_shared_arrays
@@ -69,9 +68,9 @@ def _validate_args(args):
     Validate the processing settings to confirm that proper argument
     combinations have been provided.
 
-    :param args: an arguments object of the type returned by
+    param args: an arguments object of the type returned by
         argparse.ArgumentParser.parse_args()
-    :raise ValueError: if one or more of the command line arguments is invalid
+    raise ValueError: if one or more of the command line arguments is invalid
     """
 
     # the dimensions we expect to find for each data variable
@@ -473,8 +472,8 @@ def _build_arguments(keyword_args):
     """
     Builds a dictionary of function arguments appropriate to the index to be computed.
 
-    :param dict keyword_args:
-    :return: dictionary of arguments keyed with names expected by the corresponding
+    param dict keyword_args:
+    return: dictionary of arguments keyed with names expected by the corresponding
         index computation function
     """
 
@@ -622,7 +621,7 @@ def _drop_data_into_shared_arrays_grid(dataset: xr.Dataset,
 
         output_shape = var_values.shape
 
-        # create a shared memory array, wrap it as a numpy array and copy
+        # create a shared memory array, wrap it as a numpy array and
         # copy the data (values) from this variable's DataArray
         shared_array = multiprocessing.Array("d", int(np.prod(var_values.shape)))
         shared_array_np = \
@@ -636,7 +635,7 @@ def _drop_data_into_shared_arrays_grid(dataset: xr.Dataset,
         }
 
         # drop the variable from the dataset (we're assuming this frees the memory)
-        dataset = dataset.drop(var_name)
+        dataset = dataset.drop_sel(var_name)
 
     return output_shape
 
@@ -666,7 +665,7 @@ def _drop_data_into_shared_arrays_divisions(dataset,
                 _logger.error(message)
                 raise ValueError(message)
 
-        # create a shared memory array, wrap it as a numpy array and copy
+        # create a shared memory array, wrap it as a numpy array and
         # copy the data (values) from this variable's DataArray
         shared_array = multiprocessing.Array("d", int(np.prod(dataset[var_name].shape)))
         shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(dataset[var_name].shape)
@@ -683,7 +682,7 @@ def _drop_data_into_shared_arrays_divisions(dataset,
             output_shape = dataset[var_name].shape
 
         # drop the variable from the dataset (we're assuming this frees the memory)
-        dataset = dataset.drop(var_name)
+        dataset = dataset.drop_sel(var_name)
 
     return output_shape
 
@@ -693,8 +692,8 @@ def _compute_write_index(keyword_arguments):
     """
     Computes a climate index and writes the result into a corresponding NetCDF.
 
-    :param keyword_arguments:
-    :return:
+    param keyword_arguments:
+    return:
     """
 
     _log_status(keyword_arguments)
@@ -748,7 +747,7 @@ def _compute_write_index(keyword_arguments):
         input_var_names.append("lat")
     for var in dataset.data_vars:
         if var not in input_var_names:
-            dataset = dataset.drop(var)
+            dataset = dataset.drop_sel(var)
 
     # get the initial year of the data
     data_start_year = int(str(dataset["time"].values[0])[0:4])
@@ -830,7 +829,7 @@ def _compute_write_index(keyword_arguments):
 
         awc_dataset = xr.open_dataset(keyword_arguments["netcdf_awc"])
 
-        # create a shared memory array, wrap it as a numpy array and copy
+        # create a shared memory array, wrap it as a numpy array and
         # copy the data (values) from this variable's DataArray
         var_name = keyword_arguments["var_name_awc"]
         shared_array = \
@@ -924,7 +923,7 @@ def _compute_write_index(keyword_arguments):
         # remove all data variables except for the new SCPDSI variable
         for var_name in dataset.data_vars:
             if var_name != var_name_scpdsi:
-                dataset = dataset.drop(var_name)
+                dataset = dataset.drop_sel(var_name)
 
         # TODO set global attributes accordingly for this new dataset
 
@@ -945,7 +944,7 @@ def _compute_write_index(keyword_arguments):
         # remove all data variables except for the new PDSI variable
         for var_name in dataset.data_vars:
             if var_name != var_name_pdsi:
-                dataset = dataset.drop(var_name)
+                dataset = dataset.drop_sel(var_name)
 
         # TODO set global attributes accordingly for this new dataset
 
@@ -966,7 +965,7 @@ def _compute_write_index(keyword_arguments):
         # remove all data variables except for the new PHDI variable
         for var_name in dataset.data_vars:
             if var_name != var_name_phdi:
-                dataset = dataset.drop(var_name)
+                dataset = dataset.drop_sel(var_name)
 
         # TODO set global attributes accordingly for this new dataset
 
@@ -987,7 +986,7 @@ def _compute_write_index(keyword_arguments):
         # remove all data variables except for the new PMDI variable
         for var_name in dataset.data_vars:
             if var_name != var_name_pmdi:
-                dataset = dataset.drop(var_name)
+                dataset = dataset.drop_sel(var_name)
 
         # TODO set global attributes accordingly for this new dataset
 
@@ -1008,7 +1007,7 @@ def _compute_write_index(keyword_arguments):
         # remove all data variables except for the new Z-Index variable
         for var_name in dataset.data_vars:
             if var_name != var_name_zindex:
-                dataset = dataset.drop(var_name)
+                dataset = dataset.drop_sel(var_name)
 
         # TODO set global attributes accordingly for this new dataset
 
@@ -1050,7 +1049,7 @@ def _compute_write_index(keyword_arguments):
 
         elif keyword_arguments["index"] == "pet":
 
-            # create a shared memory array, wrap it as a numpy array and copy
+            # create a shared memory array, wrap it as a numpy array and
             # copy the data (values) from this variable's DataArray
             da_lat = dataset["lat"]
             shared_array = multiprocessing.Array("d", int(np.prod(da_lat.shape)))
@@ -1111,7 +1110,7 @@ def _compute_write_index(keyword_arguments):
         # remove all data variables except for the new variable
         for var_name in dataset.data_vars:
             if var_name != output_var_name:
-                dataset = dataset.drop(var_name)
+                dataset = dataset.drop_sel(var_name)
 
         # write the dataset as NetCDF
         netcdf_file_name = \
@@ -1205,8 +1204,8 @@ def _parallel_process(index: str,
     # find the start index of each sub-array we'll split out per worker process,
     # assuming the shape of the output array is the same as all input arrays
     shape = arrays_dict[output_var_name][_KEY_SHAPE]
-    # if there are less chunks than the available number of processes, only create the
-    # necessary number of tasks
+    # if there are fewer chunks than the available number of processes
+    # then only create the necessary number of tasks
     required_processes = min(shape[0], _NUMBER_OF_WORKER_PROCESSES)
     d, m = divmod(shape[0], required_processes)
     split_indices = list(range(0, ((d + 1) * (m + 1)), (d + 1)))
@@ -1516,9 +1515,9 @@ def _prepare_file(netcdf_file, var_name):
     and if not correctly ordered then create a temporary NetCDF with dimensions
     in (lat, lon, time) order, otherwise just return the input NetCDF unchanged.
 
-    :param str netcdf_file:
-    :param str var_name:
-    :return: name of the NetCDF file containing correct dimensions
+    param str netcdf_file:
+    param str var_name:
+    return: name of the NetCDF file containing correct dimensions
     """
 
     # make sure we have lat, lon, and time as variable dimensions, regardless of order
@@ -1527,22 +1526,17 @@ def _prepare_file(netcdf_file, var_name):
     if "division" in dimensions:
         if len(dimensions) == 1:
             expected_dims = ("division",)
-            dims = "division"
         elif len(dimensions) == 2:
             expected_dims = ("division", "time")
-            dims = "division,time"
         else:
             raise ValueError(f"Unsupported dimensions for variable '{var_name}': {dimensions}")
     else:  # timeseries or gridded
         if len(dimensions) == 1:
             expected_dims = ("time",)
-            dims = "time"
         elif len(dimensions) == 2:
             expected_dims = ("lat", "lon")
-            dims = "lat,lon"
         elif len(dimensions) == 3:
             expected_dims = ("lat", "lon", "time")
-            dims = "lat,lon,time"
         else:
             message = f"Unsupported dimensions for variable '{var_name}': {dimensions}"
             _logger.error(message)
@@ -1552,12 +1546,6 @@ def _prepare_file(netcdf_file, var_name):
         message = f"Invalid dimensions for variable '{var_name}': {ds[var_name].dims}"
         _logger.error(message)
         raise ValueError(message)
-
-    # perform reorder of dimensions if necessary
-    if ds[var_name].dims != expected_dims:
-        nco = Nco()
-        netcdf_file = nco.ncpdq(input=netcdf_file,
-                                options=[f'-a "{dims}"', "-O"])
 
     return netcdf_file
 
@@ -1704,17 +1692,18 @@ def main():  # type: () -> None
                 for dist in indices.Distribution:
 
                     # keyword arguments used for the SPI function
-                    kwrgs = {"index": "spi",
-                             "netcdf_precip": netcdf_precip,
-                             "var_name_precip": arguments.var_name_precip,
-                             "input_type": input_type,
-                             "scale": scale,
-                             "distribution": dist,
-                             "periodicity": arguments.periodicity,
-                             "calibration_start_year": arguments.calibration_start_year,
-                             "calibration_end_year": arguments.calibration_end_year,
-                             "output_file_base": arguments.output_file_base,
-                             "chunksizes": arguments.chunksizes,
+                    kwrgs = {
+                        "index": "spi",
+                        "netcdf_precip": netcdf_precip,
+                        "var_name_precip": arguments.var_name_precip,
+                        "input_type": input_type,
+                        "scale": scale,
+                        "distribution": dist,
+                        "periodicity": arguments.periodicity,
+                        "calibration_start_year": arguments.calibration_start_year,
+                        "calibration_end_year": arguments.calibration_end_year,
+                        "output_file_base": arguments.output_file_base,
+                        "chunksizes": arguments.chunksizes,
                     }
 
                     # compute and write SPI

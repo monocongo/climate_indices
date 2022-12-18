@@ -8,7 +8,6 @@ import multiprocessing
 import os
 from typing import Dict, List
 
-from nco import Nco
 import numpy as np
 import xarray as xr
 
@@ -1364,12 +1363,6 @@ def _prepare_file(netcdf_file, var_name):
         message = f"Invalid dimensions for variable '{var_name}': {ds[var_name].dims}"
         _logger.error(message)
         raise ValueError(message)
-
-    # perform reorder of dimensions if necessary
-    if ds[var_name].dims != expected_dims:
-        nco = Nco()
-        netcdf_file = nco.ncpdq(input=netcdf_file,
-                                options=[f'-a "{dims}"', "-O"])
 
     return netcdf_file
 
