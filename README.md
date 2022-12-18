@@ -48,7 +48,7 @@ with the following goals in mind:
 - to provide transparency into the operational code used for climate
   monitoring activities at NCEI/NOAA, and consequent reproducibility
   of published datasets computed from this package
-- to incorporate modern software engineering principles and programming
+- to incorporate modern software engineering principles and scientific programming
   best practices
 
 
