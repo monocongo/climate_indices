@@ -166,15 +166,13 @@ def reshape_to_2d(
             return values
         else:
             message = "Values array has an invalid shape (2-D but second " + \
-                      "dimension not {dim}".format(dim=second_axis_length) + \
-                      "): {shape}".format(shape=shape)
+                      f"dimension not {second_axis_length}): {shape}"
             _logger.error(message)
             raise ValueError(message)
 
     # otherwise make sure that we've been passed a flat (1-D) array of values
     elif len(shape) != 1:
-        message = "Values array has an invalid shape (not 1-D " + \
-                  "or 2-D): {shape}".format(shape=shape)
+        message = f"Values array has an invalid shape (not 1-D or 2-D): {shape}"
         _logger.error(message)
         raise ValueError(message)
 

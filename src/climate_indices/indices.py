@@ -112,8 +112,7 @@ def spi(
     if len(shape) == 2:
         values = values.flatten()
     elif len(shape) != 1:
-        message = "Invalid shape of input array: {shape}".format(shape=shape) + \
-                  " -- only 1-D and 2-D arrays are supported"
+        message = f"Invalid shape of input array: {shape} -- only 1-D and 2-D arrays are supported"
         _logger.error(message)
         raise ValueError(message)
 
@@ -138,16 +137,11 @@ def spi(
     # reshape precipitation values to (years, 12) for monthly,
     # or to (years, 366) for daily
     if periodicity is compute.Periodicity.monthly:
-
         values = utils.reshape_to_2d(values, 12)
-
     elif periodicity is compute.Periodicity.daily:
-
         values = utils.reshape_to_2d(values, 366)
-
     else:
-
-        raise ValueError("Invalid periodicity argument: %s" % periodicity)
+        raise ValueError(f"Invalid periodicity argument: {periodicity}")
 
     if distribution is Distribution.gamma:
 
@@ -200,8 +194,7 @@ def spi(
 
     else:
 
-        message = "Unsupported distribution argument: " + \
-                  "{dist}".format(dist=distribution)
+        message = f"Unsupported distribution argument: {distribution}"
         _logger.error(message)
         raise ValueError(message)
 
@@ -471,7 +464,7 @@ def percentage_of_normal(values: np.ndarray,
 
     # validate the scale argument
     if (scale is None) or (scale < 1):
-        message = "Invalid scale argument: '{0}'".format(scale)
+        message = f"Invalid scale argument: '{scale}'"
         _logger.error(message)
         raise ValueError(message)
 
@@ -482,7 +475,7 @@ def percentage_of_normal(values: np.ndarray,
     elif periodicity is compute.Periodicity.daily:
         periodicity = 366
     else:
-        message = "Invalid periodicity argument: '{0}'".format(periodicity)
+        message = f"Invalid periodicity argument: '{periodicity}'"
         _logger.error(message)
         raise ValueError(message)
 
@@ -587,7 +580,7 @@ def pet(temperature_celsius: np.ndarray,
             data_start_year,
         )
 
-    message = ("Invalid latitude value: " + str(latitude_degrees) +
+    message = (f"Invalid latitude value: {latitude_degrees}" +
                " (must be in degrees north, between -90.0 and " +
                "90.0 inclusive)")
     _logger.error(message)

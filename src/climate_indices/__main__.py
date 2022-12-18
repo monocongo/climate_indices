@@ -599,11 +599,10 @@ def _drop_data_into_shared_arrays_grid(dataset: xr.Dataset,
                 message = f"Invalid dimensions for variable '{var_name}': {dims}"
                 _logger.error(message)
                 raise ValueError(message)
-        elif len(dims) == 1:
-            if dims not in expected_dims_1d:
-                message = f"Invalid dimensions for variable '{var_name}': {dims}"
-                _logger.error(message)
-                raise ValueError(message)
+        elif (len(dims) == 1) and (dims not in expected_dims_1d):
+            message = f"Invalid dimensions for variable '{var_name}': {dims}"
+            _logger.error(message)
+            raise ValueError(message)
 
         # convert daily values into 366-day years
         if periodicity == compute.Periodicity.daily:
@@ -659,11 +658,10 @@ def _drop_data_into_shared_arrays_divisions(dataset,
                 message = f"Invalid dimensions for variable '{var_name}': {dims}"
                 _logger.error(message)
                 raise ValueError(message)
-        elif len(dims) == 1:
-            if dims not in expected_dims_1d:
-                message = f"Invalid dimensions for variable '{var_name}': {dims}"
-                _logger.error(message)
-                raise ValueError(message)
+        elif (len(dims) == 1) and (dims not in expected_dims_1d):
+            message = f"Invalid dimensions for variable '{var_name}': {dims}"
+            _logger.error(message)
+            raise ValueError(message)
 
         # create a shared memory array, wrap it as a numpy array and
         # copy the data (values) from this variable's DataArray
