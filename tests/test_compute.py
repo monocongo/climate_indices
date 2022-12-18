@@ -78,7 +78,7 @@ def test_transform_fitted_gamma(
                                err_msg="Transformed gamma fitted daily "
                                        "values not computed as expected")
 
-    # confirm that we can call with a calibration period outside of valid range
+    # confirm that we can call with a calibration period out of the valid range
     # and as a result use the full period of record as the calibration period instead
     computed_values = compute.transform_fitted_gamma(precips_mm_monthly,
                                                      data_year_start_monthly,
@@ -155,12 +155,14 @@ def test_gamma_parameters(
     all_nans = np.full(precips_mm_monthly.shape, np.NaN)
     nan_alphas = np.full(shape=(12,), fill_value=np.NaN)
     nan_betas = np.full(shape=(12,), fill_value=np.NaN)
-    alphas, betas = compute.gamma_parameters(all_nans,
-        data_year_start_monthly,
-        data_year_start_monthly,
-        data_year_end_monthly,
-        compute.Periodicity.monthly,
-    )
+    alphas, betas = \
+        compute.gamma_parameters(
+            all_nans,
+            data_year_start_monthly,
+            data_year_start_monthly,
+            data_year_end_monthly,
+            compute.Periodicity.monthly,
+        )
     assert np.allclose(alphas, nan_alphas, equal_nan=True)
     assert np.allclose(betas, nan_betas, equal_nan=True)
 
