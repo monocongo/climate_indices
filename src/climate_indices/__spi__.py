@@ -8,7 +8,6 @@ import multiprocessing
 import os
 from typing import Dict, List
 
-from nco import Nco
 import numpy as np
 import xarray as xr
 
@@ -38,7 +37,7 @@ _logger = utils.get_logger(__name__, logging.INFO)
 # ------------------------------------------------------------------------------
 class InputType(Enum):
     """
-    Enumeration type for differentiating between gridded, timeseriesn and US
+    Enumeration type for differentiating between gridded, timeseries, and US
     climate division datasets.
     """
 
@@ -304,7 +303,7 @@ def _drop_data_into_shared_arrays_grid(
         else:  # assumed to be monthly
             var_values = dataset_climatology[var_name].values
 
-        # create a shared memory array, wrap it as a numpy array and copy
+        # create a shared memory array, wrap it as a numpy array and
         # copy the data (values) from this variable's DataArray
         shared_array = multiprocessing.Array("d", int(np.prod(var_values.shape)))
         shared_array_np = \
@@ -357,7 +356,7 @@ def _drop_data_into_shared_arrays_grid(
 
         var_values = dataset_fitting[var_name].values
 
-        # create a shared memory array, wrap it as a numpy array and copy
+        # create a shared memory array, wrap it as a numpy array and
         # copy the data (values) from this variable's DataArray
         shared_array = multiprocessing.Array("d", int(np.prod(var_values.shape)))
         shared_array_np = \
@@ -410,7 +409,7 @@ def _drop_data_into_shared_arrays_divisions(
                 _logger.error(message)
                 raise ValueError(message)
 
-        # create a shared memory array, wrap it as a numpy array and copy
+        # create a shared memory array, wrap it as a numpy array and
         # copy the data (values) from this variable's DataArray
         shared_array = multiprocessing.Array("d", int(np.prod(dataset[var_name].shape)))
         shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(dataset[var_name].shape)
@@ -968,7 +967,7 @@ def _parallel_fitting(
     #  fitting parameters on values within the calibration period
 
     # make sure we have the same size arrays for all fitting parameter arrays
-    if len(set([shared_arrays[var][_KEY_SHAPE] for var in output_var_names.values()])) != 1:
+    if len({shared_arrays[var][_KEY_SHAPE] for var in output_var_names.values()}) != 1:
         raise ValueError("Unexpected differences in shared memory array shapes")
 
     # find the start index of each sub-array we'll split out per worker process,
@@ -1339,22 +1338,17 @@ def _prepare_file(netcdf_file, var_name):
     if "division" in dimensions:
         if len(dimensions) == 1:
             expected_dims = ("division",)
-            dims = "division"
         elif len(dimensions) == 2:
             expected_dims = ("division", "time")
-            dims = "division,time"
         else:
             raise ValueError(f"Unsupported dimensions for variable '{var_name}': {dimensions}")
     else:  # timeseries or gridded
         if len(dimensions) == 1:
             expected_dims = ("time",)
-            dims = "time"
         elif len(dimensions) == 2:
             expected_dims = ("lat", "lon")
-            dims = "lat,lon"
         elif len(dimensions) == 3:
             expected_dims = ("lat", "lon", "time")
-            dims = "lat,lon,time"
         else:
             message = f"Unsupported dimensions for variable '{var_name}': {dimensions}"
             _logger.error(message)
@@ -1364,12 +1358,6 @@ def _prepare_file(netcdf_file, var_name):
         message = f"Invalid dimensions for variable '{var_name}': {ds[var_name].dims}"
         _logger.error(message)
         raise ValueError(message)
-
-    # perform reorder of dimensions if necessary
-    if ds[var_name].dims != expected_dims:
-        nco = Nco()
-        netcdf_file = nco.ncpdq(input=netcdf_file,
-                                options=[f'-a "{dims}"', "-O"])
 
     return netcdf_file
 
@@ -1474,7 +1462,6 @@ def main():  # type: () -> None
         )
         parser.add_argument(
             "--overwrite",
-            # type=bool,
             default=False,
             action='store_true',
             help="overwrite existing files if they exist",

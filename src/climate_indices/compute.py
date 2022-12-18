@@ -1,3 +1,5 @@
+from climate_indices import utils, lmoments
+
 from enum import Enum
 from distutils.version import LooseVersion
 import logging
@@ -6,13 +8,12 @@ import logging
 # from dask_image.ndfilters import convolve
 import numba
 import numpy as np
-import scipy.special
+# import scipy.special
 import scipy.stats
 import scipy.version
 
 _do_pearson3_workaround = LooseVersion(scipy.version.version) < '1.6.0'
 
-from climate_indices import utils, lmoments
 
 # declare the names that should be included in the public API for this module
 __all__ = ["Periodicity"]
@@ -99,7 +100,8 @@ def _validate_array(
             raise ValueError(message)
 
     elif (len(values.shape) != 2) or \
-            ((values.shape[1] != 12) and (values.shape[1] != 366)):
+            (values.shape[1] not in (12, 366)):
+        # ((values.shape[1] != 12) and (values.shape[1] != 366)):
 
         # neither a 1-D nor a 2-D array with valid shape was passed in
         message = "Invalid input array with shape: {0}".format(values.shape)
@@ -195,7 +197,8 @@ def _probability_of_zero(
         # determine the number of time steps per year
         # (we expect 12 for monthly, 366 for daiy)
         time_steps_per_year = values.shape[1]
-        if (time_steps_per_year != 12) and (time_steps_per_year != 366):
+        # if (time_steps_per_year != 12) and (time_steps_per_year != 366):
+        if time_steps_per_year not in (12, 366):
             message = "Invalid shape of input data array: {shape}".format(shape=values.shape)
             _logger.error(message)
             raise ValueError(message)
@@ -280,7 +283,8 @@ def pearson_parameters(
     else:
 
         time_steps_per_year = values.shape[1]
-        if (time_steps_per_year != 12) and (time_steps_per_year != 366):
+        # if (time_steps_per_year != 12) and (time_steps_per_year != 366):
+        if time_steps_per_year not in (12, 366):
             message = "Invalid shape of input data array: {shape}".format(shape=values.shape)
             _logger.error(message)
             raise ValueError(message)

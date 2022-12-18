@@ -25,8 +25,8 @@ classifiers = [
 ]
 dependencies = [
     'dask',
-    'nco',
-    'netCDF4',
+#    'nco',
+#    'netCDF4',
     'numba',
     'scipy',
     'xarray',

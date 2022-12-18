@@ -53,7 +53,7 @@ def is_data_valid(
         data: np.ndarray,
 ) -> bool:
     """
-    Returns whether or not an array is valid, i.e. a supported array type
+    Returns if an array is valid or not, i.e. a supported array type
     (ndarray or MaskArray) which is not all-NaN.
 
     :param data: data object, expected as either numpy.ndarry or numpy.ma.MaskArray
@@ -166,15 +166,13 @@ def reshape_to_2d(
             return values
         else:
             message = "Values array has an invalid shape (2-D but second " + \
-                      "dimension not {dim}".format(dim=second_axis_length) + \
-                      "): {shape}".format(shape=shape)
+                      f"dimension not {second_axis_length}): {shape}"
             _logger.error(message)
             raise ValueError(message)
 
     # otherwise make sure that we've been passed a flat (1-D) array of values
     elif len(shape) != 1:
-        message = "Values array has an invalid shape (not 1-D " + \
-                  "or 2-D): {shape}".format(shape=shape)
+        message = f"Values array has an invalid shape (not 1-D or 2-D): {shape}"
         _logger.error(message)
         raise ValueError(message)
 
@@ -283,7 +281,7 @@ def transform_to_366day(
     """
     Takes an array of daily values with only actual leap years represented
     as 366 day years (non-leap years with 365 days) and converts it to an array
-    of daily values represented as containing full 366 day years as if each year
+    of daily values represented as containing full 366-day years as if each year
     is a leap year with computed/faux values for the Feb. 29th of each
     non-leap year.
 
@@ -349,7 +347,7 @@ def transform_to_366day(
             # from the original into the all_leap array
             original_year_end_index = original_index + 365
             if len(original) < original_year_end_index:
-                # this should be the final year and we're just adding the remained days
+                # this should be the final year, and we're just adding the remained days
                 remainder = original[original_index + 59:]
                 difference = len(all_leap[all_leap_index + 60:]) - len(remainder)
                 if difference > 0:
@@ -380,7 +378,7 @@ def transform_to_gregorian(
         year_start: int,
 ) -> np.ndarray:
     """
-    Takes an array of daily values represented as full 366 day years (as if each
+    Takes an array of daily values represented as full 366-day years (as if each
     year is a leap year with fill/faux values for the Feb. 29th of each non-leap
     year) and converts it to an array of daily values with only actual leap
     years represented as 366 day years.
