@@ -121,17 +121,6 @@ file in the dependencies section, then we can rebuild the requirements.txt file 
 ``$ python -m piptools compile -o requirements.txt pyproject.toml``
 
 
-NCO
-^^^^
-
-NetCDF Operators is a requirement and must be installed for utilization of this package.
-Instructions for installation on various platforms is available `here <http://nco.sourceforge.net#Executables//>`_.
-If using an Anaconda environment as advised above then it's as simple as running
-the following command within the activated conda environment:
-
-``$ conda install -c conda-forge nco``
-
-
 Indices Processing
 ----------------------------------
 

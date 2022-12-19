@@ -4,8 +4,6 @@
 #
 #    pip-compile --output-file=requirements.txt pyproject.toml
 #
-cftime==1.6.2
-    # via netcdf4
 cloudpickle==2.2.0
     # via dask
 dask==2022.2.0
@@ -20,16 +18,10 @@ llvmlite==0.39.1
     # via numba
 locket==1.0.0
     # via partd
-nco==1.0.0
-    # via climate-indices (pyproject.toml)
-netcdf4==1.6.2
-    # via climate-indices (pyproject.toml)
 numba==0.56.4
     # via climate-indices (pyproject.toml)
 numpy==1.22.0
     # via
-    #   cftime
-    #   netcdf4
     #   numba
     #   pandas
     #   scipy
