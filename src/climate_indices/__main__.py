@@ -638,7 +638,7 @@ def _drop_data_into_shared_arrays_grid(dataset: xr.Dataset,
         }
 
         # drop the variable from the dataset (we're assuming this frees the memory)
-        dataset = dataset.drop_sel(var_name)
+        dataset = dataset.drop_vars(names=[var_name])
 
     return output_shape
 
@@ -1110,9 +1110,12 @@ def _compute_write_index(keyword_arguments):
         # TODO set global attributes accordingly for this new dataset
 
         # remove all data variables except for the new variable
+        drop_var_names = []
         for var_name in dataset.data_vars:
             if var_name != output_var_name:
-                dataset = dataset.drop_sel(var_name)
+                drop_var_names.append(var_name)
+        if len(drop_var_names):
+            dataset = dataset.drop_vars(names=drop_var_names)
 
         # write the dataset as NetCDF
         netcdf_file_name = \
