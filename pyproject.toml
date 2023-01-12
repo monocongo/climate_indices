@@ -1,14 +1,14 @@
 [build-system]
 # These are the assumed default build requirements from pip:
 # https://pip.pypa.io/en/stable/reference/pip/#pep-517-and-518-support
-requires = ['setuptools>=40.8.0', 'wheel']
+requires = ['setuptools>=61.0', 'wheel']
 build-backend = 'setuptools.build_meta'
 
 [project]
 name = 'climate_indices'
-version = '1.0.12'
+version = '1.0.13'
 readme = 'README.md'
-requires-python = '>=3.7'
+requires-python = '>=3.7, <3.11'
 classifiers = [
      'Development Status :: 5 - Production/Stable',
      'Intended Audience :: Developers',
@@ -26,6 +26,7 @@ classifiers = [
 dependencies = [
     'dask',
     'numba',
+#    'numpy<1.24',
     'scipy',
     'xarray',
 ]
@@ -39,3 +40,7 @@ universal = true
 [project.scripts]
 process_climate_indices = 'climate_indices.__main__:main'
 spi = 'climate_indices.__spi__:main'
+
+[project.urls]
+'Homepage' = 'https://github.com/monocongo/climate_indices'
+'Bug Tracker' = 'https://github.com/monocongo/climate_indices/issues'
