@@ -490,7 +490,7 @@ def count_zeros_and_non_missings(
 
 
 # ------------------------------------------------------------------------------
-def get_tolerance(dim):
+def get_tolerance(dim: np.ndarray) -> float:
     """
     dynamic threshold absolute tolerance parameter np.allclose
     derived from (smallest) absolute grid size along dimension dim.
