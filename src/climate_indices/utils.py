@@ -489,4 +489,15 @@ def count_zeros_and_non_missings(
     return zeros, non_missings
 
 
+# ------------------------------------------------------------------------------
+def get_tolerance(dim):
+    """
+    dynamic threshold absolute tolerance parameter np.allclose
+    derived from (smallest) absolute grid size along dimension dim.
+    Always greater than zero.
+    """
+    tol = np.abs(np.diff(dim).min() / 10)
+    return max(tol, np.finfo(tol.dtype).resolution)
+
+
 _logger = get_logger(__name__, logging.DEBUG)

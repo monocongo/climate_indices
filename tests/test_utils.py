@@ -488,3 +488,26 @@ def test_transform_to_366day():
                              values_365,
                              1972,
                              24)
+
+def test_tolerance():
+    lons, dlon = np.linspace(-180.0, 180.0, 250, retstep=True)
+    tol = utils.get_tolerance(lons)
+    assert tol > 0, "Tolerance must always be greater than zero"
+    assert tol < abs(dlon), "Tolerance must always come out smaller than the coordinate delta"
+
+    lats, dlat = np.linspace(25.0, -15.0, 50, retstep=True)
+    tol = utils.get_tolerance(lats)
+    assert tol > 0, "Tolerance must always be greater than zero"
+    assert tol < abs(dlat), "Tolerance must always come out smaller than the coordinate delta"
+
+    meshlat, meshlon = np.meshgrid(lats, lons)
+    tol = utils.get_tolerance(meshlat)
+    assert tol > 0, "Tolerance must always be greater than zero"
+    assert tol < abs(dlat), "Tolerance must always come out smaller than the coordinate delta"
+    # Tricky situation because np.diff() on this grid returns all zeros.
+    # Not the greatest situation, but we can at least allow a tiny bit of tolerance.
+    # Would be nice to be smarter about this situation.
+    tol = utils.get_tolerance(meshlon)
+    assert tol > 0, "Tolerance must always be greater than zero"
+    assert tol < abs(dlon), "Tolerance must always come out smaller than the coordinate delta"
+
