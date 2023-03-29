@@ -679,7 +679,7 @@ def _drop_data_into_shared_arrays_divisions(dataset,
             output_shape = dataset[var_name].shape
 
         # drop the variable from the dataset (we're assuming this frees the memory)
-        dataset = dataset.drop_sel(var_name)
+        dataset = dataset.drop_vars(names=[var_name])
 
     return output_shape
 
@@ -744,7 +744,7 @@ def _compute_write_index(keyword_arguments):
         input_var_names.append("lat")
     for var in dataset.data_vars:
         if var not in input_var_names:
-            dataset = dataset.drop_sel(var)
+            dataset = dataset.drop_vars(names=[var])
 
     # get the initial year of the data
     data_start_year = int(str(dataset["time"].values[0])[0:4])
@@ -920,7 +920,7 @@ def _compute_write_index(keyword_arguments):
         # remove all data variables except for the new SCPDSI variable
         for var_name in dataset.data_vars:
             if var_name != var_name_scpdsi:
-                dataset = dataset.drop_sel(var_name)
+                dataset = dataset.drop_vars(names=[var_name])
 
         # TODO set global attributes accordingly for this new dataset
 
@@ -941,7 +941,7 @@ def _compute_write_index(keyword_arguments):
         # remove all data variables except for the new PDSI variable
         for var_name in dataset.data_vars:
             if var_name != var_name_pdsi:
-                dataset = dataset.drop_sel(var_name)
+                dataset = dataset.drop_vars(names=[var_name])
 
         # TODO set global attributes accordingly for this new dataset
 
@@ -962,7 +962,7 @@ def _compute_write_index(keyword_arguments):
         # remove all data variables except for the new PHDI variable
         for var_name in dataset.data_vars:
             if var_name != var_name_phdi:
-                dataset = dataset.drop_sel(var_name)
+                dataset = dataset.drop_vars(names=[var_name])
 
         # TODO set global attributes accordingly for this new dataset
 
@@ -983,7 +983,7 @@ def _compute_write_index(keyword_arguments):
         # remove all data variables except for the new PMDI variable
         for var_name in dataset.data_vars:
             if var_name != var_name_pmdi:
-                dataset = dataset.drop_sel(var_name)
+                dataset = dataset.drop_vars(names=[var_name])
 
         # TODO set global attributes accordingly for this new dataset
 
@@ -1004,7 +1004,7 @@ def _compute_write_index(keyword_arguments):
         # remove all data variables except for the new Z-Index variable
         for var_name in dataset.data_vars:
             if var_name != var_name_zindex:
-                dataset = dataset.drop_sel(var_name)
+                dataset = dataset.drop_vars(names=[var_name])
 
         # TODO set global attributes accordingly for this new dataset
 
