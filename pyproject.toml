@@ -1,15 +1,13 @@
 [build-system]
-# These are the assumed default build requirements from pip:
-# https://pip.pypa.io/en/stable/reference/pip/#pep-517-and-518-support
-requires = ['setuptools>=61.0', 'wheel']
-build-backend = 'setuptools.build_meta'
+requires = ['poetry-core>=1.0.0']
+build-backend = 'poetry.core.masonry.api'
 
-[project]
+[tool.poetry]
 name = 'climate_indices'
-version = '1.0.13'
+version = '1.0.16'
 description = 'Reference implementations of various climate indices typically used for drought monitoring'
+authors = ['James Adams <monocongo@gmail.com>']
 readme = 'README.md'
-requires-python = '>=3.7, <3.11'
 classifiers = [
      'Development Status :: 5 - Production/Stable',
      'Intended Audience :: Developers',
@@ -24,18 +22,23 @@ classifiers = [
      'Topic :: Scientific/Engineering :: Atmospheric Science',
      'Topic :: Scientific/Engineering :: Physics'
 ]
-dependencies = [
-    'dask',
-    'numba',
-    'scipy',
-    'xarray',
+packages = [{include = 'climate_indices', from = 'src'}]
+
+[tool.poetry.dependencies]
+dask = '2022.2.0'
+numba = '0.56.4'
+python = '>=3.8'
+scipy = '1.9.3'
+xarray = '2023.1.0'
+
+[tool.poetry.dev-dependencies]
+pytest = '*'
+tox = '*'
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    'ignore::FutureWarning',
 ]
-
-[project.optional-dependencies]
-dev = ['build', 'pytest', 'tox',]
-
-[tool.distutils.bdist_wheel]
-universal = true
 
 [project.scripts]
 process_climate_indices = 'climate_indices.__main__:main'
