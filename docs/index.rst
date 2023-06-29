@@ -90,35 +90,55 @@ will be Anaconda specific (although relevant to any Python `virtual environment 
 
 A new Anaconda `environment <https://conda.io/docs/using/envs.html>`__ can be created
 using the `conda <https://conda.io/docs/>`_ environment management system that comes
-packaged with Anaconda. In the following examples, we'll use an environment named *indices_env*
+packaged with Anaconda. In the following examples, we'll use an environment named *indices*
 (any environment name can be used instead of *indices_env*) which will be created and
-populated with all required dependencies through the use of the provided ``setup.py`` file.
+populated with all required dependencies via the ``pyproject.toml`` file.
 
-First, create the Python environment:
+First create and run the Anaconda virtual environment::
 
-``$ conda create -n indices_env``
+   conda create -n indices python='3.8' poetry``
+   conda activate indices
 
-The environment can now be 'activated':
+Then install the package into the virtual environment::
 
-``$ source activate indices_env``
+   python -m poetry install
 
-Once the environment has been activated then subsequent Python commands will run
-in this environment where the package dependencies for this project are present.
+Next (optional) run the unit test suite::
 
+    export NUMBA_DISABLE_JIT=1
+    python -m pytest tests
+
+the above should display output similar to this::
+
+   ======================= 38 passed, 18 warnings in 12.19s =======================
+
+Finally, show the package installed into the environment::
+
+   conda list climate-indices
+
+   # packages in environment at /Users/jadams/miniconda3/envs/climate381:
+   #
+   # Name                    Version                   Build  Channel
+   climate-indices           1.0.16                   pypi_0    pypi
+
+
+Installation into an existing Python virtual environment
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Now the package can be added to the environment along with all required modules
-(dependencies) via `pip <https://pip.pypa.io/en/stable/>`_:
+(dependencies) via `pip <https://pip.pypa.io/en/stable/>`_::
 
-``$ python -m pip install climate-indices``
+    python -m pip install climate-indices
 
-For development of the package itself it pays to install the dependencies via
-the `requirements.txt` file:
+For development of the package itself it pays to install the package along with its
+dependencies via `poetry` and the `pyproject.toml` file::
 
-``$ python -m pip install -r requirements.txt``
+    python -m poetry install
 
 When adding dependencies to the package they should be added to the `pyproject.toml`
-file in the dependencies section, then we can rebuild the requirements.txt file using pip-tools:
+file in the dependencies section, then if necessary we can build a `requirements.txt` file
+using `pip-tools`::
 
-``$ python -m piptools compile -o requirements.txt pyproject.toml``
+    python -m piptools compile -o requirements.txt pyproject.toml
 
 
 Indices Processing
