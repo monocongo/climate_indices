@@ -22,7 +22,7 @@ jobs:
       - name: Set up project
         run: |
           cd $GITHUB_WORKSPACE
-          python -m poetry install
+          poetry install
 
       - name: Run unit tests
-        run: python -m poetry run pytest
+        run: poetry run pytest
