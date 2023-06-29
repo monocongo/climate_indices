@@ -11,6 +11,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v2
         with:
@@ -21,7 +24,7 @@ jobs:
 
       - name: Set up project
         run: |
-          cd ..
+          cd $GITHUB_WORKSPACE
           poetry install
 
       - name: Run unit tests
