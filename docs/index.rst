@@ -71,39 +71,25 @@ with the following goals in mind:
 Getting started
 ---------------
 
-The installation and configuration described below is
-performed using a bash shell, either on Linux, Windows, or MacOS.
+Installation from PyPI
+^^^^^^^^^^^^^^^^^^^^^^^
 
-Windows users will need to install and configure a bash shell in order
-to follow the usage shown below. We recommended either
-`babun <https://babun.github.io/>`__ or `Cygwin <https://www.cygwin.com/>`__
-for this purpose.
+Install directly from PyPI::
 
-Configure the Python environment
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    python -m pip install climate-indices
 
-This project's code is written in Python 3. It is recommended to use
-either the `Miniconda3 <https://conda.io/miniconda.html>`__ (minimal Anaconda) or
-`Anaconda3 <https://www.continuum.io/downloads>`__ distribution. The below instructions
-will be Anaconda specific (although relevant to any Python `virtual environment <https://virtualenv.pypa.io/en/stable/>`_
-), and assume the use of a bash shell.
+Installation from source
+^^^^^^^^^^^^^^
 
-A new Anaconda `environment <https://conda.io/docs/using/envs.html>`__ can be created
-using the `conda <https://conda.io/docs/>`_ environment management system that comes
-packaged with Anaconda. In the following examples, we'll use an environment named *indices*
-(any environment name can be used instead of *indices_env*) which will be created and
-populated with all required dependencies via the ``pyproject.toml`` file.
+In order to build and install the package from source we need to first install `poetry <https://python-poetry.org/>`__::
 
-First create and run the Anaconda virtual environment::
+    python -m pip install poetry
 
-   conda create -n indices python='3.8' poetry``
-   conda activate indices
-
-Then install the package into the virtual environment::
+Then install the package from source::
 
    python -m poetry install
 
-Next (optional) run the unit test suite::
+Next (optional) run the unit test suite to validate the installation::
 
     export NUMBA_DISABLE_JIT=1
     python -m pytest tests
@@ -122,27 +108,9 @@ Finally, show the package installed into the environment::
    climate-indices           1.0.16                   pypi_0    pypi
 
 
-Installation into an existing Python virtual environment
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Now the package can be added to the environment along with all required modules
-(dependencies) via `pip <https://pip.pypa.io/en/stable/>`_::
 
-    python -m pip install climate-indices
-
-For development of the package itself it pays to install the package along with its
-dependencies via `poetry` and the `pyproject.toml` file::
-
-    python -m poetry install
-
-When adding dependencies to the package they should be added to the `pyproject.toml`
-file in the dependencies section, then if necessary we can build a `requirements.txt` file
-using `pip-tools`::
-
-    python -m piptools compile -o requirements.txt pyproject.toml
-
-
-Indices Processing
-----------------------------------
+Usage
+---------
 
 The installation will provide an "entry point" script which interacts with the core
 computational package to compute one or more climate indices. This script is
@@ -396,8 +364,8 @@ Parallelization will occur utilizing all CPUs.
 
 Pre-compute SPI distribution fitting variables
 """""""""""""""""""""""""""""""""""""""""""""""
-In order to pre-compute fititng parameters for later use as inputs to subsequent
-SPI calculations we can save both gamma and Pearson distributinon fitting parameters
+In order to pre-compute fitting parameters for later use as inputs to subsequent
+SPI calculations we can save both gamma and Pearson distribution fitting parameters
 to NetCDF, and later use this file as input for SPI calculations over the same
 calibration period.
 
@@ -420,38 +388,6 @@ The distribution fitting variables are written to the file specified by the `--s
 The second command also computes SPI but instead of computing the distribution fitting values
 it loads the pre-computed fitting values from the NetCDF file specified by the `--load_params`
 option.
-
-
-For Developers
----------------
-
-Download the code
-^^^^^^^^^^^^^^^^^
-
-Clone this repository:
-
-``$ git clone https://github.com/monocongo/climate_indices.git``
-
-Move into the source directory:
-
-``$ cd climate_indices``
-
-Within this directory, there are four subdirectories:
-
--  ``climate_indices``: main computational package
--  ``tests``: unit tests for the main package
--  ``notebooks``: Jupyter Notebooks describing the internals of the computational modules
--  ``docs``: documentation files
-
-Testing
-^^^^^^^
-
-Initially, all tests should be run for validation:
-
-``$ tox``
-
-If you run the above from the main branch and get an error then please
-send a report and/or add an issue, as all tests should pass.
 
 
 Get involved
