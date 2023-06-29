@@ -14,10 +14,10 @@ classifiers = [
      'Intended Audience :: Education',
      'Intended Audience :: Science/Research',
      'License :: OSI Approved :: BSD License',
-     'Programming Language :: Python :: 3.7',
      'Programming Language :: Python :: 3.8',
      'Programming Language :: Python :: 3.9',
      'Programming Language :: Python :: 3.10',
+     'Programming Language :: Python :: 3.11',
      'Topic :: Software Development :: Libraries :: Python Modules',
      'Topic :: Scientific/Engineering :: Atmospheric Science',
      'Topic :: Scientific/Engineering :: Physics'
@@ -27,7 +27,7 @@ packages = [{include = 'climate_indices', from = 'src'}]
 [tool.poetry.dependencies]
 dask = '2022.2.0'
 numba = '0.56.4'
-python = '>=3.8'
+python = '>=3.8,<=3.11'
 scipy = '1.9.3'
 xarray = '2023.1.0'
 
