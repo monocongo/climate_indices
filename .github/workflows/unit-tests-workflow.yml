@@ -6,13 +6,13 @@ jobs:
   test:
     strategy:
       matrix:
-        python-version: [3.11, 3.10, 3.9, 3.8]
+        python-version: ['3.11', '3.10', '3.9', '3.8']
 
     runs-on: ubuntu-latest
 
     steps:
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v3
         with:
           python-version: ${{ matrix.python-version }}
 
