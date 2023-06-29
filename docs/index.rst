@@ -68,17 +68,32 @@ with the following goals in mind:
    best practices
 
 
-Getting started
+Quick Start
 ---------------
+   ::
 
-Installation from PyPI
+    # create and activate a Python virtual environment with conda
+    conda create -n myvenv poetry pytest
+    conda activate myvenv
+
+    # install the package
+    python -m poetry install
+
+    # optionally run the unit tests suite
+    export NUMBA_DISABLE_JIT=1
+    python -m poetry run pytest
+
+
+Installation
+-------------
+From PyPI
 ^^^^^^^^^^^^^^^^^^^^^^^
 
 Install directly from PyPI::
 
     python -m pip install climate-indices
 
-Installation from source
+From source
 ^^^^^^^^^^^^^^
 
 In order to build and install the package from source we need to first install `poetry <https://python-poetry.org/>`__::
