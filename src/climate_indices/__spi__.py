@@ -739,7 +739,7 @@ def _compute_write_index(keyword_arguments):
             # get the shared memory results array and convert it to a numpy array
             array = _global_shared_arrays[var_name][_KEY_ARRAY]
             shape = _global_shared_arrays[var_name][_KEY_SHAPE]
-            index_values = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
+            index_values = np.frombuffer(array.get_obj()).reshape(shape).astype(float)
             ds_fitting[var_name].data = index_values
 
     # if requested then we write the distribution fittings dataset to NetCDF
@@ -784,7 +784,7 @@ def build_dataset_spi_grid(
     # get the shared memory results array and convert it to a numpy array
     array = _global_shared_arrays[_KEY_RESULT][_KEY_ARRAY]
     shape = _global_shared_arrays[_KEY_RESULT][_KEY_SHAPE]
-    index_values = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
+    index_values = np.frombuffer(array.get_obj()).reshape(shape).astype(float)
 
     # convert daily values into normal/Gregorian calendar years
     if periodicity == compute.Periodicity.daily:
@@ -837,7 +837,7 @@ def build_dataset_spi_divisions(
     # get the shared memory results array and convert it to a numpy array
     array = _global_shared_arrays[_KEY_RESULT][_KEY_ARRAY]
     shape = _global_shared_arrays[_KEY_RESULT][_KEY_SHAPE]
-    index_values = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
+    index_values = np.frombuffer(array.get_obj()).reshape(shape).astype(float)
 
     # convert daily values into normal/Gregorian calendar years
     if periodicity == compute.Periodicity.daily:

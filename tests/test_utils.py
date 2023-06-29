@@ -417,7 +417,7 @@ def test_transform_to_366day():
 
     # an array of 366 values, representing a year with 366 days, as a non-leap
     # year with the Feb 29th value an average of the Feb. 28th and Mar. 1st values
-    values_366_faux_feb29 = np.array(range(366), dtype=np.float)
+    values_366_faux_feb29 = np.array(range(366), dtype=float)
     values_366_faux_feb29[59] = 58.5
     values_366_faux_feb29[60:] = [x - 1 for x in values_366_faux_feb29[60:]]
 

@@ -885,29 +885,29 @@ def _compute_write_index(keyword_arguments):
         # get the computed SCPDSI data as an array of float32 values
         array = _global_shared_arrays[_KEY_RESULT_SCPDSI][_KEY_ARRAY]
         shape = _global_shared_arrays[_KEY_RESULT_SCPDSI][_KEY_SHAPE]
-        scpdsi = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
+        scpdsi = np.frombuffer(array.get_obj()).reshape(shape).astype(float)
         # TODO once we support daily Palmers then we'll need to convert values
         #  from a 366-day calendar back into a normal/Gregorian calendar
 
         # get the computedPDSI data as an array of float32 values
         array = _global_shared_arrays[_KEY_RESULT_PDSI][_KEY_ARRAY]
         shape = _global_shared_arrays[_KEY_RESULT_PDSI][_KEY_SHAPE]
-        pdsi = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
+        pdsi = np.frombuffer(array.get_obj()).reshape(shape).astype(float)
 
         # get the computed PHDI data as an array of float32 values
         array = _global_shared_arrays[_KEY_RESULT_PHDI][_KEY_ARRAY]
         shape = _global_shared_arrays[_KEY_RESULT_PHDI][_KEY_SHAPE]
-        phdi = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
+        phdi = np.frombuffer(array.get_obj()).reshape(shape).astype(float)
 
         # get the computed PMDI data as an array of float32 values
         array = _global_shared_arrays[_KEY_RESULT_PMDI][_KEY_ARRAY]
         shape = _global_shared_arrays[_KEY_RESULT_PMDI][_KEY_SHAPE]
-        pmdi = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
+        pmdi = np.frombuffer(array.get_obj()).reshape(shape).astype(float)
 
         # get the computed Z-Index data as an array of float32 values
         array = _global_shared_arrays[_KEY_RESULT_ZINDEX][_KEY_ARRAY]
         shape = _global_shared_arrays[_KEY_RESULT_ZINDEX][_KEY_SHAPE]
-        zindex = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
+        zindex = np.frombuffer(array.get_obj()).reshape(shape).astype(float)
 
         # create a new variable to contain the SCPDSI values, assign into the dataset
         long_name = "Self-calibrated Palmer Drought Severity Index"
@@ -1084,7 +1084,7 @@ def _compute_write_index(keyword_arguments):
         # get the shared memory results array and convert it to a numpy array
         array = _global_shared_arrays[_KEY_RESULT][_KEY_ARRAY]
         shape = _global_shared_arrays[_KEY_RESULT][_KEY_SHAPE]
-        index_values = np.frombuffer(array.get_obj()).reshape(shape).astype(np.float32)
+        index_values = np.frombuffer(array.get_obj()).reshape(shape).astype(float)
 
         # convert daily values into normal/Gregorian calendar years
         if keyword_arguments["periodicity"] == compute.Periodicity.daily:
