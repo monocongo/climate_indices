@@ -4,7 +4,7 @@ build-backend = 'poetry.core.masonry.api'
 
 [tool.poetry]
 name = 'climate_indices'
-version = '1.1.0'
+version = '2.0.0'
 description = 'Reference implementations of various climate indices typically used for drought monitoring'
 authors = ['James Adams <monocongo@gmail.com>']
 readme = 'README.md'
@@ -25,8 +25,9 @@ classifiers = [
 packages = [{include = 'climate_indices', from = 'src'}]
 
 [tool.poetry.dependencies]
+cftime = '1.6.2'
 dask = '2022.2.0'
-h5netcdf = '*'
+h5netcdf = '1.1.0'
 python = '>=3.8,<3.12'
 scipy = '1.9.3'
 xarray = '2023.1.0'
