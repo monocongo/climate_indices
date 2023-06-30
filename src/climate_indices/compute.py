@@ -185,7 +185,6 @@ def _probability_of_zero(
         # determine the number of time steps per year
         # (we expect 12 for monthly, 366 for daiy)
         time_steps_per_year = values.shape[1]
-        # if (time_steps_per_year != 12) and (time_steps_per_year != 366):
         if time_steps_per_year not in (12, 366):
             message = "Invalid shape of input data array: {shape}".format(shape=values.shape)
             _logger.error(message)
