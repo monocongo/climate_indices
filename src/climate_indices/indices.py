@@ -2,7 +2,6 @@ from enum import Enum
 import logging
 from typing import Dict
 
-import numba
 import numpy as np
 
 from climate_indices import compute, eto, palmer, utils
@@ -11,7 +10,6 @@ from climate_indices import compute, eto, palmer, utils
 __all__ = ["pdsi", "percentage_of_normal", "pet", "scpdsi", "spei", "spi"]
 
 
-# ------------------------------------------------------------------------------
 class Distribution(Enum):
     """
     Enumeration type for distribution fittings used for SPI and SPEI.
@@ -61,17 +59,15 @@ _fit_altnames = (("alpha", "alphas"), ("beta", "betas"),
                  ("prob_zero", "probabilities_of_zero"))
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def spi(
-        values: np.ndarray,
-        scale: int,
-        distribution: Distribution,
-        data_start_year: int,
-        calibration_year_initial: int,
-        calibration_year_final: int,
-        periodicity: compute.Periodicity,
-        fitting_params: Dict = None,
+    values: np.ndarray,
+    scale: int,
+    distribution: Distribution,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: compute.Periodicity,
+    fitting_params: Dict = None,
 ) -> np.ndarray:
     """
     Computes SPI (Standardized Precipitation Index).
@@ -205,18 +201,16 @@ def spi(
     return values[0:original_length]
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def spei(
-        precips_mm: np.ndarray,
-        pet_mm: np.ndarray,
-        scale: int,
-        distribution: Distribution,
-        periodicity: compute.Periodicity,
-        data_start_year: int,
-        calibration_year_initial: int,
-        calibration_year_final: int,
-        fitting_params: dict = None,
+    precips_mm: np.ndarray,
+    pet_mm: np.ndarray,
+    scale: int,
+    distribution: Distribution,
+    periodicity: compute.Periodicity,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    fitting_params: dict = None,
 ) -> np.ndarray:
     """
     Compute SPEI fitted to the gamma distribution.
@@ -358,14 +352,14 @@ def spei(
     return values[0:original_length]
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
-def scpdsi(precip_time_series: np.ndarray,
-           pet_time_series: np.ndarray,
-           awc: float,
-           data_start_year: int,
-           calibration_start_year: int,
-           calibration_end_year: int):
+def scpdsi(
+    precip_time_series: np.ndarray,
+    pet_time_series: np.ndarray,
+    awc: float,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+):
     """
     This function computes the self-calibrated Palmer Drought Severity Index
     (scPDSI), Palmer Drought Severity Index (PDSI), Palmer Hydrological Drought
@@ -389,14 +383,14 @@ def scpdsi(precip_time_series: np.ndarray,
                          calibration_end_year)
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
-def pdsi(precip_time_series: np.ndarray,
-         pet_time_series: np.ndarray,
-         awc: float,
-         data_start_year: int,
-         calibration_start_year: int,
-         calibration_end_year: int):
+def pdsi(
+    precip_time_series: np.ndarray,
+    pet_time_series: np.ndarray,
+    awc: float,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+):
     """
     This function computes the Palmer Drought Severity Index (PDSI), Palmer
     Hydrological Drought Index (PHDI), and Palmer Z-Index.
@@ -419,14 +413,14 @@ def pdsi(precip_time_series: np.ndarray,
                        calibration_end_year)
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
-def percentage_of_normal(values: np.ndarray,
-                         scale: int,
-                         data_start_year: int,
-                         calibration_start_year: int,
-                         calibration_end_year: int,
-                         periodicity: compute.Periodicity) -> np.ndarray:
+def percentage_of_normal(
+    values: np.ndarray,
+    scale: int,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: compute.Periodicity,
+) -> np.ndarray:
     """
     This function finds the percent of normal values (average of each calendar
     month or day over a specified calibration period of years) for a specified
@@ -531,11 +525,11 @@ def percentage_of_normal(values: np.ndarray,
     return percentages_of_normal
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
-def pet(temperature_celsius: np.ndarray,
-        latitude_degrees: float,
-        data_start_year: int) -> np.ndarray:
+def pet(
+    temperature_celsius: np.ndarray,
+    latitude_degrees: float,
+    data_start_year: int,
+) -> np.ndarray:
     """
     This function computes potential evapotranspiration (PET) using
     Thornthwaite's equation.
@@ -587,9 +581,9 @@ def pet(temperature_celsius: np.ndarray,
     raise ValueError(message)
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
-def pci(rainfall_mm: np.ndarray) -> np.ndarray:
+def pci(
+    rainfall_mm: np.ndarray,
+) -> np.ndarray:
     """
     This function computes Precipitation Concentration Index(PCI, Oliver, 1980).
 

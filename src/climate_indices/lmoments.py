@@ -109,9 +109,9 @@ def _estimate_pearson3_parameters(lmoments: np.ndarray) -> dict:
     return {"loc": loc, "skew": skew, "scale": scale}
 
 
-# ------------------------------------------------------------------------------
-# @numba.jit
-def _estimate_lmoments(values: np.ndarray) -> np.ndarray:
+def _estimate_lmoments(
+    values: np.ndarray,
+) -> np.ndarray:
     """
     Estimate sample L-moments, based on Fortran code written for inclusion
     in IBM Research Report RC20525,

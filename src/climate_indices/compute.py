@@ -4,11 +4,7 @@ from enum import Enum
 from distutils.version import LooseVersion
 import logging
 
-# from dask.array import pad
-# from dask_image.ndfilters import convolve
-import numba
 import numpy as np
-# import scipy.special
 import scipy.stats
 import scipy.version
 
@@ -18,12 +14,10 @@ _do_pearson3_workaround = LooseVersion(scipy.version.version) < '1.6.0'
 # declare the names that should be included in the public API for this module
 __all__ = ["Periodicity"]
 
-# ------------------------------------------------------------------------------
 # Retrieve logger and set desired logging level
 _logger = utils.get_logger(__name__, logging.WARN)
 
 
-# ------------------------------------------------------------------------------
 class Periodicity(Enum):
     """
     Enumeration type for specifying dataset periodicity.
@@ -62,11 +56,9 @@ class Periodicity(Enum):
         return unit
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _validate_array(
-        values: np.ndarray,
-        periodicity: Periodicity,
+    values: np.ndarray,
+    periodicity: Periodicity,
 ) -> np.ndarray:
     """
 
@@ -111,11 +103,9 @@ def _validate_array(
     return values
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def sum_to_scale(
-        values: np.ndarray,
-        scale: int,
+    values: np.ndarray,
+    scale: int,
 ) -> np.ndarray:
     """
     Compute a sliding sums array using 1-D convolution. The initial
@@ -166,10 +156,8 @@ def sum_to_scale(
     # return convolve(values, np.ones(scale), mode='reflect', cval=0.0, origin=0)[start: end]
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _probability_of_zero(
-        values: np.ndarray,
+    values: np.ndarray,
 ) -> np.ndarray:
     """
     This function computes the probability of zero and Pearson Type III
@@ -230,14 +218,12 @@ def _probability_of_zero(
     return probabilities_of_zero
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def pearson_parameters(
-        values: np.ndarray,
-        data_start_year: int,
-        calibration_start_year: int,
-        calibration_end_year: int,
-        periodicity: Periodicity,
+    values: np.ndarray,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
 ) -> (np.ndarray, np.ndarray, np.ndarray, np.ndarray):
     """
     This function computes the probability of zero and Pearson Type III
@@ -250,6 +236,9 @@ def pearson_parameters(
         non-leap years) and assuming that the first value of the array is
         January of the initial year for an input array of monthly values or
         Jan. 1st of initial year for an input array daily values
+    :param data_start_year:
+    :param calibration_start_year:
+    :param calibration_end_year:
     :param periodicity: monthly or daily
     :return: four 1-D array of fitting values for the Pearson Type III
         distribution, with shape (12,) for monthly or (366,) for daily
@@ -355,12 +344,10 @@ def pearson_parameters(
     return probabilities_of_zero, locs, scales, skews
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _minimum_possible(
-        skew: float,
-        loc: float,
-        scale: float,
+    skew: float,
+    loc: float,
+    scale: float,
 ) -> float:
     """
     Compute the minimum possible value that can be fitted to a distribution
@@ -379,14 +366,12 @@ def _minimum_possible(
     return loc - ((alpha * scale * skew) / 2.0)
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _pearson_fit(
-        values: np.ndarray,
-        probabilities_of_zero: np.ndarray,
-        skew: np.ndarray,
-        loc: np.ndarray,
-        scale: np.ndarray,
+    values: np.ndarray,
+    probabilities_of_zero: np.ndarray,
+    skew: np.ndarray,
+    loc: np.ndarray,
+    scale: np.ndarray,
 ) -> np.ndarray:
     """
     Perform fitting of an array of values to a Pearson Type III distribution
@@ -474,18 +459,16 @@ def _pearson_fit(
     return fitted_values
 
 
-# ------------------------------------------------------------------------------
-#@numba.jit
 def transform_fitted_pearson(
-        values: np.ndarray,
-        data_start_year: int,
-        calibration_start_year: int,
-        calibration_end_year: int,
-        periodicity: Periodicity,
-        probabilities_of_zero: np.ndarray = None,
-        locs: np.ndarray = None,
-        scales: np.ndarray = None,
-        skews: np.ndarray = None,
+    values: np.ndarray,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
+    probabilities_of_zero: np.ndarray = None,
+    locs: np.ndarray = None,
+    scales: np.ndarray = None,
+    skews: np.ndarray = None,
 ) -> np.ndarray:
     """
     Fit values to a Pearson Type III distribution and transform the values
@@ -564,14 +547,12 @@ def transform_fitted_pearson(
     return values
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def gamma_parameters(
-        values: np.ndarray,
-        data_start_year: int,
-        calibration_start_year: int,
-        calibration_end_year: int,
-        periodicity: Periodicity,
+    values: np.ndarray,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
 ) -> (np.ndarray, np.ndarray):
     """
     Computes the gamma distribution parameters alpha and beta.
@@ -647,11 +628,10 @@ def gamma_parameters(
     return alphas, betas
 
 
-# ------------------------------------------------------------------------------
 def scale_values(
-        values: np.ndarray,
-        scale: int,
-        periodicity: Periodicity,
+    values: np.ndarray,
+    scale: int,
+    periodicity: Periodicity,
 ):
 
     # we expect to operate upon a 1-D array, so if we've been passed a 2-D array
@@ -696,16 +676,14 @@ def scale_values(
     return scaled_values
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def transform_fitted_gamma(
-        values: np.ndarray,
-        data_start_year: int,
-        calibration_start_year: int,
-        calibration_end_year: int,
-        periodicity: Periodicity,
-        alphas: np.ndarray = None,
-        betas: np.ndarray = None,
+    values: np.ndarray,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
+    alphas: np.ndarray = None,
+    betas: np.ndarray = None,
 ) -> np.ndarray:
     """
     Fit values to a gamma distribution and transform the values to corresponding

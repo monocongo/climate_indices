@@ -3,27 +3,21 @@ import logging
 import math
 import warnings
 
-import numba
 import numpy as np
 
 from climate_indices import utils
 
-# ------------------------------------------------------------------------------
 # Retrieve logger and set desired logging level
 _logger = utils.get_logger(__name__, logging.INFO)
 
 
-# ------------------------------------------------------------------------------
 _PDSI_MIN = -4.0
 _PDSI_MAX = 4.0
 
-# ------------------------------------------------------------------------------
 # ignore all warnings
 warnings.simplefilter("ignore", Warning)
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _water_balance(awc, pet, precip):
     """
     Performs a water balance accounting for a location which accounts
@@ -401,8 +395,6 @@ def _water_balance_potential_loss(a,
     return PL, potential_loss_surface, potential_loss_under
 
 
-# ------------------------------------------------------------------------------
-@numba.vectorize([numba.f8(numba.f8, numba.f8), numba.f4(numba.f4, numba.f4)])
 def _cafec_coeff_ufunc(actual, potential):
     """
     Vectorized function for computing a CAFEC coefficient.
@@ -529,8 +521,6 @@ def _cafec_coefficients(potential_evapotranspiration: np.ndarray,
         return alpha, beta, gamma, delta
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _calibrate_data(arrays: list,
                     data_start_year: int,
                     calibration_start_year: int,
@@ -571,8 +561,6 @@ def _calibrate_data(arrays: list,
     return calibration_arrays
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _climatic_characteristic(alpha: float,
                              beta: float,
                              gamma: float,
@@ -706,8 +694,6 @@ def _climatic_characteristic(alpha: float,
     return K
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _z_index(P: np.ndarray,
              PET: np.ndarray,
              ET: np.ndarray,
@@ -829,8 +815,6 @@ def _z_index(P: np.ndarray,
     return z.flatten()
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _compute_X(Z: np.ndarray, k, PPe, X1, X2, PX1, PX2, PX3, X, BT):
     """
 
@@ -902,8 +886,6 @@ def _compute_X(Z: np.ndarray, k, PPe, X1, X2, PX1, PX2, PX3, X, BT):
     return PX1, PX2, PX3, X, BT
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _backtrack(k, PPe, PX1, PX2, PX3, X, BT):
     """
     This function steps through stored index values computed for previous months
@@ -971,8 +953,6 @@ def _backtrack(k, PPe, PX1, PX2, PX3, X, BT):
     return X, BT
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X):
 
     # This function is called when non-zero, non-one hundred PPe values occur
@@ -1022,8 +1002,6 @@ def _between_0s(k, Z, X3, PX1, PX2, PX3, PPe, BT, X):
     return PV, PX1, PX2, PX3, PPe, X, BT
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _dry_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT):
     """
 
@@ -1087,8 +1065,6 @@ def _dry_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT):
     return PV, PPe, PX1, PX2, PX3, X, BT
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _wet_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT):
     """
 
@@ -1142,9 +1118,7 @@ def _wet_spell_abatement(k, Z, V, Pe, PPe, PX1, PX2, PX3, X1, X2, X3, X, BT):
     return PV, PPe, PX1, PX2, PX3, X, BT
 
 
-# ------------------------------------------------------------------------------
-# comparable to the case() subroutine in original NCDC pdi.f
-@numba.jit
+# based on the case() subroutine in the original NCDC pdi.f
 def _pmdi(probability, X1, X2, X3):
     """
 
@@ -1252,8 +1226,6 @@ def _assign_X_backtracking(X,
                 X[i] = preliminary_X1[i]
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _assign_X(
         k: int,
         number_of_months: int,
@@ -1300,8 +1272,6 @@ def _assign_X(
             X[k] = PX2[k]
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _pdsi_from_zindex(
         Z: np.ndarray,
 ) -> (np.ndarray, np.ndarray, np.ndarray):
@@ -1451,8 +1421,6 @@ def _pdsi_from_zindex(
     return PDSI, PHDI, PMDI
 
 
-# ------------------------------------------------------------------------------
-@numba.vectorize([numba.f8(numba.f8, numba.f8)])
 def _phdi_select_ufunc(
         px3,
         x,
@@ -1475,8 +1443,6 @@ def _phdi_select_ufunc(
     return phdi
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _compute_scpdsi(
         established_index_values: np.ndarray,
         sczindex_values: np.ndarray,
@@ -1663,8 +1629,6 @@ def _compute_scpdsi(
     )
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _choose_X(
         pdsi_values: np.ndarray,
         established_index_values: np.ndarray,
@@ -1776,8 +1740,6 @@ def _choose_X(
     return new_X, new_X1, new_X2, new_X3
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _backtrack_self_calibrated(
         pdsi_values: np.ndarray,
         wet_index_deque,
@@ -1854,8 +1816,6 @@ def _highest_reasonable_value(
     return highest_reasonable_value
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _z_sum(
         interval: int,
         wet_or_dry: str,
@@ -1957,8 +1917,6 @@ def _z_sum(
     return largest_sum
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _least_squares(
         x: np.ndarray,
         y: np.ndarray,
@@ -2036,8 +1994,6 @@ def _least_squares(
     return least_squares_slope, least_squares_intercept
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _duration_factors(
         zindex_values: np.ndarray,
         calibration_start_year: int,
@@ -2103,8 +2059,6 @@ def _duration_factors(
     return slope, intercept
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _pdsi_at_percentile(
         pdsi_values: np.ndarray,
         percentile: float,
@@ -2114,8 +2068,6 @@ def _pdsi_at_percentile(
     return pdsi_sorted[int(len(pdsi_values) * percentile)]
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _self_calibrate(
         pdsi_values: np.ndarray,
         sczindex_values,
@@ -2193,8 +2145,6 @@ def _self_calibrate(
     return sczindex_values, pdsi_values, scpdsi_values
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def scpdsi(
         precip_time_series: np.ndarray,
         pet_time_series: np.ndarray,

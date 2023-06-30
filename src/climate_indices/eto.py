@@ -25,16 +25,13 @@ import calendar
 import logging
 import math
 
-import numba
 import numpy as np
 
 from climate_indices import utils
 
-# ------------------------------------------------------------------------------
 # Retrieve logger and set desired logging level
 _logger = utils.get_logger(__name__, logging.DEBUG)
 
-# ------------------------------------------------------------------------------
 
 # days of each calendar month, for non-leap and leap years
 _MONTH_DAYS_NONLEAP = np.array([31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31])
@@ -43,7 +40,6 @@ _MONTH_DAYS_LEAP = np.array([31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31])
 # solar constant [ MJ m-2 min-1]
 _SOLAR_CONSTANT = 0.0820
 
-# ------------------------------------------------------------------------------
 # angle values used within the _sunset_hour_angle() function defined below
 
 # valid range for latitude, in radians
@@ -56,8 +52,6 @@ _SOLAR_DECLINATION_RADIANS_MIN = np.deg2rad(-23.45)
 _SOLAR_DECLINATION_RADIANS_MAX = np.deg2rad(23.45)
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _sunset_hour_angle(
         latitude_radians: float,
         solar_declination_radians: float,
@@ -103,8 +97,6 @@ def _sunset_hour_angle(
     return math.acos(min(max(cos_sunset_hour_angle, -1.0), 1.0))
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _solar_declination(
         day_of_year: int,
 ) -> float:
@@ -126,8 +118,6 @@ def _solar_declination(
     return 0.409 * math.sin(((2.0 * math.pi / 365.0) * day_of_year - 1.39))
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _daylight_hours(
         sunset_hour_angle_radians: float,
 ) -> float:
@@ -154,21 +144,19 @@ def _daylight_hours(
     return (24.0 / math.pi) * sunset_hour_angle_radians
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def _monthly_mean_daylight_hours(
         latitude_radians: float,
         leap=False,
 ) -> np.ndarray:
     """
     :param latitude_radians: latitude in radians
-    :param leap: whether or not values should be computed specific to leap years
+    :param leap: whether values should be computed specific to leap years or not
     :return: the mean daily daylight hours for each calendar month of a year
     :rtype: numpy.ndarray of floats, 1-D with shape: (12,)
     """
 
     # get the array of days for each month based
-    # on whether or not we're in a leap year
+    # on whether we're in a leap year or not
     if not leap:
         month_days = _MONTH_DAYS_NONLEAP
     else:
@@ -196,8 +184,6 @@ def _monthly_mean_daylight_hours(
     return monthly_mean_dlh
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def eto_thornthwaite(
         monthly_temps_celsius: np.ndarray,
         latitude_degrees: float,
@@ -263,7 +249,7 @@ def eto_thornthwaite(
     # calculate the heat index (I)
     heat_index = np.sum(np.power(mean_monthly_temps / 5.0, 1.514))
 
-    # calculate the a coefficient
+    # calculate the coefficient
     a = ((6.75e-07 * heat_index ** 3)
          - (7.71e-05 * heat_index ** 2)
          + (1.792e-02 * heat_index)
@@ -299,8 +285,6 @@ def eto_thornthwaite(
     return pet.reshape(-1)[0:original_length]
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def eto_hargreaves(
         daily_tmin_celsius: np.ndarray,
         daily_tmax_celsius: np.ndarray,

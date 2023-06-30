@@ -2,11 +2,9 @@ import calendar
 from datetime import datetime
 import logging
 
-import numba
 import numpy as np
 
 
-# ------------------------------------------------------------------------------
 # set up a basic, global _logger
 def get_logger(name, level):
     logging.basicConfig(
@@ -18,10 +16,9 @@ def get_logger(name, level):
     return logger
 
 
-# ------------------------------------------------------------------------------
 def sign_change(
-        a: np.ndarray,
-        b: np.ndarray,
+    a: np.ndarray,
+    b: np.ndarray,
 ) -> np.ndarray:
     """
     Given two same-sized arrays of floats return an array of booleans indicating
@@ -48,9 +45,8 @@ def sign_change(
     return np.reshape(sign_changes, original_shape)
 
 
-# ------------------------------------------------------------------------------
 def is_data_valid(
-        data: np.ndarray,
+    data: np.ndarray,
 ) -> bool:
     """
     Returns if an array is valid or not, i.e. a supported array type
@@ -78,10 +74,9 @@ def is_data_valid(
     return valid_flag
 
 
-# ------------------------------------------------------------------------------
 def rmse(
-        predictions: np.ndarray,
-        targets: np.ndarray,
+    predictions: np.ndarray,
+    targets: np.ndarray,
 ) -> np.ndarray:
     """
     Root mean square error
@@ -93,12 +88,11 @@ def rmse(
     return np.sqrt(((predictions - targets) ** 2).mean())
 
 
-# ------------------------------------------------------------------------------
 def compute_days(
-        initial_year: int,
-        total_months: int,
-        initial_month=1,
-        units_start_year=1800,
+    initial_year: int,
+    total_months: int,
+    initial_month=1,
+    units_start_year=1800,
 ) -> np.ndarray:
     """
     Computes the "number of days" equivalent for regular, incremental monthly
@@ -144,11 +138,9 @@ def compute_days(
     return days
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def reshape_to_2d(
-        values: np.ndarray,
-        second_axis_length: int,
+    values: np.ndarray,
+    second_axis_length: int,
 ) -> np.ndarray:
     """
     :param values: an 1-D numpy.ndarray of values
@@ -194,10 +186,8 @@ def reshape_to_2d(
     return np.reshape(values, newshape=(first_axis_length, second_axis_length))
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def reshape_to_divs_years_months(
-        monthly_values: np.ndarray,
+    monthly_values: np.ndarray,
 ) -> np.ndarray:
     """
     :param monthly_values: an 2-D numpy.ndarray of monthly values,
@@ -243,11 +233,9 @@ def reshape_to_divs_years_months(
     return np.reshape(monthly_values, (shape[0], total_years, 12))
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def gregorian_length_as_366day(
-        length_gregorian: int,
-        year_start: int,
+    length_gregorian: int,
+    year_start: int,
 ) -> int:
 
     year = year_start
@@ -271,12 +259,10 @@ def gregorian_length_as_366day(
     return length_366day
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def transform_to_366day(
-        original: np.ndarray,
-        year_start: int,
-        total_years: int,
+    original: np.ndarray,
+    year_start: int,
+    total_years: int,
 ) -> np.ndarray:
     """
     Takes an array of daily values with only actual leap years represented
@@ -371,11 +357,9 @@ def transform_to_366day(
     return all_leap
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def transform_to_gregorian(
-        original: np.ndarray,
-        year_start: int,
+    original: np.ndarray,
+    year_start: int,
 ) -> np.ndarray:
     """
     Takes an array of daily values represented as full 366-day years (as if each
@@ -466,9 +450,8 @@ def transform_to_gregorian(
     return gregorian
 
 
-# ------------------------------------------------------------------------------
 def count_zeros_and_non_missings(
-        values: np.ndarray,
+    values: np.ndarray,
 ) -> (int, int):
     """
     Given an input array of values return a count of the zeros
@@ -489,7 +472,6 @@ def count_zeros_and_non_missings(
     return zeros, non_missings
 
 
-# ------------------------------------------------------------------------------
 def get_tolerance(dim: np.ndarray) -> float:
     """
     dynamic threshold absolute tolerance parameter np.allclose

@@ -26,7 +26,7 @@ packages = [{include = 'climate_indices', from = 'src'}]
 
 [tool.poetry.dependencies]
 dask = '2022.2.0'
-numba = '0.57.0'
+h5netcdf = '*'
 python = '>=3.8,<3.12'
 scipy = '1.9.3'
 xarray = '2023.1.0'
@@ -39,7 +39,7 @@ filterwarnings = [
     'ignore::FutureWarning',
 ]
 
-[project.scripts]
+[tool.poetry.scripts]
 process_climate_indices = 'climate_indices.__main__:main'
 spi = 'climate_indices.__spi__:main'
 
