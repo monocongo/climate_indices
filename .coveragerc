@@ -14,7 +14,5 @@ ignore_errors = True
 
 omit =
     docs/*
-    example_inputs/*
     notebooks/*
-    scripts/*
     tests/*
