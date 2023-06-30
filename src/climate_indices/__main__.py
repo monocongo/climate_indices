@@ -1,3 +1,5 @@
+"""Command-line interface for climate indices processing"""
+
 import argparse
 from collections import Counter
 from datetime import datetime
@@ -5,6 +7,7 @@ from enum import Enum
 import logging
 import multiprocessing
 import os
+from typing import List
 
 import numpy as np
 import scipy.constants
@@ -28,12 +31,10 @@ _KEY_RESULT_ZINDEX = "result_array_zindex"
 # global dictionary to contain shared arrays for use by worker processes
 _global_shared_arrays = {}
 
-# ------------------------------------------------------------------------------
 # Retrieve logger and set desired logging level
 _logger = utils.get_logger(__name__, logging.INFO)
 
 
-# ------------------------------------------------------------------------------
 class InputType(Enum):
     """
     Enumeration type for differentiating between gridded, timeseriesn and US
@@ -45,7 +46,6 @@ class InputType(Enum):
     timeseries = 3
 
 
-# ------------------------------------------------------------------------------
 def init_worker(arrays_and_shapes):
     """
     Initialization function that assigns named arrays into the global variable.
@@ -61,7 +61,6 @@ def init_worker(arrays_and_shapes):
     _global_shared_arrays = arrays_and_shapes
 
 
-# ------------------------------------------------------------------------------
 def _validate_args(args):
     """
     Validate the processing settings to confirm that proper argument
@@ -419,7 +418,6 @@ def _validate_args(args):
     return input_type
 
 
-# ------------------------------------------------------------------------------
 def _get_scale_increment(args_dict):
 
     if args_dict["periodicity"] == compute.Periodicity.daily:
@@ -432,7 +430,6 @@ def _get_scale_increment(args_dict):
     return scale_increment
 
 
-# ------------------------------------------------------------------------------
 def _log_status(args_dict):
 
     # get the scale increment for use in later log messages
@@ -466,7 +463,6 @@ def _log_status(args_dict):
     return True
 
 
-# ------------------------------------------------------------------------------
 def _build_arguments(keyword_args):
     """
     Builds a dictionary of function arguments appropriate to the index to be computed.
@@ -509,7 +505,6 @@ def _build_arguments(keyword_args):
     return function_arguments
 
 
-# ------------------------------------------------------------------------------
 def _get_variable_attributes(args_dict):
 
     if args_dict["index"] == "spi":
@@ -571,11 +566,12 @@ def _get_variable_attributes(args_dict):
     return var_name, attrs
 
 
-# ------------------------------------------------------------------------------
-def _drop_data_into_shared_arrays_grid(dataset: xr.Dataset,
-                                       var_names: list,
-                                       periodicity: compute.Periodicity,
-                                       data_start_year: int):
+def _drop_data_into_shared_arrays_grid(
+    dataset: xr.Dataset,
+    var_names: list,
+    periodicity: compute.Periodicity,
+    data_start_year: int,
+):
 
     output_shape = None
 
@@ -638,9 +634,10 @@ def _drop_data_into_shared_arrays_grid(dataset: xr.Dataset,
     return output_shape
 
 
-# ------------------------------------------------------------------------------
-def _drop_data_into_shared_arrays_divisions(dataset,
-                                            var_names):
+def _drop_data_into_shared_arrays_divisions(
+    dataset,
+    var_names: List[str],
+):
 
     output_shape = None
 
@@ -684,7 +681,6 @@ def _drop_data_into_shared_arrays_divisions(dataset,
     return output_shape
 
 
-# ------------------------------------------------------------------------------
 def _compute_write_index(keyword_arguments):
     """
     Computes a climate index and writes the result into a corresponding NetCDF.
@@ -1120,7 +1116,6 @@ def _compute_write_index(keyword_arguments):
         return netcdf_file_name, output_var_name
 
 
-# ------------------------------------------------------------------------------
 def _pet(temperatures, latitude, parameters):
 
     return indices.pet(temperature_celsius=temperatures,
@@ -1128,7 +1123,6 @@ def _pet(temperatures, latitude, parameters):
                        data_start_year=parameters["data_start_year"])
 
 
-# ------------------------------------------------------------------------------
 def _spi(precips, parameters):
 
     return indices.spi(values=precips,
@@ -1140,7 +1134,6 @@ def _spi(precips, parameters):
                        periodicity=parameters["periodicity"])
 
 
-# ------------------------------------------------------------------------------
 def _spei(precips, pet_mm, parameters):
 
     return indices.spei(precips_mm=precips,
@@ -1153,7 +1146,6 @@ def _spei(precips, pet_mm, parameters):
                         periodicity=parameters["periodicity"])
 
 
-# ------------------------------------------------------------------------------
 def _palmers(precips, pet_mm, awc, parameters):
 
     return indices.scpdsi(precip_time_series=precips,
@@ -1164,7 +1156,6 @@ def _palmers(precips, pet_mm, awc, parameters):
                           calibration_end_year=parameters["calibration_end_year"])
 
 
-# ------------------------------------------------------------------------------
 def _pnp(precips, parameters):
 
     return indices.percentage_of_normal(precips,
@@ -1175,14 +1166,12 @@ def _pnp(precips, parameters):
                                         periodicity=parameters["periodicity"])
 
 
-# ------------------------------------------------------------------------------
 def _init_worker(shared_arrays_dict):
 
     global _global_shared_arrays
     _global_shared_arrays = shared_arrays_dict
 
 
-# ------------------------------------------------------------------------------
 def _parallel_process(index: str,
                       arrays_dict: dict,
                       input_var_names: dict,
@@ -1323,7 +1312,6 @@ def _parallel_process(index: str,
             pool.map(_apply_along_axis, chunk_params)
 
 
-# ------------------------------------------------------------------------------
 def _apply_along_axis(params):
     """
     Like numpy.apply_along_axis(), but with arguments in a dict instead.
@@ -1367,8 +1355,9 @@ def _apply_along_axis(params):
     np.copyto(np_output_array[start_index:end_index], computed_array)
 
 
-# ------------------------------------------------------------------------------
-def _apply_along_axis_double(params):
+def _apply_along_axis_double(
+    params: Dict[str, Any],
+) -> None:
     """
     Like numpy.apply_along_axis(), but with arguments in a dict instead.
     Applicable for applying a function across subarrays of two input arrays.
@@ -1382,6 +1371,7 @@ def _apply_along_axis_double(params):
         the function should be applied, "sub_array_start" and "sub_array_end",
         a dictionary of arguments to be passed to the function, "args", and
         the key name of the shared array for output values, "output_var_name".
+    :return: None
     """
 
     func1d = params["func1d"]
@@ -1427,7 +1417,6 @@ def _apply_along_axis_double(params):
             raise ValueError(f"Unsupported input type: \'{params['input_type']}\'")
 
 
-# ------------------------------------------------------------------------------
 def _apply_along_axis_palmers(params):
     """
     Applies the Palmer computation function across subarrays of
@@ -1508,8 +1497,10 @@ def _apply_along_axis_palmers(params):
             )
 
 
-# ------------------------------------------------------------------------------
-def _prepare_file(netcdf_file, var_name):
+def _prepare_file(
+    netcdf_file: str,
+    var_name: str,
+) -> str:
     """
     Determine if the NetCDF file has the expected lat, lon, and time dimensions,
     and if not correctly ordered then create a temporary NetCDF with dimensions
@@ -1550,23 +1541,22 @@ def _prepare_file(netcdf_file, var_name):
     return netcdf_file
 
 
-# ------------------------------------------------------------------------------
 def main():  # type: () -> None
+    """
+    This function is used to perform climate indices processing on NetCDF
+    gridded datasets.
 
-    # This function is used to perform climate indices processing on NetCDF
-    # gridded datasets.
-    #
-    # Example command line arguments for SPI only using monthly precipitation input:
-    #
-    # --index spi
-    # --periodicity monthly
-    # --scales 1 2 3 6 9 12 24
-    # --calibration_start_year 1998
-    # --calibration_end_year 2016
-    # --netcdf_precip example_data/nclimgrid_prcp_lowres.nc
-    # --var_name_precip prcp
-    # --output_file_base ~/data/test/spi/nclimgrid_lowres
+    Example command line arguments for SPI only using monthly precipitation input:
 
+    --index spi
+    --periodicity monthly
+    --scales 1 2 3 6 9 12 24
+    --calibration_start_year 1998
+    --calibration_end_year 2016
+    --netcdf_precip example_data/nclimgrid_prcp_lowres.nc
+    --var_name_precip prcp
+    --output_file_base ~/data/test/spi/nclimgrid_lowres
+    """
     # # ==========================================================================
     # # UNCOMMENT THE BELOW FOR PROFILING
     # # ==========================================================================
@@ -1861,7 +1851,6 @@ def main():  # type: () -> None
         raise
 
 
-# ------------------------------------------------------------------------------
 if __name__ == "__main__":
     # (please do not remove -- useful for running as a script when debugging)
     #

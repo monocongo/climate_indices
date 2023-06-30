@@ -1,3 +1,5 @@
+"""Command-line interface for performing SPI calculations"""
+
 import argparse
 from collections import Counter
 import copy

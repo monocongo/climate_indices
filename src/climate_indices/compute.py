@@ -1,5 +1,3 @@
-from climate_indices import utils, lmoments
-
 from enum import Enum
 from distutils.version import LooseVersion
 import logging
@@ -8,8 +6,10 @@ import numpy as np
 import scipy.stats
 import scipy.version
 
-_do_pearson3_workaround = LooseVersion(scipy.version.version) < '1.6.0'
+from climate_indices import utils, lmoments
 
+# depending on the version of scipy we may need to use a workaround due to a bug in some versions of scipy
+_do_pearson3_workaround = LooseVersion(scipy.version.version) < '1.6.0'
 
 # declare the names that should be included in the public API for this module
 __all__ = ["Periodicity"]
@@ -61,10 +61,12 @@ def _validate_array(
     periodicity: Periodicity,
 ) -> np.ndarray:
     """
+    Basic data cleaning and validation.
 
-    :param values:
-    :param periodicity:
-    :return:
+    :param values: array of values to be used as input
+    :param periodicity: specifies whether data is monthly or daily
+    :return: data array corresponding to the input array converted to
+        the correct shape for the specified periodicity
     """
 
     # validate (and possibly reshape) the input array

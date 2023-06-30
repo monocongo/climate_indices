@@ -149,6 +149,8 @@ def _monthly_mean_daylight_hours(
         leap=False,
 ) -> np.ndarray:
     """
+    Computes the monthly mean daylight hours at the specified latitude.
+
     :param latitude_radians: latitude in radians
     :param leap: whether values should be computed specific to leap years or not
     :return: the mean daily daylight hours for each calendar month of a year

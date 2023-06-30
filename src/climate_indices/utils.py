@@ -1,3 +1,5 @@
+"""Various utility/convenience functions"""
+
 import calendar
 from datetime import datetime
 import logging
@@ -5,8 +7,14 @@ import logging
 import numpy as np
 
 
-# set up a basic, global _logger
 def get_logger(name, level):
+    """
+    Sets up a basic, global _logger
+
+    :param name:
+    :param level:
+    :return:
+    """
     logging.basicConfig(
         format="%(asctime)s %(levelname)s %(message)s",
         datefmt="%Y-%m-%d  %H:%M:%S",

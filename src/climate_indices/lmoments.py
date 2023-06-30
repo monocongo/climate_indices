@@ -1,15 +1,16 @@
+"""Computation of L-moments used for Pearson Type-III distribution fitting"""
+
 import logging
 from math import exp, lgamma, pi, sqrt
 
 import numpy as np
+
 from climate_indices import utils
 
-# ------------------------------------------------------------------------------
 # Retrieve logger and set desired logging level
 _logger = utils.get_logger(__name__, logging.WARN)
 
 
-# ------------------------------------------------------------------------------
 def fit(timeseries: np.ndarray) -> dict:
     """
     Returns the L-Moments fit (loc, scale, skew) corresponding to the
@@ -32,7 +33,6 @@ def fit(timeseries: np.ndarray) -> dict:
     return _estimate_pearson3_parameters(lmoments)
 
 
-# ------------------------------------------------------------------------------
 def _estimate_pearson3_parameters(lmoments: np.ndarray) -> dict:
     """
     Estimate parameters via L-moments for the Pearson Type III distribution,
@@ -72,7 +72,6 @@ def _estimate_pearson3_parameters(lmoments: np.ndarray) -> dict:
 
     # the first Pearson Type III parameter is the same as the first L-moment
     loc = lmoments[0]
-    # pearson3_parameters = np.zeros((3,))
 
     # # the first Pearson Type III parameter is the same as the first L-moment
     # pearson3_parameters[0] = lmoments[0]
@@ -81,7 +80,6 @@ def _estimate_pearson3_parameters(lmoments: np.ndarray) -> dict:
         # skewness is effectively zero
         scale = lmoments[1] * sqrt(pi)
         skew = 0.0
-        # pearson3_parameters[1] = lmoments[1] * sqrt(pi)
 
     else:
         if t3 < 0.333333333:
@@ -94,18 +92,14 @@ def _estimate_pearson3_parameters(lmoments: np.ndarray) -> dict:
         alpha_root = sqrt(alpha)
         beta = sqrt(pi) * lmoments[1] * exp(lgamma(alpha) - lgamma(alpha + 0.5))
         scale = beta * alpha_root
-        # pearson3_parameters[1] = beta * alpha_root
 
         # the sign of the third L-moment determines
         # the sign of the third Pearson Type III parameter
         if lmoments[2] < 0:
             skew = -2.0 / alpha_root
-            # pearson3_parameters[2] = -2.0 / alpha_root
         else:
             skew = 2.0 / alpha_root
-            # pearson3_parameters[2] = 2.0 / alpha_root
 
-    # return pearson3_parameters
     return {"loc": loc, "skew": skew, "scale": scale}
 
 

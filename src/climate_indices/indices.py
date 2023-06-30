@@ -1,3 +1,5 @@
+"""Main level API module for computing climate indices"""
+
 from enum import Enum
 import logging
 from typing import Dict
