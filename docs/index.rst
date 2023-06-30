@@ -38,6 +38,8 @@ The following indices are provided:
    or `Hargreaves <http://dx.doi.org/10.13031/2013.26773>`_ equations
 -  `PNP <http://www.droughtmanagement.info/percent-of-normal-precipitation/>`__,
    Percentage of Normal Precipitation
+-  `PCI <https://www.tandfonline.com/doi/abs/10.1111/J.0033-0124.1980.00300.X>`__,
+   Precipitation Concentration Index
 
 The following are provided as experimental/development versions only, not fully vetted nor suitable for research purposes:
 
