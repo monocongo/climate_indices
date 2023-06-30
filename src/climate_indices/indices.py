@@ -4,10 +4,10 @@ from typing import Dict
 
 import numpy as np
 
-from climate_indices import compute, eto, palmer, utils
+from climate_indices import compute, eto, utils
 
-# declare the names that should be included in the public API for this module
-__all__ = ["pdsi", "percentage_of_normal", "pet", "scpdsi", "spei", "spi"]
+# declare the function names that should be included in the public API for this module
+__all__ = ["percentage_of_normal", "pci", "pet", "spei", "spi"]
 
 
 class Distribution(Enum):
@@ -19,11 +19,9 @@ class Distribution(Enum):
     gamma = "gamma"
 
 
-# ------------------------------------------------------------------------------
 # Retrieve logger and set desired logging level
 _logger = utils.get_logger(__name__, logging.DEBUG)
 
-# ------------------------------------------------------------------------------
 # valid upper and lower bounds for indices that are fitted/transformed to a distribution (SPI and SPEI)
 _FITTED_INDEX_VALID_MIN = -3.09
 _FITTED_INDEX_VALID_MAX = 3.09
@@ -352,67 +350,6 @@ def spei(
     return values[0:original_length]
 
 
-def scpdsi(
-    precip_time_series: np.ndarray,
-    pet_time_series: np.ndarray,
-    awc: float,
-    data_start_year: int,
-    calibration_start_year: int,
-    calibration_end_year: int,
-):
-    """
-    This function computes the self-calibrated Palmer Drought Severity Index
-    (scPDSI), Palmer Drought Severity Index (PDSI), Palmer Hydrological Drought
-    Index (PHDI), Palmer Modified Drought Index (PMDI), and Palmer Z-Index.
-
-    :param precip_time_series: time series of precipitation values, in inches
-    :param pet_time_series: time series of PET values, in inches
-    :param awc: available water capacity (soil constant), in inches
-    :param data_start_year: initial year of the input precipitation and PET datasets,
-                            both of which are assumed to start in January of this year
-    :param calibration_start_year: initial year of the calibration period
-    :param calibration_end_year: final year of the calibration period
-    :return: five numpy arrays containing SCPDSI, PDSI, PHDI, PMDI, and Z-Index values respectively
-    """
-
-    return palmer.scpdsi(precip_time_series,
-                         pet_time_series,
-                         awc,
-                         data_start_year,
-                         calibration_start_year,
-                         calibration_end_year)
-
-
-def pdsi(
-    precip_time_series: np.ndarray,
-    pet_time_series: np.ndarray,
-    awc: float,
-    data_start_year: int,
-    calibration_start_year: int,
-    calibration_end_year: int,
-):
-    """
-    This function computes the Palmer Drought Severity Index (PDSI), Palmer
-    Hydrological Drought Index (PHDI), and Palmer Z-Index.
-
-    :param precip_time_series: time series of monthly precipitation values, in inches
-    :param pet_time_series: time series of monthly PET values, in inches
-    :param awc: available water capacity (soil constant), in inches
-    :param data_start_year: initial year of the input precipitation and PET datasets,
-                            both of which are assumed to start in January of this year
-    :param calibration_start_year: initial year of the calibration period
-    :param calibration_end_year: final year of the calibration period
-    :return: four numpy arrays containing PDSI, PHDI, PMDI, and Z-Index values respectively
-    """
-
-    return palmer.pdsi(precip_time_series,
-                       pet_time_series,
-                       awc,
-                       data_start_year,
-                       calibration_start_year,
-                       calibration_end_year)
-
-
 def percentage_of_normal(
     values: np.ndarray,
     scale: int,
@@ -618,7 +555,7 @@ def pci(
 
             start = m[month]
 
-        return np.array([(numerator/(denominator**2)) * 100])
+        return np.array([(numerator / (denominator**2)) * 100])
 
     if len(rainfall_mm) == 365 and not sum(np.isnan(rainfall_mm)):
         m = [31, 28, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365]
@@ -632,9 +569,9 @@ def pci(
 
             start = m[month]
 
-        return np.array([(numerator/(denominator**2)) * 100])
+        return np.array([(numerator / (denominator**2)) * 100])
     
-    message = "NaN values in time-series or Total Number of days not in year "\
-              "not available, total days should be 366 or 365"
+    message = "NaN values exist in the time-series or the total number of days not "\
+              "in the year is not available, total days should be 366 or 365"
     _logger.error(message)
     raise ValueError(message)
