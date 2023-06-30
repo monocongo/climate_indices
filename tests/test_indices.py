@@ -5,71 +5,20 @@ import pytest
 
 from climate_indices import compute, indices
 
-# ------------------------------------------------------------------------------
 # disable logging messages
 logging.disable(logging.CRITICAL)
 
 
-# Tests for `climate_indices.indices.py`.
-
-
-# ------------------------------------------------------------------------------
-@pytest.mark.usefixtures("precips_mm_monthly",
-                         "pet_thornthwaite_mm",
-                         "awc_inches",
-                         "data_year_start_monthly",
-                         "calibration_year_start_monthly",
-                         "calibration_year_end_monthly")
-def test_pdsi(precips_mm_monthly,
-              pet_thornthwaite_mm,
-              awc_inches,
-              data_year_start_monthly,
-              calibration_year_start_monthly,
-              calibration_year_end_monthly):
-
-    # the indices.pdsi() function is a wrapper for palmer.pdsi(), so we'll
-    # just confirm that this function can be called without raising an error and
-    # the palmer.pdsi() function itself is being tested within test_palmer.py
-    indices.pdsi(precips_mm_monthly,
-                 pet_thornthwaite_mm,
-                 awc_inches,
-                 data_year_start_monthly,
-                 calibration_year_start_monthly,
-                 calibration_year_end_monthly)
-
-
-# ------------------------------------------------------------------------------
-@pytest.mark.usefixtures("precips_mm_monthly",
-                         "pet_thornthwaite_mm",
-                         "awc_inches",
-                         "data_year_start_monthly",
-                         "calibration_year_start_monthly",
-                         "calibration_year_end_monthly")
-def test_scpdsi(precips_mm_monthly,
-                pet_thornthwaite_mm,
-                awc_inches,
-                data_year_start_monthly,
-                calibration_year_start_monthly,
-                calibration_year_end_monthly):
-
-    # the indices.scpdsi() function is a wrapper for palmer.scpdsi(), so we'll
-    # just confirm that this function can be called without raising an error and
-    # the palmer.scpdsi() function itself is being tested within test_palmer.py
-    indices.scpdsi(precips_mm_monthly,
-                   pet_thornthwaite_mm,
-                   awc_inches,
-                   data_year_start_monthly,
-                   calibration_year_start_monthly,
-                   calibration_year_end_monthly)
-
-
-# ------------------------------------------------------------------------------
-@pytest.mark.usefixtures("temps_celsius",
-                         "latitude_degrees",
-                         "data_year_start_monthly")
-def test_pet(temps_celsius,
-             latitude_degrees,
-             data_year_start_monthly):
+@pytest.mark.usefixtures(
+    "temps_celsius",
+    "latitude_degrees",
+    "data_year_start_monthly",
+)
+def test_pet(
+    temps_celsius,
+    latitude_degrees,
+    data_year_start_monthly,
+):
 
     # confirm that an input temperature array of only NaNs
     # results in the same all NaNs array being returned
@@ -130,25 +79,28 @@ def test_pet(temps_celsius,
     indices.pet(temps_celsius, np.array([latitude_degrees]), data_year_start_monthly)
 
 
-# ------------------------------------------------------------------------------
-@pytest.mark.usefixtures("precips_mm_monthly",
-                         "precips_mm_daily",
-                         "data_year_start_monthly",
-                         "data_year_start_daily",
-                         "calibration_year_start_monthly",
-                         "calibration_year_end_monthly",
-                         "calibration_year_start_daily",
-                         "calibration_year_end_daily",
-                         "pnp_6month")
-def test_pnp(precips_mm_monthly,
-             precips_mm_daily,
-             data_year_start_monthly,
-             data_year_start_daily,
-             calibration_year_start_monthly,
-             calibration_year_end_monthly,
-             calibration_year_start_daily,
-             calibration_year_end_daily,
-             pnp_6month):
+@pytest.mark.usefixtures(
+    "precips_mm_monthly",
+    "precips_mm_daily",
+    "data_year_start_monthly",
+    "data_year_start_daily",
+    "calibration_year_start_monthly",
+    "calibration_year_end_monthly",
+    "calibration_year_start_daily",
+    "calibration_year_end_daily",
+    "pnp_6month",
+)
+def test_pnp(
+    precips_mm_monthly,
+    precips_mm_daily,
+    data_year_start_monthly,
+    data_year_start_daily,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+    calibration_year_start_daily,
+    calibration_year_end_daily,
+    pnp_6month,
+):
 
     # confirm that an input precipitation array containing
     # only NaNs results in the same array returned
@@ -217,31 +169,34 @@ def test_pnp(precips_mm_monthly,
                              compute.Periodicity.daily)
 
 
-# ------------------------------------------------------------------------------
-@pytest.mark.usefixtures("precips_mm_monthly",
-                         "precips_mm_daily",
-                         "data_year_start_monthly",
-                         "data_year_end_monthly",
-                         "data_year_start_daily",
-                         "calibration_year_start_monthly",
-                         "calibration_year_end_monthly",
-                         "calibration_year_start_daily",
-                         "calibration_year_end_daily",
-                         "spi_1_month_gamma",
-                         "spi_6_month_gamma",
-                         "spi_6_month_pearson3")
-def test_spi(precips_mm_monthly,
-             precips_mm_daily,
-             data_year_start_monthly,
-             data_year_end_monthly,
-             data_year_start_daily,
-             calibration_year_start_monthly,
-             calibration_year_end_monthly,
-             calibration_year_start_daily,
-             calibration_year_end_daily,
-             spi_1_month_gamma,
-             spi_6_month_gamma,
-             spi_6_month_pearson3):
+@pytest.mark.usefixtures(
+    "precips_mm_monthly",
+    "precips_mm_daily",
+    "data_year_start_monthly",
+    "data_year_end_monthly",
+    "data_year_start_daily",
+    "calibration_year_start_monthly",
+    "calibration_year_end_monthly",
+    "calibration_year_start_daily",
+    "calibration_year_end_daily",
+    "spi_1_month_gamma",
+    "spi_6_month_gamma",
+    "spi_6_month_pearson3",
+)
+def test_spi(
+    precips_mm_monthly,
+    precips_mm_daily,
+    data_year_start_monthly,
+    data_year_end_monthly,
+    data_year_start_daily,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+    calibration_year_start_daily,
+    calibration_year_end_daily,
+    spi_1_month_gamma,
+    spi_6_month_gamma,
+    spi_6_month_pearson3,
+) -> None:
 
     # confirm that an input array of all NaNs for
     # precipitation results in the same array returned
@@ -377,19 +332,22 @@ def test_spi(precips_mm_monthly,
                              "unsupported_value")
 
 
-# ------------------------------------------------------------------------------
-@pytest.mark.usefixtures("precips_mm_monthly",
-                         "pet_thornthwaite_mm",
-                         "data_year_start_monthly",
-                         "data_year_end_monthly",
-                         "spei_6_month_gamma",
-                         "spei_6_month_pearson3")
-def test_spei(precips_mm_monthly,
-              pet_thornthwaite_mm,
-              data_year_start_monthly,
-              data_year_end_monthly,
-              spei_6_month_gamma,
-              spei_6_month_pearson3):
+@pytest.mark.usefixtures(
+    "precips_mm_monthly",
+    "pet_thornthwaite_mm",
+    "data_year_start_monthly",
+    "data_year_end_monthly",
+    "spei_6_month_gamma",
+    "spei_6_month_pearson3",
+)
+def test_spei(
+    precips_mm_monthly,
+    pet_thornthwaite_mm,
+    data_year_start_monthly,
+    data_year_end_monthly,
+    spei_6_month_gamma,
+    spei_6_month_pearson3,
+) -> None:
 
     # confirm that an input precipitation array containing
     # only NaNs results in the same array being returned
@@ -477,9 +435,16 @@ def test_spei(precips_mm_monthly,
                              data_year_end_monthly)
 
 
-# ------------------------------------------------------------------------------
-@pytest.mark.usefixtures("rain_mm", "rain_mm_365", "rain_mm_366")
-def test_pci(rain_mm, rain_mm_365, rain_mm_366):
+@pytest.mark.usefixtures(
+    "rain_mm",
+    "rain_mm_365",
+    "rain_mm_366",
+)
+def test_pci(
+    rain_mm,
+    rain_mm_365,
+    rain_mm_366,
+):
 
     # confirm that an input rainfall array of only NaNs
     # results in the same all NaNs array being returned
