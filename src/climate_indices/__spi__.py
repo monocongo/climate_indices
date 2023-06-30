@@ -29,12 +29,10 @@ _KEY_RESULT = "result_array"
 # global dictionary to contain shared arrays for use by worker processes
 _global_shared_arrays = {}
 
-# ------------------------------------------------------------------------------
 # Retrieve logger and set desired logging level
 _logger = utils.get_logger(__name__, logging.INFO)
 
 
-# ------------------------------------------------------------------------------
 class InputType(Enum):
     """
     Enumeration type for differentiating between gridded, timeseries, and US
@@ -46,7 +44,6 @@ class InputType(Enum):
     timeseries = 3
 
 
-# ------------------------------------------------------------------------------
 def init_worker(arrays_and_shapes):
     """
     Initialization function that assigns named arrays into the global variable.
@@ -62,7 +59,6 @@ def init_worker(arrays_and_shapes):
     _global_shared_arrays = arrays_and_shapes
 
 
-# ------------------------------------------------------------------------------
 def _validate_args(args):
     """
     Validate the processing settings to confirm that proper argument
@@ -202,7 +198,6 @@ def _validate_args(args):
     return input_type
 
 
-# ------------------------------------------------------------------------------
 def _build_arguments(keyword_args):
     """
     Builds a dictionary of function arguments appropriate to the index to be computed.
@@ -224,11 +219,10 @@ def _build_arguments(keyword_args):
     return function_arguments
 
 
-# ------------------------------------------------------------------------------
 def _get_variable_attributes(
-        distribution: indices.Distribution,
-        scale: int,
-        periodicity: compute.Periodicity,
+    distribution: indices.Distribution,
+    scale: int,
+    periodicity: compute.Periodicity,
 ):
 
     attrs = {
@@ -242,12 +236,11 @@ def _get_variable_attributes(
     return attrs
 
 
-# ------------------------------------------------------------------------------
 def _drop_data_into_shared_arrays_grid(
-        dataset_climatology: xr.Dataset,
-        dataset_fitting: xr.Dataset,
-        var_names_climate: List[str],
-        periodicity: compute.Periodicity,
+    dataset_climatology: xr.Dataset,
+    dataset_fitting: xr.Dataset,
+    var_names_climate: List[str],
+    periodicity: compute.Periodicity,
 ):
     """
     Copies arrays from an xarray Dataset into shared memory arrays.
@@ -340,20 +333,6 @@ def _drop_data_into_shared_arrays_grid(
                 _logger.error(message)
                 raise ValueError(message)
 
-        # # convert daily values into 366-day years
-        # if periodicity == compute.Periodicity.daily:
-        #     initial_year = int(dataset_climatology["time"][0].dt.year)
-        #     final_year = int(dataset_climatology["time"][-1].dt.year)
-        #     total_years = final_year - initial_year + 1
-        #     var_values = np.apply_along_axis(utils.transform_to_366day,
-        #                                      len(dims) - 1,
-        #                                      dataset_fitting[var_name].values,
-        #                                      initial_year,
-        #                                      total_years)
-        #
-        # else:  # assumed to be monthly
-        #     var_values = dataset_fitting[var_name].values
-
         var_values = dataset_fitting[var_name].values
 
         # create a shared memory array, wrap it as a numpy array and
@@ -370,7 +349,6 @@ def _drop_data_into_shared_arrays_grid(
         }
 
 
-# ------------------------------------------------------------------------------
 def _drop_data_into_shared_arrays_divisions(
         dataset: xr.Dataset,
         var_names: List[str],
@@ -425,10 +403,9 @@ def _drop_data_into_shared_arrays_divisions(
         dataset = dataset.drop_vars(var_name)
 
 
-# ------------------------------------------------------------------------------
 def build_dataset_fitting_grid(
-        ds_example: xr.Dataset,
-        periodicity: compute.Periodicity,
+    ds_example: xr.Dataset,
+    periodicity: compute.Periodicity,
 ) -> xr.Dataset:
     """
     Builds a new Dataset object based on an example Dataset. Essentially copies
@@ -478,7 +455,6 @@ def build_dataset_fitting_grid(
     return ds_fitting_params
 
 
-# ------------------------------------------------------------------------------
 def build_dataset_fitting_divisions(
         ds_example: xr.Dataset,
         periodicity: compute.Periodicity,
@@ -524,7 +500,6 @@ def build_dataset_fitting_divisions(
     return ds_fitting_params
 
 
-# ------------------------------------------------------------------------------
 def _compute_write_index(keyword_arguments):
     """
     Computes a climate index and writes the result into a corresponding NetCDF.
@@ -749,14 +724,13 @@ def _compute_write_index(keyword_arguments):
         ds_fitting.to_netcdf(keyword_arguments["save_params"])
 
 
-# ------------------------------------------------------------------------------
 def build_dataset_spi_grid(
-        ds_example: xr.Dataset,
-        scale: int,
-        periodicity: compute.Periodicity,
-        distribution: indices.Distribution,
-        data_start_year: int,
-        spi_var_name: str,
+    ds_example: xr.Dataset,
+    scale: int,
+    periodicity: compute.Periodicity,
+    distribution: indices.Distribution,
+    data_start_year: int,
+    spi_var_name: str,
 ) -> xr.Dataset:
 
     global_attrs = {
@@ -809,14 +783,13 @@ def build_dataset_spi_grid(
     return ds_spi
 
 
-# ------------------------------------------------------------------------------
 def build_dataset_spi_divisions(
-        ds_example: xr.Dataset,
-        scale: int,
-        periodicity: compute.Periodicity,
-        distribution: indices.Distribution,
-        data_start_year: int,
-        spi_var_name: str,
+    ds_example: xr.Dataset,
+    scale: int,
+    periodicity: compute.Periodicity,
+    distribution: indices.Distribution,
+    data_start_year: int,
+    spi_var_name: str,
 ) -> xr.Dataset:
 
     global_attrs = {
@@ -862,14 +835,12 @@ def build_dataset_spi_divisions(
     return ds_spi
 
 
-# ------------------------------------------------------------------------------
 def _init_worker(shared_arrays_dict):
 
     global _global_shared_arrays
     _global_shared_arrays = shared_arrays_dict
 
 
-# ------------------------------------------------------------------------------
 def _parallel_spi(
         arrays_dict: dict,
         input_var_names: dict,
@@ -940,15 +911,14 @@ def _parallel_spi(
         pool.map(_apply_to_subarray_spi, chunk_params)
 
 
-# ------------------------------------------------------------------------------
 def _parallel_fitting(
-        distribution: indices.Distribution,
-        shared_arrays: Dict,
-        input_var_names: Dict,
-        output_var_names: Dict,
-        input_type: InputType,
-        number_of_workers: int,
-        args: Dict,
+    distribution: indices.Distribution,
+    shared_arrays: Dict,
+    input_var_names: Dict,
+    output_var_names: Dict,
+    input_type: InputType,
+    number_of_workers: int,
+    args: Dict,
 ):
     """
     TODO document this function
@@ -1011,7 +981,6 @@ def _parallel_fitting(
             raise ValueError(f"Unsupported distribution: {distribution}")
 
 
-# ------------------------------------------------------------------------------
 def _apply_to_subarray_spi(params):
     """
     Like numpy.apply_along_axis(), but with arguments in a dict instead.
@@ -1155,7 +1124,6 @@ def _apply_to_subarray_spi(params):
                 )
 
 
-# ------------------------------------------------------------------------------
 def _apply_to_subarray_gamma(params):
     """
     Applies the gamma fitting computation function across subarrays
@@ -1226,7 +1194,6 @@ def _apply_to_subarray_gamma(params):
                 )
 
 
-# ------------------------------------------------------------------------------
 def _apply_to_subarray_pearson(params):
     """
     Applies the Pearson Type III distribution fitting computation function
@@ -1320,7 +1287,6 @@ def _apply_to_subarray_pearson(params):
                 )
 
 
-# ------------------------------------------------------------------------------
 def _prepare_file(netcdf_file, var_name):
     """
     Determine if the NetCDF file has the expected lat, lon, and time dimensions,
@@ -1362,7 +1328,6 @@ def _prepare_file(netcdf_file, var_name):
     return netcdf_file
 
 
-# ------------------------------------------------------------------------------
 def main():  # type: () -> None
 
     # This function is used to perform climate indices processing on NetCDF
@@ -1516,27 +1481,27 @@ def main():  # type: () -> None
         raise
 
 
-# ------------------------------------------------------------------------------
 if __name__ == "__main__":
-    # (please do not remove -- useful for running as a script when debugging)
-    #
-    # Example command line usage for US climate divisions:
-    #
-    #  $ spi --scales 1 2 3 6 9 12 24
-    #  --netcdf_precip ../example_climate_indices/example/input/nclimdiv.nc
-    #  --output_file_base /home/data/test/nclimdiv
-    #  --var_name_precip prcp
-    #  --calibration_start_year 1951 --calibration_end_year 2010
-    #  --multiprocessing all --periodicity monthly
-    #
-    #
-    # Example command line usage for gridded data (nClimGrid):
-    #
-    #  $ spi --scales 1 2 3 6 9 12 24
-    #  --netcdf_precip ../example_climate_indices/example/input/nclimgrid_prcp.nc
-    #  --output_file_base /home/data/test/nclimgrid
-    #  --var_name_precip prcp
-    #  --calibration_start_year 1951 --calibration_end_year 2010
-    #  --multiprocessing all --periodicity monthly
+    """
+    (please do not remove -- useful for running as a script when debugging)
 
+    Example command line usage for US climate divisions:
+
+     $ spi --scales 1 2 3 6 9 12 24
+     --netcdf_precip ../example_climate_indices/example/input/nclimdiv.nc
+     --output_file_base /home/data/test/nclimdiv
+     --var_name_precip prcp
+     --calibration_start_year 1951 --calibration_end_year 2010
+     --multiprocessing all --periodicity monthly
+
+
+    Example command line usage for gridded data (nClimGrid):
+
+     $ spi --scales 1 2 3 6 9 12 24
+     --netcdf_precip ../example_climate_indices/example/input/nclimgrid_prcp.nc
+     --output_file_base /home/data/test/nclimgrid
+     --var_name_precip prcp
+     --calibration_start_year 1951 --calibration_end_year 2010
+     --multiprocessing all --periodicity monthly
+    """
     main()
