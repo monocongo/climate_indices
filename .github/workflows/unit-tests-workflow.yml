@@ -28,6 +28,4 @@ jobs:
           poetry install
 
       - name: Run unit tests
-        run: |
-          export NUMBA_DISABLE_JIT=1
-          poetry run pytest
+        run: poetry run pytest
