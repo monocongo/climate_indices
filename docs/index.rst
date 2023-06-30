@@ -109,7 +109,6 @@ Then install the package from source::
 
 Next (optional) run the unit test suite to validate the installation::
 
-    export NUMBA_DISABLE_JIT=1
     python -m pytest tests
 
 the above should display output similar to this::
