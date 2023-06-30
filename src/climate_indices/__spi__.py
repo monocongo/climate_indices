@@ -276,11 +276,10 @@ def _drop_data_into_shared_arrays_grid(
                 message = f"Invalid dimensions for variable '{var_name}': {dims}"
                 _logger.error(message)
                 raise ValueError(message)
-        elif len(dims) == 1:
-            if dims != expected_dims_1d:
-                message = f"Invalid dimensions for variable '{var_name}': {dims}"
-                _logger.error(message)
-                raise ValueError(message)
+        elif (len(dims) == 1) and (dims != expected_dims_1d):
+            message = f"Invalid dimensions for variable '{var_name}': {dims}"
+            _logger.error(message)
+            raise ValueError(message)
 
         # convert daily values into 366-day years
         if periodicity == compute.Periodicity.daily:
@@ -327,11 +326,10 @@ def _drop_data_into_shared_arrays_grid(
                 message = f"Invalid dimensions for variable '{var_name}': {dims}"
                 _logger.error(message)
                 raise ValueError(message)
-        elif len(dims) == 1:
-            if dims != expected_dims_1d:
-                message = f"Invalid dimensions for variable '{var_name}': {dims}"
-                _logger.error(message)
-                raise ValueError(message)
+        elif (len(dims) == 1) and (dims != expected_dims_1d):
+            message = f"Invalid dimensions for variable '{var_name}': {dims}"
+            _logger.error(message)
+            raise ValueError(message)
 
         var_values = dataset_fitting[var_name].values
 
@@ -381,11 +379,10 @@ def _drop_data_into_shared_arrays_divisions(
                 message = f"Invalid dimensions for variable '{var_name}': {dims}"
                 _logger.error(message)
                 raise ValueError(message)
-        elif len(dims) == 1:
-            if dims not in expected_dims_1d:
-                message = f"Invalid dimensions for variable '{var_name}': {dims}"
-                _logger.error(message)
-                raise ValueError(message)
+        elif (len(dims) == 1) and (dims not in expected_dims_1d):
+            message = f"Invalid dimensions for variable '{var_name}': {dims}"
+            _logger.error(message)
+            raise ValueError(message)
 
         # create a shared memory array, wrap it as a numpy array and
         # copy the data (values) from this variable's DataArray
@@ -634,6 +631,8 @@ def _compute_write_index(keyword_arguments):
         #  get the correct intermediate output shape
         time_length_366day = utils.gregorian_length_as_366day(len(ds_precip['time']), data_start_year)
         output_shape = (len(ds_precip['lat']), len(ds_precip['lon']), time_length_366day)
+    else:
+        raise ValueError(f'Unsupported periodicity argument value: {keyword_arguments["periodicity"]}')
 
     # add an array to hold index computation results
     # to our dictionary of shared memory arrays
