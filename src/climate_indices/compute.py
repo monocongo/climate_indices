@@ -272,7 +272,6 @@ def pearson_parameters(
     else:
 
         time_steps_per_year = values.shape[1]
-        # if (time_steps_per_year != 12) and (time_steps_per_year != 366):
         if time_steps_per_year not in (12, 366):
             message = "Invalid shape of input data array: {shape}".format(shape=values.shape)
             _logger.error(message)
