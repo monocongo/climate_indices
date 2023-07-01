@@ -41,18 +41,6 @@ The following indices are provided:
 -  `PCI <https://www.tandfonline.com/doi/abs/10.1111/J.0033-0124.1980.00300.X>`__,
    Precipitation Concentration Index
 
-The following are provided as experimental/development versions only, not fully vetted nor suitable for research purposes:
-
--  `PDSI <http://www.droughtmanagement.info/palmer-drought-severity-index-pdsi/>`__,
-   Palmer Drought Severity Index
--  `scPDSI <http://www.droughtmanagement.info/self-calibrated-palmer-drought-severity-index-sc-pdsi/>`__,
-   Self-calibrated Palmer Drought Severity Index
--  `PHDI <http://www.droughtmanagement.info/palmer-hydrological-drought-index-phdi/>`__,
-   Palmer Hydrological Drought Index
--  `Z-Index <http://www.droughtmanagement.info/palmer-z-index/>`__,
-   Palmer moisture anomaly index (Z-index)
--  `PMDI <https://climate.ncsu.edu/climate/climdiv>`__, Palmer Modified Drought Index
-
 This Python implementation of the above climate index algorithms is being developed
 with the following goals in mind:
 
@@ -83,7 +71,6 @@ Quick Start
     python -m poetry install
 
     # optionally run the unit tests suite
-    export NUMBA_DISABLE_JIT=1
     python -m poetry run pytest
 
 
