@@ -7,7 +7,7 @@ from enum import Enum
 import logging
 import multiprocessing
 import os
-from typing import List
+from typing import Any, Dict, List
 
 import numpy as np
 import scipy.constants
