@@ -35,14 +35,17 @@ xarray = '2023.1.0'
 [tool.poetry.dev-dependencies]
 pytest = '*'
 
-[tool.pytest.ini_options]
-filterwarnings = [
-    'ignore::FutureWarning',
-]
+[tool.poetry.group.dev.dependencies]
+sphinx-autodoc-typehints = "^1.23.3"
 
 [tool.poetry.scripts]
 process_climate_indices = 'climate_indices.__main__:main'
 spi = 'climate_indices.__spi__:main'
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    'ignore::FutureWarning',
+]
 
 [project.urls]
 'Homepage' = 'https://github.com/monocongo/climate_indices'
