@@ -32,6 +32,8 @@ from climate_indices import utils
 # Retrieve logger and set desired logging level
 _logger = utils.get_logger(__name__, logging.DEBUG)
 
+# declare the function names that should be included in the public API for this module
+__all__ = ["eto_hargreaves", "eto_thornthwaite"]
 
 # days of each calendar month, for non-leap and leap years
 _MONTH_DAYS_NONLEAP = np.array([31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31])

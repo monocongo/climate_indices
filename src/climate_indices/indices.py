@@ -213,7 +213,7 @@ def spei(
     fitting_params: dict = None,
 ) -> np.ndarray:
     """
-    Compute SPEI fitted to the gamma distribution.
+    Compute SPEI fitted to the specified distribution.
 
     PET values are subtracted from the precipitation values to come up with an array
     of (P - PET) values, which is then scaled to the specified months scale and

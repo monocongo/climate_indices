@@ -7,6 +7,9 @@ import numpy as np
 
 from climate_indices import utils
 
+# declare the function names that should be included in the public API for this module
+__all__ = ["fit"]
+
 # Retrieve logger and set desired logging level
 _logger = utils.get_logger(__name__, logging.WARN)
 

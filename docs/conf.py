@@ -15,8 +15,8 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath("../climate_indices"))
-
+sys.path.insert(0, os.path.abspath('../src'))
+#sys.path.insert(0, os.path.abspath("../climate_indices"))
 
 # -- Project information -----------------------------------------------------
 
@@ -24,9 +24,9 @@ project = "climate_indices"
 author = "James Adams"
 
 # The short X.Y version
-version = "1.0"
+version = "2.0"
 # The full version, including alpha/beta/rc tags
-release = "1.0.10"
+release = "2.0.0"
 
 
 # -- General configuration ---------------------------------------------------
@@ -161,7 +161,7 @@ texinfo_documents = [
         "climate_indices Documentation",
         "James Adams",
         "climate_indices",
-        "Climate indices useful for drought monitoring",
+        "Climate indices for drought monitoring",
         "Miscellaneous",
     )
 ]

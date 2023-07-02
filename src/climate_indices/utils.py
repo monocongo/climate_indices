@@ -6,94 +6,12 @@ import logging
 
 import numpy as np
 
-
-def get_logger(name, level):
-    """
-    Sets up a basic, global _logger
-
-    :param name:
-    :param level:
-    :return:
-    """
-    logging.basicConfig(
-        format="%(asctime)s %(levelname)s %(message)s",
-        datefmt="%Y-%m-%d  %H:%M:%S",
-    )
-    logger = logging.getLogger(name)
-    logger.setLevel(level)
-    return logger
-
-
-def sign_change(
-    a: np.ndarray,
-    b: np.ndarray,
-) -> np.ndarray:
-    """
-    Given two same-sized arrays of floats return an array of booleans indicating
-    if a sign change occurs at the corresponding index.
-
-    :param a: array of floats
-    :param b: array of floats
-    :return: array of booleans of same size as input arrays
-    """
-
-    if a.size != b.size:
-        raise ValueError("Mismatched input arrays")
-
-    # use the shape of the first array as the shape of the array we'll return
-    original_shape = a.shape
-
-    # get the sign value for each element
-    sign_a = np.sign(a.flatten())
-    sign_b = np.sign(b.flatten())
-
-    # sign change between the two where values unequal
-    sign_changes = sign_a != sign_b
-
-    return np.reshape(sign_changes, original_shape)
-
-
-def is_data_valid(
-    data: np.ndarray,
-) -> bool:
-    """
-    Returns if an array is valid or not, i.e. a supported array type
-    (ndarray or MaskArray) which is not all-NaN.
-
-    :param data: data object, expected as either numpy.ndarry or numpy.ma.MaskArray
-    :return True if array is non-NaN for at least one element
-        and is an array type valid for processing by other modules
-    :rtype: boolean
-    """
-
-    # make sure we're not dealing with all NaN values
-    if np.ma.isMaskedArray(data):
-
-        valid_flag = bool(data.count())
-
-    elif isinstance(data, np.ndarray):
-
-        valid_flag = not np.all(np.isnan(data))
-
-    else:
-        _logger.warning("Invalid data type")
-        valid_flag = False
-
-    return valid_flag
-
-
-def rmse(
-    predictions: np.ndarray,
-    targets: np.ndarray,
-) -> np.ndarray:
-    """
-    Root mean square error
-
-    :param predictions: np.ndarray
-    :param targets: np.ndarray
-    :return: np.ndarray
-    """
-    return np.sqrt(((predictions - targets) ** 2).mean())
+# declare the function names that should be included in the public API for this module
+__all__ = [
+    "compute_days", "count_zeros_and_non_missings", "get_logger", "get_tolerance",
+    "gregorian_length_as_366day", "is_data_valid", "reshape_to_2d", "reshape_to_divs_years_months",
+    "rmse", "sign_change", "transform_to_366day", "transform_to_gregorian",
+]
 
 
 def compute_days(
@@ -144,6 +62,128 @@ def compute_days(
         days[i] = (current_date - start_date).days
 
     return days
+
+
+def count_zeros_and_non_missings(
+    values: np.ndarray,
+) -> (int, int):
+    """
+    Given an input array of values return a count of the zeros
+    and non-missing values. Missing values assumed to be numpy.NaNs.
+
+    :param values: array like object (numpy array, most likely)
+    :return: two int scalars: 1) the count of zeros, and
+        2) the count of non-missing values
+    """
+
+    # make sure we have a numpy array
+    values = np.array(values)
+
+    # count the number of zeros and non-missing (non-NaN) values
+    zeros = values.size - np.count_nonzero(values)
+    non_missings = np.count_nonzero(~np.isnan(values))
+
+    return zeros, non_missings
+
+
+def get_logger(name, level):
+    """
+    Sets up a basic, global _logger
+
+    :param name:
+    :param level:
+    :return:
+    """
+    logging.basicConfig(
+        format="%(asctime)s %(levelname)s %(message)s",
+        datefmt="%Y-%m-%d  %H:%M:%S",
+    )
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    return logger
+
+
+def get_tolerance(dim: np.ndarray) -> float:
+    """
+    dynamic threshold absolute tolerance parameter np.allclose
+    derived from (smallest) absolute grid size along dimension dim.
+    Always greater than zero.
+    """
+    tol = np.abs(np.diff(dim)).min() / 10
+    return max(tol, np.finfo(tol.dtype).resolution)
+
+
+def sign_change(
+    a: np.ndarray,
+    b: np.ndarray,
+) -> np.ndarray:
+    """
+    Given two same-sized arrays of floats return an array of booleans indicating
+    if a sign change occurs at the corresponding index.
+
+    :param a: array of floats
+    :param b: array of floats
+    :return: array of booleans of same size as input arrays
+    """
+
+    if a.size != b.size:
+        raise ValueError("Mismatched input arrays")
+
+    # use the shape of the first array as the shape of the array we'll return
+    original_shape = a.shape
+
+    # get the sign value for each element
+    sign_a = np.sign(a.flatten())
+    sign_b = np.sign(b.flatten())
+
+    # sign change between the two where values unequal
+    sign_changes = sign_a != sign_b
+
+    return np.reshape(sign_changes, original_shape)
+
+
+def is_data_valid(
+    data: np.ndarray,
+) -> bool:
+    """
+    Returns if an array is valid or not, i.e. a supported array type
+    (ndarray or MaskArray) which is not all-NaN.
+
+    :param data: data object, expected as either numpy.ndarry or numpy.ma.MaskArray
+    :return True if array is non-NaN for at least one element
+        and is an array type valid for processing by other modules
+    :rtype: boolean
+    """
+
+    # make sure we're not dealing with all NaN values
+    if np.ma.isMaskedArray(data):
+
+        # TODO fix this, therte is no ndarray.count according to PyCharm's warning, use another approach for this flag
+        valid_flag = bool(data.count())
+
+    elif isinstance(data, np.ndarray):
+
+        valid_flag = not np.all(np.isnan(data))
+
+    else:
+        _logger.warning("Invalid data type")
+        valid_flag = False
+
+    return valid_flag
+
+
+def rmse(
+    predictions: np.ndarray,
+    targets: np.ndarray,
+) -> np.ndarray:
+    """
+    Root mean square error
+
+    :param predictions: np.ndarray
+    :param targets: np.ndarray
+    :return: np.ndarray
+    """
+    return np.sqrt(((predictions - targets) ** 2).mean())
 
 
 def reshape_to_2d(
@@ -456,38 +496,6 @@ def transform_to_gregorian(
         original_index += 366
 
     return gregorian
-
-
-def count_zeros_and_non_missings(
-    values: np.ndarray,
-) -> (int, int):
-    """
-    Given an input array of values return a count of the zeros
-    and non-missing values. Missing values assumed to be numpy.NaNs.
-
-    :param values: array like object (numpy array, most likely)
-    :return: two int scalars: 1) the count of zeros, and
-        2) the count of non-missing values
-    """
-
-    # make sure we have a numpy array
-    values = np.array(values)
-
-    # count the number of zeros and non-missing (non-NaN) values
-    zeros = values.size - np.count_nonzero(values)
-    non_missings = np.count_nonzero(~np.isnan(values))
-
-    return zeros, non_missings
-
-
-def get_tolerance(dim: np.ndarray) -> float:
-    """
-    dynamic threshold absolute tolerance parameter np.allclose
-    derived from (smallest) absolute grid size along dimension dim.
-    Always greater than zero.
-    """
-    tol = np.abs(np.diff(dim)).min() / 10
-    return max(tol, np.finfo(tol.dtype).resolution)
 
 
 _logger = get_logger(__name__, logging.DEBUG)

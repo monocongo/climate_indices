@@ -1,3 +1,6 @@
+"""
+Common classes and functions used to compute the various climate indices.
+"""
 from enum import Enum
 from distutils.version import LooseVersion
 import logging
@@ -8,11 +11,11 @@ import scipy.version
 
 from climate_indices import utils, lmoments
 
+# declare the function names that should be included in the public API for this module
+__all__ = ["Periodicity", "scale_values", "sum_to_scale", "transform_fitted_gamma", "transform_fitted_pearson"]
+
 # depending on the version of scipy we may need to use a workaround due to a bug in some versions of scipy
 _do_pearson3_workaround = LooseVersion(scipy.version.version) < '1.6.0'
-
-# declare the names that should be included in the public API for this module
-__all__ = ["Periodicity"]
 
 # Retrieve logger and set desired logging level
 _logger = utils.get_logger(__name__, logging.WARN)
