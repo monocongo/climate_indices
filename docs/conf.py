@@ -34,12 +34,6 @@ release = pyproject['tool']['poetry']['version']
 # get the major.minor version
 version = '.'.join(release.split('.')[:2])
 
-# # The short X.Y version
-# version = "2.0"
-# # The full version, including alpha/beta/rc tags
-# release = "2.0.0"
-
-
 # -- General configuration ---------------------------------------------------
 
 # If your documentation needs a minimal Sphinx version, state it here.
