@@ -394,6 +394,13 @@ it loads the pre-computed fitting values from the NetCDF file specified by the `
 option.
 
 
+API Reference
+--------------
+.. toctree::
+   :maxdepth: 2
+
+   reference
+
 Get involved
 -------------
 

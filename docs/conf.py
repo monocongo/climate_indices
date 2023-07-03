@@ -15,18 +15,29 @@
 import os
 import sys
 
+import toml
+
+# since our source files are under a src folder we need to add that as our first path
 sys.path.insert(0, os.path.abspath('../src'))
-#sys.path.insert(0, os.path.abspath("../climate_indices"))
 
 # -- Project information -----------------------------------------------------
 
 project = "climate_indices"
 author = "James Adams"
 
-# The short X.Y version
-version = "2.0"
-# The full version, including alpha/beta/rc tags
-release = "2.0.0"
+# parse the version information from pyproject.toml
+pyproject = toml.load("../pyproject.toml")
+
+# get the full release version, including alpha/beta/rc tags
+release = pyproject['tool']['poetry']['version']
+
+# get the major.minor version
+version = '.'.join(release.split('.')[:2])
+
+# # The short X.Y version
+# version = "2.0"
+# # The full version, including alpha/beta/rc tags
+# release = "2.0.0"
 
 
 # -- General configuration ---------------------------------------------------
