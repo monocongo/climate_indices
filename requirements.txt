@@ -38,7 +38,7 @@ pytz==2022.6
     # via pandas
 pyyaml==6.0
     # via dask
-scipy==1.7.3
+scipy==1.10.0
     # via climate-indices (pyproject.toml)
 six==1.16.0
     # via python-dateutil
