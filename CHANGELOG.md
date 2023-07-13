@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [Unreleased] (latest master branch)
 
 ### Added
 
@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-## [2.0.0] - 2023-07-01
+## [2.0.0] - 2023-07-15
 
 ### Added
 
@@ -41,8 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- Palmer indices
-- Numba integration
+- Palmer indices (these were always half-baked and nobody ever showed any interest in developing them further)
+- Numba integration (see [this discussion](https://github.com/monocongo/climate_indices/discussions/502#discussioncomment-6377732)
+  for context)
+- requirements.txt (dependencies now specified solely in pyproject.toml)
+- setup.py (now using poetry as the build tool)
 
 [unreleased]: https://github.com/monocongo/climate_indices/compare/v2.0.0...HEAD
 [2.0.0]: https://github.com/monocongo/climate_indices/releases/tag/v2.0.0
