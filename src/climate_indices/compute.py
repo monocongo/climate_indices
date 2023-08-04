@@ -4,6 +4,7 @@ Common classes and functions used to compute the various climate indices.
 from enum import Enum
 from distutils.version import LooseVersion
 import logging
+from typing import List
 
 import numpy as np
 import scipy.stats
@@ -161,6 +162,12 @@ def sum_to_scale(
     # return convolve(values, np.ones(scale), mode='reflect', cval=0.0, origin=0)[start: end]
 
 
+def _log_and_raise_shape_error(shape: List[int]):
+    message = f"Invalid shape of input data array: {shape}"
+    _logger.error(message)
+    raise ValueError(message)
+
+
 def _probability_of_zero(
     values: np.ndarray,
 ) -> np.ndarray:
@@ -178,12 +185,12 @@ def _probability_of_zero(
     :return: a 1-D array of probability of zero values, with shape (12,) for
         monthly or (366,) for daily
     """
-
     # validate that the values array has shape: (years, 12) for monthly or (years, 366) for daily
     if len(values.shape) != 2:
-        message = "Invalid shape of input data array: {shape}".format(shape=values.shape)
-        _logger.error(message)
-        raise ValueError(message)
+        _log_and_raise_shape_error(shape=values.shape)
+        # message = "Invalid shape of input data array: {shape}".format(shape=values.shape)
+        # _logger.error(message)
+        # raise ValueError(message)
 
     else:
 
@@ -191,9 +198,10 @@ def _probability_of_zero(
         # (we expect 12 for monthly, 366 for daiy)
         time_steps_per_year = values.shape[1]
         if time_steps_per_year not in (12, 366):
-            message = "Invalid shape of input data array: {shape}".format(shape=values.shape)
-            _logger.error(message)
-            raise ValueError(message)
+            _log_and_raise_shape_error(shape=values.shape)
+            # message = "Invalid shape of input data array: {shape}".format(shape=values.shape)
+            # _logger.error(message)
+            # raise ValueError(message)
 
     # the values we'll compute and return
     probabilities_of_zero = np.zeros((time_steps_per_year,))
@@ -269,17 +277,19 @@ def pearson_parameters(
 
     # validate that the values array has shape: (years, 12) for monthly or (years, 366) for daily
     if len(values.shape) != 2:
-        message = "Invalid shape of input data array: {shape}".format(shape=values.shape)
-        _logger.error(message)
-        raise ValueError(message)
+        _log_and_raise_shape_error(shape=values.shape)
+        # message = "Invalid shape of input data array: {shape}".format(shape=values.shape)
+        # _logger.error(message)
+        # raise ValueError(message)
 
     else:
 
         time_steps_per_year = values.shape[1]
         if time_steps_per_year not in (12, 366):
-            message = "Invalid shape of input data array: {shape}".format(shape=values.shape)
-            _logger.error(message)
-            raise ValueError(message)
+            _log_and_raise_shape_error(shape=values.shape)
+            # message = "Invalid shape of input data array: {shape}".format(shape=values.shape)
+            # _logger.error(message)
+            # raise ValueError(message)
 
     # determine the end year of the values array
     data_end_year = data_start_year + values.shape[0]
