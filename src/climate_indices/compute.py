@@ -4,7 +4,7 @@ Common classes and functions used to compute the various climate indices.
 from enum import Enum
 from distutils.version import LooseVersion
 import logging
-from typing import List
+from typing import Tuple
 
 import numpy as np
 import scipy.stats
@@ -162,7 +162,7 @@ def sum_to_scale(
     # return convolve(values, np.ones(scale), mode='reflect', cval=0.0, origin=0)[start: end]
 
 
-def _log_and_raise_shape_error(shape: List[int]):
+def _log_and_raise_shape_error(shape: Tuple[int]):
     message = f"Invalid shape of input data array: {shape}"
     _logger.error(message)
     raise ValueError(message)
@@ -346,10 +346,10 @@ def pearson_parameters(
 
 
 def _minimum_possible(
-    skew: float,
-    loc: float,
-    scale: float,
-) -> float:
+    skew: np.ndarray,
+    loc: np.ndarray,
+    scale: np.ndarray,
+) -> np.ndarray:
     """
     Compute the minimum possible value that can be fitted to a distribution
     described by a set of skew, loc, and scale parameters.
