@@ -188,9 +188,6 @@ def _probability_of_zero(
     # validate that the values array has shape: (years, 12) for monthly or (years, 366) for daily
     if len(values.shape) != 2:
         _log_and_raise_shape_error(shape=values.shape)
-        # message = "Invalid shape of input data array: {shape}".format(shape=values.shape)
-        # _logger.error(message)
-        # raise ValueError(message)
 
     else:
 
@@ -199,9 +196,6 @@ def _probability_of_zero(
         time_steps_per_year = values.shape[1]
         if time_steps_per_year not in (12, 366):
             _log_and_raise_shape_error(shape=values.shape)
-            # message = "Invalid shape of input data array: {shape}".format(shape=values.shape)
-            # _logger.error(message)
-            # raise ValueError(message)
 
     # the values we'll compute and return
     probabilities_of_zero = np.zeros((time_steps_per_year,))
@@ -278,18 +272,12 @@ def pearson_parameters(
     # validate that the values array has shape: (years, 12) for monthly or (years, 366) for daily
     if len(values.shape) != 2:
         _log_and_raise_shape_error(shape=values.shape)
-        # message = "Invalid shape of input data array: {shape}".format(shape=values.shape)
-        # _logger.error(message)
-        # raise ValueError(message)
 
     else:
 
         time_steps_per_year = values.shape[1]
         if time_steps_per_year not in (12, 366):
             _log_and_raise_shape_error(shape=values.shape)
-            # message = "Invalid shape of input data array: {shape}".format(shape=values.shape)
-            # _logger.error(message)
-            # raise ValueError(message)
 
     # determine the end year of the values array
     data_end_year = data_start_year + values.shape[0]
@@ -653,10 +641,8 @@ def scale_values(
     if len(shape) == 2:
         values = values.flatten()
     elif len(shape) != 1:
-        message = "Invalid shape of input array: {shape}".format(shape=shape) + \
-                  " -- only 1-D and 2-D arrays are supported"
-        _logger.error(message)
-        raise ValueError(message)
+        # only 1-D and 2-D arrays are supported
+        _log_and_raise_shape_error(shape=shape)
 
     # if we're passed all missing values then we can't compute
     # anything, so we return the same array of missing values
