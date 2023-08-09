@@ -12,10 +12,11 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
-#        uses: actions/checkout@v3
-#        with:
-#          ref: ${{ github.event.pull_request.head.sha }}
+        # check out the exact commit of the pull request branch that triggered the workflow,
+        # allowing subsequent steps in the job to operate on that specific version of the code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v2
