@@ -82,7 +82,7 @@ def _validate_array(
     # validate (and possibly reshape) the input array
     if len(values.shape) == 1:
         if periodicity is None:
-            message = "1-D input array requires a corresponding periodicity " "argument, none provided"
+            message = "1-D input array requires a corresponding periodicity argument, none provided"
             _logger.error(message)
             raise ValueError(message)
 

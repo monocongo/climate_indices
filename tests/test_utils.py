@@ -64,28 +64,32 @@ def test_compute_days():
 def test_count_zeros_and_non_missings():
     # Test for the utils.count_zeros_and_non_missings() function
 
+    # messages used multiple times below
+    zero_count_error = "Failed to correctly count zero values"
+    non_missing_count_error = "Failed to correctly count non-missing values"
+    
     # vanilla use case
     values_list = [3, 4, 0, 2, 3.1, 5, np.NaN, 8, 5, 6, 0.0, np.NaN, 5.6, 2]
     values = np.array(values_list)
     zeros, non_missings = utils.count_zeros_and_non_missings(values)
     if zeros != 2:
-        raise AssertionError("Failed to correctly count zero values")
+        raise AssertionError(zero_count_error)
     if non_missings != 12:
-        raise AssertionError("Failed to correctly count non-missing values")
+        raise AssertionError(non_missing_count_error)
 
     # test with lists
     values = values_list
     zeros, non_missings = utils.count_zeros_and_non_missings(values)
     if zeros != 2:
-        raise AssertionError("Failed to correctly count zero values")
+        raise AssertionError(zero_count_error)
     if non_missings != 12:
-        raise AssertionError("Failed to correctly count non-missing values")
+        raise AssertionError(non_missing_count_error)
     values = [[3, 4, 0, 2, 3.1, 5, np.NaN], [8, 5, 6, 0.0, np.NaN, 5.6, 2]]
     zeros, non_missings = utils.count_zeros_and_non_missings(values)
     if zeros != 2:
-        raise AssertionError("Failed to correctly count zero values")
+        raise AssertionError(zero_count_error)
     if non_missings != 12:
-        raise AssertionError("Failed to correctly count non-missing values")
+        raise AssertionError(non_missing_count_error)
 
     # using a list that can't be converted
     # into an array should result in a TypeError
@@ -380,32 +384,32 @@ def test_rmse():
 def test_transform_to_gregorian():
     # Test for the utils.transform_to_gregorian() function
 
-    # an array of 366 values, representing a year with 366 days, such as a leap year
+    # an array of 366 values, representing a year with 366-days, such as a leap year
     values_366 = np.array(range(366))
 
     # an array of 365 values, representing a year with 365 days, with the value
-    # for all days after Feb 28th matching to those in the 366 day array
+    # for all days after Feb 28th matching to those in the 366-day array
     values_365 = np.array(range(365))
     values_365[59:] = [x + 1 for x in values_365[59:]]
 
-    # exercise the function with the 366 day year array,
+    # exercise the function with the 366-day year array,
     # using a non-leap year argument (1971)
     values_365_computed = utils.transform_to_gregorian(values_366, 1971)
 
     np.testing.assert_equal(
         values_365_computed,
         values_365,
-        "Not transforming the 1-D array of 366 days " + "into a corresponding 365 day array",
+        "Not transforming the 1-D array of 366-days " + "into a corresponding 365 day array",
     )
 
-    # exercise the function with the 366 day year array,
+    # exercise the function with the 366-day year array,
     # using a leap year argument (1972)
     values_366_computed = utils.transform_to_gregorian(values_366, 1972)
 
     np.testing.assert_equal(
         values_366_computed,
         values_366,
-        "Not transforming the 1-D array of " "366 days into a corresponding 366 day array",
+        "Not transforming the 1-D array of 366-days into a corresponding 366-day array",
     )
 
     # make sure that the function croaks with a ValueError
@@ -425,10 +429,10 @@ def test_transform_to_366day():
     # Test for the utils.transform_to_366day() function
 
     # an array of 366 values, representing a year
-    # with 366 days, such as a leap year
+    # with 366-days, such as a leap year
     values_366 = np.array(range(366))
 
-    # an array of 366 values, representing a year with 366 days, as a non-leap
+    # an array of 366 values, representing a year with 366-days, as a non-leap
     # year with the Feb 29th value an average of the Feb. 28th and Mar. 1st values
     values_366_faux_feb29 = np.array(range(366), dtype=float)
     values_366_faux_feb29[59] = 58.5
@@ -437,24 +441,24 @@ def test_transform_to_366day():
     # an array of 365 values, representing a year with 365 days
     values_365 = np.array(range(365))
 
-    # exercise the function with the 366 day year array,
+    # exercise the function with the 366-day year array,
     # using a non-leap year argument (1971)
     values_366_computed = utils.transform_to_366day(values_365, 1971, 1)
 
     np.testing.assert_equal(
         values_366_computed,
         values_366_faux_feb29,
-        "Not transforming the 1-D array of 365 days " + "into a corresponding 366 day array as expected",
+        "Not transforming the 1-D array of 365 days " + "into a corresponding 366-day array as expected",
     )
 
-    # exercise the function with the 366 day year array,
+    # exercise the function with the 366-day year array,
     # using a leap year argument (1972)
     values_366_computed = utils.transform_to_366day(values_366, 1972, 1)
 
     np.testing.assert_equal(
         values_366_computed,
         values_366,
-        "Not transforming the 1-D array of 366 days " + "into a corresponding 366 day array",
+        "Not transforming the 1-D array of 366-days " + "into a corresponding 366-day array",
     )
 
     # make sure that the function croaks with a ValueError
@@ -476,21 +480,23 @@ def test_transform_to_366day():
 def test_tolerance():
     lons, dlon = np.linspace(-180.0, 180.0, 250, retstep=True)
     tol = utils.get_tolerance(lons)
-    assert tol > 0, "Tolerance must always be greater than zero"
-    assert tol < abs(dlon), "Tolerance must always come out smaller than the coordinate delta"
+    tolerance_smaller = "Tolerance must always come out smaller than the coordinate delta"
+    tolerance_greater = "Tolerance must always be greater than zero"
+    assert tol > 0, tolerance_greater
+    assert tol < abs(dlon), tolerance_smaller
 
     lats, dlat = np.linspace(25.0, -15.0, 50, retstep=True)
     tol = utils.get_tolerance(lats)
-    assert tol > 0, "Tolerance must always be greater than zero"
-    assert tol < abs(dlat), "Tolerance must always come out smaller than the coordinate delta"
+    assert tol > 0, tolerance_greater
+    assert tol < abs(dlat), tolerance_smaller
 
     meshlat, meshlon = np.meshgrid(lats, lons)
     tol = utils.get_tolerance(meshlat)
-    assert tol > 0, "Tolerance must always be greater than zero"
-    assert tol < abs(dlat), "Tolerance must always come out smaller than the coordinate delta"
+    assert tol > 0, tolerance_greater
+    assert tol < abs(dlat), tolerance_smaller
     # Tricky situation because np.diff() on this grid returns all zeros.
     # Not the greatest situation, but we can at least allow a tiny bit of tolerance.
     # Would be nice to be smarter about this situation.
     tol = utils.get_tolerance(meshlon)
-    assert tol > 0, "Tolerance must always be greater than zero"
-    assert tol < abs(dlon), "Tolerance must always come out smaller than the coordinate delta"
+    assert tol > 0, tolerance_greater
+    assert tol < abs(dlon), tolerance_smaller

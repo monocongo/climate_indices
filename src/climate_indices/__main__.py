@@ -88,7 +88,7 @@ def _validate_args(args):
     expected_dimensions_divisions_awc = [
         ("time", "division"),
         ("division", "time"),
-        ("division"),
+        ("division",),
     ]
 
     # all indices except PET require a precipitation file
@@ -274,7 +274,7 @@ def _validate_args(args):
 
         elif args.netcdf_pet is not None:
             # we can't have both temperature and PET files specified, no way to determine which to use
-            msg = "Both temperature and PET files were specified, " "only one of these should be provided"
+            msg = "Both temperature and PET files were specified, only one of these should be provided"
             _logger.error(msg)
             raise ValueError(msg)
 
@@ -421,7 +421,7 @@ def _validate_args(args):
                     # verify that the coordinate variables match
                     # with those of the precipitation dataset
                     if not np.array_equal(divisions_precip, dataset_awc["division"][:]):
-                        msg = "Precipitation and AWC variables contain " "non-matching division IDs"
+                        msg = "Precipitation and AWC variables contain non-matching division IDs"
                         _logger.error(msg)
                         raise ValueError(msg)
 
@@ -743,7 +743,7 @@ def _compute_write_index(keyword_arguments):
         output_dims = dataset[keyword_arguments["var_name_temp"]].dims
     else:
         raise ValueError(
-            "Unable to determine output dimensions, no precipitation " "or temperature variable name was specified."
+            "Unable to determine output dimensions, no precipitation or temperature variable name was specified."
         )
 
     # convert data into the appropriate units, if necessary
@@ -1123,17 +1123,6 @@ def _spei(precips, pet_mm, parameters):
     )
 
 
-def _palmers(precips, pet_mm, awc, parameters):
-    return indices.scpdsi(
-        precip_time_series=precips,
-        pet_time_series=pet_mm,
-        awc=awc,
-        data_start_year=parameters["data_start_year"],
-        calibration_start_year=parameters["calibration_start_year"],
-        calibration_end_year=parameters["calibration_end_year"],
-    )
-
-
 def _pnp(precips, parameters):
     return indices.percentage_of_normal(
         precips,
@@ -1238,28 +1227,6 @@ def _parallel_process(
                 "func1d": _pet,
                 "var_name_temp": input_var_names["var_name_temp"],
                 "var_name_lat": input_var_names["var_name_lat"],
-                "output_var_name": output_var_name,
-                "sub_array_start": split_indices[i],
-                "input_type": input_type,
-                "args": args,
-            }
-            if i < (required_processes - 1):
-                params["sub_array_end"] = split_indices[i + 1]
-            else:
-                params["sub_array_end"] = None
-
-            chunk_params.append(params)
-
-    elif index == "palmers":
-        # create parameter dictionary objects appropriate to
-        # the _apply_along_axis_palmer function, one per worker process
-        for i in range(required_processes):
-            params = {
-                "index": index,
-                "func1d": _palmers,
-                "var_name_precip": input_var_names["var_name_precip"],
-                "var_name_pet": input_var_names["var_name_pet"],
-                "var_name_awc": input_var_names["var_name_awc"],
                 "output_var_name": output_var_name,
                 "sub_array_start": split_indices[i],
                 "input_type": input_type,

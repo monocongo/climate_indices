@@ -47,7 +47,7 @@ def _norm_fitdict(params: Dict):
             if altname not in params:
                 continue
             _logger.warning(
-                "Using deprecated fitting parameter key %s." " Use %s instead.",
+                "Using deprecated fitting parameter key %s. Use %s instead.",
                 altname,
                 name,
             )
@@ -542,8 +542,8 @@ def pci(
         denominator = 0
 
         for month in range(12):
-            numerator = numerator + (sum(rainfall_mm[start : m[month]]) ** 2)
-            denominator = denominator + sum(rainfall_mm[start : m[month]])
+            numerator = numerator + (sum(rainfall_mm[start: m[month]]) ** 2)
+            denominator = denominator + sum(rainfall_mm[start: m[month]])
 
             start = m[month]
 
@@ -556,8 +556,8 @@ def pci(
         denominator = 0
 
         for month in range(12):
-            numerator = numerator + (sum(rainfall_mm[start : m[month]]) ** 2)
-            denominator = denominator + sum(rainfall_mm[start : m[month]])
+            numerator = numerator + (sum(rainfall_mm[start: m[month]]) ** 2)
+            denominator = denominator + sum(rainfall_mm[start: m[month]])
 
             start = m[month]
 

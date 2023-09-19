@@ -8,6 +8,8 @@ from climate_indices import compute, indices
 # disable logging messages
 logging.disable(logging.CRITICAL)
 
+UNEXPECTED_ALL_NANS_MESSAGE = "All-NaN input array does not result in the expected all-NaN result"
+
 
 @pytest.mark.usefixtures(
     "temps_celsius",
@@ -26,7 +28,7 @@ def test_pet(
     np.testing.assert_equal(
         computed_pet,
         all_nan_temps,
-        "All-NaN input array does not result in " "the expected all-NaN result",
+        UNEXPECTED_ALL_NANS_MESSAGE,
     )
 
     # confirm that a masked input temperature array of
@@ -36,7 +38,7 @@ def test_pet(
     np.testing.assert_equal(
         computed_pet,
         masked_all_nan_temps,
-        "All-NaN masked input array does not result in " "the expected all-NaN masked result",
+        UNEXPECTED_ALL_NANS_MESSAGE,
     )
 
     # confirm that a missing/None latitude value raises an error
@@ -111,7 +113,7 @@ def test_pnp(
         computed_pnp.flatten(),
         all_nan_precips.flatten(),
         equal_nan=True,
-        err_msg="All-NaN input array does not result " "in the expected all-NaN result",
+        err_msg=UNEXPECTED_ALL_NANS_MESSAGE,
     )
 
     # compute PNP from the daily precipitation array
@@ -222,7 +224,7 @@ def test_spi(
         computed_spi,
         all_nans.flatten(),
         equal_nan=True,
-        err_msg="SPI/Gamma not handling " "all-NaN arrays as expected",
+        err_msg="SPI/Gamma not handling all-NaN arrays as expected",
     )
 
     # confirm SPI/gamma is being computed as expected
@@ -239,7 +241,7 @@ def test_spi(
         computed_spi,
         spi_1_month_gamma,
         atol=0.001,
-        err_msg="SPI/Gamma values for 1-month " "scale not computed as expected",
+        err_msg="SPI/Gamma values for 1-month scale not computed as expected",
     )
 
     # confirm SPI/gamma is being computed as expected
@@ -258,7 +260,7 @@ def test_spi(
         computed_spi,
         spi_6_month_gamma,
         atol=0.001,
-        err_msg="SPI/Gamma values for 6-month " "scale not computed as expected",
+        err_msg="SPI/Gamma values for 6-month scale not computed as expected",
     )
 
     # confirm we can also call the function with daily data,
@@ -338,7 +340,7 @@ def test_spi(
         computed_spi,
         spi_6_month_pearson3,
         atol=0.01,
-        err_msg="SPI/Pearson values for 6-month " "scale not computed as expected",
+        err_msg="SPI/Pearson values for 6-month scale not computed as expected",
     )
 
     # confirm we can compute from daily values without raising an error
@@ -400,7 +402,7 @@ def test_spei(
         computed_spei,
         all_nans,
         equal_nan=True,
-        err_msg="SPEI/Gamma not handling all-NaN " "arrays as expected",
+        err_msg="SPEI/Gamma not handling all-NaN arrays as expected",
     )
 
     # compute SPEI/gamma at 6-month scale
@@ -422,7 +424,7 @@ def test_spei(
         computed_spei,
         spei_6_month_gamma,
         atol=0.01,
-        err_msg="SPEI/Gamma values for 6-month " "scale not computed as expected",
+        err_msg="SPEI/Gamma values for 6-month scale not computed as expected",
     )
 
     # compute SPEI/Pearson at 6-month scale
@@ -444,7 +446,7 @@ def test_spei(
         computed_spei,
         spei_6_month_pearson3,
         atol=0.01,
-        err_msg="SPEI/Pearson values for 6-month scale " "not computed as expected",
+        err_msg="SPEI/Pearson values for 6-month scale not computed as expected",
     )
 
     # invalid periodicity argument should raise a ValueError
@@ -494,7 +496,7 @@ def test_pci(
     np.testing.assert_equal(
         computed_pci,
         all_nan_rainfall,
-        "All-NaN input array does not result in " "the expected all-NaN result",
+        UNEXPECTED_ALL_NANS_MESSAGE,
     )
 
     # confirm that a masked input rainfall array of
@@ -504,7 +506,7 @@ def test_pci(
     np.testing.assert_equal(
         computed_pci,
         masked_all_nan_rainfall,
-        "All-NaN masked input array does not result in " "the expected all-NaN masked result",
+        "All-NaN masked input array does not result in the expected all-NaN masked result",
     )
 
     # Compute PCI for 366 days

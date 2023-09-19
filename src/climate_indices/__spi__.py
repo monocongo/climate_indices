@@ -118,19 +118,19 @@ def _validate_args(args):
     # for fitting parameters we can either compute and save or load from file, but not both
     if args.save_params:
         if args.load_params:
-            msg = "Both of the mutually exclusive fitting parameter " "file options were specified (both load and save)"
+            msg = "Both of the mutually exclusive fitting parameter file options were specified (both load and save)"
             _logger.error(msg)
             raise ValueError(msg)
 
         elif os.path.exists(args.save_params) and not args.overwrite:
-            msg = "The distribution fitting parameters file to save is present and " "overwrite was not specified"
+            msg = "The distribution fitting parameters file to save is present and overwrite was not specified"
             _logger.error(msg)
             raise ValueError(msg)
 
     if args.load_params:
         # make sure the specified fitting parameters file exists
         if not os.path.exists(args.load_params):
-            msg = f"The specified fitting parameters file {args.load_params} " "does not exist"
+            msg = f"The specified fitting parameters file {args.load_params} does not exist"
             _logger.error(msg)
             raise ValueError(msg)
 
@@ -1177,7 +1177,7 @@ def _apply_to_subarray_pearson(params):
         skew, and loc arrays ("var_name_precip", "var_name_prob_zero",
         "var_name_scale", "var_name_skew", and "var_name_loc"), a dictionary of
         arguments to be passed to the function, "args", and the key name of
-        the shared arrays for output values, "prob_zero_var_name" "scale_var_name",
+        the shared arrays for output values, "prob_zero_var_name", "scale_var_name",
         "skew_var_name", and "loc_var_name".
     """
     start_index = params["sub_array_start"]
@@ -1384,13 +1384,13 @@ def main():  # type: () -> None
             "--load_params",
             type=str,
             required=False,
-            help="path to input NetCDF file (to be read) " "containing distribution fitting parameters",
+            help="path to input NetCDF file (to be read) containing distribution fitting parameters",
         )
         parser.add_argument(
             "--save_params",
             type=str,
             required=False,
-            help="path to output NetCDF file (to be written) " "containing distribution fitting parameters",
+            help="path to output NetCDF file (to be written) containing distribution fitting parameters",
         )
         parser.add_argument(
             "--overwrite",

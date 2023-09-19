@@ -5,12 +5,13 @@ import pytest
 
 from climate_indices import compute
 
-# ------------------------------------------------------------------------------
 # disable logging messages
 logging.disable(logging.CRITICAL)
 
+UNEXPECTED_PEARSON3_MESSAGE = "Transformed Pearson Type III fitted values not computed as expected"
+UNEXPECTED_SLIDING_SUMS_MESSAGE = "Sliding sums not computed as expected"
 
-# ------------------------------------------------------------------------------
+
 @pytest.mark.usefixtures(
     "precips_mm_monthly",
     "precips_mm_daily",
@@ -54,7 +55,7 @@ def test_transform_fitted_gamma(
         computed_values,
         all_nans,
         equal_nan=True,
-        err_msg="Gamma fit/transform not handling " "all-NaN arrays as expected",
+        err_msg="Gamma fit/transform not handling all-NaN arrays as expected",
     )
 
     # compute sigmas of transformed (normalized) values fitted to a gamma
@@ -69,7 +70,7 @@ def test_transform_fitted_gamma(
     np.testing.assert_allclose(
         computed_values,
         transformed_gamma_monthly,
-        err_msg="Transformed gamma fitted monthly " "values not computed as expected",
+        err_msg="Transformed gamma fitted monthly values not computed as expected",
     )
 
     # compute sigmas of transformed (normalized) values fitted to a gamma
@@ -86,7 +87,7 @@ def test_transform_fitted_gamma(
         transformed_gamma_daily,
         atol=0.001,
         equal_nan=True,
-        err_msg="Transformed gamma fitted daily " "values not computed as expected",
+        err_msg="Transformed gamma fitted daily values not computed as expected",
     )
 
     # confirm that we can call with a calibration period out of the valid range
@@ -103,7 +104,7 @@ def test_transform_fitted_gamma(
         transformed_gamma_monthly,
         atol=0.001,
         equal_nan=True,
-        err_msg="Transformed Pearson Type III " "fitted values not computed as expected",
+        err_msg=UNEXPECTED_PEARSON3_MESSAGE,
     )
 
     # if we provide a 1-D array then we need to provide a corresponding
@@ -140,7 +141,6 @@ def test_transform_fitted_gamma(
     )
 
 
-# ------------------------------------------------------------------------------
 @pytest.mark.usefixtures(
     "precips_mm_monthly",
     "precips_mm_daily",
@@ -216,7 +216,6 @@ def test_gamma_parameters(
     )
 
 
-# ------------------------------------------------------------------------------
 @pytest.mark.usefixtures(
     "precips_mm_monthly",
     "precips_mm_daily",
@@ -277,7 +276,7 @@ def test_transform_fitted_pearson(
         computed_values,
         expected_values,
         atol=0.001,
-        err_msg="Transformed Pearson Type III fitted " "values not computed as expected",
+        err_msg=UNEXPECTED_PEARSON3_MESSAGE,
     )
 
     # confirm that an input array of all NaNs will return the same array
@@ -293,7 +292,7 @@ def test_transform_fitted_pearson(
         computed_values,
         all_nans,
         equal_nan=True,
-        err_msg="Transformed Pearson Type III fitted " "values not computed as expected",
+        err_msg=UNEXPECTED_PEARSON3_MESSAGE,
     )
 
     # confirm that we can call with a calibration period outside of valid range
@@ -310,7 +309,7 @@ def test_transform_fitted_pearson(
         transformed_pearson3_monthly_fullperiod,
         atol=0.001,
         equal_nan=True,
-        err_msg="Transformed Pearson Type III fitted " "values not computed as expected",
+        err_msg=UNEXPECTED_PEARSON3_MESSAGE,
     )
 
     # confirm that we can call with daily values and not raise an error
@@ -355,7 +354,6 @@ def test_transform_fitted_pearson(
     )
 
 
-# ------------------------------------------------------------------------------
 @pytest.mark.usefixtures(
     "precips_mm_monthly",
     "data_year_start_monthly",
@@ -371,22 +369,6 @@ def test_pearson_parameters(
     """
     Test for the compute._pearson3_fitting_values() function
     """
-    # provide some bogus inputs to make sure these raise expected errors
-    # np.testing.assert_raises(ValueError,
-    #                          compute.pearson_parameters,
-    #                          np.array([1.0, 0.0, 0.0]),
-    #                          compute.Periodicity.monthly)
-    # np.testing.assert_raises(ValueError,
-    #                          compute.pearson_parameters,
-    #                          np.array([1.0, 0.0, 0.0]),
-    #                          compute.Periodicity.daily)
-    # np.testing.assert_raises(ValueError,
-    #                          compute.pearson_parameters,
-    #                          np.array([1.0, 0.0, 0.0]),
-    #                          None)
-    # np.testing.assert_raises(ValueError,
-    #                          compute.pearson_parameters,
-    #                          np.array([1.0, 0.0, 0.0, 1.0, 0.0, 0.0]))
     np.testing.assert_raises(
         ValueError,
         compute.pearson_parameters,
@@ -534,7 +516,6 @@ def test_pearson_parameters(
     )
 
 
-# ------------------------------------------------------------------------------
 def test_sum_to_scale():
     """
     Test for the compute.sum_to_scale() function
@@ -547,14 +528,14 @@ def test_sum_to_scale():
     np.testing.assert_allclose(
         computed_values,
         expected_values,
-        err_msg="Sliding sums not computed as expected",
+        err_msg=UNEXPECTED_SLIDING_SUMS_MESSAGE,
     )
     computed_values = compute.sum_to_scale(values, 4)
     expected_values = np.array([np.NaN, np.NaN, np.NaN, 15, 13, 12, 11, 17, 21])
     np.testing.assert_allclose(
         computed_values,
         expected_values,
-        err_msg="Sliding sums not computed as expected",
+        err_msg=UNEXPECTED_SLIDING_SUMS_MESSAGE,
     )
 
     # test an input array with missing values on the end
@@ -564,7 +545,7 @@ def test_sum_to_scale():
     np.testing.assert_allclose(
         computed_values,
         expected_values,
-        err_msg="Sliding sums not computed as expected when " "missing values appended to end of input array",
+        err_msg="Sliding sums not computed as expected when missing values appended to end of input array",
     )
 
     # test an input array with missing values within the array
@@ -574,7 +555,7 @@ def test_sum_to_scale():
     np.testing.assert_allclose(
         computed_values,
         expected_values,
-        err_msg="Sliding sums not computed as expected when " "missing values appended to end of input array",
+        err_msg="Sliding sums not computed as expected when missing values appended to end of input array",
     )
 
     test_values = np.array([1.0, 5, 7, 2, 3, 4, 9, 6, 3, 8])
@@ -584,15 +565,15 @@ def test_sum_to_scale():
     np.testing.assert_equal(
         compute.sum_to_scale(test_values, 2),
         sum_by2,
-        err_msg="Sliding sums not computed as expected",
+        err_msg=UNEXPECTED_SLIDING_SUMS_MESSAGE,
     )
     np.testing.assert_equal(
         compute.sum_to_scale(test_values, 4),
         sum_by4,
-        err_msg="Sliding sums not computed as expected",
+        err_msg=UNEXPECTED_SLIDING_SUMS_MESSAGE,
     )
     np.testing.assert_equal(
         compute.sum_to_scale(test_values, 6),
         sum_by6,
-        err_msg="Sliding sums not computed as expected",
+        err_msg=UNEXPECTED_SLIDING_SUMS_MESSAGE,
     )
