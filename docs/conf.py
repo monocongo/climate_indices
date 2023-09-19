@@ -15,19 +15,24 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath("../climate_indices"))
+import toml
 
+# since our source files are under a src folder we need to add that as our first path
+sys.path.insert(0, os.path.abspath("../src"))
 
 # -- Project information -----------------------------------------------------
 
 project = "climate_indices"
 author = "James Adams"
 
-# The short X.Y version
-version = "1.0"
-# The full version, including alpha/beta/rc tags
-release = "1.0.10"
+# parse the version information from pyproject.toml
+pyproject = toml.load("../pyproject.toml")
 
+# get the full release version, including alpha/beta/rc tags
+release = pyproject["tool"]["poetry"]["version"]
+
+# get the major.minor version
+version = ".".join(release.split(".")[:2])
 
 # -- General configuration ---------------------------------------------------
 
@@ -144,9 +149,7 @@ latex_documents = [
 
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
-man_pages = [
-    (master_doc, "climate_indices", "climate_indices Documentation", [author], 1)
-]
+man_pages = [(master_doc, "climate_indices", "climate_indices Documentation", [author], 1)]
 
 
 # -- Options for Texinfo output ----------------------------------------------
@@ -161,7 +164,7 @@ texinfo_documents = [
         "climate_indices Documentation",
         "James Adams",
         "climate_indices",
-        "Climate indices useful for drought monitoring",
+        "Climate indices for drought monitoring",
         "Miscellaneous",
     )
 ]

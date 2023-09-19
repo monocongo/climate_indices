@@ -1,0 +1,35 @@
+name: tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        # check out the exact commit of the pull request branch that triggered the workflow,
+        # allowing subsequent steps in the job to operate on that specific version of the code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip poetry
+
+      - name: Set up project
+        run: |
+          cd $GITHUB_WORKSPACE
+          poetry install
+
+      - name: Run unit tests
+        run: poetry run pytest

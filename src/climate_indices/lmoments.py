@@ -1,15 +1,19 @@
+"""Computation of L-moments used for Pearson Type-III distribution fitting"""
+
 import logging
 from math import exp, lgamma, pi, sqrt
 
 import numpy as np
+
 from climate_indices import utils
 
-# ------------------------------------------------------------------------------
+# declare the function names that should be included in the public API for this module
+__all__ = ["fit"]
+
 # Retrieve logger and set desired logging level
 _logger = utils.get_logger(__name__, logging.WARN)
 
 
-# ------------------------------------------------------------------------------
 def fit(timeseries: np.ndarray) -> dict:
     """
     Returns the L-Moments fit (loc, scale, skew) corresponding to the
@@ -24,15 +28,13 @@ def fit(timeseries: np.ndarray) -> dict:
 
     # validate the L-Moments
     if (lmoments[1] <= 0.0) or (abs(lmoments[2]) >= 1.0):
-        message = "Unable to calculate Pearson Type III parameters " + \
-                  "due to invalid L-moments"
+        message = "Unable to calculate Pearson Type III parameters " + "due to invalid L-moments"
         _logger.error(message)
         raise ValueError(message)
 
     return _estimate_pearson3_parameters(lmoments)
 
 
-# ------------------------------------------------------------------------------
 def _estimate_pearson3_parameters(lmoments: np.ndarray) -> dict:
     """
     Estimate parameters via L-moments for the Pearson Type III distribution,
@@ -72,16 +74,13 @@ def _estimate_pearson3_parameters(lmoments: np.ndarray) -> dict:
 
     # the first Pearson Type III parameter is the same as the first L-moment
     loc = lmoments[0]
-    # pearson3_parameters = np.zeros((3,))
 
     # # the first Pearson Type III parameter is the same as the first L-moment
-    # pearson3_parameters[0] = lmoments[0]
 
     if t3 <= 1e-6:
         # skewness is effectively zero
         scale = lmoments[1] * sqrt(pi)
         skew = 0.0
-        # pearson3_parameters[1] = lmoments[1] * sqrt(pi)
 
     else:
         if t3 < 0.333333333:
@@ -94,24 +93,20 @@ def _estimate_pearson3_parameters(lmoments: np.ndarray) -> dict:
         alpha_root = sqrt(alpha)
         beta = sqrt(pi) * lmoments[1] * exp(lgamma(alpha) - lgamma(alpha + 0.5))
         scale = beta * alpha_root
-        # pearson3_parameters[1] = beta * alpha_root
 
         # the sign of the third L-moment determines
         # the sign of the third Pearson Type III parameter
         if lmoments[2] < 0:
             skew = -2.0 / alpha_root
-            # pearson3_parameters[2] = -2.0 / alpha_root
         else:
             skew = 2.0 / alpha_root
-            # pearson3_parameters[2] = 2.0 / alpha_root
 
-    # return pearson3_parameters
     return {"loc": loc, "skew": skew, "scale": scale}
 
 
-# ------------------------------------------------------------------------------
-# @numba.jit
-def _estimate_lmoments(values: np.ndarray) -> np.ndarray:
+def _estimate_lmoments(
+    values: np.ndarray,
+) -> np.ndarray:
     """
     Estimate sample L-moments, based on Fortran code written for inclusion
     in IBM Research Report RC20525,

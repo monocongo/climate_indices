@@ -1,46 +1,69 @@
 [build-system]
-# These are the assumed default build requirements from pip:
-# https://pip.pypa.io/en/stable/reference/pip/#pep-517-and-518-support
-requires = ['setuptools>=61.0', 'wheel']
-build-backend = 'setuptools.build_meta'
+requires = ['poetry-core>=1.0.0']
+build-backend = 'poetry.core.masonry.api'
 
-[project]
+[project.urls]
+'Homepage' = 'https://github.com/monocongo/climate_indices'
+'Bug Tracker' = 'https://github.com/monocongo/climate_indices/issues'
+
+[tool.black]
+line-length = 120
+target-version = ['py39', 'py310', 'py311']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.poetry]
 name = 'climate_indices'
-version = '1.0.13'
+version = '2.0.0'
 description = 'Reference implementations of various climate indices typically used for drought monitoring'
+authors = ['James Adams <monocongo@gmail.com>']
 readme = 'README.md'
-requires-python = '>=3.7, <3.11'
 classifiers = [
      'Development Status :: 5 - Production/Stable',
      'Intended Audience :: Developers',
      'Intended Audience :: Education',
      'Intended Audience :: Science/Research',
      'License :: OSI Approved :: BSD License',
-     'Programming Language :: Python :: 3.7',
      'Programming Language :: Python :: 3.8',
      'Programming Language :: Python :: 3.9',
      'Programming Language :: Python :: 3.10',
+     'Programming Language :: Python :: 3.11',
      'Topic :: Software Development :: Libraries :: Python Modules',
      'Topic :: Scientific/Engineering :: Atmospheric Science',
      'Topic :: Scientific/Engineering :: Physics'
 ]
-dependencies = [
-    'dask',
-    'numba',
-    'scipy',
-    'xarray',
-]
+packages = [{include = 'climate_indices', from = 'src'}]
 
-[project.optional-dependencies]
-dev = ['build', 'pytest', 'tox',]
+[tool.poetry.dependencies]
+cftime = '1.6.2'
+dask = '2022.2.0'
+h5netcdf = '1.1.0'
+python = '>=3.8,<3.12'
+scipy = '1.9.3'
+xarray = '2023.1.0'
 
-[tool.distutils.bdist_wheel]
-universal = true
+[tool.poetry.dev-dependencies]
+pytest = '*'
+toml = '0.10.2'
 
-[project.scripts]
+[tool.poetry.group.dev.dependencies]
+sphinx-autodoc-typehints = "^1.23.3"
+
+[tool.poetry.scripts]
 process_climate_indices = 'climate_indices.__main__:main'
 spi = 'climate_indices.__spi__:main'
 
-[project.urls]
-'Homepage' = 'https://github.com/monocongo/climate_indices'
-'Bug Tracker' = 'https://github.com/monocongo/climate_indices/issues'
+[tool.pytest.ini_options]
+filterwarnings = [
+    'ignore::FutureWarning',
+]
+

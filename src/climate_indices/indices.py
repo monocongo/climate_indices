@@ -1,17 +1,17 @@
+"""Main level API module for computing climate indices"""
+
 from enum import Enum
 import logging
 from typing import Dict
 
-import numba
 import numpy as np
 
-from climate_indices import compute, eto, palmer, utils
+from climate_indices import compute, eto, utils
 
-# declare the names that should be included in the public API for this module
-__all__ = ["pdsi", "percentage_of_normal", "pet", "scpdsi", "spei", "spi"]
+# declare the function names that should be included in the public API for this module
+__all__ = ["percentage_of_normal", "pci", "pet", "spei", "spi"]
 
 
-# ------------------------------------------------------------------------------
 class Distribution(Enum):
     """
     Enumeration type for distribution fittings used for SPI and SPEI.
@@ -21,11 +21,9 @@ class Distribution(Enum):
     gamma = "gamma"
 
 
-# ------------------------------------------------------------------------------
 # Retrieve logger and set desired logging level
 _logger = utils.get_logger(__name__, logging.DEBUG)
 
-# ------------------------------------------------------------------------------
 # valid upper and lower bounds for indices that are fitted/transformed to a distribution (SPI and SPEI)
 _FITTED_INDEX_VALID_MIN = -3.09
 _FITTED_INDEX_VALID_MAX = 3.09
@@ -48,30 +46,35 @@ def _norm_fitdict(params: Dict):
         if val is None:
             if altname not in params:
                 continue
-            _logger.warning("Using deprecated fitting parameter key %s."
-                            " Use %s instead.",
-                            altname, name)
+            _logger.warning(
+                "Using deprecated fitting parameter key %s. Use %s instead.",
+                altname,
+                name,
+            )
             val = params[altname]
         normed[name] = val
     return normed
 
 
-_fit_altnames = (("alpha", "alphas"), ("beta", "betas"),
-                 ("skew", "skews"), ("scale", "scales"), ("loc", "locs"),
-                 ("prob_zero", "probabilities_of_zero"))
+_fit_altnames = (
+    ("alpha", "alphas"),
+    ("beta", "betas"),
+    ("skew", "skews"),
+    ("scale", "scales"),
+    ("loc", "locs"),
+    ("prob_zero", "probabilities_of_zero"),
+)
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def spi(
-        values: np.ndarray,
-        scale: int,
-        distribution: Distribution,
-        data_start_year: int,
-        calibration_year_initial: int,
-        calibration_year_final: int,
-        periodicity: compute.Periodicity,
-        fitting_params: Dict = None,
+    values: np.ndarray,
+    scale: int,
+    distribution: Distribution,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: compute.Periodicity,
+    fitting_params: Dict = None,
 ) -> np.ndarray:
     """
     Computes SPI (Standardized Precipitation Index).
@@ -144,7 +147,6 @@ def spi(
         raise ValueError(f"Invalid periodicity argument: {periodicity}")
 
     if distribution is Distribution.gamma:
-
         # get (optional) fitting parameters if provided
         if fitting_params is not None:
             alphas = fitting_params["alpha"]
@@ -165,7 +167,6 @@ def spi(
             betas,
         )
     elif distribution is Distribution.pearson:
-
         # get (optional) fitting parameters if provided
         if fitting_params is not None:
             probabilities_of_zero = fitting_params["prob_zero"]
@@ -193,7 +194,6 @@ def spi(
         )
 
     else:
-
         message = f"Unsupported distribution argument: {distribution}"
         _logger.error(message)
         raise ValueError(message)
@@ -205,21 +205,19 @@ def spi(
     return values[0:original_length]
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
 def spei(
-        precips_mm: np.ndarray,
-        pet_mm: np.ndarray,
-        scale: int,
-        distribution: Distribution,
-        periodicity: compute.Periodicity,
-        data_start_year: int,
-        calibration_year_initial: int,
-        calibration_year_final: int,
-        fitting_params: dict = None,
+    precips_mm: np.ndarray,
+    pet_mm: np.ndarray,
+    scale: int,
+    distribution: Distribution,
+    periodicity: compute.Periodicity,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    fitting_params: dict = None,
 ) -> np.ndarray:
     """
-    Compute SPEI fitted to the gamma distribution.
+    Compute SPEI fitted to the specified distribution.
 
     PET values are subtracted from the precipitation values to come up with an array
     of (P - PET) values, which is then scaled to the specified months scale and
@@ -263,8 +261,7 @@ def spei(
 
     # if we're passed all missing values then we can't compute anything,
     # so we return the same array of missing values
-    if (np.ma.is_masked(precips_mm) and precips_mm.mask.all()) \
-            or np.all(np.isnan(precips_mm)):
+    if (np.ma.is_masked(precips_mm) and precips_mm.mask.all()) or np.all(np.isnan(precips_mm)):
         return precips_mm
 
     # validate that the two input arrays are compatible
@@ -291,7 +288,6 @@ def spei(
     scaled_values = compute.sum_to_scale(p_minus_pet, scale)
 
     if distribution is Distribution.gamma:
-
         # get (optional) fitting parameters if provided
         if fitting_params is not None:
             alphas = fitting_params["alpha"]
@@ -302,19 +298,17 @@ def spei(
 
         # fit the scaled values to a gamma distribution and
         # transform to corresponding normalized sigmas
-        transformed_fitted_values = \
-            compute.transform_fitted_gamma(
-                scaled_values,
-                data_start_year,
-                calibration_year_initial,
-                calibration_year_final,
-                periodicity,
-                alphas,
-                betas,
-            )
+        transformed_fitted_values = compute.transform_fitted_gamma(
+            scaled_values,
+            data_start_year,
+            calibration_year_initial,
+            calibration_year_final,
+            periodicity,
+            alphas,
+            betas,
+        )
 
     elif distribution is Distribution.pearson:
-
         # get (optional) fitting parameters if provided
         if fitting_params is not None:
             probabilities_of_zero = fitting_params["prob_zero"]
@@ -329,104 +323,38 @@ def spei(
 
         # fit the scaled values to a Pearson Type III distribution
         # and transform to corresponding normalized sigmas
-        transformed_fitted_values = \
-            compute.transform_fitted_pearson(
-                scaled_values,
-                data_start_year,
-                calibration_year_initial,
-                calibration_year_final,
-                periodicity,
-                probabilities_of_zero,
-                locs,
-                scales,
-                skews,
-            )
+        transformed_fitted_values = compute.transform_fitted_pearson(
+            scaled_values,
+            data_start_year,
+            calibration_year_initial,
+            calibration_year_final,
+            periodicity,
+            probabilities_of_zero,
+            locs,
+            scales,
+            skews,
+        )
 
     else:
-        message = "Unsupported distribution argument: " + \
-                  "{dist}".format(dist=distribution)
+        message = "Unsupported distribution argument: " + "{dist}".format(dist=distribution)
         _logger.error(message)
         raise ValueError(message)
 
     # clip values to within the valid range, reshape the array back to 1-D
-    values = \
-        np.clip(transformed_fitted_values,
-                _FITTED_INDEX_VALID_MIN,
-                _FITTED_INDEX_VALID_MAX).flatten()
+    values = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
 
     # return the original size array
     return values[0:original_length]
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
-def scpdsi(precip_time_series: np.ndarray,
-           pet_time_series: np.ndarray,
-           awc: float,
-           data_start_year: int,
-           calibration_start_year: int,
-           calibration_end_year: int):
-    """
-    This function computes the self-calibrated Palmer Drought Severity Index
-    (scPDSI), Palmer Drought Severity Index (PDSI), Palmer Hydrological Drought
-    Index (PHDI), Palmer Modified Drought Index (PMDI), and Palmer Z-Index.
-
-    :param precip_time_series: time series of precipitation values, in inches
-    :param pet_time_series: time series of PET values, in inches
-    :param awc: available water capacity (soil constant), in inches
-    :param data_start_year: initial year of the input precipitation and PET datasets,
-                            both of which are assumed to start in January of this year
-    :param calibration_start_year: initial year of the calibration period
-    :param calibration_end_year: final year of the calibration period
-    :return: five numpy arrays containing SCPDSI, PDSI, PHDI, PMDI, and Z-Index values respectively
-    """
-
-    return palmer.scpdsi(precip_time_series,
-                         pet_time_series,
-                         awc,
-                         data_start_year,
-                         calibration_start_year,
-                         calibration_end_year)
-
-
-# ------------------------------------------------------------------------------
-@numba.jit
-def pdsi(precip_time_series: np.ndarray,
-         pet_time_series: np.ndarray,
-         awc: float,
-         data_start_year: int,
-         calibration_start_year: int,
-         calibration_end_year: int):
-    """
-    This function computes the Palmer Drought Severity Index (PDSI), Palmer
-    Hydrological Drought Index (PHDI), and Palmer Z-Index.
-
-    :param precip_time_series: time series of monthly precipitation values, in inches
-    :param pet_time_series: time series of monthly PET values, in inches
-    :param awc: available water capacity (soil constant), in inches
-    :param data_start_year: initial year of the input precipitation and PET datasets,
-                            both of which are assumed to start in January of this year
-    :param calibration_start_year: initial year of the calibration period
-    :param calibration_end_year: final year of the calibration period
-    :return: four numpy arrays containing PDSI, PHDI, PMDI, and Z-Index values respectively
-    """
-
-    return palmer.pdsi(precip_time_series,
-                       pet_time_series,
-                       awc,
-                       data_start_year,
-                       calibration_start_year,
-                       calibration_end_year)
-
-
-# ------------------------------------------------------------------------------
-@numba.jit
-def percentage_of_normal(values: np.ndarray,
-                         scale: int,
-                         data_start_year: int,
-                         calibration_start_year: int,
-                         calibration_end_year: int,
-                         periodicity: compute.Periodicity) -> np.ndarray:
+def percentage_of_normal(
+    values: np.ndarray,
+    scale: int,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: compute.Periodicity,
+) -> np.ndarray:
     """
     This function finds the percent of normal values (average of each calendar
     month or day over a specified calibration period of years) for a specified
@@ -521,21 +449,19 @@ def percentage_of_normal(values: np.ndarray,
     # percentage of the time steps scale average for its respective calendar time step
     percentages_of_normal = np.full(scale_sums.shape, np.nan)
     for i in range(scale_sums.size):
-
         # make sure we don't have a zero divisor
         divisor = averages[i % periodicity]
         if divisor > 0.0:
-
             percentages_of_normal[i] = scale_sums[i] / divisor
 
     return percentages_of_normal
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
-def pet(temperature_celsius: np.ndarray,
-        latitude_degrees: float,
-        data_start_year: int) -> np.ndarray:
+def pet(
+    temperature_celsius: np.ndarray,
+    latitude_degrees: float,
+    data_start_year: int,
+) -> np.ndarray:
     """
     This function computes potential evapotranspiration (PET) using
     Thornthwaite's equation.
@@ -553,13 +479,11 @@ def pet(temperature_celsius: np.ndarray,
 
     # make sure we're not dealing with all NaN values
     if np.ma.isMaskedArray(temperature_celsius) and (temperature_celsius.count() == 0):
-
         # we started with all NaNs for the temperature, so just return the same as PET
         return temperature_celsius
 
     # we were passed a vanilla Numpy array, look for indices where the value == NaN
     if np.all(np.isnan(temperature_celsius)):
-
         # we started with all NaNs for the temperature, so just return the same
         return temperature_celsius
 
@@ -572,7 +496,6 @@ def pet(temperature_celsius: np.ndarray,
 
     # make sure we're not dealing with a NaN or out-of-range latitude value
     if (latitude_degrees is not None) and not np.isnan(latitude_degrees) and (-90.0 < latitude_degrees < 90.0):
-
         # compute and return the PET values using Thornthwaite's equation
         return eto.eto_thornthwaite(
             temperature_celsius,
@@ -580,16 +503,18 @@ def pet(temperature_celsius: np.ndarray,
             data_start_year,
         )
 
-    message = (f"Invalid latitude value: {latitude_degrees}" +
-               " (must be in degrees north, between -90.0 and " +
-               "90.0 inclusive)")
+    message = (
+        f"Invalid latitude value: {latitude_degrees}"
+        + " (must be in degrees north, between -90.0 and "
+        + "90.0 inclusive)"
+    )
     _logger.error(message)
     raise ValueError(message)
 
 
-# ------------------------------------------------------------------------------
-@numba.jit
-def pci(rainfall_mm: np.ndarray) -> np.ndarray:
+def pci(
+    rainfall_mm: np.ndarray,
+) -> np.ndarray:
     """
     This function computes Precipitation Concentration Index(PCI, Oliver, 1980).
 
@@ -601,13 +526,11 @@ def pci(rainfall_mm: np.ndarray) -> np.ndarray:
 
     # make sure we're not dealing with all NaN values
     if np.ma.isMaskedArray(rainfall_mm) and (rainfall_mm.count() == 0):
-
         # we started with all NaNs for the rainfall, so just return the same
         return rainfall_mm
-        
+
     # we were passed a vanilla Numpy array, look for indices where the value == NaN
     if np.all(np.isnan(rainfall_mm)):
-    
         # we started with all NaNs for the rainfall, so just return the same
         return rainfall_mm
 
@@ -624,7 +547,7 @@ def pci(rainfall_mm: np.ndarray) -> np.ndarray:
 
             start = m[month]
 
-        return np.array([(numerator/(denominator**2)) * 100])
+        return np.array([(numerator / (denominator**2)) * 100])
 
     if len(rainfall_mm) == 365 and not sum(np.isnan(rainfall_mm)):
         m = [31, 28, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365]
@@ -638,9 +561,11 @@ def pci(rainfall_mm: np.ndarray) -> np.ndarray:
 
             start = m[month]
 
-        return np.array([(numerator/(denominator**2)) * 100])
-    
-    message = "NaN values in time-series or Total Number of days not in year "\
-              "not available, total days should be 366 or 365"
+        return np.array([(numerator / (denominator**2)) * 100])
+
+    message = (
+        "NaN values exist in the time-series or the total number of days not "
+        "in the year is not available, total days should be 366 or 365"
+    )
     _logger.error(message)
     raise ValueError(message)

@@ -1,6 +1,6 @@
-[![Actions Status](https://github.com/monocongo/climate_indices/workflows/build/badge.svg)](https://github.com/monocongo/climate_indices/actions)
-[![Coverage Status](https://coveralls.io/repos/github/monocongo/climate_indices/badge.svg?branch=master)](https://coveralls.io/github/monocongo/climate_indices?branch=master)
-[![Codacy Status](https://api.codacy.com/project/badge/Grade/48563cbc37504fc6aa72100370e71f58)](https://www.codacy.com/app/monocongo/climate_indices?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=monocongo/climate_indices&amp;utm_campaign=Badge_Grade)
+[//]: # ([![Coverage Status]&#40;https://coveralls.io/repos/github/monocongo/climate_indices/badge.svg?branch=master&#41;]&#40;https://coveralls.io/github/monocongo/climate_indices?branch=master&#41;)
+[//]: # ([![Codacy Status]&#40;https://api.codacy.com/project/badge/Grade/48563cbc37504fc6aa72100370e71f58&#41;]&#40;https://www.codacy.com/app/monocongo/climate_indices?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=monocongo/climate_indices&amp;utm_campaign=Badge_Grade&#41;)
+[![Actions Status](https://github.com/monocongo/climate_indices/workflows/tests/badge.svg)](https://github.com/monocongo/climate_indices/actions)
 [![License](https://img.shields.io/badge/License-BSD%203--Clause-green.svg)](https://opensource.org/licenses/BSD-3-Clause)
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/climate-indices)
 
@@ -20,19 +20,7 @@ The following indices are provided:
   or [Hargreaves](http://dx.doi.org/10.13031/2013.26773) equations
 - [PNP](http://www.droughtmanagement.info/percent-of-normal-precipitation/),
   Percentage of Normal Precipitation
-
-The following are provided as experimental/development versions only, not fully vetted nor suitable for research purposes:
-
-- [PDSI](http://www.droughtmanagement.info/palmer-drought-severity-index-pdsi/),
-  Palmer Drought Severity Index
-- [scPDSI](http://www.droughtmanagement.info/self-calibrated-palmer-drought-severity-index-sc-pdsi/),
-  Self-calibrated Palmer Drought Severity Index
-- [PHDI](http://www.droughtmanagement.info/palmer-hydrological-drought-index-phdi/),
-  Palmer Hydrological Drought Index
-- [Z-Index](http://www.droughtmanagement.info/palmer-z-index/),
-  Palmer moisture anomaly index (Z-index)
-- [PMDI](https://climate.ncsu.edu/climate/climdiv), Palmer Modified
-  Drought Index
+- [PCI](https://www.tandfonline.com/doi/abs/10.1111/J.0033-0124.1980.00300.X), Precipitation Concentration Index
 
 This Python implementation of the above climate index algorithms is being developed
 with the following goals in mind:

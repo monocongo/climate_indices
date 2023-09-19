@@ -7,7 +7,7 @@
    :maxdepth: 2
    :caption: Contents:
 
-.. |Build| image:: https://github.com/monocongo/climate_indices/workflows/build/badge.svg
+.. |Build| image:: https://github.com/monocongo/climate_indices/workflows/tests/badge.svg
    :target: https://github.com/monocongo/climate_indices/actions
 .. |Coverage| image:: https://coveralls.io/repos/github/monocongo/climate_indices/badge.svg?branch=master
    :target: https://coveralls.io/github/monocongo/climate_indices?branch=master
@@ -17,7 +17,8 @@
    :target: https://opensource.org/licenses/BSD-3-Clause
 .. |Python| image:: https://img.shields.io/pypi/pyversions/climate-indices
 
-|Build| |Coverage| |Quality| |License| |Python|
+.. |Build| |Coverage| |Quality| |License| |Python|
+|Build| |License| |Python|
 
 Climate Indices in Python
 =============================================
@@ -37,18 +38,8 @@ The following indices are provided:
    or `Hargreaves <http://dx.doi.org/10.13031/2013.26773>`_ equations
 -  `PNP <http://www.droughtmanagement.info/percent-of-normal-precipitation/>`__,
    Percentage of Normal Precipitation
-
-The following are provided as experimental/development versions only, not fully vetted nor suitable for research purposes:
-
--  `PDSI <http://www.droughtmanagement.info/palmer-drought-severity-index-pdsi/>`__,
-   Palmer Drought Severity Index
--  `scPDSI <http://www.droughtmanagement.info/self-calibrated-palmer-drought-severity-index-sc-pdsi/>`__,
-   Self-calibrated Palmer Drought Severity Index
--  `PHDI <http://www.droughtmanagement.info/palmer-hydrological-drought-index-phdi/>`__,
-   Palmer Hydrological Drought Index
--  `Z-Index <http://www.droughtmanagement.info/palmer-z-index/>`__,
-   Palmer moisture anomaly index (Z-index)
--  `PMDI <https://climate.ncsu.edu/climate/climdiv>`__, Palmer Modified Drought Index
+-  `PCI <https://www.tandfonline.com/doi/abs/10.1111/J.0033-0124.1980.00300.X>`__,
+   Precipitation Concentration Index
 
 This Python implementation of the above climate index algorithms is being developed
 with the following goals in mind:
@@ -68,61 +59,62 @@ with the following goals in mind:
    best practices
 
 
-Getting started
+Quick Start
 ---------------
+   ::
 
-The installation and configuration described below is
-performed using a bash shell, either on Linux, Windows, or MacOS.
+    # create and activate a Python virtual environment with conda
+    conda create -n myvenv poetry pytest
+    conda activate myvenv
 
-Windows users will need to install and configure a bash shell in order
-to follow the usage shown below. We recommended either
-`babun <https://babun.github.io/>`__ or `Cygwin <https://www.cygwin.com/>`__
-for this purpose.
+    # install the package
+    python -m poetry install
 
-Configure the Python environment
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-This project's code is written in Python 3. It is recommended to use
-either the `Miniconda3 <https://conda.io/miniconda.html>`__ (minimal Anaconda) or
-`Anaconda3 <https://www.continuum.io/downloads>`__ distribution. The below instructions
-will be Anaconda specific (although relevant to any Python `virtual environment <https://virtualenv.pypa.io/en/stable/>`_
-), and assume the use of a bash shell.
-
-A new Anaconda `environment <https://conda.io/docs/using/envs.html>`__ can be created
-using the `conda <https://conda.io/docs/>`_ environment management system that comes
-packaged with Anaconda. In the following examples, we'll use an environment named *indices_env*
-(any environment name can be used instead of *indices_env*) which will be created and
-populated with all required dependencies through the use of the provided ``setup.py`` file.
-
-First, create the Python environment:
-
-``$ conda create -n indices_env``
-
-The environment can now be 'activated':
-
-``$ source activate indices_env``
-
-Once the environment has been activated then subsequent Python commands will run
-in this environment where the package dependencies for this project are present.
-
-Now the package can be added to the environment along with all required modules
-(dependencies) via `pip <https://pip.pypa.io/en/stable/>`_:
-
-``$ python -m pip install climate-indices``
-
-For development of the package itself it pays to install the dependencies via
-the `requirements.txt` file:
-
-``$ python -m pip install -r requirements.txt``
-
-When adding dependencies to the package they should be added to the `pyproject.toml`
-file in the dependencies section, then we can rebuild the requirements.txt file using pip-tools:
-
-``$ python -m piptools compile -o requirements.txt pyproject.toml``
+    # optionally run the unit tests suite
+    python -m poetry run pytest
 
 
-Indices Processing
-----------------------------------
+Installation
+-------------
+From PyPI
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Install directly from PyPI::
+
+    python -m pip install climate-indices
+
+From source
+^^^^^^^^^^^^^^
+
+In order to build and install the package from source we need to first install `poetry <https://python-poetry.org/>`__::
+
+    python -m pip install poetry
+
+Then install the package from source::
+
+   python -m poetry install
+
+Next (optional) run the unit test suite to validate the installation::
+
+    python -m pytest tests
+
+the above should display output similar to this::
+
+   ======================= 38 passed, 18 warnings in 12.19s =======================
+
+Finally, show the package installed into the environment::
+
+   conda list climate-indices
+
+   # packages in environment at /Users/jadams/miniconda3/envs/climate381:
+   #
+   # Name                    Version                   Build  Channel
+   climate-indices           1.0.16                   pypi_0    pypi
+
+
+
+Usage
+---------
 
 The installation will provide an "entry point" script which interacts with the core
 computational package to compute one or more climate indices. This script is
@@ -376,8 +368,8 @@ Parallelization will occur utilizing all CPUs.
 
 Pre-compute SPI distribution fitting variables
 """""""""""""""""""""""""""""""""""""""""""""""
-In order to pre-compute fititng parameters for later use as inputs to subsequent
-SPI calculations we can save both gamma and Pearson distributinon fitting parameters
+In order to pre-compute fitting parameters for later use as inputs to subsequent
+SPI calculations we can save both gamma and Pearson distribution fitting parameters
 to NetCDF, and later use this file as input for SPI calculations over the same
 calibration period.
 
@@ -402,37 +394,12 @@ it loads the pre-computed fitting values from the NetCDF file specified by the `
 option.
 
 
-For Developers
----------------
+API Reference
+--------------
+.. toctree::
+   :maxdepth: 2
 
-Download the code
-^^^^^^^^^^^^^^^^^
-
-Clone this repository:
-
-``$ git clone https://github.com/monocongo/climate_indices.git``
-
-Move into the source directory:
-
-``$ cd climate_indices``
-
-Within this directory, there are four subdirectories:
-
--  ``climate_indices``: main computational package
--  ``tests``: unit tests for the main package
--  ``notebooks``: Jupyter Notebooks describing the internals of the computational modules
--  ``docs``: documentation files
-
-Testing
-^^^^^^^
-
-Initially, all tests should be run for validation:
-
-``$ tox``
-
-If you run the above from the main branch and get an error then please
-send a report and/or add an issue, as all tests should pass.
-
+   reference
 
 Get involved
 -------------
