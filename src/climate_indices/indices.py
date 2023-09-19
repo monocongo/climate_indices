@@ -46,17 +46,24 @@ def _norm_fitdict(params: Dict):
         if val is None:
             if altname not in params:
                 continue
-            _logger.warning("Using deprecated fitting parameter key %s."
-                            " Use %s instead.",
-                            altname, name)
+            _logger.warning(
+                "Using deprecated fitting parameter key %s." " Use %s instead.",
+                altname,
+                name,
+            )
             val = params[altname]
         normed[name] = val
     return normed
 
 
-_fit_altnames = (("alpha", "alphas"), ("beta", "betas"),
-                 ("skew", "skews"), ("scale", "scales"), ("loc", "locs"),
-                 ("prob_zero", "probabilities_of_zero"))
+_fit_altnames = (
+    ("alpha", "alphas"),
+    ("beta", "betas"),
+    ("skew", "skews"),
+    ("scale", "scales"),
+    ("loc", "locs"),
+    ("prob_zero", "probabilities_of_zero"),
+)
 
 
 def spi(
@@ -140,7 +147,6 @@ def spi(
         raise ValueError(f"Invalid periodicity argument: {periodicity}")
 
     if distribution is Distribution.gamma:
-
         # get (optional) fitting parameters if provided
         if fitting_params is not None:
             alphas = fitting_params["alpha"]
@@ -161,7 +167,6 @@ def spi(
             betas,
         )
     elif distribution is Distribution.pearson:
-
         # get (optional) fitting parameters if provided
         if fitting_params is not None:
             probabilities_of_zero = fitting_params["prob_zero"]
@@ -189,7 +194,6 @@ def spi(
         )
 
     else:
-
         message = f"Unsupported distribution argument: {distribution}"
         _logger.error(message)
         raise ValueError(message)
@@ -257,8 +261,7 @@ def spei(
 
     # if we're passed all missing values then we can't compute anything,
     # so we return the same array of missing values
-    if (np.ma.is_masked(precips_mm) and precips_mm.mask.all()) \
-            or np.all(np.isnan(precips_mm)):
+    if (np.ma.is_masked(precips_mm) and precips_mm.mask.all()) or np.all(np.isnan(precips_mm)):
         return precips_mm
 
     # validate that the two input arrays are compatible
@@ -285,7 +288,6 @@ def spei(
     scaled_values = compute.sum_to_scale(p_minus_pet, scale)
 
     if distribution is Distribution.gamma:
-
         # get (optional) fitting parameters if provided
         if fitting_params is not None:
             alphas = fitting_params["alpha"]
@@ -296,19 +298,17 @@ def spei(
 
         # fit the scaled values to a gamma distribution and
         # transform to corresponding normalized sigmas
-        transformed_fitted_values = \
-            compute.transform_fitted_gamma(
-                scaled_values,
-                data_start_year,
-                calibration_year_initial,
-                calibration_year_final,
-                periodicity,
-                alphas,
-                betas,
-            )
+        transformed_fitted_values = compute.transform_fitted_gamma(
+            scaled_values,
+            data_start_year,
+            calibration_year_initial,
+            calibration_year_final,
+            periodicity,
+            alphas,
+            betas,
+        )
 
     elif distribution is Distribution.pearson:
-
         # get (optional) fitting parameters if provided
         if fitting_params is not None:
             probabilities_of_zero = fitting_params["prob_zero"]
@@ -323,30 +323,25 @@ def spei(
 
         # fit the scaled values to a Pearson Type III distribution
         # and transform to corresponding normalized sigmas
-        transformed_fitted_values = \
-            compute.transform_fitted_pearson(
-                scaled_values,
-                data_start_year,
-                calibration_year_initial,
-                calibration_year_final,
-                periodicity,
-                probabilities_of_zero,
-                locs,
-                scales,
-                skews,
-            )
+        transformed_fitted_values = compute.transform_fitted_pearson(
+            scaled_values,
+            data_start_year,
+            calibration_year_initial,
+            calibration_year_final,
+            periodicity,
+            probabilities_of_zero,
+            locs,
+            scales,
+            skews,
+        )
 
     else:
-        message = "Unsupported distribution argument: " + \
-                  "{dist}".format(dist=distribution)
+        message = "Unsupported distribution argument: " + "{dist}".format(dist=distribution)
         _logger.error(message)
         raise ValueError(message)
 
     # clip values to within the valid range, reshape the array back to 1-D
-    values = \
-        np.clip(transformed_fitted_values,
-                _FITTED_INDEX_VALID_MIN,
-                _FITTED_INDEX_VALID_MAX).flatten()
+    values = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
 
     # return the original size array
     return values[0:original_length]
@@ -454,11 +449,9 @@ def percentage_of_normal(
     # percentage of the time steps scale average for its respective calendar time step
     percentages_of_normal = np.full(scale_sums.shape, np.nan)
     for i in range(scale_sums.size):
-
         # make sure we don't have a zero divisor
         divisor = averages[i % periodicity]
         if divisor > 0.0:
-
             percentages_of_normal[i] = scale_sums[i] / divisor
 
     return percentages_of_normal
@@ -486,13 +479,11 @@ def pet(
 
     # make sure we're not dealing with all NaN values
     if np.ma.isMaskedArray(temperature_celsius) and (temperature_celsius.count() == 0):
-
         # we started with all NaNs for the temperature, so just return the same as PET
         return temperature_celsius
 
     # we were passed a vanilla Numpy array, look for indices where the value == NaN
     if np.all(np.isnan(temperature_celsius)):
-
         # we started with all NaNs for the temperature, so just return the same
         return temperature_celsius
 
@@ -505,7 +496,6 @@ def pet(
 
     # make sure we're not dealing with a NaN or out-of-range latitude value
     if (latitude_degrees is not None) and not np.isnan(latitude_degrees) and (-90.0 < latitude_degrees < 90.0):
-
         # compute and return the PET values using Thornthwaite's equation
         return eto.eto_thornthwaite(
             temperature_celsius,
@@ -513,9 +503,11 @@ def pet(
             data_start_year,
         )
 
-    message = (f"Invalid latitude value: {latitude_degrees}" +
-               " (must be in degrees north, between -90.0 and " +
-               "90.0 inclusive)")
+    message = (
+        f"Invalid latitude value: {latitude_degrees}"
+        + " (must be in degrees north, between -90.0 and "
+        + "90.0 inclusive)"
+    )
     _logger.error(message)
     raise ValueError(message)
 
@@ -534,13 +526,11 @@ def pci(
 
     # make sure we're not dealing with all NaN values
     if np.ma.isMaskedArray(rainfall_mm) and (rainfall_mm.count() == 0):
-
         # we started with all NaNs for the rainfall, so just return the same
         return rainfall_mm
-        
+
     # we were passed a vanilla Numpy array, look for indices where the value == NaN
     if np.all(np.isnan(rainfall_mm)):
-    
         # we started with all NaNs for the rainfall, so just return the same
         return rainfall_mm
 
@@ -552,8 +542,8 @@ def pci(
         denominator = 0
 
         for month in range(12):
-            numerator = numerator + (sum(rainfall_mm[start: m[month]]) ** 2)
-            denominator = denominator + sum(rainfall_mm[start: m[month]])
+            numerator = numerator + (sum(rainfall_mm[start : m[month]]) ** 2)
+            denominator = denominator + sum(rainfall_mm[start : m[month]])
 
             start = m[month]
 
@@ -566,14 +556,16 @@ def pci(
         denominator = 0
 
         for month in range(12):
-            numerator = numerator + (sum(rainfall_mm[start: m[month]]) ** 2)
-            denominator = denominator + sum(rainfall_mm[start: m[month]])
+            numerator = numerator + (sum(rainfall_mm[start : m[month]]) ** 2)
+            denominator = denominator + sum(rainfall_mm[start : m[month]])
 
             start = m[month]
 
         return np.array([(numerator / (denominator**2)) * 100])
-    
-    message = "NaN values exist in the time-series or the total number of days not "\
-              "in the year is not available, total days should be 366 or 365"
+
+    message = (
+        "NaN values exist in the time-series or the total number of days not "
+        "in the year is not available, total days should be 366 or 365"
+    )
     _logger.error(message)
     raise ValueError(message)

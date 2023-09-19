@@ -8,9 +8,18 @@ import numpy as np
 
 # declare the function names that should be included in the public API for this module
 __all__ = [
-    "compute_days", "count_zeros_and_non_missings", "get_logger", "get_tolerance",
-    "gregorian_length_as_366day", "is_data_valid", "reshape_to_2d", "reshape_to_divs_years_months",
-    "rmse", "sign_change", "transform_to_366day", "transform_to_gregorian",
+    "compute_days",
+    "count_zeros_and_non_missings",
+    "get_logger",
+    "get_tolerance",
+    "gregorian_length_as_366day",
+    "is_data_valid",
+    "reshape_to_2d",
+    "reshape_to_divs_years_months",
+    "rmse",
+    "sign_change",
+    "transform_to_366day",
+    "transform_to_gregorian",
 ]
 
 
@@ -49,10 +58,7 @@ def compute_days(
 
     # loop over all time steps (months)
     for i in range(total_months):
-
-        years = int(
-            (i + initial_month - 1) / 12
-        )  # the number of years since the initial year
+        years = int((i + initial_month - 1) / 12)  # the number of years since the initial year
         months = int((i + initial_month - 1) % 12)  # the number of months since January
 
         # cook up a datetime object for the current time step (month)
@@ -157,12 +163,10 @@ def is_data_valid(
 
     # make sure we're not dealing with all NaN values
     if np.ma.isMaskedArray(data):
-
         # TODO fix this, therte is no ndarray.count according to PyCharm's warning, use another approach for this flag
         valid_flag = bool(data.count())
 
     elif isinstance(data, np.ndarray):
-
         valid_flag = not np.all(np.isnan(data))
 
     else:
@@ -205,8 +209,9 @@ def reshape_to_2d(
             # data is already in the shape we want, return it unaltered
             return values
         else:
-            message = "Values array has an invalid shape (2-D but second " + \
-                      f"dimension not {second_axis_length}): {shape}"
+            message = (
+                "Values array has an invalid shape (2-D but second " + f"dimension not {second_axis_length}): {shape}"
+            )
             _logger.error(message)
             raise ValueError(message)
 
@@ -221,10 +226,7 @@ def reshape_to_2d(
     final_year_values = shape[0] % second_axis_length
     if final_year_values > 0:
         pads = second_axis_length - final_year_values
-        values = np.pad(values,
-                        pad_width=(0, pads),
-                        mode="constant",
-                        constant_values=np.NaN)
+        values = np.pad(values, pad_width=(0, pads), mode="constant", constant_values=np.NaN)
 
     # we should have an ordinal number of years now
     # (ordinally divisible by second_axis_length)
@@ -254,8 +256,7 @@ def reshape_to_divs_years_months(
             # data is already in the shape we want, return it unaltered
             return monthly_values
         else:
-            message = "Values array has an invalid shape (3-D but " + \
-                      "third dimension is not 12): " + str(shape)
+            message = "Values array has an invalid shape (3-D but " + "third dimension is not 12): " + str(shape)
             _logger.error(message)
             raise ValueError(message)
 
@@ -268,8 +269,7 @@ def reshape_to_divs_years_months(
     # otherwise make sure that we've been passed in a 2-D array
     # of values with the final dimension size == 12
     elif shape[1] != 12:
-        message = "Values array has an invalid shape (second dimension " + \
-                  "should be 12, but is not): " + str(shape)
+        message = "Values array has an invalid shape (second dimension " + "should be 12, but is not): " + str(shape)
         _logger.error(message)
         raise ValueError(message)
 
@@ -285,12 +285,10 @@ def gregorian_length_as_366day(
     length_gregorian: int,
     year_start: int,
 ) -> int:
-
     year = year_start
     remaining = length_gregorian
     length_366day = 0
     while remaining > 0:
-
         if calendar.isleap(year):
             days_in_current_year = 366
         else:
@@ -354,47 +352,50 @@ def transform_to_366day(
 
     # loop over each year
     for year in range(year_start, year_start + total_years):
-
         if calendar.isleap(year):
-
             # write the next 366 days from the original time
             # series into the all_leap array
-            all_leap[all_leap_index:(all_leap_index + 366)] = \
-                original[original_index:(original_index + 366)]
+            all_leap[all_leap_index : (all_leap_index + 366)] = original[original_index : (original_index + 366)]
 
             # increment the "start day of the current year" index for the original
             # so that the next iteration jumps ahead a full year
             original_index += 366
 
         else:
-
             # write the first 59 days (Jan 1 through Feb 28) from
             # the original time series into the all_leap array
-            all_leap[all_leap_index:(all_leap_index + 59)] = \
-                original[original_index:(original_index + 59)]
+            all_leap[all_leap_index : (all_leap_index + 59)] = original[original_index : (original_index + 59)]
 
             # average the Feb 28th and March 1st values as the faux Feb 29th value
-            all_leap[all_leap_index + 59] = \
-                (original[original_index + 58] + original[original_index + 59]) / 2
+            all_leap[all_leap_index + 59] = (original[original_index + 58] + original[original_index + 59]) / 2
 
             # write the remaining days of the year (Mar 1 through Dec 31)
             # from the original into the all_leap array
             original_year_end_index = original_index + 365
             if len(original) < original_year_end_index:
                 # this should be the final year, and we're just adding the remained days
-                remainder = original[original_index + 59:]
-                difference = len(all_leap[all_leap_index + 60:]) - len(remainder)
+                remainder = original[original_index + 59 :]
+                difference = len(all_leap[all_leap_index + 60 :]) - len(remainder)
                 if difference > 0:
-                    final_days = np.pad(remainder, (0, difference,), mode='constant', constant_values=np.NaN)
+                    final_days = np.pad(
+                        remainder,
+                        (
+                            0,
+                            difference,
+                        ),
+                        mode="constant",
+                        constant_values=np.NaN,
+                    )
                 elif difference != 0:
                     raise ValueError("Incompatible shapes")
                 else:
                     final_days = remainder
-                all_leap[all_leap_index + 60:] = final_days
+                all_leap[all_leap_index + 60 :] = final_days
                 continue
             else:
-                all_leap[all_leap_index + 60:(all_leap_index + 366)] = \
-                    original[original_index + 59:original_year_end_index]
+                all_leap[all_leap_index + 60 : (all_leap_index + 366)] = original[
+                    original_index + 59 : original_year_end_index
+                ]
 
             # increment the "start day of the current year" index for the original
             # so the next iteration jumps ahead a full year
@@ -445,8 +446,7 @@ def transform_to_gregorian(
         _logger.error(message)
         raise ValueError(message)
     if original.size % 366 != 0:
-        message = "Invalid input array: only 1-D arrays containing " + \
-                  "multiples of 366 days are supported"
+        message = "Invalid input array: only 1-D arrays containing " + "multiples of 366 days are supported"
         _logger.error(message)
         raise ValueError(message)
 
@@ -465,29 +465,25 @@ def transform_to_gregorian(
 
     # loop over each year
     for year in range(year_start, year_start + total_years):
-
         if calendar.isleap(year):
-
             # write the next 366 days from the original
             # time series into the gregorian array
-            gregorian[gregorian_index:(gregorian_index + 366)] = \
-                original[original_index:(original_index + 366)]
+            gregorian[gregorian_index : (gregorian_index + 366)] = original[original_index : (original_index + 366)]
 
             # increment the "start day of the current year" index for the original
             # so the next iteration jumps ahead a full year
             gregorian_index += 366
 
         else:
-
             # write the first 59 days (Jan 1 through Feb 28) from the original
             # time series into the gregorian array
-            gregorian[gregorian_index:(gregorian_index + 59)] = \
-                original[original_index:(original_index + 59)]
+            gregorian[gregorian_index : (gregorian_index + 59)] = original[original_index : (original_index + 59)]
 
             # write the remaining days of the year (Mar 1 through Dec 31)
             # from the original into the gregorian array
-            gregorian[(gregorian_index + 59):(gregorian_index + 365)] = \
-                original[(original_index + 60):(original_index + 366)]
+            gregorian[(gregorian_index + 59) : (gregorian_index + 365)] = original[
+                (original_index + 60) : (original_index + 366)
+            ]
 
             # increment the "start day of the current year" index for
             # the original so the next iteration jumps ahead a full year

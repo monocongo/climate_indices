@@ -121,7 +121,6 @@ def test_gregorian_length_as_366day():
     assert utils.gregorian_length_as_366day(1855, 1980) == 1858
 
 
-
 # ------------------------------------------------------------------------------
 def test_sign_change():
     # Test for the utils.sign_change() function
@@ -129,24 +128,26 @@ def test_sign_change():
     a = np.array([1.0, 2.0, 3.0, -4])
     b = np.array([1.0, -2.0, -3.0, -4])
     c = utils.sign_change(a, b)
-    np.testing.assert_equal(c, np.array([False, True, True, False]),
-                            "Sign changes not detected as expected")
+    np.testing.assert_equal(c, np.array([False, True, True, False]), "Sign changes not detected as expected")
 
     a = np.array([1.0, 2.0, 3.0, -4])
     b = np.array([[1.0, -2.0], [-3.0, -4]])
     c = utils.sign_change(a, b)
-    np.testing.assert_equal(c, np.array([False, True, True, False]),
-                            "Sign changes not detected as expected")
+    np.testing.assert_equal(c, np.array([False, True, True, False]), "Sign changes not detected as expected")
 
     # make sure that the function croaks with a ValueError
-    np.testing.assert_raises(ValueError,
-                             utils.sign_change,
-                             np.array([1.0, 2.0, 3.0, -4]),
-                             np.array([1.0, 2.0, 3.0]))
-    np.testing.assert_raises(ValueError,
-                             utils.sign_change,
-                             np.array([1.0, 2.0, 3.0]),
-                             np.array([[1.0, 2.0], [3.0, 4.0]]))
+    np.testing.assert_raises(
+        ValueError,
+        utils.sign_change,
+        np.array([1.0, 2.0, 3.0, -4]),
+        np.array([1.0, 2.0, 3.0]),
+    )
+    np.testing.assert_raises(
+        ValueError,
+        utils.sign_change,
+        np.array([1.0, 2.0, 3.0]),
+        np.array([[1.0, 2.0], [3.0, 4.0]]),
+    )
 
 
 # ------------------------------------------------------------------------------
@@ -154,10 +155,41 @@ def test_reshape_to_2d():
     # Test for the utils.reshape_to_2d() function
 
     # an array of monthly values
-    values_1d = np.array([3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4,
-                          6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2,
-                          1, 3, 5, 8, 5, 6],
-                         dtype=float)
+    values_1d = np.array(
+        [
+            3,
+            4,
+            6,
+            2,
+            1,
+            3,
+            5,
+            8,
+            5,
+            6,
+            3,
+            4,
+            6,
+            2,
+            1,
+            3,
+            5,
+            8,
+            5,
+            6,
+            3,
+            4,
+            6,
+            2,
+            1,
+            3,
+            5,
+            8,
+            5,
+            6,
+        ],
+        dtype=float,
+    )
 
     # the expected rearrangement of the above values
     # from 1-D to 2-D if using 12 as the second axis size
@@ -173,10 +205,11 @@ def test_reshape_to_2d():
     values_2d_reshaped = utils.reshape_to_2d(values_1d, 12)
 
     # verify that the function performed as expected
-    np.testing.assert_equal(values_2d_by_12_expected,
-                            values_2d_reshaped,
-                            "Not rearranging the 1-D array into " +
-                            "2-D year increments of 12 as expected")
+    np.testing.assert_equal(
+        values_2d_by_12_expected,
+        values_2d_reshaped,
+        "Not rearranging the 1-D array into " + "2-D year increments of 12 as expected",
+    )
 
     # the expected rearrangement of the above values from 1-D to 2-D if using 8 as the second axis size
     values_2d_by_8_expected = np.array(
@@ -192,10 +225,10 @@ def test_reshape_to_2d():
     values_2d_reshaped = utils.reshape_to_2d(values_1d, 8)
 
     # verify that the function performed as expected
-    np.testing.assert_equal(values_2d_by_8_expected,
-                            values_2d_reshaped,
-                            "Not rearranging the 1-D array " +
-                            "into 2-D increments of 8 as expected",
+    np.testing.assert_equal(
+        values_2d_by_8_expected,
+        values_2d_reshaped,
+        "Not rearranging the 1-D array " + "into 2-D increments of 8 as expected",
     )
 
     # a 3-D array that should be returned as-is if using 12 as the second axis size
@@ -211,9 +244,11 @@ def test_reshape_to_2d():
     values_2d_reshaped = utils.reshape_to_2d(values_2d, 12)
 
     # verify that the function performed as expected
-    np.testing.assert_equal(values_2d,
-                            values_2d_reshaped,
-                            "Not returning an already valid 2-D array as expected")
+    np.testing.assert_equal(
+        values_2d,
+        values_2d_reshaped,
+        "Not returning an already valid 2-D array as expected",
+    )
 
     # a 2-D array that's in an invalid shape for the function
     values_2d = np.array(
@@ -226,8 +261,7 @@ def test_reshape_to_2d():
 
     # make sure that the function croaks with a ValueError when expected
     np.testing.assert_raises(ValueError, utils.reshape_to_2d, values_2d, 12)
-    np.testing.assert_raises(ValueError, utils.reshape_to_2d,
-                             values_2d.reshape((3, 3, 3)), 6)
+    np.testing.assert_raises(ValueError, utils.reshape_to_2d, values_2d.reshape((3, 3, 3)), 6)
 
 
 # ------------------------------------------------------------------------------
@@ -284,10 +318,10 @@ def test_reshape_to_divs_years_months():
     # exercise the function
     values_3d_computed = utils.reshape_to_divs_years_months(values_2d)
 
-    np.testing.assert_equal(values_3d_computed,
-                            values_3d_expected,
-                            "Not rearranging the 1-D array months " +
-                            "into 2-D year increments as expected",
+    np.testing.assert_equal(
+        values_3d_computed,
+        values_3d_expected,
+        "Not rearranging the 1-D array months " + "into 2-D year increments as expected",
     )
 
     # a 3-D array that should be returned as-is
@@ -310,9 +344,7 @@ def test_reshape_to_divs_years_months():
     values_3d_reshaped = utils.reshape_to_divs_years_months(values_3d)
 
     # verify that the function performed as expected
-    np.testing.assert_equal(values_3d,
-                            values_3d_reshaped,
-                            "Not returning a valid 2-D array as expected")
+    np.testing.assert_equal(values_3d, values_3d_reshaped, "Not returning a valid 2-D array as expected")
 
     # a 2-D array that's in an invalid shape for the function
     values_2d = np.array(
@@ -325,15 +357,9 @@ def test_reshape_to_divs_years_months():
 
     # make sure that the function croaks with a ValueError
     # whenever it gets a mis-shaped array
-    np.testing.assert_raises(ValueError,
-                             utils.reshape_to_divs_years_months,
-                             values_1d)
-    np.testing.assert_raises(ValueError,
-                             utils.reshape_to_divs_years_months,
-                             values_2d)
-    np.testing.assert_raises(ValueError,
-                             utils.reshape_to_divs_years_months,
-                             np.reshape(values_2d, (3, 3, 3)))
+    np.testing.assert_raises(ValueError, utils.reshape_to_divs_years_months, values_1d)
+    np.testing.assert_raises(ValueError, utils.reshape_to_divs_years_months, values_2d)
+    np.testing.assert_raises(ValueError, utils.reshape_to_divs_years_months, np.reshape(values_2d, (3, 3, 3)))
 
 
 # ------------------------------------------------------------------------------
@@ -366,45 +392,32 @@ def test_transform_to_gregorian():
     # using a non-leap year argument (1971)
     values_365_computed = utils.transform_to_gregorian(values_366, 1971)
 
-    np.testing.assert_equal(values_365_computed,
-                            values_365,
-                            "Not transforming the 1-D array of 366 days " +
-                            "into a corresponding 365 day array")
+    np.testing.assert_equal(
+        values_365_computed,
+        values_365,
+        "Not transforming the 1-D array of 366 days " + "into a corresponding 365 day array",
+    )
 
     # exercise the function with the 366 day year array,
     # using a leap year argument (1972)
     values_366_computed = utils.transform_to_gregorian(values_366, 1972)
 
-    np.testing.assert_equal(values_366_computed,
-                            values_366,
-                            "Not transforming the 1-D array of "
-                            "366 days into a corresponding 366 day array")
+    np.testing.assert_equal(
+        values_366_computed,
+        values_366,
+        "Not transforming the 1-D array of " "366 days into a corresponding 366 day array",
+    )
 
     # make sure that the function croaks with a ValueError
     # whenever it gets invalid array arguments
-    np.testing.assert_raises(ValueError,
-                             utils.transform_to_gregorian,
-                             values_365,
-                             1972)
-    np.testing.assert_raises(ValueError,
-                             utils.transform_to_gregorian,
-                             np.ones((2, 10)),
-                             1972)
+    np.testing.assert_raises(ValueError, utils.transform_to_gregorian, values_365, 1972)
+    np.testing.assert_raises(ValueError, utils.transform_to_gregorian, np.ones((2, 10)), 1972)
 
     # make sure that the function croaks with
     # a ValueError whenever it gets invalid year arguments
-    np.testing.assert_raises(ValueError,
-                             utils.transform_to_gregorian,
-                             values_366,
-                             -1972)
-    np.testing.assert_raises(TypeError,
-                             utils.transform_to_gregorian,
-                             values_366,
-                             45.7)
-    np.testing.assert_raises(TypeError,
-                             utils.transform_to_gregorian,
-                             values_366,
-                             "obviously wrong")
+    np.testing.assert_raises(ValueError, utils.transform_to_gregorian, values_366, -1972)
+    np.testing.assert_raises(TypeError, utils.transform_to_gregorian, values_366, 45.7)
+    np.testing.assert_raises(TypeError, utils.transform_to_gregorian, values_366, "obviously wrong")
 
 
 # ------------------------------------------------------------------------------
@@ -428,66 +441,37 @@ def test_transform_to_366day():
     # using a non-leap year argument (1971)
     values_366_computed = utils.transform_to_366day(values_365, 1971, 1)
 
-    np.testing.assert_equal(values_366_computed,
-                            values_366_faux_feb29,
-                            "Not transforming the 1-D array of 365 days " +
-                            "into a corresponding 366 day array as expected")
+    np.testing.assert_equal(
+        values_366_computed,
+        values_366_faux_feb29,
+        "Not transforming the 1-D array of 365 days " + "into a corresponding 366 day array as expected",
+    )
 
     # exercise the function with the 366 day year array,
     # using a leap year argument (1972)
     values_366_computed = utils.transform_to_366day(values_366, 1972, 1)
 
-    np.testing.assert_equal(values_366_computed,
-                            values_366,
-                            "Not transforming the 1-D array of 366 days " +
-                            "into a corresponding 366 day array")
+    np.testing.assert_equal(
+        values_366_computed,
+        values_366,
+        "Not transforming the 1-D array of 366 days " + "into a corresponding 366 day array",
+    )
 
     # make sure that the function croaks with a ValueError
     # whenever it gets invalid array arguments
-    np.testing.assert_raises(ValueError,
-                             utils.transform_to_366day,
-                             values_365[:50],
-                             1972,
-                             1)
-    np.testing.assert_raises(ValueError,
-                             utils.transform_to_366day,
-                             np.ones((2, 10)),
-                             1972,
-                             1)
+    np.testing.assert_raises(ValueError, utils.transform_to_366day, values_365[:50], 1972, 1)
+    np.testing.assert_raises(ValueError, utils.transform_to_366day, np.ones((2, 10)), 1972, 1)
 
     # make sure that the function croaks with a ValueError whenever it gets invalid year arguments
-    np.testing.assert_raises(ValueError,
-                             utils.transform_to_366day,
-                             values_365,
-                             -1972,
-                             1)
-    np.testing.assert_raises(TypeError,
-                             utils.transform_to_366day,
-                             values_365,
-                             45.7,
-                             1)
-    np.testing.assert_raises(TypeError,
-                             utils.transform_to_366day,
-                             values_365,
-                             "obviously wrong",
-                             1)
+    np.testing.assert_raises(ValueError, utils.transform_to_366day, values_365, -1972, 1)
+    np.testing.assert_raises(TypeError, utils.transform_to_366day, values_365, 45.7, 1)
+    np.testing.assert_raises(TypeError, utils.transform_to_366day, values_365, "obviously wrong", 1)
 
     # make sure that the function croaks with a ValueError whenever it gets invalid total years arguments
-    np.testing.assert_raises(ValueError,
-                             utils.transform_to_366day,
-                             values_365,
-                             1972,
-                             -5)
-    np.testing.assert_raises(TypeError,
-                             utils.transform_to_366day,
-                             values_365,
-                             1972,
-                             4.9)
-    np.testing.assert_raises(ValueError,
-                             utils.transform_to_366day,
-                             values_365,
-                             1972,
-                             24)
+    np.testing.assert_raises(ValueError, utils.transform_to_366day, values_365, 1972, -5)
+    np.testing.assert_raises(TypeError, utils.transform_to_366day, values_365, 1972, 4.9)
+    np.testing.assert_raises(ValueError, utils.transform_to_366day, values_365, 1972, 24)
+
 
 def test_tolerance():
     lons, dlon = np.linspace(-180.0, 180.0, 250, retstep=True)
@@ -510,4 +494,3 @@ def test_tolerance():
     tol = utils.get_tolerance(meshlon)
     assert tol > 0, "Tolerance must always be greater than zero"
     assert tol < abs(dlon), "Tolerance must always come out smaller than the coordinate delta"
-

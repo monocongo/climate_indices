@@ -13,10 +13,16 @@ import scipy.version
 from climate_indices import utils, lmoments
 
 # declare the function names that should be included in the public API for this module
-__all__ = ["Periodicity", "scale_values", "sum_to_scale", "transform_fitted_gamma", "transform_fitted_pearson"]
+__all__ = [
+    "Periodicity",
+    "scale_values",
+    "sum_to_scale",
+    "transform_fitted_gamma",
+    "transform_fitted_pearson",
+]
 
 # depending on the version of scipy we may need to use a workaround due to a bug in some versions of scipy
-_do_pearson3_workaround = LooseVersion(scipy.version.version) < '1.6.0'
+_do_pearson3_workaround = LooseVersion(scipy.version.version) < "1.6.0"
 
 # Retrieve logger and set desired logging level
 _logger = utils.get_logger(__name__, logging.WARN)
@@ -75,10 +81,8 @@ def _validate_array(
 
     # validate (and possibly reshape) the input array
     if len(values.shape) == 1:
-
         if periodicity is None:
-            message = "1-D input array requires a corresponding periodicity "\
-                      "argument, none provided"
+            message = "1-D input array requires a corresponding periodicity " "argument, none provided"
             _logger.error(message)
             raise ValueError(message)
 
@@ -97,8 +101,7 @@ def _validate_array(
             _logger.error(message)
             raise ValueError(message)
 
-    elif (len(values.shape) != 2) or \
-            (values.shape[1] not in (12, 366)):
+    elif (len(values.shape) != 2) or (values.shape[1] not in (12, 366)):
         # ((values.shape[1] != 12) and (values.shape[1] != 366)):
 
         # neither a 1-D nor a 2-D array with valid shape was passed in
@@ -190,7 +193,6 @@ def _probability_of_zero(
         _log_and_raise_shape_error(shape=values.shape)
 
     else:
-
         # determine the number of time steps per year
         # (we expect 12 for monthly, 366 for daiy)
         time_steps_per_year = values.shape[1]
@@ -204,17 +206,14 @@ def _probability_of_zero(
     # TODO vectorize the below loop? create a @numba.vectorize() ufunc
     #  for application over the second axis
     for time_step_index in range(time_steps_per_year):
-
         # get the values for the current calendar time step
         time_step_values = values[:, time_step_index]
 
         # count the number of zeros and valid (non-missing/non-NaN) values
-        number_of_zeros, number_of_non_missing = \
-            utils.count_zeros_and_non_missings(time_step_values)
+        number_of_zeros, number_of_non_missing = utils.count_zeros_and_non_missings(time_step_values)
 
         # calculate the probability of zero for the calendar time step
         if (number_of_zeros > 0) and (number_of_non_missing > 0):
-
             probabilities_of_zero[time_step_index] = number_of_zeros / number_of_non_missing
 
         else:
@@ -233,15 +232,18 @@ def reshape_values(values, periodicity):
     else:
         raise ValueError(f"Invalid periodicity argument: {periodicity}")
 
+
 def validate_values_shape(values):
     if len(values.shape) != 2 or values.shape[1] not in (12, 366):
         _log_and_raise_shape_error(shape=values.shape)
     return values.shape[1]
 
+
 def adjust_calibration_years(data_start_year, data_end_year, calibration_start_year, calibration_end_year):
     if (calibration_start_year < data_start_year) or (calibration_end_year > data_end_year):
         return data_start_year, data_end_year
     return calibration_start_year, calibration_end_year
+
 
 def calculate_time_step_params(time_step_values):
     number_of_zeros, number_of_non_missing = utils.count_zeros_and_non_missings(time_step_values)
@@ -254,6 +256,7 @@ def calculate_time_step_params(time_step_values):
         params = lmoments.fit(time_step_values)
         return probability_of_zero, params["loc"], params["scale"], params["skew"]
     return 0.0, 0.0, 0.0, 0.0
+
 
 def pearson_parameters(
     values: np.ndarray,
@@ -288,7 +291,9 @@ def pearson_parameters(
     values = reshape_values(values, periodicity)
     time_steps_per_year = validate_values_shape(values)
     data_end_year = data_start_year + values.shape[0]
-    calibration_start_year, calibration_end_year = adjust_calibration_years(data_start_year, data_end_year, calibration_start_year, calibration_end_year)
+    calibration_start_year, calibration_end_year = adjust_calibration_years(
+        data_start_year, data_end_year, calibration_start_year, calibration_end_year
+    )
     calibration_begin_index = calibration_start_year - data_start_year
     calibration_end_index = (calibration_end_year - data_start_year) + 1
     calibration_values = values[calibration_begin_index:calibration_end_index, :]
@@ -306,6 +311,8 @@ def pearson_parameters(
         skews[time_step_index] = skew
 
     return probabilities_of_zero, locs, scales, skews
+
+
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
@@ -520,7 +527,6 @@ def _pearson_fit(
             values[maximums_mask] = 0.9995
 
         if not np.all(np.isnan(values)):
-
             # calculate the probability value, clipped between 0 and 1
             probabilities = np.clip(
                 (probabilities_of_zero + ((1.0 - probabilities_of_zero) * values)),
@@ -535,11 +541,9 @@ def _pearson_fit(
             fitted_values = scipy.stats.norm.ppf(probabilities)
 
         else:
-
             fitted_values = values
 
     else:
-
         fitted_values = values
 
     return fitted_values
@@ -594,7 +598,8 @@ def transform_fitted_pearson(
             raise ValueError(
                 "At least one but not all of the Pearson Type III fitting "
                 "parameters are specified -- either none or all of "
-                "these must be specified")
+                "these must be specified"
+            )
 
     # if we're passed all missing values then we can't compute anything,
     # and we'll return the same array of missing values
@@ -606,26 +611,23 @@ def transform_fitted_pearson(
 
     # compute the Pearson Type III fitting values if none were provided
     if any(param_arg is None for param_arg in pearson_param_args):
-
         # determine the end year of the values array
         data_end_year = data_start_year + values.shape[0]
 
         # make sure that we have data within the full calibration period,
         # otherwise use the full period of record
-        if (calibration_start_year < data_start_year) \
-                or (calibration_end_year > data_end_year):
+        if (calibration_start_year < data_start_year) or (calibration_end_year > data_end_year):
             calibration_start_year = data_start_year
             calibration_end_year = data_end_year
 
         # compute the values we'll use to fit to the Pearson Type III distribution
-        probabilities_of_zero, locs, scales, skews = \
-            pearson_parameters(
-                values,
-                data_start_year,
-                calibration_start_year,
-                calibration_end_year,
-                periodicity,
-            )
+        probabilities_of_zero, locs, scales, skews = pearson_parameters(
+            values,
+            data_start_year,
+            calibration_start_year,
+            calibration_end_year,
+            periodicity,
+        )
 
     # fit each value to the Pearson Type III distribution
     values = _pearson_fit(values, probabilities_of_zero, skews, locs, scales)
@@ -687,8 +689,7 @@ def gamma_parameters(
 
     # make sure that we have data within the full calibration period,
     # otherwise use the full period of record
-    if (calibration_start_year < data_start_year) or \
-            (calibration_end_year > data_end_year):
+    if (calibration_start_year < data_start_year) or (calibration_end_year > data_end_year):
         calibration_start_year = data_start_year
         calibration_end_year = data_end_year
 
@@ -719,7 +720,6 @@ def scale_values(
     scale: int,
     periodicity: Periodicity,
 ):
-
     # we expect to operate upon a 1-D array, so if we've been passed a 2-D array
     # then we flatten it, otherwise raise an error
     shape = values.shape
@@ -746,15 +746,12 @@ def scale_values(
     # reshape precipitation values to (years, 12) for monthly,
     # or to (years, 366) for daily
     if periodicity is Periodicity.monthly:
-
         scaled_values = utils.reshape_to_2d(scaled_values, 12)
 
     elif periodicity is Periodicity.daily:
-
         scaled_values = utils.reshape_to_2d(scaled_values, 366)
 
     else:
-
         raise ValueError("Invalid periodicity argument: %s" % periodicity)
 
     return scaled_values
@@ -812,22 +809,20 @@ def transform_fitted_gamma(
 
     # compute fitting parameters if none were provided
     if (alphas is None) or (betas is None):
-        alphas, betas = \
-            gamma_parameters(
-                values,
-                data_start_year,
-                calibration_start_year,
-                calibration_end_year,
-                periodicity,
-            )
+        alphas, betas = gamma_parameters(
+            values,
+            data_start_year,
+            calibration_start_year,
+            calibration_end_year,
+            periodicity,
+        )
 
     # find the gamma probability values using the gamma CDF
     gamma_probabilities = scipy.stats.gamma.cdf(values, a=alphas, scale=betas)
 
     # TODO explain this better
     # (normalize including the probability of zero, putting into the range [0..1]?)
-    probabilities = probabilities_of_zero + \
-                    ((1 - probabilities_of_zero) * gamma_probabilities)
+    probabilities = probabilities_of_zero + ((1 - probabilities_of_zero) * gamma_probabilities)
 
     # the values we'll return are the values at which the probabilities of
     # a normal distribution are less than or equal to the computed probabilities,

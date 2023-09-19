@@ -55,8 +55,8 @@ _SOLAR_DECLINATION_RADIANS_MAX = np.deg2rad(23.45)
 
 
 def _sunset_hour_angle(
-        latitude_radians: float,
-        solar_declination_radians: float,
+    latitude_radians: float,
+    solar_declination_radians: float,
 ) -> float:
     """
     Calculate sunset hour angle (*Ws*) from latitude and solar declination.
@@ -80,17 +80,20 @@ def _sunset_hour_angle(
     # validate the solar declination angle argument, which can vary between
     # -23.45 and +23.45 degrees see Goswami (2015) p.40, and
     # http://www.itacanet.org/the-sun-as-a-source-of-energy/part-1-solar-astronomy/
-    if (not _SOLAR_DECLINATION_RADIANS_MIN
-            <= solar_declination_radians <= _SOLAR_DECLINATION_RADIANS_MAX):
-        raise ValueError("solar declination angle outside the valid range [" +
-                         str(_SOLAR_DECLINATION_RADIANS_MIN) + " to " +
-                         str(_SOLAR_DECLINATION_RADIANS_MAX) + "]: " +
-                         str(solar_declination_radians) + " (actual value)")
+    if not _SOLAR_DECLINATION_RADIANS_MIN <= solar_declination_radians <= _SOLAR_DECLINATION_RADIANS_MAX:
+        raise ValueError(
+            "solar declination angle outside the valid range ["
+            + str(_SOLAR_DECLINATION_RADIANS_MIN)
+            + " to "
+            + str(_SOLAR_DECLINATION_RADIANS_MAX)
+            + "]: "
+            + str(solar_declination_radians)
+            + " (actual value)"
+        )
 
     # calculate the cosine of the sunset hour angle (*Ws* in FAO 25)
     # from latitude and solar declination
-    cos_sunset_hour_angle = \
-        -math.tan(latitude_radians) * math.tan(solar_declination_radians)
+    cos_sunset_hour_angle = -math.tan(latitude_radians) * math.tan(solar_declination_radians)
 
     # If the sunset hour angle is >= 1 there is no sunset, i.e. 24 hours of daylight
     # If the sunset hour angle is <= 1 there is no sunrise, i.e. 24 hours of darkness
@@ -100,7 +103,7 @@ def _sunset_hour_angle(
 
 
 def _solar_declination(
-        day_of_year: int,
+    day_of_year: int,
 ) -> float:
     """
     Calculate the angle of solar declination from day of the year.
@@ -114,14 +117,13 @@ def _solar_declination(
     :raise ValueError: if the day of year value is not within the range [1-366]
     """
     if not 1 <= day_of_year <= 366:
-        raise ValueError("Day of the year must be in the range [1-366]: "
-                         "{0!r}".format(day_of_year))
+        raise ValueError("Day of the year must be in the range [1-366]: " "{0!r}".format(day_of_year))
 
     return 0.409 * math.sin(((2.0 * math.pi / 365.0) * day_of_year - 1.39))
 
 
 def _daylight_hours(
-        sunset_hour_angle_radians: float,
+    sunset_hour_angle_radians: float,
 ) -> float:
     """
     Calculate daylight hours from a sunset hour angle.
@@ -138,17 +140,21 @@ def _daylight_hours(
     # range of 0 to pi radians (180 degrees), inclusive
     # see http://mypages.iit.edu/~maslanka/SolarGeo.pdf
     if not 0.0 <= sunset_hour_angle_radians <= math.pi:
-        raise ValueError("sunset hour angle outside valid range [0.0 to " +
-                         str(math.pi) + "] : " +
-                         str(sunset_hour_angle_radians) + " (actual value)")
+        raise ValueError(
+            "sunset hour angle outside valid range [0.0 to "
+            + str(math.pi)
+            + "] : "
+            + str(sunset_hour_angle_radians)
+            + " (actual value)"
+        )
 
     # calculate daylight hours from the sunset hour angle
     return (24.0 / math.pi) * sunset_hour_angle_radians
 
 
 def _monthly_mean_daylight_hours(
-        latitude_radians: float,
-        leap=False,
+    latitude_radians: float,
+    leap=False,
 ) -> np.ndarray:
     """
     Computes the monthly mean daylight hours at the specified latitude.
@@ -177,8 +183,7 @@ def _monthly_mean_daylight_hours(
         cumulative_daylight_hours = 0.0  # cumulative daylight hours for the month
         for _ in range(1, days_in_month + 1):
             daily_solar_declination = _solar_declination(day_of_year)
-            daily_sunset_hour_angle = \
-                _sunset_hour_angle(latitude_radians, daily_solar_declination)
+            daily_sunset_hour_angle = _sunset_hour_angle(latitude_radians, daily_solar_declination)
             cumulative_daylight_hours += _daylight_hours(daily_sunset_hour_angle)
             day_of_year += 1
 
@@ -189,9 +194,9 @@ def _monthly_mean_daylight_hours(
 
 
 def eto_thornthwaite(
-        monthly_temps_celsius: np.ndarray,
-        latitude_degrees: float,
-        data_start_year: int,
+    monthly_temps_celsius: np.ndarray,
+    latitude_degrees: float,
+    data_start_year: int,
 ) -> np.ndarray:
     """
     Compute monthly potential evapotranspiration (PET) using the
@@ -254,21 +259,15 @@ def eto_thornthwaite(
     heat_index = np.sum(np.power(mean_monthly_temps / 5.0, 1.514))
 
     # calculate the coefficient
-    a = ((6.75e-07 * heat_index ** 3)
-         - (7.71e-05 * heat_index ** 2)
-         + (1.792e-02 * heat_index)
-         + 0.49239)
+    a = (6.75e-07 * heat_index**3) - (7.71e-05 * heat_index**2) + (1.792e-02 * heat_index) + 0.49239
 
     # get mean daylight hours for both normal and leap years
-    mean_daylight_hours_nonleap = \
-        np.array(_monthly_mean_daylight_hours(latitude_radians, False))
-    mean_daylight_hours_leap = \
-        np.array(_monthly_mean_daylight_hours(latitude_radians, True))
+    mean_daylight_hours_nonleap = np.array(_monthly_mean_daylight_hours(latitude_radians, False))
+    mean_daylight_hours_leap = np.array(_monthly_mean_daylight_hours(latitude_radians, True))
 
     # allocate the PET array we'll fill
     pet = np.full(monthly_temps_celsius.shape, np.NaN)
     for year in range(monthly_temps_celsius.shape[0]):
-
         if calendar.isleap(data_start_year + year):
             month_days = _MONTH_DAYS_LEAP
             mean_daylight_hours = mean_daylight_hours_leap
@@ -290,10 +289,10 @@ def eto_thornthwaite(
 
 
 def eto_hargreaves(
-        daily_tmin_celsius: np.ndarray,
-        daily_tmax_celsius: np.ndarray,
-        daily_tmean_celsius: np.ndarray,
-        latitude_degrees: float,
+    daily_tmin_celsius: np.ndarray,
+    daily_tmax_celsius: np.ndarray,
+    daily_tmean_celsius: np.ndarray,
+    latitude_degrees: float,
 ) -> np.ndarray:
     """
     Compute daily potential evapotranspiration (PET) using the Hargreaves
@@ -334,7 +333,6 @@ def eto_hargreaves(
     # allocate the PET array we'll fill
     pet = np.full(daily_tmean_celsius.shape, np.NaN)
     for day_of_year in range(1, daily_tmean_celsius.shape[1] + 1):
-
         # calculate the angle of solar declination and sunset hour angle
         solar_declination = _solar_declination(day_of_year)
         sunset_hour_angle = _sunset_hour_angle(latitude, solar_declination)
@@ -347,22 +345,15 @@ def eto_hargreaves(
         # extraterrestrial radiation
         tmp1 = (24.0 * 60.0) / math.pi
         tmp2 = sunset_hour_angle * math.sin(latitude) * math.sin(solar_declination)
-        tmp3 = (
-            math.cos(latitude)
-            * math.cos(solar_declination)
-            * math.sin(sunset_hour_angle)
-        )
+        tmp3 = math.cos(latitude) * math.cos(solar_declination) * math.sin(sunset_hour_angle)
         et_radiation = tmp1 * _SOLAR_CONSTANT * inv_rel_distance * (tmp2 + tmp3)
 
         for year in range(daily_tmean_celsius.shape[0]):
-
             # calculate the Hargreaves equation
             tmin = daily_tmin_celsius[year, day_of_year - 1]
             tmax = daily_tmax_celsius[year, day_of_year - 1]
             tmean = daily_tmean_celsius[year, day_of_year - 1]
-            pet[year, day_of_year - 1] = (
-                0.0023 * (tmean + 17.8) * (tmax - tmin) ** 0.5 * 0.408 * et_radiation
-            )
+            pet[year, day_of_year - 1] = 0.0023 * (tmean + 17.8) * (tmax - tmin) ** 0.5 * 0.408 * et_radiation
 
     # reshape the dataset from (years, 366) into (total days),
     # i.e. convert from 2-D to 1-D, and truncate to the original length

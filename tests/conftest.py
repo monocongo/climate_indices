@@ -85,38 +85,22 @@ def latitude_degrees():
 
 @pytest.fixture(scope="module")
 def precips_mm_monthly():
-    return np.load(
-        os.path.join(os.path.split(__file__)[0],
-                     "fixture",
-                     "precips_mm_monthly.npy")
-    )
+    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "precips_mm_monthly.npy"))
 
 
 @pytest.fixture(scope="module")
 def precips_mm_daily():
-    return np.load(
-        os.path.join(os.path.split(__file__)[0],
-                     "fixture",
-                     "precips_mm_daily.npy")
-    )
+    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "precips_mm_daily.npy"))
 
 
 @pytest.fixture(scope="module")
 def transformed_pearson3():
-    return np.load(
-        os.path.join(os.path.split(__file__)[0],
-                     "fixture",
-                     "pearson3_monthly.npy")
-    )
+    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "pearson3_monthly.npy"))
 
 
 @pytest.fixture(scope="module")
 def transformed_pearson3_monthly_fullperiod():
-    return np.load(
-        os.path.join(os.path.split(__file__)[0],
-                     "fixture",
-                     "pearson3_monthly_full.npy")
-    )
+    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "pearson3_monthly_full.npy"))
 
 
 @pytest.fixture(scope="module")
@@ -128,10 +112,7 @@ def gamma_monthly():
 
     :return:
     """
-    return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture",
-                     "gamma_monthly.npy")
-    )
+    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "gamma_monthly.npy"))
 
 
 @pytest.fixture(scope="module")
@@ -144,11 +125,7 @@ def gamma_daily():
     :return:
     """
 
-    return np.load(
-        os.path.join(os.path.split(__file__)[0],
-                     "fixture",
-                     "gamma_daily.npy")
-    )
+    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "gamma_daily.npy"))
 
 
 @pytest.fixture(scope="module")
@@ -160,10 +137,7 @@ def transformed_gamma_monthly():
 
     :return:
     """
-    return np.load(
-        os.path.join(os.path.split(__file__)[0], "fixture",
-                     "transformed_gamma_monthly.npy")
-    )
+    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "transformed_gamma_monthly.npy"))
 
 
 @pytest.fixture(scope="module")
@@ -176,107 +150,59 @@ def transformed_gamma_daily():
     :return:
     """
 
-    return np.load(
-        os.path.join(os.path.split(__file__)[0],
-                     "fixture",
-                     "transformed_gamma_daily.npy")
-    )
+    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "transformed_gamma_daily.npy"))
 
 
 @pytest.fixture(scope="module")
 def pet_thornthwaite_mm():
-    return np.load(
-        os.path.join(os.path.split(__file__)[0],
-                     "fixture",
-                     "pet_thornthwaite.npy")
-    )
+    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "pet_thornthwaite.npy"))
 
 
 @pytest.fixture(scope="module")
 def temps_celsius():
-    return np.load(
-        os.path.join(os.path.split(__file__)[0],
-                     "fixture",
-                     "temp_celsius.npy")
-    )
+    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "temp_celsius.npy"))
 
 
 @pytest.fixture(scope="module")
 def pnp_6month():
-    return np.load(
-        os.path.join(os.path.split(__file__)[0],
-                     "fixture",
-                     "pnp_06.npy")
-    )
+    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "pnp_06.npy"))
 
 
 @pytest.fixture(scope="module")
 def spei_6_month_gamma():
-    return np.load(
-        os.path.join(os.path.split(__file__)[0],
-                     "fixture",
-                     "spei_06_gamma.npy")
-    )
+    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "spei_06_gamma.npy"))
 
 
 @pytest.fixture(scope="module")
 def spei_6_month_pearson3():
-    return np.load(
-        os.path.join(os.path.split(__file__)[0],
-                     "fixture",
-                     "spei_06_pearson3.npy")
-    )
+    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "spei_06_pearson3.npy"))
 
 
 @pytest.fixture(scope="module")
 def spi_1_month_gamma():
-    return np.load(
-        os.path.join(os.path.split(__file__)[0],
-                     "fixture",
-                     "spi_01_gamma.npy")
-    )
+    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "spi_01_gamma.npy"))
 
 
 @pytest.fixture(scope="module")
 def spi_6_month_gamma():
-    return np.load(
-        os.path.join(os.path.split(__file__)[0],
-                     "fixture",
-                     "spi_06_gamma.npy")
-    )
+    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "spi_06_gamma.npy"))
 
 
 @pytest.fixture(scope="module")
 def spi_6_month_pearson3():
-    return np.load(
-        os.path.join(os.path.split(__file__)[0],
-                     "fixture",
-                     "spi_06_pearson3.npy")
-    )
+    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "spi_06_pearson3.npy"))
 
 
 @pytest.fixture(scope="function")
 def rain_mm() -> np.ndarray:
-    return np.load(
-        os.path.join(os.path.split(__file__)[0],
-                     "fixture",
-                     "rain_mm.npy")
-    )
+    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "rain_mm.npy"))
 
 
 @pytest.fixture(scope="function")
 def rain_mm_365() -> np.ndarray:
-    return np.load(
-        os.path.join(os.path.split(__file__)[0],
-                     "fixture",
-                     "rain_mm_365.npy")
-    )
+    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "rain_mm_365.npy"))
 
 
 @pytest.fixture(scope="module")
 def rain_mm_366():
-    return np.load(
-        os.path.join(os.path.split(__file__)[0],
-                     "fixture",
-                     "rain_mm_366.npy")
-    )
+    return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "rain_mm_366.npy"))

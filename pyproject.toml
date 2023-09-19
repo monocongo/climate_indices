@@ -2,6 +2,25 @@
 requires = ['poetry-core>=1.0.0']
 build-backend = 'poetry.core.masonry.api'
 
+[project.urls]
+'Homepage' = 'https://github.com/monocongo/climate_indices'
+'Bug Tracker' = 'https://github.com/monocongo/climate_indices/issues'
+
+[tool.black]
+line-length = 120
+target-version = ['py39', 'py310', 'py311']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
 [tool.poetry]
 name = 'climate_indices'
 version = '2.0.0'
@@ -48,6 +67,3 @@ filterwarnings = [
     'ignore::FutureWarning',
 ]
 
-[project.urls]
-'Homepage' = 'https://github.com/monocongo/climate_indices'
-'Bug Tracker' = 'https://github.com/monocongo/climate_indices/issues'

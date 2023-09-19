@@ -28,8 +28,7 @@ def fit(timeseries: np.ndarray) -> dict:
 
     # validate the L-Moments
     if (lmoments[1] <= 0.0) or (abs(lmoments[2]) >= 1.0):
-        message = "Unable to calculate Pearson Type III parameters " + \
-                  "due to invalid L-moments"
+        message = "Unable to calculate Pearson Type III parameters " + "due to invalid L-moments"
         _logger.error(message)
         raise ValueError(message)
 
