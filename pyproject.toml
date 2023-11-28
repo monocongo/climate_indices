@@ -48,7 +48,7 @@ cftime = '1.6.2'
 dask = '2022.2.0'
 h5netcdf = '1.1.0'
 python = '>=3.8,<3.12'
-scipy = '1.9.3'
+scipy = '~=1.10.0'
 xarray = '2023.1.0'
 
 [tool.poetry.dev-dependencies]
