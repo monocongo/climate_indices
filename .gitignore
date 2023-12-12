@@ -76,5 +76,5 @@ venv.bak/
 .idea/
 /.project
 /.pydevproject
-
+.DS_Store
 /.settings/
