@@ -1,17 +1,11 @@
 import logging
 import os
 
-
 import numpy as np
 import pytest
 from glob import glob
 
 from climate_indices import palmer
-
-# ----------------------------------------------------------------------------------------------------------------------
-# disable logging messages
-logging.disable(logging.CRITICAL)
-
 
 # Tests for `climate_indices.palmer.py`
 ATOL = 5E-5

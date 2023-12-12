@@ -457,7 +457,7 @@ def _statement_210(data: dict) -> None:
     if data["k8"] == 0:
         data["pdsi"][year, month] = data["x"][year, month]
         data["phdi"][year, month] = data["px3"][year, month]
-        if data["px3"][year, month] == 0.0:
+        if data["px3"][year, month] == 0:
             data["phdi"][year, month] = data["x"][year, month]
         data["wplm"][year, month] = _case(
             data["ppr"][year, month],
