@@ -1,4 +1,5 @@
 import os
+import json
 
 import numpy as np
 import pytest
@@ -25,7 +26,6 @@ _LATITUDE_DEGREES = 25.2292
 
 # available water capacity value used for computing the fixture datasets (Palmers)
 _AWC_INCHES = 4.5
-_AWC_INCHES_PALMER = 5.0
 
 
 @pytest.fixture(scope="module")
@@ -206,3 +206,10 @@ def rain_mm_365() -> np.ndarray:
 @pytest.fixture(scope="module")
 def rain_mm_366():
     return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "rain_mm_366.npy"))
+
+
+@pytest.fixture(scope="module")
+def palmer_awcs():
+    with open(os.path.join(os.path.split(__file__)[0], "fixture", "palmer_awc.json"),"r") as awcfile:
+        return json.load(awcfile)
+
