@@ -1,14 +1,18 @@
+![Banner Image](assets/Global_Monthly_SPI.jpg)
+
+# climate_indices
+
 [//]: # ([![Coverage Status]&#40;https://coveralls.io/repos/github/monocongo/climate_indices/badge.svg?branch=master&#41;]&#40;https://coveralls.io/github/monocongo/climate_indices?branch=master&#41;)
 [//]: # ([![Codacy Status]&#40;https://api.codacy.com/project/badge/Grade/48563cbc37504fc6aa72100370e71f58&#41;]&#40;https://www.codacy.com/app/monocongo/climate_indices?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=monocongo/climate_indices&amp;utm_campaign=Badge_Grade&#41;)
 [![Actions Status](https://github.com/monocongo/climate_indices/workflows/tests/badge.svg)](https://github.com/monocongo/climate_indices/actions)
 [![License](https://img.shields.io/badge/License-BSD%203--Clause-green.svg)](https://opensource.org/licenses/BSD-3-Clause)
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/climate-indices)
 
-# Climate Indices in Python
+#### Python library of indices useful for climate monitoring
 
 This project contains Python implementations of various climate index algorithms which provide
-a geographical and temporal picture of the severity of precipitation and temperature anomalies
-useful for climate monitoring and research.
+a geographical and temporal picture of the severity and duration of precipitation and temperature
+anomalies useful for climate monitoring and research.
 
 The following indices are provided:
 
@@ -40,9 +44,8 @@ with the following goals in mind:
   best practices
 
 
-This is a developmental/forked version of code that is originally developed and
-maintained by NIDIS/NCEI/NOAA. The official release version is available at
-[drought.gov](https://www.drought.gov/drought/python-climate-indices).
+This is a developmental/forked version of code that was originally developed by NIDIS/NCEI/NOAA. 
+See [drought.gov](https://www.drought.gov/drought/python-climate-indices).
 
 - [__Documentation__](https://climate-indices.readthedocs.io/en/latest/)
 - [__License__](LICENSE)
