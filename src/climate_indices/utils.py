@@ -226,7 +226,7 @@ def reshape_to_2d(
     final_year_values = shape[0] % second_axis_length
     if final_year_values > 0:
         pads = second_axis_length - final_year_values
-        values = np.pad(values, pad_width=(0, pads), mode="constant", constant_values=np.NaN)
+        values = np.pad(values, pad_width=(0, pads), mode="constant", constant_values=np.nan)
 
     # we should have an ordinal number of years now
     # (ordinally divisible by second_axis_length)
@@ -344,7 +344,7 @@ def transform_to_366day(
 
     # allocate the new array for 366 daily values per year,
     # including a faux Feb 29 for non-leap years
-    all_leap = np.full((total_years * 366,), np.NaN)
+    all_leap = np.full((total_years * 366,), np.nan)
 
     # index of the first day of the year within the original and all_leap arrays
     original_index = 0
@@ -384,7 +384,7 @@ def transform_to_366day(
                             difference,
                         ),
                         mode="constant",
-                        constant_values=np.NaN,
+                        constant_values=np.nan,
                     )
                 elif difference != 0:
                     raise ValueError("Incompatible shapes")
@@ -457,7 +457,7 @@ def transform_to_gregorian(
 
     # allocate the new array we'll write daily values into,
     # including a faux Feb 29 for non-leap years
-    gregorian = np.full((days_actual,), np.NaN)
+    gregorian = np.full((days_actual,), np.nan)
 
     # index of the first day of the year within the original and gregorian arrays
     original_index = 0

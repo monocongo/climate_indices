@@ -575,7 +575,7 @@ def _compute_write_index(keyword_arguments):
             fitting_shape = [len(x) for x in ds_fitting.coords.values()]
             for var in _FITTING_VARIABLES:
                 da_fitting = xr.DataArray(
-                    data=np.full(shape=fitting_shape, fill_value=np.NaN),
+                    data=np.full(shape=fitting_shape, fill_value=np.nan),
                     # Assumes it is in the proper order.
                     coords=ds_fitting.coords,
                     name=fitting_var_names[var],
