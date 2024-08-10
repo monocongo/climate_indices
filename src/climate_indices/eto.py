@@ -266,7 +266,7 @@ def eto_thornthwaite(
     mean_daylight_hours_leap = np.array(_monthly_mean_daylight_hours(latitude_radians, True))
 
     # allocate the PET array we'll fill
-    pet = np.full(monthly_temps_celsius.shape, np.NaN)
+    pet = np.full(monthly_temps_celsius.shape, np.nan)
     for year in range(monthly_temps_celsius.shape[0]):
         if calendar.isleap(data_start_year + year):
             month_days = _MONTH_DAYS_LEAP
@@ -331,7 +331,7 @@ def eto_hargreaves(
     latitude = math.radians(latitude_degrees)
 
     # allocate the PET array we'll fill
-    pet = np.full(daily_tmean_celsius.shape, np.NaN)
+    pet = np.full(daily_tmean_celsius.shape, np.nan)
     for day_of_year in range(1, daily_tmean_celsius.shape[1] + 1):
         # calculate the angle of solar declination and sunset hour angle
         solar_declination = _solar_declination(day_of_year)

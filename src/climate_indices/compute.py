@@ -154,7 +154,7 @@ def sum_to_scale(
     sliding_sums = np.convolve(values, np.ones(scale), mode="valid")
 
     # pad the first (n - 1) elements of the array with NaN values
-    return np.hstack(([np.NaN] * (scale - 1), sliding_sums))
+    return np.hstack(([np.nan] * (scale - 1), sliding_sums))
 
     # BELOW FOR dask/xarray DataArray integration
     # # pad the values array with (scale - 1) NaNs
@@ -218,7 +218,7 @@ def _probability_of_zero(
 
         else:
             # fill with NaN
-            probabilities_of_zero[time_step_index] = np.NaN
+            probabilities_of_zero[time_step_index] = np.nan
 
     return probabilities_of_zero
 
@@ -674,15 +674,15 @@ def gamma_parameters(
             shape = (366,)
         else:
             raise ValueError("Unsupported periodicity: {periodicity}".format(periodicity=periodicity))
-        alphas = np.full(shape=shape, fill_value=np.NaN)
-        betas = np.full(shape=shape, fill_value=np.NaN)
+        alphas = np.full(shape=shape, fill_value=np.nan)
+        betas = np.full(shape=shape, fill_value=np.nan)
         return alphas, betas
 
     # validate (and possibly reshape) the input array
     values = _validate_array(values, periodicity)
 
     # replace zeros with NaNs
-    values[values == 0] = np.NaN
+    values[values == 0] = np.nan
 
     # determine the end year of the values array
     data_end_year = data_start_year + values.shape[0]
@@ -805,7 +805,7 @@ def transform_fitted_gamma(
     probabilities_of_zero = zeros / values.shape[0]
 
     # replace zeros with NaNs
-    values[values == 0] = np.NaN
+    values[values == 0] = np.nan
 
     # compute fitting parameters if none were provided
     if (alphas is None) or (betas is None):
