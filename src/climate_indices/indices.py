@@ -397,9 +397,9 @@ def percentage_of_normal(
 
     # if doing monthly then we'll use 12 periods, corresponding to calendar
     # months, if daily assume years w/366 days
-    if periodicity is compute.Periodicity.monthly:
+    if periodicity == compute.Periodicity.monthly:
         periodicity = 12
-    elif periodicity is compute.Periodicity.daily:
+    elif periodicity == compute.Periodicity.daily:
         periodicity = 366
     else:
         message = f"Invalid periodicity argument: '{periodicity}'"
