@@ -138,9 +138,9 @@ def spi(
     values = compute.sum_to_scale(values, scale)
 
     # reshape precipitation values to (years, 12) for monthly, or to (years, 366) for daily
-    if (periodicity == compute.Periodicity.monthly) or (periodicity == "monthly"):
-        values = utils.reshape_to_2d(values, 12)
-    elif (periodicity == compute.Periodicity.daily) or (periodicity == "daily"):
+    if periodicity == compute.Periodicity.monthly:
+            values = utils.reshape_to_2d(values, 12)
+    elif periodicity == compute.Periodicity.daily:
         values = utils.reshape_to_2d(values, 366)
     else:
         raise ValueError(f"Invalid periodicity argument: '{periodicity}'")
