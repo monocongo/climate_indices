@@ -23,7 +23,7 @@ exclude = '''
 
 [tool.poetry]
 name = 'climate_indices'
-version = '2.0.0'
+version = '2.0.1'
 description = 'Reference implementations of various climate indices typically used for drought monitoring'
 authors = ['James Adams <monocongo@gmail.com>']
 readme = 'README.md'
@@ -44,19 +44,21 @@ classifiers = [
 packages = [{include = 'climate_indices', from = 'src'}]
 
 [tool.poetry.dependencies]
-cftime = '>=1.6.2'
-dask = '>=2022.2.0'
-h5netcdf = '>=1.1.0'
+# only Python and scipy are required for the base library code
 python = '>=3.8,<3.12'
-scipy = '>=1.10.0'
+scipy = '1.10.1'
+# remaining dependencies are required for the CLI (console) scripts
+cftime = '>=1.6.4'
+dask = '>=2023.5.0'
+h5netcdf = '>=1.1.0'
 xarray = '>=2023.1.0'
 
 [tool.poetry.dev-dependencies]
-pytest = '*'
+pytest = '8.3.3'
 toml = '>=0.10.2'
 
 [tool.poetry.group.dev.dependencies]
-sphinx-autodoc-typehints = "^1.23.3"
+sphinx-autodoc-typehints = '2.0.1'
 
 [tool.poetry.scripts]
 process_climate_indices = 'climate_indices.__main__:main'
@@ -66,4 +68,3 @@ spi = 'climate_indices.__spi__:main'
 filterwarnings = [
     'ignore::FutureWarning',
 ]
-

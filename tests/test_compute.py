@@ -43,7 +43,7 @@ def test_transform_fitted_gamma(
     """
 
     # confirm that an input array of all NaNs results in the same array returned
-    all_nans = np.full(precips_mm_monthly.shape, np.NaN)
+    all_nans = np.full(precips_mm_monthly.shape, np.nan)
     computed_values = compute.transform_fitted_gamma(
         all_nans,
         data_year_start_monthly,
@@ -172,9 +172,9 @@ def test_gamma_parameters(
     """
 
     # confirm that an input array of all NaNs results in the same array returned
-    all_nans = np.full(precips_mm_monthly.shape, np.NaN)
-    nan_alphas = np.full(shape=(12,), fill_value=np.NaN)
-    nan_betas = np.full(shape=(12,), fill_value=np.NaN)
+    all_nans = np.full(precips_mm_monthly.shape, np.nan)
+    nan_alphas = np.full(shape=(12,), fill_value=np.nan)
+    nan_betas = np.full(shape=(12,), fill_value=np.nan)
     alphas, betas = compute.gamma_parameters(
         all_nans,
         data_year_start_monthly,
@@ -247,7 +247,7 @@ def test_transform_fitted_pearson(
     """
 
     # confirm that an input array of all NaNs results in the same array returned
-    all_nans = np.full(precips_mm_monthly.shape, np.NaN)
+    all_nans = np.full(precips_mm_monthly.shape, np.nan)
     computed_values = compute.transform_fitted_pearson(
         all_nans,
         data_year_start_monthly,
@@ -280,7 +280,7 @@ def test_transform_fitted_pearson(
     )
 
     # confirm that an input array of all NaNs will return the same array
-    all_nans = np.full(precips_mm_monthly.shape, np.NaN)
+    all_nans = np.full(precips_mm_monthly.shape, np.nan)
     computed_values = compute.transform_fitted_pearson(
         all_nans,
         data_year_start_monthly,
@@ -524,14 +524,14 @@ def test_sum_to_scale():
     # test an input array with no missing values
     values = np.array([3.0, 4, 6, 2, 1, 3, 5, 8, 5])
     computed_values = compute.sum_to_scale(values, 3)
-    expected_values = np.array([np.NaN, np.NaN, 13, 12, 9, 6, 9, 16, 18])
+    expected_values = np.array([np.nan, np.nan, 13, 12, 9, 6, 9, 16, 18])
     np.testing.assert_allclose(
         computed_values,
         expected_values,
         err_msg=UNEXPECTED_SLIDING_SUMS_MESSAGE,
     )
     computed_values = compute.sum_to_scale(values, 4)
-    expected_values = np.array([np.NaN, np.NaN, np.NaN, 15, 13, 12, 11, 17, 21])
+    expected_values = np.array([np.nan, np.nan, np.nan, 15, 13, 12, 11, 17, 21])
     np.testing.assert_allclose(
         computed_values,
         expected_values,
@@ -539,9 +539,9 @@ def test_sum_to_scale():
     )
 
     # test an input array with missing values on the end
-    values = np.array([3, 4, 6, 2, 1, 3, 5, 8, 5, np.NaN, np.NaN, np.NaN])
+    values = np.array([3, 4, 6, 2, 1, 3, 5, 8, 5, np.nan, np.nan, np.nan])
     computed_values = compute.sum_to_scale(values, 3)
-    expected_values = np.array([np.NaN, np.NaN, 13, 12, 9, 6, 9, 16, 18, np.NaN, np.NaN, np.NaN])
+    expected_values = np.array([np.nan, np.nan, 13, 12, 9, 6, 9, 16, 18, np.nan, np.nan, np.nan])
     np.testing.assert_allclose(
         computed_values,
         expected_values,
@@ -549,9 +549,9 @@ def test_sum_to_scale():
     )
 
     # test an input array with missing values within the array
-    values = np.array([3, 4, 6, 2, 1, 3, 5, np.NaN, 8, 5, 6])
+    values = np.array([3, 4, 6, 2, 1, 3, 5, np.nan, 8, 5, 6])
     computed_values = compute.sum_to_scale(values, 3)
-    expected_values = np.array([np.NaN, np.NaN, 13, 12, 9, 6, 9, np.NaN, np.NaN, np.NaN, 19])
+    expected_values = np.array([np.nan, np.nan, 13, 12, 9, 6, 9, np.nan, np.nan, np.nan, 19])
     np.testing.assert_allclose(
         computed_values,
         expected_values,
@@ -559,9 +559,9 @@ def test_sum_to_scale():
     )
 
     test_values = np.array([1.0, 5, 7, 2, 3, 4, 9, 6, 3, 8])
-    sum_by2 = np.array([np.NaN, 6, 12, 9, 5, 7, 13, 15, 9, 11])
-    sum_by4 = np.array([np.NaN, np.NaN, np.NaN, 15, 17, 16, 18, 22, 22, 26])
-    sum_by6 = np.array([np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, 22, 30, 31, 27, 33])
+    sum_by2 = np.array([np.nan, 6, 12, 9, 5, 7, 13, 15, 9, 11])
+    sum_by4 = np.array([np.nan, np.nan, np.nan, 15, 17, 16, 18, 22, 22, 26])
+    sum_by6 = np.array([np.nan, np.nan, np.nan, np.nan, np.nan, 22, 30, 31, 27, 33])
     np.testing.assert_equal(
         compute.sum_to_scale(test_values, 2),
         sum_by2,

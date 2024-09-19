@@ -23,7 +23,7 @@ def test_pet(
 ):
     # confirm that an input temperature array of only NaNs
     # results in the same all NaNs array being returned
-    all_nan_temps = np.full(temps_celsius.shape, np.NaN)
+    all_nan_temps = np.full(temps_celsius.shape, np.nan)
     computed_pet = indices.pet(all_nan_temps, latitude_degrees, data_year_start_monthly)
     np.testing.assert_equal(
         computed_pet,
@@ -45,7 +45,7 @@ def test_pet(
     np.testing.assert_raises(ValueError, indices.pet, temps_celsius, None, data_year_start_monthly)
 
     # confirm that a missing/None latitude value raises an error
-    np.testing.assert_raises(ValueError, indices.pet, temps_celsius, np.NaN, data_year_start_monthly)
+    np.testing.assert_raises(ValueError, indices.pet, temps_celsius, np.nan, data_year_start_monthly)
 
     # confirm that an invalid latitude value raises an error
     pytest.raises(
@@ -100,7 +100,7 @@ def test_pnp(
 ):
     # confirm that an input precipitation array containing
     # only NaNs results in the same array returned
-    all_nan_precips = np.full(precips_mm_monthly.shape, np.NaN)
+    all_nan_precips = np.full(precips_mm_monthly.shape, np.nan)
     computed_pnp = indices.percentage_of_normal(
         all_nan_precips,
         1,
@@ -210,7 +210,7 @@ def test_spi(
 ) -> None:
     # confirm that an input array of all NaNs for
     # precipitation results in the same array returned
-    all_nans = np.full(precips_mm_monthly.shape, np.NaN)
+    all_nans = np.full(precips_mm_monthly.shape, np.nan)
     computed_spi = indices.spi(
         all_nans,
         1,
@@ -386,7 +386,7 @@ def test_spei(
 ) -> None:
     # confirm that an input precipitation array containing
     # only NaNs results in the same array being returned
-    all_nans = np.full(precips_mm_monthly.shape, np.NaN)
+    all_nans = np.full(precips_mm_monthly.shape, np.nan)
     computed_spei = indices.spei(
         all_nans,
         all_nans,
@@ -491,7 +491,7 @@ def test_pci(
 ):
     # confirm that an input rainfall array of only NaNs
     # results in the same all NaNs array being returned
-    all_nan_rainfall = np.full(rain_mm.shape, np.NaN)
+    all_nan_rainfall = np.full(rain_mm.shape, np.nan)
     computed_pci = indices.pci(all_nan_rainfall)
     np.testing.assert_equal(
         computed_pci,

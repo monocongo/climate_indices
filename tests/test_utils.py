@@ -69,7 +69,7 @@ def test_count_zeros_and_non_missings():
     non_missing_count_error = "Failed to correctly count non-missing values"
     
     # vanilla use case
-    values_list = [3, 4, 0, 2, 3.1, 5, np.NaN, 8, 5, 6, 0.0, np.NaN, 5.6, 2]
+    values_list = [3, 4, 0, 2, 3.1, 5, np.nan, 8, 5, 6, 0.0, np.nan, 5.6, 2]
     values = np.array(values_list)
     zeros, non_missings = utils.count_zeros_and_non_missings(values)
     if zeros != 2:
@@ -84,7 +84,7 @@ def test_count_zeros_and_non_missings():
         raise AssertionError(zero_count_error)
     if non_missings != 12:
         raise AssertionError(non_missing_count_error)
-    values = [[3, 4, 0, 2, 3.1, 5, np.NaN], [8, 5, 6, 0.0, np.NaN, 5.6, 2]]
+    values = [[3, 4, 0, 2, 3.1, 5, np.nan], [8, 5, 6, 0.0, np.nan, 5.6, 2]]
     zeros, non_missings = utils.count_zeros_and_non_missings(values)
     if zeros != 2:
         raise AssertionError(zero_count_error)
@@ -102,7 +102,7 @@ def test_is_data_valid():
     # Test for the utils.is_data_valid() function
 
     valid_array = np.full((12,), 1.0)
-    invalid_array = np.full((12,), np.NaN)
+    invalid_array = np.full((12,), np.nan)
     if not utils.is_data_valid(valid_array):
         raise AssertionError()
     if utils.is_data_valid(invalid_array):
@@ -201,7 +201,7 @@ def test_reshape_to_2d():
         [
             [3, 4, 6, 2, 1, 3, 5, 8, 5, 6, 3, 4],
             [6, 2, 1, 3, 5, 8, 5, 6, 3, 4, 6, 2],
-            [1, 3, 5, 8, 5, 6, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN],
+            [1, 3, 5, 8, 5, 6, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan],
         ]
     )
 
@@ -221,7 +221,7 @@ def test_reshape_to_2d():
             [3, 4, 6, 2, 1, 3, 5, 8],
             [5, 6, 3, 4, 6, 2, 1, 3],
             [5, 8, 5, 6, 3, 4, 6, 2],
-            [1, 3, 5, 8, 5, 6, np.NaN, np.NaN],
+            [1, 3, 5, 8, 5, 6, np.nan, np.nan],
         ]
     )
 

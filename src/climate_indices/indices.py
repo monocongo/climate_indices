@@ -424,7 +424,7 @@ def percentage_of_normal(
 
     # get an array containing a sliding sum on the specified time step
     # scale -- i.e. if the scale is 3 then the first two elements will be
-    # np.NaN, since we need 3 elements to get a sum, and then from the third
+    # np.nan, since we need 3 elements to get a sum, and then from the third
     # element to the end the values will equal the sum of the corresponding
     # time step plus the values of the two previous time steps
     scale_sums = compute.sum_to_scale(values, scale)
