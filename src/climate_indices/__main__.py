@@ -1622,8 +1622,6 @@ def process_climate_indices(
     # ...
 
     try:
-        start_datetime = datetime.now()
-
         # validate the arguments and determine the input type
         input_type = _validate_args(arguments)
 
