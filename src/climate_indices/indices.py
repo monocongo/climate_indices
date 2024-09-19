@@ -137,16 +137,15 @@ def spi(
     # by the specified number of time steps
     values = compute.sum_to_scale(values, scale)
 
-    # reshape precipitation values to (years, 12) for monthly,
-    # or to (years, 366) for daily
-    if periodicity is compute.Periodicity.monthly:
-        values = utils.reshape_to_2d(values, 12)
-    elif periodicity is compute.Periodicity.daily:
+    # reshape precipitation values to (years, 12) for monthly, or to (years, 366) for daily
+    if periodicity == compute.Periodicity.monthly:
+            values = utils.reshape_to_2d(values, 12)
+    elif periodicity == compute.Periodicity.daily:
         values = utils.reshape_to_2d(values, 366)
     else:
-        raise ValueError(f"Invalid periodicity argument: {periodicity}")
+        raise ValueError(f"Invalid periodicity argument: '{periodicity}'")
 
-    if distribution is Distribution.gamma:
+    if distribution == Distribution.gamma:
         # get (optional) fitting parameters if provided
         if fitting_params is not None:
             alphas = fitting_params["alpha"]
@@ -166,7 +165,7 @@ def spi(
             alphas,
             betas,
         )
-    elif distribution is Distribution.pearson:
+    elif distribution == Distribution.pearson:
         # get (optional) fitting parameters if provided
         if fitting_params is not None:
             probabilities_of_zero = fitting_params["prob_zero"]
@@ -194,7 +193,7 @@ def spi(
         )
 
     else:
-        message = f"Unsupported distribution argument: {distribution}"
+        message = f"Unsupported distribution argument: '{distribution}'"
         _logger.error(message)
         raise ValueError(message)
 
@@ -398,9 +397,9 @@ def percentage_of_normal(
 
     # if doing monthly then we'll use 12 periods, corresponding to calendar
     # months, if daily assume years w/366 days
-    if periodicity is compute.Periodicity.monthly:
+    if periodicity == compute.Periodicity.monthly:
         periodicity = 12
-    elif periodicity is compute.Periodicity.daily:
+    elif periodicity == compute.Periodicity.daily:
         periodicity = 366
     else:
         message = f"Invalid periodicity argument: '{periodicity}'"
