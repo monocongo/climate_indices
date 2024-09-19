@@ -73,19 +73,19 @@ def test_eto_thornthwaite(temps_celsius, latitude_degrees, data_year_start_month
     pytest.raises(TypeError, eto.eto_thornthwaite, temps_celsius, None, data_year_start_monthly)
 
     # make sure that an invalid latitude value (NaN) raises an error
-    pytest.raises(ValueError, eto.eto_thornthwaite, temps_celsius, np.NaN, data_year_start_monthly)
+    pytest.raises(ValueError, eto.eto_thornthwaite, temps_celsius, np.nan, data_year_start_monthly)
 
 
 # ------------------------------------------------------------------------------
 def test_sunset_hour_angle():
     # make sure that an invalid latitude value raises an error
     pytest.raises(ValueError, eto._sunset_hour_angle, np.deg2rad(-100.0), np.deg2rad(0.0))
-    pytest.raises(ValueError, eto._sunset_hour_angle, np.NaN, np.deg2rad(0.0))
+    pytest.raises(ValueError, eto._sunset_hour_angle, np.nan, np.deg2rad(0.0))
 
     # make sure that an invalid solar declination angle raises an error
     pytest.raises(ValueError, eto._sunset_hour_angle, np.deg2rad(0.0), np.deg2rad(-75.0))
     pytest.raises(ValueError, eto._sunset_hour_angle, np.deg2rad(0.0), np.deg2rad(85.0))
-    pytest.raises(ValueError, eto._sunset_hour_angle, np.deg2rad(0.0), np.NaN)
+    pytest.raises(ValueError, eto._sunset_hour_angle, np.deg2rad(0.0), np.nan)
 
     expected_value = math.pi / 2
     computed_value = eto._sunset_hour_angle(0.0, np.deg2rad(0.0))
@@ -113,7 +113,7 @@ def test_solar_declination():
     pytest.raises(ValueError, eto._solar_declination, -1)
     pytest.raises(ValueError, eto._solar_declination, 367)
     pytest.raises(ValueError, eto._solar_declination, 5000)
-    pytest.raises(ValueError, eto._solar_declination, np.NaN)
+    pytest.raises(ValueError, eto._solar_declination, np.nan)
 
     expected_value = -0.313551072399921
     computed_value = eto._solar_declination(30)
@@ -130,7 +130,7 @@ def test_daylight_hours():
     # make sure invalid arguments raise an error
     pytest.raises(ValueError, eto._daylight_hours, math.pi + 1)
     pytest.raises(ValueError, eto._daylight_hours, -1.0)
-    pytest.raises(ValueError, eto._daylight_hours, np.NaN)
+    pytest.raises(ValueError, eto._daylight_hours, np.nan)
 
     expected_value = 7.999999999999999
     computed_value = eto._daylight_hours(math.pi / 3)

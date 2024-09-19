@@ -118,23 +118,23 @@ def sum_to_scale(
 ) -> np.ndarray:
     """
     Compute a sliding sums array using 1-D convolution. The initial
-    (scale - 1) elements of the result array will be padded with np.NaN values.
-    Missing values are not ignored, i.e. if a np.NaN
+    (scale - 1) elements of the result array will be padded with np.nan values.
+    Missing values are not ignored, i.e. if a np.nan
     (missing) value is part of the group of values to be summed then the sum
-    will be np.NaN
+    will be np.nan
 
     For example if the first array is [3, 4, 6, 2, 1, 3, 5, 8, 5] and
     the number of values to sum is 3 then the resulting array
-    will be [np.NaN, np.NaN, 13, 12, 9, 6, 9, 16, 18].
+    will be [np.nan, np.nan, 13, 12, 9, 6, 9, 16, 18].
 
     More generally:
 
     Y = f(X, n)
 
-    Y[i] == np.NaN, where i < n
+    Y[i] == np.nan, where i < n
     Y[i] == sum(X[i - n + 1:i + 1]), where i >= n - 1 and X[i - n + 1:i + 1]
         contains no NaN values
-    Y[i] == np.NaN, where i >= n - 1 and X[i - n + 1:i + 1] contains
+    Y[i] == np.nan, where i >= n - 1 and X[i - n + 1:i + 1] contains
         one or more NaN values
 
     :param values: the array of values over which we'll compute sliding sums
@@ -158,7 +158,7 @@ def sum_to_scale(
 
     # BELOW FOR dask/xarray DataArray integration
     # # pad the values array with (scale - 1) NaNs
-    # values = pad(values, pad_width=(scale - 1, 0), mode='constant', constant_values=np.NaN)
+    # values = pad(values, pad_width=(scale - 1, 0), mode='constant', constant_values=np.nan)
     #
     # start = 1
     # end = -(scale - 2)
