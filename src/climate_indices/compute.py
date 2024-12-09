@@ -2,7 +2,6 @@
 Common classes and functions used to compute the various climate indices.
 """
 from enum import Enum
-# from distutils.version import LooseVersion
 import logging
 from typing import Tuple
 
@@ -20,10 +19,6 @@ __all__ = [
     "transform_fitted_gamma",
     "transform_fitted_pearson",
 ]
-
-# # depending on the version of scipy we may need to use a workaround due to a bug in some versions of scipy
-# _do_pearson3_workaround = LooseVersion(scipy.version.version) < "1.6.0"
-_do_pearson3_workaround = False
 
 # Retrieve logger and set desired logging level
 _logger = utils.get_logger(__name__, logging.WARN)
@@ -502,30 +497,11 @@ def _pearson_fit(
         values[zero_mask] = 0.0
         values[trace_mask] = 0.0005
 
-        if _do_pearson3_workaround:
-            # Before scipy 1.6.0, there were a few bugs in pearson3.
-            # Looks like https://github.com/scipy/scipy/pull/12640 fixed them.
-
-            # compute the minimum value possible, and if any values are below
-            # that threshold then we set the corresponding CDF to a floor value.
-            # This was not properly done in older scipy releases.
-            # TODO ask Richard Heim why the use of this floor value, matching
-            #  that used for the trace amount?
-            nans_mask = np.isnan(values)
-            values[np.logical_and(minimums_mask, nans_mask)] = 0.0005
-            # This will get turned into 0.9995 when the negative
-            # skew bug is worked around a few lines from here.
-            values[np.logical_and(maximums_mask, nans_mask)] = 0.0005
-
-            # account for negative skew
-            skew_mask = skew < 0.0
-            values[:, skew_mask] = 1 - values[:, skew_mask]
-        else:
-            # The original values were found to be outside the
-            # range of the fitted distribution, so we will set
-            # the probabilities to something just within the range.
-            values[minimums_mask] = 0.0005
-            values[maximums_mask] = 0.9995
+        # The original values were found to be outside the
+        # range of the fitted distribution, so we will set
+        # the probabilities to something just within the range.
+        values[minimums_mask] = 0.0005
+        values[maximums_mask] = 0.9995
 
         if not np.all(np.isnan(values)):
             # calculate the probability value, clipped between 0 and 1
