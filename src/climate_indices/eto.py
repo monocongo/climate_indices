@@ -72,9 +72,7 @@ def _sunset_hour_angle(
     # validate the latitude argument
     if not _LATITUDE_RADIANS_MIN <= latitude_radians <= _LATITUDE_RADIANS_MAX:
         raise ValueError(
-            "latitude outside valid range [{0!r} to {1!r}]: {2!r}".format(
-                _LATITUDE_RADIANS_MIN, _LATITUDE_RADIANS_MAX, latitude_radians
-            )
+            f"latitude outside valid range [{_LATITUDE_RADIANS_MIN!r} to {_LATITUDE_RADIANS_MAX!r}]: {latitude_radians!r}"
         )
 
     # validate the solar declination angle argument, which can vary between
@@ -117,9 +115,9 @@ def _solar_declination(
     :raise ValueError: if the day of year value is not within the range [1-366]
     """
     if not 1 <= day_of_year <= 366:
-        raise ValueError("Day of the year must be in the range [1-366]: " "{0!r}".format(day_of_year))
+        raise ValueError(f"Day of the year must be in the range [1-366]: {day_of_year!r}")
 
-    return 0.409 * math.sin(((2.0 * math.pi / 365.0) * day_of_year - 1.39))
+    return 0.409 * math.sin((2.0 * math.pi / 365.0) * day_of_year - 1.39)
 
 
 def _daylight_hours(

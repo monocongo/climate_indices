@@ -1,5 +1,5 @@
-import os
 import json
+import os
 
 import numpy as np
 import pytest
@@ -210,6 +210,5 @@ def rain_mm_366():
 
 @pytest.fixture(scope="module")
 def palmer_awcs():
-    with open(os.path.join(os.path.split(__file__)[0], "fixture", "palmer_awc.json"),"r") as awcfile:
+    with open(os.path.join(os.path.split(__file__)[0], "fixture", "palmer_awc.json")) as awcfile:
         return json.load(awcfile)
-

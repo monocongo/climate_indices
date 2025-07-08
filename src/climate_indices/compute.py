@@ -1,16 +1,15 @@
 """
 Common classes and functions used to compute the various climate indices.
 """
-from enum import Enum
-from distutils.version import LooseVersion
+
 import logging
-from typing import Tuple
+from enum import Enum
 
 import numpy as np
 import scipy.stats
 import scipy.version
 
-from climate_indices import utils, lmoments
+from climate_indices import lmoments, utils
 
 # declare the function names that should be included in the public API for this module
 __all__ = [
@@ -20,9 +19,6 @@ __all__ = [
     "transform_fitted_gamma",
     "transform_fitted_pearson",
 ]
-
-# depending on the version of scipy we may need to use a workaround due to a bug in some versions of scipy
-_do_pearson3_workaround = LooseVersion(scipy.version.version) < "1.6.0"
 
 # Retrieve logger and set desired logging level
 _logger = utils.get_logger(__name__, logging.WARN)
@@ -97,7 +93,7 @@ def _validate_array(
             values = utils.reshape_to_2d(values, 366)
 
         else:
-            message = "Unsupported periodicity argument: '{0}'".format(periodicity)
+            message = f"Unsupported periodicity argument: '{periodicity}'"
             _logger.error(message)
             raise ValueError(message)
 
@@ -105,7 +101,7 @@ def _validate_array(
         # ((values.shape[1] != 12) and (values.shape[1] != 366)):
 
         # neither a 1-D nor a 2-D array with valid shape was passed in
-        message = "Invalid input array with shape: {0}".format(values.shape)
+        message = f"Invalid input array with shape: {values.shape}"
         _logger.error(message)
         raise ValueError(message)
 
@@ -165,7 +161,7 @@ def sum_to_scale(
     # return convolve(values, np.ones(scale), mode='reflect', cval=0.0, origin=0)[start: end]
 
 
-def _log_and_raise_shape_error(shape: Tuple[int]):
+def _log_and_raise_shape_error(shape: tuple[int]):
     message = f"Invalid shape of input data array: {shape}"
     _logger.error(message)
     raise ValueError(message)
@@ -252,10 +248,9 @@ def calculate_time_step_params(time_step_values):
 
     probability_of_zero = number_of_zeros / number_of_non_missing if number_of_zeros > 0 else 0.0
 
-    if (number_of_non_missing - number_of_zeros) > 3:
-        params = lmoments.fit(time_step_values)
-        return probability_of_zero, params["loc"], params["scale"], params["skew"]
-    return 0.0, 0.0, 0.0, 0.0
+    # At this point we know (number_of_non_missing - number_of_zeros) >= 4
+    params = lmoments.fit(time_step_values)
+    return probability_of_zero, params["loc"], params["scale"], params["skew"]
 
 
 def pearson_parameters(
@@ -501,30 +496,11 @@ def _pearson_fit(
         values[zero_mask] = 0.0
         values[trace_mask] = 0.0005
 
-        if _do_pearson3_workaround:
-            # Before scipy 1.6.0, there were a few bugs in pearson3.
-            # Looks like https://github.com/scipy/scipy/pull/12640 fixed them.
-
-            # compute the minimum value possible, and if any values are below
-            # that threshold then we set the corresponding CDF to a floor value.
-            # This was not properly done in older scipy releases.
-            # TODO ask Richard Heim why the use of this floor value, matching
-            #  that used for the trace amount?
-            nans_mask = np.isnan(values)
-            values[np.logical_and(minimums_mask, nans_mask)] = 0.0005
-            # This will get turned into 0.9995 when the negative
-            # skew bug is worked around a few lines from here.
-            values[np.logical_and(maximums_mask, nans_mask)] = 0.0005
-
-            # account for negative skew
-            skew_mask = skew < 0.0
-            values[:, skew_mask] = 1 - values[:, skew_mask]
-        else:
-            # The original values were found to be outside the
-            # range of the fitted distribution, so we will set
-            # the probabilities to something just within the range.
-            values[minimums_mask] = 0.0005
-            values[maximums_mask] = 0.9995
+        # The original values were found to be outside the
+        # range of the fitted distribution, so we will set
+        # the probabilities to something just within the range.
+        values[minimums_mask] = 0.0005
+        values[maximums_mask] = 0.9995
 
         if not np.all(np.isnan(values)):
             # calculate the probability value, clipped between 0 and 1
@@ -673,7 +649,7 @@ def gamma_parameters(
         elif periodicity is Periodicity.daily:
             shape = (366,)
         else:
-            raise ValueError("Unsupported periodicity: {periodicity}".format(periodicity=periodicity))
+            raise ValueError(f"Unsupported periodicity: {periodicity}")
         alphas = np.full(shape=shape, fill_value=np.nan)
         betas = np.full(shape=shape, fill_value=np.nan)
         return alphas, betas

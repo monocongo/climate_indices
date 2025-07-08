@@ -1,6 +1,54 @@
 [build-system]
-requires = ['poetry-core>=1.0.0']
-build-backend = 'poetry.core.masonry.api'
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "climate_indices"
+version = '2.1.0'
+description = 'Reference implementations of various climate indices typically used for drought monitoring'
+authors = [{name = "James Adams", email = "monocongo@gmail.com"}]
+readme = 'README.md'
+classifiers = [
+     'Development Status :: 5 - Production/Stable',
+     'Intended Audience :: Developers',
+     'Intended Audience :: Education',
+     'Intended Audience :: Science/Research',
+     'License :: OSI Approved :: BSD License',
+     'Programming Language :: Python :: 3.10',
+     'Programming Language :: Python :: 3.11',
+     'Programming Language :: Python :: 3.12',
+     'Programming Language :: Python :: 3.13',
+     'Topic :: Software Development :: Libraries :: Python Modules',
+     'Topic :: Scientific/Engineering :: Atmospheric Science',
+]
+packages = [{include = 'climate_indices', from = 'src'}]
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "scipy>=1.14.1",
+    # remaining dependencies are required for the CLI (console) scripts
+    "cftime>=1.6.4",
+    "dask>=2024.12.0",
+    "h5netcdf>=1.4.0",
+    "xarray>=2024.11.0",
+]
+[project.optional-dependencies]
+dev = [
+    "coverage>=7.6.9",
+    "pytest>=8.3.3",
+    "pytest-cov>=2.0",
+    "ruff>=0.1.0",
+    "toml>=0.10.2",
+    "sphinx-autodoc-typehints>=2.0.1",
+]
+docs = [
+    "sphinx>=4.0",
+    "sphinx-rtd-theme>=1.0",
+]
+
+[project.scripts]
+climate_indices = "climate_indices.__main__:main"
+process_climate_indices = "climate_indices.__main__:main"
+spi = "climate_indices.__spi__:main"
 
 [project.urls]
 'Homepage' = 'https://github.com/monocongo/climate_indices'
@@ -8,7 +56,7 @@ build-backend = 'poetry.core.masonry.api'
 
 [tool.black]
 line-length = 120
-target-version = ['py39', 'py310', 'py311']
+target-version = ['py310', 'py311', 'py312', 'py313']
 include = '\.pyi?$'
 exclude = '''
 /(
@@ -21,50 +69,62 @@ exclude = '''
 )/
 '''
 
-[tool.poetry]
-name = 'climate_indices'
-version = '2.0.1'
-description = 'Reference implementations of various climate indices typically used for drought monitoring'
-authors = ['James Adams <monocongo@gmail.com>']
-readme = 'README.md'
-classifiers = [
-     'Development Status :: 5 - Production/Stable',
-     'Intended Audience :: Developers',
-     'Intended Audience :: Education',
-     'Intended Audience :: Science/Research',
-     'License :: OSI Approved :: BSD License',
-     'Programming Language :: Python :: 3.8',
-     'Programming Language :: Python :: 3.9',
-     'Programming Language :: Python :: 3.10',
-     'Programming Language :: Python :: 3.11',
-     'Topic :: Software Development :: Libraries :: Python Modules',
-     'Topic :: Scientific/Engineering :: Atmospheric Science',
-     'Topic :: Scientific/Engineering :: Physics'
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
 ]
-packages = [{include = 'climate_indices', from = 'src'}]
+ignore = [
+    "E501",  # line too long, handled by black
+    "B008",  # do not perform function calls in argument defaults
+]
+per-file-ignores = {"__init__.py" = ["F401"], "tests/**/*" = ["B011"]}
 
-[tool.poetry.dependencies]
-# only Python and scipy are required for the base library code
-python = '>=3.8,<3.12'
-scipy = '1.10.1'
-# remaining dependencies are required for the CLI (console) scripts
-cftime = '>=1.6.4'
-dask = '>=2023.5.0'
-h5netcdf = '>=1.1.0'
-xarray = '>=2023.1.0'
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
 
-[tool.poetry.dev-dependencies]
-pytest = '8.3.3'
-toml = '>=0.10.2'
+[[tool.mypy.overrides]]
+module = [
+    "scipy.*",
+    "netCDF4.*",
+    "xarray.*",
+    "dask.*",
+]
+ignore_missing_imports = true
 
-[tool.poetry.group.dev.dependencies]
-sphinx-autodoc-typehints = '2.0.1'
-
-[tool.poetry.scripts]
-process_climate_indices = 'climate_indices.__main__:main'
-spi = 'climate_indices.__spi__:main'
 
 [tool.pytest.ini_options]
 filterwarnings = [
     'ignore::FutureWarning',
 ]
+
+[dependency-groups]
+dev = [
+    "coverage>=7.9.2",
+    "pytest>=8.3.3",
+    "pytest-cov>=6.2.1",
+    "ruff>=0.12.2",
+    "sphinx-autodoc-typehints>=2.0.1",
+]
+
