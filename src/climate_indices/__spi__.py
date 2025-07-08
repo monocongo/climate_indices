@@ -1266,30 +1266,38 @@ def _prepare_file(netcdf_file, var_name):
     :return: name of the NetCDF file containing correct dimensions
     """
 
-    # make sure we have lat, lon, and time as variable dimensions, regardless of order
+    # make sure we have the expected dimensions for the data type
     ds = xr.open_dataset(netcdf_file)
     dimensions = ds[var_name].dims
+    
+    # Validate dimensions based on data type
     if "division" in dimensions:
+        # Climate divisions data
         if len(dimensions) == 1:
-            expected_dims = ("division",)
+            expected_dims = {"division"}
         elif len(dimensions) == 2:
-            expected_dims = ("division", "time")
+            expected_dims = {"division", "time"}
         else:
-            raise ValueError(f"Unsupported dimensions for variable '{var_name}': {dimensions}")
-    else:  # timeseries or gridded
+            message = f"Unsupported dimensions for climate division variable '{var_name}': {dimensions}"
+            _logger.error(message)
+            raise ValueError(message)
+    else:
+        # Gridded or timeseries data
         if len(dimensions) == 1:
-            expected_dims = ("time",)
+            expected_dims = {"time"}
         elif len(dimensions) == 2:
-            expected_dims = ("lat", "lon")
+            expected_dims = {"lat", "lon"}
         elif len(dimensions) == 3:
-            expected_dims = ("lat", "lon", "time")
+            expected_dims = {"lat", "lon", "time"}
         else:
             message = f"Unsupported dimensions for variable '{var_name}': {dimensions}"
             _logger.error(message)
-            raise ValueError()
+            raise ValueError(message)
 
-    if Counter(ds[var_name].dims) != Counter(expected_dims):
-        message = f"Invalid dimensions for variable '{var_name}': {ds[var_name].dims}"
+    # Validate that the actual dimensions match expected dimensions
+    actual_dims = set(dimensions)
+    if actual_dims != expected_dims:
+        message = f"Invalid dimensions for variable '{var_name}': got {actual_dims}, expected {expected_dims}"
         _logger.error(message)
         raise ValueError(message)
 
