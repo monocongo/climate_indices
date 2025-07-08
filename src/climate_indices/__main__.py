@@ -1,13 +1,13 @@
 """Command-line interface for climate indices processing"""
 
 import argparse
-from collections import Counter
-from datetime import datetime
-from enum import Enum
 import logging
 import multiprocessing
 import os
-from typing import Any, Dict, List, Tuple
+from collections import Counter
+from datetime import datetime
+from enum import Enum
+from typing import Any
 
 import numpy as np
 import scipy.constants
@@ -563,7 +563,7 @@ def _drop_data_into_shared_arrays_grid(
     var_names: list,
     periodicity: compute.Periodicity,
     data_start_year: int,
-) -> Tuple[int, ...]:
+) -> tuple[int, ...]:
     output_shape = None
 
     # get the data arrays we'll use later in the index computations
@@ -627,8 +627,8 @@ def _drop_data_into_shared_arrays_grid(
 
 def _drop_data_into_shared_arrays_divisions(
     dataset: xr.Dataset,
-    var_names: List[str],
-) -> Tuple[int, ...]:
+    var_names: list[str],
+) -> tuple[int, ...]:
     """
     Drop data into shared arrays for use in the index computations.
 
@@ -1247,7 +1247,7 @@ def _parallel_process(
             chunk_params.append(params)
 
     else:
-        raise ValueError("Unsupported index: {index}".format(index=index))
+        raise ValueError(f"Unsupported index: {index}")
 
     # instantiate a process pool
     with multiprocessing.Pool(
@@ -1304,7 +1304,7 @@ def _apply_along_axis(params):
 
 
 def _apply_along_axis_double(
-    params: Dict[str, Any],
+    params: dict[str, Any],
 ) -> None:
     """
     Like numpy.apply_along_axis(), but with arguments in a dict instead.
@@ -1350,7 +1350,7 @@ def _apply_along_axis_double(
     output_array = _global_shared_arrays[params["output_var_name"]][_KEY_ARRAY]
     computed_array = np.frombuffer(output_array.get_obj()).reshape(shape)[start_index:end_index]
 
-    for i, (x, y) in enumerate(zip(sub_array_1, sub_array_2)):
+    for i, (x, y) in enumerate(zip(sub_array_1, sub_array_2, strict=False)):
         if params["input_type"] == InputType.grid:
             for j in range(x.shape[0]):
                 if params["index"] == "pet":
@@ -1419,7 +1419,7 @@ def _apply_along_axis_palmers(params):
     zindex_output_array = _global_shared_arrays[_KEY_RESULT_ZINDEX][_KEY_ARRAY]
     zindex = np.frombuffer(zindex_output_array.get_obj()).reshape(shape)[start_index:end_index]
 
-    for i, (precip, pet, awc) in enumerate(zip(sub_array_precip, sub_array_pet, sub_array_awc)):
+    for i, (precip, pet, awc) in enumerate(zip(sub_array_precip, sub_array_pet, sub_array_awc, strict=False)):
         if params["input_type"] == InputType.grid:
             for j in range(precip.shape[0]):
                 scpdsi[i, j], pdsi[i, j], phdi[i, j], pmdi[i, j], zindex[i, j] = func1d(

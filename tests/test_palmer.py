@@ -1,15 +1,15 @@
-import logging
 import os
+from glob import glob
 
 import numpy as np
 import pytest
-from glob import glob
 
 from climate_indices import palmer
 
 # Tests for `climate_indices.palmer.py`
-ATOL = 5E-5
+ATOL = 5e-5
 RTOL = 0
+
 
 # ---------------------------------------------------------------------------------------
 @pytest.mark.usefixtures(

@@ -1,8 +1,7 @@
 """Main level API module for computing climate indices"""
 
-from enum import Enum
 import logging
-from typing import Dict
+from enum import Enum
 
 import numpy as np
 
@@ -29,7 +28,7 @@ _FITTED_INDEX_VALID_MIN = -3.09
 _FITTED_INDEX_VALID_MAX = 3.09
 
 
-def _norm_fitdict(params: Dict):
+def _norm_fitdict(params: dict):
     """
     Compatibility shim. Convert old accepted parameter dictionaries
     into new, consistently keyed parameter dictionaries. If given
@@ -74,7 +73,7 @@ def spi(
     calibration_year_initial: int,
     calibration_year_final: int,
     periodicity: compute.Periodicity,
-    fitting_params: Dict = None,
+    fitting_params: dict = None,
 ) -> np.ndarray:
     """
     Computes SPI (Standardized Precipitation Index).
@@ -139,7 +138,7 @@ def spi(
 
     # reshape precipitation values to (years, 12) for monthly, or to (years, 366) for daily
     if periodicity == compute.Periodicity.monthly:
-            values = utils.reshape_to_2d(values, 12)
+        values = utils.reshape_to_2d(values, 12)
     elif periodicity == compute.Periodicity.daily:
         values = utils.reshape_to_2d(values, 366)
     else:
@@ -335,7 +334,7 @@ def spei(
         )
 
     else:
-        message = "Unsupported distribution argument: " + "{dist}".format(dist=distribution)
+        message = "Unsupported distribution argument: " + f"{distribution}"
         _logger.error(message)
         raise ValueError(message)
 
@@ -418,8 +417,7 @@ def percentage_of_normal(
         )
     if ((calibration_end_year - calibration_start_year + 1) * 12) > values.size:
         raise ValueError(
-            "Invalid calibration period specified: total calibration years "
-            "exceeds the actual number of years of data",
+            "Invalid calibration period specified: total calibration years exceeds the actual number of years of data",
         )
 
     # get an array containing a sliding sum on the specified time step
@@ -541,8 +539,8 @@ def pci(
         denominator = 0
 
         for month in range(12):
-            numerator = numerator + (sum(rainfall_mm[start: m[month]]) ** 2)
-            denominator = denominator + sum(rainfall_mm[start: m[month]])
+            numerator = numerator + (sum(rainfall_mm[start : m[month]]) ** 2)
+            denominator = denominator + sum(rainfall_mm[start : m[month]])
 
             start = m[month]
 
@@ -555,8 +553,8 @@ def pci(
         denominator = 0
 
         for month in range(12):
-            numerator = numerator + (sum(rainfall_mm[start: m[month]]) ** 2)
-            denominator = denominator + sum(rainfall_mm[start: m[month]])
+            numerator = numerator + (sum(rainfall_mm[start : m[month]]) ** 2)
+            denominator = denominator + sum(rainfall_mm[start : m[month]])
 
             start = m[month]
 

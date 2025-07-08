@@ -1,20 +1,18 @@
 """Command-line interface for performing SPI calculations"""
 
 import argparse
-from collections import Counter
 import copy
-from datetime import datetime
-from enum import Enum
 import logging
 import multiprocessing
 import os
-from typing import Dict, List
+from collections import Counter
+from datetime import datetime
+from enum import Enum
 
 import numpy as np
 import xarray as xr
 
-from climate_indices import compute
-from climate_indices import utils, indices
+from climate_indices import compute, indices, utils
 
 # variable names for the distribution fitting parameters
 _FITTING_VARIABLES = ("alpha", "beta", "skew", "loc", "scale", "prob_zero")
@@ -239,7 +237,7 @@ def _get_variable_attributes(
 def _drop_data_into_shared_arrays_grid(
     dataset_climatology: xr.Dataset,
     dataset_fitting: xr.Dataset,
-    var_names_climate: List[str],
+    var_names_climate: list[str],
     periodicity: compute.Periodicity,
 ):
     """
@@ -347,7 +345,7 @@ def _drop_data_into_shared_arrays_grid(
 
 def _drop_data_into_shared_arrays_divisions(
     dataset: xr.Dataset,
-    var_names: List[str],
+    var_names: list[str],
 ):
     # TODO add fitting variables as we've done in _drop_data_into_shared_arrays_grid
     """
@@ -629,7 +627,7 @@ def _compute_write_index(keyword_arguments):
             time_length_366day,
         )
     else:
-        raise ValueError(f'Unsupported periodicity argument value: {keyword_arguments["periodicity"]}')
+        raise ValueError(f"Unsupported periodicity argument value: {keyword_arguments['periodicity']}")
 
     # add an array to hold index computation results
     # to our dictionary of shared memory arrays
@@ -642,8 +640,7 @@ def _compute_write_index(keyword_arguments):
     for scale in keyword_arguments["scales"]:
         for distribution in [indices.Distribution.gamma, indices.Distribution.pearson]:
             _logger.info(
-                f"Computing {scale}-{keyword_arguments['periodicity'].unit()} "
-                f"SPI ({distribution.value.capitalize()})",
+                f"Computing {scale}-{keyword_arguments['periodicity'].unit()} SPI ({distribution.value.capitalize()})",
             )
 
             # TODO we may want to initialize the shared memory array
@@ -899,12 +896,12 @@ def _parallel_spi(
 
 def _parallel_fitting(
     distribution: indices.Distribution,
-    shared_arrays: Dict,
-    input_var_names: Dict,
-    output_var_names: Dict,
+    shared_arrays: dict,
+    input_var_names: dict,
+    output_var_names: dict,
     input_type: InputType,
     number_of_workers: int,
-    args: Dict,
+    args: dict,
 ):
     """
     TODO document this function

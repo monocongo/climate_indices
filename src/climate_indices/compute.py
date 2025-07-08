@@ -1,15 +1,15 @@
 """
 Common classes and functions used to compute the various climate indices.
 """
-from enum import Enum
+
 import logging
-from typing import Tuple
+from enum import Enum
 
 import numpy as np
 import scipy.stats
 import scipy.version
 
-from climate_indices import utils, lmoments
+from climate_indices import lmoments, utils
 
 # declare the function names that should be included in the public API for this module
 __all__ = [
@@ -93,7 +93,7 @@ def _validate_array(
             values = utils.reshape_to_2d(values, 366)
 
         else:
-            message = "Unsupported periodicity argument: '{0}'".format(periodicity)
+            message = f"Unsupported periodicity argument: '{periodicity}'"
             _logger.error(message)
             raise ValueError(message)
 
@@ -101,7 +101,7 @@ def _validate_array(
         # ((values.shape[1] != 12) and (values.shape[1] != 366)):
 
         # neither a 1-D nor a 2-D array with valid shape was passed in
-        message = "Invalid input array with shape: {0}".format(values.shape)
+        message = f"Invalid input array with shape: {values.shape}"
         _logger.error(message)
         raise ValueError(message)
 
@@ -161,7 +161,7 @@ def sum_to_scale(
     # return convolve(values, np.ones(scale), mode='reflect', cval=0.0, origin=0)[start: end]
 
 
-def _log_and_raise_shape_error(shape: Tuple[int]):
+def _log_and_raise_shape_error(shape: tuple[int]):
     message = f"Invalid shape of input data array: {shape}"
     _logger.error(message)
     raise ValueError(message)
@@ -650,7 +650,7 @@ def gamma_parameters(
         elif periodicity is Periodicity.daily:
             shape = (366,)
         else:
-            raise ValueError("Unsupported periodicity: {periodicity}".format(periodicity=periodicity))
+            raise ValueError(f"Unsupported periodicity: {periodicity}")
         alphas = np.full(shape=shape, fill_value=np.nan)
         betas = np.full(shape=shape, fill_value=np.nan)
         return alphas, betas
