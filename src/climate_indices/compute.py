@@ -248,10 +248,9 @@ def calculate_time_step_params(time_step_values):
 
     probability_of_zero = number_of_zeros / number_of_non_missing if number_of_zeros > 0 else 0.0
 
-    if (number_of_non_missing - number_of_zeros) > 3:
-        params = lmoments.fit(time_step_values)
-        return probability_of_zero, params["loc"], params["scale"], params["skew"]
-    return 0.0, 0.0, 0.0, 0.0
+    # At this point we know (number_of_non_missing - number_of_zeros) >= 4
+    params = lmoments.fit(time_step_values)
+    return probability_of_zero, params["loc"], params["scale"], params["skew"]
 
 
 def pearson_parameters(
