@@ -27,6 +27,10 @@ _logger = utils.get_logger(__name__, logging.DEBUG)
 _FITTED_INDEX_VALID_MIN = -3.09
 _FITTED_INDEX_VALID_MAX = 3.09
 
+# Configuration constants for distribution fitting fallback logic
+# Maximum percentage of NaN values before triggering fallback from Pearson to Gamma distribution
+MAX_NAN_PERCENTAGE_FOR_FALLBACK = 0.5  # 50%
+
 
 def _norm_fitdict(params: dict):
     """
@@ -194,7 +198,7 @@ def spi(
 
             # Check if the result contains excessive NaN values indicating fitting failure
             nan_percentage = np.count_nonzero(np.isnan(values)) / values.size
-            if nan_percentage > 0.5:  # If more than 50% of values are NaN
+            if nan_percentage > MAX_NAN_PERCENTAGE_FOR_FALLBACK:
                 raise ValueError("Pearson distribution fitting resulted in excessive missing values")
 
         except (ValueError, Warning) as e:

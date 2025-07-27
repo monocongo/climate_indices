@@ -12,6 +12,8 @@ import numpy as np
 import pytest
 
 from climate_indices import compute, indices
+from climate_indices.compute import HIGH_FAILURE_RATE_THRESHOLD
+from climate_indices.lmoments import MIN_VALUES_FOR_LMOMENTS
 
 # Enable logging to capture warnings during tests
 logging.disable(logging.NOTSET)
@@ -129,7 +131,7 @@ class TestZeroPrecipitationFix:
 
         # Test with both distributions
         for distribution in [indices.Distribution.gamma, indices.Distribution.pearson]:
-            with warnings.catch_warnings(record=True) as w:
+            with warnings.catch_warnings(record=True):
                 warnings.simplefilter("always")
 
                 spi_values = indices.spi(
@@ -148,7 +150,7 @@ class TestZeroPrecipitationFix:
                 )
 
                 # Check that July months have valid handling (may be NaN due to all zeros)
-                july_indices = [i for i in range(6, total_months, 12)]  # Every July
+                july_indices = list(range(6, total_months, 12))  # Every July
                 july_spi = spi_values[july_indices]
 
                 # July should either have consistent NaN values or extreme drought values
@@ -173,6 +175,7 @@ class TestZeroPrecipitationFix:
         precip_data = np.zeros((years, months_per_year))
 
         # Add only 2 non-zero values per calendar month (insufficient for L-moments)
+        # This is less than the required minimum for Pearson Type III fitting
         for month in range(months_per_year):
             # Only 2 years have precipitation in each month
             precip_data[0, month] = 10.0
@@ -220,7 +223,7 @@ class TestZeroPrecipitationFix:
         # Verify that default values are returned for months with insufficient data
         # Most months should have default parameter values (0.0)
         zero_count = np.count_nonzero(locs == 0.0)
-        assert zero_count >= months_per_year * 0.8, (
+        assert zero_count >= months_per_year * HIGH_FAILURE_RATE_THRESHOLD, (
             "Most months should have default loc parameters due to insufficient data"
         )
 
@@ -347,7 +350,7 @@ class TestZeroPrecipitationFix:
 
         # Verify that the enhanced error message provides helpful context
         assert "Insufficient number of values to perform sample L-moments estimation" in error_message
-        assert "2 non-NaN values found (minimum 4 required)" in error_message
+        assert f"2 non-NaN values found (minimum {MIN_VALUES_FOR_LMOMENTS} required)" in error_message
         assert "dry regions with extensive zero precipitation" in error_message
         assert "Consider using Gamma distribution" in error_message
 

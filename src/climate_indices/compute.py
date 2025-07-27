@@ -23,6 +23,14 @@ __all__ = [
 # Retrieve logger and set desired logging level
 _logger = utils.get_logger(__name__, logging.WARN)
 
+# Configuration constants for distribution fitting and validation
+# Minimum number of non-zero values required for Pearson Type III L-moments computation
+MIN_NON_ZERO_VALUES_FOR_PEARSON = 4
+
+# Maximum failure rate threshold before issuing high failure rate warnings
+# Values above this percentage indicate systemic issues with the dataset
+HIGH_FAILURE_RATE_THRESHOLD = 0.8  # 80%
+
 
 class Periodicity(Enum):
     """
@@ -243,10 +251,10 @@ def adjust_calibration_years(data_start_year, data_end_year, calibration_start_y
 
 def calculate_time_step_params(time_step_values):
     number_of_zeros, number_of_non_missing = utils.count_zeros_and_non_missings(time_step_values)
-    if (number_of_non_missing - number_of_zeros) < 4:
+    if (number_of_non_missing - number_of_zeros) < MIN_NON_ZERO_VALUES_FOR_PEARSON:
         _logger.warning(
             f"Insufficient non-zero values for Pearson fitting: "
-            f"{number_of_non_missing - number_of_zeros} values (minimum 4 required). "
+            f"{number_of_non_missing - number_of_zeros} values (minimum {MIN_NON_ZERO_VALUES_FOR_PEARSON} required). "
             f"Consider using Gamma distribution for areas with extensive zero precipitation."
         )
         return None, None, None, None
@@ -329,7 +337,7 @@ def pearson_parameters(
     # If too many time steps failed fitting, this indicates systemic issues
     # with the dataset for Pearson distribution fitting (e.g., extensive zero precipitation)
     failure_rate = failed_fitting_count / time_steps_per_year
-    if failure_rate > 0.8:  # If more than 80% of time steps failed
+    if failure_rate > HIGH_FAILURE_RATE_THRESHOLD:
         _logger.warning(
             f"High failure rate for Pearson Type III distribution fitting: {failed_fitting_count}/{time_steps_per_year} "
             f"time steps failed ({failure_rate:.1%} failure rate). This typically occurs with extensive zero "
