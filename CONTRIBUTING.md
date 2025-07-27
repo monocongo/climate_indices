@@ -68,9 +68,7 @@ Follow these rules and you should succeed without a problem.
 ### Run the tests
 Before you submit a pull request, please run the entire test suite via:
 
-`$ export NUMBA_DISABLE_JIT=1`
-`$ python setup.py test`
-`$ unset  NUMBA_DISABLE_JIT`
+`$ uv run pytest`
 
 The first thing the core committers will do is run this command. Any pull request that fails this test suite will be rejected.
 
@@ -114,7 +112,7 @@ First we pull the code into a local branch:
 
 Then we run the tests:
 
-`$ python -m unittest tests/test_*.py`
+`$ uv run pytest`
 
 We finish with a merge and push to GitHub:
 

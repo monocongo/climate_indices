@@ -1,8 +1,7 @@
 """Main level API module for computing climate indices"""
 
-from enum import Enum
 import logging
-from typing import Dict
+from enum import Enum
 
 import numpy as np
 
@@ -28,8 +27,11 @@ _logger = utils.get_logger(__name__, logging.DEBUG)
 _FITTED_INDEX_VALID_MIN = -3.09
 _FITTED_INDEX_VALID_MAX = 3.09
 
+# Import fallback strategy for consistent behavior
+_fallback_strategy = compute.DistributionFallbackStrategy()
 
-def _norm_fitdict(params: Dict):
+
+def _norm_fitdict(params: dict):
     """
     Compatibility shim. Convert old accepted parameter dictionaries
     into new, consistently keyed parameter dictionaries. If given
@@ -74,7 +76,7 @@ def spi(
     calibration_year_initial: int,
     calibration_year_final: int,
     periodicity: compute.Periodicity,
-    fitting_params: Dict = None,
+    fitting_params: dict = None,
 ) -> np.ndarray:
     """
     Computes SPI (Standardized Precipitation Index).
@@ -139,7 +141,7 @@ def spi(
 
     # reshape precipitation values to (years, 12) for monthly, or to (years, 366) for daily
     if periodicity == compute.Periodicity.monthly:
-            values = utils.reshape_to_2d(values, 12)
+        values = utils.reshape_to_2d(values, 12)
     elif periodicity == compute.Periodicity.daily:
         values = utils.reshape_to_2d(values, 366)
     else:
@@ -178,19 +180,39 @@ def spi(
             scales = None
             skews = None
 
-        # fit the scaled values to a Pearson Type III distribution
-        # and transform to corresponding normalized sigmas
-        values = compute.transform_fitted_pearson(
-            values,
-            data_start_year,
-            calibration_year_initial,
-            calibration_year_final,
-            periodicity,
-            probabilities_of_zero,
-            locs,
-            scales,
-            skews,
-        )
+        try:
+            # fit the scaled values to a Pearson Type III distribution
+            # and transform to corresponding normalized sigmas
+            values = compute.transform_fitted_pearson(
+                values,
+                data_start_year,
+                calibration_year_initial,
+                calibration_year_final,
+                periodicity,
+                probabilities_of_zero,
+                locs,
+                scales,
+                skews,
+            )
+
+            # Check if fallback is needed due to excessive NaN values
+            if _fallback_strategy.should_fallback_from_excessive_nans(values):
+                raise ValueError("Pearson distribution fitting resulted in excessive missing values")
+
+        except (ValueError, Warning, compute.DistributionFittingError) as e:
+            # Use centralized fallback strategy for consistent logging and behavior
+            _fallback_strategy.log_fallback_warning(str(e), context="SPI computation")
+
+            # Use Gamma distribution as fallback
+            values = compute.transform_fitted_gamma(
+                values,
+                data_start_year,
+                calibration_year_initial,
+                calibration_year_final,
+                periodicity,
+                alphas=None,
+                betas=None,
+            )
 
     else:
         message = f"Unsupported distribution argument: '{distribution}'"
@@ -335,7 +357,7 @@ def spei(
         )
 
     else:
-        message = "Unsupported distribution argument: " + "{dist}".format(dist=distribution)
+        message = "Unsupported distribution argument: " + f"{distribution}"
         _logger.error(message)
         raise ValueError(message)
 
@@ -418,8 +440,7 @@ def percentage_of_normal(
         )
     if ((calibration_end_year - calibration_start_year + 1) * 12) > values.size:
         raise ValueError(
-            "Invalid calibration period specified: total calibration years "
-            "exceeds the actual number of years of data",
+            "Invalid calibration period specified: total calibration years exceeds the actual number of years of data",
         )
 
     # get an array containing a sliding sum on the specified time step
@@ -541,8 +562,8 @@ def pci(
         denominator = 0
 
         for month in range(12):
-            numerator = numerator + (sum(rainfall_mm[start: m[month]]) ** 2)
-            denominator = denominator + sum(rainfall_mm[start: m[month]])
+            numerator = numerator + (sum(rainfall_mm[start : m[month]]) ** 2)
+            denominator = denominator + sum(rainfall_mm[start : m[month]])
 
             start = m[month]
 
@@ -555,8 +576,8 @@ def pci(
         denominator = 0
 
         for month in range(12):
-            numerator = numerator + (sum(rainfall_mm[start: m[month]]) ** 2)
-            denominator = denominator + sum(rainfall_mm[start: m[month]])
+            numerator = numerator + (sum(rainfall_mm[start : m[month]]) ** 2)
+            denominator = denominator + sum(rainfall_mm[start : m[month]])
 
             start = m[month]
 

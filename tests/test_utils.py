@@ -67,7 +67,7 @@ def test_count_zeros_and_non_missings():
     # messages used multiple times below
     zero_count_error = "Failed to correctly count zero values"
     non_missing_count_error = "Failed to correctly count non-missing values"
-    
+
     # vanilla use case
     values_list = [3, 4, 0, 2, 3.1, 5, np.nan, 8, 5, 6, 0.0, np.nan, 5.6, 2]
     values = np.array(values_list)

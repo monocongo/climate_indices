@@ -55,7 +55,7 @@ def _calc_recharge(
     ss: float,
     su: float,
     awc: float,
-) -> (float,float,float,float,float,float):
+) -> (float, float, float, float, float, float):
     """
     Calculate recharge, runoff, residual moisture, loss
     to both surface and under layers
@@ -210,11 +210,7 @@ def _calc_water_balances(data: dict) -> None:
             et, tl, r, ro, sss, ssu = _calc_recharge(p, pet, ss, su, data["awc"])
 
             # update sums
-            if (
-                data["calibration_year_initial_idx"]
-                <= year
-                <= data["calibration_year_final_idx"]
-            ):
+            if data["calibration_year_initial_idx"] <= year <= data["calibration_year_final_idx"]:
                 data["psum"][month] += p
                 data["spsum"][month] += sp
                 data["petsum"][month] += pet
@@ -262,9 +258,7 @@ def _calc_zindex_factors(data: dict) -> None:
 
     :param data: dictionary of parameters (intialized in pdsi)
     """
-    data["trat"] = (data["petsum"] + data["rsum"] + data["rosum"]) / (
-        data["psum"] + data["tlsum"]
-    )
+    data["trat"] = (data["petsum"] + data["rsum"] + data["rosum"]) / (data["psum"] + data["tlsum"])
 
 
 def _avg_calibration_sums(data: dict) -> None:
@@ -295,9 +289,7 @@ def _calc_kfactors(data: dict) -> None:
     :param data: dictionary of parameters (intialized in pdsi)
     """
     sabsd = np.zeros((12,))
-    for year in range(
-        data["calibration_year_initial_idx"], data["calibration_year_final_idx"] + 1
-    ):
+    for year in range(data["calibration_year_initial_idx"], data["calibration_year_final_idx"] + 1):
         for month in range(12):
             phat = (
                 data["alpha"][month] * data["pet"][year, month]
@@ -317,7 +309,7 @@ def _calc_kfactors(data: dict) -> None:
 def _case(prob: float, x1: float, x2: float, x3: float) -> float:
     """
     Select the preliminary (or near-real time) PDSI
-     
+
     Selects the PDSI from the given x values
     defined below and the probability (prob) of ending either a
     drought or wet spell.
@@ -383,7 +375,7 @@ def _assign(data: dict) -> None:
     # in sx until it is zero, then switching to the other until
     # it is zero, etc
     else:
-        for i in range(data["k8"]-1, -1, -1):
+        for i in range(data["k8"] - 1, -1, -1):
             if isave == 2:
                 if data["sx2"][i] == 0:
                     isave = 1
@@ -400,23 +392,24 @@ def _assign(data: dict) -> None:
                     data["sx"][i] = data["sx1"][i]
 
     # proper assignments to array sx have been made, output the mess
-    for idx in range(data["k8"]+1):
+    for idx in range(data["k8"] + 1):
         j = int(data["indexj"][idx])
         m = int(data["indexm"][idx])
-        data["pdsi"][j,m] = data["sx"][idx]
-        data["phdi"][j,m] = data["px3"][j,m]
+        data["pdsi"][j, m] = data["sx"][idx]
+        data["phdi"][j, m] = data["px3"][j, m]
 
-        if data["px3"][j,m] == 0:
-            data["phdi"][j,m] = data["sx"][idx]
+        if data["px3"][j, m] == 0:
+            data["phdi"][j, m] = data["sx"][idx]
 
-        data["wplm"][j,m] = _case(
-            data["ppr"][j,m],
-            data["px1"][j,m],
-            data["px2"][j,m],
-            data["px3"][j,m],
+        data["wplm"][j, m] = _case(
+            data["ppr"][j, m],
+            data["px1"][j, m],
+            data["px2"][j, m],
+            data["px3"][j, m],
         )
     data["k8"] = 0
-    #data["k8max"] = 0
+    # data["k8max"] = 0
+
 
 def _statement_220(data: dict) -> None:
     """
@@ -498,9 +491,7 @@ def _statement_200(data: dict) -> None:
         _statement_220(data)
         return
 
-    data["px2"][year, month] = min(
-        0.0, 0.897 * data["x2"] + data["z"][year, month] / 3.0
-    )
+    data["px2"][year, month] = min(0.0, 0.897 * data["x2"] + data["z"][year, month] / 3.0)
 
     # if no existing wet spell or drought x2 becomes the new x3
     if (data["px2"][year, month] <= -1) and (data["px3"][year, month] == 0):
@@ -534,8 +525,8 @@ def _statement_200(data: dict) -> None:
     # time x3 will reach a value where it is the value of x (pdsi).
     # At that time, the assign method backtracs through choosing
     # the appropriate x1 or x2 to be that month's x.
-    #_logger.debug(f"no value assigned; will backtrack later k8:{data['k8']},y:{year},m:{month}")
-    if data["k8"] >= data["sx"].shape[0]+1:
+    # _logger.debug(f"no value assigned; will backtrack later k8:{data['k8']},y:{year},m:{month}")
+    if data["k8"] >= data["sx"].shape[0] + 1:
         vals = [0] * (data["k8"] - data["sx"].shape[0] + 2)
         data["sx"] = np.append(data["sx"], vals)
         data["sx1"] = np.append(data["sx1"], vals)
@@ -650,7 +641,7 @@ def _calc_zindex(data: dict) -> None:
             data["cp"][year, month] = cet + cr + cro - cl
             cd = data["precips"][year, month] - data["cp"][year, month]
             data["z"][year, month] = data["ak"][month] * cd
-            
+
             # No abatement underway, wet or drought will end if -.5 <= X3 <= .5
             if (data["pro"] == 100) or (data["pro"] == 0):
                 # End of drought or wet
@@ -681,7 +672,7 @@ def _calc_zindex(data: dict) -> None:
                     else:
                         _statement_180(data)
                         continue
-            
+
             # Abatement is underway
             else:
                 # We are in a wet spell
@@ -695,6 +686,7 @@ def _calc_zindex(data: dict) -> None:
 
             _statement_170(data)
             continue
+
 
 def _finish_up(data: dict) -> None:
     """
@@ -834,7 +826,7 @@ def pdsi(
     calibration_year_initial: int,
     calibration_year_final: int,
     fitting_params: dict = None,
-) -> (np.ndarray,np.ndarray,np.ndarray,np.ndarray,dict):
+) -> (np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict):
     """
     Compute the Palmer Drought Severity Index (PDSI),
     Palmer Hydrological Drought Index (PHDI),
@@ -868,9 +860,7 @@ def pdsi(
 
     # clip any negative values to zero
     if np.amin(precips) < 0.0:
-        _logger.warning(
-            "Input contains negative values -- all negatives clipped to zero"
-        )
+        _logger.warning("Input contains negative values -- all negatives clipped to zero")
         precips = np.clip(precips, a_min=0.0, a_max=None)
 
     # remember the original length of the input array, in order to facilitate
@@ -900,7 +890,7 @@ def pdsi(
 
     # Sum variables now become averages over the calibration period
     # (currently not used - uncomment if want to export later)
-    #_avg_calibration_sums(data)
+    # _avg_calibration_sums(data)
 
     # reread monthly parameters for calculation of the 'K' monthly
     # weighting factors used in z-index calculation
@@ -919,4 +909,4 @@ def pdsi(
     params = {key: data[key] for key in ["alpha", "beta", "gamma", "delta"]}
 
     # return results
-    return pdsi,phdi,wplm,z,params
+    return pdsi, phdi, wplm, z, params

@@ -10,7 +10,7 @@ import numpy as np
 import scipy.stats
 import scipy.version
 
-from climate_indices import utils, lmoments
+from climate_indices import lmoments, utils
 
 # declare the function names that should be included in the public API for this module
 __all__ = [
@@ -19,6 +19,10 @@ __all__ = [
     "sum_to_scale",
     "transform_fitted_gamma",
     "transform_fitted_pearson",
+    "DistributionFittingError",
+    "InsufficientDataError",
+    "PearsonFittingError",
+    "DistributionFallbackStrategy",
 ]
 
 # depending on the version of scipy we may need to use a workaround due to a bug in some versions of scipy
@@ -26,6 +30,91 @@ _do_pearson3_workaround = Version(scipy.version.version) < Version("1.6.0")
 
 # Retrieve logger and set desired logging level
 _logger = utils.get_logger(__name__, logging.WARN)
+
+# Configuration constants for distribution fitting and validation
+# Minimum number of non-zero values required for Pearson Type III L-moments computation
+MIN_NON_ZERO_VALUES_FOR_PEARSON = 4
+
+# Maximum failure rate threshold before issuing high failure rate warnings
+# Values above this percentage indicate systemic issues with the dataset
+HIGH_FAILURE_RATE_THRESHOLD = 0.8  # 80%
+
+
+# Custom exception classes for distribution fitting
+class DistributionFittingError(Exception):
+    """Base exception for distribution fitting failures."""
+    pass
+
+
+class InsufficientDataError(DistributionFittingError):
+    """Raised when there is insufficient data for distribution fitting."""
+
+    def __init__(self, message, non_zero_count=None, required_count=None):
+        super().__init__(message)
+        self.non_zero_count = non_zero_count
+        self.required_count = required_count
+
+
+class PearsonFittingError(DistributionFittingError):
+    """Raised when Pearson Type III distribution fitting fails."""
+
+    def __init__(self, message, underlying_error=None):
+        super().__init__(message)
+        self.underlying_error = underlying_error
+
+
+class DistributionFallbackStrategy:
+    """Strategy class for managing Pearson→Gamma distribution fallback logic."""
+
+    def __init__(self, max_nan_percentage=0.5, high_failure_threshold=0.8):
+        """
+        Initialize the fallback strategy.
+
+        :param max_nan_percentage: Maximum percentage of NaN values before triggering fallback
+        :param high_failure_threshold: Failure rate threshold for issuing warnings
+        """
+        self.max_nan_percentage = max_nan_percentage
+        self.high_failure_threshold = high_failure_threshold
+        self._logger = utils.get_logger(self.__class__.__name__, logging.WARN)
+
+    def should_fallback_from_excessive_nans(self, values: np.ndarray) -> bool:
+        """Check if fallback is needed due to excessive NaN values."""
+        if values.size == 0:
+            return True
+        nan_percentage = np.count_nonzero(np.isnan(values)) / values.size
+        return nan_percentage > self.max_nan_percentage
+
+    def should_warn_high_failure_rate(self, failure_count: int, total_count: int) -> bool:
+        """Check if high failure rate warning should be issued."""
+        if total_count == 0:
+            return False
+        failure_rate = failure_count / total_count
+        return failure_rate > self.high_failure_threshold
+
+    def log_fallback_warning(self, reason: str, context: str = ""):
+        """Log a fallback warning with consistent formatting."""
+        message = f"Pearson Type III distribution fitting failed ({reason}). "
+        message += "Falling back to Gamma distribution for robust computation."
+        if context:
+            message += f" Context: {context}"
+        self._logger.warning(message)
+
+    def log_high_failure_rate(self, failure_count: int, total_count: int, context: str = ""):
+        """Log high failure rate warning."""
+        failure_rate = failure_count / total_count if total_count > 0 else 0
+        message = (
+            f"High failure rate for Pearson Type III distribution fitting: {failure_count}/{total_count} "
+            f"time steps failed ({failure_rate:.1%} failure rate). This typically occurs with extensive zero "
+            f"precipitation patterns that are better handled by Gamma distribution. "
+            f"Results may contain many default parameter values."
+        )
+        if context:
+            message += f" Context: {context}"
+        self._logger.warning(message)
+
+
+# Global fallback strategy instance
+_default_fallback_strategy = DistributionFallbackStrategy()
 
 
 class Periodicity(Enum):
@@ -97,7 +186,7 @@ def _validate_array(
             values = utils.reshape_to_2d(values, 366)
 
         else:
-            message = "Unsupported periodicity argument: '{0}'".format(periodicity)
+            message = f"Unsupported periodicity argument: '{periodicity}'"
             _logger.error(message)
             raise ValueError(message)
 
@@ -105,7 +194,7 @@ def _validate_array(
         # ((values.shape[1] != 12) and (values.shape[1] != 366)):
 
         # neither a 1-D nor a 2-D array with valid shape was passed in
-        message = "Invalid input array with shape: {0}".format(values.shape)
+        message = f"Invalid input array with shape: {values.shape}"
         _logger.error(message)
         raise ValueError(message)
 
@@ -165,7 +254,7 @@ def sum_to_scale(
     # return convolve(values, np.ones(scale), mode='reflect', cval=0.0, origin=0)[start: end]
 
 
-def _log_and_raise_shape_error(shape: Tuple[int]):
+def _log_and_raise_shape_error(shape: tuple[int]):
     message = f"Invalid shape of input data array: {shape}"
     _logger.error(message)
     raise ValueError(message)
@@ -246,16 +335,38 @@ def adjust_calibration_years(data_start_year, data_end_year, calibration_start_y
 
 
 def calculate_time_step_params(time_step_values):
+    """
+    Calculate Pearson Type III parameters for a time step's values.
+
+    :param time_step_values: Array of values for a specific time step (e.g., all January values)
+    :return: Tuple of (probability_of_zero, loc, scale, skew)
+    :raises InsufficientDataError: When there are too few non-zero values
+    :raises PearsonFittingError: When L-moments computation fails
+    """
     number_of_zeros, number_of_non_missing = utils.count_zeros_and_non_missings(time_step_values)
-    if (number_of_non_missing - number_of_zeros) < 4:
-        return 0.0, 0.0, 0.0, 0.0
+    non_zero_count = number_of_non_missing - number_of_zeros
+
+    if non_zero_count < MIN_NON_ZERO_VALUES_FOR_PEARSON:
+        message = (
+            f"Insufficient non-zero values for Pearson fitting: "
+            f"{non_zero_count} values (minimum {MIN_NON_ZERO_VALUES_FOR_PEARSON} required). "
+            f"Consider using Gamma distribution for areas with extensive zero precipitation."
+        )
+        raise InsufficientDataError(
+            message,
+            non_zero_count=non_zero_count,
+            required_count=MIN_NON_ZERO_VALUES_FOR_PEARSON
+        )
 
     probability_of_zero = number_of_zeros / number_of_non_missing if number_of_zeros > 0 else 0.0
 
-    if (number_of_non_missing - number_of_zeros) > 3:
+    # At this point we know non_zero_count >= MIN_NON_ZERO_VALUES_FOR_PEARSON
+    try:
         params = lmoments.fit(time_step_values)
         return probability_of_zero, params["loc"], params["scale"], params["skew"]
-    return 0.0, 0.0, 0.0, 0.0
+    except ValueError as e:
+        message = f"L-moments fitting failed: {e}. Consider using Gamma distribution for this dataset."
+        raise PearsonFittingError(message, underlying_error=e)
 
 
 def pearson_parameters(
@@ -302,13 +413,31 @@ def pearson_parameters(
     scales = np.zeros((time_steps_per_year,))
     skews = np.zeros((time_steps_per_year,))
 
+    failed_fitting_count = 0
+
     for time_step_index in range(time_steps_per_year):
         time_step_values = calibration_values[:, time_step_index]
-        prob, loc, scale, skew = calculate_time_step_params(time_step_values)
-        probabilities_of_zero[time_step_index] = prob
-        locs[time_step_index] = loc
-        scales[time_step_index] = scale
-        skews[time_step_index] = skew
+        try:
+            prob, loc, scale, skew = calculate_time_step_params(time_step_values)
+            probabilities_of_zero[time_step_index] = prob
+            locs[time_step_index] = loc
+            scales[time_step_index] = scale
+            skews[time_step_index] = skew
+        except DistributionFittingError:
+            # Handle fitting failures by using default values
+            failed_fitting_count += 1
+            probabilities_of_zero[time_step_index] = 0.0
+            locs[time_step_index] = 0.0
+            scales[time_step_index] = 0.0
+            skews[time_step_index] = 0.0
+
+    # Check if we should warn about high failure rate using the fallback strategy
+    if _default_fallback_strategy.should_warn_high_failure_rate(failed_fitting_count, time_steps_per_year):
+        _default_fallback_strategy.log_high_failure_rate(
+            failed_fitting_count,
+            time_steps_per_year,
+            context="pearson_parameters computation"
+        )
 
     return probabilities_of_zero, locs, scales, skews
 
@@ -501,30 +630,11 @@ def _pearson_fit(
         values[zero_mask] = 0.0
         values[trace_mask] = 0.0005
 
-        if _do_pearson3_workaround:
-            # Before scipy 1.6.0, there were a few bugs in pearson3.
-            # Looks like https://github.com/scipy/scipy/pull/12640 fixed them.
-
-            # compute the minimum value possible, and if any values are below
-            # that threshold then we set the corresponding CDF to a floor value.
-            # This was not properly done in older scipy releases.
-            # TODO ask Richard Heim why the use of this floor value, matching
-            #  that used for the trace amount?
-            nans_mask = np.isnan(values)
-            values[np.logical_and(minimums_mask, nans_mask)] = 0.0005
-            # This will get turned into 0.9995 when the negative
-            # skew bug is worked around a few lines from here.
-            values[np.logical_and(maximums_mask, nans_mask)] = 0.0005
-
-            # account for negative skew
-            skew_mask = skew < 0.0
-            values[:, skew_mask] = 1 - values[:, skew_mask]
-        else:
-            # The original values were found to be outside the
-            # range of the fitted distribution, so we will set
-            # the probabilities to something just within the range.
-            values[minimums_mask] = 0.0005
-            values[maximums_mask] = 0.9995
+        # The original values were found to be outside the
+        # range of the fitted distribution, so we will set
+        # the probabilities to something just within the range.
+        values[minimums_mask] = 0.0005
+        values[maximums_mask] = 0.9995
 
         if not np.all(np.isnan(values)):
             # calculate the probability value, clipped between 0 and 1
@@ -673,7 +783,7 @@ def gamma_parameters(
         elif periodicity is Periodicity.daily:
             shape = (366,)
         else:
-            raise ValueError("Unsupported periodicity: {periodicity}".format(periodicity=periodicity))
+            raise ValueError(f"Unsupported periodicity: {periodicity}")
         alphas = np.full(shape=shape, fill_value=np.nan)
         betas = np.full(shape=shape, fill_value=np.nan)
         return alphas, betas
@@ -703,7 +813,7 @@ def gamma_parameters(
     calibration_values = values[calibration_begin_index:calibration_end_index, :]
 
     # compute the gamma distribution's shape and scale parameters, alpha and beta
-    # TODO explain this better
+    # using method of moments estimation
     means = np.nanmean(calibration_values, axis=0)
     log_means = np.log(means)
     logs = np.log(calibration_values)

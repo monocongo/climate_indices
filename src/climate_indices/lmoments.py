@@ -13,6 +13,10 @@ __all__ = ["fit"]
 # Retrieve logger and set desired logging level
 _logger = utils.get_logger(__name__, logging.WARN)
 
+# Configuration constants for L-moments computation
+# Minimum number of non-NaN values required for L-moments estimation
+MIN_VALUES_FOR_LMOMENTS = 4
+
 
 def fit(timeseries: np.ndarray) -> dict:
     """
@@ -129,8 +133,13 @@ def _estimate_lmoments(
     # we need to have at least four values in order
     # to make a sample L-moments estimation
     number_of_values = np.count_nonzero(~np.isnan(values))
-    if number_of_values < 4:
-        message = "Insufficient number of values to perform sample L-moments estimation"
+    if number_of_values < MIN_VALUES_FOR_LMOMENTS:
+        message = (
+            "Insufficient number of values to perform sample L-moments estimation: "
+            f"{number_of_values} non-NaN values found (minimum {MIN_VALUES_FOR_LMOMENTS} required). "
+            "This commonly occurs in dry regions with extensive zero precipitation. "
+            "Consider using Gamma distribution instead of Pearson Type III for such areas."
+        )
         _logger.warning(message)
         raise ValueError(message)
 

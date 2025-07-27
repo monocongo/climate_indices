@@ -64,14 +64,17 @@ Quick Start
    ::
 
     # create and activate a Python virtual environment with conda
-    conda create -n myvenv poetry pytest
+    conda create -n myvenv python=3.10
     conda activate myvenv
 
+    # install uv
+    pip install uv
+
     # install the package
-    python -m poetry install
+    uv sync --dev
 
     # optionally run the unit tests suite
-    python -m poetry run pytest
+    uv run pytest
 
 
 Installation
@@ -81,22 +84,22 @@ From PyPI
 
 Install directly from PyPI::
 
-    python -m pip install climate-indices
+    uv add climate-indices
 
 From source
 ^^^^^^^^^^^^^^
 
-In order to build and install the package from source we need to first install `poetry <https://python-poetry.org/>`__::
+In order to build and install the package from source we need to first install `uv <https://docs.astral.sh/uv/>`__::
 
-    python -m pip install poetry
+    pip install uv
 
 Then install the package from source::
 
-   python -m poetry install
+   uv sync --dev
 
 Next (optional) run the unit test suite to validate the installation::
 
-    python -m pytest tests
+    uv run pytest
 
 the above should display output similar to this::
 
@@ -104,12 +107,10 @@ the above should display output similar to this::
 
 Finally, show the package installed into the environment::
 
-   conda list climate-indices
+   uv list | grep climate-indices
 
-   # packages in environment at /Users/jadams/miniconda3/envs/climate381:
-   #
-   # Name                    Version                   Build  Channel
-   climate-indices           1.0.16                   pypi_0    pypi
+   # climate-indices v2.1.0 (editable)
+   #     + climate-indices==2.1.0 (from file:///path/to/climate_indices)
 
 
 
