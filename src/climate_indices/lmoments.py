@@ -130,7 +130,12 @@ def _estimate_lmoments(
     # to make a sample L-moments estimation
     number_of_values = np.count_nonzero(~np.isnan(values))
     if number_of_values < 4:
-        message = "Insufficient number of values to perform sample L-moments estimation"
+        message = (
+            "Insufficient number of values to perform sample L-moments estimation: "
+            f"{number_of_values} non-NaN values found (minimum 4 required). "
+            "This commonly occurs in dry regions with extensive zero precipitation. "
+            "Consider using Gamma distribution instead of Pearson Type III for such areas."
+        )
         _logger.warning(message)
         raise ValueError(message)
 

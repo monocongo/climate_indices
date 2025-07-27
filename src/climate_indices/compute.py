@@ -244,13 +244,25 @@ def adjust_calibration_years(data_start_year, data_end_year, calibration_start_y
 def calculate_time_step_params(time_step_values):
     number_of_zeros, number_of_non_missing = utils.count_zeros_and_non_missings(time_step_values)
     if (number_of_non_missing - number_of_zeros) < 4:
-        return 0.0, 0.0, 0.0, 0.0
+        _logger.warning(
+            f"Insufficient non-zero values for Pearson fitting: "
+            f"{number_of_non_missing - number_of_zeros} values (minimum 4 required). "
+            f"Consider using Gamma distribution for areas with extensive zero precipitation."
+        )
+        return None, None, None, None
 
     probability_of_zero = number_of_zeros / number_of_non_missing if number_of_zeros > 0 else 0.0
 
     # At this point we know (number_of_non_missing - number_of_zeros) >= 4
-    params = lmoments.fit(time_step_values)
-    return probability_of_zero, params["loc"], params["scale"], params["skew"]
+    try:
+        params = lmoments.fit(time_step_values)
+        return probability_of_zero, params["loc"], params["scale"], params["skew"]
+    except ValueError as e:
+        _logger.warning(
+            f"L-moments fitting failed: {e}. "
+            f"Consider using Gamma distribution for this dataset."
+        )
+        return None, None, None, None
 
 
 def pearson_parameters(
@@ -300,10 +312,19 @@ def pearson_parameters(
     for time_step_index in range(time_steps_per_year):
         time_step_values = calibration_values[:, time_step_index]
         prob, loc, scale, skew = calculate_time_step_params(time_step_values)
-        probabilities_of_zero[time_step_index] = prob
-        locs[time_step_index] = loc
-        scales[time_step_index] = scale
-        skews[time_step_index] = skew
+        
+        # Handle cases where fitting failed (returns None values)
+        if prob is None:
+            # Use default values when fitting fails
+            probabilities_of_zero[time_step_index] = 0.0
+            locs[time_step_index] = 0.0
+            scales[time_step_index] = 0.0
+            skews[time_step_index] = 0.0
+        else:
+            probabilities_of_zero[time_step_index] = prob
+            locs[time_step_index] = loc
+            scales[time_step_index] = scale
+            skews[time_step_index] = skew
 
     return probabilities_of_zero, locs, scales, skews
 
@@ -679,7 +700,7 @@ def gamma_parameters(
     calibration_values = values[calibration_begin_index:calibration_end_index, :]
 
     # compute the gamma distribution's shape and scale parameters, alpha and beta
-    # TODO explain this better
+    # using method of moments estimation
     means = np.nanmean(calibration_values, axis=0)
     log_means = np.log(means)
     logs = np.log(calibration_values)
