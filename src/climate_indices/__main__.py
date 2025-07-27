@@ -4,7 +4,6 @@ import argparse
 import logging
 import multiprocessing
 import os
-from collections import Counter
 from datetime import datetime
 from enum import Enum
 from typing import Any
@@ -1446,7 +1445,7 @@ def _prepare_file(
     # make sure we have the expected dimensions for the data type
     ds = xr.open_dataset(netcdf_file)
     dimensions = ds[var_name].dims
-    
+
     # Validate dimensions based on data type
     if "division" in dimensions:
         # Climate divisions data

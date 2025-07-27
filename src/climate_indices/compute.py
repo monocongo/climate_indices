@@ -258,10 +258,7 @@ def calculate_time_step_params(time_step_values):
         params = lmoments.fit(time_step_values)
         return probability_of_zero, params["loc"], params["scale"], params["skew"]
     except ValueError as e:
-        _logger.warning(
-            f"L-moments fitting failed: {e}. "
-            f"Consider using Gamma distribution for this dataset."
-        )
+        _logger.warning(f"L-moments fitting failed: {e}. Consider using Gamma distribution for this dataset.")
         return None, None, None, None
 
 
@@ -309,12 +306,15 @@ def pearson_parameters(
     scales = np.zeros((time_steps_per_year,))
     skews = np.zeros((time_steps_per_year,))
 
+    failed_fitting_count = 0
+
     for time_step_index in range(time_steps_per_year):
         time_step_values = calibration_values[:, time_step_index]
         prob, loc, scale, skew = calculate_time_step_params(time_step_values)
-        
+
         # Handle cases where fitting failed (returns None values)
         if prob is None:
+            failed_fitting_count += 1
             # Use default values when fitting fails
             probabilities_of_zero[time_step_index] = 0.0
             locs[time_step_index] = 0.0
@@ -325,6 +325,17 @@ def pearson_parameters(
             locs[time_step_index] = loc
             scales[time_step_index] = scale
             skews[time_step_index] = skew
+
+    # If too many time steps failed fitting, this indicates systemic issues
+    # with the dataset for Pearson distribution fitting (e.g., extensive zero precipitation)
+    failure_rate = failed_fitting_count / time_steps_per_year
+    if failure_rate > 0.8:  # If more than 80% of time steps failed
+        _logger.warning(
+            f"High failure rate for Pearson Type III distribution fitting: {failed_fitting_count}/{time_steps_per_year} "
+            f"time steps failed ({failure_rate:.1%} failure rate). This typically occurs with extensive zero "
+            f"precipitation patterns that are better handled by Gamma distribution. "
+            f"Results may contain many default parameter values."
+        )
 
     return probabilities_of_zero, locs, scales, skews
 

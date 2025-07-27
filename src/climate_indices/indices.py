@@ -191,19 +191,19 @@ def spi(
                 scales,
                 skews,
             )
-            
+
             # Check if the result contains excessive NaN values indicating fitting failure
             nan_percentage = np.count_nonzero(np.isnan(values)) / values.size
             if nan_percentage > 0.5:  # If more than 50% of values are NaN
                 raise ValueError("Pearson distribution fitting resulted in excessive missing values")
-                
+
         except (ValueError, Warning) as e:
             # Pearson fitting failed, fall back to Gamma distribution
             _logger.warning(
                 f"Pearson Type III distribution fitting failed ({e}). "
                 f"Falling back to Gamma distribution for robust computation."
             )
-            
+
             # Use Gamma distribution as fallback
             values = compute.transform_fitted_gamma(
                 values,
