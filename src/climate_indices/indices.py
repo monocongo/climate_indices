@@ -27,6 +27,9 @@ _logger = utils.get_logger(__name__, logging.DEBUG)
 _FITTED_INDEX_VALID_MIN = -3.09
 _FITTED_INDEX_VALID_MAX = 3.09
 
+# Import fallback strategy for consistent behavior
+_fallback_strategy = compute.DistributionFallbackStrategy()
+
 
 def _norm_fitdict(params: dict):
     """
@@ -177,19 +180,39 @@ def spi(
             scales = None
             skews = None
 
-        # fit the scaled values to a Pearson Type III distribution
-        # and transform to corresponding normalized sigmas
-        values = compute.transform_fitted_pearson(
-            values,
-            data_start_year,
-            calibration_year_initial,
-            calibration_year_final,
-            periodicity,
-            probabilities_of_zero,
-            locs,
-            scales,
-            skews,
-        )
+        try:
+            # fit the scaled values to a Pearson Type III distribution
+            # and transform to corresponding normalized sigmas
+            values = compute.transform_fitted_pearson(
+                values,
+                data_start_year,
+                calibration_year_initial,
+                calibration_year_final,
+                periodicity,
+                probabilities_of_zero,
+                locs,
+                scales,
+                skews,
+            )
+
+            # Check if fallback is needed due to excessive NaN values
+            if _fallback_strategy.should_fallback_from_excessive_nans(values):
+                raise ValueError("Pearson distribution fitting resulted in excessive missing values")
+
+        except (ValueError, Warning, compute.DistributionFittingError) as e:
+            # Use centralized fallback strategy for consistent logging and behavior
+            _fallback_strategy.log_fallback_warning(str(e), context="SPI computation")
+
+            # Use Gamma distribution as fallback
+            values = compute.transform_fitted_gamma(
+                values,
+                data_start_year,
+                calibration_year_initial,
+                calibration_year_final,
+                periodicity,
+                alphas=None,
+                betas=None,
+            )
 
     else:
         message = f"Unsupported distribution argument: '{distribution}'"
