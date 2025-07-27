@@ -27,9 +27,8 @@ _logger = utils.get_logger(__name__, logging.DEBUG)
 _FITTED_INDEX_VALID_MIN = -3.09
 _FITTED_INDEX_VALID_MAX = 3.09
 
-# Configuration constants for distribution fitting fallback logic
-# Maximum percentage of NaN values before triggering fallback from Pearson to Gamma distribution
-MAX_NAN_PERCENTAGE_FOR_FALLBACK = 0.5  # 50%
+# Import fallback strategy for consistent behavior
+_fallback_strategy = compute.DistributionFallbackStrategy()
 
 
 def _norm_fitdict(params: dict):
@@ -196,17 +195,13 @@ def spi(
                 skews,
             )
 
-            # Check if the result contains excessive NaN values indicating fitting failure
-            nan_percentage = np.count_nonzero(np.isnan(values)) / values.size
-            if nan_percentage > MAX_NAN_PERCENTAGE_FOR_FALLBACK:
+            # Check if fallback is needed due to excessive NaN values
+            if _fallback_strategy.should_fallback_from_excessive_nans(values):
                 raise ValueError("Pearson distribution fitting resulted in excessive missing values")
 
-        except (ValueError, Warning) as e:
-            # Pearson fitting failed, fall back to Gamma distribution
-            _logger.warning(
-                f"Pearson Type III distribution fitting failed ({e}). "
-                f"Falling back to Gamma distribution for robust computation."
-            )
+        except (ValueError, Warning, compute.DistributionFittingError) as e:
+            # Use centralized fallback strategy for consistent logging and behavior
+            _fallback_strategy.log_fallback_warning(str(e), context="SPI computation")
 
             # Use Gamma distribution as fallback
             values = compute.transform_fitted_gamma(

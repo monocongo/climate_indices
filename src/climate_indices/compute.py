@@ -18,6 +18,10 @@ __all__ = [
     "sum_to_scale",
     "transform_fitted_gamma",
     "transform_fitted_pearson",
+    "DistributionFittingError",
+    "InsufficientDataError",
+    "PearsonFittingError",
+    "DistributionFallbackStrategy",
 ]
 
 # Retrieve logger and set desired logging level
@@ -30,6 +34,83 @@ MIN_NON_ZERO_VALUES_FOR_PEARSON = 4
 # Maximum failure rate threshold before issuing high failure rate warnings
 # Values above this percentage indicate systemic issues with the dataset
 HIGH_FAILURE_RATE_THRESHOLD = 0.8  # 80%
+
+
+# Custom exception classes for distribution fitting
+class DistributionFittingError(Exception):
+    """Base exception for distribution fitting failures."""
+    pass
+
+
+class InsufficientDataError(DistributionFittingError):
+    """Raised when there is insufficient data for distribution fitting."""
+
+    def __init__(self, message, non_zero_count=None, required_count=None):
+        super().__init__(message)
+        self.non_zero_count = non_zero_count
+        self.required_count = required_count
+
+
+class PearsonFittingError(DistributionFittingError):
+    """Raised when Pearson Type III distribution fitting fails."""
+
+    def __init__(self, message, underlying_error=None):
+        super().__init__(message)
+        self.underlying_error = underlying_error
+
+
+class DistributionFallbackStrategy:
+    """Strategy class for managing Pearson→Gamma distribution fallback logic."""
+
+    def __init__(self, max_nan_percentage=0.5, high_failure_threshold=0.8):
+        """
+        Initialize the fallback strategy.
+        
+        :param max_nan_percentage: Maximum percentage of NaN values before triggering fallback
+        :param high_failure_threshold: Failure rate threshold for issuing warnings
+        """
+        self.max_nan_percentage = max_nan_percentage
+        self.high_failure_threshold = high_failure_threshold
+        self._logger = utils.get_logger(self.__class__.__name__, logging.WARN)
+
+    def should_fallback_from_excessive_nans(self, values: np.ndarray) -> bool:
+        """Check if fallback is needed due to excessive NaN values."""
+        if values.size == 0:
+            return True
+        nan_percentage = np.count_nonzero(np.isnan(values)) / values.size
+        return nan_percentage > self.max_nan_percentage
+
+    def should_warn_high_failure_rate(self, failure_count: int, total_count: int) -> bool:
+        """Check if high failure rate warning should be issued."""
+        if total_count == 0:
+            return False
+        failure_rate = failure_count / total_count
+        return failure_rate > self.high_failure_threshold
+
+    def log_fallback_warning(self, reason: str, context: str = ""):
+        """Log a fallback warning with consistent formatting."""
+        message = f"Pearson Type III distribution fitting failed ({reason}). "
+        message += "Falling back to Gamma distribution for robust computation."
+        if context:
+            message += f" Context: {context}"
+        self._logger.warning(message)
+
+    def log_high_failure_rate(self, failure_count: int, total_count: int, context: str = ""):
+        """Log high failure rate warning."""
+        failure_rate = failure_count / total_count if total_count > 0 else 0
+        message = (
+            f"High failure rate for Pearson Type III distribution fitting: {failure_count}/{total_count} "
+            f"time steps failed ({failure_rate:.1%} failure rate). This typically occurs with extensive zero "
+            f"precipitation patterns that are better handled by Gamma distribution. "
+            f"Results may contain many default parameter values."
+        )
+        if context:
+            message += f" Context: {context}"
+        self._logger.warning(message)
+
+
+# Global fallback strategy instance
+_default_fallback_strategy = DistributionFallbackStrategy()
 
 
 class Periodicity(Enum):
@@ -250,24 +331,38 @@ def adjust_calibration_years(data_start_year, data_end_year, calibration_start_y
 
 
 def calculate_time_step_params(time_step_values):
+    """
+    Calculate Pearson Type III parameters for a time step's values.
+    
+    :param time_step_values: Array of values for a specific time step (e.g., all January values)
+    :return: Tuple of (probability_of_zero, loc, scale, skew)
+    :raises InsufficientDataError: When there are too few non-zero values
+    :raises PearsonFittingError: When L-moments computation fails
+    """
     number_of_zeros, number_of_non_missing = utils.count_zeros_and_non_missings(time_step_values)
-    if (number_of_non_missing - number_of_zeros) < MIN_NON_ZERO_VALUES_FOR_PEARSON:
-        _logger.warning(
+    non_zero_count = number_of_non_missing - number_of_zeros
+
+    if non_zero_count < MIN_NON_ZERO_VALUES_FOR_PEARSON:
+        message = (
             f"Insufficient non-zero values for Pearson fitting: "
-            f"{number_of_non_missing - number_of_zeros} values (minimum {MIN_NON_ZERO_VALUES_FOR_PEARSON} required). "
+            f"{non_zero_count} values (minimum {MIN_NON_ZERO_VALUES_FOR_PEARSON} required). "
             f"Consider using Gamma distribution for areas with extensive zero precipitation."
         )
-        return None, None, None, None
+        raise InsufficientDataError(
+            message,
+            non_zero_count=non_zero_count,
+            required_count=MIN_NON_ZERO_VALUES_FOR_PEARSON
+        )
 
     probability_of_zero = number_of_zeros / number_of_non_missing if number_of_zeros > 0 else 0.0
 
-    # At this point we know (number_of_non_missing - number_of_zeros) >= 4
+    # At this point we know non_zero_count >= MIN_NON_ZERO_VALUES_FOR_PEARSON
     try:
         params = lmoments.fit(time_step_values)
         return probability_of_zero, params["loc"], params["scale"], params["skew"]
     except ValueError as e:
-        _logger.warning(f"L-moments fitting failed: {e}. Consider using Gamma distribution for this dataset.")
-        return None, None, None, None
+        message = f"L-moments fitting failed: {e}. Consider using Gamma distribution for this dataset."
+        raise PearsonFittingError(message, underlying_error=e)
 
 
 def pearson_parameters(
@@ -318,31 +413,26 @@ def pearson_parameters(
 
     for time_step_index in range(time_steps_per_year):
         time_step_values = calibration_values[:, time_step_index]
-        prob, loc, scale, skew = calculate_time_step_params(time_step_values)
-
-        # Handle cases where fitting failed (returns None values)
-        if prob is None:
-            failed_fitting_count += 1
-            # Use default values when fitting fails
-            probabilities_of_zero[time_step_index] = 0.0
-            locs[time_step_index] = 0.0
-            scales[time_step_index] = 0.0
-            skews[time_step_index] = 0.0
-        else:
+        try:
+            prob, loc, scale, skew = calculate_time_step_params(time_step_values)
             probabilities_of_zero[time_step_index] = prob
             locs[time_step_index] = loc
             scales[time_step_index] = scale
             skews[time_step_index] = skew
+        except DistributionFittingError:
+            # Handle fitting failures by using default values
+            failed_fitting_count += 1
+            probabilities_of_zero[time_step_index] = 0.0
+            locs[time_step_index] = 0.0
+            scales[time_step_index] = 0.0
+            skews[time_step_index] = 0.0
 
-    # If too many time steps failed fitting, this indicates systemic issues
-    # with the dataset for Pearson distribution fitting (e.g., extensive zero precipitation)
-    failure_rate = failed_fitting_count / time_steps_per_year
-    if failure_rate > HIGH_FAILURE_RATE_THRESHOLD:
-        _logger.warning(
-            f"High failure rate for Pearson Type III distribution fitting: {failed_fitting_count}/{time_steps_per_year} "
-            f"time steps failed ({failure_rate:.1%} failure rate). This typically occurs with extensive zero "
-            f"precipitation patterns that are better handled by Gamma distribution. "
-            f"Results may contain many default parameter values."
+    # Check if we should warn about high failure rate using the fallback strategy
+    if _default_fallback_strategy.should_warn_high_failure_rate(failed_fitting_count, time_steps_per_year):
+        _default_fallback_strategy.log_high_failure_rate(
+            failed_fitting_count,
+            time_steps_per_year,
+            context="pearson_parameters computation"
         )
 
     return probabilities_of_zero, locs, scales, skews
