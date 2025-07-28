@@ -126,6 +126,7 @@ filterwarnings = [
 dev = [
     "build>=1.2.2.post1",
     "coverage>=7.9.2",
+    "markdown",
     "pytest>=8.3.3",
     "pytest-cov>=6.2.1",
     "ruff>=0.12.2",
