@@ -126,7 +126,7 @@ uv venv test-env
 source test-env/bin/activate  # On Windows: test-env\Scripts\activate
 
 # Install from built wheel
-pip install dist/climate_indices-*.whl
+uv pip install dist/climate_indices-*.whl
 
 # Test basic functionality
 python -c "
@@ -164,7 +164,7 @@ uv run pytest --cov=climate_indices --cov-report=html
 uv run twine check dist/*
 
 # Validate README renders correctly
-python -c "
+uv run python -c "
 from pathlib import Path
 import markdown
 content = Path('README.md').read_text()
