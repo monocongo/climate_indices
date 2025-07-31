@@ -1,9 +1,10 @@
 """
 Common classes and functions used to compute the various climate indices.
 """
-
-import logging
 from enum import Enum
+from packaging.version import Version
+import logging
+from typing import Tuple
 
 import numpy as np
 import scipy.stats
@@ -23,6 +24,9 @@ __all__ = [
     "PearsonFittingError",
     "DistributionFallbackStrategy",
 ]
+
+# depending on the version of scipy we may need to use a workaround due to a bug in some versions of scipy
+_do_pearson3_workaround = Version(scipy.version.version) < Version("1.6.0")
 
 # Retrieve logger and set desired logging level
 _logger = utils.get_logger(__name__, logging.WARN)
@@ -65,7 +69,7 @@ class DistributionFallbackStrategy:
     def __init__(self, max_nan_percentage=0.5, high_failure_threshold=0.8):
         """
         Initialize the fallback strategy.
-        
+
         :param max_nan_percentage: Maximum percentage of NaN values before triggering fallback
         :param high_failure_threshold: Failure rate threshold for issuing warnings
         """
@@ -333,7 +337,7 @@ def adjust_calibration_years(data_start_year, data_end_year, calibration_start_y
 def calculate_time_step_params(time_step_values):
     """
     Calculate Pearson Type III parameters for a time step's values.
-    
+
     :param time_step_values: Array of values for a specific time step (e.g., all January values)
     :return: Tuple of (probability_of_zero, loc, scale, skew)
     :raises InsufficientDataError: When there are too few non-zero values

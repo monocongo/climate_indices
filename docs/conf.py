@@ -28,7 +28,7 @@ author = "James Adams"
 pyproject = toml.load("../pyproject.toml")
 
 # get the full release version, including alpha/beta/rc tags
-release = pyproject["tool"]["poetry"]["version"]
+release = pyproject["project"]["version"]
 
 # get the major.minor version
 version = ".".join(release.split(".")[:2])

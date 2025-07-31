@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "climate_indices"
-version = '2.1.0'
+version = '2.1.1'
 description = 'Reference implementations of various climate indices typically used for drought monitoring'
 authors = [{name = "James Adams", email = "monocongo@gmail.com"}]
 readme = 'README.md'
@@ -124,10 +124,12 @@ filterwarnings = [
 
 [dependency-groups]
 dev = [
+    "build>=1.2.2.post1",
     "coverage>=7.9.2",
+    "markdown",
     "pytest>=8.3.3",
     "pytest-cov>=6.2.1",
     "ruff>=0.12.2",
     "sphinx-autodoc-typehints>=2.0.1",
+    "twine>=6.1.0",
 ]
-
