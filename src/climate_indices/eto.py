@@ -240,7 +240,7 @@ def eto_thornthwaite(
     # each row is a year with 12 columns of monthly values (Jan, Feb, ..., Dec)
 
     # convert the latitude from degrees to radians
-    latitude_radians = math.radians(latitude_degrees)
+    latitude_radians = math.radians(float(latitude_degrees))
 
     # adjust negative temperature values to zero, since negative
     # values aren't allowed (no evaporation below freezing)
