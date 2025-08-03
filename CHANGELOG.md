@@ -5,27 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.2.0]
+## [2.2.0] - 2025-08-03
 
-  1. Major Architectural Improvements (Breaking Internal APIs)
-  - Complete refactor of error handling from None tuples to exception-based system
-  - New exception hierarchy: DistributionFittingError, InsufficientDataError, PearsonFittingError
-  - Consolidated fallback strategy with DistributionFallbackStrategy class
+### Added
 
-  2. Significant Dependency Updates
-  - Updated scipy>=1.15.0 (from 1.14.1) - major dependency version change
-  - Migration from Poetry to UV for dependency management
-  - Added Python 3.13 support
+- **Exception-Based Error Handling**: New robust exception hierarchy for distribution fitting failures
+  - `DistributionFittingError` (base class)  
+  - `InsufficientDataError` - raised when too few non-zero values for statistical fitting
+  - `PearsonFittingError` - raised when L-moments calculation fails
+- **Migration Guide**: Comprehensive v2.2.0 migration documentation in README
+- **Code Quality Improvements**: Safe floating point comparison guidelines using `numpy.isclose()`
+- **Enhanced Test Coverage**: Comprehensive tests for exception handling and fallback behavior
+- **Documentation**: 
+  - Floating point best practices guide (`docs/floating_point_best_practices.md`)
+  - Working examples for safe numerical comparisons
+  - Updated build configuration documentation
 
-  3. Build System Changes
-  - New Docker integration
-  - Comprehensive build exclusions (37MB → 199KB package size)
-  - Updated GitHub Actions workflows
+### Changed
 
-  4. New Features & Improvements
-  - Enhanced consecutive zeros handling for SPI calculations
-  - Improved error logging and diagnostics
-  - Better multiprocessing architecture documentation
+- **Major Dependency Updates**: Updated all packages to latest versions
+  - `scipy>=1.15.3` (from 1.14.1) - requires Python 3.10+
+  - `dask>=2025.7.0`, `xarray>=2025.6.1`, `h5netcdf>=1.6.3`
+  - `pytest>=8.4.1`, `ruff>=0.12.7`, `sphinx>=8.1.3`
+- **Build System**: Consolidated and optimized hatch build configuration
+  - Reduced package size from 37MB to 207KB (99.4% reduction)
+  - Eliminated duplicate exclude lists between sdist and wheel builds
+- **Error Handling Architecture**: 
+  - Replaced `None` tuple anti-pattern with explicit exceptions
+  - Consolidated fallback logic into `DistributionFallbackStrategy` class
+  - Improved error messages with detailed context and suggestions
+- **Python Version Support**: Dropped Python 3.9, now requires Python 3.10+
+- **Floating Point Comparisons**: Replaced direct equality checks with `numpy.isclose()` throughout test suite
+
+### Fixed
+
+- **NumPy 2.0 Compatibility**: 
+  - Fixed deprecated `newshape` parameter usage
+  - Fixed array-to-scalar conversion warnings
+- **Consecutive Zero Precipitation**: Enhanced handling of extensive zero precipitation patterns
+- **Test Reliability**: Improved floating point comparison robustness in test assertions
+- **Build Exclusions**: Properly exclude development files from distribution packages
+
+### Technical Improvements
+
+- **Code Quality**: Addressed `python:S1244` floating point equality issues
+- **Test Architecture**: Enhanced coverage for edge cases and error conditions
+- **Logging**: Consistent warning messages for high failure rates in distribution fitting
+- **Documentation**: Clear upgrade path for library integrators using internal functions
 
 ## [2.1.1]
 
@@ -94,26 +120,39 @@ def calculate_time_step_params(time_step_values):
 
   #### Updated Architecture Flow
 
-  compute.py:
+  **compute.py**:
   calculate_time_step_params() raises InsufficientDataError | PearsonFittingError
+
                   ↓
+
   pearson_parameters() catches DistributionFittingError → uses default values
+
                   ↓
+
   Uses _default_fallback_strategy.should_warn_high_failure_rate()
 
-  indices.py:
+  **indices.py**:
   spi() calls transform_fitted_pearson()
+
                   ↓
+
   Catches DistributionFittingError, ValueError, Warning
+
                   ↓
+
   Uses _fallback_strategy.should_fallback_from_excessive_nans()
+
                   ↓
+
   Uses _fallback_strategy.log_fallback_warning() → falls back to Gamma
 
   ### Verification Results
 
-  ✅ All 8 existing zero precipitation tests pass✅ All 5 main indices tests pass (backward compatibility maintained)✅ New test 
-  test_distribution_fallback_strategy_consolidation() verifies:
+✅ All 8 existing zero precipitation tests pass 
+
+✅ All 5 main indices tests pass (backward compatibility maintained)
+
+✅ New test case **test_distribution_fallback_strategy_consolidation()** verifies:
   - Strategy methods work correctly
   - Custom exceptions carry proper information
   - End-to-end SPI computation handles exceptions gracefully

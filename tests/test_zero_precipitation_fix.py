@@ -228,20 +228,22 @@ class TestZeroPrecipitationFix:
 
             # Explicitly assert for expected default values due to fitting failures
             # When Pearson fitting fails, default parameters should be returned
-            default_loc_count = np.sum(locs == 0.0)
-            default_scale_count = np.sum(scales == 0.0)  
-            default_skew_count = np.sum(skews == 0.0)
+            # Use numpy.isclose for safe floating point comparisons
+            
+            default_loc_count = np.sum(np.isclose(locs, 0.0, atol=1e-8))
+            default_scale_count = np.sum(np.isclose(scales, 0.0, atol=1e-8))  
+            default_skew_count = np.sum(np.isclose(skews, 0.0, atol=1e-8))
             
             # With only 2 non-zero values per month, most months should fail fitting
-            # and return default values (0.0 for loc, scale, skew parameters)
+            # and return default values (effectively zero for loc, scale, skew parameters)
             expected_failures = months_per_year  # All months should fail with only 2 values each
             
             assert default_loc_count >= expected_failures * 0.8, \
-                f"Expected most loc parameters to be default (0.0), got {default_loc_count}/{months_per_year}"
+                f"Expected most loc parameters to be effectively zero, got {default_loc_count}/{months_per_year}"
             assert default_scale_count >= expected_failures * 0.8, \
-                f"Expected most scale parameters to be default (0.0), got {default_scale_count}/{months_per_year}"
+                f"Expected most scale parameters to be effectively zero, got {default_scale_count}/{months_per_year}"
             assert default_skew_count >= expected_failures * 0.8, \
-                f"Expected most skew parameters to be default (0.0), got {default_skew_count}/{months_per_year}"
+                f"Expected most skew parameters to be effectively zero, got {default_skew_count}/{months_per_year}"
 
         finally:
             # Clean up
@@ -250,8 +252,9 @@ class TestZeroPrecipitationFix:
             handler.close()
 
         # Verify that default values are returned for months with insufficient data
-        # Most months should have default parameter values (0.0)
-        zero_count = np.count_nonzero(locs == 0.0)
+        # Most months should have default parameter values (close to zero)
+        # Use numpy.isclose for safe floating point comparison
+        zero_count = np.sum(np.isclose(locs, 0.0, atol=1e-8))
         assert zero_count >= months_per_year * HIGH_FAILURE_RATE_THRESHOLD, (
             "Most months should have default loc parameters due to insufficient data"
         )

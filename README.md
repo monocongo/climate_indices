@@ -93,6 +93,27 @@ except climate_indices.compute.PearsonFittingError as e:
 - **Library integrators**: If you were checking for `None` return values from internal functions, update to use try/catch blocks
 - **Benefits**: More informative error messages, better debugging, and automatic fallback from Pearson to Gamma distribution when appropriate
 
+### Code Quality Improvements
+
+Version 2.2.0 also addresses floating point comparison issues (`python:S1244`) throughout the codebase:
+
+**Floating Point Comparisons:**
+```python
+# ❌ OLD: Direct equality checks (unreliable)
+if values == 0.0:
+    handle_zero_case()
+
+# ✅ NEW: Safe comparison using numpy.isclose()
+if np.isclose(values, 0.0, atol=1e-8):
+    handle_zero_case()
+```
+
+**Benefits:**
+- Eliminates floating point precision issues in statistical parameter validation
+- Improves test reliability and numerical robustness
+- Follows scientific computing best practices for floating point arithmetic
+- See `docs/floating_point_best_practices.md` for comprehensive guidelines
+
 #### Citation
 You can cite `climate_indices` in your projects and research papers via the BibTeX 
 entry below.
