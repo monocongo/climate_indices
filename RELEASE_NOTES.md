@@ -1,8 +1,10 @@
-# climate_indices v2.2.0 Release Notes
+# climate_indices Release Notes
 
 **GitHub Repository:** [https://github.com/monocongo/climate_indices](https://github.com/monocongo/climate_indices)
 
 ---
+
+# [2.2.0]
 
 A new version of climate_indices has been released, introducing several significant updates and improvements. This release focuses on enhanced error handling, code quality improvements, and modernized dependencies while maintaining backward compatibility for public APIs.
 
@@ -114,6 +116,8 @@ except climate_indices.compute.InsufficientDataError as e:
 except climate_indices.compute.PearsonFittingError as e:
     handle_fitting_failure(e)
 ```
+
+----
 
 ## 🔗 Links
 
