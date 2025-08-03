@@ -233,7 +233,7 @@ def reshape_to_2d(
     first_axis_length = int(values.shape[0] / second_axis_length)
 
     # return the reshaped array
-    return np.reshape(values, newshape=(first_axis_length, second_axis_length))
+    return np.reshape(values, (first_axis_length, second_axis_length))
 
 
 def reshape_to_divs_years_months(

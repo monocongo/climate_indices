@@ -195,7 +195,7 @@ class TestZeroPrecipitationFix:
         log_capture = io.StringIO()
         handler = logging.StreamHandler(log_capture)
         handler.setLevel(logging.WARNING)
-        
+
         # Get the root logger to ensure we capture all warnings
         root_logger = logging.getLogger()
         original_level = root_logger.level
@@ -213,12 +213,12 @@ class TestZeroPrecipitationFix:
 
             # Check log output for high failure rate warning
             log_output = log_capture.getvalue()
-            
+
             # The test should verify the new architecture works by checking that:
             # 1. Function completes without crashing
             # 2. Returns arrays of the expected size
             # 3. Most values are defaults due to fitting failures
-            
+
             # Verify that the function returns arrays of correct size
             assert len(probabilities_of_zero) == months_per_year
             assert len(locs) == months_per_year
@@ -467,40 +467,40 @@ class TestZeroPrecipitationFix:
         """
         # Test the strategy directly
         strategy = compute.DistributionFallbackStrategy(max_nan_percentage=0.4, high_failure_threshold=0.7)
-        
+
         # Test excessive NaN detection
         mostly_nan_array = np.array([1.0, np.nan, np.nan, np.nan, np.nan])  # 80% NaN
         mostly_valid_array = np.array([1.0, 2.0, np.nan, 4.0, 5.0])  # 20% NaN
-        
-        assert strategy.should_fallback_from_excessive_nans(mostly_nan_array), \
-            "Should detect excessive NaN values"
-        assert not strategy.should_fallback_from_excessive_nans(mostly_valid_array), \
+
+        assert strategy.should_fallback_from_excessive_nans(mostly_nan_array), "Should detect excessive NaN values"
+        assert not strategy.should_fallback_from_excessive_nans(mostly_valid_array), (
             "Should not trigger fallback for acceptable NaN levels"
-        
+        )
+
         # Test high failure rate detection
-        assert strategy.should_warn_high_failure_rate(8, 10), \
-            "Should detect high failure rate (80% > 70% threshold)"
-        assert not strategy.should_warn_high_failure_rate(6, 10), \
+        assert strategy.should_warn_high_failure_rate(8, 10), "Should detect high failure rate (80% > 70% threshold)"
+        assert not strategy.should_warn_high_failure_rate(6, 10), (
             "Should not warn for acceptable failure rate (60% < 70% threshold)"
-        
+        )
+
         # Test that the strategy is used in both compute and indices modules
         # Create data that will trigger exceptions in calculate_time_step_params
         insufficient_data = np.array([1.0, 2.0, 0.0, 0.0, 0.0])  # Only 2 non-zero values
-        
+
         # This should raise our custom exception
         with pytest.raises(compute.InsufficientDataError) as exc_info:
             compute.calculate_time_step_params(insufficient_data)
-        
+
         # Verify exception details
         assert exc_info.value.non_zero_count == 2
         assert exc_info.value.required_count == 4
-        
+
         # Test with SPI - should handle the exception gracefully via fallback strategy
         sparse_precip = np.zeros(120)  # 10 years of monthly data
         # Add minimal precipitation to avoid all-zero issues but ensure many time steps fail
         for i in range(0, 120, 12):  # Once per year in January
             sparse_precip[i] = 5.0
-        
+
         # This should not crash due to the fallback strategy
         spi_values = indices.spi(
             values=sparse_precip,
@@ -511,7 +511,7 @@ class TestZeroPrecipitationFix:
             calibration_year_final=2009,
             periodicity=compute.Periodicity.monthly,
         )
-        
+
         # Should return valid array (may contain NaN but shouldn't crash)
         assert len(spi_values) == len(sparse_precip)
         assert isinstance(spi_values, np.ndarray)

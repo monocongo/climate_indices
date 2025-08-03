@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0]
+
+  1. Major Architectural Improvements (Breaking Internal APIs)
+  - Complete refactor of error handling from None tuples to exception-based system
+  - New exception hierarchy: DistributionFittingError, InsufficientDataError, PearsonFittingError
+  - Consolidated fallback strategy with DistributionFallbackStrategy class
+
+  2. Significant Dependency Updates
+  - Updated scipy>=1.15.0 (from 1.14.1) - major dependency version change
+  - Migration from Poetry to UV for dependency management
+  - Added Python 3.13 support
+
+  3. Build System Changes
+  - New Docker integration
+  - Comprehensive build exclusions (37MB → 199KB package size)
+  - Updated GitHub Actions workflows
+
+  4. New Features & Improvements
+  - Enhanced consecutive zeros handling for SPI calculations
+  - Improved error logging and diagnostics
+  - Better multiprocessing architecture documentation
+
 ## [2.1.1]
 
 ### Added

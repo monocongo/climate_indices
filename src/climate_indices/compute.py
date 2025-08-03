@@ -1,14 +1,14 @@
 """
 Common classes and functions used to compute the various climate indices.
 """
-from enum import Enum
-from packaging.version import Version
+
 import logging
-from typing import Tuple
+from enum import Enum
 
 import numpy as np
 import scipy.stats
 import scipy.version
+from packaging.version import Version
 
 from climate_indices import lmoments, utils
 
@@ -43,6 +43,7 @@ HIGH_FAILURE_RATE_THRESHOLD = 0.8  # 80%
 # Custom exception classes for distribution fitting
 class DistributionFittingError(Exception):
     """Base exception for distribution fitting failures."""
+
     pass
 
 
@@ -353,9 +354,7 @@ def calculate_time_step_params(time_step_values):
             f"Consider using Gamma distribution for areas with extensive zero precipitation."
         )
         raise InsufficientDataError(
-            message,
-            non_zero_count=non_zero_count,
-            required_count=MIN_NON_ZERO_VALUES_FOR_PEARSON
+            message=message, non_zero_count=non_zero_count, required_count=MIN_NON_ZERO_VALUES_FOR_PEARSON
         )
 
     probability_of_zero = number_of_zeros / number_of_non_missing if number_of_zeros > 0 else 0.0
@@ -434,9 +433,9 @@ def pearson_parameters(
     # Check if we should warn about high failure rate using the fallback strategy
     if _default_fallback_strategy.should_warn_high_failure_rate(failed_fitting_count, time_steps_per_year):
         _default_fallback_strategy.log_high_failure_rate(
-            failed_fitting_count,
-            time_steps_per_year,
-            context="pearson_parameters computation"
+            failure_count=failed_fitting_count,
+            total_count=time_steps_per_year,
+            context="pearson_parameters computation",
         )
 
     return probabilities_of_zero, locs, scales, skews
