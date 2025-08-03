@@ -42,11 +42,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   __After__: Consolidated into DistributionFallbackStrategy class:
   ```python
-  class DistributionFallbackStrategy:
-      def should_fallback_from_excessive_nans(self, values) -> bool
-      def should_warn_high_failure_rate(self, failure_count, total_count) -> bool  
-      def log_fallback_warning(self, reason, context="")
-      def log_high_failure_rate(self, failure_count, total_count, context="")
+class DistributionFallbackStrategy:
+    def should_fallback_from_excessive_nans(self, values) -> bool:
+        pass
+    def should_warn_high_failure_rate(self, failure_count, total_count) -> bool:
+        pass
+    def log_fallback_warning(self, reason, context="") -> None:
+        pass
+    def log_high_failure_rate(self, failure_count, total_count, context="") -> None:
+        pass
   ```
   Benefits:
   - ✅ Single source of truth for all fallback decisions
@@ -59,22 +63,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   __Before__: calculate_time_step_params() returned (None, None, None, None) on failure:
   #### OLD CODE - ANTI-PATTERN
   ```python
-  def calculate_time_step_params(time_step_values):
-      if insufficient_data:
-          return None, None, None, None  # ❌ Requires downstream None checks
-      # ... computation ...
-      if fitting_failed:
-          return None, None, None, None  # ❌ Obscures failure reason
+def calculate_time_step_params(time_step_values):
+    if insufficient_data:
+      return None, None, None, None  # ❌ Requires downstream None checks
+    # ... computation ...
+    if fitting_failed:
+      return None, None, None, None  # ❌ Obscures failure reason
   ```
   __After__: Exception-based error handling with dedicated exception types:
   #### NEW CODE - EXPLICIT EXCEPTIONS
   ```python
-  def calculate_time_step_params(time_step_values):
-      if insufficient_data:
-          raise InsufficientDataError(message, non_zero_count, required_count)  # ✅ Clear failure reason
-      # ... computation ...
-      if fitting_failed:
-          raise PearsonFittingError(message, underlying_error)  # ✅ Specific error type
+def calculate_time_step_params(time_step_values):
+    if insufficient_data:
+      raise InsufficientDataError(message, non_zero_count, required_count)  # ✅ Clear failure reason
+    # ... computation ...
+    if fitting_failed:
+      raise PearsonFittingError(message, underlying_error)  # ✅ Specific error type
   ```
   #### Custom Exception Hierarchy:
 ```
