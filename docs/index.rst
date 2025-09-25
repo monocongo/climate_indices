@@ -32,7 +32,7 @@ The following indices are provided:
 -  `SPI <https://climatedataguide.ucar.edu/climate-data/standardized-precipitation-index-spi>`__,
    Standardized Precipitation Index, utilizing both gamma and Pearson Type III distributions
 -  `SPEI <https://www.researchgate.net/publication/252361460_The_Standardized_Precipitation-Evapotranspiration_Index_SPEI_a_multiscalar_drought_index>`__,
-   Standardized Precipitation Evapotranspiration Index, utilizing both gamma and Pearson Type III distributions
+   Standardized Precipitation Evapotranspiration Index, utilizing both gamma, log-logistic (Fisk) and Pearson Type III distributions
 -  `PET <https://www.ncdc.noaa.gov/monitoring-references/dyk/potential-evapotranspiration>`__,
    Potential Evapotranspiration, utilizing either `Thornthwaite <http://dx.doi.org/10.2307/21073>`_
    or `Hargreaves <http://dx.doi.org/10.13031/2013.26773>`_ equations
@@ -340,11 +340,12 @@ SPEI monthly
 --calibration_end_year 2010 --multiprocessing all``
 
 The above command will compute SPEI (standardized precipitation evapotranspiration index,
-both gamma and Pearson Type III distributions) from input precipitation and potential evapotranspiration datasets
+both gamma, log-logistic (Fisk) and Pearson Type III distributions) from input precipitation and potential evapotranspiration datasets
 (in this case, the reduced resolution nClimGrid precipitation and PET datasets provided in the example inputs directory).
 The input datasets are monthly data and the calibration period used will be Jan. 1951 through Dec. 2010. The index
 datasets will be computed at 9-month and 18-month timescales. The output files will be
 `<out_dir>/nclimgrid_lowres_spei_gamma_09.nc`, `<out_dir>/nclimgrid_lowres_spei_gamma_18.nc`,
+`<out_dir>/nclimgrid_lowres_spei_fisk_09.nc`, `<out_dir>/nclimgrid_lowres_spei_fisk_18.nc`,
 `<out_dir>/nclimgrid_lowres_spei_pearson_09.nc`, and `<out_dir>/nclimgrid_lowres_spei_pearson_18.nc`.
 Parallelization will occur utilizing all CPUs.
 
