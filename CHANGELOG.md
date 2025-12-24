@@ -172,23 +172,27 @@ def calculate_time_step_params(time_step_values):
 
 
 
-## [Unreleased] (latest master branch)
+## [Unreleased]
 
 ### Added
 
-- something we've added, coming soon
-- something else we've added
-
-### Fixed
-
-- something we've fixed (#issue_number)
-- something else we've fixed (#issue_number)
+- **Docker Support**: Dockerfile for containerized deployment (#586)
+- **`.dockerignore`**: Optimized Docker builds by excluding unnecessary files
+- **PyPI Release Guide**: Comprehensive release documentation (`docs/pypi_release_guide.md`, `docs/pypi_release.rst`)
+- **Floating Point Best Practices Guide**: Documentation for safe numerical comparisons (`docs/floating_point_best_practices.md`)
+- **Test Fixture Management Guide**: Documentation for test data management (`docs/test_fixture_management.md`)
+- **Visualization Notebook**: New notebook for precipitation/SPI visualization (`notebooks/visualize_precip_spi.ipynb`)
+- **Lock File**: Added `uv.lock` for reproducible dependency resolution
 
 ### Changed
 
-- something we've changed (#issue_number)
+- **GitHub Actions**: Updated unit tests workflow with improved configuration
+- **Documentation Index**: Reorganized Sphinx documentation structure
+- **Notebooks**: Improved examples in existing Jupyter notebooks
 
 ### Removed
+
+- **`.pypirc`**: Removed from repository (should be user-specific in `~/.pypirc`)
 
 ## [2.0.0] - 2023-07-15
 
