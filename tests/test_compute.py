@@ -82,13 +82,20 @@ def test_transform_fitted_gamma(
         calibration_year_end_daily,
         compute.Periodicity.daily,
     )
+    
+    # Check that non-NaN values in fixture match
+    mask_valid_fixture = ~np.isnan(transformed_gamma_daily)
     np.testing.assert_allclose(
-        computed_values,
-        transformed_gamma_daily,
+        computed_values[mask_valid_fixture],
+        transformed_gamma_daily[mask_valid_fixture],
         atol=0.001,
-        equal_nan=True,
-        err_msg="Transformed gamma fitted daily values not computed as expected",
+        err_msg="Transformed gamma fitted daily values mismatch on valid fixture values"
     )
+
+    # Check that values where input was zero are NOT NaN in computed result
+    mask_zeros = (precips_mm_daily == 0)
+    assert not np.any(np.isnan(computed_values[mask_zeros])), \
+            "Computed SPI should not be NaN for zero precipitation"
 
     # confirm that we can call with a calibration period out of the valid range
     # and as a result use the full period of record as the calibration period instead
