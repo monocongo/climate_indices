@@ -788,7 +788,7 @@ def gamma_parameters(
         return alphas, betas
 
     # validate (and possibly reshape) the input array
-    values = _validate_array(values, periodicity)
+    values = _validate_array(values, periodicity).copy()
 
     # replace zeros with NaNs
     values[values == 0] = np.nan
@@ -913,13 +913,20 @@ def transform_fitted_gamma(
     zeros = (values == 0).sum(axis=0)
     probabilities_of_zero = zeros / values.shape[0]
 
+    # create a working copy to avoid modifying the input array
+    # and to safely replace zeros with NaNs for fitting/CDF computation
+    values_for_fitting = values.copy()
+
+    # store mask of zero values
+    zero_mask = (values == 0)
+
     # replace zeros with NaNs
-    values[values == 0] = np.nan
+    values_for_fitting[zero_mask] = np.nan
 
     # compute fitting parameters if none were provided
     if (alphas is None) or (betas is None):
         alphas, betas = gamma_parameters(
-            values,
+            values_for_fitting,
             data_start_year,
             calibration_start_year,
             calibration_end_year,
@@ -927,7 +934,12 @@ def transform_fitted_gamma(
         )
 
     # find the gamma probability values using the gamma CDF
-    gamma_probabilities = scipy.stats.gamma.cdf(values, a=alphas, scale=betas)
+    gamma_probabilities = scipy.stats.gamma.cdf(values_for_fitting, a=alphas, scale=betas)
+
+    # where the input values were zero the CDF will have returned NaN, but since
+    # we're treating zeros as a separate probability mass we should treat the
+    # gamma probability for zeros as 0.0
+    gamma_probabilities[zero_mask] = 0.0
 
     # TODO explain this better
     # (normalize including the probability of zero, putting into the range [0..1]?)
