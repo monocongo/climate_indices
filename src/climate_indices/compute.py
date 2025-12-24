@@ -913,6 +913,12 @@ def transform_fitted_gamma(
     zeros = (values == 0).sum(axis=0)
     probabilities_of_zero = zeros / values.shape[0]
 
+    # If a time step has all zeros (probability of zero is 1.0), the resulting SPI
+    # should be NaN (undefined) rather than +infinity (which would imply extreme wetness).
+    # We identify these time steps and set their probability of zero to NaN so that
+    # subsequent calculations result in NaN.
+    probabilities_of_zero[probabilities_of_zero == 1.0] = np.nan
+
     # create a working copy to avoid modifying the input array
     # and to safely replace zeros with NaNs for fitting/CDF computation
     values_for_fitting = values.copy()

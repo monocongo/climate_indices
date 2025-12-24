@@ -92,10 +92,29 @@ def test_transform_fitted_gamma(
         err_msg="Transformed gamma fitted daily values mismatch on valid fixture values"
     )
 
-    # Check that values where input was zero are NOT NaN in computed result
-    mask_zeros = (precips_mm_daily == 0)
-    assert not np.any(np.isnan(computed_values[mask_zeros])), \
-            "Computed SPI should not be NaN for zero precipitation"
+    # Check that values where input was zero are NOT NaN in computed result,
+    # UNLESS the probability of zero for that time step is 1.0 (all zeros in history).
+    
+    # Identify time steps with all zeros
+    values_2d = compute.reshape_values(precips_mm_daily.flatten(), compute.Periodicity.daily)
+    zeros_count = (values_2d == 0).sum(axis=0)
+    probs_zero = zeros_count / values_2d.shape[0]
+    
+    # Computed values are 1D, reshape to 2D for easier column-wise checking
+    computed_values_2d = compute.reshape_values(computed_values, compute.Periodicity.daily)
+    
+    # Check columns where prob_zero < 1.0
+    valid_prob_cols = np.where(probs_zero < 1.0)[0]
+    
+    # For these columns, if input is 0, output should not be NaN
+    for col in valid_prob_cols:
+         col_values = computed_values_2d[:, col]
+         col_inputs = values_2d[:, col]
+         # zeros in this column
+         zeros_in_col = (col_inputs == 0)
+         if np.any(zeros_in_col):
+             assert not np.any(np.isnan(col_values[zeros_in_col])), \
+                 f"Computed SPI should not be NaN for zero precipitation in day {col}"
 
     # confirm that we can call with a calibration period out of the valid range
     # and as a result use the full period of record as the calibration period instead
