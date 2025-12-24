@@ -311,15 +311,32 @@ def eto_hargreaves(
     """
 
     # validate the input data arrays
-    if daily_tmin_celsius.size != daily_tmax_celsius != daily_tmean_celsius:
+    if not (daily_tmin_celsius.size == daily_tmax_celsius.size == daily_tmean_celsius.size):
         message = "Incompatible array sizes"
         _logger.error(message)
         raise ValueError(message)
+
+    # validate temperature relationships: tmin <= tmean <= tmax
+    # use warnings rather than errors since real-world data may have some anomalies
+    tmin_gt_tmax = np.sum(daily_tmin_celsius > daily_tmax_celsius)
+    if tmin_gt_tmax > 0:
+        _logger.warning(f"Found {tmin_gt_tmax} instances where tmin > tmax. This may indicate data quality issues.")
+
+    tmean_outside_range = np.sum(
+        (daily_tmean_celsius < daily_tmin_celsius) | (daily_tmean_celsius > daily_tmax_celsius)
+    )
+    if tmean_outside_range > 0:
+        _logger.warning(
+            f"Found {tmean_outside_range} instances where tmean is outside [tmin, tmax] range. "
+            "This may indicate data quality issues."
+        )
 
     # keep the original length for conversion back to original size
     original_length = daily_tmean_celsius.size
 
     # reshape to 2-D with 366 days per year, if not already in this shape
+    daily_tmin_celsius = utils.reshape_to_2d(daily_tmin_celsius, 366)
+    daily_tmax_celsius = utils.reshape_to_2d(daily_tmax_celsius, 366)
     daily_tmean_celsius = utils.reshape_to_2d(daily_tmean_celsius, 366)
 
     # at this point we assume that our dataset array has shape (years, 366)

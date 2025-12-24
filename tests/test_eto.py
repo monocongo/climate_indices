@@ -12,13 +12,119 @@ logging.disable(logging.CRITICAL)
 
 
 # ------------------------------------------------------------------------------
-def test_eto_hargreaves():
-    pass
+def test_eto_hargreaves_1d_input():
+    """Test eto_hargreaves with 1-D input arrays (the primary bug case from issue #578)."""
+    # create sample 1-D daily temperature arrays (730 days = 2 years)
+    tmin = np.full(730, 10.0)  # 10 degrees C min
+    tmax = np.full(730, 25.0)  # 25 degrees C max
+    tmean = np.full(730, 17.5)  # 17.5 degrees C mean
+    latitude = 35.0  # degrees north
 
-    # # compute PET from the daily temperatures and latitude
-    # computed_pet = eto.eto_hargreaves(temps_celsius,
-    #                                   latitude_degrees,
-    #                                   data_year_start_monthly)
+    # should not raise IndexError (the bug)
+    result = eto.eto_hargreaves(tmin, tmax, tmean, latitude)
+
+    # verify output shape matches input
+    assert result.shape == (730,)
+
+    # verify reasonable PET values (positive for valid inputs)
+    valid_values = result[~np.isnan(result)]
+    assert np.all(valid_values > 0), "PET values should be positive"
+    assert np.all(valid_values < 20), "PET values should be reasonable (< 20 mm/day)"
+
+
+# ------------------------------------------------------------------------------
+def test_eto_hargreaves_2d_input():
+    """Test eto_hargreaves with 2-D input arrays (regression test)."""
+    # create 2-D arrays (2 years x 366 days)
+    tmin = np.full((2, 366), 10.0)
+    tmax = np.full((2, 366), 25.0)
+    tmean = np.full((2, 366), 17.5)
+    latitude = 35.0
+
+    result = eto.eto_hargreaves(tmin, tmax, tmean, latitude)
+
+    # output should be flattened to 1-D with length = 2 * 366
+    assert result.shape == (732,)
+
+    # verify reasonable PET values
+    valid_values = result[~np.isnan(result)]
+    assert np.all(valid_values > 0), "PET values should be positive"
+
+
+# ------------------------------------------------------------------------------
+def test_eto_hargreaves_size_mismatch():
+    """Test that size mismatch raises ValueError."""
+    tmin = np.full(365, 10.0)
+    tmax = np.full(366, 25.0)  # different size
+    tmean = np.full(365, 17.5)
+
+    pytest.raises(ValueError, eto.eto_hargreaves, tmin, tmax, tmean, 35.0)
+
+
+# ------------------------------------------------------------------------------
+def test_eto_hargreaves_invalid_latitude():
+    """Test that invalid latitude raises ValueError."""
+    tmin = np.full(366, 10.0)
+    tmax = np.full(366, 25.0)
+    tmean = np.full(366, 17.5)
+
+    # latitude > 90 should raise error
+    pytest.raises(ValueError, eto.eto_hargreaves, tmin, tmax, tmean, 91.0)
+
+    # latitude < -90 should raise error
+    pytest.raises(ValueError, eto.eto_hargreaves, tmin, tmax, tmean, -91.0)
+
+
+# ------------------------------------------------------------------------------
+@pytest.mark.usefixtures(
+    "hargreaves_daily_tmin_celsius",
+    "hargreaves_daily_tmax_celsius",
+    "hargreaves_daily_tmean_celsius",
+    "hargreaves_latitude_degrees",
+)
+def test_eto_hargreaves_with_fixtures(
+    hargreaves_daily_tmin_celsius,
+    hargreaves_daily_tmax_celsius,
+    hargreaves_daily_tmean_celsius,
+    hargreaves_latitude_degrees,
+):
+    """Test eto_hargreaves using the standard test fixtures."""
+    result = eto.eto_hargreaves(
+        hargreaves_daily_tmin_celsius,
+        hargreaves_daily_tmax_celsius,
+        hargreaves_daily_tmean_celsius,
+        hargreaves_latitude_degrees,
+    )
+
+    # verify output shape matches input
+    assert result.shape == hargreaves_daily_tmin_celsius.shape
+
+    # verify reasonable PET values
+    valid_values = result[~np.isnan(result)]
+    assert len(valid_values) > 0, "Should produce some valid PET values"
+    assert np.all(valid_values > 0), "PET values should be positive"
+    assert np.all(valid_values < 20), "PET values should be reasonable (< 20 mm/day)"
+
+
+# ------------------------------------------------------------------------------
+def test_eto_hargreaves_temperature_validation_warning(caplog):
+    """Test that temperature validation warnings are issued for invalid data."""
+    # create data where tmin > tmax for some values
+    tmin = np.full(366, 25.0)  # higher than tmax!
+    tmax = np.full(366, 10.0)  # lower than tmin!
+    tmean = np.full(366, 17.5)
+    latitude = 35.0
+
+    # should still compute (with warnings) rather than raise error
+    with caplog.at_level(logging.WARNING):
+        result = eto.eto_hargreaves(tmin, tmax, tmean, latitude)
+
+    # check that warnings were issued
+    assert "tmin > tmax" in caplog.text
+    assert "tmean is outside" in caplog.text
+
+    # function should still return results (may be invalid, but doesn't crash)
+    assert result.shape == (366,)
 
 
 # ------------------------------------------------------------------------------
