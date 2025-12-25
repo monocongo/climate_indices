@@ -82,7 +82,7 @@ def test_transform_fitted_gamma(
         calibration_year_end_daily,
         compute.Periodicity.daily,
     )
-    
+
     # Check that non-NaN values in fixture match
     mask_valid_fixture = ~np.isnan(transformed_gamma_daily)
     np.testing.assert_allclose(
@@ -92,29 +92,17 @@ def test_transform_fitted_gamma(
         err_msg="Transformed gamma fitted daily values mismatch on valid fixture values"
     )
 
-    # Check that values where input was zero are NOT NaN in computed result,
-    # UNLESS the probability of zero for that time step is 1.0 (all zeros in history).
-    
-    # Identify time steps with all zeros
-    values_2d = compute.reshape_values(precips_mm_daily.flatten(), compute.Periodicity.daily)
-    zeros_count = (values_2d == 0).sum(axis=0)
-    probs_zero = zeros_count / values_2d.shape[0]
-    
-    # Computed values are 1D, reshape to 2D for easier column-wise checking
-    computed_values_2d = compute.reshape_values(computed_values, compute.Periodicity.daily)
-    
-    # Check columns where prob_zero < 1.0
-    valid_prob_cols = np.where(probs_zero < 1.0)[0]
-    
-    # For these columns, if input is 0, output should not be NaN
-    for col in valid_prob_cols:
-         col_values = computed_values_2d[:, col]
-         col_inputs = values_2d[:, col]
-         # zeros in this column
-         zeros_in_col = (col_inputs == 0)
-         if np.any(zeros_in_col):
-             assert not np.any(np.isnan(col_values[zeros_in_col])), \
-                 f"Computed SPI should not be NaN for zero precipitation in day {col}"
+    # Check that values where input was zero are NOT NaN in computed result
+    # and are finite (either a real number or -inf for extreme drought)
+    # Note: Zero precipitation can result in positive SPI when zeros are historically
+    # common for that time step (high probability of zero means zero is "normal")
+    mask_zeros = (precips_mm_daily == 0)
+    spi_for_zeros = computed_values[mask_zeros]
+    assert not np.any(np.isnan(spi_for_zeros)), \
+        "Computed SPI should not be NaN for zero precipitation"
+    # SPI values should be real numbers or -inf (not +inf or NaN)
+    assert np.all(spi_for_zeros < np.inf), \
+        "SPI for zero precipitation should not be +infinity"
 
     # confirm that we can call with a calibration period out of the valid range
     # and as a result use the full period of record as the calibration period instead
@@ -165,6 +153,35 @@ def test_transform_fitted_gamma(
         calibration_year_end_daily,
         compute.Periodicity.monthly,
     )
+
+
+def test_transform_fitted_gamma_all_zeros_produces_finite_spi():
+    """
+    Test that all-zero precipitation produces finite SPI values, not NaN.
+
+    When all precipitation values are zero, SPI should indicate extreme drought
+    (negative infinity or large negative values), not NaN.
+    """
+    # one year of daily data (366 days)
+    n_years = 1
+    n_days_per_year = 366
+    values = np.zeros((n_years, n_days_per_year), dtype=float)
+
+    result = compute.transform_fitted_gamma(
+        values,
+        data_start_year=2000,
+        calibration_start_year=2000,
+        calibration_end_year=2000,
+        periodicity=compute.Periodicity.daily,
+    )
+
+    # all-zero input should not produce NaN
+    assert not np.any(np.isnan(result)), \
+        "SPI should not be NaN when all inputs are zero"
+
+    # all-zero input should indicate extreme drought (negative values)
+    assert np.all(result < 0), \
+        "SPI for all-zero precipitation should be negative (extreme drought)"
 
 
 @pytest.mark.usefixtures(
