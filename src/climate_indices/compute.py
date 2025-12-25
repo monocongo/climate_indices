@@ -947,7 +947,7 @@ def transform_fitted_gamma(
     #   - norm.ppf(0.0) = -infinity (extreme drought)
     # This is the correct interpretation: a location with 100% zero precipitation
     # in the historical record is in extreme drought, not extreme wetness.
-    probabilities_of_zero[probabilities_of_zero == 1.0] = 0.0
+    probabilities_of_zero[np.isclose(probabilities_of_zero, 1.0)] = 0.0
 
     # compute fitting parameters if none were provided
     if (alphas is None) or (betas is None):
