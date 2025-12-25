@@ -744,6 +744,25 @@ def transform_fitted_pearson(
     return values
 
 
+def _replace_zeros_with_nan(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Create a copy of values with zeros replaced by NaN.
+
+    This helper centralizes the zero-to-NaN conversion logic used when fitting
+    gamma distributions, where zeros must be excluded from the fitting process
+    but their positions need to be tracked for later probability calculations.
+
+    :param values: Input array potentially containing zeros
+    :return: Tuple of (zero_mask, values_copy) where:
+        - zero_mask: Boolean array where True indicates original zero positions
+        - values_copy: Copy of input with zeros replaced by NaN
+    """
+    values_copy = values.copy()
+    zero_mask = values == 0
+    values_copy[zero_mask] = np.nan
+    return zero_mask, values_copy
+
+
 def gamma_parameters(
     values: np.ndarray,
     data_start_year: int,
@@ -788,10 +807,10 @@ def gamma_parameters(
         return alphas, betas
 
     # validate (and possibly reshape) the input array
-    values = _validate_array(values, periodicity).copy()
+    values = _validate_array(values, periodicity)
 
-    # replace zeros with NaNs
-    values[values == 0] = np.nan
+    # replace zeros with NaNs (zeros are excluded from gamma fitting)
+    _, values = _replace_zeros_with_nan(values)
 
     # determine the end year of the values array
     data_end_year = data_start_year + values.shape[0]
@@ -909,19 +928,26 @@ def transform_fitted_gamma(
     # validate (and possibly reshape) the input array
     values = _validate_array(values, periodicity)
 
+    # Replace zeros with NaNs for fitting (zeros are excluded from gamma fitting)
+    # and get mask of zero positions for later probability calculations
+    zero_mask, values_for_fitting = _replace_zeros_with_nan(values)
+
     # find the percentage of zero values for each time step
-    zeros = (values == 0).sum(axis=0)
+    zeros = zero_mask.sum(axis=0)
     probabilities_of_zero = zeros / values.shape[0]
 
-    # create a working copy to avoid modifying the input array
-    # and to safely replace zeros with NaNs for fitting/CDF computation
-    values_for_fitting = values.copy()
-
-    # store mask of zero values
-    zero_mask = (values == 0)
-
-    # replace zeros with NaNs
-    values_for_fitting[zero_mask] = np.nan
+    # If a time step has all zeros (probability of zero is 1.0), the resulting SPI
+    # would be +infinity (extreme wetness) which is incorrect for a dry region.
+    # We set probability_of_zero to 0.0 for these time steps, which means:
+    #   - gamma_parameters() will return NaN (since all values become NaN after
+    #     zero replacement)
+    #   - gamma.cdf() will return NaN
+    #   - gamma_probabilities[zero_mask] = 0.0 forces these to 0.0
+    #   - Final probability = 0.0 + (1.0 * 0.0) = 0.0
+    #   - norm.ppf(0.0) = -infinity (extreme drought)
+    # This is the correct interpretation: a location with 100% zero precipitation
+    # in the historical record is in extreme drought, not extreme wetness.
+    probabilities_of_zero[np.isclose(probabilities_of_zero, 1.0)] = 0.0
 
     # compute fitting parameters if none were provided
     if (alphas is None) or (betas is None):
