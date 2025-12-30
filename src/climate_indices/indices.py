@@ -355,17 +355,6 @@ def spi_xarray(
 
     raise ValueError(f"Unsupported distribution argument: '{distribution}'")
 
-    return xr.apply_ufunc(
-        _spi_1d,
-        values,
-        input_core_dims=[[time_dim]],
-        output_core_dims=[[time_dim]],
-        vectorize=True,
-        dask="parallelized",
-        output_dtypes=[float],
-        keep_attrs=True,
-    )
-
 
 def spei(
     precips_mm: np.ndarray,

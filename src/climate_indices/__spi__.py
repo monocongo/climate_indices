@@ -321,7 +321,16 @@ def _compute_write_index(keyword_arguments):
         raise ValueError("Missing the 'input_type' keyword argument")
 
     input_type = keyword_arguments["input_type"]
-    ds_precip = xr.open_dataset(keyword_arguments["netcdf_precip"], chunks={"time": -1})
+
+    # chunk time as single chunk (required for rolling window sums) but preserve
+    # spatial chunking for memory efficiency on large grids
+    if input_type == InputType.grid:
+        chunks = {"time": -1, "lat": "auto", "lon": "auto"}
+    elif input_type == InputType.divisions:
+        chunks = {"time": -1, "division": "auto"}
+    else:
+        chunks = {"time": -1}
+    ds_precip = xr.open_dataset(keyword_arguments["netcdf_precip"], chunks=chunks)
 
     # trim out all data variables from the dataset except the ones we'll need
     input_var_names = []
@@ -364,6 +373,11 @@ def _compute_write_index(keyword_arguments):
 
     periodicity = keyword_arguments["periodicity"]
     time_dim = "time"
+
+    # preserve the original Gregorian time coordinate for use in output datasets
+    # for daily periodicity, precip_da will be transformed to a synthetic 366-day
+    # calendar during computation, then results are transformed back to Gregorian
+    # and assigned original_time coords before writing output files
     original_time = ds_precip[time_dim]
     original_time_len = len(original_time)
 
