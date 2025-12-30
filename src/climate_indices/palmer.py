@@ -2,6 +2,7 @@
 
 import logging
 
+import numba
 import numpy as np
 
 from climate_indices import utils
@@ -16,6 +17,7 @@ AWCTOP = 1.0
 K8_SIZE = 40
 
 
+@numba.jit(nopython=True, cache=True)
 def _get_awc_bot(awc: float) -> float:
     """
     Calculate available water capcity in bottom layer
@@ -27,6 +29,7 @@ def _get_awc_bot(awc: float) -> float:
     return max(awc - AWCTOP, 0.0)
 
 
+@numba.jit(nopython=True, cache=True)
 def _calc_potential_loss(
     pet: float,
     ss: float,
@@ -49,6 +52,7 @@ def _calc_potential_loss(
     return min(ss + su, ((pet - ss) * su) / (awc_bot + AWCTOP) + ss)
 
 
+@numba.jit(nopython=True, cache=True)
 def _calc_recharge(
     p: float,
     pet: float,
@@ -186,55 +190,112 @@ def _calc_delta(data: dict) -> None:
             data["delta"][idx] = data["tlsum"][idx] / pl
 
 
+@numba.jit(nopython=True, cache=True)
+def _calc_water_balances_numba(
+    precips: np.ndarray,
+    pet: np.ndarray,
+    awc: float,
+    awc_bot: float,
+    n_years: int,
+    calibration_year_initial_idx: int,
+    calibration_year_final_idx: int,
+    psum: np.ndarray,
+    spsum: np.ndarray,
+    petsum: np.ndarray,
+    plsum: np.ndarray,
+    prsum: np.ndarray,
+    rsum: np.ndarray,
+    tlsum: np.ndarray,
+    etsum: np.ndarray,
+    rosum: np.ndarray,
+    spdat: np.ndarray,
+    pldat: np.ndarray,
+    prdat: np.ndarray,
+    rdat: np.ndarray,
+    tldat: np.ndarray,
+    etdat: np.ndarray,
+    rodat: np.ndarray,
+    sssdat: np.ndarray,
+    ssudat: np.ndarray,
+) -> None:
+    ss = AWCTOP
+    su = awc_bot
+    for year in range(n_years):
+        for month in range(12):
+            p = precips[year, month]
+            pet_value = pet[year, month]
+            sp = ss + su
+            pr = awc_bot + AWCTOP - sp
+
+            # Get potential loss
+            pl = _calc_potential_loss(pet_value, ss, su, awc)
+
+            # Calculate recharge, runoff, residual moisture, loss to both
+            # surface and under layers, depending on starting moisture
+            # content and values of precipitation and evaporation
+            et, tl, r, ro, sss, ssu = _calc_recharge(p, pet_value, ss, su, awc)
+
+            # update sums
+            if calibration_year_initial_idx <= year <= calibration_year_final_idx:
+                psum[month] += p
+                spsum[month] += sp
+                petsum[month] += pet_value
+                plsum[month] += pl
+                prsum[month] += pr
+                rsum[month] += r
+                tlsum[month] += tl
+                etsum[month] += et
+                rosum[month] += ro
+
+            # set data
+            spdat[year, month] = sp
+            pldat[year, month] = pl
+            prdat[year, month] = pr
+            rdat[year, month] = r
+            tldat[year, month] = tl
+            etdat[year, month] = et
+            rodat[year, month] = ro
+            sssdat[year, month] = sss
+            ssudat[year, month] = ssu
+
+            # update soil moisture
+            ss = sss
+            su = ssu
+
+
 def _calc_water_balances(data: dict) -> None:
     """
     Perform water balance calculations
 
     :param data: dictionary of parameters (intialized in pdsi)
     """
-    ss = AWCTOP
-    su = data["awc_bot"]
-    for year in range(data["n_years"]):
-        for month in range(12):
-            p = data["precips"][year, month]
-            pet = data["pet"][year, month]
-            sp = ss + su
-            pr = data["awc_bot"] + AWCTOP - sp
-
-            # Get potential loss
-            pl = _calc_potential_loss(pet, ss, su, data["awc"])
-
-            # Calculate recharge, runoff, residual moisture, loss to both
-            # surface and under layers, depending on starting moisture
-            # content and values of precipitation and evaporation
-            et, tl, r, ro, sss, ssu = _calc_recharge(p, pet, ss, su, data["awc"])
-
-            # update sums
-            if data["calibration_year_initial_idx"] <= year <= data["calibration_year_final_idx"]:
-                data["psum"][month] += p
-                data["spsum"][month] += sp
-                data["petsum"][month] += pet
-                data["plsum"][month] += pl
-                data["prsum"][month] += pr
-                data["rsum"][month] += r
-                data["tlsum"][month] += tl
-                data["etsum"][month] += et
-                data["rosum"][month] += ro
-
-            # set data
-            data["spdat"][year, month] = sp
-            data["pldat"][year, month] = pl
-            data["prdat"][year, month] = pr
-            data["rdat"][year, month] = r
-            data["tldat"][year, month] = tl
-            data["etdat"][year, month] = et
-            data["rodat"][year, month] = ro
-            data["sssdat"][year, month] = sss
-            data["ssudat"][year, month] = ssu
-
-            # update soil moisture
-            ss = sss
-            su = ssu
+    _calc_water_balances_numba(
+        data["precips"],
+        data["pet"],
+        data["awc"],
+        data["awc_bot"],
+        data["n_years"],
+        data["calibration_year_initial_idx"],
+        data["calibration_year_final_idx"],
+        data["psum"],
+        data["spsum"],
+        data["petsum"],
+        data["plsum"],
+        data["prsum"],
+        data["rsum"],
+        data["tlsum"],
+        data["etsum"],
+        data["rosum"],
+        data["spdat"],
+        data["pldat"],
+        data["prdat"],
+        data["rdat"],
+        data["tldat"],
+        data["etdat"],
+        data["rodat"],
+        data["sssdat"],
+        data["ssudat"],
+    )
 
 
 def _calc_cafec_coefficients(data: dict) -> None:
@@ -726,7 +787,7 @@ def _validate_fitting_params(data: dict, fitting_params: dict) -> None:
         for param in ["alpha", "beta", "gamma", "delta"]:
             if (
                 param in fitting_params
-                and isinstance(fitting_params[param], (list, tuple, np.ndarray))
+                and isinstance(fitting_params[param], list | tuple | np.ndarray)
                 and len(fitting_params[param]) == 12
             ):
                 data[param] = np.array(fitting_params[param])
