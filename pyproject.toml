@@ -24,6 +24,7 @@ classifiers = [
 packages = [{include = 'climate_indices', from = 'src'}]
 requires-python = ">=3.10,<3.14"
 dependencies = [
+    "numba>=0.60.0",
     "scipy>=1.15.3",
     # remaining dependencies are required for the CLI (console) scripts
     "cftime>=1.6.4.post1",
@@ -37,6 +38,8 @@ dev = [
     "coverage>=7.10.1",
     "jupyter>=1.1.1",
     "matplotlib>=3.10.3",
+    "mypy>=1.18.2",
+    "pre-commit>=4.3.0",
     "pytest>=8.4.1",
     "pytest-cov>=6.2.1",
     "ruff>=0.12.7",
@@ -112,12 +115,23 @@ strict_equality = true
 
 [[tool.mypy.overrides]]
 module = [
+    "numba.*",
     "scipy.*",
     "netCDF4.*",
     "xarray.*",
     "dask.*",
 ]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "climate_indices.accessors",
+    "climate_indices.eto",
+    "climate_indices.indices",
+    "climate_indices.lmoments",
+    "climate_indices.utils",
+]
+ignore_errors = true
 
 
 [tool.pytest.ini_options]
