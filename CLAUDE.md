@@ -1,5 +1,8 @@
 # CLAUDE.md
 
+> **Note**: For tool-agnostic instructions shared across all AI assistants, see `AGENTS.md`.
+> For on-demand context, see `context/INDEX.md`.
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
