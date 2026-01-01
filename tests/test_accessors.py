@@ -67,8 +67,9 @@ def test_spi_accessor_round_trip(tmp_path):
     assert isinstance(spi_da, xr.DataArray)
     assert spi_da.dims == ("time",)
     assert np.array_equal(spi_da["time"].values, time)
-    assert spi_da.attrs["long_name"] == "Standardized Precipitation Index"
-    assert spi_da.attrs["units"] == "unitless"
+    assert spi_da.attrs["standard_name"] == "spi"
+    assert "Standardized Precipitation Index" in spi_da.attrs["long_name"]
+    assert spi_da.attrs["units"] == "1"
     np.testing.assert_allclose(spi_da.values, expected, equal_nan=True)
 
 
@@ -130,18 +131,181 @@ def test_spi_accessor_pearson_distribution():
     np.testing.assert_allclose(spi_da.values, expected, equal_nan=True)
 
 
-def test_spi_accessor_2d_raises_valueerror():
-    """Test that 2-D DataArray raises ValueError."""
-    values = np.random.rand(12, 5)
-    da = xr.DataArray(values, dims=("time", "lat"), name="precip")
+def test_spi_accessor_2d_works():
+    """Test that 2-D DataArray (time, lat) works correctly."""
+    np.random.seed(42)
+    # 24 months (2 years), 3 lat points
+    values_2d = np.abs(np.random.randn(24, 3) * 10 + 20)
+    time = np.arange(24)
+    lat = np.array([30.0, 35.0, 40.0])
 
-    with pytest.raises(ValueError, match="1-D DataArray inputs only"):
-        da.indices.spi(
+    da = xr.DataArray(
+        values_2d,
+        dims=("time", "lat"),
+        coords={"time": time, "lat": lat},
+        name="precip",
+    )
+
+    spi_da = da.indices.spi(
+        scale=3,
+        distribution="gamma",
+        data_start_year=2000,
+        calibration_year_initial=2000,
+        calibration_year_final=2001,
+        periodicity=compute.Periodicity.monthly,
+    )
+
+    # verify output shape matches input
+    assert spi_da.shape == da.shape
+    assert spi_da.dims == ("time", "lat")
+
+    # verify coordinates are preserved
+    np.testing.assert_array_equal(spi_da["time"].values, time)
+    np.testing.assert_array_equal(spi_da["lat"].values, lat)
+
+    # verify CF-compliant attributes
+    assert spi_da.attrs["standard_name"] == "spi"
+    assert "Standardized Precipitation Index" in spi_da.attrs["long_name"]
+    assert spi_da.attrs["units"] == "1"
+
+    # verify values match per-pixel computation
+    for i, _lat_val in enumerate(lat):
+        expected = indices.spi(
+            values_2d[:, i],
+            3,
+            indices.Distribution.gamma,
+            2000,
+            2000,
+            2001,
+            compute.Periodicity.monthly,
+        )
+        np.testing.assert_allclose(spi_da.isel(lat=i).values, expected, equal_nan=True, rtol=1e-10)
+
+
+def test_spi_accessor_3d_works():
+    """Test that 3-D DataArray (time, lat, lon) works correctly."""
+    np.random.seed(123)
+    # 24 months, 2 lat, 2 lon
+    values_3d = np.abs(np.random.randn(24, 2, 2) * 10 + 20)
+    time = np.arange(24)
+    lat = np.array([30.0, 35.0])
+    lon = np.array([-100.0, -95.0])
+
+    da = xr.DataArray(
+        values_3d,
+        dims=("time", "lat", "lon"),
+        coords={"time": time, "lat": lat, "lon": lon},
+        name="precip",
+    )
+
+    spi_da = da.indices.spi(
+        scale=3,
+        distribution="gamma",
+        data_start_year=2000,
+        calibration_year_initial=2000,
+        calibration_year_final=2001,
+        periodicity=compute.Periodicity.monthly,
+    )
+
+    # verify output shape matches input
+    assert spi_da.shape == da.shape
+    assert spi_da.dims == ("time", "lat", "lon")
+
+    # verify coordinates are preserved
+    np.testing.assert_array_equal(spi_da["time"].values, time)
+    np.testing.assert_array_equal(spi_da["lat"].values, lat)
+    np.testing.assert_array_equal(spi_da["lon"].values, lon)
+
+    # verify values match per-pixel computation
+    for i in range(2):
+        for j in range(2):
+            expected = indices.spi(
+                values_3d[:, i, j],
+                3,
+                indices.Distribution.gamma,
+                2000,
+                2000,
+                2001,
+                compute.Periodicity.monthly,
+            )
+            np.testing.assert_allclose(spi_da.isel(lat=i, lon=j).values, expected, equal_nan=True, rtol=1e-10)
+
+
+def test_spi_accessor_3d_with_dask():
+    """Test that 3-D DataArray with Dask chunking works correctly."""
+    np.random.seed(456)
+    # 24 months, 4 lat, 4 lon
+    values_3d = np.abs(np.random.randn(24, 4, 4) * 10 + 20)
+    time = np.arange(24)
+    lat = np.linspace(30.0, 45.0, 4)
+    lon = np.linspace(-100.0, -85.0, 4)
+
+    da = xr.DataArray(
+        values_3d,
+        dims=("time", "lat", "lon"),
+        coords={"time": time, "lat": lat, "lon": lon},
+        name="precip",
+    )
+
+    # chunk with time=-1 (required) and spatial chunks of 2
+    da_chunked = da.chunk({"time": -1, "lat": 2, "lon": 2})
+
+    spi_da = da_chunked.indices.spi(
+        scale=3,
+        distribution="gamma",
+        data_start_year=2000,
+        calibration_year_initial=2000,
+        calibration_year_final=2001,
+        periodicity=compute.Periodicity.monthly,
+    )
+
+    # compute the lazy result
+    spi_computed = spi_da.compute()
+
+    # verify output shape matches input
+    assert spi_computed.shape == da.shape
+    assert spi_computed.dims == ("time", "lat", "lon")
+
+    # verify coordinates are preserved
+    np.testing.assert_array_equal(spi_computed["time"].values, time)
+    np.testing.assert_array_equal(spi_computed["lat"].values, lat)
+    np.testing.assert_array_equal(spi_computed["lon"].values, lon)
+
+    # spot check a few pixels
+    for i, j in [(0, 0), (1, 2), (3, 3)]:
+        expected = indices.spi(
+            values_3d[:, i, j],
+            3,
+            indices.Distribution.gamma,
+            2000,
+            2000,
+            2001,
+            compute.Periodicity.monthly,
+        )
+        np.testing.assert_allclose(spi_computed.isel(lat=i, lon=j).values, expected, equal_nan=True, rtol=1e-10)
+
+
+def test_spi_accessor_multidim_multiple_time_chunks_raises():
+    """Test that multi-dimensional arrays with multiple time chunks raise ValueError."""
+    np.random.seed(789)
+    values_2d = np.abs(np.random.randn(24, 3) * 10 + 20)
+    da = xr.DataArray(
+        values_2d,
+        dims=("time", "lat"),
+        coords={"time": np.arange(24), "lat": [30.0, 35.0, 40.0]},
+        name="precip",
+    )
+
+    # chunk time into multiple pieces (not allowed)
+    da_chunked = da.chunk({"time": 12, "lat": 1})
+
+    with pytest.raises(ValueError, match="multiple chunks"):
+        da_chunked.indices.spi(
             scale=3,
             distribution="gamma",
             data_start_year=2000,
             calibration_year_initial=2000,
-            calibration_year_final=2000,
+            calibration_year_final=2001,
             periodicity=compute.Periodicity.monthly,
         )
 
