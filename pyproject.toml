@@ -27,6 +27,7 @@ dependencies = [
     "numpy>=1.26.4",
     "numba>=0.60.0",
     "scipy>=1.15.3",
+    "structlog>=25.4.0",
     # remaining dependencies are required for the CLI (console) scripts
     "cftime>=1.6.4.post1",
     "dask>=2025.7.0",

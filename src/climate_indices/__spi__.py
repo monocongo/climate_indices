@@ -1,15 +1,15 @@
 """Command-line interface for performing SPI calculations"""
 
 import argparse
-import logging
 import os
 from datetime import datetime
 from enum import Enum
+from typing import Any
 
 import numpy as np
 import xarray as xr
 
-from climate_indices import compute, indices, utils
+from climate_indices import compute, indices, logging_config, utils
 
 # variable names for the distribution fitting parameters
 _FITTING_VARIABLES = ("alpha", "beta", "skew", "loc", "scale", "prob_zero")
@@ -18,7 +18,7 @@ _FITTING_VARIABLES = ("alpha", "beta", "skew", "loc", "scale", "prob_zero")
 _GITHUB_URL = "https://github.com/monocongo/climate_indices"
 
 # Retrieve logger and set desired logging level
-_logger = utils.get_logger(__name__, logging.INFO)
+_logger = logging_config.get_logger(__name__)
 
 
 class InputType(Enum):
@@ -32,7 +32,7 @@ class InputType(Enum):
     timeseries = 3
 
 
-def _validate_args(args):
+def _validate_args(args: argparse.Namespace) -> InputType:
     """
     Validate the processing settings to confirm that proper argument
     combinations have been provided.
@@ -170,7 +170,7 @@ def _validate_args(args):
     return input_type
 
 
-def _build_arguments(keyword_args):
+def _build_arguments(keyword_args: dict[str, Any]) -> dict[str, Any]:
     """
     Builds a dictionary of function arguments appropriate to the index to be computed.
 
@@ -195,8 +195,8 @@ def _get_variable_attributes(
     distribution: indices.Distribution,
     scale: int,
     periodicity: compute.Periodicity,
-):
-    attrs = {
+) -> dict[str, float | str]:
+    attrs: dict[str, float | str] = {
         "long_name": "Standardized Precipitation Index ("
         f"{distribution.value.capitalize()}), "
         f"{scale}-{periodicity.unit()}",
@@ -304,7 +304,7 @@ def build_dataset_fitting_divisions(
     return ds_fitting_params
 
 
-def _compute_write_index(keyword_arguments):
+def _compute_write_index(keyword_arguments: dict[str, Any]) -> None:
     """
     Computes a climate index and writes the result into a corresponding NetCDF.
 
@@ -325,7 +325,7 @@ def _compute_write_index(keyword_arguments):
     # chunk time as single chunk (required for rolling window sums) but preserve
     # spatial chunking for memory efficiency on large grids
     if input_type == InputType.grid:
-        chunks = {"time": -1, "lat": "auto", "lon": "auto"}
+        chunks: dict[str, int | str] = {"time": -1, "lat": "auto", "lon": "auto"}
     elif input_type == InputType.divisions:
         chunks = {"time": -1, "division": "auto"}
     else:
@@ -341,7 +341,7 @@ def _compute_write_index(keyword_arguments):
         input_var_names.append("lat")
     for var in ds_precip.data_vars:
         if var not in input_var_names:
-            ds_precip = ds_precip.drop_vars(var)
+            ds_precip = ds_precip.drop_vars(names=[str(var)])
 
     if "var_name_precip" in keyword_arguments:
         precip_var_name = keyword_arguments["var_name_precip"]
@@ -729,7 +729,7 @@ def build_dataset_spi_divisions(
     return ds_spi
 
 
-def _prepare_file(netcdf_file, var_name):
+def _prepare_file(netcdf_file: str, var_name: str) -> str:
     """
     Determine if the NetCDF file has the expected lat, lon, and time dimensions,
     and if not correctly ordered then create a temporary NetCDF with dimensions
@@ -807,12 +807,19 @@ def main():  # type: () -> None
     # # ========== END OF PROFILING-SPECIFIC CODE ================================
 
     try:
-        # log some timing info, used later for elapsed time
-        start_datetime = datetime.now()
-        _logger.info("Start time:    %s", start_datetime)
-
         # parse the command line arguments
         parser = argparse.ArgumentParser()
+        parser.add_argument(
+            "--log-format",
+            help="Logging output format",
+            choices=["console", "json"],
+            default="console",
+        )
+        parser.add_argument(
+            "--log-level",
+            help="Logging verbosity",
+            default="INFO",
+        )
         parser.add_argument(
             "--periodicity",
             help="Process input as either monthly or daily values",
@@ -878,6 +885,12 @@ def main():  # type: () -> None
             help="overwrite existing files if they exist",
         )
         arguments = parser.parse_args()
+
+        logging_config.configure_logging(arguments.log_format, arguments.log_level)
+
+        # log some timing info, used later for elapsed time
+        start_datetime = datetime.now()
+        _logger.info("Start time:    %s", start_datetime)
 
         # validate the arguments and determine the input type
         input_type = _validate_args(arguments)

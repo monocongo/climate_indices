@@ -367,6 +367,30 @@ data and the calibration period used will be Jan. 1951 through Dec. 2010. The ou
 `<out_dir>/nclimgrid_lowres_pmdi.nc`, `<out_dir>/nclimgrid_lowres_scpdsi.nc`, and `<out_dir>/nclimgrid_lowres_zindex.nc`.
 Parallelization will occur utilizing all CPUs.
 
+Palmers options
+"""""""""""""""
+The Palmers CLI supports PET source selection and missing-data handling:
+
+- ``--pet_source`` selects ``input``, ``thornthwaite`` (default for NOAA parity), ``fortran``, or ``hargreaves``.
+- ``--missing_policy`` selects ``climatology`` (default; computed over the calibration window unless insufficient
+  data, then full record) or ``strict``.
+- ``--leap_year_rule`` selects ``noaa`` (default) or ``gregorian``.
+- ``--wctop`` overrides the surface-layer AWC (inches).
+- ``--fortran_b``, ``--fortran_h``, ``--fortran_tla`` configure Fortran PET.
+- ``--hargreaves_tmin_var``, ``--hargreaves_tmax_var``, ``--hargreaves_tmean_var`` provide daily temperature
+  variable names (same spatial dims as precipitation; daily time axis; nClimGrid daily inputs are the initial
+  CONUS target).
+- ``--const_precip_var``, ``--const_temp_var``, ``--const_pet_var`` override climatology constant variable
+  names (defaults: ``precip_climo``, ``temp_climo``, ``pet_climo``).
+
+Example NOAA-parity configuration:
+
+``$ process_climate_indices --index palmers --periodicity monthly --netcdf_precip /data/nclimgrid_lowres_prcp.nc
+--var_name_precip prcp --netcdf_temp /data/nclimgrid_lowres_tavg.nc --var_name_temp tavg --netcdf_awc
+/data/nclimgrid_lowres_soil.nc --var_name_awc awc --calibration_start_year 1951 --calibration_end_year 2010
+--output_file_base <out_dir>/nclimgrid_lowres --pet_source thornthwaite --missing_policy climatology
+--leap_year_rule noaa --multiprocessing all``
+
 Pre-compute SPI distribution fitting variables
 """""""""""""""""""""""""""""""""""""""""""""""
 In order to pre-compute fitting parameters for later use as inputs to subsequent
