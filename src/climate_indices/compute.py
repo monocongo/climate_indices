@@ -3,11 +3,15 @@ Common classes and functions used to compute the various climate indices.
 """
 
 import logging
+from collections.abc import Callable
 from enum import Enum
+from typing import NoReturn, ParamSpec, TypeAlias, TypeVar, cast
 
+import numba
 import numpy as np
 import scipy.stats
 import scipy.version
+from numpy.typing import NDArray
 from packaging.version import Version
 
 from climate_indices import lmoments, utils
@@ -25,11 +29,21 @@ __all__ = [
     "DistributionFallbackStrategy",
 ]
 
+FloatArray: TypeAlias = NDArray[np.floating]
+BoolArray: TypeAlias = NDArray[np.bool_]
+P = ParamSpec("P")
+R = TypeVar("R")
+
 # depending on the version of scipy we may need to use a workaround due to a bug in some versions of scipy
 _do_pearson3_workaround = Version(scipy.version.version) < Version("1.6.0")
 
 # Retrieve logger and set desired logging level
-_logger = utils.get_logger(__name__, logging.WARN)
+_logger: logging.Logger = cast(logging.Logger, utils.get_logger(__name__, logging.WARN))
+
+
+def _numba_jit(*args: object, **kwargs: object) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    return cast(Callable[[Callable[P, R]], Callable[P, R]], numba.jit(*args, **kwargs))
+
 
 # Configuration constants for distribution fitting and validation
 # Minimum number of non-zero values required for Pearson Type III L-moments computation
@@ -50,7 +64,7 @@ class DistributionFittingError(Exception):
 class InsufficientDataError(DistributionFittingError):
     """Raised when there is insufficient data for distribution fitting."""
 
-    def __init__(self, message, non_zero_count=None, required_count=None):
+    def __init__(self, message: str, non_zero_count: int | None = None, required_count: int | None = None) -> None:
         super().__init__(message)
         self.non_zero_count = non_zero_count
         self.required_count = required_count
@@ -59,7 +73,7 @@ class InsufficientDataError(DistributionFittingError):
 class PearsonFittingError(DistributionFittingError):
     """Raised when Pearson Type III distribution fitting fails."""
 
-    def __init__(self, message, underlying_error=None):
+    def __init__(self, message: str, underlying_error: Exception | None = None) -> None:
         super().__init__(message)
         self.underlying_error = underlying_error
 
@@ -67,23 +81,23 @@ class PearsonFittingError(DistributionFittingError):
 class DistributionFallbackStrategy:
     """Strategy class for managing Pearson→Gamma distribution fallback logic."""
 
-    def __init__(self, max_nan_percentage=0.5, high_failure_threshold=0.8):
+    def __init__(self, max_nan_percentage: float = 0.5, high_failure_threshold: float = 0.8) -> None:
         """
         Initialize the fallback strategy.
 
         :param max_nan_percentage: Maximum percentage of NaN values before triggering fallback
         :param high_failure_threshold: Failure rate threshold for issuing warnings
         """
-        self.max_nan_percentage = max_nan_percentage
-        self.high_failure_threshold = high_failure_threshold
-        self._logger = utils.get_logger(self.__class__.__name__, logging.WARN)
+        self.max_nan_percentage: float = max_nan_percentage
+        self.high_failure_threshold: float = high_failure_threshold
+        self._logger: logging.Logger = cast(logging.Logger, utils.get_logger(self.__class__.__name__, logging.WARN))
 
-    def should_fallback_from_excessive_nans(self, values: np.ndarray) -> bool:
+    def should_fallback_from_excessive_nans(self, values: FloatArray) -> bool:
         """Check if fallback is needed due to excessive NaN values."""
         if values.size == 0:
             return True
-        nan_percentage = np.count_nonzero(np.isnan(values)) / values.size
-        return nan_percentage > self.max_nan_percentage
+        nan_percentage = float(np.count_nonzero(np.isnan(values))) / values.size
+        return bool(nan_percentage > self.max_nan_percentage)
 
     def should_warn_high_failure_rate(self, failure_count: int, total_count: int) -> bool:
         """Check if high failure rate warning should be issued."""
@@ -92,7 +106,7 @@ class DistributionFallbackStrategy:
         failure_rate = failure_count / total_count
         return failure_rate > self.high_failure_threshold
 
-    def log_fallback_warning(self, reason: str, context: str = ""):
+    def log_fallback_warning(self, reason: str, context: str = "") -> None:
         """Log a fallback warning with consistent formatting."""
         message = f"Pearson Type III distribution fitting failed ({reason}). "
         message += "Falling back to Gamma distribution for robust computation."
@@ -100,7 +114,7 @@ class DistributionFallbackStrategy:
             message += f" Context: {context}"
         self._logger.warning(message)
 
-    def log_high_failure_rate(self, failure_count: int, total_count: int, context: str = ""):
+    def log_high_failure_rate(self, failure_count: int, total_count: int, context: str = "") -> None:
         """Log high failure rate warning."""
         failure_rate = failure_count / total_count if total_count > 0 else 0
         message = (
@@ -115,7 +129,7 @@ class DistributionFallbackStrategy:
 
 
 # Global fallback strategy instance
-_default_fallback_strategy = DistributionFallbackStrategy()
+_default_fallback_strategy: DistributionFallbackStrategy = DistributionFallbackStrategy()
 
 
 class Periodicity(Enum):
@@ -135,17 +149,17 @@ class Periodicity(Enum):
     monthly = 12
     daily = 366
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name
 
     @staticmethod
-    def from_string(s):
+    def from_string(s: str) -> "Periodicity":
         try:
             return Periodicity[s]
-        except KeyError:
-            raise ValueError(f"No periodicity enumeration corresponding to {s}")
+        except KeyError as err:
+            raise ValueError(f"No periodicity enumeration corresponding to {s}") from err
 
-    def unit(self):
+    def unit(self) -> str:
         if self.name == "monthly":
             unit = "month"
         elif self.name == "daily":
@@ -157,9 +171,9 @@ class Periodicity(Enum):
 
 
 def _validate_array(
-    values: np.ndarray,
-    periodicity: Periodicity,
-) -> np.ndarray:
+    values: FloatArray,
+    periodicity: Periodicity | None,
+) -> FloatArray:
     """
     Basic data cleaning and validation.
 
@@ -179,15 +193,15 @@ def _validate_array(
         elif periodicity is Periodicity.monthly:
             # we've been passed a 1-D array with shape (months),
             # reshape it to 2-D with shape (years, 12)
-            values = utils.reshape_to_2d(values, 12)
+            values = cast(FloatArray, utils.reshape_to_2d(values, 12))
 
         elif periodicity is Periodicity.daily:
             # we've been passed a 1-D array with shape (days),
             # reshape it to 2-D with shape (years, 366)
-            values = utils.reshape_to_2d(values, 366)
+            values = cast(FloatArray, utils.reshape_to_2d(values, 366))
 
         else:
-            message = f"Unsupported periodicity argument: '{periodicity}'"
+            message = f"Unsupported periodicity argument: '{periodicity}'"  # type: ignore[unreachable]
             _logger.error(message)
             raise ValueError(message)
 
@@ -203,9 +217,9 @@ def _validate_array(
 
 
 def sum_to_scale(
-    values: np.ndarray,
+    values: FloatArray,
     scale: int,
-) -> np.ndarray:
+) -> FloatArray:
     """
     Compute a sliding sums array using 1-D convolution. The initial
     (scale - 1) elements of the result array will be padded with np.nan values.
@@ -244,7 +258,7 @@ def sum_to_scale(
     sliding_sums = np.convolve(values, np.ones(scale), mode="valid")
 
     # pad the first (n - 1) elements of the array with NaN values
-    return np.hstack(([np.nan] * (scale - 1), sliding_sums))
+    return cast(FloatArray, np.hstack(([np.nan] * (scale - 1), sliding_sums)))
 
     # BELOW FOR dask/xarray DataArray integration
     # # pad the values array with (scale - 1) NaNs
@@ -255,15 +269,15 @@ def sum_to_scale(
     # return convolve(values, np.ones(scale), mode='reflect', cval=0.0, origin=0)[start: end]
 
 
-def _log_and_raise_shape_error(shape: tuple[int]):
+def _log_and_raise_shape_error(shape: tuple[int, ...]) -> NoReturn:
     message = f"Invalid shape of input data array: {shape}"
     _logger.error(message)
     raise ValueError(message)
 
 
 def _probability_of_zero(
-    values: np.ndarray,
-) -> np.ndarray:
+    values: FloatArray,
+) -> FloatArray:
     """
     This function computes the probability of zero and Pearson Type III
     distribution parameters corresponding to an array of values.
@@ -314,28 +328,30 @@ def _probability_of_zero(
 
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-def reshape_values(values, periodicity):
+def reshape_values(values: FloatArray, periodicity: Periodicity) -> FloatArray:
     if periodicity is Periodicity.monthly:
-        return utils.reshape_to_2d(values, 12)
+        return cast(FloatArray, utils.reshape_to_2d(values, 12))
     elif periodicity is Periodicity.daily:
-        return utils.reshape_to_2d(values, 366)
+        return cast(FloatArray, utils.reshape_to_2d(values, 366))
     else:
         raise ValueError(f"Invalid periodicity argument: {periodicity}")
 
 
-def validate_values_shape(values):
+def validate_values_shape(values: FloatArray) -> int:
     if len(values.shape) != 2 or values.shape[1] not in (12, 366):
         _log_and_raise_shape_error(shape=values.shape)
-    return values.shape[1]
+    return int(values.shape[1])
 
 
-def adjust_calibration_years(data_start_year, data_end_year, calibration_start_year, calibration_end_year):
+def adjust_calibration_years(
+    data_start_year: int, data_end_year: int, calibration_start_year: int, calibration_end_year: int
+) -> tuple[int, int]:
     if (calibration_start_year < data_start_year) or (calibration_end_year > data_end_year):
         return data_start_year, data_end_year
     return calibration_start_year, calibration_end_year
 
 
-def calculate_time_step_params(time_step_values):
+def calculate_time_step_params(time_step_values: FloatArray) -> tuple[float, float, float, float]:
     """
     Calculate Pearson Type III parameters for a time step's values.
 
@@ -344,7 +360,7 @@ def calculate_time_step_params(time_step_values):
     :raises InsufficientDataError: When there are too few non-zero values
     :raises PearsonFittingError: When L-moments computation fails
     """
-    number_of_zeros, number_of_non_missing = utils.count_zeros_and_non_missings(time_step_values)
+    number_of_zeros, number_of_non_missing = cast(tuple[int, int], utils.count_zeros_and_non_missings(time_step_values))
     non_zero_count = number_of_non_missing - number_of_zeros
 
     if non_zero_count < MIN_NON_ZERO_VALUES_FOR_PEARSON:
@@ -361,20 +377,20 @@ def calculate_time_step_params(time_step_values):
 
     # At this point we know non_zero_count >= MIN_NON_ZERO_VALUES_FOR_PEARSON
     try:
-        params = lmoments.fit(time_step_values)
+        params = cast(dict[str, float], lmoments.fit(time_step_values))
         return probability_of_zero, params["loc"], params["scale"], params["skew"]
     except ValueError as e:
         message = f"L-moments fitting failed: {e}. Consider using Gamma distribution for this dataset."
-        raise PearsonFittingError(message, underlying_error=e)
+        raise PearsonFittingError(message, underlying_error=e) from e
 
 
 def pearson_parameters(
-    values: np.ndarray,
+    values: FloatArray,
     data_start_year: int,
     calibration_start_year: int,
     calibration_end_year: int,
     periodicity: Periodicity,
-) -> (np.ndarray, np.ndarray, np.ndarray, np.ndarray):
+) -> tuple[FloatArray, FloatArray, FloatArray, FloatArray]:
     """
     This function computes the probability of zero and Pearson Type III
     distribution parameters corresponding to an array of values.
@@ -565,11 +581,12 @@ def pearson_parameters(
 #     return probabilities_of_zero, locs, scales, skews
 
 
+@_numba_jit(nopython=True, cache=True)
 def _minimum_possible(
-    skew: np.ndarray,
-    loc: np.ndarray,
-    scale: np.ndarray,
-) -> np.ndarray:
+    skew: FloatArray,
+    loc: FloatArray,
+    scale: FloatArray,
+) -> FloatArray:
     """
     Compute the minimum possible value that can be fitted to a distribution
     described by a set of skew, loc, and scale parameters.
@@ -587,19 +604,21 @@ def _minimum_possible(
     return loc - ((alpha * scale * skew) / 2.0)
 
 
+@_numba_jit(nopython=True, cache=True)
 def _pearson_fit(
-    values: np.ndarray,
-    probabilities_of_zero: np.ndarray,
-    skew: np.ndarray,
-    loc: np.ndarray,
-    scale: np.ndarray,
-) -> np.ndarray:
+    values: FloatArray,
+    cdf_values: FloatArray,
+    probabilities_of_zero: FloatArray,
+    skew: FloatArray,
+    loc: FloatArray,
+    scale: FloatArray,
+) -> FloatArray:
     """
-    Perform fitting of an array of values to a Pearson Type III distribution
-    as described by the Pearson Type III parameters and probability of zero arguments.
+    Compute Pearson Type III probability adjustments before normal transform.
 
     :param values: an array of values to fit to the Pearson Type III
         distribution described by the skew, loc, and scale
+    :param cdf_values: Pearson Type III CDF values computed from the input values
     :param probabilities_of_zero: probability that the value is zero
     :param skew: first Pearson Type III parameter, the skew of the distribution
     :param loc: second Pearson Type III parameter, the loc of the distribution
@@ -607,68 +626,57 @@ def _pearson_fit(
     """
 
     # only fit to the distribution if the values array is valid/not missing
-    if not np.all(np.isnan(values)):
-        # This is a misnomer of sorts. For positively skewed Pearson Type III
-        # distributions, there is a hard lower limit. For negatively skewed
-        # distributions, the limit is on the upper end.
-        minimums_possible = _minimum_possible(skew, loc, scale)
-        minimums_mask = (values <= minimums_possible) & (skew >= 0)
-        maximums_mask = (values >= minimums_possible) & (skew < 0)
+    if np.all(np.isnan(values)):
+        return values
 
-        # Not sure what the logic is here given that the inputs aren't
-        # standardized values and Pearson III distributions could handle
-        # these sorts of values just fine given the proper parameters.
-        zero_mask = np.logical_and((values < 0.0005), (probabilities_of_zero > 0.0))
-        trace_mask = np.logical_and((values < 0.0005), (probabilities_of_zero <= 0.0))
+    # This is a misnomer of sorts. For positively skewed Pearson Type III
+    # distributions, there is a hard lower limit. For negatively skewed
+    # distributions, the limit is on the upper end.
+    minimums_possible = _minimum_possible(skew, loc, scale)
+    minimums_mask = (values <= minimums_possible) & (skew >= 0)
+    maximums_mask = (values >= minimums_possible) & (skew < 0)
 
-        # get the Pearson Type III cumulative density function value
-        values = scipy.stats.pearson3.cdf(values, skew, loc, scale)
+    # Not sure what the logic is here given that the inputs aren't
+    # standardized values and Pearson III distributions could handle
+    # these sorts of values just fine given the proper parameters.
+    zero_mask = np.logical_and((values < 0.0005), (probabilities_of_zero > 0.0))
+    trace_mask = np.logical_and((values < 0.0005), (probabilities_of_zero <= 0.0))
 
-        # turn zero, trace, or minimum values either into either zero
-        # or minimum value based on the probability of zero
-        values[zero_mask] = 0.0
-        values[trace_mask] = 0.0005
+    adjusted_values = cdf_values.copy()
 
-        # The original values were found to be outside the
-        # range of the fitted distribution, so we will set
-        # the probabilities to something just within the range.
-        values[minimums_mask] = 0.0005
-        values[maximums_mask] = 0.9995
+    # turn zero, trace, or minimum values either into either zero
+    # or minimum value based on the probability of zero
+    adjusted_values = np.where(zero_mask, 0.0, adjusted_values)
+    adjusted_values = np.where(trace_mask, 0.0005, adjusted_values)
 
-        if not np.all(np.isnan(values)):
-            # calculate the probability value, clipped between 0 and 1
-            probabilities = np.clip(
-                (probabilities_of_zero + ((1.0 - probabilities_of_zero) * values)),
-                0.0,
-                1.0,
-            )
+    # The original values were found to be outside the
+    # range of the fitted distribution, so we will set
+    # the probabilities to something just within the range.
+    adjusted_values = np.where(minimums_mask, 0.0005, adjusted_values)
+    adjusted_values = np.where(maximums_mask, 0.9995, adjusted_values)
 
-            # the values we'll return are the values at which the probabilities
-            # of a normal distribution are less than or equal to the computed
-            # probabilities, as determined by the normal distribution's
-            # quantile (or inverse cumulative distribution) function
-            fitted_values = scipy.stats.norm.ppf(probabilities)
+    if np.all(np.isnan(adjusted_values)):
+        return adjusted_values
 
-        else:
-            fitted_values = values
-
-    else:
-        fitted_values = values
-
-    return fitted_values
+    # calculate the probability value, clipped between 0 and 1
+    return np.clip(
+        (probabilities_of_zero + ((1.0 - probabilities_of_zero) * adjusted_values)),
+        0.0,
+        1.0,
+    )
 
 
 def transform_fitted_pearson(
-    values: np.ndarray,
+    values: FloatArray,
     data_start_year: int,
     calibration_start_year: int,
     calibration_end_year: int,
     periodicity: Periodicity,
-    probabilities_of_zero: np.ndarray = None,
-    locs: np.ndarray = None,
-    scales: np.ndarray = None,
-    skews: np.ndarray = None,
-) -> np.ndarray:
+    probabilities_of_zero: FloatArray | None = None,
+    locs: FloatArray | None = None,
+    scales: FloatArray | None = None,
+    skews: FloatArray | None = None,
+) -> FloatArray:
     """
     Fit values to a Pearson Type III distribution and transform the values
     to corresponding normalized sigmas.
@@ -712,7 +720,7 @@ def transform_fitted_pearson(
 
     # if we're passed all missing values then we can't compute anything,
     # and we'll return the same array of missing values
-    if (np.ma.is_masked(values) and values.mask.all()) or np.all(np.isnan(values)):
+    if (np.ma.is_masked(values) and np.ma.getmaskarray(values).all()) or np.all(np.isnan(values)):
         return values
 
     # validate (and possibly reshape) the input array
@@ -738,13 +746,19 @@ def transform_fitted_pearson(
             periodicity,
         )
 
-    # fit each value to the Pearson Type III distribution
-    values = _pearson_fit(values, probabilities_of_zero, skews, locs, scales)
+    assert probabilities_of_zero is not None
+    assert locs is not None
+    assert scales is not None
+    assert skews is not None
+
+    cdf_values = cast(FloatArray, scipy.stats.pearson3.cdf(values, skews, locs, scales))
+    probabilities = _pearson_fit(values, cdf_values, probabilities_of_zero, skews, locs, scales)
+    values = cast(FloatArray, scipy.stats.norm.ppf(probabilities))
 
     return values
 
 
-def _replace_zeros_with_nan(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _replace_zeros_with_nan(values: FloatArray) -> tuple[BoolArray, FloatArray]:
     """
     Create a copy of values with zeros replaced by NaN.
 
@@ -764,12 +778,12 @@ def _replace_zeros_with_nan(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]
 
 
 def gamma_parameters(
-    values: np.ndarray,
+    values: FloatArray,
     data_start_year: int,
     calibration_start_year: int,
     calibration_end_year: int,
     periodicity: Periodicity,
-) -> (np.ndarray, np.ndarray):
+) -> tuple[FloatArray, FloatArray]:
     """
     Computes the gamma distribution parameters alpha and beta.
 
@@ -795,7 +809,7 @@ def gamma_parameters(
 
     # if we're passed all missing values then we can't compute anything,
     # then we return an array of missing values
-    if (np.ma.is_masked(values) and values.mask.all()) or np.all(np.isnan(values)):
+    if (np.ma.is_masked(values) and np.ma.getmaskarray(values).all()) or np.all(np.isnan(values)):
         if periodicity is Periodicity.monthly:
             shape = (12,)
         elif periodicity is Periodicity.daily:
@@ -844,10 +858,10 @@ def gamma_parameters(
 
 
 def scale_values(
-    values: np.ndarray,
+    values: FloatArray,
     scale: int,
     periodicity: Periodicity,
-):
+) -> FloatArray:
     # we expect to operate upon a 1-D array, so if we've been passed a 2-D array
     # then we flatten it, otherwise raise an error
     shape = values.shape
@@ -859,7 +873,7 @@ def scale_values(
 
     # if we're passed all missing values then we can't compute
     # anything, so we return the same array of missing values
-    if (np.ma.is_masked(values) and values.mask.all()) or np.all(np.isnan(values)):
+    if (np.ma.is_masked(values) and np.ma.getmaskarray(values).all()) or np.all(np.isnan(values)):
         return values
 
     # clip any negative values to zero
@@ -874,26 +888,26 @@ def scale_values(
     # reshape precipitation values to (years, 12) for monthly,
     # or to (years, 366) for daily
     if periodicity is Periodicity.monthly:
-        scaled_values = utils.reshape_to_2d(scaled_values, 12)
+        scaled_values = cast(FloatArray, utils.reshape_to_2d(scaled_values, 12))
 
     elif periodicity is Periodicity.daily:
-        scaled_values = utils.reshape_to_2d(scaled_values, 366)
+        scaled_values = cast(FloatArray, utils.reshape_to_2d(scaled_values, 366))
 
     else:
-        raise ValueError("Invalid periodicity argument: %s" % periodicity)
+        raise ValueError(f"Invalid periodicity argument: {periodicity}")
 
     return scaled_values
 
 
 def transform_fitted_gamma(
-    values: np.ndarray,
+    values: FloatArray,
     data_start_year: int,
     calibration_start_year: int,
     calibration_end_year: int,
     periodicity: Periodicity,
-    alphas: np.ndarray = None,
-    betas: np.ndarray = None,
-) -> np.ndarray:
+    alphas: FloatArray | None = None,
+    betas: FloatArray | None = None,
+) -> FloatArray:
     """
     Fit values to a gamma distribution and transform the values to corresponding
     normalized sigmas.
@@ -922,7 +936,7 @@ def transform_fitted_gamma(
 
     # if we're passed all missing values then we can't compute anything,
     # then we return the same array of missing values
-    if (np.ma.is_masked(values) and values.mask.all()) or np.all(np.isnan(values)):
+    if (np.ma.is_masked(values) and np.ma.getmaskarray(values).all()) or np.all(np.isnan(values)):
         return values
 
     # validate (and possibly reshape) the input array
@@ -960,7 +974,7 @@ def transform_fitted_gamma(
         )
 
     # find the gamma probability values using the gamma CDF
-    gamma_probabilities = scipy.stats.gamma.cdf(values_for_fitting, a=alphas, scale=betas)
+    gamma_probabilities = cast(FloatArray, scipy.stats.gamma.cdf(values_for_fitting, a=alphas, scale=betas))
 
     # where the input values were zero the CDF will have returned NaN, but since
     # we're treating zeros as a separate probability mass we should treat the
@@ -975,4 +989,4 @@ def transform_fitted_gamma(
     # a normal distribution are less than or equal to the computed probabilities,
     # as determined by the normal distribution's quantile (or inverse
     # cumulative distribution) function
-    return scipy.stats.norm.ppf(probabilities)
+    return cast(FloatArray, scipy.stats.norm.ppf(probabilities))

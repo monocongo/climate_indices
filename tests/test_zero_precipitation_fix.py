@@ -212,9 +212,6 @@ class TestZeroPrecipitationFix:
                 periodicity=compute.Periodicity.monthly,
             )
 
-            # Check log output for high failure rate warning
-            log_output = log_capture.getvalue()
-
             # The test should verify the new architecture works by checking that:
             # 1. Function completes without crashing
             # 2. Returns arrays of the expected size
@@ -229,21 +226,24 @@ class TestZeroPrecipitationFix:
             # Explicitly assert for expected default values due to fitting failures
             # When Pearson fitting fails, default parameters should be returned
             # Use numpy.isclose for safe floating point comparisons
-            
+
             default_loc_count = np.sum(np.isclose(locs, 0.0, atol=1e-8))
-            default_scale_count = np.sum(np.isclose(scales, 0.0, atol=1e-8))  
+            default_scale_count = np.sum(np.isclose(scales, 0.0, atol=1e-8))
             default_skew_count = np.sum(np.isclose(skews, 0.0, atol=1e-8))
-            
+
             # With only 2 non-zero values per month, most months should fail fitting
             # and return default values (effectively zero for loc, scale, skew parameters)
             expected_failures = months_per_year  # All months should fail with only 2 values each
-            
-            assert default_loc_count >= expected_failures * 0.8, \
+
+            assert default_loc_count >= expected_failures * 0.8, (
                 f"Expected most loc parameters to be effectively zero, got {default_loc_count}/{months_per_year}"
-            assert default_scale_count >= expected_failures * 0.8, \
+            )
+            assert default_scale_count >= expected_failures * 0.8, (
                 f"Expected most scale parameters to be effectively zero, got {default_scale_count}/{months_per_year}"
-            assert default_skew_count >= expected_failures * 0.8, \
+            )
+            assert default_skew_count >= expected_failures * 0.8, (
                 f"Expected most skew parameters to be effectively zero, got {default_skew_count}/{months_per_year}"
+            )
 
         finally:
             # Clean up
@@ -531,7 +531,7 @@ class TestZeroPrecipitationFix:
             compute.calculate_time_step_params(insufficient_data)
         except compute.DistributionFittingError as e:
             # Should catch both InsufficientDataError and PearsonFittingError
-            assert isinstance(e, (compute.InsufficientDataError, compute.PearsonFittingError))
+            assert isinstance(e, compute.InsufficientDataError | compute.PearsonFittingError)
             assert str(e)  # Should have meaningful message
 
         # Test with SPI - should handle the exception gracefully via fallback strategy
@@ -544,13 +544,13 @@ class TestZeroPrecipitationFix:
         with io.StringIO() as log_capture:
             log_handler = logging.StreamHandler(log_capture)
             log_handler.setLevel(logging.WARNING)
-            
+
             # Get the root logger to capture warnings from all modules
             root_logger = logging.getLogger()
             original_level = root_logger.level
             root_logger.setLevel(logging.WARNING)
             root_logger.addHandler(log_handler)
-            
+
             try:
                 # This should not crash due to the fallback strategy
                 spi_values = indices.spi(
@@ -562,14 +562,15 @@ class TestZeroPrecipitationFix:
                     calibration_year_final=2009,
                     periodicity=compute.Periodicity.monthly,
                 )
-                
+
                 # Verify fallback behavior occurred
                 log_output = log_capture.getvalue()
-                
+
                 # Should log high failure rate warning for Pearson distribution
-                assert "High failure rate" in log_output, \
+                assert "High failure rate" in log_output, (
                     f"Expected 'High failure rate' warning not found in logs: {log_output}"
-                
+                )
+
             finally:
                 root_logger.removeHandler(log_handler)
                 root_logger.setLevel(original_level)
@@ -577,15 +578,15 @@ class TestZeroPrecipitationFix:
         # Should return valid array (may contain NaN but shouldn't crash)
         assert len(spi_values) == len(sparse_precip)
         assert isinstance(spi_values, np.ndarray)
-        
+
         # Verify that most values are NaN due to sparse data causing fitting failures
         nan_count = np.sum(np.isnan(spi_values))
         total_count = len(spi_values)
         failure_rate = nan_count / total_count
-        
+
         # With such sparse data, we expect some failure rate (the system is working better than expected)
         assert failure_rate > 0.1, f"Expected some failure rate (>10%) due to sparse data, got {failure_rate:.2%}"
-        
+
         # Assert specific fallback values - SPI values should be NaN where fitting failed
         # The first few values should be NaN due to insufficient calibration data
         assert np.isnan(spi_values[0]), "First SPI value should be NaN due to insufficient data"

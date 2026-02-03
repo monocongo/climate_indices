@@ -1,0 +1,19 @@
+[defaults]
+sandbox_mode = "workspace-write"          # allow writes inside repo + extra roots
+network_access = "enabled"                # let uv resolve/install when needed
+approval_policy = "on-request"            # prompts only when escalation is really required
+
+[defaults.env]
+UV_CACHE_DIR = "{workspace}/.uv-cache"    # keep uv cache inside the writable sandbox
+PATH = "{workspace}/.venv/bin:{env:PATH}" # ensure in-repo Python is picked up first
+
+[[defaults.writable_roots]]
+path = "{workspace}/.uv-cache"            # explicit writable directory for the cache
+
+[[defaults.setup]]
+command = ["uv", "sync", "--group", "dev"]  # warm up deps before Codex starts
+with_escalated_permissions = false
+
+# Context files for Codex
+# Read AGENTS.md for canonical instructions
+# Read context/INDEX.md for on-demand context map

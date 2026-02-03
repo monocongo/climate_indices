@@ -4,11 +4,12 @@ import logging
 from enum import Enum
 
 import numpy as np
+import xarray as xr
 
 from climate_indices import compute, eto, utils
 
 # declare the function names that should be included in the public API for this module
-__all__ = ["percentage_of_normal", "pci", "pet", "spei", "spi"]
+__all__ = ["percentage_of_normal", "pci", "pet", "spei", "spi", "spi_xarray"]
 
 
 class Distribution(Enum):
@@ -224,6 +225,135 @@ def spi(
 
     # return the original size array
     return values[0:original_length]
+
+
+def spi_xarray(
+    values: xr.DataArray,
+    scale: int,
+    distribution: Distribution,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: compute.Periodicity,
+    fitting_params: dict | None = None,
+) -> xr.DataArray:
+    """
+    Compute SPI using xarray.apply_ufunc for Dask-parallel execution.
+
+    For correctness, ensure the time dimension is a single chunk (e.g., chunk
+    with ``time=-1``) so rolling window sums do not cross chunk boundaries.
+    """
+    if "time" in values.dims:
+        time_dim = "time"
+    else:
+        time_dim = values.dims[0]
+
+    period_dim = periodicity.unit()
+
+    def _ensure_da(param: xr.DataArray | np.ndarray, name: str) -> xr.DataArray:
+        if isinstance(param, xr.DataArray):
+            return param
+        return xr.DataArray(param, dims=(period_dim,), name=name)
+
+    if fitting_params is None:
+
+        def _spi_1d(values_1d: np.ndarray) -> np.ndarray:
+            return spi(
+                values_1d,
+                scale,
+                distribution,
+                data_start_year,
+                calibration_year_initial,
+                calibration_year_final,
+                periodicity,
+                fitting_params=None,
+            )
+
+        return xr.apply_ufunc(
+            _spi_1d,
+            values,
+            input_core_dims=[[time_dim]],
+            output_core_dims=[[time_dim]],
+            vectorize=True,
+            dask="parallelized",
+            output_dtypes=[float],
+            keep_attrs=True,
+        )
+
+    if distribution is Distribution.gamma:
+        alphas = _ensure_da(fitting_params["alpha"], "alpha")
+        betas = _ensure_da(fitting_params["beta"], "beta")
+
+        def _spi_1d(values_1d: np.ndarray, alphas_1d: np.ndarray, betas_1d: np.ndarray) -> np.ndarray:
+            return spi(
+                values_1d,
+                scale,
+                distribution,
+                data_start_year,
+                calibration_year_initial,
+                calibration_year_final,
+                periodicity,
+                fitting_params={"alpha": alphas_1d, "beta": betas_1d},
+            )
+
+        return xr.apply_ufunc(
+            _spi_1d,
+            values,
+            alphas,
+            betas,
+            input_core_dims=[[time_dim], [period_dim], [period_dim]],
+            output_core_dims=[[time_dim]],
+            vectorize=True,
+            dask="parallelized",
+            output_dtypes=[float],
+            keep_attrs=True,
+        )
+
+    if distribution is Distribution.pearson:
+        prob_zero = _ensure_da(fitting_params["prob_zero"], "prob_zero")
+        locs = _ensure_da(fitting_params["loc"], "loc")
+        scales = _ensure_da(fitting_params["scale"], "scale")
+        skews = _ensure_da(fitting_params["skew"], "skew")
+
+        def _spi_1d(
+            values_1d: np.ndarray,
+            prob_zero_1d: np.ndarray,
+            locs_1d: np.ndarray,
+            scales_1d: np.ndarray,
+            skews_1d: np.ndarray,
+        ) -> np.ndarray:
+            return spi(
+                values_1d,
+                scale,
+                distribution,
+                data_start_year,
+                calibration_year_initial,
+                calibration_year_final,
+                periodicity,
+                fitting_params={
+                    "prob_zero": prob_zero_1d,
+                    "loc": locs_1d,
+                    "scale": scales_1d,
+                    "skew": skews_1d,
+                },
+            )
+
+        return xr.apply_ufunc(
+            _spi_1d,
+            values,
+            prob_zero,
+            locs,
+            scales,
+            skews,
+            input_core_dims=[[time_dim], [period_dim], [period_dim], [period_dim], [period_dim]],
+            output_core_dims=[[time_dim]],
+            vectorize=True,
+            dask="parallelized",
+            output_dtypes=[float],
+            keep_attrs=True,
+        )
+
+    raise ValueError(f"Unsupported distribution argument: '{distribution}'")
 
 
 def spei(

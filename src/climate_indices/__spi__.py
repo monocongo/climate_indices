@@ -1,17 +1,15 @@
 """Command-line interface for performing SPI calculations"""
 
 import argparse
-import copy
-import logging
-import multiprocessing
 import os
 from datetime import datetime
 from enum import Enum
+from typing import Any
 
 import numpy as np
 import xarray as xr
 
-from climate_indices import compute, indices, utils
+from climate_indices import compute, indices, logging_config, utils
 
 # variable names for the distribution fitting parameters
 _FITTING_VARIABLES = ("alpha", "beta", "skew", "loc", "scale", "prob_zero")
@@ -19,17 +17,8 @@ _FITTING_VARIABLES = ("alpha", "beta", "skew", "loc", "scale", "prob_zero")
 # location of the package on GitHub (for documentation within NetCDFs)
 _GITHUB_URL = "https://github.com/monocongo/climate_indices"
 
-# shared memory array dictionary keys
-_KEY_ARRAY = "array"
-_KEY_SHAPE = "shape"
-_KEY_LAT = "lat"
-_KEY_RESULT = "result_array"
-
-# global dictionary to contain shared arrays for use by worker processes
-_global_shared_arrays = {}
-
 # Retrieve logger and set desired logging level
-_logger = utils.get_logger(__name__, logging.INFO)
+_logger = logging_config.get_logger(__name__)
 
 
 class InputType(Enum):
@@ -43,22 +32,7 @@ class InputType(Enum):
     timeseries = 3
 
 
-def init_worker(arrays_and_shapes):
-    """
-    Initialization function that assigns named arrays into the global variable.
-
-    :param arrays_and_shapes: dictionary containing variable names as keys
-        and two-element dictionaries containing RawArrays and associated shapes
-        (i.e. each value of the dictionary is itself a dictionary with one key "array"
-        and another key _KEY_SHAPE)
-    :return:
-    """
-
-    global _global_shared_arrays
-    _global_shared_arrays = arrays_and_shapes
-
-
-def _validate_args(args):
+def _validate_args(args: argparse.Namespace) -> InputType:
     """
     Validate the processing settings to confirm that proper argument
     combinations have been provided.
@@ -196,7 +170,7 @@ def _validate_args(args):
     return input_type
 
 
-def _build_arguments(keyword_args):
+def _build_arguments(keyword_args: dict[str, Any]) -> dict[str, Any]:
     """
     Builds a dictionary of function arguments appropriate to the index to be computed.
 
@@ -221,8 +195,8 @@ def _get_variable_attributes(
     distribution: indices.Distribution,
     scale: int,
     periodicity: compute.Periodicity,
-):
-    attrs = {
+) -> dict[str, float | str]:
+    attrs: dict[str, float | str] = {
         "long_name": "Standardized Precipitation Index ("
         f"{distribution.value.capitalize()}), "
         f"{scale}-{periodicity.unit()}",
@@ -231,167 +205,6 @@ def _get_variable_attributes(
     }
 
     return attrs
-
-
-def _drop_data_into_shared_arrays_grid(
-    dataset_climatology: xr.Dataset,
-    dataset_fitting: xr.Dataset,
-    var_names_climate: list[str],
-    periodicity: compute.Periodicity,
-):
-    """
-    Copies arrays from an xarray Dataset into shared memory arrays.
-
-    :param dataset_climatology: Dataset containing climatology value arrays
-    :param dataset_fitting: Dataset containing distribution fitting parameter arrays
-    :param var_names_climate: names of variables to be copied into shared memory
-    :param periodicity: monthly or daily
-    """
-
-    # get the data arrays we'll use later in the index computations
-    global _global_shared_arrays
-    expected_dims_3d_climate = {"lat", "lon", "time"}
-    expected_dims_3d_fitting = {
-        frozenset(["lat", "lon", "month"]),
-        frozenset(["lat", "lon", "day"]),
-    }
-    expected_dims_2d = {"lat", "lon"}
-    expected_dims_1d = {"time"}
-
-    # copy all variables from climatology Dataset into shared memory arrays
-    for var_name in var_names_climate:
-        # confirm that the dimensions of the data array are valid
-        dims = set(dataset_climatology[var_name].dims)
-        if len(dims) == 3:
-            if dims != expected_dims_3d_climate:
-                message = f"Invalid dimensions for variable '{var_name}': {dims}"
-                _logger.error(message)
-                raise ValueError(message)
-        elif len(dims) == 2:
-            if dims != expected_dims_2d:
-                message = f"Invalid dimensions for variable '{var_name}': {dims}"
-                _logger.error(message)
-                raise ValueError(message)
-        elif (len(dims) == 1) and (dims != expected_dims_1d):
-            message = f"Invalid dimensions for variable '{var_name}': {dims}"
-            _logger.error(message)
-            raise ValueError(message)
-
-        # convert daily values into 366-day years
-        if periodicity == compute.Periodicity.daily:
-            initial_year = int(dataset_climatology["time"][0].dt.year)
-            final_year = int(dataset_climatology["time"][-1].dt.year)
-            total_years = final_year - initial_year + 1
-            var_values = np.apply_along_axis(
-                utils.transform_to_366day,
-                len(dims) - 1,
-                dataset_climatology[var_name].values,
-                initial_year,
-                total_years,
-            )
-
-        else:  # assumed to be monthly
-            var_values = dataset_climatology[var_name].values
-
-        # create a shared memory array, wrap it as a numpy array and
-        # copy the data (values) from this variable's DataArray
-        shared_array = multiprocessing.Array("d", int(np.prod(var_values.shape)))
-        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(var_values.shape)
-        np.copyto(shared_array_np, var_values)
-
-        # add to the dictionary of arrays
-        _global_shared_arrays[var_name] = {
-            _KEY_ARRAY: shared_array,
-            _KEY_SHAPE: var_values.shape,
-        }
-
-        # drop the variable from the xarray Dataset (we're assuming this frees the memory)
-        dataset_climatology = dataset_climatology.drop_vars(var_name)
-
-    # copy all variables from fitting parameters Dataset into shared memory arrays
-    for var_name in dataset_fitting.data_vars:
-        # confirm that the dimensions of the data array are valid
-        dims = set(dataset_fitting[var_name].dims)
-        if len(dims) == 3:
-            if dims not in expected_dims_3d_fitting:
-                message = f"Invalid dimensions for variable '{var_name}': {dims}"
-                _logger.error(message)
-                raise ValueError(message)
-        elif len(dims) == 2:
-            if dims != expected_dims_2d:
-                message = f"Invalid dimensions for variable '{var_name}': {dims}"
-                _logger.error(message)
-                raise ValueError(message)
-        elif (len(dims) == 1) and (dims != expected_dims_1d):
-            message = f"Invalid dimensions for variable '{var_name}': {dims}"
-            _logger.error(message)
-            raise ValueError(message)
-
-        var_values = dataset_fitting[var_name].values
-
-        # create a shared memory array, wrap it as a numpy array and
-        # copy the data (values) from this variable's DataArray
-        shared_array = multiprocessing.Array("d", int(np.prod(var_values.shape)))
-        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(var_values.shape)
-        np.copyto(shared_array_np, var_values)
-
-        # add to the dictionary of arrays
-        _global_shared_arrays[var_name] = {
-            _KEY_ARRAY: shared_array,
-            _KEY_SHAPE: var_values.shape,
-        }
-
-
-def _drop_data_into_shared_arrays_divisions(
-    dataset: xr.Dataset,
-    var_names: list[str],
-):
-    # TODO add fitting variables as we've done in _drop_data_into_shared_arrays_grid
-    """
-    Copies arrays from an xarray Dataset into shared memory arrays.
-
-    :param dataset:
-    :param var_names: names of variables to be copied into shared memory
-    """
-
-    # get the data arrays we'll use later in the index computations
-    global _global_shared_arrays
-    expected_dims_2d = [
-        ("division", "time"),
-        ("time", "division"),
-        ("division", "month"),
-        ("month", "division"),
-        ("division", "day"),
-        ("day", "division"),
-    ]
-    expected_dims_1d = [("division",)]
-    for var_name in var_names:
-        # confirm that the dimensions of the data array are valid
-        dims = dataset[var_name].dims
-        if len(dims) == 2:
-            if dims not in expected_dims_2d:
-                message = f"Invalid dimensions for variable '{var_name}': {dims}"
-                _logger.error(message)
-                raise ValueError(message)
-        elif (len(dims) == 1) and (dims not in expected_dims_1d):
-            message = f"Invalid dimensions for variable '{var_name}': {dims}"
-            _logger.error(message)
-            raise ValueError(message)
-
-        # create a shared memory array, wrap it as a numpy array and
-        # copy the data (values) from this variable's DataArray
-        shared_array = multiprocessing.Array("d", int(np.prod(dataset[var_name].shape)))
-        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(dataset[var_name].shape)
-        np.copyto(shared_array_np, dataset[var_name].values)
-
-        # add to the dictionary of arrays
-        _global_shared_arrays[var_name] = {
-            _KEY_ARRAY: shared_array,
-            _KEY_SHAPE: dataset[var_name].shape,
-        }
-
-        # drop the variable from the dataset (we're assuming this frees the memory)
-        dataset = dataset.drop_vars(var_name)
 
 
 def build_dataset_fitting_grid(
@@ -491,7 +304,7 @@ def build_dataset_fitting_divisions(
     return ds_fitting_params
 
 
-def _compute_write_index(keyword_arguments):
+def _compute_write_index(keyword_arguments: dict[str, Any]) -> None:
     """
     Computes a climate index and writes the result into a corresponding NetCDF.
 
@@ -506,16 +319,17 @@ def _compute_write_index(keyword_arguments):
         raise ValueError("Missing the 'netcdf_precip' keyword argument")
     if "input_type" not in keyword_arguments:
         raise ValueError("Missing the 'input_type' keyword argument")
+
+    input_type = keyword_arguments["input_type"]
+
+    # chunk time as single chunk (required for rolling window sums) but preserve
+    # spatial chunking for memory efficiency on large grids
+    if input_type == InputType.grid:
+        chunks: dict[str, int | str] = {"time": -1, "lat": "auto", "lon": "auto"}
+    elif input_type == InputType.divisions:
+        chunks = {"time": -1, "division": "auto"}
     else:
-        input_type = keyword_arguments["input_type"]
-        if input_type == InputType.grid:
-            chunks = {"lat": -1, "lon": -1}
-        elif input_type == InputType.divisions:
-            chunks = {"division": -1}
-        elif input_type == InputType.timeseries:
-            chunks = {"time": -1}
-        else:
-            raise ValueError(f"Invalid 'input_type' keyword argument: {input_type}")
+        chunks = {"time": -1}
     ds_precip = xr.open_dataset(keyword_arguments["netcdf_precip"], chunks=chunks)
 
     # trim out all data variables from the dataset except the ones we'll need
@@ -527,188 +341,304 @@ def _compute_write_index(keyword_arguments):
         input_var_names.append("lat")
     for var in ds_precip.data_vars:
         if var not in input_var_names:
-            ds_precip = ds_precip.drop_vars(var)
+            ds_precip = ds_precip.drop_vars(names=[str(var)])
 
-    # if we're not loading fitting parameters
-    # then we'll build a Dataset to contain them
-    if keyword_arguments["load_params"] is not None:
-        ds_fitting = xr.open_dataset(keyword_arguments["load_params"])
-    else:
-        ds_fitting = build_dataset_fitting_grid(ds_precip, keyword_arguments["periodicity"])
-
-    # build DataArrays for the parameter fittings we'll compute
-    # (only if not already in the Dataset when loading from existing file)
-    scale_fitting_var_names = {}
-    for scale in keyword_arguments["scales"]:
-        # create a dictionary of fitting variable names for this scale
-        suffix = f"{scale}_{keyword_arguments['periodicity'].unit()}"
-        fitting_var_names = {var: f"{var}_{suffix}" for var in _FITTING_VARIABLES}
-
-        # add an empty DataArray to the fitting Dataset if it's not been loaded
-        if keyword_arguments["load_params"] is None:
-            fitting_var_attrs = {
-                "alpha": {
-                    "description": "shape parameter of the gamma distribution (also "
-                    "referred to as the concentration) computed from "
-                    f"the {scale}-month scaled precipitation values",
-                },
-                "beta": {
-                    "description": "1 / scale of the distribution (also referred to "
-                    f"as the rate) computed from the {scale}-month "
-                    "scaled precipitation values",
-                },
-                "prob_zero": {"description": "probability of zero values within calibration period"},
-                "loc": {
-                    "description": "loc parameter for Pearson Type III",
-                },
-                "scale": {
-                    "description": "scale parameter for Pearson Type III",
-                },
-                "skew": {
-                    "description": "skew parameter for Pearson Type III",
-                },
-            }
-
-            fitting_shape = [len(x) for x in ds_fitting.coords.values()]
-            for var in _FITTING_VARIABLES:
-                da_fitting = xr.DataArray(
-                    data=np.full(shape=fitting_shape, fill_value=np.nan),
-                    # Assumes it is in the proper order.
-                    coords=ds_fitting.coords,
-                    name=fitting_var_names[var],
-                    attrs=fitting_var_attrs[var],
-                )
-                ds_fitting[fitting_var_names[var]] = da_fitting
-
-        # map the fitting variable names dictionary for this scale
-        scale_fitting_var_names[str(scale)] = fitting_var_names
-
-    # get the initial year of the data
-    data_start_year = int(ds_precip["time"][0].dt.year)
-    keyword_arguments["data_start_year"] = data_start_year
-
-    # the shape of output variables is assumed to match that
-    # of the input, so use the precipitation variable's shape
     if "var_name_precip" in keyword_arguments:
-        # convert precipitation data into millimeters
         precip_var_name = keyword_arguments["var_name_precip"]
-        precip_unit = ds_precip[precip_var_name].units.lower()
-        if precip_unit not in ("mm", "millimeters", "millimeter", "mm/dy"):
-            if precip_unit in ("inches", "inch"):
-                # inches to mm conversion (1 inch == 25.4 mm)
-                ds_precip[precip_var_name].values *= 25.4
-            else:
-                raise ValueError(f"Unsupported precipitation units: {precip_unit}")
-
     else:
         raise ValueError("No precipitation variable name was specified.")
 
-    if input_type == InputType.divisions:
-        _drop_data_into_shared_arrays_divisions(ds_precip, input_var_names)
-    else:
-        _drop_data_into_shared_arrays_grid(
-            ds_precip,
-            ds_fitting,
-            input_var_names,
-            keyword_arguments["periodicity"],
-        )
+    precip_da = ds_precip[precip_var_name]
+    precip_unit = precip_da.units.lower()
+    if precip_unit not in ("mm", "millimeters", "millimeter", "mm/dy"):
+        if precip_unit in ("inches", "inch"):
+            precip_da = precip_da * 25.4
+        else:
+            raise ValueError(f"Unsupported precipitation units: {precip_unit}")
+    ds_precip[precip_var_name] = precip_da
 
-    # use the precipitation shape as the output shape for the index values
-    if keyword_arguments["periodicity"] == compute.Periodicity.monthly:
-        output_shape = ds_precip[keyword_arguments["var_name_precip"]].shape
-    elif keyword_arguments["periodicity"] == compute.Periodicity.daily:
-        # TODO convert the data to 366 days in order to
-        #  get the correct intermediate output shape
-        time_length_366day = utils.gregorian_length_as_366day(len(ds_precip["time"]), data_start_year)
-        output_shape = (
-            len(ds_precip["lat"]),
-            len(ds_precip["lon"]),
-            time_length_366day,
-        )
+    if input_type == InputType.grid:
+        precip_da = precip_da.transpose("lat", "lon", "time")
+    elif input_type == InputType.divisions:
+        if "time" in precip_da.dims:
+            precip_da = precip_da.transpose("division", "time")
+    elif input_type == InputType.timeseries:
+        precip_da = precip_da.transpose("time")
     else:
-        raise ValueError(f"Unsupported periodicity argument value: {keyword_arguments['periodicity']}")
+        raise ValueError(f"Invalid 'input_type' keyword argument: {input_type}")
+    ds_precip[precip_var_name] = precip_da
 
-    # add an array to hold index computation results
-    # to our dictionary of shared memory arrays
-    if _KEY_RESULT not in _global_shared_arrays:
-        _global_shared_arrays[_KEY_RESULT] = {
-            _KEY_ARRAY: multiprocessing.Array("d", int(np.prod(output_shape))),
-            _KEY_SHAPE: output_shape,
-        }
+    data_start_year = int(ds_precip["time"][0].dt.year)
+    keyword_arguments["data_start_year"] = data_start_year
+
+    periodicity = keyword_arguments["periodicity"]
+    time_dim = "time"
+
+    # preserve the original Gregorian time coordinate for use in output datasets
+    # for daily periodicity, precip_da will be transformed to a synthetic 366-day
+    # calendar during computation, then results are transformed back to Gregorian
+    # and assigned original_time coords before writing output files
+    original_time = ds_precip[time_dim]
+    original_time_len = len(original_time)
+
+    if periodicity == compute.Periodicity.daily:
+        initial_year = int(original_time[0].dt.year)
+        final_year = int(original_time[-1].dt.year)
+        total_years = final_year - initial_year + 1
+        period_length = 366
+
+        def _to_366(values_1d: np.ndarray) -> np.ndarray:
+            return utils.transform_to_366day(values_1d, initial_year, total_years)
+
+        precip_da = xr.apply_ufunc(
+            _to_366,
+            precip_da,
+            input_core_dims=[[time_dim]],
+            output_core_dims=[[time_dim]],
+            output_sizes={time_dim: total_years * period_length},
+            vectorize=True,
+            dask="parallelized",
+            output_dtypes=[float],
+        )
+        precip_da = precip_da.assign_coords({time_dim: np.arange(total_years * period_length)})
+
+    elif periodicity == compute.Periodicity.monthly:
+        period_length = 12
+    else:
+        raise ValueError(f"Unsupported periodicity argument value: {periodicity}")
+
+    period_dim = periodicity.unit()
+    ds_fitting = None
+    if keyword_arguments["load_params"] is not None:
+        ds_fitting = xr.open_dataset(keyword_arguments["load_params"])
+    elif keyword_arguments["save_params"] is not None:
+        if input_type == InputType.divisions:
+            ds_fitting = build_dataset_fitting_divisions(ds_precip, periodicity)
+        else:
+            ds_fitting = build_dataset_fitting_grid(ds_precip, periodicity)
+
+    fitting_var_attrs = {
+        "alpha": {
+            "description": "shape parameter of the gamma distribution (also "
+            "referred to as the concentration) computed from "
+            "the {scale}-month scaled precipitation values",
+        },
+        "beta": {
+            "description": "1 / scale of the distribution (also referred to "
+            "as the rate) computed from the {scale}-month "
+            "scaled precipitation values",
+        },
+        "prob_zero": {"description": "probability of zero values within calibration period"},
+        "loc": {
+            "description": "loc parameter for Pearson Type III",
+        },
+        "scale": {
+            "description": "scale parameter for Pearson Type III",
+        },
+        "skew": {
+            "description": "skew parameter for Pearson Type III",
+        },
+    }
 
     for scale in keyword_arguments["scales"]:
+        suffix = f"{scale}_{period_dim}"
+        fitting_var_names = {var: f"{var}_{suffix}" for var in _FITTING_VARIABLES}
+
+        fitting_params_gamma = None
+        fitting_params_pearson = None
+
+        if ds_fitting is not None:
+            if keyword_arguments["load_params"] is not None:
+                fitting_params_gamma = {
+                    "alpha": ds_fitting[fitting_var_names["alpha"]],
+                    "beta": ds_fitting[fitting_var_names["beta"]],
+                }
+                fitting_params_pearson = {
+                    "prob_zero": ds_fitting[fitting_var_names["prob_zero"]],
+                    "loc": ds_fitting[fitting_var_names["loc"]],
+                    "scale": ds_fitting[fitting_var_names["scale"]],
+                    "skew": ds_fitting[fitting_var_names["skew"]],
+                }
+            else:
+                scaled_values = xr.apply_ufunc(
+                    compute.sum_to_scale,
+                    precip_da,
+                    kwargs={"scale": scale},
+                    input_core_dims=[[time_dim]],
+                    output_core_dims=[[time_dim]],
+                    vectorize=True,
+                    dask="parallelized",
+                    output_dtypes=[float],
+                )
+
+                def _gamma_params(values_1d: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+                    return compute.gamma_parameters(
+                        values=values_1d,
+                        data_start_year=data_start_year,
+                        calibration_start_year=keyword_arguments["calibration_start_year"],
+                        calibration_end_year=keyword_arguments["calibration_end_year"],
+                        periodicity=periodicity,
+                    )
+
+                alphas, betas = xr.apply_ufunc(
+                    _gamma_params,
+                    scaled_values,
+                    input_core_dims=[[time_dim]],
+                    output_core_dims=[[period_dim], [period_dim]],
+                    output_sizes={period_dim: period_length},
+                    vectorize=True,
+                    dask="parallelized",
+                    output_dtypes=[float, float],
+                )
+
+                def _pearson_params(values_1d: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+                    return compute.pearson_parameters(
+                        values=values_1d,
+                        data_start_year=data_start_year,
+                        calibration_start_year=keyword_arguments["calibration_start_year"],
+                        calibration_end_year=keyword_arguments["calibration_end_year"],
+                        periodicity=periodicity,
+                    )
+
+                prob_zero, locs, scales, skews = xr.apply_ufunc(
+                    _pearson_params,
+                    scaled_values,
+                    input_core_dims=[[time_dim]],
+                    output_core_dims=[[period_dim], [period_dim], [period_dim], [period_dim]],
+                    output_sizes={period_dim: period_length},
+                    vectorize=True,
+                    dask="parallelized",
+                    output_dtypes=[float, float, float, float],
+                )
+
+                if period_dim in ds_fitting.coords:
+                    coord = ds_fitting[period_dim]
+                    alphas = alphas.assign_coords({period_dim: coord})
+                    betas = betas.assign_coords({period_dim: coord})
+                    prob_zero = prob_zero.assign_coords({period_dim: coord})
+                    locs = locs.assign_coords({period_dim: coord})
+                    scales = scales.assign_coords({period_dim: coord})
+                    skews = skews.assign_coords({period_dim: coord})
+
+                alphas.name = fitting_var_names["alpha"]
+                alphas.attrs = fitting_var_attrs["alpha"].copy()
+                alphas.attrs["description"] = alphas.attrs["description"].format(scale=scale)
+                ds_fitting[alphas.name] = alphas
+
+                betas.name = fitting_var_names["beta"]
+                betas.attrs = fitting_var_attrs["beta"].copy()
+                betas.attrs["description"] = betas.attrs["description"].format(scale=scale)
+                ds_fitting[betas.name] = betas
+
+                prob_zero.name = fitting_var_names["prob_zero"]
+                prob_zero.attrs = fitting_var_attrs["prob_zero"]
+                ds_fitting[prob_zero.name] = prob_zero
+
+                locs.name = fitting_var_names["loc"]
+                locs.attrs = fitting_var_attrs["loc"]
+                ds_fitting[locs.name] = locs
+
+                scales.name = fitting_var_names["scale"]
+                scales.attrs = fitting_var_attrs["scale"]
+                ds_fitting[scales.name] = scales
+
+                skews.name = fitting_var_names["skew"]
+                skews.attrs = fitting_var_attrs["skew"]
+                ds_fitting[skews.name] = skews
+
+                fitting_params_gamma = {"alpha": alphas, "beta": betas}
+                fitting_params_pearson = {
+                    "prob_zero": prob_zero,
+                    "loc": locs,
+                    "scale": scales,
+                    "skew": skews,
+                }
+
         for distribution in [indices.Distribution.gamma, indices.Distribution.pearson]:
             _logger.info(
-                f"Computing {scale}-{keyword_arguments['periodicity'].unit()} SPI ({distribution.value.capitalize()})",
+                f"Computing {scale}-{periodicity.unit()} SPI ({distribution.value.capitalize()})",
             )
 
-            # TODO we may want to initialize the shared memory array
-            #  for SPI with NaNs so it starts off empty at each iteration
-
-            args = {
-                "data_start_year": data_start_year,
-                "scale": scale,
-                "distribution": distribution,
-                "calibration_year_initial": keyword_arguments["calibration_start_year"],
-                "calibration_year_final": keyword_arguments["calibration_end_year"],
-                "periodicity": keyword_arguments["periodicity"],
-            }
-
-            # compute the distribution fitting parameters if necessary (i.e. not loaded)
-            if keyword_arguments["load_params"] is None:
-                _parallel_fitting(
-                    distribution,
-                    _global_shared_arrays,
-                    {"var_name_values": keyword_arguments["var_name_precip"]},
-                    scale_fitting_var_names[str(scale)],
-                    input_type=input_type,
-                    number_of_workers=keyword_arguments["number_of_workers"],
-                    args=args,
-                )
+            if distribution is indices.Distribution.gamma:
+                fitting_params = fitting_params_gamma
             else:
-                # TODO load the fitting parameter arrays into shared memory
-                pass
+                fitting_params = fitting_params_pearson
 
-            # compute SPI in parallel
-            var_names_spi = copy.deepcopy(scale_fitting_var_names[str(scale)])
-            var_names_spi["var_name_precip"] = keyword_arguments["var_name_precip"]
-            _parallel_spi(
-                _global_shared_arrays,
-                var_names_spi,
-                _KEY_RESULT,
-                input_type=input_type,
-                number_of_workers=keyword_arguments["number_of_workers"],
-                args=args,
-            )
-
-            # build a Dataset for the SPI values, copying the just
-            # computed values into it from the shared memory array
-            spi_var_name = f"spi_{distribution.value}_{scale}_{keyword_arguments['periodicity'].unit()}"
-            ds_spi = build_dataset_spi_grid(
-                ds_precip,
+            spi_values = indices.spi_xarray(
+                precip_da,
                 scale,
-                keyword_arguments["periodicity"],
                 distribution,
                 data_start_year,
-                spi_var_name,
+                keyword_arguments["calibration_start_year"],
+                keyword_arguments["calibration_end_year"],
+                periodicity,
+                fitting_params=fitting_params,
             )
 
-            # write the SPI dataset to NetCDF file
+            if periodicity == compute.Periodicity.daily:
+
+                def _to_gregorian(values_1d: np.ndarray) -> np.ndarray:
+                    return utils.transform_to_gregorian(values_1d, data_start_year)
+
+                spi_values = xr.apply_ufunc(
+                    _to_gregorian,
+                    spi_values,
+                    input_core_dims=[[time_dim]],
+                    output_core_dims=[[time_dim]],
+                    output_sizes={time_dim: original_time_len},
+                    vectorize=True,
+                    dask="parallelized",
+                    output_dtypes=[float],
+                )
+                spi_values = spi_values.assign_coords({time_dim: original_time})
+
+            spi_var_name = f"spi_{distribution.value}_{scale}_{periodicity.unit()}"
+            if input_type == InputType.divisions:
+                ds_spi = build_dataset_spi_divisions(
+                    ds_precip,
+                    scale,
+                    periodicity,
+                    distribution,
+                    data_start_year,
+                    spi_var_name,
+                    spi_values,
+                )
+            elif input_type == InputType.timeseries:
+                global_attrs = {
+                    "description": f"SPI for {scale}-{periodicity.unit()} scale computed "
+                    f"from {periodicity} precipitation input "
+                    "by the climate_indices package available from "
+                    f"{_GITHUB_URL}.",
+                }
+                coords = {"time": original_time}
+                ds_spi = xr.Dataset(
+                    coords=coords,
+                    attrs=global_attrs,
+                )
+                var_attrs = _get_variable_attributes(distribution, scale, periodicity)
+                da_spi = xr.DataArray(
+                    data=spi_values.data,
+                    coords=coords,
+                    dims=("time",),
+                    name=spi_var_name,
+                    attrs=var_attrs,
+                )
+                ds_spi[spi_var_name] = da_spi
+            else:
+                ds_spi = build_dataset_spi_grid(
+                    ds_precip,
+                    scale,
+                    periodicity,
+                    distribution,
+                    data_start_year,
+                    spi_var_name,
+                    spi_values,
+                )
+
             netcdf_file_name = keyword_arguments["output_file_base"] + "_" + spi_var_name + ".nc"
             ds_spi.to_netcdf(netcdf_file_name)
 
-        # dump the fitting variable arrays from shared-memory
-        # into the DataArrays of the fitting Dataset
-        for var_name in scale_fitting_var_names[str(scale)].values():
-            # get the shared memory results array and convert it to a numpy array
-            array = _global_shared_arrays[var_name][_KEY_ARRAY]
-            shape = _global_shared_arrays[var_name][_KEY_SHAPE]
-            index_values = np.frombuffer(array.get_obj()).reshape(shape).astype(float)
-            ds_fitting[var_name].data = index_values
-
-    # if requested then we write the distribution fittings dataset to NetCDF
-    if keyword_arguments["save_params"] is not None:
-        # write the fitting parameters dataset to NetCDF file
+    if ds_fitting is not None and keyword_arguments["save_params"] is not None:
         ds_fitting.to_netcdf(keyword_arguments["save_params"])
 
 
@@ -719,6 +649,7 @@ def build_dataset_spi_grid(
     distribution: indices.Distribution,
     data_start_year: int,
     spi_var_name: str,
+    spi_values: xr.DataArray,
 ) -> xr.Dataset:
     global_attrs = {
         "description": f"SPI for {scale}-{periodicity.unit()} scale computed "
@@ -742,24 +673,12 @@ def build_dataset_spi_grid(
         attrs=global_attrs,
     )
 
-    # get the shared memory results array and convert it to a numpy array
-    array = _global_shared_arrays[_KEY_RESULT][_KEY_ARRAY]
-    shape = _global_shared_arrays[_KEY_RESULT][_KEY_SHAPE]
-    index_values = np.frombuffer(array.get_obj()).reshape(shape).astype(float)
-
-    # convert daily values into normal/Gregorian calendar years
-    if periodicity == compute.Periodicity.daily:
-        index_values = np.apply_along_axis(
-            utils.transform_to_gregorian,
-            len(ds_example.dims) - 1,
-            index_values,
-            data_start_year,
-        )
+    index_values = spi_values.transpose("lat", "lon", "time")
 
     # create a new variable to contain the SPI values, assign into the dataset
     var_attrs = _get_variable_attributes(distribution, scale, periodicity)
     da_spi = xr.DataArray(
-        data=index_values,
+        data=index_values.data,
         coords=ds_example.coords,
         dims=("lat", "lon", "time"),
         name=spi_var_name,
@@ -777,6 +696,7 @@ def build_dataset_spi_divisions(
     distribution: indices.Distribution,
     data_start_year: int,
     spi_var_name: str,
+    spi_values: xr.DataArray,
 ) -> xr.Dataset:
     global_attrs = {
         "description": f"SPI for {scale}-{periodicity.unit()} scale computed "
@@ -793,24 +713,12 @@ def build_dataset_spi_divisions(
         attrs=global_attrs,
     )
 
-    # get the shared memory results array and convert it to a numpy array
-    array = _global_shared_arrays[_KEY_RESULT][_KEY_ARRAY]
-    shape = _global_shared_arrays[_KEY_RESULT][_KEY_SHAPE]
-    index_values = np.frombuffer(array.get_obj()).reshape(shape).astype(float)
-
-    # convert daily values into normal/Gregorian calendar years
-    if periodicity == compute.Periodicity.daily:
-        index_values = np.apply_along_axis(
-            utils.transform_to_gregorian,
-            len(ds_example.dims) - 1,
-            index_values,
-            data_start_year,
-        )
+    index_values = spi_values.transpose("division", "time")
 
     # create a new variable to contain the SPI values, assign into the dataset
     var_attrs = _get_variable_attributes(distribution, scale, periodicity)
     da_spi = xr.DataArray(
-        data=index_values,
+        data=index_values.data,
         coords=ds_example.coords,
         dims=("division", "time"),
         name=spi_var_name,
@@ -821,440 +729,7 @@ def build_dataset_spi_divisions(
     return ds_spi
 
 
-def _init_worker(shared_arrays_dict):
-    global _global_shared_arrays
-    _global_shared_arrays = shared_arrays_dict
-
-
-def _parallel_spi(
-    arrays_dict: dict,
-    input_var_names: dict,
-    output_var_name: str,
-    input_type: InputType,
-    number_of_workers: int,
-    args,
-):
-    """
-    TODO document this function
-
-    :param dict arrays_dict:
-    :param dict input_var_names:
-    :param str output_var_name:
-    :param InputType input_type:
-    :param number_of_workers: number of worker processes to use
-    :param args:
-    :return:
-    """
-
-    # find the start index of each sub-array we'll split out per worker process,
-    # assuming the shape of the output array is the same as all input arrays
-    shape = arrays_dict[output_var_name][_KEY_SHAPE]
-    d, m = divmod(shape[0], number_of_workers)
-    split_indices = list(range(0, ((d + 1) * (m + 1)), (d + 1)))
-    if d != 0:
-        split_indices += list(range(split_indices[-1] + d, shape[0], d))
-
-    # build a list of parameters for each application of the function to an array chunk
-    chunk_params = []
-
-    # we have a single input array, create parameter dictionary objects
-    # appropriate to the _apply_along_axis function, one per worker process
-    for i in range(number_of_workers):
-        params = {
-            "input_var_name": input_var_names["var_name_precip"],
-            "output_var_name": output_var_name,
-            "sub_array_start": split_indices[i],
-            "input_type": input_type,
-            "args": args,
-        }
-
-        # set the distribution fitting variable name parameters
-        if args["distribution"] is indices.Distribution.gamma:
-            params["var_name_alpha"] = input_var_names["alpha"]
-            params["var_name_beta"] = input_var_names["beta"]
-        elif args["distribution"] is indices.Distribution.pearson:
-            params["var_name_prob_zero"] = input_var_names["prob_zero"]
-            params["var_name_loc"] = input_var_names["loc"]
-            params["var_name_scale"] = input_var_names["scale"]
-            params["var_name_skew"] = input_var_names["skew"]
-
-        if i < (number_of_workers - 1) and (len(split_indices) > (i + 1)):
-            params["sub_array_end"] = split_indices[i + 1]
-        else:
-            # end of the line
-            params["sub_array_end"] = None
-            chunk_params.append(params)
-            break
-
-        chunk_params.append(params)
-
-    # instantiate a process pool
-    with multiprocessing.Pool(processes=number_of_workers, initializer=_init_worker, initargs=(arrays_dict,)) as pool:
-        pool.map(_apply_to_subarray_spi, chunk_params)
-
-
-def _parallel_fitting(
-    distribution: indices.Distribution,
-    shared_arrays: dict,
-    input_var_names: dict,
-    output_var_names: dict,
-    input_type: InputType,
-    number_of_workers: int,
-    args: dict,
-):
-    """
-    TODO document this function
-
-    :param distribution:
-    :param Dict shared_arrays:
-    :param Dict input_var_names:
-    :param Dict output_var_names:
-    :param InputType input_type:
-    :param number_of_workers: number of worker processes to use
-    :param args:
-    :return:
-    """
-
-    # TODO somehow account for the calibration period, i.e. only compute
-    #  fitting parameters on values within the calibration period
-
-    # make sure we have the same size arrays for all fitting parameter arrays
-    if len({shared_arrays[var][_KEY_SHAPE] for var in output_var_names.values()}) != 1:
-        raise ValueError("Unexpected differences in shared memory array shapes")
-
-    # find the start index of each sub-array we'll split out per worker process,
-    # assuming the shape of the output array is the same as all input arrays
-    output_var_name = list(output_var_names.values())[0]
-    shape = shared_arrays[output_var_name][_KEY_SHAPE]
-    d, m = divmod(shape[0], number_of_workers)
-    split_indices = list(range(0, ((d + 1) * (m + 1)), (d + 1)))
-    if d != 0:
-        split_indices += list(range(split_indices[-1] + d, shape[0], d))
-
-    # build a list of parameters for each application of the function to an array chunk
-    chunk_params = []
-    for i in range(number_of_workers):
-        params = {
-            "input_var_name": input_var_names["var_name_values"],
-            "output_var_names": output_var_names,
-            "sub_array_start": split_indices[i],
-            "input_type": input_type,
-            "args": args,
-        }
-        if i < (number_of_workers - 1) and (len(split_indices) > (i + 1)):
-            params["sub_array_end"] = split_indices[i + 1]
-        else:
-            params["sub_array_end"] = None
-            chunk_params.append(params)
-            break
-
-        chunk_params.append(params)
-
-    # instantiate a process pool
-    with multiprocessing.Pool(processes=number_of_workers, initializer=_init_worker, initargs=(shared_arrays,)) as pool:
-        if distribution == indices.Distribution.gamma:
-            pool.map(_apply_to_subarray_gamma, chunk_params)
-        elif distribution == indices.Distribution.pearson:
-            pool.map(_apply_to_subarray_pearson, chunk_params)
-        else:
-            raise ValueError(f"Unsupported distribution: {distribution}")
-
-
-def _apply_to_subarray_spi(params):
-    """
-    Like numpy.apply_along_axis(), but with arguments in a dict instead.
-    Applicable for applying a function across subarrays of a single input array.
-
-    This function is useful with multiprocessing.Pool().map(): (1) map() only
-    handles functions that take a single argument, and (2) this function can
-    generally be imported from a module, as required by map().
-
-    :param dict params: dictionary of parameters including a function name,
-        "func1d", start and stop indices for specifying the subarray to which
-        the function should be applied, "sub_array_start" and "sub_array_end",
-        a dictionary of arguments to be passed to the function, "args", and
-        the key name of the shared array for output values, "output_var_name".
-    """
-    start_index = params["sub_array_start"]
-    end_index = params["sub_array_end"]
-    array = _global_shared_arrays[params["input_var_name"]][_KEY_ARRAY]
-    shape = _global_shared_arrays[params["input_var_name"]][_KEY_SHAPE]
-    np_array = np.frombuffer(array.get_obj()).reshape(shape)
-    values_sub_array = np_array[start_index:end_index]
-    args = params["args"]
-
-    if args["distribution"] == indices.Distribution.gamma:
-        array_alpha = _global_shared_arrays[params["var_name_alpha"]][_KEY_ARRAY]
-        shape_alpha = _global_shared_arrays[params["var_name_alpha"]][_KEY_SHAPE]
-        np_array_alpha = np.frombuffer(array_alpha.get_obj()).reshape(shape_alpha)
-        sub_array_alpha = np_array_alpha[start_index:end_index]
-
-        array_beta = _global_shared_arrays[params["var_name_beta"]][_KEY_ARRAY]
-        shape_beta = _global_shared_arrays[params["var_name_beta"]][_KEY_SHAPE]
-        np_array_beta = np.frombuffer(array_beta.get_obj()).reshape(shape_beta)
-        sub_array_beta = np_array_beta[start_index:end_index]
-
-        fitting_params = {
-            "alpha": sub_array_alpha,
-            "beta": sub_array_beta,
-        }
-
-    elif args["distribution"] == indices.Distribution.pearson:
-        array_prob_zero = _global_shared_arrays[params["var_name_prob_zero"]][_KEY_ARRAY]
-        shape_prob_zero = _global_shared_arrays[params["var_name_prob_zero"]][_KEY_SHAPE]
-        np_array_prob_zero = np.frombuffer(array_prob_zero.get_obj()).reshape(shape_prob_zero)
-        sub_array_prob_zero = np_array_prob_zero[start_index:end_index]
-
-        array_loc = _global_shared_arrays[params["var_name_loc"]][_KEY_ARRAY]
-        shape_loc = _global_shared_arrays[params["var_name_loc"]][_KEY_SHAPE]
-        np_array_loc = np.frombuffer(array_loc.get_obj()).reshape(shape_loc)
-        sub_array_loc = np_array_loc[start_index:end_index]
-
-        array_scale = _global_shared_arrays[params["var_name_scale"]][_KEY_ARRAY]
-        shape_scale = _global_shared_arrays[params["var_name_scale"]][_KEY_SHAPE]
-        np_array_scale = np.frombuffer(array_scale.get_obj()).reshape(shape_scale)
-        sub_array_scale = np_array_scale[start_index:end_index]
-
-        array_skew = _global_shared_arrays[params["var_name_skew"]][_KEY_ARRAY]
-        shape_skew = _global_shared_arrays[params["var_name_skew"]][_KEY_SHAPE]
-        np_array_skew = np.frombuffer(array_skew.get_obj()).reshape(shape_skew)
-        sub_array_skew = np_array_skew[start_index:end_index]
-
-        fitting_params = {
-            "prob_zero": sub_array_prob_zero,
-            "loc": sub_array_loc,
-            "scale": sub_array_scale,
-            "skew": sub_array_skew,
-        }
-
-    else:
-        raise ValueError(f"Unsupported distribution: {args['distribution']}")
-
-    args["fitting_params"] = fitting_params
-
-    # get the output shared memory array, convert to numpy, and get the subarray slice
-    output_array = _global_shared_arrays[params["output_var_name"]][_KEY_ARRAY]
-    computed_array = np.frombuffer(output_array.get_obj()).reshape(shape)[start_index:end_index]
-
-    for i, values in enumerate(values_sub_array):
-        if params["input_type"] == InputType.grid:
-            for j in range(values.shape[0]):
-                if args["distribution"] == indices.Distribution.gamma:
-                    fitting_params = {
-                        "alpha": sub_array_alpha[i, j],
-                        "beta": sub_array_beta[i, j],
-                    }
-
-                elif args["distribution"] == indices.Distribution.pearson:
-                    fitting_params = {
-                        "prob_zero": sub_array_prob_zero[i, j],
-                        "loc": sub_array_loc[i, j],
-                        "scale": sub_array_scale[i, j],
-                        "skew": sub_array_skew[i, j],
-                    }
-
-                computed_array[i, j] = indices.spi(
-                    values[j],
-                    scale=args["scale"],
-                    distribution=args["distribution"],
-                    data_start_year=args["data_start_year"],
-                    calibration_year_initial=args["calibration_year_initial"],
-                    calibration_year_final=args["calibration_year_final"],
-                    periodicity=args["periodicity"],
-                    fitting_params=fitting_params,
-                )
-
-        else:  # divisions
-            if args["distribution"] == indices.Distribution.gamma:
-                fitting_params = {
-                    "alpha": sub_array_alpha[i],
-                    "beta": sub_array_beta[i],
-                }
-
-            elif args["distribution"] == indices.Distribution.pearson:
-                fitting_params = {
-                    "prob_zero": sub_array_prob_zero[i],
-                    "loc": sub_array_loc[i],
-                    "scale": sub_array_scale[i],
-                    "skew": sub_array_skew[i],
-                }
-
-            computed_array[i] = indices.spi(
-                values_sub_array,
-                scale=args["scale"],
-                distribution=args["distribution"],
-                data_start_year=args["data_start_year"],
-                calibration_year_initial=args["calibration_year_initial"],
-                calibration_year_final=args["calibration_year_final"],
-                periodicity=args["periodicity"],
-                fitting_params=fitting_params,
-            )
-
-
-def _apply_to_subarray_gamma(params):
-    """
-    Applies the gamma fitting computation function across subarrays
-    of the input (shared-memory) arrays.
-
-    This function is useful with multiprocessing.Pool().map(): (1) map() only
-    handles functions that take a single argument, and (2) this function can
-    generally be imported from a module, as required by map().
-
-    :param dict params: dictionary of parameters including a function name,
-        "func1d", start and stop indices for specifying the subarray to which
-        the function should be applied, "sub_array_start" and "sub_array_end",
-        the variable names used for precipitation, alpha, and beta arrays,
-        "var_name_precip", "var_name_alpha", and "var_name_beta", a dictionary
-        of arguments to be passed to the function, "args", and the key name of
-        the shared arrays for output values, "alpha_var_name" and "beta_var_name".
-    """
-    start_index = params["sub_array_start"]
-    end_index = params["sub_array_end"]
-    values_array_key = params["input_var_name"]
-    alpha_array_key = params["output_var_names"]["alpha"]
-    beta_array_key = params["output_var_names"]["beta"]
-
-    values_shape = _global_shared_arrays[values_array_key][_KEY_SHAPE]
-    values_array = _global_shared_arrays[values_array_key][_KEY_ARRAY]
-    values_np_array = np.frombuffer(values_array.get_obj()).reshape(values_shape)
-    sub_array_values = values_np_array[start_index:end_index]
-
-    args = params["args"]
-
-    # get the output shared memory arrays, convert to numpy, and get the subarray slices
-    fitting_shape = _global_shared_arrays[alpha_array_key][_KEY_SHAPE]
-    alpha_output_array = _global_shared_arrays[alpha_array_key][_KEY_ARRAY]
-    alpha_np_array = np.frombuffer(alpha_output_array.get_obj()).reshape(fitting_shape)
-    sub_array_alpha = alpha_np_array[start_index:end_index]
-
-    beta_output_array = _global_shared_arrays[beta_array_key][_KEY_ARRAY]
-    beta_np_array = np.frombuffer(beta_output_array.get_obj()).reshape(fitting_shape)
-    sub_array_beta = beta_np_array[start_index:end_index]
-
-    for i, values in enumerate(sub_array_values):
-        if params["input_type"] == InputType.grid:
-            for j in range(values.shape[0]):
-                # scale the values
-                scaled_values = compute.scale_values(values[j], args["scale"], args["periodicity"])
-
-                sub_array_alpha[i, j], sub_array_beta[i, j] = compute.gamma_parameters(
-                    values=scaled_values,
-                    data_start_year=args["data_start_year"],
-                    calibration_start_year=args["calibration_year_initial"],
-                    calibration_end_year=args["calibration_year_final"],
-                    periodicity=args["periodicity"],
-                )
-        else:  # divisions
-            # scale the values
-            scaled_values = compute.scale_values(values, args["scale"], args["periodicity"])
-
-            sub_array_alpha[i], sub_array_beta[i] = compute.gamma_parameters(
-                values=scaled_values,
-                data_start_year=args["data_start_year"],
-                calibration_start_year=args["calibration_year_initial"],
-                calibration_end_year=args["calibration_year_final"],
-                periodicity=args["periodicity"],
-            )
-
-
-def _apply_to_subarray_pearson(params):
-    """
-    Applies the Pearson Type III distribution fitting computation function
-    across subarrays of the input (shared-memory) arrays.
-
-    This function is useful with multiprocessing.Pool().map(): (1) map() only
-    handles functions that take a single argument, and (2) this function can
-    generally be imported from a module, as required by map().
-
-    :param dict params: dictionary of parameters including a function name,
-        "func1d", start and stop indices for specifying the subarray to which
-        the function should be applied, "sub_array_start" and "sub_array_end",
-        the variable names used for precipitation, probability of zero, scale,
-        skew, and loc arrays ("var_name_precip", "var_name_prob_zero",
-        "var_name_scale", "var_name_skew", and "var_name_loc"), a dictionary of
-        arguments to be passed to the function, "args", and the key name of
-        the shared arrays for output values, "prob_zero_var_name", "scale_var_name",
-        "skew_var_name", and "loc_var_name".
-    """
-    start_index = params["sub_array_start"]
-    end_index = params["sub_array_end"]
-    values_array_key = params["input_var_name"]
-    prob_zero_array_key = params["output_var_names"]["prob_zero"]
-    scale_array_key = params["output_var_names"]["scale"]
-    skew_array_key = params["output_var_names"]["skew"]
-    loc_array_key = params["output_var_names"]["loc"]
-
-    values_shape = _global_shared_arrays[values_array_key][_KEY_SHAPE]
-    values_array = _global_shared_arrays[values_array_key][_KEY_ARRAY]
-    values_np_array = np.frombuffer(values_array.get_obj()).reshape(values_shape)
-    sub_array_values = values_np_array[start_index:end_index]
-
-    args = params["args"]
-
-    # get the output shared memory arrays, convert to numpy, and get the subarray slices
-    fitting_shape = _global_shared_arrays[prob_zero_array_key][_KEY_SHAPE]
-    prob_zero_output_array = _global_shared_arrays[prob_zero_array_key][_KEY_ARRAY]
-    prob_zero_np_array = np.frombuffer(prob_zero_output_array.get_obj()).reshape(fitting_shape)
-    sub_array_prob_zero = prob_zero_np_array[start_index:end_index]
-
-    scale_output_array = _global_shared_arrays[scale_array_key][_KEY_ARRAY]
-    scale_np_array = np.frombuffer(scale_output_array.get_obj()).reshape(fitting_shape)
-    sub_array_scale = scale_np_array[start_index:end_index]
-
-    skew_output_array = _global_shared_arrays[skew_array_key][_KEY_ARRAY]
-    skew_np_array = np.frombuffer(skew_output_array.get_obj()).reshape(fitting_shape)
-    sub_array_skew = skew_np_array[start_index:end_index]
-
-    loc_output_array = _global_shared_arrays[loc_array_key][_KEY_ARRAY]
-    loc_np_array = np.frombuffer(loc_output_array.get_obj()).reshape(fitting_shape)
-    sub_array_loc = loc_np_array[start_index:end_index]
-
-    for i, values in enumerate(sub_array_values):
-        if params["input_type"] == InputType.grid:
-            for j in range(values.shape[0]):
-                # scale the values
-                scaled_values = compute.scale_values(
-                    values[j],
-                    args["scale"],
-                    args["periodicity"],
-                )
-
-                (
-                    sub_array_prob_zero[i, j],
-                    sub_array_loc[i, j],
-                    sub_array_scale[i, j],
-                    sub_array_skew[i, j],
-                ) = compute.pearson_parameters(
-                    values=scaled_values,
-                    data_start_year=args["data_start_year"],
-                    calibration_start_year=args["calibration_year_initial"],
-                    calibration_end_year=args["calibration_year_final"],
-                    periodicity=args["periodicity"],
-                )
-
-        else:  # divisions
-            # scale the values
-            scaled_values = compute.scale_values(
-                values,
-                args["scale"],
-                args["periodicity"],
-            )
-
-            (
-                sub_array_prob_zero[i],
-                sub_array_loc[i],
-                sub_array_scale[i],
-                sub_array_skew[i],
-            ) = compute.pearson_parameters(
-                values=scaled_values,
-                data_start_year=args["data_start_year"],
-                calibration_start_year=args["calibration_year_initial"],
-                calibration_end_year=args["calibration_year_final"],
-                periodicity=args["periodicity"],
-            )
-
-
-def _prepare_file(netcdf_file, var_name):
+def _prepare_file(netcdf_file: str, var_name: str) -> str:
     """
     Determine if the NetCDF file has the expected lat, lon, and time dimensions,
     and if not correctly ordered then create a temporary NetCDF with dimensions
@@ -1332,12 +807,19 @@ def main():  # type: () -> None
     # # ========== END OF PROFILING-SPECIFIC CODE ================================
 
     try:
-        # log some timing info, used later for elapsed time
-        start_datetime = datetime.now()
-        _logger.info("Start time:    %s", start_datetime)
-
         # parse the command line arguments
         parser = argparse.ArgumentParser()
+        parser.add_argument(
+            "--log-format",
+            help="Logging output format",
+            choices=["console", "json"],
+            default="console",
+        )
+        parser.add_argument(
+            "--log-level",
+            help="Logging verbosity",
+            default="INFO",
+        )
         parser.add_argument(
             "--periodicity",
             help="Process input as either monthly or daily values",
@@ -1404,15 +886,23 @@ def main():  # type: () -> None
         )
         arguments = parser.parse_args()
 
+        logging_config.configure_logging(arguments.log_format, arguments.log_level)
+
+        # log some timing info, used later for elapsed time
+        start_datetime = datetime.now()
+        _logger.info("Start time:    %s", start_datetime)
+
         # validate the arguments and determine the input type
         input_type = _validate_args(arguments)
 
         if arguments.multiprocessing == "single":
             number_of_workers = 1
         elif arguments.multiprocessing == "all":
-            number_of_workers = multiprocessing.cpu_count()
+            number_of_workers = os.cpu_count() or 1
         else:  # default ("all_but_one")
-            number_of_workers = multiprocessing.cpu_count() - 1
+            number_of_workers = (os.cpu_count() or 1) - 1
+            if number_of_workers < 1:
+                number_of_workers = 1
 
         # prepare precipitation NetCDF in case dimensions not (lat, lon, time) or if any coordinates are descending
         netcdf_precip = _prepare_file(arguments.netcdf_precip, arguments.var_name_precip)
@@ -1433,8 +923,20 @@ def main():  # type: () -> None
             "overwrite": arguments.overwrite,
         }
 
-        # compute and write SPI
-        _compute_write_index(kwrgs)
+        client = None
+        if arguments.multiprocessing == "all":
+            try:
+                from dask.distributed import Client
+            except ImportError as exc:
+                raise RuntimeError("dask.distributed is required for --multiprocessing all") from exc
+            client = Client(n_workers=number_of_workers)
+
+        try:
+            # compute and write SPI
+            _compute_write_index(kwrgs)
+        finally:
+            if client is not None:
+                client.close()
 
         # remove temporary file if one was created
         if netcdf_precip != arguments.netcdf_precip:

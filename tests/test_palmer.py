@@ -123,3 +123,125 @@ def test_pdsi(
             equal_nan=True,
             err_msg=f"{test_id}: Deltas not computed as expected",
         )
+
+
+def test_monthly_climatology_prefers_calibration_window() -> None:
+    values = np.concatenate([np.arange(12, dtype=float), np.arange(12, dtype=float) + 100.0])
+    climatology = palmer._compute_monthly_climatology(
+        values,
+        data_start_year=2000,
+        calibration_year_initial=2000,
+        calibration_year_final=2000,
+    )
+    np.testing.assert_allclose(climatology, np.arange(12, dtype=float))
+
+
+def test_monthly_climatology_fallbacks_to_full_period() -> None:
+    values = np.concatenate([np.full(12, np.nan), np.arange(12, dtype=float) + 100.0])
+    climatology = palmer._compute_monthly_climatology(
+        values,
+        data_start_year=2000,
+        calibration_year_initial=2000,
+        calibration_year_final=2000,
+    )
+    np.testing.assert_allclose(climatology, np.arange(12, dtype=float) + 100.0)
+
+
+def test_missing_policy_climatology_fills_values() -> None:
+    precips = np.full(24, 1.0)
+    pet = np.full(24, 0.5)
+    precips[0:12] = np.nan
+    pet[0:12] = np.nan
+    precip_climatology = palmer._compute_monthly_climatology(
+        precips,
+        data_start_year=2000,
+        calibration_year_initial=2000,
+        calibration_year_final=2001,
+    )
+    pet_climatology = palmer._compute_monthly_climatology(
+        pet,
+        data_start_year=2000,
+        calibration_year_initial=2000,
+        calibration_year_final=2001,
+    )
+    filled_precips = palmer._fill_missing_with_climatology(precips, precip_climatology, precips.size)
+    filled_pet = palmer._fill_missing_with_climatology(pet, pet_climatology, pet.size)
+
+    pdsi_filled, _, _, _, _ = palmer.pdsi(
+        filled_precips,
+        filled_pet,
+        awc=1.0,
+        data_start_year=2000,
+        calibration_year_initial=2000,
+        calibration_year_final=2001,
+        missing_policy="strict",
+    )
+    pdsi_climo, _, _, _, _ = palmer.pdsi(
+        precips,
+        pet,
+        awc=1.0,
+        data_start_year=2000,
+        calibration_year_initial=2000,
+        calibration_year_final=2001,
+        missing_policy="climatology",
+    )
+
+    np.testing.assert_allclose(pdsi_climo, pdsi_filled, equal_nan=True)
+
+
+def test_leap_year_rule_affects_daily_aggregation() -> None:
+    daily_noaa = np.ones(366)
+    monthly_noaa = palmer._aggregate_daily_to_monthly(
+        daily_noaa,
+        data_start_year=1900,
+        leap_year_rule="noaa",
+    )
+    assert monthly_noaa[1] == 29.0
+
+    daily_gregorian = np.ones(365)
+    monthly_gregorian = palmer._aggregate_daily_to_monthly(
+        daily_gregorian,
+        data_start_year=1900,
+        leap_year_rule="gregorian",
+    )
+    assert monthly_gregorian[1] == 28.0
+
+
+def test_pet_source_requires_inputs() -> None:
+    precips = np.full(24, 1.0)
+    temps = np.full(24, 10.0)
+    with pytest.raises(ValueError, match="PET input"):
+        palmer.pdsi(
+            precips,
+            pet=None,
+            awc=1.0,
+            data_start_year=2000,
+            calibration_year_initial=2000,
+            calibration_year_final=2001,
+            pet_source="input",
+        )
+
+    with pytest.raises(ValueError, match="fortran_b"):
+        palmer.pdsi(
+            precips,
+            pet=None,
+            awc=1.0,
+            data_start_year=2000,
+            calibration_year_initial=2000,
+            calibration_year_final=2001,
+            pet_source="fortran",
+            temperature_celsius=temps,
+            latitude_degrees=45.0,
+        )
+
+    with pytest.raises(ValueError, match="Daily Tmin"):
+        palmer.pdsi(
+            precips,
+            pet=None,
+            awc=1.0,
+            data_start_year=2000,
+            calibration_year_initial=2000,
+            calibration_year_final=2001,
+            pet_source="hargreaves",
+            latitude_degrees=45.0,
+        )
