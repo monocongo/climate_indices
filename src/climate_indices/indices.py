@@ -8,7 +8,7 @@ import numpy as np
 from climate_indices import compute, eto, utils
 
 # declare the function names that should be included in the public API for this module
-__all__ = ["percentage_of_normal", "pci", "pet", "spei", "spi"]
+__all__ = ["eddi", "percentage_of_normal", "pci", "pet", "spei", "spi"]
 
 
 class Distribution(Enum):
@@ -26,6 +26,15 @@ _logger = utils.get_logger(__name__, logging.DEBUG)
 # valid upper and lower bounds for indices that are fitted/transformed to a distribution (SPI and SPEI)
 _FITTED_INDEX_VALID_MIN = -3.09
 _FITTED_INDEX_VALID_MAX = 3.09
+
+# Hastings inverse normal approximation constants (Abramowitz & Stegun 26.2.23)
+# Used in EDDI computation - matches NOAA Fortran implementation exactly
+_HASTINGS_C0 = 2.515517
+_HASTINGS_C1 = 0.802853
+_HASTINGS_C2 = 0.010328
+_HASTINGS_D1 = 1.432788
+_HASTINGS_D2 = 0.189269
+_HASTINGS_D3 = 0.001308
 
 # Import fallback strategy for consistent behavior
 _fallback_strategy = compute.DistributionFallbackStrategy()
@@ -224,6 +233,185 @@ def spi(
 
     # return the original size array
     return values[0:original_length]
+
+
+def _hastings_inverse_normal(p: np.ndarray) -> np.ndarray:
+    """
+    Hastings rational approximation for inverse standard normal CDF.
+
+    Matches NOAA EDDI Fortran implementation exactly (Abramowitz & Stegun 26.2.23).
+    This approximation converts probabilities to standard normal quantiles (z-scores).
+
+    Args:
+        p: Probability values in (0, 1)
+
+    Returns:
+        Standard normal quantiles (z-scores)
+    """
+    result = np.empty_like(p)
+
+    # P < 0.5 case (left tail)
+    mask_low = p < 0.5
+    if np.any(mask_low):
+        w = np.sqrt(-2.0 * np.log(p[mask_low]))
+        result[mask_low] = -1.0 * (
+            w
+            - (_HASTINGS_C0 + _HASTINGS_C1 * w + _HASTINGS_C2 * w**2)
+            / (1.0 + _HASTINGS_D1 * w + _HASTINGS_D2 * w**2 + _HASTINGS_D3 * w**3)
+        )
+
+    # P >= 0.5 case (right tail)
+    mask_high = ~mask_low
+    if np.any(mask_high):
+        w = np.sqrt(-2.0 * np.log(1.0 - p[mask_high]))
+        result[mask_high] = w - (_HASTINGS_C0 + _HASTINGS_C1 * w + _HASTINGS_C2 * w**2) / (
+            1.0 + _HASTINGS_D1 * w + _HASTINGS_D2 * w**2 + _HASTINGS_D3 * w**3
+        )
+
+    return result
+
+
+def eddi(
+    pet_values: np.ndarray,
+    scale: int,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: compute.Periodicity,
+) -> np.ndarray:
+    """
+    Computes EDDI (Evaporative Demand Drought Index) using the NOAA PSL
+    non-parametric empirical ranking approach.
+
+    EDDI uses potential evapotranspiration (PET) to quantify atmospheric
+    evaporative demand anomalies. Higher EDDI values indicate greater
+    evaporative demand, which can contribute to drought conditions even
+    in the absence of precipitation deficits.
+
+    Unlike SPI/SPEI which fit parametric distributions (gamma or Pearson),
+    EDDI uses a non-parametric approach:
+    1. Empirical ranking against climatology for the same calendar period
+    2. Tukey plotting position for probability: P = (rank - 0.33) / (N + 0.33)
+    3. Hastings inverse normal approximation to transform to z-scores
+
+    This matches the NOAA Fortran implementation exactly.
+
+    Args:
+        pet_values: 1-D numpy array of PET values, in any units,
+            first value assumed to correspond to January of the initial year if
+            the periodicity is monthly, or January 1st of the initial year if daily
+        scale: number of time steps over which the values should be scaled
+            before the index is computed
+        data_start_year: the initial year of the input PET dataset
+        calibration_year_initial: initial year of the calibration period
+        calibration_year_final: final year of the calibration period
+        periodicity: the periodicity of the time series represented by the
+            input data, valid/supported values are 'monthly' and 'daily'
+            'monthly' indicates an array of monthly values, assumed to span full
+             years, i.e. the first value corresponds to January of the initial year
+             and any missing final months of the final year filled with NaN values,
+             with size == # of years * 12
+             'daily' indicates an array of full years of daily values with 366 days
+             per year, as if each year were a leap year and any missing final months
+             of the final year filled with NaN values, with array size == (# years * 366)
+
+    Returns:
+        EDDI values computed using non-parametric empirical ranking at the
+        specified time step scale, unitless
+
+    Raises:
+        ValueError: If the input array has invalid shape (>2 dimensions) or invalid
+            periodicity
+    """
+
+    # we expect to operate upon a 1-D array, so if we've been passed a 2-D array
+    # then we flatten it, otherwise raise an error
+    shape = pet_values.shape
+    if len(shape) == 2:
+        pet_values = pet_values.flatten()
+    elif len(shape) != 1:
+        message = f"Invalid shape of input array: {shape} -- only 1-D and 2-D arrays are supported"
+        _logger.error(message)
+        raise ValueError(message)
+
+    # if we're passed all missing values then we can't compute
+    # anything, so we return the same array of missing values
+    if (np.ma.is_masked(pet_values) and pet_values.mask.all()) or np.all(np.isnan(pet_values)):
+        return pet_values
+
+    # clip any negative values to zero
+    if np.amin(pet_values) < 0.0:
+        _logger.warning("Input contains negative values -- all negatives clipped to zero")
+        pet_values = np.clip(pet_values, a_min=0.0, a_max=None)
+
+    # remember the original length of the array, in order to facilitate
+    # returning an array of the same size
+    original_length = pet_values.size
+
+    # get a sliding sums array, with each time step's value scaled
+    # by the specified number of time steps
+    pet_values = compute.sum_to_scale(pet_values, scale)
+
+    # reshape PET values to (years, 12) for monthly, or to (years, 366) for daily
+    if periodicity == compute.Periodicity.monthly:
+        pet_values = utils.reshape_to_2d(pet_values, 12)
+        num_periods = 12
+    elif periodicity == compute.Periodicity.daily:
+        pet_values = utils.reshape_to_2d(pet_values, 366)
+        num_periods = 366
+    else:
+        raise ValueError(f"Invalid periodicity argument: '{periodicity}'")
+
+    # determine calibration period indices
+    calibration_start_year_index = calibration_year_initial - data_start_year
+    calibration_end_year_index = calibration_year_final - data_start_year
+
+    # initialize output array
+    num_years = pet_values.shape[0]
+    eddi_values = np.full((num_years, num_periods), np.nan)
+
+    # for each period (month or day of year)
+    for period_index in range(num_periods):
+        # extract all values for this period across all years
+        period_values = pet_values[:, period_index]
+
+        # extract climatology values (calibration period only) for this period
+        climatology = period_values[calibration_start_year_index : calibration_end_year_index + 1]
+
+        # remove NaN values from climatology
+        climatology_valid = climatology[~np.isnan(climatology)]
+
+        # skip if insufficient climatology data
+        if len(climatology_valid) < 2:
+            continue
+
+        # for each year, rank against climatology
+        for year_index in range(num_years):
+            current_value = period_values[year_index]
+
+            # skip NaN values
+            if np.isnan(current_value):
+                continue
+
+            # count how many climatology values are less than current value
+            # (rank starts at 1, matching Fortran implementation)
+            rank = 1 + np.sum(current_value > climatology_valid)
+
+            # Tukey plotting position
+            n = len(climatology_valid)
+            p = (rank - 0.33) / (n + 0.33)
+
+            # clip probability to valid range to avoid log(0)
+            p = np.clip(p, 1e-10, 1.0 - 1e-10)
+
+            # apply Hastings inverse normal approximation
+            eddi_values[year_index, period_index] = _hastings_inverse_normal(np.array([p]))[0]
+
+    # clip values to within the valid range, reshape the array back to 1-D
+    eddi_values = np.clip(eddi_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
+
+    # return the original size array
+    return eddi_values[0:original_length]
 
 
 def spei(
