@@ -320,8 +320,8 @@ def eddi(
         specified time step scale, unitless
 
     Raises:
-        ValueError: If the input array has invalid shape (>2 dimensions) or invalid
-            periodicity
+        ValueError: If the input array has invalid shape (>2 dimensions),
+            invalid periodicity, or calibration period is outside the data range
     """
 
     # we expect to operate upon a 1-D array, so if we've been passed a 2-D array
@@ -362,12 +362,31 @@ def eddi(
     else:
         raise ValueError(f"Invalid periodicity argument: '{periodicity}'")
 
+    # compute data dimensions for validation
+    num_years = pet_values.shape[0]
+    data_end_year = data_start_year + num_years - 1
+
+    # validate calibration period
+    if calibration_year_initial > calibration_year_final:
+        message = f"Invalid calibration year arguments: initial year ({calibration_year_initial}) is after final year ({calibration_year_final})"
+        _logger.error(message)
+        raise ValueError(message)
+
+    if calibration_year_initial < data_start_year:
+        message = f"Invalid calibration year arguments: calibration start year ({calibration_year_initial}) is before data start year ({data_start_year})"
+        _logger.error(message)
+        raise ValueError(message)
+
+    if calibration_year_final > data_end_year:
+        message = f"Invalid calibration year arguments: calibration end year ({calibration_year_final}) is after data end year ({data_end_year})"
+        _logger.error(message)
+        raise ValueError(message)
+
     # determine calibration period indices
     calibration_start_year_index = calibration_year_initial - data_start_year
     calibration_end_year_index = calibration_year_final - data_start_year
 
     # initialize output array
-    num_years = pet_values.shape[0]
     eddi_values = np.full((num_years, num_periods), np.nan)
 
     # for each period (month or day of year)

@@ -334,3 +334,175 @@ def test_eddi_2d_array(
 
     # verify output has same total size as input
     assert computed_eddi.size == pet_2d.size
+
+
+def test_eddi_calibration_start_before_data():
+    """Test that calibration start year before data start year raises ValueError."""
+    # create 10 years of monthly PET data starting in 2000
+    num_years = 10
+    pet_simple = np.ones(num_years * 12) * 100.0
+    data_start_year = 2000
+
+    # attempt to use calibration start year before data start year
+    with pytest.raises(ValueError, match="calibration start year"):
+        indices.eddi(
+            pet_values=pet_simple,
+            scale=1,
+            data_start_year=data_start_year,
+            calibration_year_initial=1999,  # before data start
+            calibration_year_final=2005,
+            periodicity=compute.Periodicity.monthly,
+        )
+
+
+def test_eddi_calibration_end_after_data():
+    """Test that calibration end year after data end year raises ValueError."""
+    # create 10 years of monthly PET data starting in 2000 (ending in 2009)
+    num_years = 10
+    pet_simple = np.ones(num_years * 12) * 100.0
+    data_start_year = 2000
+
+    # attempt to use calibration end year after data end year
+    with pytest.raises(ValueError, match="calibration end year"):
+        indices.eddi(
+            pet_values=pet_simple,
+            scale=1,
+            data_start_year=data_start_year,
+            calibration_year_initial=2002,
+            calibration_year_final=2015,  # after data end (2009)
+            periodicity=compute.Periodicity.monthly,
+        )
+
+
+def test_eddi_calibration_start_after_end():
+    """Test that calibration start year after end year raises ValueError."""
+    # create 10 years of monthly PET data
+    num_years = 10
+    pet_simple = np.ones(num_years * 12) * 100.0
+    data_start_year = 2000
+
+    # attempt to use calibration start year after calibration end year
+    with pytest.raises(ValueError, match="initial year"):
+        indices.eddi(
+            pet_values=pet_simple,
+            scale=1,
+            data_start_year=data_start_year,
+            calibration_year_initial=2005,
+            calibration_year_final=2002,  # before start year
+            periodicity=compute.Periodicity.monthly,
+        )
+
+
+@pytest.mark.usefixtures(
+    "data_year_start_daily",
+    "calibration_year_start_daily",
+    "calibration_year_end_daily",
+)
+def test_eddi_daily_periodicity(
+    data_year_start_daily,
+    calibration_year_start_daily,
+    calibration_year_end_daily,
+):
+    """Test EDDI computation with daily periodicity."""
+    # create synthetic daily PET data with seasonal pattern
+    # 1998-2016 is 19 years
+    num_years = calibration_year_end_daily - data_year_start_daily + 1
+    total_days = num_years * 366
+
+    # generate seasonal sinusoidal pattern (higher in summer, lower in winter)
+    rng = np.random.default_rng(seed=42)
+    day_of_year = np.tile(np.arange(366), num_years)
+    seasonal_pattern = 100.0 + 50.0 * np.sin(2 * np.pi * day_of_year / 366)
+    # add some random noise
+    pet_daily = seasonal_pattern + rng.uniform(-10.0, 10.0, total_days)
+
+    # compute EDDI at 1-day scale
+    computed_eddi = indices.eddi(
+        pet_values=pet_daily,
+        scale=1,
+        data_start_year=data_year_start_daily,
+        calibration_year_initial=calibration_year_start_daily,
+        calibration_year_final=calibration_year_end_daily,
+        periodicity=compute.Periodicity.daily,
+    )
+
+    # verify output shape matches input
+    assert computed_eddi.shape == (total_days,)
+
+    # verify output is within valid range (±3.09)
+    valid_values = computed_eddi[~np.isnan(computed_eddi)]
+    assert np.all(valid_values >= -3.09)
+    assert np.all(valid_values <= 3.09)
+
+    # verify we have some non-NaN values
+    assert np.sum(~np.isnan(computed_eddi)) > 0
+
+
+def test_eddi_insufficient_climatology():
+    """Test that periods with insufficient climatology (<2 valid values) result in NaN."""
+    # create 5 years of monthly PET data
+    num_years = 5
+    rng = np.random.default_rng(seed=42)
+    pet_simple = rng.uniform(50.0, 150.0, num_years * 12)
+
+    # set ALL February values (index 1, 13, 25, 37, 49) to NaN
+    # this forces len(climatology_valid) < 2 for February
+    for year in range(num_years):
+        pet_simple[year * 12 + 1] = np.nan
+
+    # compute EDDI using all 5 years for calibration
+    computed_eddi = indices.eddi(
+        pet_values=pet_simple,
+        scale=1,
+        data_start_year=2000,
+        calibration_year_initial=2000,
+        calibration_year_final=2004,
+        periodicity=compute.Periodicity.monthly,
+    )
+
+    # reshape to (years, months) for easier inspection
+    eddi_2d = computed_eddi.reshape(num_years, 12)
+
+    # verify February (index 1) values are all NaN
+    assert np.all(np.isnan(eddi_2d[:, 1]))
+
+    # verify other months have at least some non-NaN values
+    # (we can't guarantee all will be non-NaN due to ranking algorithm)
+    for month_idx in range(12):
+        if month_idx != 1:  # skip February
+            # at least one value should be non-NaN for other months
+            assert np.any(~np.isnan(eddi_2d[:, month_idx]))
+
+
+def test_eddi_mixed_nan_positions():
+    """Test that scattered NaN positions in input produce NaN in output at same positions."""
+    # create 10 years of monthly PET data
+    num_years = 10
+    rng = np.random.default_rng(seed=42)
+    pet_simple = rng.uniform(50.0, 200.0, num_years * 12)
+
+    # set specific scattered positions to NaN
+    nan_positions = [5, 15, 30, 72, 99]
+    for pos in nan_positions:
+        pet_simple[pos] = np.nan
+
+    # compute EDDI
+    computed_eddi = indices.eddi(
+        pet_values=pet_simple,
+        scale=1,
+        data_start_year=2000,
+        calibration_year_initial=2002,
+        calibration_year_final=2007,
+        periodicity=compute.Periodicity.monthly,
+    )
+
+    # verify those positions are NaN in output
+    for pos in nan_positions:
+        assert np.isnan(computed_eddi[pos])
+
+    # verify non-NaN positions produce valid z-scores
+    valid_mask = ~np.isnan(computed_eddi)
+    valid_values = computed_eddi[valid_mask]
+    if len(valid_values) > 0:
+        assert np.all(valid_values >= -3.09)
+        assert np.all(valid_values <= 3.09)
