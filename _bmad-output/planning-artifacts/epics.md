@@ -489,3 +489,236 @@ So that current users benefit from improved observability.
 **And** no function signatures change (internal logging only)
 **And** existing NumPy tests pass unchanged
 **And** FR-LOG-005 is satisfied
+
+---
+
+## Epic 2: Core xarray Support — SPI Calculation
+
+Climate researchers can calculate SPI directly on xarray DataArrays with full metadata preservation, eliminating manual `.values` extraction and coordinate re-attachment workflows.
+
+### Story 2.1: Input Type Detection and Routing
+
+As a **climate researcher**,
+I want the library to automatically detect whether I'm using NumPy or xarray,
+So that I don't need separate function calls for different input types.
+
+**Acceptance Criteria:**
+
+**Given** the SPI function receives input data
+**When** I check the input type
+**Then** `isinstance(data, xr.DataArray)` determines routing
+**And** xarray inputs route to the xarray adapter path
+**And** numpy.ndarray/list/scalar inputs route to the NumPy path
+**And** unsupported types (pandas.Series, polars.DataFrame) raise `InputTypeError` with clear message
+**And** FR-INPUT-001 is satisfied
+
+---
+
+### Story 2.2: xarray Adapter Decorator Infrastructure
+
+As a **library developer**,
+I want a reusable decorator pattern for wrapping NumPy functions,
+So that adding xarray support to new indices is straightforward.
+
+**Acceptance Criteria:**
+
+**Given** I need to wrap a NumPy index function
+**When** I create the `xarray_adapter.py` module
+**Then** an `@xarray_adapter` decorator exists with signature accepting cf_metadata, time_dim, and infer_params parameters
+**And** the decorator implements the adapter contract:
+1. Extract `.values` from DataArray
+2. Infer parameters (data_start_year, periodicity) if enabled
+3. Call wrapped NumPy function
+4. Rewrap result with coordinates and attributes
+5. Log completion event
+**And** mypy --strict passes with proper type overloads
+**And** Architectural Decision 1 (Adapter Pattern) is implemented
+
+---
+
+### Story 2.3: CF Metadata Registry for SPI
+
+As a **climate researcher**,
+I want SPI outputs to have CF-compliant metadata,
+So that my results are interoperable with other climate tools.
+
+**Acceptance Criteria:**
+
+**Given** SPI calculation produces xarray output
+**When** I define the `CF_METADATA` registry
+**Then** an SPI entry exists with long_name, units, and references fields
+**And** metadata includes "Standardized Precipitation Index" as long_name
+**And** units are "dimensionless"
+**And** references include DOI to McKee et al. (1993)
+**And** metadata is applied to output DataArray
+**And** FR-META-003 (CF compliance) is satisfied
+**And** Architectural Decision 4 (Metadata Registry) is implemented
+
+---
+
+### Story 2.4: Coordinate Preservation
+
+As a **climate researcher**,
+I want all my input coordinates preserved in the output,
+So that I don't lose spatial/temporal reference information.
+
+**Acceptance Criteria:**
+
+**Given** an xarray DataArray with coordinates (time, lat, lon, ensemble)
+**When** SPI calculation completes
+**Then** output DataArray has identical coordinates to input:
+- All dimension coordinates (time, lat, lon)
+- All non-dimension coordinates (bounds, auxiliary)
+- Coordinate attributes preserved
+- Coordinate order maintained
+**And** FR-META-001 is satisfied
+
+---
+
+### Story 2.5: Attribute Preservation and Enhancement
+
+As a **climate researcher**,
+I want relevant input attributes preserved and index-specific metadata added,
+So that I maintain provenance and dataset context.
+
+**Acceptance Criteria:**
+
+**Given** input DataArray has attributes (institution, source, history)
+**When** SPI calculation completes
+**Then** output DataArray attributes include:
+- Preserved: institution, source (global context)
+- Added: CF metadata (long_name, units, references)
+- Added: calculation metadata (scale, distribution, library version)
+- Conflicting attributes overwritten with index-specific values
+**And** FR-META-002 is satisfied
+
+---
+
+### Story 2.6: Provenance Tracking in History Attribute
+
+As a **data manager**,
+I want calculation provenance recorded in metadata,
+So that I can audit and reproduce analyses.
+
+**Acceptance Criteria:**
+
+**Given** SPI calculation on xarray DataArray
+**When** the calculation completes
+**Then** a `history` attribute is added/appended with:
+- ISO 8601 timestamp
+- Index type and parameters (e.g., "SPI-3 with gamma distribution")
+- Library name and version ("climate_indices v2.0.0")
+**And** existing history is preserved (appended, not overwritten)
+**And** FR-META-004 is satisfied
+
+---
+
+### Story 2.7: Coordinate Validation
+
+As a **climate researcher**,
+I want clear errors when my DataArray lacks required dimensions,
+So that I can fix data structure issues quickly.
+
+**Acceptance Criteria:**
+
+**Given** input DataArray is missing required time dimension
+**When** SPI validation runs
+**Then** a `CoordinateValidationError` is raised with message:
+- "Time dimension 'time' not found in input"
+- "Available dimensions: [list of actual dims]"
+- Suggestion: "Use time_dim parameter to specify custom name"
+**And** time coordinate monotonicity is checked
+**And** insufficient data (time series too short for scale) raises `InsufficientDataError`
+**And** FR-INPUT-002 is satisfied
+
+---
+
+### Story 2.8: Missing Data (NaN) Handling
+
+As a **climate researcher**,
+I want NaN values handled consistently with NumPy behavior,
+So that missing data doesn't break my workflows.
+
+**Acceptance Criteria:**
+
+**Given** input DataArray contains NaN values
+**When** SPI calculation runs
+**Then** NaNs propagate through calculations (default behavior)
+**And** warning is emitted when >20% of calibration period is NaN
+**And** minimum sample size (30 years) is enforced on non-NaN values
+**And** output has NaN where input had NaN
+**And** FR-INPUT-004 is satisfied
+
+---
+
+### Story 2.9: Dask-Backed Array Support
+
+As a **climate researcher**,
+I want SPI to work with Dask arrays for large datasets,
+So that I can process data larger than memory.
+
+**Acceptance Criteria:**
+
+**Given** input DataArray is backed by dask.array
+**When** SPI calculation runs
+**Then** computation remains lazy (no automatic `.compute()`)
+**And** `apply_ufunc` is used with `dask='parallelized'`
+**And** input chunking is preserved in output
+**And** no automatic rechunking occurs
+**And** FR-INPUT-005 is satisfied
+**And** FR-META-005 (chunking preservation) is satisfied
+
+---
+
+### Story 2.10: Parameter Inference (data_start_year, periodicity)
+
+As a **climate researcher**,
+I want the library to infer temporal parameters from my DataArray,
+So that I don't have to manually specify obvious values.
+
+**Acceptance Criteria:**
+
+**Given** input DataArray has a time coordinate
+**When** parameter inference is enabled (default)
+**Then** `data_start_year` is inferred from `data.time[0].dt.year`
+**And** `periodicity` is inferred from `xr.infer_freq(data.time)` (monthly/daily)
+**And** calibration period defaults to full time range
+**And** explicit parameter values override inferred values
+**And** Architectural Decision 6 (Parameter Inference) is implemented
+
+---
+
+### Story 2.11: Type Hints and Overloads for NumPy/xarray Dispatch
+
+As a **Python developer using IDEs**,
+I want accurate type hints for SPI function,
+So that my IDE provides correct autocomplete and type checking.
+
+**Acceptance Criteria:**
+
+**Given** SPI function accepts both NumPy and xarray inputs
+**When** I add type annotations
+**Then** `@overload` signatures exist for both paths with proper numpy.ndarray and xarray.DataArray return types
+**And** mypy --strict passes with no type errors
+**And** IDE autocomplete shows correct return type based on input
+**And** FR-API-002 is satisfied
+
+---
+
+### Story 2.12: Backward Compatibility - NumPy Path Unchanged
+
+As an **operational drought monitor**,
+I want my existing NumPy-based code to work identically,
+So that I can upgrade without breaking production systems.
+
+**Acceptance Criteria:**
+
+**Given** existing NumPy tests from v1.x
+**When** SPI is called with numpy.ndarray input
+**Then** all existing tests pass without modification
+**And** numerical results are bit-exact (tolerance: 1e-8 for float64)
+**And** no new required parameters introduced
+**And** no deprecation warnings emitted (MVP phase)
+**And** `indices.py` module remains completely unchanged
+**And** FR-CALC-005 is satisfied
+**And** NFR-COMPAT-003 (backward compatibility) is satisfied
