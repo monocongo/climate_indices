@@ -25,6 +25,7 @@ packages = [{include = 'climate_indices', from = 'src'}]
 requires-python = ">=3.10,<3.14"
 dependencies = [
     "scipy>=1.15.3",
+    "structlog>=24.1.0",
     # remaining dependencies are required for the CLI (console) scripts
     "cftime>=1.6.4.post1",
     "dask>=2025.7.0",
@@ -113,6 +114,7 @@ strict_equality = true
 [[tool.mypy.overrides]]
 module = [
     "scipy.*",
+    "structlog.*",
     "netCDF4.*",
     "xarray.*",
     "dask.*",
