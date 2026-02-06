@@ -11,6 +11,11 @@ import scipy.version
 from packaging.version import Version
 
 from climate_indices import lmoments, utils
+from climate_indices.exceptions import (
+    DistributionFittingError,
+    InsufficientDataError,
+    PearsonFittingError,
+)
 
 # declare the function names that should be included in the public API for this module
 __all__ = [
@@ -38,30 +43,6 @@ MIN_NON_ZERO_VALUES_FOR_PEARSON = 4
 # Maximum failure rate threshold before issuing high failure rate warnings
 # Values above this percentage indicate systemic issues with the dataset
 HIGH_FAILURE_RATE_THRESHOLD = 0.8  # 80%
-
-
-# Custom exception classes for distribution fitting
-class DistributionFittingError(Exception):
-    """Base exception for distribution fitting failures."""
-
-    pass
-
-
-class InsufficientDataError(DistributionFittingError):
-    """Raised when there is insufficient data for distribution fitting."""
-
-    def __init__(self, message, non_zero_count=None, required_count=None):
-        super().__init__(message)
-        self.non_zero_count = non_zero_count
-        self.required_count = required_count
-
-
-class PearsonFittingError(DistributionFittingError):
-    """Raised when Pearson Type III distribution fitting fails."""
-
-    def __init__(self, message, underlying_error=None):
-        super().__init__(message)
-        self.underlying_error = underlying_error
 
 
 class DistributionFallbackStrategy:
