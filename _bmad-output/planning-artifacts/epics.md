@@ -287,3 +287,205 @@ Users have comprehensive guides, API references, and stable package installation
 - Beta feature warnings in docstrings
 
 **Value Delivered:** Enables community adoption and contribution. Establishes documentation patterns for Phase 2 indices.
+
+---
+
+## Epic 1: Foundation — Error Handling and Observability
+
+Researchers and operational users get structured error messages and comprehensive logging for debugging climate index calculations, improving troubleshooting time by 40%.
+
+### Story 1.1: Custom Exception Hierarchy
+
+As a **library developer**,
+I want a unified exception hierarchy for all climate indices errors,
+So that users can catch and handle different error types programmatically.
+
+**Acceptance Criteria:**
+
+**Given** the codebase needs structured error handling
+**When** I create the `exceptions.py` module
+**Then** a base `ClimateIndicesError` exception class exists
+**And** existing exceptions are re-parented under `ClimateIndicesError`:
+- `DistributionFittingError`
+- `InsufficientDataError`
+- `PearsonFittingError`
+**And** new exceptions are added:
+- `DimensionMismatchError`
+- `CoordinateValidationError`
+- `InputTypeError`
+**And** all exceptions include helpful error messages with context
+**And** mypy --strict passes on the exceptions module
+**And** FR-ERROR-003 is satisfied
+
+---
+
+### Story 1.2: Input Validation Error Handling
+
+As a **climate researcher**,
+I want clear error messages when my input data is invalid,
+So that I can quickly identify and fix data issues.
+
+**Acceptance Criteria:**
+
+**Given** a user calls an index function with invalid inputs
+**When** validation fails (missing time dimension, invalid scale, unsupported distribution)
+**Then** a specific exception is raised (not generic ValueError)
+**And** the error message includes:
+- What validation failed
+- Available dimensions/valid ranges
+- Suggested remediation
+**And** input validation covers:
+- Scale in range 1-72
+- Distribution in supported set (gamma, pearson3)
+- Time dimension presence
+**And** FR-ERROR-001 is satisfied
+
+---
+
+### Story 1.3: Computation Error Handling
+
+As an **operational drought monitor**,
+I want detailed error context when distribution fitting fails,
+So that I can diagnose and resolve computation issues.
+
+**Acceptance Criteria:**
+
+**Given** distribution fitting fails during index calculation
+**When** the computation error occurs
+**Then** a `DistributionFittingError` is raised
+**And** the error message includes:
+- Input shape and parameter values
+- Which distribution failed (gamma/pearson3)
+- Suggested alternative ("try pearson3 distribution")
+**And** errors are caught from scipy.stats operations
+**And** FR-ERROR-002 is satisfied
+
+---
+
+### Story 1.4: Warning System for Data Quality Issues
+
+As a **climate researcher**,
+I want warnings when my data has quality issues,
+So that I'm aware of potential problems without blocking my calculation.
+
+**Acceptance Criteria:**
+
+**Given** input data has quality issues
+**When** the index calculation runs
+**Then** warnings are emitted using `warnings.warn()` (not logging):
+- When >20% missing data in calibration period
+- When calibration period < 30 years
+- When distribution fit has poor goodness-of-fit
+**And** warnings are suppressible via `warnings.filterwarnings()`
+**And** calculations still complete despite warnings
+**And** FR-ERROR-004 is satisfied
+
+---
+
+### Story 1.5: structlog Configuration Module
+
+As a **system administrator**,
+I want to configure structured logging with JSON and console outputs,
+So that I can integrate climate_indices logs into my monitoring infrastructure.
+
+**Acceptance Criteria:**
+
+**Given** the library needs structured logging
+**When** I create the `logging_config.py` module
+**Then** a `configure_logging()` function exists that:
+- Sets up structlog with dual processors (JSON + console)
+- JSON output for file handlers (machine-readable)
+- Human-readable colored output for console
+- Accepts log level parameter (DEBUG, INFO, WARNING, ERROR)
+- Defaults to INFO level
+**And** environment variable `CLIMATE_INDICES_LOG_LEVEL` overrides default
+**And** no logging to files by default (user-configured)
+**And** FR-LOG-001 is satisfied
+
+---
+
+### Story 1.6: Calculation Event Logging
+
+As a **climate researcher**,
+I want my index calculations logged with start/completion events,
+So that I can track computation progress in long-running workflows.
+
+**Acceptance Criteria:**
+
+**Given** an index calculation is initiated
+**When** the calculation starts
+**Then** an INFO-level log entry is emitted with:
+- Event: "calculation_started"
+- Index type (spi, spei, pet_thornthwaite, pet_hargreaves)
+- Scale parameter
+- Distribution parameter
+- Input shape (dimensions)
+**When** the calculation completes
+**Then** an INFO-level log entry is emitted with:
+- Event: "calculation_completed"
+- Duration in milliseconds
+- Output shape
+**And** context is bound at API entry points (not internal functions)
+**And** FR-LOG-002 is satisfied
+
+---
+
+### Story 1.7: Error Context Logging
+
+As an **operational drought monitor**,
+I want detailed context logged when errors occur,
+So that I can perform post-mortem analysis on failures.
+
+**Acceptance Criteria:**
+
+**Given** a computation error occurs
+**When** the error is raised
+**Then** an ERROR-level log entry is emitted with:
+- Full traceback
+- Input metadata (shape, coordinates if xarray, chunking)
+- Parameter values (scale, distribution, calibration period)
+- Event: "calculation_failed"
+**And** no data values are logged (privacy + size concerns)
+**And** structured log fields enable filtering/aggregation
+**And** FR-LOG-003 is satisfied
+
+---
+
+### Story 1.8: Performance Metrics Logging
+
+As a **performance engineer**,
+I want computation time and memory usage logged,
+So that I can profile and optimize large-scale workflows.
+
+**Acceptance Criteria:**
+
+**Given** an index calculation runs
+**When** the calculation completes
+**Then** performance metrics are logged:
+- Computation time in milliseconds (all calculations)
+- Memory usage for arrays > 1GB (if psutil available)
+- Input size (element count)
+**And** metrics are accessible via structlog context binding
+**And** custom metrics can be added via context binding API
+**And** FR-LOG-004 is satisfied
+
+---
+
+### Story 1.9: Integrate Logging into Existing Modules
+
+As a **library maintainer**,
+I want structured logging integrated into existing NumPy code,
+So that current users benefit from improved observability.
+
+**Acceptance Criteria:**
+
+**Given** the logging infrastructure is established
+**When** I update existing modules (`compute.py`, `eto.py`, `utils.py`)
+**Then** module-level loggers are added: `logger = structlog.get_logger(__name__)`
+**And** key operations are logged:
+- Distribution fitting start/complete (compute.py)
+- PET calculation start/complete (eto.py)
+- Array transformation operations (utils.py)
+**And** no function signatures change (internal logging only)
+**And** existing NumPy tests pass unchanged
+**And** FR-LOG-005 is satisfied
