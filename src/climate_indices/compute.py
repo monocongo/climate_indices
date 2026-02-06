@@ -3,6 +3,7 @@ Common classes and functions used to compute the various climate indices.
 """
 
 import logging
+import warnings
 from enum import Enum
 
 import numpy as np
@@ -13,8 +14,11 @@ from packaging.version import Version
 from climate_indices import lmoments, utils
 from climate_indices.exceptions import (
     DistributionFittingError,
+    GoodnessOfFitWarning,
     InsufficientDataError,
+    MissingDataWarning,
     PearsonFittingError,
+    ShortCalibrationWarning,
 )
 
 # declare the function names that should be included in the public API for this module
@@ -43,6 +47,16 @@ MIN_NON_ZERO_VALUES_FOR_PEARSON = 4
 # Maximum failure rate threshold before issuing high failure rate warnings
 # Values above this percentage indicate systemic issues with the dataset
 HIGH_FAILURE_RATE_THRESHOLD = 0.8  # 80%
+
+# Data quality warning thresholds
+# Maximum acceptable proportion of missing data in calibration period
+MISSING_DATA_THRESHOLD = 0.20  # 20%
+
+# Minimum recommended calibration period length in years
+MIN_CALIBRATION_YEARS = 30
+
+# Kolmogorov-Smirnov test p-value threshold for goodness-of-fit warnings
+GOODNESS_OF_FIT_P_VALUE_THRESHOLD = 0.05
 
 
 class DistributionFallbackStrategy:
@@ -420,6 +434,10 @@ def pearson_parameters(
     calibration_begin_index = calibration_start_year - data_start_year
     calibration_end_index = (calibration_end_year - data_start_year) + 1
     calibration_values = values[calibration_begin_index:calibration_end_index, :]
+
+    # check calibration data quality and emit warnings if needed
+    _check_calibration_data_quality(calibration_values, calibration_start_year, calibration_end_year)
+
     probabilities_of_zero = np.zeros((time_steps_per_year,))
     locs = np.zeros((time_steps_per_year,))
     scales = np.zeros((time_steps_per_year,))
@@ -450,6 +468,9 @@ def pearson_parameters(
             total_count=time_steps_per_year,
             context="pearson_parameters computation",
         )
+
+    # check goodness-of-fit and emit warning if poor
+    _check_goodness_of_fit_pearson(calibration_values, probabilities_of_zero, locs, scales, skews)
 
     return probabilities_of_zero, locs, scales, skews
 
@@ -787,6 +808,197 @@ def transform_fitted_pearson(
     return values
 
 
+def _check_calibration_data_quality(
+    calibration_values: np.ndarray,
+    calibration_start_year: int,
+    calibration_end_year: int,
+) -> None:
+    """
+    Check calibration period data quality and emit warnings if issues are detected.
+
+    Emits warnings for:
+    1. Short calibration period (< MIN_CALIBRATION_YEARS)
+    2. Excessive missing data (> MISSING_DATA_THRESHOLD)
+
+    :param calibration_values: Calibration data array with shape (years, time_steps)
+    :param calibration_start_year: Start year of calibration period
+    :param calibration_end_year: End year of calibration period (inclusive)
+    """
+    # check calibration period length
+    actual_years = (calibration_end_year - calibration_start_year) + 1
+    if actual_years < MIN_CALIBRATION_YEARS:
+        message = (
+            f"Calibration period is {actual_years} years, which is shorter than the "
+            f"recommended minimum of {MIN_CALIBRATION_YEARS} years. "
+            f"Shorter periods may not capture the full range of climate variability."
+        )
+        warning = ShortCalibrationWarning(
+            message,
+            actual_years=actual_years,
+            required_years=MIN_CALIBRATION_YEARS,
+        )
+        warnings.warn(warning, stacklevel=3)
+
+    # check for excessive missing data
+    total_values = calibration_values.size
+    if total_values > 0:
+        missing_count = np.count_nonzero(np.isnan(calibration_values))
+        missing_ratio = missing_count / total_values
+        if missing_ratio > MISSING_DATA_THRESHOLD:
+            message = (
+                f"Calibration period has {missing_ratio:.1%} missing data, which exceeds the "
+                f"recommended threshold of {MISSING_DATA_THRESHOLD:.1%}. High missing data rates "
+                f"may reduce the reliability of distribution fitting."
+            )
+            warning = MissingDataWarning(
+                message,
+                missing_ratio=missing_ratio,
+                threshold=MISSING_DATA_THRESHOLD,
+            )
+            warnings.warn(warning, stacklevel=3)
+
+
+def _check_goodness_of_fit_gamma(
+    calibration_values: np.ndarray,
+    alphas: np.ndarray,
+    betas: np.ndarray,
+) -> None:
+    """
+    Check goodness-of-fit for gamma distribution and emit aggregated warning if poor.
+
+    Performs Kolmogorov-Smirnov tests for each time step and aggregates
+    poor fits into a single warning to avoid flooding users with warnings.
+
+    :param calibration_values: Calibration data with shape (years, time_steps)
+    :param alphas: Shape parameters for gamma distribution
+    :param betas: Scale parameters for gamma distribution
+    """
+    time_steps = calibration_values.shape[1]
+    poor_fit_steps = []
+
+    for time_step_index in range(time_steps):
+        time_step_values = calibration_values[:, time_step_index]
+        # remove NaN values for KS test
+        valid_values = time_step_values[~np.isnan(time_step_values)]
+
+        if len(valid_values) > 0:
+            alpha = alphas[time_step_index]
+            beta = betas[time_step_index]
+
+            # skip if parameters are invalid
+            if not (np.isfinite(alpha) and np.isfinite(beta) and alpha > 0 and beta > 0):
+                continue
+
+            # perform Kolmogorov-Smirnov test
+            try:
+                ks_statistic, p_value = scipy.stats.kstest(
+                    valid_values,
+                    lambda x, a=alpha, s=beta: scipy.stats.gamma.cdf(x, a=a, scale=s),
+                )
+                if p_value < GOODNESS_OF_FIT_P_VALUE_THRESHOLD:
+                    poor_fit_steps.append((time_step_index, p_value))
+            except Exception:
+                # ignore fitting errors during goodness-of-fit check
+                continue
+
+    if poor_fit_steps:
+        # show up to 5 examples
+        examples = poor_fit_steps[:5]
+        example_text = ", ".join([f"step {idx} (p={p:.4f})" for idx, p in examples])
+        if len(poor_fit_steps) > 5:
+            example_text += f", and {len(poor_fit_steps) - 5} more"
+
+        message = (
+            f"Gamma distribution shows poor goodness-of-fit for {len(poor_fit_steps)} of "
+            f"{time_steps} time steps (p < {GOODNESS_OF_FIT_P_VALUE_THRESHOLD}). "
+            f"Examples: {example_text}. Consider using a different distribution or "
+            f"investigating data quality issues."
+        )
+        warning = GoodnessOfFitWarning(
+            message,
+            distribution_name="gamma",
+            threshold=GOODNESS_OF_FIT_P_VALUE_THRESHOLD,
+            poor_fit_count=len(poor_fit_steps),
+            total_steps=time_steps,
+        )
+        warnings.warn(warning, stacklevel=3)
+
+
+def _check_goodness_of_fit_pearson(
+    calibration_values: np.ndarray,
+    probabilities_of_zero: np.ndarray,
+    locs: np.ndarray,
+    scales: np.ndarray,
+    skews: np.ndarray,
+) -> None:
+    """
+    Check goodness-of-fit for Pearson Type III distribution and emit aggregated warning if poor.
+
+    Performs Kolmogorov-Smirnov tests for each time step and aggregates
+    poor fits into a single warning to avoid flooding users with warnings.
+
+    :param calibration_values: Calibration data with shape (years, time_steps)
+    :param probabilities_of_zero: Probability of zero for each time step
+    :param locs: Location parameters for Pearson Type III distribution
+    :param scales: Scale parameters for Pearson Type III distribution
+    :param skews: Skewness parameters for Pearson Type III distribution
+    """
+    time_steps = calibration_values.shape[1]
+    poor_fit_steps = []
+
+    for time_step_index in range(time_steps):
+        time_step_values = calibration_values[:, time_step_index]
+        loc = locs[time_step_index]
+        scale = scales[time_step_index]
+        skew = skews[time_step_index]
+
+        # skip time steps where fitting failed (all parameters are zero)
+        if loc == 0 and scale == 0 and skew == 0:
+            continue
+
+        # filter out NaN and zero values for non-zero distribution
+        valid_values = time_step_values[~np.isnan(time_step_values) & (time_step_values != 0)]
+
+        if len(valid_values) > 0:
+            # skip if parameters are invalid
+            if not (np.isfinite(loc) and np.isfinite(scale) and np.isfinite(skew) and scale > 0):
+                continue
+
+            # perform Kolmogorov-Smirnov test
+            try:
+                ks_statistic, p_value = scipy.stats.kstest(
+                    valid_values,
+                    lambda x, sk=skew, loc_=loc, sc=scale: scipy.stats.pearson3.cdf(x, sk, loc=loc_, scale=sc),
+                )
+                if p_value < GOODNESS_OF_FIT_P_VALUE_THRESHOLD:
+                    poor_fit_steps.append((time_step_index, p_value))
+            except Exception:
+                # ignore fitting errors during goodness-of-fit check
+                continue
+
+    if poor_fit_steps:
+        # show up to 5 examples
+        examples = poor_fit_steps[:5]
+        example_text = ", ".join([f"step {idx} (p={p:.4f})" for idx, p in examples])
+        if len(poor_fit_steps) > 5:
+            example_text += f", and {len(poor_fit_steps) - 5} more"
+
+        message = (
+            f"Pearson Type III distribution shows poor goodness-of-fit for {len(poor_fit_steps)} of "
+            f"{time_steps} time steps (p < {GOODNESS_OF_FIT_P_VALUE_THRESHOLD}). "
+            f"Examples: {example_text}. Consider using a different distribution or "
+            f"investigating data quality issues."
+        )
+        warning = GoodnessOfFitWarning(
+            message,
+            distribution_name="pearson3",
+            threshold=GOODNESS_OF_FIT_P_VALUE_THRESHOLD,
+            poor_fit_count=len(poor_fit_steps),
+            total_steps=time_steps,
+        )
+        warnings.warn(warning, stacklevel=3)
+
+
 def _replace_zeros_with_nan(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """
     Create a copy of values with zeros replaced by NaN.
@@ -852,6 +1064,9 @@ def gamma_parameters(
     # validate (and possibly reshape) the input array
     values = _validate_array(values, periodicity)
 
+    # save reference to original values before zero replacement for data quality checks
+    original_values = values
+
     # replace zeros with NaNs (zeros are excluded from gamma fitting)
     _, values = _replace_zeros_with_nan(values)
 
@@ -872,6 +1087,10 @@ def gamma_parameters(
     # get the values for the current calendar time step
     # that fall within the calibration years period
     calibration_values = values[calibration_begin_index:calibration_end_index, :]
+    original_calibration = original_values[calibration_begin_index:calibration_end_index, :]
+
+    # check calibration data quality and emit warnings if needed
+    _check_calibration_data_quality(original_calibration, calibration_start_year, calibration_end_year)
 
     # compute the gamma distribution's shape and scale parameters, alpha and beta
     # using method of moments estimation
@@ -882,6 +1101,9 @@ def gamma_parameters(
     a = log_means - mean_logs
     alphas = (1 + np.sqrt(1 + 4 * a / 3)) / (4 * a)
     betas = means / alphas
+
+    # check goodness-of-fit and emit warning if poor
+    _check_goodness_of_fit_gamma(calibration_values, alphas, betas)
 
     return alphas, betas
 

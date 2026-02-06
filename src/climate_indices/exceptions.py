@@ -17,6 +17,10 @@ __all__ = [
     "CoordinateValidationError",
     "InputTypeError",
     "InvalidArgumentError",
+    "ClimateIndicesWarning",
+    "MissingDataWarning",
+    "ShortCalibrationWarning",
+    "GoodnessOfFitWarning",
 ]
 
 
@@ -192,3 +196,99 @@ class InvalidArgumentError(ClimateIndicesError):
         self.argument_name = argument_name
         self.argument_value = argument_value
         self.valid_values = valid_values
+
+
+# Warning Classes
+
+
+class ClimateIndicesWarning(UserWarning):
+    """Base warning for all climate_indices library data quality warnings.
+
+    Users can filter all library warnings by catching this category:
+        warnings.filterwarnings("ignore", category=ClimateIndicesWarning)
+    """
+
+    pass
+
+
+class MissingDataWarning(ClimateIndicesWarning):
+    """Warning issued when calibration period has excessive missing data.
+
+    Raised when the proportion of missing values exceeds the configured
+    threshold (default 20%). High missing data rates may reduce the
+    reliability of distribution fitting and index calculations.
+
+    Attributes:
+        missing_ratio: The actual proportion of missing values (0.0 to 1.0)
+        threshold: The configured threshold for triggering this warning
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        missing_ratio: float | None = None,
+        threshold: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.missing_ratio = missing_ratio
+        self.threshold = threshold
+
+
+class ShortCalibrationWarning(ClimateIndicesWarning):
+    """Warning issued when calibration period is shorter than recommended.
+
+    Raised when the calibration period length falls below the minimum
+    recommended duration (default 30 years). Shorter calibration periods
+    may not capture the full range of climate variability, affecting
+    distribution parameter stability.
+
+    Attributes:
+        actual_years: The actual length of the calibration period in years
+        required_years: The minimum recommended calibration period length
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        actual_years: int | None = None,
+        required_years: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.actual_years = actual_years
+        self.required_years = required_years
+
+
+class GoodnessOfFitWarning(ClimateIndicesWarning):
+    """Warning issued when distribution fit quality is poor.
+
+    Raised when Kolmogorov-Smirnov goodness-of-fit tests indicate that
+    the fitted distribution does not adequately represent the empirical
+    data. This aggregates poor fits across multiple time steps to avoid
+    warning floods.
+
+    Attributes:
+        distribution_name: Name of the distribution that fits poorly
+        p_value: Typical p-value from KS tests (if single step) or None
+        threshold: The p-value threshold used for determining poor fit
+        poor_fit_count: Number of time steps with poor fit
+        total_steps: Total number of time steps evaluated
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        distribution_name: str | None = None,
+        p_value: float | None = None,
+        threshold: float | None = None,
+        poor_fit_count: int | None = None,
+        total_steps: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.distribution_name = distribution_name
+        self.p_value = p_value
+        self.threshold = threshold
+        self.poor_fit_count = poor_fit_count
+        self.total_steps = total_steps
