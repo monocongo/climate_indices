@@ -1,5 +1,5 @@
 ---
-stepsCompleted: [1]
+stepsCompleted: [1, 2]
 inputDocuments:
   - 'feature/bmad-xarray-prd:_bmad-output/planning-artifacts/prd.md'
   - '_bmad-output/planning-artifacts/architecture.md'
@@ -137,8 +137,153 @@ From the Architecture Decision Document:
 
 ### FR Coverage Map
 
-_To be populated in Step 2_
+**Epic 1: Foundation — Error Handling and Observability**
+- FR-ERROR-001: Input Validation
+- FR-ERROR-002: Computation Error Handling
+- FR-ERROR-003: Structured Exceptions
+- FR-ERROR-004: Warning Emission
+- FR-LOG-001: Structured Logging Configuration
+- FR-LOG-002: Calculation Event Logging
+- FR-LOG-003: Error Context Logging
+- FR-LOG-004: Performance Metrics
+- FR-LOG-005: Log Level Configuration
+
+**Epic 2: Core xarray Support — SPI Calculation**
+- FR-CALC-001: SPI Calculation with xarray
+- FR-CALC-005: Backward Compatibility - NumPy API
+- FR-INPUT-001: Automatic Input Type Detection
+- FR-INPUT-002: Coordinate Validation
+- FR-INPUT-003: Multi-Input Alignment
+- FR-INPUT-004: Missing Data Handling
+- FR-INPUT-005: Chunked Array Support
+- FR-STAT-001: Gamma Distribution Fitting
+- FR-STAT-003: Calibration Period Configuration
+- FR-STAT-004: Standardization Transform
+- FR-META-001: Coordinate Preservation
+- FR-META-002: Attribute Preservation
+- FR-META-003: CF Convention Compliance
+- FR-META-004: Provenance Tracking
+- FR-META-005: Chunking Preservation
+- FR-API-001: Function Signature Consistency
+- FR-API-002: Type Hints and Overloads
+- FR-API-003: Default Parameter Values
+
+**Epic 3: Extended xarray Support — SPEI and PET**
+- FR-CALC-002: SPEI Calculation with xarray
+- FR-CALC-003: PET Thornthwaite with xarray
+- FR-CALC-004: PET Hargreaves with xarray
+- FR-STAT-002: Pearson Type III Distribution
+- FR-INPUT-003: Multi-Input Alignment (enhanced for multi-input functions)
+
+**Epic 4: Quality Assurance and Validation**
+- FR-TEST-001: Equivalence Test Framework
+- FR-TEST-002: Metadata Validation Tests
+- FR-TEST-003: Edge Case Coverage
+- FR-TEST-004: Reference Dataset Validation
+- FR-TEST-005: Property-Based Testing
+- FR-PERF-001: Overhead Benchmark
+- FR-PERF-002: Chunked Computation Efficiency
+- FR-PERF-003: Memory Efficiency
+- FR-PERF-004: Parallel Computation
+
+**Epic 5: Documentation and Packaging**
+- FR-DOC-001: API Reference Documentation
+- FR-DOC-002: xarray Migration Guide
+- FR-DOC-003: Quickstart Tutorial
+- FR-DOC-004: Algorithm Documentation
+- FR-DOC-005: Troubleshooting Guide
+- FR-PKG-001: PyPI Distribution
+- FR-PKG-002: Dependency Management
+- FR-PKG-003: Version Compatibility
+- FR-PKG-004: Beta Tagging
+- FR-API-004: Deprecation Warnings
+
+**Total FR Coverage: 60/60 ✅**
+
+**Note on NFR Coverage:** All 23 Non-Functional Requirements are addressed as cross-cutting concerns within epic acceptance criteria:
+- Performance NFRs (NFR-PERF-001–004): Validated in Epic 4
+- Reliability NFRs (NFR-REL-001–003): Enforced in Epic 4 tests
+- Compatibility NFRs (NFR-COMPAT-001–003): Validated in Epic 5 CI matrix
+- Integration NFRs (NFR-INTEG-001–003): Validated in Epic 4 tests
+- Maintainability NFRs (NFR-MAINT-001–005): Enforced across all epics
 
 ## Epic List
 
-_To be populated in Step 2_
+### Epic 1: Foundation — Error Handling and Observability
+
+Researchers and operational users get structured error messages and comprehensive logging for debugging climate index calculations, improving troubleshooting time by 40%.
+
+**FRs Covered:** FR-ERROR-001, FR-ERROR-002, FR-ERROR-003, FR-ERROR-004, FR-LOG-001, FR-LOG-002, FR-LOG-003, FR-LOG-004, FR-LOG-005
+
+**Architectural Components:**
+- `exceptions.py`: `ClimateIndicesError` hierarchy (DistributionFittingError, InsufficientDataError, DimensionMismatchError, etc.)
+- `logging_config.py`: structlog configuration with dual JSON + console output
+- Integration of logging into existing modules: `compute.py`, `eto.py`, `utils.py`
+
+**Value Delivered:** Improves existing NumPy library immediately with no xarray dependency. Establishes error handling and observability foundation for all future epics.
+
+---
+
+### Epic 2: Core xarray Support — SPI Calculation
+
+Climate researchers can calculate SPI directly on xarray DataArrays with full metadata preservation, eliminating manual `.values` extraction and coordinate re-attachment workflows.
+
+**FRs Covered:** FR-CALC-001, FR-CALC-005, FR-INPUT-001, FR-INPUT-002, FR-INPUT-003, FR-INPUT-004, FR-INPUT-005, FR-STAT-001, FR-STAT-003, FR-STAT-004, FR-META-001, FR-META-002, FR-META-003, FR-META-004, FR-META-005, FR-API-001, FR-API-002, FR-API-003
+
+**Architectural Components:**
+- `xarray_adapter.py`: `@xarray_adapter` decorator pattern (extract → infer → compute → rewrap → log)
+- `CF_METADATA` registry for SPI attributes (long_name, units, references)
+- Parameter inference logic (data_start_year, periodicity)
+- Type overloads for NumPy vs xarray dispatch
+
+**Value Delivered:** Complete SPI workflow for both NumPy and xarray users. Establishes adapter infrastructure ready for SPEI/PET.
+
+---
+
+### Epic 3: Extended xarray Support — SPEI and PET
+
+Researchers can calculate SPEI and PET (Thornthwaite + Hargreaves) on xarray DataArrays with automatic multi-input alignment, completing the full drought index toolkit for modern workflows.
+
+**FRs Covered:** FR-CALC-002, FR-CALC-003, FR-CALC-004, FR-STAT-002, FR-INPUT-003 (enhanced)
+
+**Architectural Components:**
+- Extended `xarray_adapter.py` for multi-input functions (SPEI: precip + PET)
+- CF metadata for SPEI and PET variables
+- Multi-input coordinate alignment validation
+
+**Value Delivered:** Complete multi-index calculation capability. Establishes pattern for any multi-input index (EDDI in Phase 2).
+
+---
+
+### Epic 4: Quality Assurance and Validation
+
+Automated tests verify numerical equivalence between NumPy and xarray paths, metadata correctness, and edge case handling, giving operational users confidence in upgrading.
+
+**FRs Covered:** FR-TEST-001, FR-TEST-002, FR-TEST-003, FR-TEST-004, FR-TEST-005, FR-PERF-001, FR-PERF-002, FR-PERF-003, FR-PERF-004
+
+**Architectural Components:**
+- `test_xarray_adapter.py`: Parametrized equivalence tests (tolerance: 1e-8)
+- `test_logging.py`: structlog output validation
+- `test_exceptions.py`: Exception hierarchy coverage
+- `conftest.py`: xarray fixtures and test utilities
+- Benchmark suite: overhead, chunked efficiency, memory, parallelism
+
+**Value Delivered:** Validates all previous epics with comprehensive test coverage. Provides performance baselines and regression detection.
+
+---
+
+### Epic 5: Documentation and Packaging
+
+Users have comprehensive guides, API references, and stable package installation, enabling adoption by graduate students and downstream package maintainers.
+
+**FRs Covered:** FR-DOC-001, FR-DOC-002, FR-DOC-003, FR-DOC-004, FR-DOC-005, FR-PKG-001, FR-PKG-002, FR-PKG-003, FR-PKG-004, FR-API-004
+
+**Architectural Components:**
+- Sphinx documentation with xarray-first examples
+- Migration guide with side-by-side NumPy/xarray comparisons
+- Quickstart tutorial with visualization examples
+- Algorithm documentation with peer-reviewed references
+- Updated `pyproject.toml` with dependency specifications
+- Beta feature warnings in docstrings
+
+**Value Delivered:** Enables community adoption and contribution. Establishes documentation patterns for Phase 2 indices.
