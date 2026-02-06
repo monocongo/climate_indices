@@ -16,6 +16,7 @@ __all__ = [
     "DimensionMismatchError",
     "CoordinateValidationError",
     "InputTypeError",
+    "InvalidArgumentError",
 ]
 
 
@@ -143,3 +144,29 @@ class InputTypeError(ClimateIndicesError):
         super().__init__(message)
         self.expected_type = expected_type
         self.actual_type = actual_type
+
+
+class InvalidArgumentError(ClimateIndicesError):
+    """Raised when an argument value is outside the valid range or set.
+
+    This exception is raised when function arguments have the correct type
+    but invalid values (e.g., scale=0 when valid range is [1, 72]).
+
+    Attributes:
+        argument_name: Name of the argument that failed validation
+        argument_value: The invalid value that was provided (stringified)
+        valid_values: Human-readable description of valid range or set
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        argument_name: str | None = None,
+        argument_value: str | None = None,
+        valid_values: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.argument_name = argument_name
+        self.argument_value = argument_value
+        self.valid_values = valid_values

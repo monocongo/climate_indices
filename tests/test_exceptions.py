@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from climate_indices import ClimateIndicesError
-from climate_indices import compute
-from climate_indices import exceptions
+from climate_indices import ClimateIndicesError, compute, exceptions
 
 
 class TestExceptionHierarchy:
@@ -20,6 +18,7 @@ class TestExceptionHierarchy:
         assert issubclass(exceptions.DimensionMismatchError, ClimateIndicesError)
         assert issubclass(exceptions.CoordinateValidationError, ClimateIndicesError)
         assert issubclass(exceptions.InputTypeError, ClimateIndicesError)
+        assert issubclass(exceptions.InvalidArgumentError, ClimateIndicesError)
 
     def test_distribution_fitting_subtypes(self) -> None:
         """Distribution fitting errors should have correct parent classes."""
@@ -45,6 +44,11 @@ class TestExceptionHierarchy:
         assert issubclass(exceptions.InputTypeError, ClimateIndicesError)
         assert not issubclass(
             exceptions.InputTypeError, exceptions.DistributionFittingError
+        )
+
+        assert issubclass(exceptions.InvalidArgumentError, ClimateIndicesError)
+        assert not issubclass(
+            exceptions.InvalidArgumentError, exceptions.DistributionFittingError
         )
 
     def test_base_inherits_from_exception(self) -> None:
@@ -84,6 +88,11 @@ class TestExceptionCatchAll:
         """ClimateIndicesError should catch InputTypeError."""
         with pytest.raises(ClimateIndicesError):
             raise exceptions.InputTypeError("test error")
+
+    def test_catch_invalid_argument_error(self) -> None:
+        """ClimateIndicesError should catch InvalidArgumentError."""
+        with pytest.raises(ClimateIndicesError):
+            raise exceptions.InvalidArgumentError("test error")
 
 
 class TestExceptionContextAttributes:
@@ -162,6 +171,26 @@ class TestExceptionContextAttributes:
         exc = exceptions.InputTypeError("Wrong type")
         assert exc.expected_type is None
         assert exc.actual_type is None
+
+    def test_invalid_argument_error_attributes(self) -> None:
+        """InvalidArgumentError should store argument_name, argument_value, and valid_values."""
+        exc = exceptions.InvalidArgumentError(
+            "Invalid scale",
+            argument_name="scale",
+            argument_value="0",
+            valid_values="[1, 72]",
+        )
+        assert exc.argument_name == "scale"
+        assert exc.argument_value == "0"
+        assert exc.valid_values == "[1, 72]"
+        assert str(exc) == "Invalid scale"
+
+    def test_invalid_argument_error_defaults(self) -> None:
+        """InvalidArgumentError attributes should default to None."""
+        exc = exceptions.InvalidArgumentError("Invalid argument")
+        assert exc.argument_name is None
+        assert exc.argument_value is None
+        assert exc.valid_values is None
 
 
 class TestBackwardCompatibility:

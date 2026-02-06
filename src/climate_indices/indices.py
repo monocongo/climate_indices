@@ -6,6 +6,7 @@ from enum import Enum
 import numpy as np
 
 from climate_indices import compute, eto, utils
+from climate_indices.exceptions import InvalidArgumentError
 
 # declare the function names that should be included in the public API for this module
 __all__ = ["percentage_of_normal", "pci", "pet", "spei", "spi"]
@@ -26,6 +27,10 @@ _logger = utils.get_logger(__name__, logging.DEBUG)
 # valid upper and lower bounds for indices that are fitted/transformed to a distribution (SPI and SPEI)
 _FITTED_INDEX_VALID_MIN = -3.09
 _FITTED_INDEX_VALID_MAX = 3.09
+
+# valid range for scale parameter
+SCALE_MIN = 1
+SCALE_MAX = 72
 
 # Import fallback strategy for consistent behavior
 _fallback_strategy = compute.DistributionFallbackStrategy()
@@ -66,6 +71,77 @@ _fit_altnames = (
     ("loc", "locs"),
     ("prob_zero", "probabilities_of_zero"),
 )
+
+
+def _validate_scale(scale: int) -> None:
+    """Validate that scale is an integer within the valid range.
+
+    Args:
+        scale: The scale parameter to validate
+
+    Raises:
+        InvalidArgumentError: If scale is not an integer or is outside [SCALE_MIN, SCALE_MAX]
+    """
+    if not isinstance(scale, int) or scale < SCALE_MIN or scale > SCALE_MAX:
+        message = (
+            f"Invalid scale argument: {scale}. "
+            f"Scale must be an integer in the range [{SCALE_MIN}, {SCALE_MAX}]. "
+            f"Common scales: 1 (monthly), 3 (seasonal), 6 (half-year), 12 (annual)."
+        )
+        raise InvalidArgumentError(
+            message,
+            argument_name="scale",
+            argument_value=str(scale),
+            valid_values=f"[{SCALE_MIN}, {SCALE_MAX}]",
+        )
+
+
+def _validate_distribution(distribution: Distribution) -> None:
+    """Validate that distribution is a valid Distribution enum member.
+
+    Args:
+        distribution: The distribution parameter to validate
+
+    Raises:
+        InvalidArgumentError: If distribution is not a Distribution enum member
+    """
+    if not isinstance(distribution, Distribution):
+        message = (
+            f"Unsupported distribution: {distribution}. "
+            f"Supported distributions: gamma, pearson. "
+            f"Use indices.Distribution.gamma or indices.Distribution.pearson."
+        )
+        raise InvalidArgumentError(
+            message,
+            argument_name="distribution",
+            argument_value=str(distribution),
+            valid_values="gamma, pearson",
+        )
+
+
+def _validate_periodicity(periodicity: compute.Periodicity) -> None:
+    """Validate that periodicity is a valid Periodicity enum member.
+
+    Args:
+        periodicity: The periodicity parameter to validate
+
+    Raises:
+        InvalidArgumentError: If periodicity is not a Periodicity enum member
+    """
+    if not isinstance(periodicity, compute.Periodicity):
+        message = (
+            f"Invalid periodicity argument: {periodicity}. "
+            f"Periodicity must be a Periodicity enum member. "
+            f"Supported values: monthly, daily. "
+            f"Use compute.Periodicity.monthly or compute.Periodicity.daily."
+        )
+        raise InvalidArgumentError(
+            message,
+            argument_name="periodicity",
+            argument_value=str(periodicity),
+            valid_values="monthly, daily",
+        )
+
 
 
 def spi(
@@ -110,6 +186,10 @@ def spi(
     :rtype: 1-D numpy.ndarray of floats of the same length as the input array
         of precipitation values
     """
+    # validate arguments
+    _validate_scale(scale)
+    _validate_distribution(distribution)
+    _validate_periodicity(periodicity)
 
     # we expect to operate upon a 1-D array, so if we've been passed a 2-D array
     # then we flatten it, otherwise raise an error
@@ -144,8 +224,6 @@ def spi(
         values = utils.reshape_to_2d(values, 12)
     elif periodicity == compute.Periodicity.daily:
         values = utils.reshape_to_2d(values, 366)
-    else:
-        raise ValueError(f"Invalid periodicity argument: '{periodicity}'")
 
     if distribution == Distribution.gamma:
         # get (optional) fitting parameters if provided
@@ -214,11 +292,6 @@ def spi(
                 betas=None,
             )
 
-    else:
-        message = f"Unsupported distribution argument: '{distribution}'"
-        _logger.error(message)
-        raise ValueError(message)
-
     # clip values to within the valid range, reshape the array back to 1-D
     values = np.clip(values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
 
@@ -276,6 +349,10 @@ def spei(
     :rtype: numpy.ndarray of type float, of the same size and shape as the input
         PET and precipitation arrays
     """
+    # validate arguments
+    _validate_scale(scale)
+    _validate_distribution(distribution)
+    _validate_periodicity(periodicity)
 
     # Normalize fitting param keys
     fitting_params = _norm_fitdict(fitting_params)
@@ -356,11 +433,6 @@ def spei(
             skews,
         )
 
-    else:
-        message = "Unsupported distribution argument: " + f"{distribution}"
-        _logger.error(message)
-        raise ValueError(message)
-
     # clip values to within the valid range, reshape the array back to 1-D
     values = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
 
@@ -410,12 +482,9 @@ def percentage_of_normal(
         scaled precipitation values array
     :rtype: numpy.ndarray of type float
     """
-
-    # validate the scale argument
-    if (scale is None) or (scale < 1):
-        message = f"Invalid scale argument: '{scale}'"
-        _logger.error(message)
-        raise ValueError(message)
+    # validate arguments
+    _validate_scale(scale)
+    _validate_periodicity(periodicity)
 
     # if doing monthly then we'll use 12 periods, corresponding to calendar
     # months, if daily assume years w/366 days
@@ -423,10 +492,6 @@ def percentage_of_normal(
         periodicity = 12
     elif periodicity == compute.Periodicity.daily:
         periodicity = 366
-    else:
-        message = f"Invalid periodicity argument: '{periodicity}'"
-        _logger.error(message)
-        raise ValueError(message)
 
     # bypass processing if all values are masked
     if np.ma.is_masked(values) and values.mask.all():

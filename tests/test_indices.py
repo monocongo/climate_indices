@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from climate_indices import compute, indices
+from climate_indices.exceptions import InvalidArgumentError
 
 # disable logging messages
 logging.disable(logging.CRITICAL)
@@ -145,39 +146,36 @@ def test_pnp(
         compute.Periodicity.daily,
     )
 
-    # invalid periodicity argument should raise an Error
-    np.testing.assert_raises(
-        ValueError,
-        indices.percentage_of_normal,
-        precips_mm_daily.flatten(),
-        30,
-        data_year_start_daily,
-        calibration_year_start_daily,
-        calibration_year_end_daily,
-        "unsupported_value",
-    )
+    # invalid periodicity argument should raise InvalidArgumentError
+    with pytest.raises(InvalidArgumentError):
+        indices.percentage_of_normal(
+            precips_mm_daily.flatten(),
+            30,
+            data_year_start_daily,
+            calibration_year_start_daily,
+            calibration_year_end_daily,
+            "unsupported_value",
+        )
 
-    # invalid scale argument should raise an Error
-    np.testing.assert_raises(
-        ValueError,
-        indices.percentage_of_normal,
-        precips_mm_daily.flatten(),
-        -3,
-        data_year_start_daily,
-        calibration_year_start_daily,
-        calibration_year_end_daily,
-        compute.Periodicity.daily,
-    )
-    np.testing.assert_raises(
-        ValueError,
-        indices.percentage_of_normal,
-        precips_mm_daily.flatten(),
-        None,
-        data_year_start_daily,
-        calibration_year_start_daily,
-        calibration_year_end_daily,
-        compute.Periodicity.daily,
-    )
+    # invalid scale argument should raise InvalidArgumentError
+    with pytest.raises(InvalidArgumentError):
+        indices.percentage_of_normal(
+            precips_mm_daily.flatten(),
+            -3,
+            data_year_start_daily,
+            calibration_year_start_daily,
+            calibration_year_end_daily,
+            compute.Periodicity.daily,
+        )
+    with pytest.raises(InvalidArgumentError):
+        indices.percentage_of_normal(
+            precips_mm_daily.flatten(),
+            None,
+            data_year_start_daily,
+            calibration_year_start_daily,
+            calibration_year_end_daily,
+            compute.Periodicity.daily,
+        )
 
 
 @pytest.mark.usefixtures(
@@ -275,31 +273,29 @@ def test_spi(
         compute.Periodicity.daily,
     )
 
-    # invalid periodicity argument should raise a ValueError
-    np.testing.assert_raises(
-        ValueError,
-        indices.spi,
-        precips_mm_monthly.flatten(),
-        6,
-        indices.Distribution.gamma,
-        data_year_start_monthly,
-        data_year_start_monthly,
-        data_year_end_monthly,
-        "unsupported_value",
-    )
+    # invalid periodicity argument should raise InvalidArgumentError
+    with pytest.raises(InvalidArgumentError):
+        indices.spi(
+            precips_mm_monthly.flatten(),
+            6,
+            indices.Distribution.gamma,
+            data_year_start_monthly,
+            data_year_start_monthly,
+            data_year_end_monthly,
+            "unsupported_value",
+        )
 
-    # invalid distribution argument should raise a ValueError
-    np.testing.assert_raises(
-        ValueError,
-        indices.spi,
-        precips_mm_monthly.flatten(),
-        6,
-        None,
-        data_year_start_monthly,
-        data_year_start_monthly,
-        data_year_end_monthly,
-        compute.Periodicity.monthly,
-    )
+    # invalid distribution argument should raise InvalidArgumentError
+    with pytest.raises(InvalidArgumentError):
+        indices.spi(
+            precips_mm_monthly.flatten(),
+            6,
+            None,
+            data_year_start_monthly,
+            data_year_start_monthly,
+            data_year_end_monthly,
+            compute.Periodicity.monthly,
+        )
 
     # input array argument that's neither 1-D nor 2-D should raise a ValueError
     np.testing.assert_raises(
@@ -354,18 +350,17 @@ def test_spi(
         compute.Periodicity.daily,
     )
 
-    # invalid periodicity argument should raise a ValueError
-    np.testing.assert_raises(
-        ValueError,
-        indices.spi,
-        precips_mm_monthly.flatten(),
-        6,
-        indices.Distribution.pearson,
-        data_year_start_monthly,
-        calibration_year_start_monthly,
-        calibration_year_end_monthly,
-        "unsupported_value",
-    )
+    # invalid periodicity argument should raise InvalidArgumentError
+    with pytest.raises(InvalidArgumentError):
+        indices.spi(
+            precips_mm_monthly.flatten(),
+            6,
+            indices.Distribution.pearson,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            "unsupported_value",
+        )
 
 
 @pytest.mark.usefixtures(
@@ -449,19 +444,18 @@ def test_spei(
         err_msg="SPEI/Pearson values for 6-month scale not computed as expected",
     )
 
-    # invalid periodicity argument should raise a ValueError
-    np.testing.assert_raises(
-        ValueError,
-        indices.spei,
-        precips_mm_monthly,
-        pet_thornthwaite_mm,
-        6,
-        indices.Distribution.pearson,
-        "unsupported_value",
-        data_year_start_monthly,
-        data_year_start_monthly,
-        data_year_end_monthly,
-    )
+    # invalid periodicity argument should raise InvalidArgumentError
+    with pytest.raises(InvalidArgumentError):
+        indices.spei(
+            precips_mm_monthly,
+            pet_thornthwaite_mm,
+            6,
+            indices.Distribution.pearson,
+            "unsupported_value",
+            data_year_start_monthly,
+            data_year_start_monthly,
+            data_year_end_monthly,
+        )
 
     # having both precipitation and PET input array arguments
     # with incongruent dimensions should raise a ValueError
