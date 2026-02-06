@@ -1,5 +1,5 @@
 ---
-stepsCompleted: [1, 2]
+stepsCompleted: [1, 2, 3]
 inputDocuments:
   - 'feature/bmad-xarray-prd:_bmad-output/planning-artifacts/prd.md'
   - '_bmad-output/planning-artifacts/architecture.md'
@@ -722,3 +722,552 @@ So that I can upgrade without breaking production systems.
 **And** `indices.py` module remains completely unchanged
 **And** FR-CALC-005 is satisfied
 **And** NFR-COMPAT-003 (backward compatibility) is satisfied
+
+---
+
+## Epic 3: Extended xarray Support — SPEI and PET
+
+Researchers can calculate SPEI and PET (Thornthwaite + Hargreaves) on xarray DataArrays with automatic multi-input alignment, completing the full drought index toolkit for modern workflows.
+
+### Story 3.1: SPEI with Multi-Input Alignment
+
+As a **climate researcher**,
+I want to calculate SPEI using separate precipitation and PET DataArrays,
+So that I can analyze drought using water balance (P - PET).
+
+**Acceptance Criteria:**
+
+**Given** precipitation and PET as separate xarray DataArrays
+**When** SPEI calculation is called
+**Then** inputs are automatically aligned using `xr.align(join='inner')`
+**And** warning is emitted if alignment drops data (non-overlapping coordinates)
+**And** chunking is preserved from precipitation input (primary variable)
+**And** output metadata derives from precipitation (long_name updated to SPEI)
+**And** FR-CALC-002 is satisfied
+**And** FR-INPUT-003 (enhanced for multi-input) is satisfied
+
+---
+
+### Story 3.2: PET Thornthwaite with xarray
+
+As a **climate researcher**,
+I want to calculate PET using the Thornthwaite method on xarray inputs,
+So that I can estimate evapotranspiration for SPEI calculations.
+
+**Acceptance Criteria:**
+
+**Given** temperature and latitude as xarray DataArrays
+**When** PET Thornthwaite calculation runs
+**Then** broadcasting occurs across spatial dimensions automatically
+**And** CF-compliant attributes are added:
+- long_name: "Potential Evapotranspiration (Thornthwaite method)"
+- units: "mm/month"
+- references: DOI to Thornthwaite (1948)
+**And** input chunking is preserved for Dask arrays
+**And** coordinates from temperature input are preserved
+**And** FR-CALC-003 is satisfied
+
+---
+
+### Story 3.3: PET Hargreaves with xarray
+
+As a **climate researcher**,
+I want to calculate PET using the Hargreaves method with min/max temperature,
+So that I have an alternative PET method when humidity data is unavailable.
+
+**Acceptance Criteria:**
+
+**Given** tmin, tmax, and latitude as xarray DataArrays
+**When** PET Hargreaves calculation runs
+**Then** coordinate alignment is validated across all three inputs
+**And** inputs are aligned using `xr.align(join='inner')`
+**And** CF-compliant attributes are added:
+- long_name: "Potential Evapotranspiration (Hargreaves method)"
+- units: "mm/day"
+- references: DOI to Hargreaves & Samani (1985)
+**And** supports both single-point and gridded calculations
+**And** FR-CALC-004 is satisfied
+
+---
+
+### Story 3.4: Pearson Type III Distribution Support
+
+As a **climate researcher**,
+I want to use Pearson Type III distribution for SPEI,
+So that I can handle datasets with negative values (water balance can be negative).
+
+**Acceptance Criteria:**
+
+**Given** SPEI calculation with water balance data (can be negative)
+**When** distribution parameter is set to "pearson3"
+**Then** method-of-moments parameter estimation is used
+**And** skewness-based fitting is applied
+**And** validation against NOAA reference implementation confirms correctness
+**And** distribution fitting errors are caught and provide helpful messages
+**And** FR-STAT-002 is satisfied
+
+---
+
+### Story 3.5: Extend CF Metadata Registry for SPEI and PET
+
+As a **climate researcher**,
+I want SPEI and PET outputs to have correct CF metadata,
+So that all drought indices are consistently documented.
+
+**Acceptance Criteria:**
+
+**Given** the `CF_METADATA` registry exists
+**When** I add entries for SPEI and PET indices
+**Then** registry includes:
+- "spei": long_name, units (dimensionless), references (Vicente-Serrano et al.)
+- "pet_thornthwaite": long_name, units (mm/month), references
+- "pet_hargreaves": long_name, units (mm/day), references
+**And** metadata is applied automatically by adapter decorator
+**And** all three indices have CF-compliant attributes
+**And** Architectural Decision 4 (Metadata Registry) is extended
+
+---
+
+## Epic 4: Quality Assurance and Validation
+
+Automated tests verify numerical equivalence between NumPy and xarray paths, metadata correctness, and edge case handling, giving operational users confidence in upgrading.
+
+### Story 4.1: xarray Equivalence Test Framework
+
+As a **library maintainer**,
+I want automated tests that verify xarray outputs match NumPy outputs,
+So that I can ensure numerical correctness.
+
+**Acceptance Criteria:**
+
+**Given** the test suite needs equivalence validation
+**When** I create `test_xarray_adapter.py`
+**Then** parametrized tests exist for all indices (SPI, SPEI, PET Thornthwaite, PET Hargreaves)
+**And** tests compare `xarray_result.values` against `numpy_result`
+**And** tolerance is 1e-8 for float64 arrays
+**And** tests run on CI for all PRs
+**And** test fixtures provide sample climate data (precipitation, temperature)
+**And** FR-TEST-001 is satisfied
+**And** NFR-REL-001 (numerical reproducibility) is validated
+
+---
+
+### Story 4.2: Metadata Validation Tests
+
+As a **library maintainer**,
+I want tests that verify metadata preservation and CF compliance,
+So that xarray outputs have correct attributes and coordinates.
+
+**Acceptance Criteria:**
+
+**Given** xarray outputs from index calculations
+**When** metadata validation tests run
+**Then** tests assert:
+- Coordinates match input exactly
+- Required CF attributes present (long_name, units, references)
+- Attribute types are correct (units is string, not int)
+- Provenance exists in history attribute
+- Chunking matches input (if Dask-backed)
+**And** tests use pytest fixtures for sample DataArrays
+**And** FR-TEST-002 is satisfied
+
+---
+
+### Story 4.3: Edge Case Coverage Tests
+
+As a **library maintainer**,
+I want tests covering known failure modes,
+So that edge cases don't cause production failures.
+
+**Acceptance Criteria:**
+
+**Given** the test suite needs edge case coverage
+**When** I add edge case tests
+**Then** tests cover:
+- Zero-inflated precipitation (all zeros, mixed zeros/non-zeros)
+- Missing data patterns (random NaNs, blocks of NaNs, leading/trailing NaNs)
+- Minimum time series (exactly 30 years for SPI/SPEI)
+- Coordinate misalignment (different grid resolutions)
+- Single-point vs gridded data
+**And** tests verify graceful degradation (partial failures don't crash)
+**And** FR-TEST-003 is satisfied
+**And** NFR-REL-002 (graceful degradation) is validated
+
+---
+
+### Story 4.4: Reference Dataset Validation
+
+As a **library maintainer**,
+I want tests against published reference datasets,
+So that I can validate scientific correctness.
+
+**Acceptance Criteria:**
+
+**Given** reference datasets from NOAA and CSIC exist
+**When** validation tests run
+**Then** SPI matches NOAA reference implementation (tolerance: 1e-5)
+**And** SPEI matches CSIC reference (Vicente-Serrano et al.)
+**And** test data is included in `tests/data/` directory
+**And** provenance of reference data is documented
+**And** FR-TEST-004 is satisfied
+
+---
+
+### Story 4.5: xarray Test Fixtures in conftest.py
+
+As a **test developer**,
+I want reusable xarray test fixtures,
+So that writing new tests is straightforward.
+
+**Acceptance Criteria:**
+
+**Given** tests need sample xarray DataArrays
+**When** I create fixtures in `conftest.py`
+**Then** fixtures provide:
+- Sample precipitation DataArray (time, lat, lon)
+- Sample temperature DataArray
+- Sample Dask-backed DataArray
+- DataArrays with various coordinate systems
+**And** fixtures are session-scoped for expensive operations
+**And** fixtures include both in-memory and lazy (Dask) variants
+**And** Architectural test infrastructure is established
+
+---
+
+### Story 4.6: Exception Hierarchy Test Coverage
+
+As a **library maintainer**,
+I want tests verifying all custom exceptions,
+So that error handling works correctly.
+
+**Acceptance Criteria:**
+
+**Given** custom exception hierarchy exists
+**When** I create `test_exceptions.py`
+**Then** tests verify:
+- All exceptions inherit from `ClimateIndicesError`
+- Exceptions can be caught individually or via base class
+- Error messages include helpful context
+- pytest.raises correctly catches specific exception types
+**And** test coverage > 90% for exceptions module
+
+---
+
+### Story 4.7: Logging Output Validation Tests
+
+As a **library maintainer**,
+I want tests that verify structlog output format,
+So that logs are machine-parseable.
+
+**Acceptance Criteria:**
+
+**Given** structlog is configured
+**When** I create `test_logging.py`
+**Then** tests verify:
+- JSON output is valid (can be parsed by json.loads)
+- Required fields present (timestamp, level, event, logger)
+- ISO 8601 timestamps (RFC 3339 with timezone)
+- No unescaped special characters
+- Console output includes color codes (when TTY)
+**And** FR-LOG-001 validation is complete
+**And** NFR-INTEG-003 (structlog JSON format) is validated
+
+---
+
+### Story 4.8: Performance Overhead Benchmark
+
+As a **performance engineer**,
+I want benchmarks measuring xarray overhead vs NumPy,
+So that I can track performance regressions.
+
+**Acceptance Criteria:**
+
+**Given** the need to measure computational overhead
+**When** I create benchmark suite using pytest-benchmark
+**Then** benchmarks measure:
+- SPI/SPEI/PET on (1000×1000×120) arrays
+- NumPy baseline vs xarray path
+- Report mean, std dev, 95th percentile
+**And** overhead is < 5% for in-memory computations
+**And** CI tracks performance regressions (fails if >10% slowdown)
+**And** FR-PERF-001 is satisfied
+**And** NFR-PERF-001 (computational overhead) is validated
+
+---
+
+### Story 4.9: Chunked Computation Efficiency Tests
+
+As a **performance engineer**,
+I want tests measuring Dask parallel efficiency,
+So that I can validate weak scaling.
+
+**Acceptance Criteria:**
+
+**Given** Dask-backed arrays need parallel validation
+**When** I create chunked computation tests
+**Then** tests measure weak scaling efficiency:
+- 2 workers: >85% efficiency
+- 4 workers: >75% efficiency
+- 8 workers: >70% efficiency
+**And** fixed chunk size (100×100×120) per chunk
+**And** tests run with multiprocessing scheduler
+**And** FR-PERF-002 is satisfied
+**And** NFR-PERF-002 (chunked efficiency) is validated
+
+---
+
+### Story 4.10: Memory Efficiency Validation
+
+As a **performance engineer**,
+I want tests that validate out-of-core computation,
+So that large datasets don't cause OOM errors.
+
+**Acceptance Criteria:**
+
+**Given** datasets larger than available RAM
+**When** I create memory efficiency tests
+**Then** tests verify:
+- 50GB synthetic dataset processes with 16GB RAM
+- Peak memory < 16GB (ideally < 8GB)
+- Lazy evaluation confirmed (no full materialization)
+- Output validates against smaller in-memory subset
+**And** memory usage monitored via pytest plugin
+**And** FR-PERF-003 is satisfied
+**And** NFR-PERF-003 (memory efficiency) is validated
+
+---
+
+### Story 4.11: Property-Based Testing with Hypothesis
+
+As a **library maintainer**,
+I want generative tests that find edge cases automatically,
+So that I discover bugs I didn't anticipate.
+
+**Acceptance Criteria:**
+
+**Given** the need for comprehensive edge case testing
+**When** I add Hypothesis strategies
+**Then** property-based tests verify:
+- Monotonicity properties
+- Symmetry properties
+- Boundedness (SPI/SPEI in reasonable range)
+**And** strategies generate valid climate data:
+- Positive precipitation (>= 0)
+- Realistic temperatures (-50 to 50°C)
+- Valid latitude (-90 to 90)
+**And** shrinking finds minimal failing examples
+**And** integrated into pytest suite
+**And** FR-TEST-005 is satisfied
+
+---
+
+## Epic 5: Documentation and Packaging
+
+Users have comprehensive guides, API references, and stable package installation, enabling adoption by graduate students and downstream package maintainers.
+
+### Story 5.1: Sphinx API Reference Documentation
+
+As a **library user**,
+I want complete API reference documentation,
+So that I can understand all functions and parameters.
+
+**Acceptance Criteria:**
+
+**Given** all public functions have Google-style docstrings
+**When** Sphinx builds documentation
+**Then** API reference includes:
+- All public functions documented
+- Parameter types and defaults specified
+- Return value formats described
+- Examples included in docstrings (tested via doctest)
+**And** 100% docstring coverage for public API
+**And** Documentation published via Read the Docs or GitHub Pages
+**And** FR-DOC-001 is satisfied
+**And** NFR-MAINT-003 (documentation coverage) is validated
+
+---
+
+### Story 5.2: xarray Migration Guide
+
+As a **NumPy user**,
+I want a guide showing how to migrate to xarray,
+So that I can modernize my workflows.
+
+**Acceptance Criteria:**
+
+**Given** users need migration guidance
+**When** I create the xarray migration guide
+**Then** guide includes:
+- Side-by-side code examples (NumPy vs xarray)
+- Explanation of metadata benefits
+- Common pitfalls (dimension names, coordinate alignment)
+- Performance considerations (when to use chunking)
+**And** real-world examples using climate datasets
+**And** guide links to relevant API reference sections
+**And** FR-DOC-002 is satisfied
+
+---
+
+### Story 5.3: Quickstart Tutorial
+
+As a **new library user**,
+I want a quickstart tutorial,
+So that I can start calculating indices quickly.
+
+**Acceptance Criteria:**
+
+**Given** new users need onboarding
+**When** I create the quickstart tutorial
+**Then** tutorial:
+- Completes in < 5 minutes
+- Shows data loading (netCDF), calculation, visualization
+- Works with included sample data
+- Covers both NumPy and xarray paths
+**And** tutorial is testable (executed as part of docs build)
+**And** FR-DOC-003 is satisfied
+
+---
+
+### Story 5.4: Algorithm Documentation with References
+
+As a **climate researcher**,
+I want scientific documentation of algorithms,
+So that I can understand the methods and cite properly.
+
+**Acceptance Criteria:**
+
+**Given** users need scientific context
+**When** I create algorithm documentation
+**Then** documentation includes:
+- Link to peer-reviewed papers (DOI links)
+- Explanation of when to use each index
+- Parameter selection guidance (distribution choice, scale)
+- Validation datasets and methods
+**And** references include:
+- McKee et al. (1993) for SPI
+- Vicente-Serrano et al. (2010) for SPEI
+- Thornthwaite (1948) and Hargreaves & Samani (1985) for PET
+**And** FR-DOC-004 is satisfied
+
+---
+
+### Story 5.5: Troubleshooting Guide
+
+As a **library user**,
+I want a troubleshooting guide for common errors,
+So that I can resolve issues independently.
+
+**Acceptance Criteria:**
+
+**Given** users encounter common issues
+**When** I create troubleshooting guide
+**Then** guide covers:
+- Dimension mismatch errors (with fixes)
+- Distribution fitting failures (when to try different distributions)
+- Performance tuning for large datasets
+- Links to relevant GitHub issues
+**And** examples show error messages and resolutions
+**And** FR-DOC-005 is satisfied
+
+---
+
+### Story 5.6: PyPI Package Distribution
+
+As a **library user**,
+I want to install via pip,
+So that I can use the library easily.
+
+**Acceptance Criteria:**
+
+**Given** the library needs PyPI distribution
+**When** package is published
+**Then** package metadata includes:
+- Package name: climate-indices
+- Semantic versioning (MAJOR.MINOR.PATCH)
+- Both wheel and source distribution
+- README displayed on PyPI
+**And** installation works via `pip install climate-indices`
+**And** FR-PKG-001 is satisfied
+
+---
+
+### Story 5.7: Dependency Management in pyproject.toml
+
+As a **library maintainer**,
+I want well-defined dependencies,
+So that users have reproducible installations.
+
+**Acceptance Criteria:**
+
+**Given** the library has dependencies
+**When** I update `pyproject.toml`
+**Then** dependencies are specified with minimum versions:
+- numpy >= 1.23
+- scipy >= 1.10
+- xarray >= 2023.01 (core dependency, not optional)
+- structlog >= 23.1 (core dependency)
+**And** lock file (uv.lock) provides reproducible development environment
+**And** optional dependencies defined for extras (dev, test)
+**And** FR-PKG-002 is satisfied
+**And** Architectural Decision 7 (xarray as core dependency) is implemented
+
+---
+
+### Story 5.8: Python Version Compatibility Matrix
+
+As a **library maintainer**,
+I want CI testing across Python versions,
+So that I can ensure broad compatibility.
+
+**Acceptance Criteria:**
+
+**Given** library supports Python 3.9–3.13
+**When** CI runs
+**Then** test matrix includes:
+- Python versions: 3.9, 3.10, 3.11, 3.12, 3.13
+- Platforms: Linux, macOS
+- Both minimum and latest dependency versions
+**And** README documents supported versions
+**And** deprecation policy: 12 months notice before dropping Python version
+**And** FR-PKG-003 is satisfied
+**And** NFR-COMPAT-001 (Python version support) is validated
+
+---
+
+### Story 5.9: Beta Feature Tagging and Warnings
+
+As a **library user**,
+I want clarity on API stability,
+So that I know which features may change.
+
+**Acceptance Criteria:**
+
+**Given** xarray API is beta until Phase 2
+**When** documentation is generated
+**Then** xarray features include:
+- Docstrings have ".. warning:: Beta feature" directive
+- CHANGELOG.md marks xarray API as experimental
+- README.md clarifies API stability guarantees
+**And** no breaking changes within minor versions (even for beta)
+**And** FR-PKG-004 is satisfied
+
+---
+
+### Story 5.10: Deprecation Warning System
+
+As a **library maintainer**,
+I want a deprecation system for future API changes,
+So that users have time to migrate.
+
+**Acceptance Criteria:**
+
+**Given** future API changes may be needed
+**When** I implement deprecation system
+**Then** `warnings.warn()` is used with `DeprecationWarning` category
+**And** warning messages include:
+- What is deprecated
+- Alternative approach
+- Removal version
+- Link to migration guide
+**And** warnings are suppressible via `warnings.filterwarnings()`
+**And** FR-API-004 is satisfied
