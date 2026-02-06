@@ -316,6 +316,38 @@ def adjust_calibration_years(data_start_year, data_end_year, calibration_start_y
     return calibration_start_year, calibration_end_year
 
 
+def _summarize_array(arr: np.ndarray | None, name: str = "array") -> str:
+    """Summarize a numpy array for error messages.
+
+    For small arrays (≤12 elements), returns the full array representation.
+    For larger arrays, returns a summary with shape, min, max, mean, and nan count.
+
+    Args:
+        arr: The array to summarize, or None
+        name: Name to use in the summary (e.g., "alphas", "values")
+
+    Returns:
+        A string representation suitable for error messages
+    """
+    if arr is None:
+        return f"{name}=None"
+
+    if arr.size <= 12:
+        return f"{name}={arr}"
+
+    nan_count = np.sum(np.isnan(arr))
+    # use nanmin/nanmax/nanmean to avoid errors when all values are NaN
+    min_val = np.nanmin(arr) if not np.all(np.isnan(arr)) else np.nan
+    max_val = np.nanmax(arr) if not np.all(np.isnan(arr)) else np.nan
+    mean_val = np.nanmean(arr) if not np.all(np.isnan(arr)) else np.nan
+
+    return (
+        f"{name}: shape={arr.shape}, "
+        f"min={min_val:.4g}, max={max_val:.4g}, mean={mean_val:.4g}, "
+        f"nan_count={nan_count}/{arr.size}"
+    )
+
+
 def calculate_time_step_params(time_step_values):
     """
     Calculate Pearson Type III parameters for a time step's values.
@@ -346,7 +378,7 @@ def calculate_time_step_params(time_step_values):
         return probability_of_zero, params["loc"], params["scale"], params["skew"]
     except ValueError as e:
         message = f"L-moments fitting failed: {e}. Consider using Gamma distribution for this dataset."
-        raise PearsonFittingError(message, underlying_error=e)
+        raise PearsonFittingError(message, underlying_error=e) from e
 
 
 def pearson_parameters(
@@ -603,7 +635,22 @@ def _pearson_fit(
         trace_mask = np.logical_and((values < 0.0005), (probabilities_of_zero <= 0.0))
 
         # get the Pearson Type III cumulative density function value
-        values = scipy.stats.pearson3.cdf(values, skew, loc, scale)
+        try:
+            values = scipy.stats.pearson3.cdf(values, skew, loc, scale)
+        except (ValueError, RuntimeError, FloatingPointError) as e:
+            raise DistributionFittingError(
+                f"Pearson Type III distribution CDF computation failed: {e}",
+                distribution_name="pearson3",
+                input_shape=values.shape,
+                parameters={
+                    "skew": _summarize_array(skew, "skew"),
+                    "loc": _summarize_array(loc, "loc"),
+                    "scale": _summarize_array(scale, "scale"),
+                    "values": _summarize_array(values, "values"),
+                },
+                suggestion="Try using gamma distribution instead",
+                underlying_error=e,
+            ) from e
 
         # turn zero, trace, or minimum values either into either zero
         # or minimum value based on the probability of zero
@@ -628,7 +675,22 @@ def _pearson_fit(
             # of a normal distribution are less than or equal to the computed
             # probabilities, as determined by the normal distribution's
             # quantile (or inverse cumulative distribution) function
-            fitted_values = scipy.stats.norm.ppf(probabilities)
+            try:
+                fitted_values = scipy.stats.norm.ppf(probabilities)
+            except (ValueError, RuntimeError, FloatingPointError) as e:
+                raise DistributionFittingError(
+                    f"Normal distribution inverse CDF (ppf) computation failed during Pearson transformation: {e}",
+                    distribution_name="pearson3",
+                    input_shape=probabilities.shape,
+                    parameters={
+                        "probabilities": _summarize_array(probabilities, "probabilities"),
+                        "skew": _summarize_array(skew, "skew"),
+                        "loc": _summarize_array(loc, "loc"),
+                        "scale": _summarize_array(scale, "scale"),
+                    },
+                    suggestion="Try using gamma distribution instead",
+                    underlying_error=e,
+                ) from e
 
         else:
             fitted_values = values
@@ -941,7 +1003,21 @@ def transform_fitted_gamma(
         )
 
     # find the gamma probability values using the gamma CDF
-    gamma_probabilities = scipy.stats.gamma.cdf(values_for_fitting, a=alphas, scale=betas)
+    try:
+        gamma_probabilities = scipy.stats.gamma.cdf(values_for_fitting, a=alphas, scale=betas)
+    except (ValueError, RuntimeError, FloatingPointError) as e:
+        raise DistributionFittingError(
+            f"Gamma distribution CDF computation failed: {e}",
+            distribution_name="gamma",
+            input_shape=values_for_fitting.shape,
+            parameters={
+                "alphas": _summarize_array(alphas, "alphas"),
+                "betas": _summarize_array(betas, "betas"),
+                "values": _summarize_array(values_for_fitting, "values"),
+            },
+            suggestion="Try using pearson3 distribution instead",
+            underlying_error=e,
+        ) from e
 
     # where the input values were zero the CDF will have returned NaN, but since
     # we're treating zeros as a separate probability mass we should treat the
@@ -956,4 +1032,18 @@ def transform_fitted_gamma(
     # a normal distribution are less than or equal to the computed probabilities,
     # as determined by the normal distribution's quantile (or inverse
     # cumulative distribution) function
-    return scipy.stats.norm.ppf(probabilities)
+    try:
+        return scipy.stats.norm.ppf(probabilities)
+    except (ValueError, RuntimeError, FloatingPointError) as e:
+        raise DistributionFittingError(
+            f"Normal distribution inverse CDF (ppf) computation failed during gamma transformation: {e}",
+            distribution_name="gamma",
+            input_shape=probabilities.shape,
+            parameters={
+                "probabilities": _summarize_array(probabilities, "probabilities"),
+                "alphas": _summarize_array(alphas, "alphas"),
+                "betas": _summarize_array(betas, "betas"),
+            },
+            suggestion="Try using pearson3 distribution instead",
+            underlying_error=e,
+        ) from e

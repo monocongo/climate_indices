@@ -22,34 +22,22 @@ class TestExceptionHierarchy:
 
     def test_distribution_fitting_subtypes(self) -> None:
         """Distribution fitting errors should have correct parent classes."""
-        assert issubclass(
-            exceptions.InsufficientDataError, exceptions.DistributionFittingError
-        )
-        assert issubclass(
-            exceptions.PearsonFittingError, exceptions.DistributionFittingError
-        )
+        assert issubclass(exceptions.InsufficientDataError, exceptions.DistributionFittingError)
+        assert issubclass(exceptions.PearsonFittingError, exceptions.DistributionFittingError)
 
     def test_new_exceptions_not_under_distribution_fitting(self) -> None:
         """New exception types should be direct children of ClimateIndicesError."""
         assert issubclass(exceptions.DimensionMismatchError, ClimateIndicesError)
-        assert not issubclass(
-            exceptions.DimensionMismatchError, exceptions.DistributionFittingError
-        )
+        assert not issubclass(exceptions.DimensionMismatchError, exceptions.DistributionFittingError)
 
         assert issubclass(exceptions.CoordinateValidationError, ClimateIndicesError)
-        assert not issubclass(
-            exceptions.CoordinateValidationError, exceptions.DistributionFittingError
-        )
+        assert not issubclass(exceptions.CoordinateValidationError, exceptions.DistributionFittingError)
 
         assert issubclass(exceptions.InputTypeError, ClimateIndicesError)
-        assert not issubclass(
-            exceptions.InputTypeError, exceptions.DistributionFittingError
-        )
+        assert not issubclass(exceptions.InputTypeError, exceptions.DistributionFittingError)
 
         assert issubclass(exceptions.InvalidArgumentError, ClimateIndicesError)
-        assert not issubclass(
-            exceptions.InvalidArgumentError, exceptions.DistributionFittingError
-        )
+        assert not issubclass(exceptions.InvalidArgumentError, exceptions.DistributionFittingError)
 
     def test_base_inherits_from_exception(self) -> None:
         """ClimateIndicesError should inherit from Exception."""
@@ -100,9 +88,7 @@ class TestExceptionContextAttributes:
 
     def test_insufficient_data_error_attributes(self) -> None:
         """InsufficientDataError should store non_zero_count and required_count."""
-        exc = exceptions.InsufficientDataError(
-            "Not enough data", non_zero_count=5, required_count=10
-        )
+        exc = exceptions.InsufficientDataError("Not enough data", non_zero_count=5, required_count=10)
         assert exc.non_zero_count == 5
         assert exc.required_count == 10
         assert str(exc) == "Not enough data"
@@ -127,9 +113,7 @@ class TestExceptionContextAttributes:
 
     def test_dimension_mismatch_error_attributes(self) -> None:
         """DimensionMismatchError should store expected_dims and actual_dims."""
-        exc = exceptions.DimensionMismatchError(
-            "Shape mismatch", expected_dims=(10, 20), actual_dims=(10, 15)
-        )
+        exc = exceptions.DimensionMismatchError("Shape mismatch", expected_dims=(10, 20), actual_dims=(10, 15))
         assert exc.expected_dims == (10, 20)
         assert exc.actual_dims == (10, 15)
         assert str(exc) == "Shape mismatch"
@@ -159,9 +143,7 @@ class TestExceptionContextAttributes:
 
     def test_input_type_error_attributes(self) -> None:
         """InputTypeError should store expected_type and actual_type."""
-        exc = exceptions.InputTypeError(
-            "Wrong type", expected_type=int, actual_type=str
-        )
+        exc = exceptions.InputTypeError("Wrong type", expected_type=int, actual_type=str)
         assert exc.expected_type is int
         assert exc.actual_type is str
         assert str(exc) == "Wrong type"
@@ -191,6 +173,34 @@ class TestExceptionContextAttributes:
         assert exc.argument_name is None
         assert exc.argument_value is None
         assert exc.valid_values is None
+
+    def test_distribution_fitting_error_attributes(self) -> None:
+        """DistributionFittingError should store all structured attributes."""
+        params = {"alpha": "0.5", "beta": "1.0"}
+        underlying = ValueError("test error")
+        exc = exceptions.DistributionFittingError(
+            "Fitting failed",
+            distribution_name="gamma",
+            input_shape=(10, 12),
+            parameters=params,
+            suggestion="try pearson3",
+            underlying_error=underlying,
+        )
+        assert exc.distribution_name == "gamma"
+        assert exc.input_shape == (10, 12)
+        assert exc.parameters == params
+        assert exc.suggestion == "try pearson3"
+        assert exc.underlying_error is underlying
+        assert str(exc) == "Fitting failed"
+
+    def test_distribution_fitting_error_defaults(self) -> None:
+        """DistributionFittingError attributes should default to None."""
+        exc = exceptions.DistributionFittingError("Fitting failed")
+        assert exc.distribution_name is None
+        assert exc.input_shape is None
+        assert exc.parameters is None
+        assert exc.suggestion is None
+        assert exc.underlying_error is None
 
 
 class TestBackwardCompatibility:
@@ -224,9 +234,7 @@ class TestBackwardCompatibility:
         """Verify pattern used in existing tests continues to work."""
         # this is the pattern used in test_zero_precipitation_fix.py
         try:
-            raise compute.InsufficientDataError(
-                "Insufficient data", non_zero_count=5, required_count=10
-            )
+            raise compute.InsufficientDataError("Insufficient data", non_zero_count=5, required_count=10)
         except compute.InsufficientDataError as e:
             assert e.non_zero_count == 5
             assert e.required_count == 10

@@ -34,9 +34,31 @@ class DistributionFittingError(ClimateIndicesError):
 
     Raised when statistical distribution fitting operations fail due to
     data quality issues or numerical problems.
+
+    Attributes:
+        distribution_name: Name of the distribution that failed (e.g., "gamma", "pearson3")
+        input_shape: Shape of the input array that caused the failure
+        parameters: Dictionary of parameter names to summarized values
+        suggestion: Suggested alternative approach or distribution to try
+        underlying_error: The original exception that caused the failure
     """
 
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        distribution_name: str | None = None,
+        input_shape: tuple[int, ...] | None = None,
+        parameters: dict[str, str] | None = None,
+        suggestion: str | None = None,
+        underlying_error: Exception | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.distribution_name = distribution_name
+        self.input_shape = input_shape
+        self.parameters = parameters
+        self.suggestion = suggestion
+        self.underlying_error = underlying_error
 
 
 class InsufficientDataError(DistributionFittingError):
