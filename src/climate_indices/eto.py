@@ -21,16 +21,19 @@ Goswami, D. Yogi (2015) Principles of Solar Engineering, Third Edition
 ISBN 97-8-146656-3780
 """
 
+from __future__ import annotations
+
 import calendar
-import logging
 import math
+import time
 
 import numpy as np
 
 from climate_indices import utils
+from climate_indices.logging_config import get_logger
 
-# Retrieve logger and set desired logging level
-_logger = utils.get_logger(__name__, logging.DEBUG)
+# retrieve structlog logger for this module
+_logger = get_logger(__name__)
 
 # declare the function names that should be included in the public API for this module
 __all__ = ["eto_hargreaves", "eto_thornthwaite"]
@@ -316,6 +319,14 @@ def eto_hargreaves(
         _logger.error(message)
         raise ValueError(message)
 
+    # bind context and emit calculation_started event
+    log = _logger.bind(
+        index_type="pet_hargreaves",
+        input_shape=daily_tmean_celsius.shape,
+    )
+    log.info("calculation_started")
+    t0 = time.perf_counter()
+
     # validate temperature relationships: tmin <= tmean <= tmax
     # use warnings rather than errors since real-world data may have some anomalies
     tmin_gt_tmax = np.sum(daily_tmin_celsius > daily_tmax_celsius)
@@ -372,4 +383,7 @@ def eto_hargreaves(
 
     # reshape the dataset from (years, 366) into (total days),
     # i.e. convert from 2-D to 1-D, and truncate to the original length
-    return pet.reshape(-1)[0:original_length]
+    result = pet.reshape(-1)[0:original_length]
+    duration_ms = (time.perf_counter() - t0) * 1000.0
+    log.info("calculation_completed", duration_ms=round(duration_ms, 2), output_shape=result.shape)
+    return result
