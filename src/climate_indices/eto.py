@@ -234,7 +234,6 @@ def eto_thornthwaite(
     :return: estimated potential evapotranspiration, in millimeters/month
     :rtype: 1-D numpy.ndarray of floats with shape: (total # of months)
     """
-
     original_length = monthly_temps_celsius.size
 
     # validate the input data array

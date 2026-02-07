@@ -2,7 +2,6 @@
 Common classes and functions used to compute the various climate indices.
 """
 
-import logging
 import warnings
 from enum import Enum
 
@@ -20,6 +19,7 @@ from climate_indices.exceptions import (
     PearsonFittingError,
     ShortCalibrationWarning,
 )
+from climate_indices.logging_config import get_logger
 
 # declare the function names that should be included in the public API for this module
 __all__ = [
@@ -37,8 +37,8 @@ __all__ = [
 # depending on the version of scipy we may need to use a workaround due to a bug in some versions of scipy
 _do_pearson3_workaround = Version(scipy.version.version) < Version("1.6.0")
 
-# Retrieve logger and set desired logging level
-_logger = utils.get_logger(__name__, logging.WARN)
+# module-level structlog logger
+_logger = get_logger(__name__)
 
 # Configuration constants for distribution fitting and validation
 # Minimum number of non-zero values required for Pearson Type III L-moments computation
@@ -71,7 +71,7 @@ class DistributionFallbackStrategy:
         """
         self.max_nan_percentage = max_nan_percentage
         self.high_failure_threshold = high_failure_threshold
-        self._logger = utils.get_logger(self.__class__.__name__, logging.WARN)
+        self._logger = get_logger(self.__class__.__name__)
 
     def should_fallback_from_excessive_nans(self, values: np.ndarray) -> bool:
         """Check if fallback is needed due to excessive NaN values."""
@@ -137,8 +137,8 @@ class Periodicity(Enum):
     def from_string(s):
         try:
             return Periodicity[s]
-        except KeyError:
-            raise ValueError(f"No periodicity enumeration corresponding to {s}")
+        except KeyError as err:
+            raise ValueError(f"No periodicity enumeration corresponding to {s}") from err
 
     def unit(self):
         if self.name == "monthly":
@@ -168,7 +168,12 @@ def _validate_array(
     if len(values.shape) == 1:
         if periodicity is None:
             message = "1-D input array requires a corresponding periodicity argument, none provided"
-            _logger.error(message)
+            _logger.error(
+                "validation_error",
+                operation="validate_array",
+                reason="missing_periodicity",
+                shape=str(values.shape),
+            )
             raise ValueError(message)
 
         elif periodicity is Periodicity.monthly:
@@ -183,7 +188,12 @@ def _validate_array(
 
         else:
             message = f"Unsupported periodicity argument: '{periodicity}'"
-            _logger.error(message)
+            _logger.error(
+                "validation_error",
+                operation="validate_array",
+                reason="unsupported_periodicity",
+                periodicity=str(periodicity),
+            )
             raise ValueError(message)
 
     elif (len(values.shape) != 2) or (values.shape[1] not in (12, 366)):
@@ -191,7 +201,12 @@ def _validate_array(
 
         # neither a 1-D nor a 2-D array with valid shape was passed in
         message = f"Invalid input array with shape: {values.shape}"
-        _logger.error(message)
+        _logger.error(
+            "validation_error",
+            operation="validate_array",
+            reason="invalid_shape",
+            shape=str(values.shape),
+        )
         raise ValueError(message)
 
     return values
@@ -252,7 +267,12 @@ def sum_to_scale(
 
 def _log_and_raise_shape_error(shape: tuple[int]):
     message = f"Invalid shape of input data array: {shape}"
-    _logger.error(message)
+    _logger.error(
+        "validation_error",
+        operation="validate_shape",
+        reason="invalid_shape",
+        shape=str(shape),
+    )
     raise ValueError(message)
 
 
@@ -425,6 +445,14 @@ def pearson_parameters(
         returned array 3 :second Pearson Type III distribution parameter (scale)
         returned array 4: third Pearson Type III distribution parameter (skew)
     """
+    log = _logger.bind(
+        operation="pearson_parameters",
+        distribution="pearson3",
+        periodicity=str(periodicity),
+        calibration_period=f"{calibration_start_year}-{calibration_end_year}",
+    )
+    log.info("distribution_fitting_started")
+
     values = reshape_values(values, periodicity)
     time_steps_per_year = validate_values_shape(values)
     data_end_year = data_start_year + values.shape[0]
@@ -472,6 +500,7 @@ def pearson_parameters(
     # check goodness-of-fit and emit warning if poor
     _check_goodness_of_fit_pearson(calibration_values, probabilities_of_zero, locs, scales, skews)
 
+    log.info("distribution_fitting_completed", output_shape=str(probabilities_of_zero.shape))
     return probabilities_of_zero, locs, scales, skews
 
 
@@ -763,6 +792,13 @@ def transform_fitted_pearson(
              and shape of the input array
     :rtype: numpy.ndarray of floats
     """
+    log = _logger.bind(
+        operation="transform_fitted_pearson",
+        distribution="pearson3",
+        periodicity=str(periodicity),
+        input_shape=str(values.shape),
+    )
+    log.info("distribution_transform_started")
 
     # sanity check for the fitting parameters arguments
     pearson_param_args = [probabilities_of_zero, locs, scales, skews]
@@ -805,6 +841,7 @@ def transform_fitted_pearson(
     # fit each value to the Pearson Type III distribution
     values = _pearson_fit(values, probabilities_of_zero, skews, locs, scales)
 
+    log.info("distribution_transform_completed", output_shape=str(values.shape))
     return values
 
 
@@ -1047,6 +1084,13 @@ def gamma_parameters(
         and shape of the input array
     :rtype: tuple of two 2-D numpy.ndarrays of floats, alphas and betas
     """
+    log = _logger.bind(
+        operation="gamma_parameters",
+        distribution="gamma",
+        periodicity=str(periodicity),
+        calibration_period=f"{calibration_start_year}-{calibration_end_year}",
+    )
+    log.info("distribution_fitting_started")
 
     # if we're passed all missing values then we can't compute anything,
     # then we return an array of missing values
@@ -1105,6 +1149,7 @@ def gamma_parameters(
     # check goodness-of-fit and emit warning if poor
     _check_goodness_of_fit_gamma(calibration_values, alphas, betas)
 
+    log.info("distribution_fitting_completed", output_shape=str(alphas.shape))
     return alphas, betas
 
 
@@ -1113,6 +1158,8 @@ def scale_values(
     scale: int,
     periodicity: Periodicity,
 ):
+    _logger.debug("scaling_started", operation="scale_values", scale=scale, periodicity=str(periodicity))
+
     # we expect to operate upon a 1-D array, so if we've been passed a 2-D array
     # then we flatten it, otherwise raise an error
     shape = values.shape
@@ -1129,7 +1176,7 @@ def scale_values(
 
     # clip any negative values to zero
     if np.amin(values) < 0.0:
-        _logger.warn("Input contains negative values -- all negatives clipped to zero")
+        _logger.warning("negative_values_clipped", operation="scale_values")
         values = np.clip(values, a_min=0.0, a_max=None)
 
     # get a sliding sums array, with each time step's value scaled
@@ -1145,8 +1192,9 @@ def scale_values(
         scaled_values = utils.reshape_to_2d(scaled_values, 366)
 
     else:
-        raise ValueError("Invalid periodicity argument: %s" % periodicity)
+        raise ValueError(f"Invalid periodicity argument: {periodicity}")
 
+    _logger.debug("scaling_completed", operation="scale_values", output_shape=str(scaled_values.shape))
     return scaled_values
 
 
@@ -1184,6 +1232,13 @@ def transform_fitted_gamma(
         and shape of the input array
     :rtype: numpy.ndarray of floats
     """
+    log = _logger.bind(
+        operation="transform_fitted_gamma",
+        distribution="gamma",
+        periodicity=str(periodicity),
+        input_shape=str(values.shape),
+    )
+    log.info("distribution_transform_started")
 
     # if we're passed all missing values then we can't compute anything,
     # then we return the same array of missing values
@@ -1255,7 +1310,9 @@ def transform_fitted_gamma(
     # as determined by the normal distribution's quantile (or inverse
     # cumulative distribution) function
     try:
-        return scipy.stats.norm.ppf(probabilities)
+        result = scipy.stats.norm.ppf(probabilities)
+        log.info("distribution_transform_completed", output_shape=str(result.shape))
+        return result
     except (ValueError, RuntimeError, FloatingPointError) as e:
         raise DistributionFittingError(
             f"Normal distribution inverse CDF (ppf) computation failed during gamma transformation: {e}",

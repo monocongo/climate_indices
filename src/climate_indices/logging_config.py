@@ -115,12 +115,18 @@ def get_logger(name: str) -> structlog.stdlib.BoundLogger:
     This is a convenience wrapper for internal library use. Library consumers should
     use configure_logging() to set up logging, then use structlog.get_logger() directly.
 
+    Automatically configures logging on first use if not already configured.
+
     Args:
         name: Logger name, typically __name__ of the calling module.
 
     Returns:
         A structlog BoundLogger instance.
     """
+    # auto-configure logging on first use
+    if not _LOGGING_CONFIGURED:
+        configure_logging()
+
     return cast(structlog.stdlib.BoundLogger, structlog.get_logger(name))
 
 
