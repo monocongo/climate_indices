@@ -10,6 +10,7 @@ import numpy as np
 from climate_indices import compute, eto, utils
 from climate_indices.exceptions import InvalidArgumentError
 from climate_indices.logging_config import get_logger
+from climate_indices.performance import check_large_array_memory
 
 # declare the function names that should be included in the public API for this module
 __all__ = ["percentage_of_normal", "pci", "pet", "spei", "spi"]
@@ -199,9 +200,11 @@ def spi(
         scale=scale,
         distribution=distribution.value,
         input_shape=values.shape,
+        input_elements=values.size,
     )
     log.info("calculation_started")
     t0 = time.perf_counter()
+    memory_metrics = check_large_array_memory(values)
 
     try:
         # we expect to operate upon a 1-D array, so if we've been passed a 2-D array
@@ -218,7 +221,12 @@ def spi(
         # anything, so we return the same array of missing values
         if (np.ma.is_masked(values) and values.mask.all()) or np.all(np.isnan(values)):
             duration_ms = (time.perf_counter() - t0) * 1000.0
-            log.info("calculation_completed", duration_ms=round(duration_ms, 2), output_shape=values.shape)
+            log.info(
+                "calculation_completed",
+                duration_ms=round(duration_ms, 2),
+                output_shape=values.shape,
+                **(memory_metrics or {}),
+            )
             return values
 
         # clip any negative values to zero
@@ -313,7 +321,12 @@ def spi(
         # return the original size array
         result = values[0:original_length]
         duration_ms = (time.perf_counter() - t0) * 1000.0
-        log.info("calculation_completed", duration_ms=round(duration_ms, 2), output_shape=result.shape)
+        log.info(
+            "calculation_completed",
+            duration_ms=round(duration_ms, 2),
+            output_shape=result.shape,
+            **(memory_metrics or {}),
+        )
         return result
     except Exception as exc:
         log.error(
@@ -387,9 +400,11 @@ def spei(
         scale=scale,
         distribution=distribution.value,
         input_shape=precips_mm.shape,
+        input_elements=precips_mm.size,
     )
     log.info("calculation_started")
     t0 = time.perf_counter()
+    memory_metrics = check_large_array_memory(precips_mm, pet_mm)
 
     try:
         # Normalize fitting param keys
@@ -399,7 +414,12 @@ def spei(
         # so we return the same array of missing values
         if (np.ma.is_masked(precips_mm) and precips_mm.mask.all()) or np.all(np.isnan(precips_mm)):
             duration_ms = (time.perf_counter() - t0) * 1000.0
-            log.info("calculation_completed", duration_ms=round(duration_ms, 2), output_shape=precips_mm.shape)
+            log.info(
+                "calculation_completed",
+                duration_ms=round(duration_ms, 2),
+                output_shape=precips_mm.shape,
+                **(memory_metrics or {}),
+            )
             return precips_mm
 
         # validate that the two input arrays are compatible
@@ -479,7 +499,12 @@ def spei(
         # return the original size array
         result = values[0:original_length]
         duration_ms = (time.perf_counter() - t0) * 1000.0
-        log.info("calculation_completed", duration_ms=round(duration_ms, 2), output_shape=result.shape)
+        log.info(
+            "calculation_completed",
+            duration_ms=round(duration_ms, 2),
+            output_shape=result.shape,
+            **(memory_metrics or {}),
+        )
         return result
     except Exception as exc:
         log.error(
@@ -543,9 +568,11 @@ def percentage_of_normal(
         index_type="percentage_of_normal",
         scale=scale,
         input_shape=values.shape,
+        input_elements=values.size,
     )
     log.info("calculation_started")
     t0 = time.perf_counter()
+    memory_metrics = check_large_array_memory(values)
 
     try:
         # if doing monthly then we'll use 12 periods, corresponding to calendar
@@ -558,7 +585,12 @@ def percentage_of_normal(
         # bypass processing if all values are masked
         if np.ma.is_masked(values) and values.mask.all():
             duration_ms = (time.perf_counter() - t0) * 1000.0
-            log.info("calculation_completed", duration_ms=round(duration_ms, 2), output_shape=values.shape)
+            log.info(
+                "calculation_completed",
+                duration_ms=round(duration_ms, 2),
+                output_shape=values.shape,
+                **(memory_metrics or {}),
+            )
             return values
 
         # make sure we've been provided with sane calibration limits
@@ -604,7 +636,12 @@ def percentage_of_normal(
                 percentages_of_normal[i] = scale_sums[i] / divisor
 
         duration_ms = (time.perf_counter() - t0) * 1000.0
-        log.info("calculation_completed", duration_ms=round(duration_ms, 2), output_shape=percentages_of_normal.shape)
+        log.info(
+            "calculation_completed",
+            duration_ms=round(duration_ms, 2),
+            output_shape=percentages_of_normal.shape,
+            **(memory_metrics or {}),
+        )
         return percentages_of_normal
     except Exception as exc:
         log.error(
@@ -640,23 +677,35 @@ def pet(
     log = _logger.bind(
         index_type="pet_thornthwaite",
         input_shape=temperature_celsius.shape,
+        input_elements=temperature_celsius.size,
     )
     log.info("calculation_started")
     t0 = time.perf_counter()
+    memory_metrics = check_large_array_memory(temperature_celsius)
 
     try:
         # make sure we're not dealing with all NaN values
         if np.ma.isMaskedArray(temperature_celsius) and (temperature_celsius.count() == 0):
             # we started with all NaNs for the temperature, so just return the same as PET
             duration_ms = (time.perf_counter() - t0) * 1000.0
-            log.info("calculation_completed", duration_ms=round(duration_ms, 2), output_shape=temperature_celsius.shape)
+            log.info(
+                "calculation_completed",
+                duration_ms=round(duration_ms, 2),
+                output_shape=temperature_celsius.shape,
+                **(memory_metrics or {}),
+            )
             return temperature_celsius
 
         # we were passed a vanilla Numpy array, look for indices where the value == NaN
         if np.all(np.isnan(temperature_celsius)):
             # we started with all NaNs for the temperature, so just return the same
             duration_ms = (time.perf_counter() - t0) * 1000.0
-            log.info("calculation_completed", duration_ms=round(duration_ms, 2), output_shape=temperature_celsius.shape)
+            log.info(
+                "calculation_completed",
+                duration_ms=round(duration_ms, 2),
+                output_shape=temperature_celsius.shape,
+                **(memory_metrics or {}),
+            )
             return temperature_celsius
 
         # If we've been passed an array of latitude values then just use
@@ -675,7 +724,12 @@ def pet(
                 data_start_year,
             )
             duration_ms = (time.perf_counter() - t0) * 1000.0
-            log.info("calculation_completed", duration_ms=round(duration_ms, 2), output_shape=result.shape)
+            log.info(
+                "calculation_completed",
+                duration_ms=round(duration_ms, 2),
+                output_shape=result.shape,
+                **(memory_metrics or {}),
+            )
             return result
 
         message = (
@@ -710,23 +764,35 @@ def pci(
     log = _logger.bind(
         index_type="pci",
         input_shape=rainfall_mm.shape,
+        input_elements=rainfall_mm.size,
     )
     log.info("calculation_started")
     t0 = time.perf_counter()
+    memory_metrics = check_large_array_memory(rainfall_mm)
 
     try:
         # make sure we're not dealing with all NaN values
         if np.ma.isMaskedArray(rainfall_mm) and (rainfall_mm.count() == 0):
             # we started with all NaNs for the rainfall, so just return the same
             duration_ms = (time.perf_counter() - t0) * 1000.0
-            log.info("calculation_completed", duration_ms=round(duration_ms, 2), output_shape=rainfall_mm.shape)
+            log.info(
+                "calculation_completed",
+                duration_ms=round(duration_ms, 2),
+                output_shape=rainfall_mm.shape,
+                **(memory_metrics or {}),
+            )
             return rainfall_mm
 
         # we were passed a vanilla Numpy array, look for indices where the value == NaN
         if np.all(np.isnan(rainfall_mm)):
             # we started with all NaNs for the rainfall, so just return the same
             duration_ms = (time.perf_counter() - t0) * 1000.0
-            log.info("calculation_completed", duration_ms=round(duration_ms, 2), output_shape=rainfall_mm.shape)
+            log.info(
+                "calculation_completed",
+                duration_ms=round(duration_ms, 2),
+                output_shape=rainfall_mm.shape,
+                **(memory_metrics or {}),
+            )
             return rainfall_mm
 
         # make sure we're not dealing with a NaN or out-of-range or less than the expected rainfall value
@@ -744,7 +810,12 @@ def pci(
 
             result = np.array([(numerator / (denominator**2)) * 100])
             duration_ms = (time.perf_counter() - t0) * 1000.0
-            log.info("calculation_completed", duration_ms=round(duration_ms, 2), output_shape=result.shape)
+            log.info(
+                "calculation_completed",
+                duration_ms=round(duration_ms, 2),
+                output_shape=result.shape,
+                **(memory_metrics or {}),
+            )
             return result
 
         if len(rainfall_mm) == 365 and not sum(np.isnan(rainfall_mm)):
@@ -761,7 +832,12 @@ def pci(
 
             result = np.array([(numerator / (denominator**2)) * 100])
             duration_ms = (time.perf_counter() - t0) * 1000.0
-            log.info("calculation_completed", duration_ms=round(duration_ms, 2), output_shape=result.shape)
+            log.info(
+                "calculation_completed",
+                duration_ms=round(duration_ms, 2),
+                output_shape=result.shape,
+                **(memory_metrics or {}),
+            )
             return result
 
         message = (

@@ -31,6 +31,7 @@ import numpy as np
 
 from climate_indices import utils
 from climate_indices.logging_config import get_logger
+from climate_indices.performance import check_large_array_memory
 
 # retrieve structlog logger for this module
 _logger = get_logger(__name__)
@@ -323,9 +324,11 @@ def eto_hargreaves(
     log = _logger.bind(
         index_type="pet_hargreaves",
         input_shape=daily_tmean_celsius.shape,
+        input_elements=daily_tmean_celsius.size,
     )
     log.info("calculation_started")
     t0 = time.perf_counter()
+    memory_metrics = check_large_array_memory(daily_tmin_celsius, daily_tmax_celsius, daily_tmean_celsius)
 
     try:
         # validate temperature relationships: tmin <= tmean <= tmax
@@ -386,7 +389,12 @@ def eto_hargreaves(
         # i.e. convert from 2-D to 1-D, and truncate to the original length
         result = pet.reshape(-1)[0:original_length]
         duration_ms = (time.perf_counter() - t0) * 1000.0
-        log.info("calculation_completed", duration_ms=round(duration_ms, 2), output_shape=result.shape)
+        log.info(
+            "calculation_completed",
+            duration_ms=round(duration_ms, 2),
+            output_shape=result.shape,
+            **(memory_metrics or {}),
+        )
         return result
     except Exception as exc:
         log.error(

@@ -420,6 +420,9 @@ docs = [
     { name = "sphinx" },
     { name = "sphinx-rtd-theme" },
 ]
+performance = [
+    { name = "psutil" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -442,6 +445,7 @@ requires-dist = [
     { name = "h5netcdf", specifier = ">=1.6.3" },
     { name = "jupyter", marker = "extra == 'dev'", specifier = ">=1.1.1" },
     { name = "matplotlib", marker = "extra == 'dev'", specifier = ">=3.10.3" },
+    { name = "psutil", marker = "extra == 'performance'", specifier = ">=5.9.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.4.1" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=6.2.1" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.12.7" },
@@ -453,7 +457,7 @@ requires-dist = [
     { name = "toml", marker = "extra == 'dev'", specifier = ">=0.10.2" },
     { name = "xarray", specifier = ">=2025.6.1" },
 ]
-provides-extras = ["dev", "docs"]
+provides-extras = ["dev", "docs", "performance"]
 
 [package.metadata.requires-dev]
 dev = [
