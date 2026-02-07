@@ -78,3 +78,9 @@ venv.bak/
 /.pydevproject
 .DS_Store
 /.settings/
+
+# BMAD framework (keep only project-specific artifacts in _bmad-output/)
+_bmad/
+
+# Claude Code session data
+.claude/
