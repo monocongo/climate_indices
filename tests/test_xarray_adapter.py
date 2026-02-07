@@ -22,6 +22,7 @@ from climate_indices.xarray_adapter import (
     _infer_calibration_period,
     _infer_data_start_year,
     _infer_periodicity,
+    _serialize_attr_value,
     xarray_adapter,
 )
 
@@ -350,7 +351,7 @@ class TestXarrayAdapterCFMetadata:
         assert result.attrs["units"] == "dimensionless"
 
     def test_no_cf_metadata_preserves_input_attrs(self, sample_monthly_precip_da):
-        """No CF metadata (None) preserves only input attrs."""
+        """No CF metadata (None) preserves input attrs plus version."""
 
         @xarray_adapter(cf_metadata=None)
         def identity(values: np.ndarray) -> np.ndarray:
@@ -358,7 +359,11 @@ class TestXarrayAdapterCFMetadata:
 
         result = identity(sample_monthly_precip_da)
 
-        assert result.attrs == sample_monthly_precip_da.attrs
+        # input attrs should be preserved
+        assert result.attrs["units"] == sample_monthly_precip_da.attrs["units"]
+        assert result.attrs["long_name"] == sample_monthly_precip_da.attrs["long_name"]
+        # version is always added
+        assert "climate_indices_version" in result.attrs
 
     def test_registry_metadata_applied_to_output(self, sample_monthly_precip_da):
         """CF_METADATA registry values are correctly applied to output DataArray."""
@@ -846,3 +851,271 @@ class TestCoordinatePreservationRoundTrip:
 
         assert "year" in result.coords
         assert result.coords["year"].attrs == {}
+
+
+class TestSerializeAttrValue:
+    """Test _serialize_attr_value() helper function."""
+
+    def test_enum_to_name_string(self):
+        """Enum instances serialize to their .name string."""
+        result = _serialize_attr_value(indices.Distribution.gamma)
+        assert result == "gamma"
+        assert isinstance(result, str)
+
+    def test_enum_periodicity(self):
+        """Periodicity enum serializes correctly."""
+        result = _serialize_attr_value(compute.Periodicity.monthly)
+        assert result == "monthly"
+        assert isinstance(result, str)
+
+    def test_string_passthrough(self):
+        """String values pass through unchanged."""
+        result = _serialize_attr_value("test_string")
+        assert result == "test_string"
+        assert isinstance(result, str)
+
+    def test_int_passthrough(self):
+        """Integer values pass through unchanged."""
+        result = _serialize_attr_value(42)
+        assert result == 42
+        assert isinstance(result, int)
+
+    def test_float_passthrough(self):
+        """Float values pass through unchanged."""
+        result = _serialize_attr_value(3.14)
+        assert result == 3.14
+        assert isinstance(result, float)
+
+    def test_bool_passthrough(self):
+        """Boolean values pass through unchanged."""
+        result = _serialize_attr_value(True)
+        assert result is True
+        assert isinstance(result, bool)
+
+    def test_numpy_int_to_python_int(self):
+        """NumPy integer scalars convert to Python int."""
+        result = _serialize_attr_value(np.int64(42))
+        assert result == 42
+        assert isinstance(result, int)
+        assert not isinstance(result, np.integer)
+
+    def test_numpy_float_to_python_float(self):
+        """NumPy float scalars convert to Python float."""
+        result = _serialize_attr_value(np.float64(3.14))
+        assert result == 3.14
+        assert isinstance(result, float)
+        assert not isinstance(result, np.floating)
+
+    def test_dict_raises_typeerror(self):
+        """Dict values raise TypeError."""
+        with pytest.raises(TypeError) as exc_info:
+            _serialize_attr_value({"key": "value"})
+        assert "Cannot serialize" in str(exc_info.value)
+
+    def test_list_raises_typeerror(self):
+        """List values raise TypeError."""
+        with pytest.raises(TypeError) as exc_info:
+            _serialize_attr_value([1, 2, 3])
+        assert "Cannot serialize" in str(exc_info.value)
+
+
+class TestCalculationMetadata:
+    """Test calculation metadata capture and serialization."""
+
+    def test_scale_captured(self, sample_monthly_precip_da):
+        """scale parameter captured in output attrs."""
+
+        @xarray_adapter(calculation_metadata_keys=["scale"])
+        def needs_scale(values: np.ndarray, scale: int) -> np.ndarray:
+            return values
+
+        result = needs_scale(sample_monthly_precip_da, scale=3)
+
+        assert result.attrs["scale"] == 3
+
+    def test_enum_serialized(self, sample_monthly_precip_da):
+        """Enum parameter serialized to .name string."""
+
+        @xarray_adapter(calculation_metadata_keys=["distribution"])
+        def needs_distribution(values: np.ndarray, distribution: indices.Distribution) -> np.ndarray:
+            return values
+
+        result = needs_distribution(sample_monthly_precip_da, distribution=indices.Distribution.gamma)
+
+        assert result.attrs["distribution"] == "gamma"
+        assert isinstance(result.attrs["distribution"], str)
+
+    def test_multiple_keys(self, sample_monthly_precip_da):
+        """Multiple calculation metadata keys captured."""
+
+        @xarray_adapter(calculation_metadata_keys=["scale", "distribution"])
+        def needs_both(values: np.ndarray, scale: int, distribution: indices.Distribution) -> np.ndarray:
+            return values
+
+        result = needs_both(sample_monthly_precip_da, scale=6, distribution=indices.Distribution.gamma)
+
+        assert result.attrs["scale"] == 6
+        assert result.attrs["distribution"] == "gamma"
+
+    def test_missing_key_skipped(self, sample_monthly_precip_da):
+        """Missing keys not added to attrs."""
+
+        @xarray_adapter(calculation_metadata_keys=["scale", "nonexistent"])
+        def optional_params(values: np.ndarray, scale: int) -> np.ndarray:
+            return values
+
+        result = optional_params(sample_monthly_precip_da, scale=3)
+
+        assert result.attrs["scale"] == 3
+        assert "nonexistent" not in result.attrs
+
+    def test_none_keys_no_calc_attrs(self, sample_monthly_precip_da):
+        """calculation_metadata_keys=None adds no calculation attrs."""
+
+        @xarray_adapter(calculation_metadata_keys=None)
+        def simple_func(values: np.ndarray, scale: int) -> np.ndarray:
+            return values
+
+        result = simple_func(sample_monthly_precip_da, scale=3)
+
+        # scale not in attrs (no capture requested)
+        assert "scale" not in result.attrs
+        # but version is always present
+        assert "climate_indices_version" in result.attrs
+
+    def test_numpy_passthrough_unaffected(self):
+        """NumPy inputs bypass calculation metadata capture."""
+
+        @xarray_adapter(calculation_metadata_keys=["scale"])
+        def needs_scale(values: np.ndarray, scale: int) -> np.ndarray:
+            return values * scale
+
+        numpy_input = np.array([1.0, 2.0, 3.0])
+        result = needs_scale(numpy_input, scale=2)
+
+        # numpy result has no attrs
+        assert isinstance(result, np.ndarray)
+        assert not hasattr(result, "attrs")
+
+
+class TestLibraryVersionAttribute:
+    """Test climate_indices_version attribute."""
+
+    def test_version_always_present(self, sample_monthly_precip_da):
+        """climate_indices_version always added to output."""
+
+        @xarray_adapter()
+        def identity(values: np.ndarray) -> np.ndarray:
+            return values
+
+        result = identity(sample_monthly_precip_da)
+
+        assert "climate_indices_version" in result.attrs
+
+    def test_version_matches_package_version(self, sample_monthly_precip_da):
+        """Version matches climate_indices.__version__."""
+        from climate_indices import __version__
+
+        @xarray_adapter()
+        def identity(values: np.ndarray) -> np.ndarray:
+            return values
+
+        result = identity(sample_monthly_precip_da)
+
+        assert result.attrs["climate_indices_version"] == __version__
+
+    def test_version_coexists_with_cf_metadata(self, sample_monthly_precip_da):
+        """Version added alongside CF metadata."""
+
+        @xarray_adapter(cf_metadata={"long_name": "Test Index", "units": "dimensionless"})
+        def identity(values: np.ndarray) -> np.ndarray:
+            return values
+
+        result = identity(sample_monthly_precip_da)
+
+        assert result.attrs["long_name"] == "Test Index"
+        assert result.attrs["units"] == "dimensionless"
+        assert "climate_indices_version" in result.attrs
+
+    def test_version_in_build_output_directly(self, coord_rich_1d_da):
+        """_build_output_dataarray adds version even without decorator."""
+        result_values = np.ones_like(coord_rich_1d_da.values)
+        output = _build_output_dataarray(coord_rich_1d_da, result_values)
+
+        assert "climate_indices_version" in output.attrs
+
+
+class TestAttributeLayering:
+    """Test attribute layering: input → CF → calc → version."""
+
+    def test_full_layering(self, sample_monthly_precip_da):
+        """All attribute sources layer correctly."""
+        cf_meta = {"long_name": "Standardized Precipitation Index", "units": "dimensionless"}
+
+        @xarray_adapter(cf_metadata=cf_meta, calculation_metadata_keys=["scale", "distribution"])
+        def full_function(values: np.ndarray, scale: int, distribution: indices.Distribution) -> np.ndarray:
+            return values
+
+        result = full_function(sample_monthly_precip_da, scale=3, distribution=indices.Distribution.gamma)
+
+        # input attrs preserved (but long_name/units overridden)
+        # CF metadata present
+        assert result.attrs["long_name"] == "Standardized Precipitation Index"
+        assert result.attrs["units"] == "dimensionless"
+        # calculation metadata present
+        assert result.attrs["scale"] == 3
+        assert result.attrs["distribution"] == "gamma"
+        # version always present
+        assert "climate_indices_version" in result.attrs
+
+    def test_cf_and_calc_keys_dont_collide(self, sample_monthly_precip_da):
+        """CF and calculation metadata use different keys."""
+        cf_meta = {"long_name": "Test Index", "units": "dimensionless"}
+
+        @xarray_adapter(cf_metadata=cf_meta, calculation_metadata_keys=["scale"])
+        def no_collision(values: np.ndarray, scale: int) -> np.ndarray:
+            return values
+
+        result = no_collision(sample_monthly_precip_da, scale=6)
+
+        # both sets of metadata present without collision
+        assert result.attrs["long_name"] == "Test Index"
+        assert result.attrs["units"] == "dimensionless"
+        assert result.attrs["scale"] == 6
+
+
+class TestEndToEndIntegration:
+    """End-to-end integration test with real SPI and full metadata capture."""
+
+    def test_spi_with_calculation_metadata_keys(self, sample_monthly_precip_da):
+        """SPI with calculation_metadata_keys captures scale and distribution."""
+        # wrap SPI with calculation metadata capture
+        wrapped_spi = xarray_adapter(
+            cf_metadata=CF_METADATA["spi"],
+            calculation_metadata_keys=["scale", "distribution"],
+        )(indices.spi)
+
+        result = wrapped_spi(
+            sample_monthly_precip_da,
+            scale=3,
+            distribution=indices.Distribution.gamma,
+        )
+
+        # CF metadata present
+        assert result.attrs["long_name"] == "Standardized Precipitation Index"
+        assert result.attrs["units"] == "dimensionless"
+        assert "McKee" in result.attrs["references"]
+
+        # calculation metadata captured
+        assert result.attrs["scale"] == 3
+        assert result.attrs["distribution"] == "gamma"
+
+        # version present
+        assert "climate_indices_version" in result.attrs
+
+        # original input attrs preserved (not overridden by CF)
+        # (input had "units" and "long_name" but they're overridden by CF)
+
+        # result values are correct (not all NaN)
+        assert not np.all(np.isnan(result.values))
+        assert result.shape == sample_monthly_precip_da.shape

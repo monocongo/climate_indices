@@ -244,10 +244,55 @@ def _infer_calibration_period(time_coord: xr.DataArray) -> tuple[int, int]:
     return (first_year, last_year)
 
 
+def _serialize_attr_value(value: Any) -> str | int | float | bool:
+    """Serialize attribute values for xarray compatibility.
+
+    Converts enum instances to their string name representation, passes through
+    native xarray-serializable types, and raises TypeError for non-serializable types.
+
+    Args:
+        value: Attribute value to serialize
+
+    Returns:
+        Serialized value: enum→name string, or passthrough for str/int/float/bool/numpy scalars
+
+    Raises:
+        TypeError: If value is not serializable (dict, list, complex objects)
+
+    Examples:
+        >>> _serialize_attr_value(Distribution.gamma)
+        'gamma'
+        >>> _serialize_attr_value(42)
+        42
+        >>> _serialize_attr_value("monthly")
+        'monthly'
+        >>> _serialize_attr_value([1, 2])
+        TypeError: ...
+    """
+    # enum → .name string
+    if isinstance(value, Enum):
+        return value.name
+
+    # numpy scalar → python scalar
+    if isinstance(value, (np.integer, np.floating)):
+        return value.item()
+
+    # passthrough native serializable types
+    if isinstance(value, (str, int, float, bool)):
+        return value
+
+    # reject non-serializable types
+    raise TypeError(
+        f"Cannot serialize attribute value of type {type(value).__name__}. "
+        f"Supported types: Enum, str, int, float, bool, numpy scalars."
+    )
+
+
 def _build_output_dataarray(
     input_da: xr.DataArray,
     result_values: np.ndarray[Any, Any],
     cf_metadata: dict[str, str] | None = None,
+    calculation_metadata: dict[str, Any] | None = None,
 ) -> xr.DataArray:
     """Build output DataArray with preserved coordinates and metadata.
 
@@ -261,6 +306,9 @@ def _build_output_dataarray(
         cf_metadata: Optional CF Convention metadata to apply to DataArray-level
             attributes. Overrides conflicting input attrs but never affects
             coordinate-level attributes.
+        calculation_metadata: Optional dict of calculation-specific metadata
+            (e.g., scale, distribution) to add to DataArray attributes.
+            Enum values are automatically serialized to .name strings.
 
     Returns:
         DataArray with result_values and preserved coordinates/dims/attrs
@@ -270,6 +318,7 @@ def _build_output_dataarray(
         - Preserves coordinate ordering (dict insertion order)
         - CF metadata only affects DataArray-level attrs, not coord attrs
         - Preserves the input DataArray's .name attribute
+        - Attribute layering: input attrs → CF metadata → calculation metadata → version
     """
     # deep-copy DA-level attrs for output (prevents mutation)
     output_attrs = copy.deepcopy(input_da.attrs)
@@ -277,6 +326,25 @@ def _build_output_dataarray(
     # apply CF metadata overrides to DA-level attrs only
     if cf_metadata is not None:
         output_attrs.update(cf_metadata)
+
+    # add calculation metadata (e.g., scale, distribution)
+    if calculation_metadata is not None:
+        for key, value in calculation_metadata.items():
+            try:
+                output_attrs[key] = _serialize_attr_value(value)
+            except TypeError as e:
+                logger.warning(
+                    "calculation_metadata_serialization_failed",
+                    key=key,
+                    value_type=type(value).__name__,
+                    error=str(e),
+                )
+
+    # add library version for provenance
+    # deferred import to avoid circular dependency (__init__.py imports this module)
+    from climate_indices import __version__
+
+    output_attrs["climate_indices_version"] = __version__
 
     # construct output with coords and dims from input
     result_da = xr.DataArray(
@@ -302,6 +370,7 @@ def xarray_adapter(
     cf_metadata: dict[str, str] | None = None,
     time_dim: str = "time",
     infer_params: bool = True,
+    calculation_metadata_keys: list[str] | tuple[str, ...] | None = None,
 ) -> Callable[[Callable[..., np.ndarray[Any, Any]]], Callable[..., np.ndarray[Any, Any] | xr.DataArray]]:
     """Decorator factory that adapts NumPy index functions to accept xarray DataArrays.
 
@@ -318,19 +387,27 @@ def xarray_adapter(
         infer_params: If True, automatically infer missing parameters (data_start_year,
             periodicity, calibration_year_initial, calibration_year_final) from the time
             coordinate. Explicit parameter values always override inferred values.
+        calculation_metadata_keys: Optional sequence of parameter names to capture as
+            output metadata attributes. For example, ["scale", "distribution"] will
+            add these kwargs to the output DataArray.attrs. Enum values are automatically
+            serialized to their .name string representation.
 
     Returns:
         Decorator function that wraps index computation functions
 
     Example:
-        >>> @xarray_adapter(cf_metadata={'standard_name': 'spi', 'units': '1'})
+        >>> @xarray_adapter(
+        ...     cf_metadata={'standard_name': 'spi', 'units': '1'},
+        ...     calculation_metadata_keys=['scale', 'distribution']
+        ... )
         ... def spi(values, scale, distribution, data_start_year, ...):
         ...     # existing NumPy implementation
         ...     return numpy_result
         ...
         >>> # Works with both NumPy arrays and xarray DataArrays
         >>> result_numpy = spi(np.array([...]), scale=3, ...)
-        >>> result_xarray = spi(precip_da, scale=3)  # params inferred from time coord
+        >>> result_xarray = spi(precip_da, scale=3, distribution=Distribution.gamma)
+        >>> # result_xarray.attrs now includes: scale=3, distribution="gamma", climate_indices_version="x.y.z"
 
     Notes:
         - NumPy inputs: Passed through unchanged to the wrapped function
@@ -406,8 +483,16 @@ def xarray_adapter(
 
             result_values = func(*numpy_args, **valid_kwargs)
 
+            # capture calculation metadata from resolved kwargs
+            calc_metadata = None
+            if calculation_metadata_keys is not None:
+                calc_metadata = {}
+                for key in calculation_metadata_keys:
+                    if key in valid_kwargs:
+                        calc_metadata[key] = valid_kwargs[key]
+
             # rewrap result as DataArray with preserved coordinates/metadata
-            result_da = _build_output_dataarray(input_da, result_values, cf_metadata)
+            result_da = _build_output_dataarray(input_da, result_values, cf_metadata, calc_metadata)
 
             # log completion
             logger.info(
