@@ -21,7 +21,7 @@ import functools
 import inspect
 from collections.abc import Callable
 from enum import Enum, auto
-from typing import Any
+from typing import Any, TypedDict
 
 import numpy as np
 import pandas as pd
@@ -32,6 +32,39 @@ from climate_indices.exceptions import CoordinateValidationError, InputTypeError
 from climate_indices.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+class _CFAttributesRequired(TypedDict):
+    """Required CF Convention metadata attributes."""
+
+    long_name: str
+    units: str
+    references: str
+
+
+class CFAttributes(_CFAttributesRequired, total=False):
+    """CF Convention metadata attributes for a climate index.
+
+    Required keys: long_name, units, references.
+    Optional keys: standard_name (only when officially defined in CF conventions).
+    """
+
+    standard_name: str
+
+
+CF_METADATA: dict[str, CFAttributes] = {
+    "spi": {
+        "long_name": "Standardized Precipitation Index",
+        "units": "dimensionless",
+        "references": (
+            "McKee, T. B., Doesken, N. J., & Kleist, J. (1993). "
+            "The relationship of drought frequency and duration to time scales. "
+            "Proceedings of the 8th Conference on Applied Climatology, "
+            "17-22 January, Anaheim, CA. "
+            "American Meteorological Society, Boston, MA, 179-184."
+        ),
+    },
+}
 
 # types that can be safely coerced to np.ndarray by the existing numpy functions
 # includes scalar types that numpy operations naturally handle
@@ -173,7 +206,7 @@ def _infer_periodicity(time_coord: xr.DataArray) -> compute.Periodicity:
             reason="insufficient data points",
         )
 
-    freq = xr.infer_freq(time_coord)  # type: ignore[no-untyped-call]
+    freq = xr.infer_freq(time_coord)
 
     if freq is None:
         raise CoordinateValidationError(

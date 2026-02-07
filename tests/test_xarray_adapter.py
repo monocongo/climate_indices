@@ -17,6 +17,7 @@ import xarray as xr
 from climate_indices import compute, indices
 from climate_indices.exceptions import CoordinateValidationError
 from climate_indices.xarray_adapter import (
+    CF_METADATA,
     _infer_calibration_period,
     _infer_data_start_year,
     _infer_periodicity,
@@ -158,6 +159,49 @@ class TestXarrayAdapterExtractRewrap:
         assert result.attrs["long_name"] == "Monthly Precipitation"
 
 
+class TestCFMetadataRegistry:
+    """Test CF metadata registry structure and SPI entry."""
+
+    def test_spi_entry_exists(self):
+        """CF_METADATA contains 'spi' key."""
+        assert "spi" in CF_METADATA
+
+    def test_spi_long_name(self):
+        """SPI long_name is 'Standardized Precipitation Index'."""
+        assert CF_METADATA["spi"]["long_name"] == "Standardized Precipitation Index"
+
+    def test_spi_units(self):
+        """SPI units are 'dimensionless'."""
+        assert CF_METADATA["spi"]["units"] == "dimensionless"
+
+    def test_spi_references_contains_mckee(self):
+        """SPI references contain McKee et al. (1993) citation."""
+        references = CF_METADATA["spi"]["references"]
+        assert "McKee" in references
+        assert "1993" in references
+
+    def test_spi_has_no_standard_name(self):
+        """SPI entry has no standard_name key (no official CF standard name)."""
+        assert "standard_name" not in CF_METADATA["spi"]
+
+    def test_all_entries_have_required_keys(self):
+        """All entries have required keys: long_name, units, references."""
+        required_keys = {"long_name", "units", "references"}
+        for index_name, metadata in CF_METADATA.items():
+            actual_keys = set(metadata.keys())
+            # check that all required keys are present
+            assert required_keys.issubset(actual_keys), (
+                f"Entry '{index_name}' missing required keys: {required_keys - actual_keys}"
+            )
+
+    def test_all_values_are_non_empty_strings(self):
+        """All metadata values are non-empty strings."""
+        for index_name, metadata in CF_METADATA.items():
+            for key, value in metadata.items():
+                assert isinstance(value, str), f"Entry '{index_name}', key '{key}' is not a string"
+                assert value.strip(), f"Entry '{index_name}', key '{key}' is empty or whitespace"
+
+
 class TestXarrayAdapterCFMetadata:
     """Test CF metadata application."""
 
@@ -201,6 +245,19 @@ class TestXarrayAdapterCFMetadata:
         result = identity(sample_monthly_precip_da)
 
         assert result.attrs == sample_monthly_precip_da.attrs
+
+    def test_registry_metadata_applied_to_output(self, sample_monthly_precip_da):
+        """CF_METADATA registry values are correctly applied to output DataArray."""
+
+        @xarray_adapter(cf_metadata=CF_METADATA["spi"])
+        def identity(values: np.ndarray) -> np.ndarray:
+            return values
+
+        result = identity(sample_monthly_precip_da)
+        assert result.attrs["long_name"] == "Standardized Precipitation Index"
+        assert result.attrs["units"] == "dimensionless"
+        assert "McKee" in result.attrs["references"]
+        assert "standard_name" not in result.attrs
 
 
 class TestXarrayAdapterParameterInference:
@@ -406,13 +463,8 @@ class TestXarrayAdapterIntegration:
 
     def test_works_with_actual_spi_function(self, sample_monthly_precip_da):
         """Decorator works with the actual indices.spi() function."""
-        # wrap the real SPI function
-        wrapped_spi = xarray_adapter(
-            cf_metadata={
-                "standard_name": "standardized_precipitation_index",
-                "units": "1",
-            }
-        )(indices.spi)
+        # wrap the real SPI function with registry metadata
+        wrapped_spi = xarray_adapter(cf_metadata=CF_METADATA["spi"])(indices.spi)
 
         # call with xarray DataArray - params will be inferred
         result = wrapped_spi(
@@ -423,8 +475,10 @@ class TestXarrayAdapterIntegration:
 
         assert isinstance(result, xr.DataArray)
         assert result.shape == sample_monthly_precip_da.shape
-        assert result.attrs["standard_name"] == "standardized_precipitation_index"
-        assert result.attrs["units"] == "1"
+        assert result.attrs["long_name"] == "Standardized Precipitation Index"
+        assert result.attrs["units"] == "dimensionless"
+        assert "McKee" in result.attrs["references"]
+        assert "standard_name" not in result.attrs
 
     def test_numpy_input_with_real_spi(self, sample_monthly_precip_da):
         """NumPy passthrough works with real SPI function."""
