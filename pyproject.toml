@@ -121,6 +121,7 @@ module = [
     "netCDF4.*",
     "xarray.*",
     "dask.*",
+    "pandas.*",
 ]
 ignore_missing_imports = true
 

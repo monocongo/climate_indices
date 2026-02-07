@@ -17,13 +17,18 @@ References:
 
 from __future__ import annotations
 
+import functools
+import inspect
+from collections.abc import Callable
 from enum import Enum, auto
 from typing import Any
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 
-from climate_indices.exceptions import InputTypeError
+from climate_indices import compute
+from climate_indices.exceptions import CoordinateValidationError, InputTypeError
 from climate_indices.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -115,3 +120,235 @@ def detect_input_type(data: Any) -> InputType:
         expected_type=None,  # multiple types accepted
         actual_type=actual_type,
     )
+
+
+def _infer_data_start_year(time_coord: xr.DataArray) -> int:
+    """Extract the starting year from a time coordinate.
+
+    Args:
+        time_coord: xarray DataArray containing datetime values
+
+    Returns:
+        Year of the first timestamp in the coordinate
+
+    Raises:
+        CoordinateValidationError: If time coordinate is empty or not datetime-like
+    """
+    if len(time_coord) == 0:
+        raise CoordinateValidationError(
+            message="Time coordinate is empty - cannot infer data_start_year",
+            coordinate_name="time",
+            reason="empty coordinate",
+        )
+
+    try:
+        first_timestamp = pd.Timestamp(time_coord.values[0])
+        return int(first_timestamp.year)
+    except (TypeError, ValueError) as e:
+        raise CoordinateValidationError(
+            message=f"Time coordinate must be datetime-like to infer data_start_year: {e}",
+            coordinate_name="time",
+            reason="not datetime-like",
+        ) from e
+
+
+def _infer_periodicity(time_coord: xr.DataArray) -> compute.Periodicity:
+    """Infer periodicity from time coordinate frequency.
+
+    Args:
+        time_coord: xarray DataArray containing datetime values
+
+    Returns:
+        Periodicity.monthly for month-start/end frequencies
+        Periodicity.daily for daily frequency
+
+    Raises:
+        CoordinateValidationError: If frequency cannot be inferred or is unsupported
+    """
+    # xarray's infer_freq requires at least 3 values
+    if len(time_coord) < 3:
+        raise CoordinateValidationError(
+            message="Time coordinate must have at least 3 values to infer periodicity",
+            coordinate_name="time",
+            reason="insufficient data points",
+        )
+
+    freq = xr.infer_freq(time_coord)  # type: ignore[no-untyped-call]
+
+    if freq is None:
+        raise CoordinateValidationError(
+            message="Could not infer frequency from time coordinate - ensure regular spacing",
+            coordinate_name="time",
+            reason="irregular frequency",
+        )
+
+    # map pandas frequency strings to Periodicity
+    # MS = month start, ME = month end, M = legacy month end
+    if freq in ("MS", "ME", "M"):
+        return compute.Periodicity.monthly
+    elif freq == "D":
+        return compute.Periodicity.daily
+    else:
+        raise CoordinateValidationError(
+            message=f"Unsupported frequency '{freq}' - only 'MS'/'ME'/'M' (monthly) and 'D' (daily) supported",
+            coordinate_name="time",
+            reason=f"unsupported frequency: {freq}",
+        )
+
+
+def _infer_calibration_period(time_coord: xr.DataArray) -> tuple[int, int]:
+    """Infer calibration period from time coordinate endpoints.
+
+    Args:
+        time_coord: xarray DataArray containing datetime values
+
+    Returns:
+        Tuple of (first_year, last_year) covering the full time range
+    """
+    first_year = pd.Timestamp(time_coord.values[0]).year
+    last_year = pd.Timestamp(time_coord.values[-1]).year
+    return (first_year, last_year)
+
+
+def xarray_adapter(
+    *,
+    cf_metadata: dict[str, str] | None = None,
+    time_dim: str = "time",
+    infer_params: bool = True,
+) -> Callable[[Callable[..., np.ndarray[Any, Any]]], Callable[..., np.ndarray[Any, Any] | xr.DataArray]]:
+    """Decorator factory that adapts NumPy index functions to accept xarray DataArrays.
+
+    This decorator implements the adapter contract: extract → infer → compute → rewrap → log.
+    It transparently handles both NumPy arrays (passthrough) and xarray DataArrays (extract,
+    compute with NumPy function, rewrap result).
+
+    Args:
+        cf_metadata: Optional dict of CF Convention metadata to apply to output DataArray.
+            Keys should be CF attribute names (e.g., 'standard_name', 'long_name', 'units').
+            These override conflicting attributes from the input DataArray.
+        time_dim: Name of the time dimension in the input DataArray (default: "time").
+            Used for parameter inference.
+        infer_params: If True, automatically infer missing parameters (data_start_year,
+            periodicity, calibration_year_initial, calibration_year_final) from the time
+            coordinate. Explicit parameter values always override inferred values.
+
+    Returns:
+        Decorator function that wraps index computation functions
+
+    Example:
+        >>> @xarray_adapter(cf_metadata={'standard_name': 'spi', 'units': '1'})
+        ... def spi(values, scale, distribution, data_start_year, ...):
+        ...     # existing NumPy implementation
+        ...     return numpy_result
+        ...
+        >>> # Works with both NumPy arrays and xarray DataArrays
+        >>> result_numpy = spi(np.array([...]), scale=3, ...)
+        >>> result_xarray = spi(precip_da, scale=3)  # params inferred from time coord
+
+    Notes:
+        - NumPy inputs: Passed through unchanged to the wrapped function
+        - xarray inputs: Values extracted, parameters inferred, result rewrapped with coords
+        - 1D DataArrays only in Story 2.2; multi-dimensional support added in Story 2.9
+        - Uses inspect.signature() for generic parameter mapping (works with any function)
+    """
+
+    def decorator(func: Callable[..., np.ndarray[Any, Any]]) -> Callable[..., np.ndarray[Any, Any] | xr.DataArray]:
+        @functools.wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> np.ndarray[Any, Any] | xr.DataArray:
+            # first positional argument is always the data
+            if not args:
+                raise ValueError(f"{func.__name__} requires at least one positional argument (data)")
+
+            data = args[0]
+            input_type = detect_input_type(data)
+
+            # numpy passthrough - no transformation needed
+            if input_type == InputType.NUMPY:
+                return func(*args, **kwargs)
+
+            # xarray path: extract → infer → compute → rewrap → log
+            input_da = data
+
+            # store original metadata for rewrapping
+            original_coords = input_da.coords
+            original_dims = input_da.dims
+            original_attrs = dict(input_da.attrs)
+
+            # extract numpy values
+            numpy_values = input_da.values
+
+            # build kwargs for the wrapped function
+            # start with explicitly provided kwargs
+            call_kwargs = dict(kwargs)
+
+            # infer missing parameters if enabled and time dimension exists
+            if infer_params and time_dim in input_da.dims:
+                time_coord = input_da[time_dim]
+
+                # use inspect to determine which parameters the function accepts
+                sig = inspect.signature(func)
+
+                # bind provided args/kwargs to see what's already specified
+                try:
+                    # bind_partial allows missing parameters (we'll fill them)
+                    bound = sig.bind_partial(*args, **kwargs)
+                    bound.apply_defaults()
+                    provided_params = set(bound.arguments.keys())
+                except TypeError:
+                    # if binding fails, skip inference
+                    provided_params = set()
+
+                # infer data_start_year if not provided
+                if "data_start_year" in sig.parameters and "data_start_year" not in provided_params:
+                    call_kwargs["data_start_year"] = _infer_data_start_year(time_coord)
+
+                # infer periodicity if not provided
+                if "periodicity" in sig.parameters and "periodicity" not in provided_params:
+                    call_kwargs["periodicity"] = _infer_periodicity(time_coord)
+
+                # infer calibration period if not provided
+                if "calibration_year_initial" in sig.parameters and "calibration_year_initial" not in provided_params:
+                    cal_start, cal_end = _infer_calibration_period(time_coord)
+                    if "calibration_year_initial" not in provided_params:
+                        call_kwargs["calibration_year_initial"] = cal_start
+                    if "calibration_year_final" in sig.parameters and "calibration_year_final" not in provided_params:
+                        call_kwargs["calibration_year_final"] = cal_end
+
+            # call wrapped numpy function with extracted values
+            # replace first arg (DataArray) with numpy values
+            numpy_args = (numpy_values,) + args[1:]
+
+            # filter call_kwargs to only include params the function accepts
+            sig = inspect.signature(func)
+            valid_kwargs = {k: v for k, v in call_kwargs.items() if k in sig.parameters}
+
+            result_values = func(*numpy_args, **valid_kwargs)
+
+            # rewrap result as DataArray with original coordinates
+            output_attrs = original_attrs.copy()
+
+            # apply CF metadata (overrides conflicting input attrs)
+            if cf_metadata is not None:
+                output_attrs.update(cf_metadata)
+
+            result_da = xr.DataArray(
+                result_values,
+                coords=original_coords,
+                dims=original_dims,
+                attrs=output_attrs,
+            )
+
+            # log completion
+            logger.info(
+                "xarray_adapter_completed",
+                function_name=func.__name__,
+                input_shape=input_da.shape,
+                output_shape=result_da.shape,
+                inferred_params=infer_params,
+            )
+
+            return result_da
+
+        return wrapper
+
+    return decorator
