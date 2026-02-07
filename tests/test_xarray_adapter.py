@@ -18,6 +18,7 @@ from climate_indices import compute, indices
 from climate_indices.exceptions import CoordinateValidationError
 from climate_indices.xarray_adapter import (
     CF_METADATA,
+    _build_output_dataarray,
     _infer_calibration_period,
     _infer_data_start_year,
     _infer_periodicity,
@@ -64,6 +65,119 @@ def sample_daily_precip_da() -> xr.DataArray:
             "long_name": "Daily Precipitation",
         },
     )
+
+
+@pytest.fixture
+def coord_rich_1d_da() -> xr.DataArray:
+    """Create 1D DataArray with rich coordinate metadata.
+
+    Features:
+    - time dimension coord with multiple attrs (axis, calendar, long_name, bounds, standard_name)
+    - month non-dimension auxiliary coord
+    - station_id scalar coord with attrs
+    """
+    # 36 months (3 years)
+    time = pd.date_range("2020-01-01", "2022-12-01", freq="MS")
+    rng = np.random.default_rng(42)
+    values = rng.gamma(shape=2.0, scale=50.0, size=len(time))
+
+    # auxiliary coordinate: month numbers
+    month = xr.DataArray(
+        [t.month for t in time],
+        dims=["time"],
+        attrs={"long_name": "month of year", "units": "1"},
+    )
+
+    # scalar coordinate with attrs
+    station_id = xr.DataArray(
+        "GHCN-12345",
+        attrs={"long_name": "station identifier", "cf_role": "timeseries_id"},
+    )
+
+    da = xr.DataArray(
+        values,
+        coords={
+            "time": time,
+            "month": month,
+            "station_id": station_id,
+        },
+        dims=["time"],
+        attrs={
+            "units": "mm",
+            "long_name": "Monthly Precipitation",
+        },
+        name="precip",
+    )
+
+    # add rich attrs to time coord
+    da.coords["time"].attrs = {
+        "axis": "T",
+        "calendar": "standard",
+        "long_name": "time",
+        "bounds": "time_bounds",
+        "standard_name": "time",
+    }
+
+    return da
+
+
+@pytest.fixture
+def multi_coord_da() -> xr.DataArray:
+    """Create 2D DataArray with multiple dimension coords and rich metadata.
+
+    Features:
+    - time and lat dimension coords, each with rich attrs
+    - month auxiliary coord (time-dependent)
+    - ensemble scalar coord with attrs
+    """
+    time = pd.date_range("2020-01-01", "2020-12-01", freq="MS")
+    lat = np.array([30.0, 35.0, 40.0, 45.0])
+    rng = np.random.default_rng(99)
+    values = rng.gamma(shape=2.0, scale=50.0, size=(len(time), len(lat)))
+
+    # auxiliary coordinate
+    month = xr.DataArray(
+        [t.month for t in time],
+        dims=["time"],
+        attrs={"long_name": "month of year"},
+    )
+
+    # scalar coordinate
+    ensemble = xr.DataArray(
+        "ens01",
+        attrs={"long_name": "ensemble member", "type": "hindcast"},
+    )
+
+    da = xr.DataArray(
+        values,
+        coords={
+            "time": time,
+            "lat": lat,
+            "month": month,
+            "ensemble": ensemble,
+        },
+        dims=["time", "lat"],
+        attrs={
+            "units": "mm",
+            "long_name": "Gridded Precipitation",
+        },
+        name="precip_grid",
+    )
+
+    # add rich attrs to dimension coords
+    da.coords["time"].attrs = {
+        "axis": "T",
+        "standard_name": "time",
+        "long_name": "time",
+    }
+    da.coords["lat"].attrs = {
+        "axis": "Y",
+        "standard_name": "latitude",
+        "long_name": "latitude",
+        "units": "degrees_north",
+    }
+
+    return da
 
 
 class TestXarrayAdapterNumpyPassthrough:
@@ -499,3 +613,236 @@ class TestXarrayAdapterIntegration:
         # should return numpy array, not DataArray
         assert isinstance(result, np.ndarray)
         assert not isinstance(result, xr.DataArray)
+
+
+class TestBuildOutputDataarray:
+    """Unit tests for _build_output_dataarray() coordinate preservation function."""
+
+    def test_dimension_coords_preserved(self, coord_rich_1d_da):
+        """All dimension coordinates present with identical values."""
+        result_values = np.ones_like(coord_rich_1d_da.values)
+        output = _build_output_dataarray(coord_rich_1d_da, result_values)
+
+        assert "time" in output.coords
+        np.testing.assert_array_equal(output.coords["time"].values, coord_rich_1d_da.coords["time"].values)
+
+    def test_non_dimension_coords_preserved(self, coord_rich_1d_da):
+        """Auxiliary coordinates (e.g., month) survive rewrap."""
+        result_values = np.ones_like(coord_rich_1d_da.values)
+        output = _build_output_dataarray(coord_rich_1d_da, result_values)
+
+        assert "month" in output.coords
+        np.testing.assert_array_equal(output.coords["month"].values, coord_rich_1d_da.coords["month"].values)
+
+    def test_scalar_coords_preserved(self, coord_rich_1d_da):
+        """Scalar coordinates (e.g., station_id) survive rewrap."""
+        result_values = np.ones_like(coord_rich_1d_da.values)
+        output = _build_output_dataarray(coord_rich_1d_da, result_values)
+
+        assert "station_id" in output.coords
+        assert output.coords["station_id"].values == coord_rich_1d_da.coords["station_id"].values
+
+    def test_coord_attrs_preserved(self, coord_rich_1d_da):
+        """Each coordinate's .attrs dict matches input."""
+        result_values = np.ones_like(coord_rich_1d_da.values)
+        output = _build_output_dataarray(coord_rich_1d_da, result_values)
+
+        # check time coord attrs
+        assert output.coords["time"].attrs["axis"] == "T"
+        assert output.coords["time"].attrs["calendar"] == "standard"
+        assert output.coords["time"].attrs["standard_name"] == "time"
+
+        # check month coord attrs
+        assert output.coords["month"].attrs["long_name"] == "month of year"
+
+        # check station_id coord attrs
+        assert output.coords["station_id"].attrs["long_name"] == "station identifier"
+        assert output.coords["station_id"].attrs["cf_role"] == "timeseries_id"
+
+    def test_da_attrs_preserved_without_cf(self, coord_rich_1d_da):
+        """DA-level attrs match input when cf_metadata=None."""
+        result_values = np.ones_like(coord_rich_1d_da.values)
+        output = _build_output_dataarray(coord_rich_1d_da, result_values, cf_metadata=None)
+
+        assert output.attrs["units"] == "mm"
+        assert output.attrs["long_name"] == "Monthly Precipitation"
+
+    def test_cf_metadata_overrides_da_attrs(self, coord_rich_1d_da):
+        """CF metadata updates DA attrs, not coord attrs."""
+        result_values = np.ones_like(coord_rich_1d_da.values)
+        cf_metadata = {
+            "long_name": "Standardized Precipitation Index",
+            "units": "dimensionless",
+        }
+        output = _build_output_dataarray(coord_rich_1d_da, result_values, cf_metadata)
+
+        # DA attrs should be overridden
+        assert output.attrs["long_name"] == "Standardized Precipitation Index"
+        assert output.attrs["units"] == "dimensionless"
+
+    def test_cf_metadata_does_not_affect_coord_attrs(self, coord_rich_1d_da):
+        """Coord-level attrs unchanged by CF overlay."""
+        result_values = np.ones_like(coord_rich_1d_da.values)
+        cf_metadata = {
+            "long_name": "Standardized Precipitation Index",
+            "standard_name": "spi",
+        }
+        output = _build_output_dataarray(coord_rich_1d_da, result_values, cf_metadata)
+
+        # coord attrs should remain unchanged
+        assert output.coords["time"].attrs["standard_name"] == "time"
+        assert output.coords["time"].attrs["long_name"] == "time"
+
+    def test_coord_order_preserved(self, coord_rich_1d_da):
+        """list(output.coords) == list(input.coords)."""
+        result_values = np.ones_like(coord_rich_1d_da.values)
+        output = _build_output_dataarray(coord_rich_1d_da, result_values)
+
+        assert list(output.coords.keys()) == list(coord_rich_1d_da.coords.keys())
+
+    def test_dim_order_preserved(self, coord_rich_1d_da):
+        """output.dims == input.dims."""
+        result_values = np.ones_like(coord_rich_1d_da.values)
+        output = _build_output_dataarray(coord_rich_1d_da, result_values)
+
+        assert output.dims == coord_rich_1d_da.dims
+
+    def test_result_values_correct(self, coord_rich_1d_da):
+        """output.values matches the raw result array."""
+        result_values = np.arange(len(coord_rich_1d_da.values))
+        output = _build_output_dataarray(coord_rich_1d_da, result_values)
+
+        np.testing.assert_array_equal(output.values, result_values)
+
+    def test_name_preserved(self, coord_rich_1d_da):
+        """output.name == input.name."""
+        result_values = np.ones_like(coord_rich_1d_da.values)
+        output = _build_output_dataarray(coord_rich_1d_da, result_values)
+
+        assert output.name == coord_rich_1d_da.name
+
+    def test_coord_attrs_deep_copied(self, coord_rich_1d_da):
+        """Mutating input coord attrs after call does not affect output."""
+        result_values = np.ones_like(coord_rich_1d_da.values)
+        output = _build_output_dataarray(coord_rich_1d_da, result_values)
+
+        # mutate input coord attrs after building output
+        coord_rich_1d_da.coords["time"].attrs["axis"] = "X"  # wrong!
+        coord_rich_1d_da.coords["month"].attrs["mutated"] = "yes"
+
+        # output should be unaffected
+        assert output.coords["time"].attrs["axis"] == "T"
+        assert "mutated" not in output.coords["month"].attrs
+
+    def test_multi_dim_coords_preserved(self, multi_coord_da):
+        """Test with 2D array - both time and lat coords preserved."""
+        # only test first time slice to match 1D result shape
+        input_1d = multi_coord_da.isel(lat=0)
+        result_values = np.ones_like(input_1d.values)
+        output = _build_output_dataarray(input_1d, result_values)
+
+        assert "time" in output.coords
+        assert output.coords["time"].attrs["axis"] == "T"
+
+
+class TestCoordinatePreservationRoundTrip:
+    """Integration tests for coordinate preservation through decorator pipeline."""
+
+    def test_1d_rich_coord_attrs_round_trip(self, coord_rich_1d_da):
+        """Time coord attrs survive full decorator pipeline."""
+
+        @xarray_adapter()
+        def identity(values: np.ndarray) -> np.ndarray:
+            return values
+
+        result = identity(coord_rich_1d_da)
+
+        # check time coord attrs survived
+        assert result.coords["time"].attrs["axis"] == "T"
+        assert result.coords["time"].attrs["calendar"] == "standard"
+        assert result.coords["time"].attrs["standard_name"] == "time"
+        assert result.coords["time"].attrs["bounds"] == "time_bounds"
+
+    def test_non_dimension_coords_round_trip(self, coord_rich_1d_da):
+        """Auxiliary coords survive decorator pipeline."""
+
+        @xarray_adapter()
+        def identity(values: np.ndarray) -> np.ndarray:
+            return values
+
+        result = identity(coord_rich_1d_da)
+
+        assert "month" in result.coords
+        assert result.coords["month"].attrs["long_name"] == "month of year"
+        np.testing.assert_array_equal(result.coords["month"].values, coord_rich_1d_da.coords["month"].values)
+
+    def test_scalar_coords_round_trip(self, coord_rich_1d_da):
+        """Scalar coords survive decorator pipeline."""
+
+        @xarray_adapter()
+        def identity(values: np.ndarray) -> np.ndarray:
+            return values
+
+        result = identity(coord_rich_1d_da)
+
+        assert "station_id" in result.coords
+        assert result.coords["station_id"].values == "GHCN-12345"
+        assert result.coords["station_id"].attrs["cf_role"] == "timeseries_id"
+
+    def test_no_extra_coords_added(self, coord_rich_1d_da):
+        """Output has exactly the same coord keys as input."""
+
+        @xarray_adapter()
+        def identity(values: np.ndarray) -> np.ndarray:
+            return values
+
+        result = identity(coord_rich_1d_da)
+
+        assert set(result.coords.keys()) == set(coord_rich_1d_da.coords.keys())
+
+    def test_coord_values_unchanged(self, coord_rich_1d_da):
+        """Coord values (not just keys) identical after round-trip."""
+
+        @xarray_adapter()
+        def identity(values: np.ndarray) -> np.ndarray:
+            return values
+
+        result = identity(coord_rich_1d_da)
+
+        for coord_name in coord_rich_1d_da.coords:
+            np.testing.assert_array_equal(
+                result.coords[coord_name].values,
+                coord_rich_1d_da.coords[coord_name].values,
+            )
+
+    def test_coord_dtype_preserved(self, multi_coord_da):
+        """Coord dtypes preserved (float64 lat stays float64)."""
+
+        @xarray_adapter()
+        def identity(values: np.ndarray) -> np.ndarray:
+            return values
+
+        # only test first lat slice for 1D
+        input_1d = multi_coord_da.isel(lat=0)
+        result = identity(input_1d)
+
+        assert result.coords["time"].dtype == input_1d.coords["time"].dtype
+
+    def test_empty_coord_attrs_preserved(self, sample_monthly_precip_da):
+        """Coords with empty attrs {} don't crash."""
+        # add a coord with no attrs
+        sample_monthly_precip_da.coords["year"] = xr.DataArray(
+            [pd.Timestamp(t).year for t in sample_monthly_precip_da.coords["time"].values],
+            dims=["time"],
+        )
+        # explicitly set empty attrs
+        sample_monthly_precip_da.coords["year"].attrs = {}
+
+        @xarray_adapter()
+        def identity(values: np.ndarray) -> np.ndarray:
+            return values
+
+        result = identity(sample_monthly_precip_da)
+
+        assert "year" in result.coords
+        assert result.coords["year"].attrs == {}

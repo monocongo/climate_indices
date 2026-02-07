@@ -17,6 +17,7 @@ References:
 
 from __future__ import annotations
 
+import copy
 import functools
 import inspect
 from collections.abc import Callable
@@ -243,6 +244,59 @@ def _infer_calibration_period(time_coord: xr.DataArray) -> tuple[int, int]:
     return (first_year, last_year)
 
 
+def _build_output_dataarray(
+    input_da: xr.DataArray,
+    result_values: np.ndarray[Any, Any],
+    cf_metadata: dict[str, str] | None = None,
+) -> xr.DataArray:
+    """Build output DataArray with preserved coordinates and metadata.
+
+    This function implements the rewrap phase of the adapter contract, ensuring
+    all coordinates (dimension, non-dimension, and scalar) and their attributes
+    survive the extract→compute→rewrap pipeline.
+
+    Args:
+        input_da: Original input DataArray with full coordinate metadata
+        result_values: NumPy result array from index computation
+        cf_metadata: Optional CF Convention metadata to apply to DataArray-level
+            attributes. Overrides conflicting input attrs but never affects
+            coordinate-level attributes.
+
+    Returns:
+        DataArray with result_values and preserved coordinates/dims/attrs
+
+    Notes:
+        - Deep-copies coordinate attrs to prevent mutation bleed-through
+        - Preserves coordinate ordering (dict insertion order)
+        - CF metadata only affects DataArray-level attrs, not coord attrs
+        - Preserves the input DataArray's .name attribute
+    """
+    # deep-copy DA-level attrs for output (prevents mutation)
+    output_attrs = copy.deepcopy(input_da.attrs)
+
+    # apply CF metadata overrides to DA-level attrs only
+    if cf_metadata is not None:
+        output_attrs.update(cf_metadata)
+
+    # construct output with coords and dims from input
+    result_da = xr.DataArray(
+        result_values,
+        coords=input_da.coords,
+        dims=input_da.dims,
+        attrs=output_attrs,
+        name=input_da.name,
+    )
+
+    # deep-copy coordinate attrs to guard against upstream behavior changes
+    # xarray 2025.6.1 preserves coord attrs through DataArray(coords=...),
+    # but we defensively copy to ensure isolation
+    for coord_name in result_da.coords:
+        if coord_name in input_da.coords:
+            result_da.coords[coord_name].attrs = copy.deepcopy(input_da.coords[coord_name].attrs)
+
+    return result_da
+
+
 def xarray_adapter(
     *,
     cf_metadata: dict[str, str] | None = None,
@@ -302,11 +356,6 @@ def xarray_adapter(
             # xarray path: extract → infer → compute → rewrap → log
             input_da = data
 
-            # store original metadata for rewrapping
-            original_coords = input_da.coords
-            original_dims = input_da.dims
-            original_attrs = dict(input_da.attrs)
-
             # extract numpy values
             numpy_values = input_da.values
 
@@ -357,19 +406,8 @@ def xarray_adapter(
 
             result_values = func(*numpy_args, **valid_kwargs)
 
-            # rewrap result as DataArray with original coordinates
-            output_attrs = original_attrs.copy()
-
-            # apply CF metadata (overrides conflicting input attrs)
-            if cf_metadata is not None:
-                output_attrs.update(cf_metadata)
-
-            result_da = xr.DataArray(
-                result_values,
-                coords=original_coords,
-                dims=original_dims,
-                attrs=output_attrs,
-            )
+            # rewrap result as DataArray with preserved coordinates/metadata
+            result_da = _build_output_dataarray(input_da, result_values, cf_metadata)
 
             # log completion
             logger.info(
