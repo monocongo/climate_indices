@@ -21,6 +21,7 @@ __all__ = [
     "MissingDataWarning",
     "ShortCalibrationWarning",
     "GoodnessOfFitWarning",
+    "InputAlignmentWarning",
 ]
 
 
@@ -292,3 +293,31 @@ class GoodnessOfFitWarning(ClimateIndicesWarning):
         self.threshold = threshold
         self.poor_fit_count = poor_fit_count
         self.total_steps = total_steps
+
+
+class InputAlignmentWarning(ClimateIndicesWarning):
+    """Warning issued when input alignment drops data points.
+
+    Raised when aligning multiple input DataArrays (e.g., precipitation and
+    PET for SPEI) results in dropped time steps due to non-overlapping
+    time coordinates. This warns the user that the computation will use
+    only the intersection of input time ranges.
+
+    Attributes:
+        original_size: Number of time steps in the primary input before alignment
+        aligned_size: Number of time steps after alignment (intersection size)
+        dropped_count: Number of time steps dropped during alignment
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        original_size: int | None = None,
+        aligned_size: int | None = None,
+        dropped_count: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.original_size = original_size
+        self.aligned_size = aligned_size
+        self.dropped_count = dropped_count

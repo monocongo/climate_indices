@@ -516,6 +516,7 @@ ds_drought = spi.spi(ds['pr'], scale=3, distribution="gamma")
 - Expand property-based tests
 - Add Dask-specific benchmarks
 - CF compliance validation (cf-checker integration)
+- EDDI output validation against NOAA reference data (tolerance: 1e-5)
 
 **Documentation:**
 - Contributor guide (adapter pattern design)
@@ -526,6 +527,7 @@ ds_drought = spi.spi(ds['pr'], scale=3, distribution="gamma")
 - Community PRs for additional indices
 - Featured in pangeo documentation
 - conda-forge package available
+- EDDI outputs validated against NOAA reference data within 1e-5 tolerance
 
 ---
 
@@ -896,7 +898,8 @@ This section defines **what the system must do** to deliver the capabilities des
 **Requirement:** Validate outputs against published reference datasets
 **Acceptance Criteria:**
 - SPI matches NOAA reference implementation (tolerance: 1e-5)
-- SPEI matches CSIC reference (Vicente-Serrano et al.)
+- SPEI matches CSIC reference (Vicente-Serrano et al.) (tolerance: 1e-5)
+- EDDI matches NOAA reference outputs (tolerance: 1e-5) (Phase 2)
 - Test data included in repository (tests/data/)
 - Documented provenance of reference data
 
@@ -1352,3 +1355,4 @@ This PRD is now complete with all 11 BMAD workflow steps. The document provides:
 | Date | Version | Changes |
 |------|---------|---------|
 | 2026-02-05 | 1.0 | Initial PRD complete (Steps 1-11) |
+| 2026-02-07 | 1.1 | Add EDDI NOAA reference validation to FR-TEST-004, Phase 2 testing scope, and Phase 2 success criteria |
