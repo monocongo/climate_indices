@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
-import pytest
 import xarray as xr
 
 from climate_indices import spei, spi
@@ -12,45 +10,7 @@ from climate_indices.compute import Periodicity
 from climate_indices.indices import Distribution
 from climate_indices.xarray_adapter import xarray_adapter
 
-
-@pytest.fixture
-def sample_monthly_precip_da() -> xr.DataArray:
-    """Create a 1D monthly precipitation DataArray (40 years, 1980-2019)."""
-    # 40 years * 12 months = 480 values
-    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
-    # generate random precipitation values
-    rng = np.random.default_rng(42)
-    values = rng.gamma(shape=2.0, scale=50.0, size=len(time))
-
-    return xr.DataArray(
-        values,
-        coords={"time": time},
-        dims=["time"],
-        attrs={
-            "units": "mm",
-            "long_name": "Monthly Precipitation",
-        },
-    )
-
-
-@pytest.fixture
-def sample_monthly_pet_da() -> xr.DataArray:
-    """Create a 1D monthly PET DataArray (40 years, 1980-2019)."""
-    # 40 years * 12 months = 480 values
-    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
-    # generate random PET values (typically smaller than precip)
-    rng = np.random.default_rng(43)
-    values = rng.gamma(shape=2.0, scale=30.0, size=len(time))
-
-    return xr.DataArray(
-        values,
-        coords={"time": time},
-        dims=["time"],
-        attrs={
-            "units": "mm",
-            "long_name": "Monthly PET",
-        },
-    )
+# fixtures now consolidated in conftest.py
 
 
 class TestSPIOverloads:

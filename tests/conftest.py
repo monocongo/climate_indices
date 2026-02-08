@@ -274,3 +274,281 @@ def hargreaves_daily_tmean_celsius():
 def hargreaves_latitude_degrees():
     """Latitude for Hargreaves tests (mid-latitude location)."""
     return 35.0
+
+
+# ==============================================================================
+# xarray fixtures for testing xarray-aware climate index computations
+# ==============================================================================
+
+import pandas as pd  # noqa: E402
+import xarray as xr  # noqa: E402
+
+
+@pytest.fixture(scope="session")
+def sample_monthly_precip_da() -> xr.DataArray:
+    """Create a 1D monthly precipitation DataArray (40 years, 1980-2019)."""
+    # 40 years * 12 months = 480 values
+    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+    # generate random precipitation values
+    rng = np.random.default_rng(42)
+    values = rng.gamma(shape=2.0, scale=50.0, size=len(time))
+
+    return xr.DataArray(
+        values,
+        coords={"time": time},
+        dims=["time"],
+        attrs={
+            "units": "mm",
+            "long_name": "Monthly Precipitation",
+        },
+    )
+
+
+@pytest.fixture(scope="session")
+def sample_daily_precip_da() -> xr.DataArray:
+    """Create a 1D daily precipitation DataArray (5 years, 2015-2019)."""
+    # 5 years of daily data
+    time = pd.date_range("2015-01-01", "2019-12-31", freq="D")
+    # generate random precipitation values
+    rng = np.random.default_rng(123)
+    values = rng.gamma(shape=2.0, scale=5.0, size=len(time))
+
+    return xr.DataArray(
+        values,
+        coords={"time": time},
+        dims=["time"],
+        attrs={
+            "units": "mm",
+            "long_name": "Daily Precipitation",
+        },
+    )
+
+
+@pytest.fixture(scope="session")
+def sample_monthly_pet_da() -> xr.DataArray:
+    """Create a 1D monthly PET DataArray matching precip fixture (40 years, 1980-2019)."""
+    # 40 years * 12 months = 480 values, matching sample_monthly_precip_da
+    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+    # generate random PET values (typically higher than precip)
+    rng = np.random.default_rng(100)
+    values = rng.gamma(shape=2.5, scale=60.0, size=len(time))
+
+    return xr.DataArray(
+        values,
+        coords={"time": time},
+        dims=["time"],
+        attrs={
+            "units": "mm",
+            "long_name": "Monthly Potential Evapotranspiration",
+        },
+    )
+
+
+@pytest.fixture(scope="session")
+def dask_monthly_precip_1d() -> xr.DataArray:
+    """Create 1-D Dask-backed monthly precipitation DataArray (40 years, 1980-2019).
+
+    Time dimension is a single chunk (required for SPI/SPEI).
+    """
+    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+    rng = np.random.default_rng(42)
+    values = rng.gamma(shape=2.0, scale=50.0, size=len(time))
+
+    da = xr.DataArray(
+        values,
+        coords={"time": time},
+        dims=["time"],
+        attrs={
+            "units": "mm",
+            "long_name": "Monthly Precipitation (Dask)",
+        },
+        name="precip_dask",
+    )
+    # chunk time as single chunk (required for climate indices)
+    return da.chunk({"time": -1})
+
+
+@pytest.fixture(scope="session")
+def dask_monthly_precip_3d() -> xr.DataArray:
+    """Create 3-D Dask-backed monthly precipitation DataArray (40 years, 5 lat, 6 lon).
+
+    Time dimension is a single chunk, spatial dimensions are chunked.
+    """
+    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+    lat = np.linspace(30.0, 50.0, 5)
+    lon = np.linspace(-120.0, -100.0, 6)
+    rng = np.random.default_rng(99)
+    values = rng.gamma(shape=2.0, scale=50.0, size=(len(time), len(lat), len(lon)))
+
+    da = xr.DataArray(
+        values,
+        coords={"time": time, "lat": lat, "lon": lon},
+        dims=["time", "lat", "lon"],
+        attrs={
+            "units": "mm",
+            "long_name": "Gridded Precipitation (Dask)",
+        },
+        name="precip_grid_dask",
+    )
+    # chunk: single time chunk, spatial chunks
+    return da.chunk({"time": -1, "lat": 2, "lon": 3})
+
+
+@pytest.fixture(scope="session")
+def gridded_monthly_precip_3d() -> xr.DataArray:
+    """Create 3D gridded monthly precipitation DataArray (40 years, 5 lat, 6 lon).
+
+    Non-Dask eager computation version for testing gridded processing.
+    """
+    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+    lat = np.linspace(30.0, 50.0, 5)
+    lon = np.linspace(-120.0, -100.0, 6)
+    rng = np.random.default_rng(99)
+    values = rng.gamma(shape=2.0, scale=50.0, size=(len(time), len(lat), len(lon)))
+
+    return xr.DataArray(
+        values,
+        coords={"time": time, "lat": lat, "lon": lon},
+        dims=["time", "lat", "lon"],
+        attrs={
+            "units": "mm",
+            "long_name": "Gridded Monthly Precipitation",
+            "standard_name": "precipitation_amount",
+        },
+    )
+
+
+@pytest.fixture(scope="session")
+def single_point_monthly_da() -> xr.DataArray:
+    """Create 1D time-only monthly DataArray (40 years).
+
+    Simple time series for single-point analysis.
+    """
+    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+    rng = np.random.default_rng(42)
+    values = rng.gamma(shape=2.0, scale=50.0, size=len(time))
+
+    return xr.DataArray(
+        values,
+        coords={"time": time},
+        dims=["time"],
+        attrs={
+            "units": "mm",
+            "long_name": "Single Point Precipitation",
+        },
+    )
+
+
+@pytest.fixture(scope="session")
+def minimum_calibration_da() -> xr.DataArray:
+    """Create DataArray with exactly 30 years (360 months) for boundary testing.
+
+    Tests minimum calibration period requirement.
+    """
+    time = pd.date_range("1990-01-01", "2019-12-01", freq="MS")
+    rng = np.random.default_rng(42)
+    values = rng.gamma(shape=2.0, scale=50.0, size=len(time))
+
+    return xr.DataArray(
+        values,
+        coords={"time": time},
+        dims=["time"],
+        attrs={
+            "units": "mm",
+            "long_name": "Minimum Calibration Period Precipitation",
+        },
+    )
+
+
+@pytest.fixture(scope="session")
+def zero_inflated_precip_da() -> xr.DataArray:
+    """Create precipitation DataArray with ~50% zeros (arid region pattern).
+
+    Simulates arid/semi-arid climate with frequent zero-precipitation months.
+    """
+    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+    rng = np.random.default_rng(42)
+    # generate base values
+    values = rng.gamma(shape=2.0, scale=30.0, size=len(time))
+    # randomly set ~50% to zero
+    zero_mask = rng.random(len(time)) < 0.5
+    values[zero_mask] = 0.0
+
+    return xr.DataArray(
+        values,
+        coords={"time": time},
+        dims=["time"],
+        attrs={
+            "units": "mm",
+            "long_name": "Zero-Inflated Precipitation (Arid Region)",
+        },
+    )
+
+
+@pytest.fixture(scope="session")
+def leading_nan_block_da() -> xr.DataArray:
+    """Create DataArray with first 12 months all NaN.
+
+    Tests handling of leading missing data.
+    """
+    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+    rng = np.random.default_rng(42)
+    values = rng.gamma(shape=2.0, scale=50.0, size=len(time))
+    # set first year to NaN
+    values[:12] = np.nan
+
+    return xr.DataArray(
+        values,
+        coords={"time": time},
+        dims=["time"],
+        attrs={
+            "units": "mm",
+            "long_name": "Precipitation with Leading NaN Block",
+        },
+    )
+
+
+@pytest.fixture(scope="session")
+def trailing_nan_block_da() -> xr.DataArray:
+    """Create DataArray with last 12 months all NaN.
+
+    Tests handling of trailing missing data.
+    """
+    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+    rng = np.random.default_rng(42)
+    values = rng.gamma(shape=2.0, scale=50.0, size=len(time))
+    # set last year to NaN
+    values[-12:] = np.nan
+
+    return xr.DataArray(
+        values,
+        coords={"time": time},
+        dims=["time"],
+        attrs={
+            "units": "mm",
+            "long_name": "Precipitation with Trailing NaN Block",
+        },
+    )
+
+
+@pytest.fixture(scope="session")
+def block_nan_pattern_da() -> xr.DataArray:
+    """Create DataArray with consecutive year of NaN in middle of time series.
+
+    Tests handling of contiguous missing data blocks.
+    """
+    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+    rng = np.random.default_rng(42)
+    values = rng.gamma(shape=2.0, scale=50.0, size=len(time))
+    # set year 20 (months 240-251) to NaN
+    values[240:252] = np.nan
+
+    return xr.DataArray(
+        values,
+        coords={"time": time},
+        dims=["time"],
+        attrs={
+            "units": "mm",
+            "long_name": "Precipitation with Mid-Series NaN Block",
+        },
+    )

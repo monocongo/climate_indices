@@ -54,47 +54,7 @@ def _standard_normal(size: int | tuple[int, ...]) -> np.ndarray:
     return np.random.default_rng(42).standard_normal(size)
 
 
-# fixtures for test data
-@pytest.fixture
-def sample_monthly_precip_da() -> xr.DataArray:
-    """Create a 1D monthly precipitation DataArray (40 years, 1980-2019)."""
-    # 40 years * 12 months = 480 values
-    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
-    # generate random precipitation values
-    rng = np.random.default_rng(42)
-    values = rng.gamma(shape=2.0, scale=50.0, size=len(time))
-
-    return xr.DataArray(
-        values,
-        coords={"time": time},
-        dims=["time"],
-        attrs={
-            "units": "mm",
-            "long_name": "Monthly Precipitation",
-        },
-    )
-
-
-@pytest.fixture
-def sample_daily_precip_da() -> xr.DataArray:
-    """Create a 1D daily precipitation DataArray (5 years, 2015-2019)."""
-    # 5 years of daily data
-    time = pd.date_range("2015-01-01", "2019-12-31", freq="D")
-    # generate random precipitation values
-    rng = np.random.default_rng(123)
-    values = rng.gamma(shape=2.0, scale=5.0, size=len(time))
-
-    return xr.DataArray(
-        values,
-        coords={"time": time},
-        dims=["time"],
-        attrs={
-            "units": "mm",
-            "long_name": "Daily Precipitation",
-        },
-    )
-
-
+# fixtures for test data specific to xarray_adapter tests
 @pytest.fixture
 def coord_rich_1d_da() -> xr.DataArray:
     """Create 1D DataArray with rich coordinate metadata.
@@ -258,26 +218,6 @@ def short_monthly_da() -> xr.DataArray:
 
 
 @pytest.fixture
-def sample_monthly_pet_da() -> xr.DataArray:
-    """Create a 1D monthly PET DataArray matching precip fixture (40 years, 1980-2019)."""
-    # 40 years * 12 months = 480 values, matching sample_monthly_precip_da
-    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
-    # generate random PET values (typically higher than precip)
-    rng = np.random.default_rng(100)
-    values = rng.gamma(shape=2.5, scale=60.0, size=len(time))
-
-    return xr.DataArray(
-        values,
-        coords={"time": time},
-        dims=["time"],
-        attrs={
-            "units": "mm",
-            "long_name": "Monthly Potential Evapotranspiration",
-        },
-    )
-
-
-@pytest.fixture
 def sample_monthly_pet_offset_da() -> xr.DataArray:
     """Create a 1D monthly PET DataArray with offset time range (1985-2024).
 
@@ -299,56 +239,6 @@ def sample_monthly_pet_offset_da() -> xr.DataArray:
             "long_name": "Monthly Potential Evapotranspiration (Offset)",
         },
     )
-
-
-@pytest.fixture
-def dask_monthly_precip_1d() -> xr.DataArray:
-    """Create 1-D Dask-backed monthly precipitation DataArray (40 years, 1980-2019).
-
-    Time dimension is a single chunk (required for SPI/SPEI).
-    """
-    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
-    rng = np.random.default_rng(42)
-    values = rng.gamma(shape=2.0, scale=50.0, size=len(time))
-
-    da = xr.DataArray(
-        values,
-        coords={"time": time},
-        dims=["time"],
-        attrs={
-            "units": "mm",
-            "long_name": "Monthly Precipitation (Dask)",
-        },
-        name="precip_dask",
-    )
-    # chunk time as single chunk (required for climate indices)
-    return da.chunk({"time": -1})
-
-
-@pytest.fixture
-def dask_monthly_precip_3d() -> xr.DataArray:
-    """Create 3-D Dask-backed monthly precipitation DataArray (40 years, 5 lat, 6 lon).
-
-    Time dimension is a single chunk, spatial dimensions are chunked.
-    """
-    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
-    lat = np.linspace(30.0, 50.0, 5)
-    lon = np.linspace(-120.0, -100.0, 6)
-    rng = np.random.default_rng(99)
-    values = rng.gamma(shape=2.0, scale=50.0, size=(len(time), len(lat), len(lon)))
-
-    da = xr.DataArray(
-        values,
-        coords={"time": time, "lat": lat, "lon": lon},
-        dims=["time", "lat", "lon"],
-        attrs={
-            "units": "mm",
-            "long_name": "Gridded Precipitation (Dask)",
-        },
-        name="precip_grid_dask",
-    )
-    # chunk: single time chunk, spatial chunks
-    return da.chunk({"time": -1, "lat": 2, "lon": 3})
 
 
 @pytest.fixture
