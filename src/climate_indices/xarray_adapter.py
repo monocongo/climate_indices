@@ -30,7 +30,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from climate_indices import compute
+from climate_indices import compute, indices
 from climate_indices.compute import MIN_CALIBRATION_YEARS
 from climate_indices.exceptions import (
     CoordinateValidationError,
@@ -89,6 +89,16 @@ CF_METADATA: dict[str, CFAttributes] = {
             "The Standardized Precipitation Evapotranspiration Index. "
             "Journal of Climate, 23(7), 1696-1718. "
             "https://doi.org/10.1175/2009JCLI2909.1"
+        ),
+    },
+    "pet_thornthwaite": {
+        "long_name": "Potential Evapotranspiration (Thornthwaite method)",
+        "units": "mm/month",
+        "references": (
+            "Thornthwaite, C. W. (1948). "
+            "An approach toward a rational classification of climate. "
+            "Geographical Review, 38(1), 55-94. "
+            "https://doi.org/10.2307/210739"
         ),
     },
 }
@@ -1649,3 +1659,189 @@ def xarray_adapter(
         return wrapper
 
     return decorator
+
+
+def pet_thornthwaite(
+    temperature: np.ndarray | xr.DataArray,
+    latitude: float | np.floating | xr.DataArray,
+    data_start_year: int | None = None,
+    time_dim: str = "time",
+) -> np.ndarray | xr.DataArray:
+    """Compute potential evapotranspiration using Thornthwaite method.
+
+    This function provides xarray DataArray support for the Thornthwaite PET calculation.
+    Unlike the @xarray_adapter decorator (designed for time-series inputs aligned along
+    a time dimension), this function uses xr.apply_ufunc to handle spatial broadcasting
+    of the latitude parameter across gridded temperature data.
+
+    Args:
+        temperature: Monthly average temperature values in degrees Celsius.
+            For numpy: 1-D array of monthly temperatures
+            For xarray: DataArray with time dimension (may have additional spatial dims)
+        latitude: Latitude in degrees north (range: -90 to 90).
+            For numpy: scalar float
+            For xarray: scalar float or DataArray(lat,) for spatial broadcasting
+        data_start_year: Initial year of the input dataset. If None and temperature
+            is a DataArray with datetime coordinate, will be inferred from the first timestamp.
+        time_dim: Name of the time dimension in the input DataArray (default: "time").
+            Only used for xarray inputs.
+
+    Returns:
+        PET values in mm/month, same shape and type as input temperature:
+        - numpy input → numpy array output
+        - xarray input → xarray DataArray output with CF metadata and provenance
+
+    Raises:
+        InputTypeError: If temperature is not numpy-coercible or xr.DataArray
+        CoordinateValidationError: If time dimension missing/invalid (xarray path)
+        ValueError: If latitude is out of range [-90, 90]
+
+    Examples:
+        >>> # NumPy path: 40 years of monthly temps at single location
+        >>> temps = np.random.uniform(10, 25, 480)
+        >>> pet = pet_thornthwaite(temps, latitude=40.0, data_start_year=1980)
+        >>> pet.shape
+        (480,)
+
+        >>> # xarray path: 1-D time series
+        >>> temp_da = xr.DataArray(
+        ...     temps,
+        ...     coords={'time': pd.date_range('1980-01', periods=480, freq='MS')},
+        ...     dims=['time']
+        ... )
+        >>> pet_da = pet_thornthwaite(temp_da, latitude=40.0)
+        >>> pet_da.attrs['long_name']
+        'Potential Evapotranspiration (Thornthwaite method)'
+
+        >>> # xarray path: gridded data with spatial broadcasting
+        >>> temp_grid = xr.DataArray(
+        ...     np.random.uniform(10, 25, (480, 4, 3)),
+        ...     coords={
+        ...         'time': pd.date_range('1980-01', periods=480, freq='MS'),
+        ...         'lat': [30, 35, 40, 45],
+        ...         'lon': [-120, -110, -100]
+        ...     },
+        ...     dims=['time', 'lat', 'lon']
+        ... )
+        >>> lat_array = xr.DataArray([30, 35, 40, 45], dims=['lat'])
+        >>> pet_grid = pet_thornthwaite(temp_grid, lat_array)
+        >>> pet_grid.shape
+        (480, 4, 3)
+
+    Notes:
+        - The underlying indices.pet() function expects 1-D temperature arrays and
+          scalar latitude. For gridded inputs, xr.apply_ufunc with vectorize=True
+          automatically loops over non-time dimensions.
+        - Dask-backed DataArrays remain lazy (dask="parallelized")
+        - CF Convention metadata and provenance history are automatically applied
+          to xarray outputs
+        - NaN values in temperature are propagated through the calculation
+    """
+    # detect input type for routing
+    input_type = detect_input_type(temperature)
+
+    # numpy passthrough
+    if input_type == InputType.NUMPY:
+        # convert latitude to float if it's a numpy scalar
+        lat_float = float(latitude) if isinstance(latitude, np.floating) else latitude
+        # delegate to indices.pet with explicit data_start_year requirement
+        if data_start_year is None:
+            raise ValueError("data_start_year is required for numpy inputs")
+        return indices.pet(temperature, lat_float, data_start_year)
+
+    # xarray path: validate → infer → compute → rewrap
+    temp_da = temperature
+
+    # validate time dimension
+    _validate_time_dimension(temp_da, time_dim)
+    time_coord = temp_da.coords[time_dim]
+    _validate_time_monotonicity(time_coord)
+
+    # infer data_start_year if not provided
+    if data_start_year is None:
+        data_start_year = _infer_data_start_year(time_coord)
+        logger.debug(
+            "pet_data_start_year_inferred",
+            inferred_year=data_start_year,
+            time_coord_first=str(time_coord.values[0]),
+        )
+
+    # normalize latitude for xr.apply_ufunc
+    # convert scalar numpy types to python float for compatibility
+    if isinstance(latitude, (float, int, np.floating, np.integer)):
+        lat_for_ufunc: float | xr.DataArray = float(latitude)
+    else:
+        # assume it's already an xr.DataArray
+        lat_for_ufunc = latitude
+
+    # wrapper function to handle read-only array views from apply_ufunc
+    # the underlying eto.eto_thornthwaite modifies the temp array in-place,
+    # so we must create a writable copy
+    def _pet_with_copy(temps: np.ndarray, lat: float, year: int) -> np.ndarray:
+        """Wrapper for indices.pet that creates a writable copy of temps."""
+        return indices.pet(temps.copy(), lat, year)
+
+    # compute using xr.apply_ufunc with spatial broadcasting
+    # input_core_dims: temperature's time dim is "core", latitude and year are scalars per iteration
+    # output_core_dims: preserve time dimension in output
+    # vectorize=True: loop over non-core dims (lat, lon) calling indices.pet per gridpoint
+    # dask_gufunc_kwargs: allow_rechunk=True permits chunked core dimensions (for dask arrays)
+    result = xr.apply_ufunc(
+        _pet_with_copy,
+        temp_da,
+        lat_for_ufunc,
+        data_start_year,
+        input_core_dims=[[time_dim], [], []],
+        output_core_dims=[[time_dim]],
+        vectorize=True,
+        dask="parallelized",
+        dask_gufunc_kwargs={"allow_rechunk": True},
+        output_dtypes=[float],
+    )
+
+    # restore original dimension order (apply_ufunc places output core dims last)
+    result = result.transpose(*temp_da.dims)
+
+    # apply CF metadata from registry
+    cf_attrs = CF_METADATA["pet_thornthwaite"]
+    result.attrs.update(cf_attrs)
+
+    # copy over non-conflicting attributes from input
+    for key, value in temp_da.attrs.items():
+        if key not in result.attrs:
+            result.attrs[key] = value
+
+    # add version attribute
+    from climate_indices import __version__
+
+    result.attrs["climate_indices_version"] = __version__
+
+    # build and append history entry
+    # serialize latitude for history
+    if isinstance(lat_for_ufunc, xr.DataArray):
+        lat_desc = f"DataArray(dims={lat_for_ufunc.dims})"
+    else:
+        lat_desc = str(lat_for_ufunc)
+
+    history_entry = _build_history_entry(
+        "PET Thornthwaite",
+        __version__,
+        {"latitude": lat_desc, "data_start_year": data_start_year},
+    )
+    result.attrs["history"] = _append_history(temp_da.attrs, history_entry)
+
+    # add calculation metadata as attributes
+    result.attrs["latitude"] = (
+        _serialize_attr_value(lat_for_ufunc) if not isinstance(lat_for_ufunc, xr.DataArray) else lat_desc
+    )
+    result.attrs["data_start_year"] = data_start_year
+
+    logger.info(
+        "pet_thornthwaite_completed",
+        input_shape=temp_da.shape,
+        output_shape=result.shape,
+        data_start_year=data_start_year,
+        latitude=lat_desc,
+    )
+
+    return result

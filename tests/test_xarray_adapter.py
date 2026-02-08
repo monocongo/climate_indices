@@ -3606,3 +3606,312 @@ class TestDaskBackedArraySupport:
         assert np.isnan(computed_result.values[10])
         assert np.isnan(computed_result.values[50])
         assert np.isnan(computed_result.values[100])
+
+
+# fixtures for PET Thornthwaite tests
+@pytest.fixture
+def sample_monthly_temp_da() -> xr.DataArray:
+    """Create a 1D monthly temperature DataArray (40 years, 1980-2019)."""
+    # 40 years * 12 months = 480 values
+    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+    # generate realistic temperature values (-10 to 35°C with seasonal variation)
+    rng = np.random.default_rng(42)
+    # base seasonal pattern
+    months = np.arange(len(time)) % 12
+    seasonal = 12.5 + 12.5 * np.sin(2 * np.pi * (months - 3) / 12)
+    # add random variation
+    noise = rng.normal(0, 3, size=len(time))
+    values = seasonal + noise
+
+    return xr.DataArray(
+        values,
+        coords={"time": time},
+        dims=["time"],
+        attrs={
+            "units": "degC",
+            "long_name": "Monthly Average Temperature",
+        },
+    )
+
+
+@pytest.fixture
+def sample_gridded_temp_da() -> xr.DataArray:
+    """Create a gridded monthly temperature DataArray (40 years, 4 lats × 3 lons)."""
+    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+    lats = np.array([30.0, 35.0, 40.0, 45.0])
+    lons = np.array([-120.0, -110.0, -100.0])
+
+    # create realistic spatial temperature pattern
+    rng = np.random.default_rng(42)
+    # base temperature decreases with latitude
+    base_temps = 30.0 - 0.5 * lats
+    # seasonal variation
+    months = np.arange(len(time)) % 12
+    seasonal = 12.5 * np.sin(2 * np.pi * (months - 3) / 12)
+
+    # broadcast to (time, lat, lon)
+    values = base_temps[np.newaxis, :, np.newaxis] + seasonal[:, np.newaxis, np.newaxis]
+    # add random noise
+    values = values + rng.normal(0, 2, size=(len(time), len(lats), len(lons)))
+
+    return xr.DataArray(
+        values,
+        coords={"time": time, "lat": lats, "lon": lons},
+        dims=["time", "lat", "lon"],
+        attrs={
+            "units": "degC",
+            "long_name": "Monthly Average Temperature",
+        },
+    )
+
+
+class TestPETThornthwaiteXarray:
+    """Tests for pet_thornthwaite() xarray support (Story 3.2)."""
+
+    def test_numpy_passthrough(self):
+        """NumPy input returns NumPy output identical to indices.pet()."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        # 40 years monthly temps
+        rng = np.random.default_rng(42)
+        temps = rng.uniform(10, 25, 480)
+        lat = 40.0
+        start_year = 1980
+
+        result = pet_thornthwaite(temps, lat, start_year)
+        expected = indices.pet(temps, lat, start_year)
+
+        assert isinstance(result, np.ndarray)
+        assert result.shape == expected.shape
+        np.testing.assert_array_equal(result, expected)
+
+    def test_1d_xarray_scalar_latitude(self, sample_monthly_temp_da):
+        """1-D DataArray with scalar latitude returns DataArray with correct values."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        lat = 40.0
+        result = pet_thornthwaite(sample_monthly_temp_da, lat)
+
+        # verify output type and shape
+        assert isinstance(result, xr.DataArray)
+        assert result.shape == sample_monthly_temp_da.shape
+        assert result.dims == sample_monthly_temp_da.dims
+
+        # verify numerical correctness against numpy path
+        expected = indices.pet(
+            sample_monthly_temp_da.values,
+            lat,
+            1980,
+        )
+        np.testing.assert_allclose(result.values, expected, rtol=1e-10)
+
+    def test_1d_xarray_dataarray_latitude(self, sample_monthly_temp_da):
+        """1-D DataArray with scalar DataArray latitude works correctly."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        # scalar DataArray latitude (no dimensions)
+        lat_da = xr.DataArray(40.0)
+        result = pet_thornthwaite(sample_monthly_temp_da, lat_da)
+
+        assert isinstance(result, xr.DataArray)
+        assert result.shape == sample_monthly_temp_da.shape
+
+    def test_gridded_xarray_broadcast(self, sample_gridded_temp_da):
+        """Gridded DataArray broadcasts latitude across spatial dimensions."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        # latitude array matching the lat dimension
+        lats = sample_gridded_temp_da.coords["lat"]
+        lat_da = xr.DataArray(lats.values, dims=["lat"])
+
+        result = pet_thornthwaite(sample_gridded_temp_da, lat_da)
+
+        # verify output shape and dimensions
+        assert isinstance(result, xr.DataArray)
+        assert result.shape == sample_gridded_temp_da.shape
+        assert result.dims == sample_gridded_temp_da.dims
+
+        # verify numerical correctness for one gridpoint
+        lat_idx, lon_idx = 1, 1
+        expected_point = indices.pet(
+            sample_gridded_temp_da.isel(lat=lat_idx, lon=lon_idx).values,
+            lats.values[lat_idx],
+            1980,
+        )
+        np.testing.assert_allclose(
+            result.isel(lat=lat_idx, lon=lon_idx).values,
+            expected_point,
+            rtol=1e-10,
+        )
+
+    def test_cf_metadata_applied(self, sample_monthly_temp_da):
+        """Output has correct CF Convention metadata."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        result = pet_thornthwaite(sample_monthly_temp_da, 40.0)
+
+        # verify CF metadata from registry
+        assert result.attrs["long_name"] == "Potential Evapotranspiration (Thornthwaite method)"
+        assert result.attrs["units"] == "mm/month"
+        assert "Thornthwaite, C. W. (1948)" in result.attrs["references"]
+
+    def test_history_provenance(self, sample_monthly_temp_da):
+        """Output has history attribute with Thornthwaite entry."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        result = pet_thornthwaite(sample_monthly_temp_da, 40.0)
+
+        assert "history" in result.attrs
+        history = result.attrs["history"]
+        assert "PET Thornthwaite" in history
+        assert "climate_indices" in history
+        # verify timestamp format (ISO 8601)
+        assert re.search(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", history)
+
+    def test_history_appends_to_existing(self, sample_monthly_temp_da):
+        """History entry is appended to existing history."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        # add existing history
+        sample_monthly_temp_da.attrs["history"] = "2020-01-01T00:00:00Z: Data prepared"
+
+        result = pet_thornthwaite(sample_monthly_temp_da, 40.0)
+
+        history = result.attrs["history"]
+        # verify both entries present
+        assert "Data prepared" in history
+        assert "PET Thornthwaite" in history
+        # verify newline separation
+        assert "\n" in history
+
+    def test_coordinate_preservation(self, sample_monthly_temp_da):
+        """All input coordinates and attributes are preserved."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        # add additional coordinate
+        sample_monthly_temp_da.coords["station_id"] = "STATION_001"
+
+        result = pet_thornthwaite(sample_monthly_temp_da, 40.0)
+
+        # verify all coordinates preserved
+        assert "time" in result.coords
+        assert "station_id" in result.coords
+        assert result.coords["station_id"] == "STATION_001"
+
+        # verify time coordinate attributes preserved
+        pd.testing.assert_index_equal(
+            pd.DatetimeIndex(result.coords["time"].values),
+            pd.DatetimeIndex(sample_monthly_temp_da.coords["time"].values),
+        )
+
+    def test_data_start_year_inference(self, sample_monthly_temp_da):
+        """data_start_year=None inferred from time coordinate."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        result = pet_thornthwaite(sample_monthly_temp_da, 40.0, data_start_year=None)
+
+        # verify inference worked (output exists and is correct)
+        assert isinstance(result, xr.DataArray)
+        assert result.attrs["data_start_year"] == 1980
+
+    def test_data_start_year_explicit(self, sample_monthly_temp_da):
+        """Explicit data_start_year overrides inference."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        # use explicit year different from inferred (1980)
+        result = pet_thornthwaite(sample_monthly_temp_da, 40.0, data_start_year=1975)
+
+        assert result.attrs["data_start_year"] == 1975
+
+    def test_dask_chunked_array(self, sample_monthly_temp_da):
+        """Dask-backed DataArray stays lazy with chunks preserved."""
+        pytest.importorskip("dask")
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        # convert to dask array with chunks
+        dask_temp = sample_monthly_temp_da.chunk({"time": 120})
+
+        result = pet_thornthwaite(dask_temp, 40.0)
+
+        # verify result is still dask-backed
+        assert result.chunks is not None
+        # verify computation hasn't happened yet (lazy evaluation)
+        assert hasattr(result.data, "dask")
+
+    def test_numerical_equivalence(self, sample_monthly_temp_da):
+        """xarray result values match numpy result within tolerance."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        lat = 40.0
+        xr_result = pet_thornthwaite(sample_monthly_temp_da, lat)
+        np_result = indices.pet(sample_monthly_temp_da.values, lat, 1980)
+
+        np.testing.assert_allclose(xr_result.values, np_result, rtol=1e-10, atol=1e-10)
+
+    def test_all_nan_temperature(self):
+        """All-NaN input returns all-NaN output."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        time = pd.date_range("1980-01-01", periods=480, freq="MS")
+        temp_da = xr.DataArray(
+            np.full(480, np.nan),
+            coords={"time": time},
+            dims=["time"],
+        )
+
+        result = pet_thornthwaite(temp_da, 40.0)
+
+        assert isinstance(result, xr.DataArray)
+        # indices.pet returns input when all NaN
+        assert np.all(np.isnan(result.values))
+
+    def test_custom_time_dimension(self):
+        """Custom time dimension name is respected."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        time = pd.date_range("1980-01-01", periods=480, freq="MS")
+        rng = np.random.default_rng(42)
+        temp_da = xr.DataArray(
+            rng.uniform(10, 25, 480),
+            coords={"date": time},
+            dims=["date"],
+        )
+
+        result = pet_thornthwaite(temp_da, 40.0, time_dim="date")
+
+        assert isinstance(result, xr.DataArray)
+        assert "date" in result.dims
+        assert result.shape == (480,)
+
+    def test_version_attribute_added(self, sample_monthly_temp_da):
+        """climate_indices_version attribute is added to output."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        result = pet_thornthwaite(sample_monthly_temp_da, 40.0)
+
+        assert "climate_indices_version" in result.attrs
+        # version should be a non-empty string
+        assert isinstance(result.attrs["climate_indices_version"], str)
+        assert len(result.attrs["climate_indices_version"]) > 0
+
+    def test_calculation_metadata_attributes(self, sample_monthly_temp_da):
+        """Calculation metadata (latitude, data_start_year) added as attributes."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        lat = 40.0
+        year = 1980
+        result = pet_thornthwaite(sample_monthly_temp_da, lat, data_start_year=year)
+
+        assert "latitude" in result.attrs
+        assert "data_start_year" in result.attrs
+        assert result.attrs["latitude"] == lat
+        assert result.attrs["data_start_year"] == year
+
+    def test_numpy_requires_data_start_year(self):
+        """NumPy path requires explicit data_start_year."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        temps = np.random.uniform(10, 25, 480)
+
+        with pytest.raises(ValueError, match="data_start_year is required"):
+            pet_thornthwaite(temps, 40.0, data_start_year=None)
