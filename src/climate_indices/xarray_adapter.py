@@ -237,7 +237,7 @@ def _infer_periodicity(time_coord: xr.DataArray) -> compute.Periodicity:
             reason="insufficient data points",
         )
 
-    freq = xr.infer_freq(time_coord)
+    freq = xr.infer_freq(time_coord)  # type: ignore[no-untyped-call]
 
     if freq is None:
         raise CoordinateValidationError(
@@ -546,7 +546,7 @@ def _validate_calibration_non_nan_sample_size(
     non_nan_count = int(np.sum(~np.isnan(calibration_values)))
 
     # infer periods per year from time coordinate frequency
-    freq = xr.infer_freq(time_coord)
+    freq = xr.infer_freq(time_coord)  # type: ignore[no-untyped-call]
     if freq in ("MS", "ME", "M"):
         periods_per_year = 12
     elif freq == "D":
