@@ -3994,3 +3994,43 @@ class TestDaskBackedArraySupport:
         assert np.isnan(computed_result.values[10])
         assert np.isnan(computed_result.values[50])
         assert np.isnan(computed_result.values[100])
+
+    def test_nan_propagation_dask_path(self, dask_monthly_precip_1d):
+        """Every input NaN position remains NaN in output (Dask path)."""
+        from dask.array import Array as DaskArray
+
+        # create data with scattered NaN (not too dense to avoid calibration error)
+        # compute to numpy, inject NaN, then re-chunk as Dask
+        numpy_values = dask_monthly_precip_1d.compute().values.copy()
+        nan_positions = [5, 15, 25, 35, 45, 55, 65, 75, 85, 95]
+        for idx in nan_positions:
+            numpy_values[idx] = np.nan
+
+        data_with_nan = xr.DataArray(
+            numpy_values,
+            coords=dask_monthly_precip_1d.coords,
+            dims=dask_monthly_precip_1d.dims,
+            attrs=dask_monthly_precip_1d.attrs,
+            name=dask_monthly_precip_1d.name,
+        ).chunk({"time": -1})
+
+        # wrap SPI with xarray_adapter
+        wrapped_spi = xarray_adapter(
+            cf_metadata=CF_METADATA["spi"],
+            calculation_metadata_keys=["scale", "distribution"],
+            index_display_name="SPI",
+        )(indices.spi)
+
+        result = wrapped_spi(
+            data_with_nan,
+            scale=3,
+            distribution=indices.Distribution.gamma,
+        )
+
+        # verify result is still Dask-backed
+        assert isinstance(result.data, DaskArray)
+
+        # compute and verify NaN propagation contract: every input NaN stays NaN
+        computed_result = result.compute()
+        for idx in nan_positions:
+            assert np.isnan(computed_result.values[idx]), f"NaN at input position {idx} not propagated to output"

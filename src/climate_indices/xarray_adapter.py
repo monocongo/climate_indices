@@ -968,8 +968,8 @@ def _validate_dask_chunks(data: xr.DataArray, time_dim: str) -> None:
         return
 
     # get chunks for time dimension
-    # data.chunks is a tuple-of-tuples indexed by dimension position
-    time_chunks = data.chunks[data.dims.index(time_dim)]
+    # chunksizes returns a dict keyed by dimension name
+    time_chunks = data.chunksizes[time_dim]
 
     # validate single chunk on time dimension
     if len(time_chunks) > 1:
@@ -1184,48 +1184,6 @@ def _extract_secondary_dataarray_values(
             modified_kwargs[name] = modified_kwargs[name].values
 
 
-def _get_provided_params(sig: inspect.Signature, args: list[Any], kwargs: dict[str, Any]) -> set[str]:
-    """Return provided parameter names from bound args/kwargs."""
-    try:
-        bound = sig.bind_partial(*args, **kwargs)
-        bound.apply_defaults()
-        return set(bound.arguments.keys())
-    except TypeError:
-        return set()
-
-
-def _infer_call_kwargs(
-    func: Callable[..., Any],
-    modified_args: list[Any],
-    modified_kwargs: dict[str, Any],
-    infer_params: bool,
-    input_da: xr.DataArray,
-    time_dim: str,
-) -> dict[str, Any]:
-    """Build call kwargs, filling inferable values when needed."""
-    call_kwargs = dict(modified_kwargs)
-    if not (infer_params and time_dim in input_da.dims):
-        return call_kwargs
-
-    time_coord = input_da[time_dim]
-    sig = inspect.signature(func)
-    provided_params = _get_provided_params(sig, modified_args, modified_kwargs)
-
-    if "data_start_year" in sig.parameters and "data_start_year" not in provided_params:
-        call_kwargs["data_start_year"] = _infer_data_start_year(time_coord)
-
-    if "periodicity" in sig.parameters and "periodicity" not in provided_params:
-        call_kwargs["periodicity"] = _infer_periodicity(time_coord)
-
-    if "calibration_year_initial" in sig.parameters and "calibration_year_initial" not in provided_params:
-        cal_start, cal_end = _infer_calibration_period(time_coord)
-        call_kwargs["calibration_year_initial"] = cal_start
-        if "calibration_year_final" in sig.parameters and "calibration_year_final" not in provided_params:
-            call_kwargs["calibration_year_final"] = cal_end
-
-    return call_kwargs
-
-
 def _capture_calculation_metadata(
     calculation_metadata_keys: list[str] | tuple[str, ...] | None,
     valid_kwargs: dict[str, Any],
@@ -1243,9 +1201,11 @@ def _capture_calculation_metadata(
 
 def _run_xarray_path(
     func: Callable[..., np.ndarray[Any, Any]],
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
-    data: xr.DataArray,
+    input_da: xr.DataArray,
+    modified_args: list[Any],
+    modified_kwargs: dict[str, Any],
+    resolved_secondaries: dict[str, tuple[int | None, Any]],
+    inferred_params: dict[str, Any],
     *,
     cf_metadata: dict[str, str] | None,
     time_dim: str,
@@ -1253,21 +1213,29 @@ def _run_xarray_path(
     calculation_metadata_keys: list[str] | tuple[str, ...] | None,
     index_display_name: str | None,
     additional_input_names: list[str] | None,
-    skipna: bool,
 ) -> xr.DataArray:
-    """Execute the xarray adaptation flow for a wrapped function call."""
-    # check skipna parameter (Story 2.8)
-    if skipna:
-        raise NotImplementedError(
-            "skipna=True not yet implemented (FR-INPUT-004). NaN values are propagated through calculations by default."
-        )
+    """Execute the xarray adaptation flow for a wrapped function call.
 
-    input_da, modified_args, modified_kwargs, resolved_secondaries = _prepare_xarray_inputs(
-        func, args, kwargs, data, time_dim, additional_input_names
-    )
+    This function accepts pre-prepared state from the wrapper, avoiding
+    duplication of input preparation and validation logic.
 
-    _validate_inference_inputs(infer_params, input_da, time_dim, func, modified_args, modified_kwargs)
+    Args:
+        func: The wrapped numpy function to call
+        input_da: Aligned primary input DataArray
+        modified_args: Args list with aligned DataArrays
+        modified_kwargs: Kwargs dict with aligned DataArrays
+        resolved_secondaries: Dict of resolved secondary inputs
+        inferred_params: Dict of inferred parameters from _infer_temporal_parameters
+        cf_metadata: CF Convention metadata to apply
+        time_dim: Name of time dimension
+        infer_params: Whether parameter inference was enabled
+        calculation_metadata_keys: Keys to capture in metadata
+        index_display_name: Display name for history tracking
+        additional_input_names: Names of secondary inputs
 
+    Returns:
+        Result DataArray with preserved coordinates and metadata
+    """
     # assess NaN density for diagnostics (Story 2.8)
     nan_assessment = _assess_nan_density(input_da)
     if nan_assessment["has_nan"]:
@@ -1279,9 +1247,15 @@ def _run_xarray_path(
             total_values=nan_assessment["total_values"],
         )
 
+    # extract numpy values from primary
     numpy_values = input_da.values
+
+    # extract numpy values from secondary DataArrays (if any)
     _extract_secondary_dataarray_values(additional_input_names, resolved_secondaries, modified_args, modified_kwargs)
-    call_kwargs = _infer_call_kwargs(func, modified_args, modified_kwargs, infer_params, input_da, time_dim)
+
+    # build call kwargs: start with modified_kwargs, then add inferred params
+    call_kwargs = dict(modified_kwargs)
+    call_kwargs.update(inferred_params)
 
     # validate calibration period has sufficient non-NaN data (Story 2.8)
     if nan_assessment["has_nan"] and infer_params and time_dim in input_da.dims:
@@ -1296,8 +1270,11 @@ def _run_xarray_path(
                 calibration_year_final=cal_final,
             )
 
+    # filter kwargs to function signature
     sig = inspect.signature(func)
     valid_kwargs = {k: v for k, v in call_kwargs.items() if k in sig.parameters}
+
+    # call wrapped function with numpy values
     numpy_args = (numpy_values,) + tuple(modified_args[1:])
     result_values = func(*numpy_args, **valid_kwargs)
 
@@ -1310,6 +1287,7 @@ def _run_xarray_path(
                 message="Output missing NaN values present in input",
             )
 
+    # capture calculation metadata and build output
     calc_metadata = _capture_calculation_metadata(calculation_metadata_keys, valid_kwargs)
     resolved_index_name = index_display_name if index_display_name is not None else func.__name__.upper()
     result_da = _build_output_dataarray(
@@ -1421,48 +1399,11 @@ def xarray_adapter(
                     "NaN values are propagated through calculations by default."
                 )
 
-            # resolve and align secondary inputs (Story 3.1)
-            modified_args = list(args)
-            modified_kwargs = dict(kwargs)
-
-            if additional_input_names:
-                # resolve secondary inputs from args/kwargs
-                resolved_secondaries = _resolve_secondary_inputs(func, args, kwargs, additional_input_names)
-
-                # filter to only DataArray secondaries for alignment
-                # (numpy secondaries pass through unchanged)
-                dataarray_secondaries = {
-                    name: value for name, (_, value) in resolved_secondaries.items() if isinstance(value, xr.DataArray)
-                }
-
-                if dataarray_secondaries:
-                    # align primary + DataArray secondaries
-                    aligned_primary, aligned_secondaries = _align_inputs(input_da, dataarray_secondaries, time_dim)
-
-                    # update input_da to use aligned primary
-                    input_da = aligned_primary
-
-                    # replace args[0] with aligned primary
-                    modified_args[0] = aligned_primary
-
-                    # replace aligned secondaries in args/kwargs
-                    for name, (pos_index, _) in resolved_secondaries.items():
-                        if name in aligned_secondaries:
-                            if pos_index is not None:
-                                # replace positional arg
-                                modified_args[pos_index] = aligned_secondaries[name]
-                            else:
-                                # replace kwarg
-                                modified_kwargs[name] = aligned_secondaries[name]
-
-            # coordinate validation (Story 2.7)
-            if infer_params:
-                _validate_time_dimension(input_da, time_dim)
-                time_coord = input_da[time_dim]
-                _validate_time_monotonicity(time_coord)
-                resolved_scale = _resolve_scale_from_args(func, tuple(modified_args), modified_kwargs)
-                if resolved_scale is not None:
-                    _validate_sufficient_data(time_coord, resolved_scale)
+            # resolve, align, and validate inputs using shared helpers
+            input_da, modified_args, modified_kwargs, resolved_secondaries = _prepare_xarray_inputs(
+                func, args, kwargs, input_da, time_dim, additional_input_names
+            )
+            _validate_inference_inputs(infer_params, input_da, time_dim, func, modified_args, modified_kwargs)
 
             # detect Dask-backed arrays (Story 2.9)
             is_dask = _is_dask_backed(input_da)
@@ -1504,17 +1445,21 @@ def xarray_adapter(
                 # primary + aligned secondaries (reuse resolution from earlier in wrapper)
                 input_dataarrays = [input_da]
                 if additional_input_names and resolved_secondaries:
-                    for name in additional_input_names:
-                        if name not in resolved_secondaries:
+                    secondary_set = set(additional_input_names)
+                    for param_name in sig.parameters:
+                        if param_name not in secondary_set or param_name not in resolved_secondaries:
                             continue
-                        pos_index, original_value = resolved_secondaries[name]
+                        _, original_value = resolved_secondaries[param_name]
                         if not isinstance(original_value, xr.DataArray):
                             continue
                         # pull the aligned DataArray from modified_args or modified_kwargs
-                        if pos_index is not None:
-                            input_dataarrays.append(modified_args[pos_index])
+                        if param_name in modified_kwargs and isinstance(modified_kwargs[param_name], xr.DataArray):
+                            input_dataarrays.append(modified_kwargs[param_name])
                         else:
-                            input_dataarrays.append(modified_kwargs[name])
+                            param_names = list(sig.parameters.keys())
+                            param_idx = param_names.index(param_name)
+                            if param_idx < len(modified_args):
+                                input_dataarrays.append(modified_args[param_idx])
 
                 # create closure capturing valid_kwargs
                 def _numpy_func_wrapper(*numpy_arrays: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
@@ -1568,104 +1513,23 @@ def xarray_adapter(
                 return result_da
 
             # ═══════════════════════════════════════════════════════════════════
-            # In-memory execution path (original logic)
+            # In-memory execution path (consolidated)
             # ═══════════════════════════════════════════════════════════════════
 
-            # assess NaN density for diagnostics (Story 2.8)
-            nan_assessment = _assess_nan_density(input_da)
-            if nan_assessment["has_nan"]:
-                _log().info(
-                    "nan_detected_in_input",
-                    function_name=func.__name__,
-                    nan_count=nan_assessment["nan_count"],
-                    nan_ratio=round(nan_assessment["nan_ratio"], 4),
-                    total_values=nan_assessment["total_values"],
-                )
-
-            # extract numpy values from primary
-            numpy_values = input_da.values
-
-            # extract numpy values from secondary DataArrays (if any)
-            if additional_input_names:
-                for name, (pos_index, value) in resolved_secondaries.items():
-                    if isinstance(value, xr.DataArray):
-                        # extract .values from aligned DataArray
-                        if pos_index is not None:
-                            modified_args[pos_index] = modified_args[pos_index].values
-                        else:
-                            modified_kwargs[name] = modified_kwargs[name].values
-
-            # build kwargs for the wrapped function
-            # start with explicitly provided kwargs (including extracted secondaries)
-            call_kwargs = dict(modified_kwargs)
-
-            # apply inferred params (already computed above before the branch)
-            call_kwargs.update(inferred_params)
-
-            # validate calibration period has sufficient non-NaN data (Story 2.8)
-            # this validation requires .values, so it only runs in the in-memory path
-            if nan_assessment["has_nan"] and infer_params and time_dim in input_da.dims:
-                time_coord = input_da[time_dim]
-                # check if we have calibration years (either inferred or provided)
-                cal_initial = call_kwargs.get("calibration_year_initial")
-                cal_final = call_kwargs.get("calibration_year_final")
-                if cal_initial is not None and cal_final is not None:
-                    _validate_calibration_non_nan_sample_size(
-                        time_coord,
-                        numpy_values,
-                        calibration_year_initial=cal_initial,
-                        calibration_year_final=cal_final,
-                    )
-
-            # call wrapped numpy function with extracted values
-            # replace first arg (DataArray) with numpy values
-            numpy_args = (numpy_values,) + tuple(modified_args[1:])
-
-            # filter call_kwargs to only include params the function accepts
-            sig = inspect.signature(func)
-            valid_kwargs = {k: v for k, v in call_kwargs.items() if k in sig.parameters}
-
-            result_values = func(*numpy_args, **valid_kwargs)
-
-            # verify NaN propagation contract (Story 2.8)
-            if nan_assessment["has_nan"]:
-                if not _verify_nan_propagation(nan_assessment["nan_positions"], result_values):
-                    _log().warning(
-                        "nan_propagation_violation",
-                        function_name=func.__name__,
-                        message="Output missing NaN values present in input",
-                    )
-
-            # capture calculation metadata from resolved kwargs
-            calc_metadata = None
-            if calculation_metadata_keys is not None:
-                calc_metadata = {}
-                for key in calculation_metadata_keys:
-                    if key in valid_kwargs:
-                        calc_metadata[key] = valid_kwargs[key]
-
-            # resolve index name for history tracking
-            resolved_index_name = index_display_name if index_display_name is not None else func.__name__.upper()
-
-            # rewrap result as DataArray with preserved coordinates/metadata
-            result_da = _build_output_dataarray(
-                input_da, result_values, cf_metadata, calc_metadata, index_name=resolved_index_name
+            return _run_xarray_path(
+                func,
+                input_da,
+                modified_args,
+                modified_kwargs,
+                resolved_secondaries,
+                inferred_params,
+                cf_metadata=cf_metadata,
+                time_dim=time_dim,
+                infer_params=infer_params,
+                calculation_metadata_keys=calculation_metadata_keys,
+                index_display_name=index_display_name,
+                additional_input_names=additional_input_names,
             )
-
-            # log completion with NaN metrics (Story 2.8)
-            log_fields = {
-                "function_name": func.__name__,
-                "input_shape": input_da.shape,
-                "output_shape": result_da.shape,
-                "inferred_params": infer_params,
-            }
-            if nan_assessment["has_nan"]:
-                log_fields["input_nan_count"] = nan_assessment["nan_count"]
-                log_fields["input_nan_ratio"] = round(nan_assessment["nan_ratio"], 4)
-
-            _log().info("xarray_adapter_completed", **log_fields)
-
-            return result_da
 
         return wrapper
 
