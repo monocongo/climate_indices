@@ -274,3 +274,369 @@ def hargreaves_daily_tmean_celsius():
 def hargreaves_latitude_degrees():
     """Latitude for Hargreaves tests (mid-latitude location)."""
     return 35.0
+
+
+# ==============================================================================
+# xarray-based fixtures for Story 4.x tests
+# Session-scoped fixtures that generate synthetic DataArrays for edge case
+# testing, metadata validation, and xarray integration tests.
+# ==============================================================================
+
+import pandas as pd  # noqa: E402
+import xarray as xr  # noqa: E402
+
+
+@pytest.fixture(scope="session")
+def sample_monthly_precip_da() -> xr.DataArray:
+    """
+    Standard 1D monthly precipitation DataArray for testing.
+    40 years (1980-2019), 480 months, realistic variation (0-200mm).
+    """
+    rng = np.random.default_rng(42)
+    time = pd.date_range("1980-01-01", periods=480, freq="MS")
+    data = rng.gamma(shape=2.0, scale=25.0, size=480)
+    return xr.DataArray(
+        data,
+        coords={"time": time},
+        dims=["time"],
+        name="precipitation",
+        attrs={
+            "units": "mm",
+            "long_name": "Monthly Precipitation",
+            "standard_name": "precipitation_amount",
+        },
+    )
+
+
+@pytest.fixture(scope="session")
+def sample_daily_precip_da() -> xr.DataArray:
+    """
+    1D daily precipitation DataArray for testing.
+    5 years (2015-2019), ~1826 days, realistic variation.
+    """
+    rng = np.random.default_rng(123)
+    time = pd.date_range("2015-01-01", periods=1826, freq="D")
+    data = rng.gamma(shape=1.5, scale=3.0, size=1826)
+    return xr.DataArray(
+        data,
+        coords={"time": time},
+        dims=["time"],
+        name="precipitation",
+        attrs={
+            "units": "mm",
+            "long_name": "Daily Precipitation",
+            "standard_name": "precipitation_amount",
+        },
+    )
+
+
+@pytest.fixture(scope="session")
+def sample_monthly_pet_da() -> xr.DataArray:
+    """
+    Standard 1D monthly PET DataArray matching sample_monthly_precip_da time range.
+    40 years (1980-2019), 480 months, realistic PET variation (50-150mm).
+    """
+    rng = np.random.default_rng(100)
+    time = pd.date_range("1980-01-01", periods=480, freq="MS")
+    data = 50.0 + rng.gamma(shape=3.0, scale=20.0, size=480)
+    return xr.DataArray(
+        data,
+        coords={"time": time},
+        dims=["time"],
+        name="pet",
+        attrs={
+            "units": "mm",
+            "long_name": "Potential Evapotranspiration",
+            "standard_name": "water_potential_evaporation_amount",
+        },
+    )
+
+
+@pytest.fixture(scope="session")
+def sample_monthly_pet_offset_da() -> xr.DataArray:
+    """
+    1D monthly PET with time offset from standard precip (1985-2024).
+    Used for testing coordinate alignment warnings.
+    40 years, 480 months, realistic PET variation.
+    """
+    rng = np.random.default_rng(101)
+    time = pd.date_range("1985-01-01", periods=480, freq="MS")
+    data = 50.0 + rng.gamma(shape=3.0, scale=20.0, size=480)
+    return xr.DataArray(
+        data,
+        coords={"time": time},
+        dims=["time"],
+        name="pet",
+        attrs={
+            "units": "mm",
+            "long_name": "Potential Evapotranspiration",
+            "standard_name": "water_potential_evaporation_amount",
+        },
+    )
+
+
+@pytest.fixture(scope="session")
+def dask_monthly_precip_1d(sample_monthly_precip_da: xr.DataArray) -> xr.DataArray:
+    """
+    Dask-backed 1D monthly precipitation.
+    Chunked along time dimension (full chunk = -1 for simplicity).
+    """
+    return sample_monthly_precip_da.chunk({"time": -1})
+
+
+@pytest.fixture(scope="session")
+def dask_monthly_precip_3d() -> xr.DataArray:
+    """
+    Dask-backed 3D monthly precipitation (time, lat, lon).
+    40 years, 5 lat points, 6 lon points. Chunked along time.
+    """
+    rng = np.random.default_rng(150)
+    time = pd.date_range("1980-01-01", periods=480, freq="MS")
+    lat = np.linspace(-10.0, 10.0, 5)
+    lon = np.linspace(-15.0, 15.0, 6)
+    data = rng.gamma(shape=2.0, scale=25.0, size=(480, 5, 6))
+    da = xr.DataArray(
+        data,
+        coords={"time": time, "lat": lat, "lon": lon},
+        dims=["time", "lat", "lon"],
+        name="precipitation",
+        attrs={
+            "units": "mm",
+            "long_name": "Monthly Precipitation",
+            "standard_name": "precipitation_amount",
+        },
+    )
+    return da.chunk({"time": -1, "lat": 5, "lon": 6})
+
+
+@pytest.fixture(scope="session")
+def gridded_monthly_precip_3d() -> xr.DataArray:
+    """
+    Eager 3D monthly precipitation (time, lat, lon).
+    40 years, 5 lat points, 6 lon points. Not chunked.
+    """
+    rng = np.random.default_rng(160)
+    time = pd.date_range("1980-01-01", periods=480, freq="MS")
+    lat = np.linspace(-10.0, 10.0, 5)
+    lon = np.linspace(-15.0, 15.0, 6)
+    data = rng.gamma(shape=2.0, scale=25.0, size=(480, 5, 6))
+    return xr.DataArray(
+        data,
+        coords={"time": time, "lat": lat, "lon": lon},
+        dims=["time", "lat", "lon"],
+        name="precipitation",
+        attrs={
+            "units": "mm",
+            "long_name": "Monthly Precipitation",
+            "standard_name": "precipitation_amount",
+        },
+    )
+
+
+@pytest.fixture(scope="session")
+def gridded_monthly_pet_3d() -> xr.DataArray:
+    """
+    Eager 3D monthly PET (time, lat, lon) matching gridded_monthly_precip_3d dimensions.
+    40 years, 5 lat points, 6 lon points. Not chunked.
+    """
+    rng = np.random.default_rng(200)
+    time = pd.date_range("1980-01-01", periods=480, freq="MS")
+    lat = np.linspace(-10.0, 10.0, 5)
+    lon = np.linspace(-15.0, 15.0, 6)
+    data = 50.0 + rng.gamma(shape=3.0, scale=20.0, size=(480, 5, 6))
+    return xr.DataArray(
+        data,
+        coords={"time": time, "lat": lat, "lon": lon},
+        dims=["time", "lat", "lon"],
+        name="pet",
+        attrs={
+            "units": "mm",
+            "long_name": "Potential Evapotranspiration",
+            "standard_name": "water_potential_evaporation_amount",
+        },
+    )
+
+
+@pytest.fixture(scope="session")
+def single_point_monthly_da() -> xr.DataArray:
+    """
+    Single-point monthly DataArray (1D time-only).
+    40 years (1980-2019), 480 months.
+    """
+    rng = np.random.default_rng(170)
+    time = pd.date_range("1980-01-01", periods=480, freq="MS")
+    data = rng.gamma(shape=2.0, scale=25.0, size=480)
+    return xr.DataArray(
+        data,
+        coords={"time": time},
+        dims=["time"],
+        name="precipitation",
+        attrs={
+            "units": "mm",
+            "long_name": "Monthly Precipitation",
+            "standard_name": "precipitation_amount",
+        },
+    )
+
+
+@pytest.fixture(scope="session")
+def minimum_calibration_da() -> xr.DataArray:
+    """
+    Exactly 30 years of monthly data (360 months).
+    Minimum valid calibration period for SPI/SPEI (1990-2019).
+    """
+    rng = np.random.default_rng(180)
+    time = pd.date_range("1990-01-01", periods=360, freq="MS")
+    data = rng.gamma(shape=2.0, scale=25.0, size=360)
+    return xr.DataArray(
+        data,
+        coords={"time": time},
+        dims=["time"],
+        name="precipitation",
+        attrs={
+            "units": "mm",
+            "long_name": "Monthly Precipitation",
+            "standard_name": "precipitation_amount",
+        },
+    )
+
+
+@pytest.fixture(scope="session")
+def minimum_calibration_pet_da() -> xr.DataArray:
+    """
+    Exactly 30 years of monthly PET (360 months) matching minimum_calibration_da.
+    Time range: 1990-2019.
+    """
+    rng = np.random.default_rng(210)
+    time = pd.date_range("1990-01-01", periods=360, freq="MS")
+    data = 50.0 + rng.gamma(shape=3.0, scale=20.0, size=360)
+    return xr.DataArray(
+        data,
+        coords={"time": time},
+        dims=["time"],
+        name="pet",
+        attrs={
+            "units": "mm",
+            "long_name": "Potential Evapotranspiration",
+            "standard_name": "water_potential_evaporation_amount",
+        },
+    )
+
+
+@pytest.fixture(scope="session")
+def zero_inflated_precip_da() -> xr.DataArray:
+    """
+    Zero-inflated precipitation (~50% zeros).
+    40 years (1980-2019), 480 months.
+    """
+    rng = np.random.default_rng(190)
+    time = pd.date_range("1980-01-01", periods=480, freq="MS")
+    data = rng.gamma(shape=2.0, scale=25.0, size=480)
+    # set ~50% of values to zero
+    zero_mask = rng.random(480) < 0.5
+    data[zero_mask] = 0.0
+    return xr.DataArray(
+        data,
+        coords={"time": time},
+        dims=["time"],
+        name="precipitation",
+        attrs={
+            "units": "mm",
+            "long_name": "Monthly Precipitation",
+            "standard_name": "precipitation_amount",
+        },
+    )
+
+
+@pytest.fixture(scope="session")
+def leading_nan_block_da() -> xr.DataArray:
+    """
+    Precipitation with first 12 months as NaN.
+    40 years (1980-2019), 480 months total.
+    """
+    rng = np.random.default_rng(195)
+    time = pd.date_range("1980-01-01", periods=480, freq="MS")
+    data = rng.gamma(shape=2.0, scale=25.0, size=480)
+    data[:12] = np.nan
+    return xr.DataArray(
+        data,
+        coords={"time": time},
+        dims=["time"],
+        name="precipitation",
+        attrs={
+            "units": "mm",
+            "long_name": "Monthly Precipitation",
+            "standard_name": "precipitation_amount",
+        },
+    )
+
+
+@pytest.fixture(scope="session")
+def trailing_nan_block_da() -> xr.DataArray:
+    """
+    Precipitation with last 12 months as NaN.
+    40 years (1980-2019), 480 months total.
+    """
+    rng = np.random.default_rng(196)
+    time = pd.date_range("1980-01-01", periods=480, freq="MS")
+    data = rng.gamma(shape=2.0, scale=25.0, size=480)
+    data[-12:] = np.nan
+    return xr.DataArray(
+        data,
+        coords={"time": time},
+        dims=["time"],
+        name="precipitation",
+        attrs={
+            "units": "mm",
+            "long_name": "Monthly Precipitation",
+            "standard_name": "precipitation_amount",
+        },
+    )
+
+
+@pytest.fixture(scope="session")
+def block_nan_pattern_da() -> xr.DataArray:
+    """
+    Precipitation with contiguous NaN block (months 240-251, i.e., year 21).
+    40 years (1980-2019), 480 months total.
+    """
+    rng = np.random.default_rng(197)
+    time = pd.date_range("1980-01-01", periods=480, freq="MS")
+    data = rng.gamma(shape=2.0, scale=25.0, size=480)
+    data[240:252] = np.nan
+    return xr.DataArray(
+        data,
+        coords={"time": time},
+        dims=["time"],
+        name="precipitation",
+        attrs={
+            "units": "mm",
+            "long_name": "Monthly Precipitation",
+            "standard_name": "precipitation_amount",
+        },
+    )
+
+
+@pytest.fixture(scope="session")
+def random_nan_precip_da() -> xr.DataArray:
+    """
+    Precipitation with ~10% random scattered NaN values.
+    40 years (1980-2019), 480 months.
+    """
+    rng = np.random.default_rng(55)
+    time = pd.date_range("1980-01-01", periods=480, freq="MS")
+    data = rng.gamma(shape=2.0, scale=25.0, size=480)
+    # randomly set ~10% to NaN
+    nan_mask = rng.random(480) < 0.1
+    data[nan_mask] = np.nan
+    return xr.DataArray(
+        data,
+        coords={"time": time},
+        dims=["time"],
+        name="precipitation",
+        attrs={
+            "units": "mm",
+            "long_name": "Monthly Precipitation",
+            "standard_name": "precipitation_amount",
+        },
+    )
