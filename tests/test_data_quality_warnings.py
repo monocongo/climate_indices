@@ -46,8 +46,8 @@ class TestWarningAttributes:
     def test_missing_data_warning_stores_ratio_and_threshold(self) -> None:
         """MissingDataWarning should store missing_ratio and threshold."""
         warning = MissingDataWarning("test message", missing_ratio=0.35, threshold=0.20)
-        assert warning.missing_ratio == 0.35
-        assert warning.threshold == 0.20
+        assert warning.missing_ratio == pytest.approx(0.35)
+        assert warning.threshold == pytest.approx(0.20)
 
     def test_missing_data_warning_handles_none_attributes(self) -> None:
         """MissingDataWarning should allow None for optional attributes."""
@@ -78,8 +78,8 @@ class TestWarningAttributes:
             total_steps=12,
         )
         assert warning.distribution_name == "gamma"
-        assert warning.p_value == 0.02
-        assert warning.threshold == 0.05
+        assert warning.p_value == pytest.approx(0.02)
+        assert warning.threshold == pytest.approx(0.05)
         assert warning.poor_fit_count == 5
         assert warning.total_steps == 12
 
@@ -155,7 +155,7 @@ class TestMissingDataWarning:
         assert len(warning_info) >= 1
         warning = warning_info[0].message
         assert warning.missing_ratio > 0.20
-        assert warning.threshold == 0.20
+        assert warning.threshold == pytest.approx(0.20)
 
     def test_gamma_parameters_no_warn_below_threshold(self) -> None:
         """gamma_parameters should not warn when missing data is below threshold."""
@@ -322,7 +322,7 @@ class TestGoodnessOfFitWarning:
             if len(fit_warnings) > 0:
                 warning = fit_warnings[0].message
                 assert warning.distribution_name == "gamma"
-                assert warning.threshold == 0.05
+                assert warning.threshold == pytest.approx(0.05)
                 assert warning.poor_fit_count > 0
                 assert warning.total_steps == 12
 

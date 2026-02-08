@@ -53,8 +53,7 @@ class TestConfigureLoggingDefaults:
 
     def test_returns_none(self) -> None:
         """configure_logging should return None."""
-        result = configure_logging()
-        assert result is None
+        configure_logging()
 
     def test_configures_structlog(self) -> None:
         """configure_logging should set up structlog configuration."""

@@ -458,9 +458,9 @@ class TestMemoryMetricsInLogs:
         completed = completed_events[0]
         # mocked large arrays should include memory metrics
         assert "array_memory_mb" in completed
-        assert completed["array_memory_mb"] == 1500.5
+        assert completed["array_memory_mb"] == pytest.approx(1500.5)
         assert "process_memory_mb" in completed
-        assert completed["process_memory_mb"] == 2048.75
+        assert completed["process_memory_mb"] == pytest.approx(2048.75)
 
 
 class TestCustomMetricsViaContextBinding:
@@ -490,7 +490,7 @@ class TestCustomMetricsViaContextBinding:
         for event in events:
             assert event["custom_metric_1"] == "test_value"
             assert event["custom_metric_2"] == 42
-            assert event["custom_metric_3"] == 3.14159
+            assert event["custom_metric_3"] == pytest.approx(3.14159)
 
         # verify additional field only in second event
         assert "additional_field" not in events[0]
