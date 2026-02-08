@@ -656,7 +656,16 @@ class TestXarrayAdapterInferenceHelpers:
 class TestXarrayAdapterLogging:
     """Test logging events from the decorator."""
 
-    def test_logs_completion_event(self, sample_monthly_precip_da, caplog):
+    @staticmethod
+    def _combined_log_output(caplog, capsys) -> str:
+        """Collect log text from both stdlib capture and rendered stream output."""
+        stream = capsys.readouterr()
+        parts = [caplog.text, stream.out, stream.err]
+        parts.extend(record.message for record in caplog.records)
+        parts.extend(str(record.msg) for record in caplog.records)
+        return "\n".join(part for part in parts if part)
+
+    def test_logs_completion_event(self, sample_monthly_precip_da, caplog, capsys):
         """Logs xarray_adapter_completed event on success."""
 
         @xarray_adapter()
@@ -667,9 +676,10 @@ class TestXarrayAdapterLogging:
             _ = identity(sample_monthly_precip_da)
 
         # check that completion event was logged
-        assert any("xarray_adapter_completed" in record.message for record in caplog.records)
+        log_output = self._combined_log_output(caplog, capsys)
+        assert "xarray_adapter_completed" in log_output
 
-    def test_logs_include_shapes(self, sample_monthly_precip_da, caplog):
+    def test_logs_include_shapes(self, sample_monthly_precip_da, caplog, capsys):
         """Logs include input/output shape information."""
 
         @xarray_adapter()
@@ -680,8 +690,9 @@ class TestXarrayAdapterLogging:
             _ = identity(sample_monthly_precip_da)
 
         # verify shape info in logs
-        log_messages = [record.message for record in caplog.records]
-        assert any("input_shape" in msg for msg in log_messages)
+        log_output = self._combined_log_output(caplog, capsys)
+        assert "input_shape" in log_output
+        assert "output_shape" in log_output
 
 
 class TestXarrayAdapterIntegration:

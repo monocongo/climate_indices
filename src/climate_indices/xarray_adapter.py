@@ -39,7 +39,14 @@ from climate_indices.exceptions import (
 )
 from climate_indices.logging_config import get_logger
 
-logger = get_logger(__name__)
+
+def _log():
+    """Return a logger resolved at call time.
+
+    Tests reset structlog globals between cases. Resolving lazily avoids
+    holding a stale logger that bypasses stdlib handlers/capture after reset.
+    """
+    return get_logger(__name__)
 
 
 class _CFAttributesRequired(TypedDict):
@@ -283,7 +290,7 @@ def _validate_time_dimension(data: xr.DataArray, time_dim: str) -> None:
             f"Available dimensions: {available_dims}. "
             f"Use time_dim parameter to specify custom name."
         )
-        logger.error(
+        _log().error(
             "time_dimension_missing",
             time_dim=time_dim,
             available_dims=available_dims,
@@ -353,7 +360,7 @@ def _validate_time_monotonicity(time_coord: xr.DataArray) -> None:
                 f"Sort the data using data.sortby('{dim_name}') before processing."
             )
 
-        logger.error(
+        _log().error(
             "time_coordinate_not_monotonic",
             coordinate_name=dim_name,
             coordinate_length=len(time_coord),
@@ -405,7 +412,7 @@ def _validate_sufficient_data(time_coord: xr.DataArray, scale: int) -> None:
         error_msg = (
             f"Insufficient data for scale={scale}: {n_timesteps} time steps available, but at least {scale} required."
         )
-        logger.error(
+        _log().error(
             "insufficient_data_for_scale",
             scale=scale,
             available_timesteps=n_timesteps,
@@ -536,7 +543,7 @@ def _align_inputs(
                 f"Original size: {original_size}, aligned size: {aligned_size}. "
                 f"Computation will use only the intersection of input time ranges."
             )
-            logger.warning(
+            _log().warning(
                 "input_alignment_dropped_data",
                 original_size=original_size,
                 aligned_size=aligned_size,
@@ -734,7 +741,7 @@ def _build_output_dataarray(
             try:
                 output_attrs[key] = _serialize_attr_value(value)
             except TypeError as e:
-                logger.warning(
+                _log().warning(
                     "calculation_metadata_serialization_failed",
                     key=key,
                     value_type=type(value).__name__,
@@ -969,7 +976,7 @@ def xarray_adapter(
             )
 
             # log completion
-            logger.info(
+            _log().info(
                 "xarray_adapter_completed",
                 function_name=func.__name__,
                 input_shape=input_da.shape,
