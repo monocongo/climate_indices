@@ -1770,7 +1770,7 @@ def pet_thornthwaite(
     # infer data_start_year if not provided
     if data_start_year is None:
         data_start_year = _infer_data_start_year(time_coord)
-        logger.debug(
+        _log().debug(
             "pet_data_start_year_inferred",
             inferred_year=data_start_year,
             time_coord_first=str(time_coord.values[0]),
@@ -1846,7 +1846,7 @@ def pet_thornthwaite(
     )
     result.attrs["data_start_year"] = data_start_year
 
-    logger.info(
+    _log().info(
         "pet_thornthwaite_completed",
         input_shape=temp_da.shape,
         output_shape=result.shape,
@@ -2071,7 +2071,7 @@ def pet_hargreaves(
         _serialize_attr_value(lat_for_ufunc) if not isinstance(lat_for_ufunc, xr.DataArray) else lat_desc
     )
 
-    logger.info(
+    _log().info(
         "pet_hargreaves_completed",
         input_shape=tmin_aligned.shape,
         output_shape=result.shape,
