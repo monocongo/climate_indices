@@ -238,12 +238,15 @@ class TestZeroPrecipitationFix:
             # and return default values (effectively zero for loc, scale, skew parameters)
             expected_failures = months_per_year  # All months should fail with only 2 values each
 
-            assert default_loc_count >= expected_failures * 0.8, \
+            assert default_loc_count >= expected_failures * 0.8, (
                 f"Expected most loc parameters to be effectively zero, got {default_loc_count}/{months_per_year}"
-            assert default_scale_count >= expected_failures * 0.8, \
+            )
+            assert default_scale_count >= expected_failures * 0.8, (
                 f"Expected most scale parameters to be effectively zero, got {default_scale_count}/{months_per_year}"
-            assert default_skew_count >= expected_failures * 0.8, \
+            )
+            assert default_skew_count >= expected_failures * 0.8, (
                 f"Expected most skew parameters to be effectively zero, got {default_skew_count}/{months_per_year}"
+            )
 
         finally:
             # Clean up
@@ -567,8 +570,9 @@ class TestZeroPrecipitationFix:
                 log_output = log_capture.getvalue()
 
                 # Should log high failure rate warning for Pearson distribution
-                assert "High failure rate" in log_output, \
+                assert "High failure rate" in log_output, (
                     f"Expected 'High failure rate' warning not found in logs: {log_output}"
+                )
 
             finally:
                 root_logger.removeHandler(log_handler)

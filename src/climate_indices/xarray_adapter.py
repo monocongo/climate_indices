@@ -1239,8 +1239,7 @@ def _run_xarray_path(
     # check skipna parameter (Story 2.8)
     if skipna:
         raise NotImplementedError(
-            "skipna=True not yet implemented (FR-INPUT-004). "
-            "NaN values are propagated through calculations by default."
+            "skipna=True not yet implemented (FR-INPUT-004). NaN values are propagated through calculations by default."
         )
 
     input_da, modified_args, modified_kwargs, resolved_secondaries = _prepare_xarray_inputs(
@@ -1293,7 +1292,9 @@ def _run_xarray_path(
 
     calc_metadata = _capture_calculation_metadata(calculation_metadata_keys, valid_kwargs)
     resolved_index_name = index_display_name if index_display_name is not None else func.__name__.upper()
-    result_da = _build_output_dataarray(input_da, result_values, cf_metadata, calc_metadata, index_name=resolved_index_name)
+    result_da = _build_output_dataarray(
+        input_da, result_values, cf_metadata, calc_metadata, index_name=resolved_index_name
+    )
 
     # log completion with NaN metrics (Story 2.8)
     log_fields = {
