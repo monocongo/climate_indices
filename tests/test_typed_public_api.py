@@ -317,6 +317,96 @@ class TestSPEIOverloads:
 
         xr.testing.assert_identical(result_typed, result_manual)
 
+    def test_spei_pearson_numpy_returns_ndarray(self) -> None:
+        """SPEI Pearson with NumPy input should return numpy.ndarray."""
+        # 40 years * 12 months = 480 values
+        rng = np.random.default_rng(42)
+        precips = rng.gamma(shape=2.0, scale=50.0, size=480)
+        pet = rng.gamma(shape=2.0, scale=30.0, size=480)
+
+        result = spei(
+            precips_mm=precips,
+            pet_mm=pet,
+            scale=6,
+            distribution=Distribution.pearson,
+            periodicity=Periodicity.monthly,
+            data_start_year=1980,
+            calibration_year_initial=1980,
+            calibration_year_final=2019,
+        )
+
+        assert isinstance(result, np.ndarray)
+        assert not isinstance(result, xr.DataArray)
+        assert result.shape == precips.shape
+
+    def test_spei_pearson_xarray_returns_dataarray(
+        self, sample_monthly_precip_da: xr.DataArray, sample_monthly_pet_da: xr.DataArray
+    ) -> None:
+        """SPEI Pearson with xarray input should return xarray.DataArray."""
+        result = spei(
+            precips_mm=sample_monthly_precip_da,
+            pet_mm=sample_monthly_pet_da,
+            scale=6,
+            distribution=Distribution.pearson,
+            # temporal params are optional for xarray
+        )
+
+        assert isinstance(result, xr.DataArray)
+        assert result.shape == sample_monthly_precip_da.shape
+        # verify CF metadata was applied
+        assert "long_name" in result.attrs
+        assert result.attrs["long_name"] == "Standardized Precipitation Evapotranspiration Index"
+        # verify Pearson distribution metadata
+        assert result.attrs["distribution"] == "pearson"
+
+    def test_spei_pearson_xarray_temporal_params_optional(
+        self, sample_monthly_precip_da: xr.DataArray, sample_monthly_pet_da: xr.DataArray
+    ) -> None:
+        """SPEI Pearson with xarray inputs can omit temporal params (inferred from coordinates)."""
+        result = spei(
+            precips_mm=sample_monthly_precip_da,
+            pet_mm=sample_monthly_pet_da,
+            scale=3,
+            distribution=Distribution.pearson,
+        )
+
+        assert isinstance(result, xr.DataArray)
+        assert result.shape == sample_monthly_precip_da.shape
+
+    def test_spei_pearson_numpy_matches_indices_module(self) -> None:
+        """SPEI Pearson results for NumPy inputs should match climate_indices.indices.spei."""
+        # import the original function for comparison
+        from climate_indices.indices import spei as indices_spei
+
+        rng = np.random.default_rng(42)
+        precips = rng.gamma(shape=2.0, scale=50.0, size=480)
+        pet = rng.gamma(shape=2.0, scale=30.0, size=480)
+
+        result_typed = spei(
+            precips_mm=precips,
+            pet_mm=pet,
+            scale=6,
+            distribution=Distribution.pearson,
+            periodicity=Periodicity.monthly,
+            data_start_year=1980,
+            calibration_year_initial=1980,
+            calibration_year_final=2019,
+        )
+
+        result_original = indices_spei(
+            precips_mm=precips,
+            pet_mm=pet,
+            scale=6,
+            distribution=Distribution.pearson,
+            periodicity=Periodicity.monthly,
+            data_start_year=1980,
+            calibration_year_initial=1980,
+            calibration_year_final=2019,
+        )
+
+        # bit-exact comparison for Pearson (same computation path)
+        np.testing.assert_array_equal(result_typed, result_original)
+
 
 class TestModuleExports:
     """Test that functions are properly exported from the main module."""
