@@ -2838,7 +2838,7 @@ class TestAssessNanDensity:
 
         assert result["total_values"] == len(sample_monthly_precip_da)
         assert result["nan_count"] == 0
-        assert result["nan_ratio"] == 0.0
+        assert result["nan_ratio"] == pytest.approx(0.0, abs=1e-12)
         assert result["has_nan"] is False
         assert result["nan_positions"].shape == sample_monthly_precip_da.values.shape
         assert not result["nan_positions"].any()
@@ -2863,7 +2863,7 @@ class TestAssessNanDensity:
         result = _assess_nan_density(da)
 
         assert result["nan_count"] == len(time)
-        assert result["nan_ratio"] == 1.0
+        assert result["nan_ratio"] == pytest.approx(1.0, rel=1e-12, abs=1e-12)
         assert result["has_nan"] is True
         assert result["nan_positions"].all()
 
@@ -2881,7 +2881,7 @@ class TestAssessNanDensity:
 
         assert result["total_values"] == 0
         assert result["nan_count"] == 0
-        assert result["nan_ratio"] == 0.0
+        assert result["nan_ratio"] == pytest.approx(0.0, abs=1e-12)
         assert result["has_nan"] is False
 
 
