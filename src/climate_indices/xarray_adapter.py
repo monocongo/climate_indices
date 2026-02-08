@@ -30,7 +30,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from climate_indices import compute, indices
+from climate_indices import compute, eto, indices
 from climate_indices.compute import MIN_CALIBRATION_YEARS
 from climate_indices.exceptions import (
     CoordinateValidationError,
@@ -99,6 +99,16 @@ CF_METADATA: dict[str, CFAttributes] = {
             "An approach toward a rational classification of climate. "
             "Geographical Review, 38(1), 55-94. "
             "https://doi.org/10.2307/210739"
+        ),
+    },
+    "pet_hargreaves": {
+        "long_name": "Potential Evapotranspiration (Hargreaves method)",
+        "units": "mm/day",
+        "references": (
+            "Hargreaves, G. H., & Samani, Z. A. (1985). "
+            "Reference crop evapotranspiration from temperature. "
+            "Applied Engineering in Agriculture, 1(2), 96-99. "
+            "https://doi.org/10.13031/2013.26773"
         ),
     },
 }
@@ -1841,6 +1851,230 @@ def pet_thornthwaite(
         input_shape=temp_da.shape,
         output_shape=result.shape,
         data_start_year=data_start_year,
+        latitude=lat_desc,
+    )
+
+    return result
+
+
+def pet_hargreaves(
+    daily_tmin_celsius: np.ndarray | xr.DataArray,
+    daily_tmax_celsius: np.ndarray | xr.DataArray,
+    latitude: float | np.floating | xr.DataArray,
+    time_dim: str = "time",
+) -> np.ndarray | xr.DataArray:
+    """Compute potential evapotranspiration using Hargreaves method.
+
+    This function provides xarray DataArray support for the Hargreaves PET calculation.
+    Unlike Thornthwaite (monthly), Hargreaves uses daily min/max temperature data.
+    The mean temperature is automatically derived as (tmin + tmax) / 2.
+
+    Args:
+        daily_tmin_celsius: Daily minimum temperature values in degrees Celsius.
+            For numpy: 1-D array of daily temperatures
+            For xarray: DataArray with time dimension (may have additional spatial dims)
+        daily_tmax_celsius: Daily maximum temperature values in degrees Celsius.
+            Must align with daily_tmin_celsius for xarray inputs.
+            For numpy: 1-D array of daily temperatures
+            For xarray: DataArray with time dimension (may have additional spatial dims)
+        latitude: Latitude in degrees north (range: -90 to 90).
+            For numpy: scalar float
+            For xarray: scalar float or DataArray(lat,) for spatial broadcasting
+        time_dim: Name of the time dimension in the input DataArray (default: "time").
+            Only used for xarray inputs.
+
+    Returns:
+        PET values in mm/day, same shape and type as input temperature:
+        - numpy input → numpy array output
+        - xarray input → xarray DataArray output with CF metadata and provenance
+
+    Raises:
+        InputTypeError: If temperature inputs are not numpy-coercible or xr.DataArray
+        CoordinateValidationError: If time dimension missing/invalid or tmin/tmax don't align
+        InputAlignmentWarning: If tmin/tmax have different time coordinates (auto-aligned)
+        ValueError: If latitude is out of range [-90, 90]
+
+    Examples:
+        >>> # NumPy path: 5 years of daily temps at single location
+        >>> tmin = np.random.uniform(5, 15, 1825)
+        >>> tmax = np.random.uniform(15, 30, 1825)
+        >>> pet = pet_hargreaves(tmin, tmax, latitude=40.0)
+        >>> pet.shape
+        (1825,)
+
+        >>> # xarray path: 1-D time series
+        >>> tmin_da = xr.DataArray(
+        ...     tmin,
+        ...     coords={'time': pd.date_range('2015-01-01', periods=1825, freq='D')},
+        ...     dims=['time']
+        ... )
+        >>> tmax_da = xr.DataArray(
+        ...     tmax,
+        ...     coords={'time': pd.date_range('2015-01-01', periods=1825, freq='D')},
+        ...     dims=['time']
+        ... )
+        >>> pet_da = pet_hargreaves(tmin_da, tmax_da, latitude=40.0)
+        >>> pet_da.attrs['long_name']
+        'Potential Evapotranspiration (Hargreaves method)'
+
+        >>> # xarray path: gridded data with spatial broadcasting
+        >>> tmin_grid = xr.DataArray(
+        ...     np.random.uniform(5, 15, (1825, 4, 3)),
+        ...     coords={
+        ...         'time': pd.date_range('2015-01-01', periods=1825, freq='D'),
+        ...         'lat': [30, 35, 40, 45],
+        ...         'lon': [-120, -110, -100]
+        ...     },
+        ...     dims=['time', 'lat', 'lon']
+        ... )
+        >>> tmax_grid = xr.DataArray(
+        ...     np.random.uniform(15, 30, (1825, 4, 3)),
+        ...     coords={
+        ...         'time': pd.date_range('2015-01-01', periods=1825, freq='D'),
+        ...         'lat': [30, 35, 40, 45],
+        ...         'lon': [-120, -110, -100]
+        ...     },
+        ...     dims=['time', 'lat', 'lon']
+        ... )
+        >>> lat_array = xr.DataArray([30, 35, 40, 45], dims=['lat'])
+        >>> pet_grid = pet_hargreaves(tmin_grid, tmax_grid, lat_array)
+        >>> pet_grid.shape
+        (1825, 4, 3)
+
+    Notes:
+        - The underlying eto.eto_hargreaves() expects 1-D arrays and scalar latitude.
+          For gridded inputs, xr.apply_ufunc with vectorize=True loops over spatial dims.
+        - For xarray inputs with misaligned time coordinates, xr.align(join='inner')
+          is automatically applied, and InputAlignmentWarning is emitted if timesteps differ.
+        - Mean temperature is auto-derived: tmean = (tmin + tmax) / 2
+        - Dask-backed DataArrays remain lazy (dask="parallelized")
+        - CF Convention metadata and provenance history are automatically applied
+        - NaN values in temperature are propagated through the calculation
+    """
+    # detect input type for routing
+    input_type = detect_input_type(daily_tmin_celsius)
+
+    # numpy passthrough
+    if input_type == InputType.NUMPY:
+        # convert latitude to float if it's a numpy scalar
+        lat_float = float(latitude) if isinstance(latitude, np.floating) else latitude
+        # auto-derive tmean as per Hargreaves standard approach
+        tmean = (daily_tmin_celsius + daily_tmax_celsius) / 2.0
+        # delegate to eto.eto_hargreaves
+        return eto.eto_hargreaves(daily_tmin_celsius, daily_tmax_celsius, tmean, lat_float)
+
+    # xarray path: validate → align → compute → rewrap
+    tmin_da = daily_tmin_celsius
+    tmax_da = daily_tmax_celsius
+
+    # validate time dimension on both inputs
+    _validate_time_dimension(tmin_da, time_dim)
+    _validate_time_dimension(tmax_da, time_dim)
+    tmin_time_coord = tmin_da.coords[time_dim]
+    tmax_time_coord = tmax_da.coords[time_dim]
+    _validate_time_monotonicity(tmin_time_coord)
+    _validate_time_monotonicity(tmax_time_coord)
+
+    # align tmin and tmax along time dimension (inner join)
+    # this handles cases where they have different time ranges
+    tmin_aligned, tmax_aligned = xr.align(tmin_da, tmax_da, join="inner")
+
+    # warn if alignment dropped timesteps
+    original_tmin_len = len(tmin_time_coord)
+    original_tmax_len = len(tmax_time_coord)
+    aligned_len = len(tmin_aligned.coords[time_dim])
+
+    if aligned_len < original_tmin_len or aligned_len < original_tmax_len:
+        warnings.warn(
+            f"Input alignment: tmin had {original_tmin_len} timesteps, "
+            f"tmax had {original_tmax_len} timesteps. "
+            f"After inner join, {aligned_len} timesteps remain. "
+            f"Non-overlapping timesteps were dropped.",
+            InputAlignmentWarning,
+            stacklevel=2,
+        )
+
+    # raise error if no overlap
+    if aligned_len == 0:
+        raise CoordinateValidationError(
+            f"No overlapping timesteps found between tmin and tmax along '{time_dim}' dimension. "
+            f"Cannot proceed with PET calculation."
+        )
+
+    # derive tmean
+    tmean_da = (tmin_aligned + tmax_aligned) / 2.0
+
+    # normalize latitude for xr.apply_ufunc
+    if isinstance(latitude, (float, int, np.floating, np.integer)):
+        lat_for_ufunc: float | xr.DataArray = float(latitude)
+    else:
+        # assume it's already an xr.DataArray
+        lat_for_ufunc = latitude
+
+    # wrapper function to handle read-only array views from apply_ufunc
+    # eto.eto_hargreaves may modify arrays in-place, so create writable copies
+    def _hargreaves_with_copy(tmin: np.ndarray, tmax: np.ndarray, tmean: np.ndarray, lat: float) -> np.ndarray:
+        """Wrapper for eto.eto_hargreaves that creates writable copies."""
+        return eto.eto_hargreaves(tmin.copy(), tmax.copy(), tmean.copy(), lat)
+
+    # compute using xr.apply_ufunc with spatial broadcasting
+    result = xr.apply_ufunc(
+        _hargreaves_with_copy,
+        tmin_aligned,
+        tmax_aligned,
+        tmean_da,
+        lat_for_ufunc,
+        input_core_dims=[[time_dim], [time_dim], [time_dim], []],
+        output_core_dims=[[time_dim]],
+        vectorize=True,
+        dask="parallelized",
+        dask_gufunc_kwargs={"allow_rechunk": True},
+        output_dtypes=[float],
+    )
+
+    # restore original dimension order (apply_ufunc places output core dims last)
+    # if latitude was a DataArray with extra dims, result will have those too
+    # prioritize tmin dimensions, then any extra dimensions from latitude broadcast
+    desired_dims = list(tmin_aligned.dims) + [d for d in result.dims if d not in tmin_aligned.dims]
+    result = result.transpose(*desired_dims)
+
+    # apply CF metadata from registry
+    cf_attrs = CF_METADATA["pet_hargreaves"]
+    result.attrs.update(cf_attrs)
+
+    # copy over non-conflicting attributes from tmin (primary input)
+    for key, value in tmin_aligned.attrs.items():
+        if key not in result.attrs:
+            result.attrs[key] = value
+
+    # add version attribute
+    from climate_indices import __version__
+
+    result.attrs["climate_indices_version"] = __version__
+
+    # build and append history entry
+    # serialize latitude for history
+    if isinstance(lat_for_ufunc, xr.DataArray):
+        lat_desc = f"DataArray(dims={lat_for_ufunc.dims})"
+    else:
+        lat_desc = str(lat_for_ufunc)
+
+    history_entry = _build_history_entry(
+        "PET Hargreaves",
+        __version__,
+        {"latitude": lat_desc},
+    )
+    result.attrs["history"] = _append_history(tmin_aligned.attrs, history_entry)
+
+    # add calculation metadata as attributes
+    result.attrs["latitude"] = (
+        _serialize_attr_value(lat_for_ufunc) if not isinstance(lat_for_ufunc, xr.DataArray) else lat_desc
+    )
+
+    logger.info(
+        "pet_hargreaves_completed",
+        input_shape=tmin_aligned.shape,
+        output_shape=result.shape,
         latitude=lat_desc,
     )
 

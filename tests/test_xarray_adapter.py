@@ -3665,6 +3665,107 @@ def sample_gridded_temp_da() -> xr.DataArray:
     )
 
 
+@pytest.fixture
+def sample_daily_tmin_da() -> xr.DataArray:
+    """Create a 1D daily minimum temperature DataArray (5 years, 2015-2019)."""
+    # 5 years of daily data (ignoring leap days for simplicity: 5 * 365 = 1825)
+    time = pd.date_range("2015-01-01", periods=1825, freq="D")
+    # generate realistic daily tmin values (0 to 20°C with seasonal variation)
+    rng = np.random.default_rng(42)
+    # base seasonal pattern (cooler in winter, warmer in summer)
+    days_of_year = (time.dayofyear - 1) / 365.0
+    seasonal = 10.0 + 8.0 * np.sin(2 * np.pi * (days_of_year - 0.25))
+    # add random variation
+    noise = rng.normal(0, 2, size=len(time))
+    values = seasonal + noise
+
+    return xr.DataArray(
+        values,
+        coords={"time": time},
+        dims=["time"],
+        attrs={
+            "units": "degC",
+            "long_name": "Daily Minimum Temperature",
+        },
+    )
+
+
+@pytest.fixture
+def sample_daily_tmax_da(sample_daily_tmin_da: xr.DataArray) -> xr.DataArray:
+    """Create a 1D daily maximum temperature DataArray (5 years, 2015-2019).
+
+    Derived from tmin to ensure tmax > tmin.
+    """
+    # tmax = tmin + uniform(8, 15) to create realistic daily temperature range
+    rng = np.random.default_rng(123)
+    daily_range = rng.uniform(8, 15, size=len(sample_daily_tmin_da))
+    values = sample_daily_tmin_da.values + daily_range
+
+    return xr.DataArray(
+        values,
+        coords={"time": sample_daily_tmin_da.coords["time"]},
+        dims=["time"],
+        attrs={
+            "units": "degC",
+            "long_name": "Daily Maximum Temperature",
+        },
+    )
+
+
+@pytest.fixture
+def sample_gridded_daily_tmin_da() -> xr.DataArray:
+    """Create a gridded daily minimum temperature DataArray (5 years × 4 lats × 3 lons)."""
+    time = pd.date_range("2015-01-01", periods=1825, freq="D")
+    lats = np.array([30.0, 35.0, 40.0, 45.0])
+    lons = np.array([-120.0, -110.0, -100.0])
+
+    # create realistic spatial temperature pattern
+    rng = np.random.default_rng(42)
+    # base temperature decreases with latitude
+    base_temps = 15.0 - 0.3 * lats
+    # seasonal variation
+    days_of_year = (time.dayofyear.values - 1) / 365.0
+    seasonal = 8.0 * np.sin(2 * np.pi * (days_of_year - 0.25))
+
+    # broadcast to (time, lat, lon)
+    values = base_temps[np.newaxis, :, np.newaxis] + seasonal[:, np.newaxis, np.newaxis]
+    # add random noise
+    values = values + rng.normal(0, 1.5, size=(len(time), len(lats), len(lons)))
+
+    return xr.DataArray(
+        values,
+        coords={"time": time, "lat": lats, "lon": lons},
+        dims=["time", "lat", "lon"],
+        attrs={
+            "units": "degC",
+            "long_name": "Daily Minimum Temperature",
+        },
+    )
+
+
+@pytest.fixture
+def sample_gridded_daily_tmax_da(sample_gridded_daily_tmin_da: xr.DataArray) -> xr.DataArray:
+    """Create a gridded daily maximum temperature DataArray (5 years × 4 lats × 3 lons).
+
+    Derived from tmin to ensure tmax > tmin.
+    """
+    # tmax = tmin + uniform(8, 15) to create realistic daily temperature range
+    rng = np.random.default_rng(123)
+    shape = sample_gridded_daily_tmin_da.shape
+    daily_range = rng.uniform(8, 15, size=shape)
+    values = sample_gridded_daily_tmin_da.values + daily_range
+
+    return xr.DataArray(
+        values,
+        coords=sample_gridded_daily_tmin_da.coords,
+        dims=sample_gridded_daily_tmin_da.dims,
+        attrs={
+            "units": "degC",
+            "long_name": "Daily Maximum Temperature",
+        },
+    )
+
+
 class TestPETThornthwaiteXarray:
     """Tests for pet_thornthwaite() xarray support (Story 3.2)."""
 
@@ -3915,3 +4016,306 @@ class TestPETThornthwaiteXarray:
 
         with pytest.raises(ValueError, match="data_start_year is required"):
             pet_thornthwaite(temps, 40.0, data_start_year=None)
+
+
+class TestPETHargreavesXarray:
+    """Tests for pet_hargreaves() xarray support (Story 3.3)."""
+
+    def test_numpy_passthrough(self):
+        """NumPy input returns NumPy output identical to eto.eto_hargreaves()."""
+        from climate_indices import eto
+        from climate_indices.xarray_adapter import pet_hargreaves
+
+        # 5 years daily temps
+        rng = np.random.default_rng(42)
+        tmin = rng.uniform(5, 15, 1825)
+        tmax = rng.uniform(15, 30, 1825)
+        lat = 40.0
+
+        result = pet_hargreaves(tmin, tmax, lat)
+        # manually compute tmean and call eto function
+        tmean = (tmin + tmax) / 2.0
+        expected = eto.eto_hargreaves(tmin, tmax, tmean, lat)
+
+        assert isinstance(result, np.ndarray)
+        assert result.shape == expected.shape
+        np.testing.assert_array_equal(result, expected)
+
+    def test_1d_xarray_scalar_latitude(self, sample_daily_tmin_da, sample_daily_tmax_da):
+        """1-D DataArray with scalar latitude returns DataArray with correct values."""
+        from climate_indices.xarray_adapter import pet_hargreaves
+
+        lat = 40.0
+        result = pet_hargreaves(sample_daily_tmin_da, sample_daily_tmax_da, lat)
+
+        assert isinstance(result, xr.DataArray)
+        assert result.shape == sample_daily_tmin_da.shape
+        assert "time" in result.dims
+        # check for presence of NaN or finite values (not all NaN)
+        assert np.isfinite(result.values).any()
+
+    def test_1d_xarray_dataarray_latitude(self, sample_daily_tmin_da, sample_daily_tmax_da):
+        """1-D DataArray with DataArray latitude works correctly."""
+        from climate_indices.xarray_adapter import pet_hargreaves
+
+        # latitude as DataArray (simulating 1-D broadcast)
+        lat = xr.DataArray([40.0], dims=["location"])
+        result = pet_hargreaves(sample_daily_tmin_da, sample_daily_tmax_da, lat)
+
+        assert isinstance(result, xr.DataArray)
+        # result should have both time and location dims
+        assert "time" in result.dims
+        assert "location" in result.dims
+
+    def test_gridded_xarray_broadcast(self, sample_gridded_daily_tmin_da, sample_gridded_daily_tmax_da):
+        """Gridded DataArray with spatial latitude broadcast works correctly."""
+        from climate_indices import eto
+        from climate_indices.xarray_adapter import pet_hargreaves
+
+        # latitude as DataArray with lat dimension
+        lats = xr.DataArray([30.0, 35.0, 40.0, 45.0], dims=["lat"])
+        result = pet_hargreaves(sample_gridded_daily_tmin_da, sample_gridded_daily_tmax_da, lats)
+
+        assert isinstance(result, xr.DataArray)
+        assert result.shape == sample_gridded_daily_tmin_da.shape
+        assert set(result.dims) == {"time", "lat", "lon"}
+
+        # spot check one gridpoint against numpy path
+        gridpoint_tmin = sample_gridded_daily_tmin_da.isel(lat=1, lon=1).values
+        gridpoint_tmax = sample_gridded_daily_tmax_da.isel(lat=1, lon=1).values
+        gridpoint_tmean = (gridpoint_tmin + gridpoint_tmax) / 2.0
+        expected_pet = eto.eto_hargreaves(gridpoint_tmin, gridpoint_tmax, gridpoint_tmean, 35.0)
+        result_pet = result.isel(lat=1, lon=1).values
+
+        np.testing.assert_allclose(result_pet, expected_pet, rtol=1e-10, atol=1e-10)
+
+    def test_cf_metadata_applied(self, sample_daily_tmin_da, sample_daily_tmax_da):
+        """CF Convention metadata is applied to output."""
+        from climate_indices.xarray_adapter import pet_hargreaves
+
+        result = pet_hargreaves(sample_daily_tmin_da, sample_daily_tmax_da, 40.0)
+
+        assert "long_name" in result.attrs
+        assert "units" in result.attrs
+        assert "references" in result.attrs
+        assert result.attrs["long_name"] == "Potential Evapotranspiration (Hargreaves method)"
+        assert result.attrs["units"] == "mm/day"
+        assert "Hargreaves" in result.attrs["references"]
+        assert "1985" in result.attrs["references"]
+
+    def test_history_provenance(self, sample_daily_tmin_da, sample_daily_tmax_da):
+        """History attribute records provenance with ISO 8601 timestamp."""
+        from climate_indices.xarray_adapter import pet_hargreaves
+
+        result = pet_hargreaves(sample_daily_tmin_da, sample_daily_tmax_da, 40.0)
+
+        assert "history" in result.attrs
+        history = result.attrs["history"]
+        assert "PET Hargreaves" in history
+        # check for ISO 8601 timestamp pattern (YYYY-MM-DDTHH:MM:SSZ)
+        import re
+
+        iso_pattern = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"
+        assert re.search(iso_pattern, history), f"No ISO 8601 timestamp found in history: {history}"
+
+    def test_history_appends_to_existing(self, sample_daily_tmin_da, sample_daily_tmax_da):
+        """New history entry appends to existing history with newline separator."""
+        from climate_indices.xarray_adapter import pet_hargreaves
+
+        # add existing history to input
+        sample_daily_tmin_da.attrs["history"] = "2023-01-01: Previous processing step"
+
+        result = pet_hargreaves(sample_daily_tmin_da, sample_daily_tmax_da, 40.0)
+
+        history = result.attrs["history"]
+        assert "Previous processing step" in history
+        assert "PET Hargreaves" in history
+        # check newline separator
+        assert "\n" in history
+
+    def test_coordinate_preservation(self, sample_daily_tmin_da, sample_daily_tmax_da):
+        """All coordinates from input are preserved in output."""
+        from climate_indices.xarray_adapter import pet_hargreaves
+
+        # add extra coordinate to tmin
+        sample_daily_tmin_da = sample_daily_tmin_da.assign_coords(station_id="ABC123")
+
+        result = pet_hargreaves(sample_daily_tmin_da, sample_daily_tmax_da, 40.0)
+
+        assert "time" in result.coords
+        assert "station_id" in result.coords
+        assert result.coords["station_id"] == "ABC123"
+
+    def test_dask_chunked_array(self, sample_daily_tmin_da, sample_daily_tmax_da):
+        """Dask-backed input remains lazy and preserves chunks."""
+        from climate_indices.xarray_adapter import pet_hargreaves
+
+        # convert to dask arrays
+        tmin_dask = sample_daily_tmin_da.chunk({"time": 365})
+        tmax_dask = sample_daily_tmax_da.chunk({"time": 365})
+
+        result = pet_hargreaves(tmin_dask, tmax_dask, 40.0)
+
+        # result should be dask-backed (lazy)
+        assert hasattr(result.data, "compute"), "Result should be a dask array"
+        # force computation to ensure it works
+        result_computed = result.compute()
+        assert isinstance(result_computed, xr.DataArray)
+        assert np.isfinite(result_computed.values).any()
+
+    def test_numerical_equivalence(self, sample_daily_tmin_da, sample_daily_tmax_da):
+        """xarray path produces identical results to numpy path."""
+        from climate_indices import eto
+        from climate_indices.xarray_adapter import pet_hargreaves
+
+        lat = 40.0
+        result_xr = pet_hargreaves(sample_daily_tmin_da, sample_daily_tmax_da, lat)
+
+        # numpy path with same data
+        tmin_np = sample_daily_tmin_da.values
+        tmax_np = sample_daily_tmax_da.values
+        tmean_np = (tmin_np + tmax_np) / 2.0
+        result_np = eto.eto_hargreaves(tmin_np, tmax_np, tmean_np, lat)
+
+        np.testing.assert_allclose(result_xr.values, result_np, rtol=1e-10, atol=1e-10)
+
+    def test_all_nan_temperature(self):
+        """All-NaN input propagates NaN through calculation."""
+        from climate_indices.xarray_adapter import pet_hargreaves
+
+        time = pd.date_range("2015-01-01", periods=100, freq="D")
+        tmin_da = xr.DataArray(
+            np.full(100, np.nan),
+            coords={"time": time},
+            dims=["time"],
+        )
+        tmax_da = xr.DataArray(
+            np.full(100, np.nan),
+            coords={"time": time},
+            dims=["time"],
+        )
+
+        result = pet_hargreaves(tmin_da, tmax_da, 40.0)
+
+        assert isinstance(result, xr.DataArray)
+        assert np.all(np.isnan(result.values))
+
+    def test_custom_time_dimension(self):
+        """Custom time dimension name is respected."""
+        from climate_indices.xarray_adapter import pet_hargreaves
+
+        time = pd.date_range("2015-01-01", periods=365, freq="D")
+        tmin_da = xr.DataArray(
+            np.random.uniform(5, 15, 365),
+            coords={"date": time},
+            dims=["date"],
+        )
+        tmax_da = xr.DataArray(
+            np.random.uniform(15, 30, 365),
+            coords={"date": time},
+            dims=["date"],
+        )
+
+        result = pet_hargreaves(tmin_da, tmax_da, 40.0, time_dim="date")
+
+        assert isinstance(result, xr.DataArray)
+        assert "date" in result.dims
+        assert result.shape == (365,)
+
+    def test_version_attribute_added(self, sample_daily_tmin_da, sample_daily_tmax_da):
+        """climate_indices_version attribute is added to output."""
+        from climate_indices.xarray_adapter import pet_hargreaves
+
+        result = pet_hargreaves(sample_daily_tmin_da, sample_daily_tmax_da, 40.0)
+
+        assert "climate_indices_version" in result.attrs
+        # version should be a non-empty string
+        assert isinstance(result.attrs["climate_indices_version"], str)
+        assert len(result.attrs["climate_indices_version"]) > 0
+
+    def test_calculation_metadata_attributes(self, sample_daily_tmin_da, sample_daily_tmax_da):
+        """Calculation metadata (latitude) added as attributes."""
+        from climate_indices.xarray_adapter import pet_hargreaves
+
+        lat = 40.0
+        result = pet_hargreaves(sample_daily_tmin_da, sample_daily_tmax_da, lat)
+
+        assert "latitude" in result.attrs
+        assert result.attrs["latitude"] == lat
+        # note: no data_start_year for Hargreaves (unlike Thornthwaite)
+        assert "data_start_year" not in result.attrs
+
+    def test_tmin_tmax_alignment(self):
+        """Misaligned tmin/tmax time coordinates are auto-aligned with warning."""
+        from climate_indices.exceptions import InputAlignmentWarning
+        from climate_indices.xarray_adapter import pet_hargreaves
+
+        # tmin: 2015-2019 (1825 days)
+        tmin_time = pd.date_range("2015-01-01", periods=1825, freq="D")
+        tmin_da = xr.DataArray(
+            np.random.uniform(5, 15, 1825),
+            coords={"time": tmin_time},
+            dims=["time"],
+        )
+
+        # tmax: 2017-2021 (1826 days to cover leap year)
+        tmax_time = pd.date_range("2017-01-01", periods=1826, freq="D")
+        tmax_da = xr.DataArray(
+            np.random.uniform(15, 30, 1826),
+            coords={"time": tmax_time},
+            dims=["time"],
+        )
+
+        # should emit InputAlignmentWarning
+        with pytest.warns(InputAlignmentWarning, match="Input alignment.*inner join"):
+            result = pet_hargreaves(tmin_da, tmax_da, 40.0)
+
+        # result should only include overlapping period (2017-2019)
+        assert isinstance(result, xr.DataArray)
+        expected_start = pd.Timestamp("2017-01-01")
+        expected_end = pd.Timestamp("2019-12-31")
+        assert result.coords["time"][0].values >= expected_start
+        assert result.coords["time"][-1].values <= expected_end
+        # should have ~1095 days (3 years)
+        assert 1000 < len(result.coords["time"]) < 1200
+
+    def test_tmin_tmax_empty_intersection_raises(self):
+        """Non-overlapping tmin/tmax time ranges raise CoordinateValidationError."""
+        from climate_indices.exceptions import CoordinateValidationError
+        from climate_indices.xarray_adapter import pet_hargreaves
+
+        # tmin: 2015-2016
+        tmin_time = pd.date_range("2015-01-01", periods=730, freq="D")
+        tmin_da = xr.DataArray(
+            np.random.uniform(5, 15, 730),
+            coords={"time": tmin_time},
+            dims=["time"],
+        )
+
+        # tmax: 2020-2021 (no overlap)
+        tmax_time = pd.date_range("2020-01-01", periods=730, freq="D")
+        tmax_da = xr.DataArray(
+            np.random.uniform(15, 30, 730),
+            coords={"time": tmax_time},
+            dims=["time"],
+        )
+
+        with pytest.raises(CoordinateValidationError, match="No overlapping timesteps"):
+            pet_hargreaves(tmin_da, tmax_da, 40.0)
+
+    def test_tmean_auto_derivation(self, sample_daily_tmin_da, sample_daily_tmax_da):
+        """Verify auto-derived tmean matches (tmin+tmax)/2 passed to numpy."""
+        from climate_indices import eto
+        from climate_indices.xarray_adapter import pet_hargreaves
+
+        lat = 40.0
+        result = pet_hargreaves(sample_daily_tmin_da, sample_daily_tmax_da, lat)
+
+        # manually compute expected tmean and numpy result
+        tmin_np = sample_daily_tmin_da.values
+        tmax_np = sample_daily_tmax_da.values
+        tmean_expected = (tmin_np + tmax_np) / 2.0
+        expected_np = eto.eto_hargreaves(tmin_np, tmax_np, tmean_expected, lat)
+
+        # xarray result should match
+        np.testing.assert_allclose(result.values, expected_np, rtol=1e-10, atol=1e-10)
