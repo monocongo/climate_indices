@@ -312,64 +312,71 @@ def _validate_time_monotonicity(time_coord: xr.DataArray) -> None:
     Raises:
         CoordinateValidationError: If the time coordinate is not monotonically increasing
     """
-    # handle standard pandas datetime
+    is_monotonic = _is_time_coord_monotonic(time_coord)
+    if is_monotonic:
+        return
+
+    dim_name = time_coord.dims[0] if time_coord.dims else "time"
+    error_msg = _build_non_monotonic_message(time_coord, dim_name)
+
+    _log().error(
+        "time_coordinate_not_monotonic",
+        coordinate_name=dim_name,
+        coordinate_length=len(time_coord),
+    )
+    raise CoordinateValidationError(
+        message=error_msg,
+        coordinate_name=str(dim_name),
+        reason="not_monotonic",
+    )
+
+
+def _is_time_coord_monotonic(time_coord: xr.DataArray) -> bool:
+    """Return True if the time coordinate is monotonically increasing."""
     try:
         time_index = pd.DatetimeIndex(time_coord.values)
-        is_monotonic = time_index.is_monotonic_increasing
+        return bool(time_index.is_monotonic_increasing)
     except (TypeError, ValueError):
-        # fallback for cftime calendars or other non-standard datetime types
-        try:
-            # use numpy diff comparison for non-standard calendars
-            time_values = time_coord.values
-            if len(time_values) < 2:
-                # trivially monotonic for 0 or 1 element
-                return
-            # compare consecutive elements
-            diffs = np.diff(time_values.astype("datetime64[ns]").astype(np.int64))
-            is_monotonic = np.all(diffs > 0)
-        except (TypeError, ValueError):
-            # if conversion fails, raise validation error
-            coord_name = str(time_coord.name) if time_coord.name is not None else "time"
-            raise CoordinateValidationError(
-                message=f"Cannot validate time coordinate monotonicity: unsupported datetime type {type(time_coord.values[0])}",
-                coordinate_name=coord_name,
-                reason="unsupported_datetime_type",
-            ) from None
+        return _is_nonstandard_time_coord_monotonic(time_coord)
 
-    if not is_monotonic:
-        dim_name = time_coord.dims[0] if time_coord.dims else "time"
 
-        # check for NaT/NaN values
-        try:
-            has_nat = pd.isna(time_coord.values).any()
-            if has_nat:
-                error_msg = (
-                    "Time coordinate is not monotonically increasing. "
-                    "Found NaT (Not-a-Time) or NaN values. "
-                    "Remove invalid timestamps before processing."
-                )
-            else:
-                error_msg = (
-                    f"Time coordinate is not monotonically increasing. "
-                    f"Sort the data using data.sortby('{dim_name}') before processing."
-                )
-        except (TypeError, ValueError):
-            # fallback if NaT check fails
-            error_msg = (
-                f"Time coordinate is not monotonically increasing. "
-                f"Sort the data using data.sortby('{dim_name}') before processing."
-            )
+def _is_nonstandard_time_coord_monotonic(time_coord: xr.DataArray) -> bool:
+    """Fallback monotonicity check for non-standard/cftime coordinates."""
+    time_values = time_coord.values
+    if len(time_values) < 2:
+        return True
 
-        _log().error(
-            "time_coordinate_not_monotonic",
-            coordinate_name=dim_name,
-            coordinate_length=len(time_coord),
-        )
+    try:
+        diffs = np.diff(time_values.astype("datetime64[ns]").astype(np.int64))
+        return bool(np.all(diffs > 0))
+    except (TypeError, ValueError):
+        coord_name = str(time_coord.name) if time_coord.name is not None else "time"
         raise CoordinateValidationError(
-            message=error_msg,
-            coordinate_name=str(dim_name),
-            reason="not_monotonic",
+            message=f"Cannot validate time coordinate monotonicity: unsupported datetime type {type(time_coord.values[0])}",
+            coordinate_name=coord_name,
+            reason="unsupported_datetime_type",
+        ) from None
+
+
+def _build_non_monotonic_message(time_coord: xr.DataArray, dim_name: str) -> str:
+    """Build a detailed error message for non-monotonic time coordinates."""
+    generic_msg = (
+        f"Time coordinate is not monotonically increasing. "
+        f"Sort the data using data.sortby('{dim_name}') before processing."
+    )
+    try:
+        has_nat = pd.isna(time_coord.values).any()
+    except (TypeError, ValueError):
+        return generic_msg
+
+    if has_nat:
+        return (
+            "Time coordinate is not monotonically increasing. "
+            "Found NaT (Not-a-Time) or NaN values. "
+            "Remove invalid timestamps before processing."
         )
+
+    return generic_msg
 
 
 def _resolve_scale_from_args(func: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, Any]) -> int | None:
@@ -778,6 +785,183 @@ def _build_output_dataarray(
     return result_da
 
 
+def _prepare_xarray_inputs(
+    func: Callable[..., Any],
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    input_da: xr.DataArray,
+    time_dim: str,
+    additional_input_names: list[str] | None,
+) -> tuple[xr.DataArray, list[Any], dict[str, Any], dict[str, tuple[int | None, Any]]]:
+    """Resolve, align, and stage xarray inputs before computation."""
+    modified_args = list(args)
+    modified_kwargs = dict(kwargs)
+    resolved_secondaries: dict[str, tuple[int | None, Any]] = {}
+
+    if not additional_input_names:
+        return input_da, modified_args, modified_kwargs, resolved_secondaries
+
+    resolved_secondaries = _resolve_secondary_inputs(func, args, kwargs, additional_input_names)
+    dataarray_secondaries = {
+        name: value for name, (_, value) in resolved_secondaries.items() if isinstance(value, xr.DataArray)
+    }
+    if not dataarray_secondaries:
+        return input_da, modified_args, modified_kwargs, resolved_secondaries
+
+    aligned_primary, aligned_secondaries = _align_inputs(input_da, dataarray_secondaries, time_dim)
+    input_da = aligned_primary
+    modified_args[0] = aligned_primary
+
+    for name, (pos_index, _) in resolved_secondaries.items():
+        if name not in aligned_secondaries:
+            continue
+        if pos_index is not None:
+            modified_args[pos_index] = aligned_secondaries[name]
+        else:
+            modified_kwargs[name] = aligned_secondaries[name]
+
+    return input_da, modified_args, modified_kwargs, resolved_secondaries
+
+
+def _validate_inference_inputs(
+    infer_params: bool,
+    input_da: xr.DataArray,
+    time_dim: str,
+    func: Callable[..., Any],
+    modified_args: list[Any],
+    modified_kwargs: dict[str, Any],
+) -> None:
+    """Run validation checks required for parameter inference."""
+    if not infer_params:
+        return
+
+    _validate_time_dimension(input_da, time_dim)
+    time_coord = input_da[time_dim]
+    _validate_time_monotonicity(time_coord)
+    resolved_scale = _resolve_scale_from_args(func, tuple(modified_args), modified_kwargs)
+    if resolved_scale is not None:
+        _validate_sufficient_data(time_coord, resolved_scale)
+
+
+def _extract_secondary_dataarray_values(
+    additional_input_names: list[str] | None,
+    resolved_secondaries: dict[str, tuple[int | None, Any]],
+    modified_args: list[Any],
+    modified_kwargs: dict[str, Any],
+) -> None:
+    """Replace aligned secondary DataArray inputs with NumPy values in-place."""
+    if not additional_input_names:
+        return
+
+    for name, (pos_index, value) in resolved_secondaries.items():
+        if not isinstance(value, xr.DataArray):
+            continue
+        if pos_index is not None:
+            modified_args[pos_index] = modified_args[pos_index].values
+        else:
+            modified_kwargs[name] = modified_kwargs[name].values
+
+
+def _get_provided_params(sig: inspect.Signature, args: list[Any], kwargs: dict[str, Any]) -> set[str]:
+    """Return provided parameter names from bound args/kwargs."""
+    try:
+        bound = sig.bind_partial(*args, **kwargs)
+        bound.apply_defaults()
+        return set(bound.arguments.keys())
+    except TypeError:
+        return set()
+
+
+def _infer_call_kwargs(
+    func: Callable[..., Any],
+    modified_args: list[Any],
+    modified_kwargs: dict[str, Any],
+    infer_params: bool,
+    input_da: xr.DataArray,
+    time_dim: str,
+) -> dict[str, Any]:
+    """Build call kwargs, filling inferable values when needed."""
+    call_kwargs = dict(modified_kwargs)
+    if not (infer_params and time_dim in input_da.dims):
+        return call_kwargs
+
+    time_coord = input_da[time_dim]
+    sig = inspect.signature(func)
+    provided_params = _get_provided_params(sig, modified_args, modified_kwargs)
+
+    if "data_start_year" in sig.parameters and "data_start_year" not in provided_params:
+        call_kwargs["data_start_year"] = _infer_data_start_year(time_coord)
+
+    if "periodicity" in sig.parameters and "periodicity" not in provided_params:
+        call_kwargs["periodicity"] = _infer_periodicity(time_coord)
+
+    if "calibration_year_initial" in sig.parameters and "calibration_year_initial" not in provided_params:
+        cal_start, cal_end = _infer_calibration_period(time_coord)
+        call_kwargs["calibration_year_initial"] = cal_start
+        if "calibration_year_final" in sig.parameters and "calibration_year_final" not in provided_params:
+            call_kwargs["calibration_year_final"] = cal_end
+
+    return call_kwargs
+
+
+def _capture_calculation_metadata(
+    calculation_metadata_keys: list[str] | tuple[str, ...] | None,
+    valid_kwargs: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Collect configured calculation metadata from valid kwargs."""
+    if calculation_metadata_keys is None:
+        return None
+
+    calc_metadata: dict[str, Any] = {}
+    for key in calculation_metadata_keys:
+        if key in valid_kwargs:
+            calc_metadata[key] = valid_kwargs[key]
+    return calc_metadata
+
+
+def _run_xarray_path(
+    func: Callable[..., np.ndarray[Any, Any]],
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    data: xr.DataArray,
+    *,
+    cf_metadata: dict[str, str] | None,
+    time_dim: str,
+    infer_params: bool,
+    calculation_metadata_keys: list[str] | tuple[str, ...] | None,
+    index_display_name: str | None,
+    additional_input_names: list[str] | None,
+) -> xr.DataArray:
+    """Execute the xarray adaptation flow for a wrapped function call."""
+    input_da, modified_args, modified_kwargs, resolved_secondaries = _prepare_xarray_inputs(
+        func, args, kwargs, data, time_dim, additional_input_names
+    )
+
+    _validate_inference_inputs(infer_params, input_da, time_dim, func, modified_args, modified_kwargs)
+
+    numpy_values = input_da.values
+    _extract_secondary_dataarray_values(additional_input_names, resolved_secondaries, modified_args, modified_kwargs)
+    call_kwargs = _infer_call_kwargs(func, modified_args, modified_kwargs, infer_params, input_da, time_dim)
+
+    sig = inspect.signature(func)
+    valid_kwargs = {k: v for k, v in call_kwargs.items() if k in sig.parameters}
+    numpy_args = (numpy_values,) + tuple(modified_args[1:])
+    result_values = func(*numpy_args, **valid_kwargs)
+
+    calc_metadata = _capture_calculation_metadata(calculation_metadata_keys, valid_kwargs)
+    resolved_index_name = index_display_name if index_display_name is not None else func.__name__.upper()
+    result_da = _build_output_dataarray(input_da, result_values, cf_metadata, calc_metadata, index_name=resolved_index_name)
+
+    _log().info(
+        "xarray_adapter_completed",
+        function_name=func.__name__,
+        input_shape=input_da.shape,
+        output_shape=result_da.shape,
+        inferred_params=infer_params,
+    )
+    return result_da
+
+
 def xarray_adapter(
     *,
     cf_metadata: dict[str, str] | None = None,
@@ -853,138 +1037,18 @@ def xarray_adapter(
             if input_type == InputType.NUMPY:
                 return func(*args, **kwargs)
 
-            # xarray path: detect → [resolve → align] → validate → extract → infer → compute → rewrap → log
-            input_da = data
-
-            # resolve and align secondary inputs (Story 3.1)
-            modified_args = list(args)
-            modified_kwargs = dict(kwargs)
-
-            if additional_input_names:
-                # resolve secondary inputs from args/kwargs
-                resolved_secondaries = _resolve_secondary_inputs(func, args, kwargs, additional_input_names)
-
-                # filter to only DataArray secondaries for alignment
-                # (numpy secondaries pass through unchanged)
-                dataarray_secondaries = {
-                    name: value for name, (_, value) in resolved_secondaries.items() if isinstance(value, xr.DataArray)
-                }
-
-                if dataarray_secondaries:
-                    # align primary + DataArray secondaries
-                    aligned_primary, aligned_secondaries = _align_inputs(input_da, dataarray_secondaries, time_dim)
-
-                    # update input_da to use aligned primary
-                    input_da = aligned_primary
-
-                    # replace args[0] with aligned primary
-                    modified_args[0] = aligned_primary
-
-                    # replace aligned secondaries in args/kwargs
-                    for name, (pos_index, _) in resolved_secondaries.items():
-                        if name in aligned_secondaries:
-                            if pos_index is not None:
-                                # replace positional arg
-                                modified_args[pos_index] = aligned_secondaries[name]
-                            else:
-                                # replace kwarg
-                                modified_kwargs[name] = aligned_secondaries[name]
-
-            # coordinate validation (Story 2.7)
-            if infer_params:
-                _validate_time_dimension(input_da, time_dim)
-                time_coord = input_da[time_dim]
-                _validate_time_monotonicity(time_coord)
-                resolved_scale = _resolve_scale_from_args(func, modified_args, modified_kwargs)
-                if resolved_scale is not None:
-                    _validate_sufficient_data(time_coord, resolved_scale)
-
-            # extract numpy values from primary
-            numpy_values = input_da.values
-
-            # extract numpy values from secondary DataArrays (if any)
-            if additional_input_names:
-                for name, (pos_index, value) in resolved_secondaries.items():
-                    if isinstance(value, xr.DataArray):
-                        # extract .values from aligned DataArray
-                        if pos_index is not None:
-                            modified_args[pos_index] = modified_args[pos_index].values
-                        else:
-                            modified_kwargs[name] = modified_kwargs[name].values
-
-            # build kwargs for the wrapped function
-            # start with explicitly provided kwargs (including extracted secondaries)
-            call_kwargs = dict(modified_kwargs)
-
-            # infer missing parameters if enabled and time dimension exists
-            if infer_params and time_dim in input_da.dims:
-                time_coord = input_da[time_dim]
-
-                # use inspect to determine which parameters the function accepts
-                sig = inspect.signature(func)
-
-                # bind provided args/kwargs to see what's already specified
-                try:
-                    # bind_partial allows missing parameters (we'll fill them)
-                    bound = sig.bind_partial(*modified_args, **modified_kwargs)
-                    bound.apply_defaults()
-                    provided_params = set(bound.arguments.keys())
-                except TypeError:
-                    # if binding fails, skip inference
-                    provided_params = set()
-
-                # infer data_start_year if not provided
-                if "data_start_year" in sig.parameters and "data_start_year" not in provided_params:
-                    call_kwargs["data_start_year"] = _infer_data_start_year(time_coord)
-
-                # infer periodicity if not provided
-                if "periodicity" in sig.parameters and "periodicity" not in provided_params:
-                    call_kwargs["periodicity"] = _infer_periodicity(time_coord)
-
-                # infer calibration period if not provided
-                if "calibration_year_initial" in sig.parameters and "calibration_year_initial" not in provided_params:
-                    cal_start, cal_end = _infer_calibration_period(time_coord)
-                    if "calibration_year_initial" not in provided_params:
-                        call_kwargs["calibration_year_initial"] = cal_start
-                    if "calibration_year_final" in sig.parameters and "calibration_year_final" not in provided_params:
-                        call_kwargs["calibration_year_final"] = cal_end
-
-            # call wrapped numpy function with extracted values
-            # replace first arg (DataArray) with numpy values
-            numpy_args = (numpy_values,) + tuple(modified_args[1:])
-
-            # filter call_kwargs to only include params the function accepts
-            sig = inspect.signature(func)
-            valid_kwargs = {k: v for k, v in call_kwargs.items() if k in sig.parameters}
-
-            result_values = func(*numpy_args, **valid_kwargs)
-
-            # capture calculation metadata from resolved kwargs
-            calc_metadata = None
-            if calculation_metadata_keys is not None:
-                calc_metadata = {}
-                for key in calculation_metadata_keys:
-                    if key in valid_kwargs:
-                        calc_metadata[key] = valid_kwargs[key]
-
-            # resolve index name for history tracking
-            resolved_index_name = index_display_name if index_display_name is not None else func.__name__.upper()
-
-            # rewrap result as DataArray with preserved coordinates/metadata
-            result_da = _build_output_dataarray(
-                input_da, result_values, cf_metadata, calc_metadata, index_name=resolved_index_name
+            return _run_xarray_path(
+                func,
+                args,
+                kwargs,
+                data,
+                cf_metadata=cf_metadata,
+                time_dim=time_dim,
+                infer_params=infer_params,
+                calculation_metadata_keys=calculation_metadata_keys,
+                index_display_name=index_display_name,
+                additional_input_names=additional_input_names,
             )
-
-            # log completion
-            _log().info(
-                "xarray_adapter_completed",
-                function_name=func.__name__,
-                input_shape=input_da.shape,
-                output_shape=result_da.shape,
-                inferred_params=infer_params,
-            )
-
-            return result_da
 
         return wrapper
 

@@ -41,6 +41,11 @@ from climate_indices.xarray_adapter import (
 )
 
 
+def _standard_normal(size: int | tuple[int, ...]) -> np.ndarray:
+    """Generate deterministic standard normal data for tests."""
+    return np.random.default_rng(42).standard_normal(size)
+
+
 # fixtures for test data
 @pytest.fixture
 def sample_monthly_precip_da() -> xr.DataArray:
@@ -1028,7 +1033,7 @@ class TestSerializeAttrValue:
     def test_float_passthrough(self):
         """Float values pass through unchanged."""
         result = _serialize_attr_value(3.14)
-        assert result == 3.14
+        assert result == pytest.approx(3.14)
         assert isinstance(result, float)
 
     def test_bool_passthrough(self):
@@ -1047,7 +1052,7 @@ class TestSerializeAttrValue:
     def test_numpy_float_to_python_float(self):
         """NumPy float scalars convert to Python float."""
         result = _serialize_attr_value(np.float64(3.14))
-        assert result == 3.14
+        assert result == pytest.approx(3.14)
         assert isinstance(result, float)
         assert not isinstance(result, np.floating)
 
@@ -1423,7 +1428,7 @@ class TestHistoryProvenance:
             calculation_metadata_keys=["scale"],
         )
         def mock_index(values: np.ndarray, scale: int, **kwargs: int) -> np.ndarray:
-            return np.random.randn(len(values))
+            return _standard_normal(len(values))
 
         result = mock_index(sample_monthly_precip_da, scale=3)
 
@@ -1437,7 +1442,7 @@ class TestHistoryProvenance:
             index_display_name="SPI",
         )
         def mock_index(values: np.ndarray, **kwargs: int) -> np.ndarray:
-            return np.random.randn(len(values))
+            return _standard_normal(len(values))
 
         result = mock_index(sample_monthly_precip_da)
 
@@ -1454,7 +1459,7 @@ class TestHistoryProvenance:
             index_display_name="SPI",
         )
         def mock_index(values: np.ndarray, scale: int, **kwargs: int) -> np.ndarray:
-            return np.random.randn(len(values))
+            return _standard_normal(len(values))
 
         result = mock_index(sample_monthly_precip_da, scale=3)
 
@@ -1469,7 +1474,7 @@ class TestHistoryProvenance:
             index_display_name="SPI",
         )
         def mock_index(values: np.ndarray, scale: int, distribution: indices.Distribution, **kwargs: int) -> np.ndarray:
-            return np.random.randn(len(values))
+            return _standard_normal(len(values))
 
         result = mock_index(sample_monthly_precip_da, scale=3, distribution=indices.Distribution.gamma)
 
@@ -1483,7 +1488,7 @@ class TestHistoryProvenance:
             index_display_name="SPI",
         )
         def mock_index(values: np.ndarray, **kwargs: int) -> np.ndarray:
-            return np.random.randn(len(values))
+            return _standard_normal(len(values))
 
         result = mock_index(sample_monthly_precip_da)
 
@@ -1494,7 +1499,7 @@ class TestHistoryProvenance:
 
         @xarray_adapter(cf_metadata=CF_METADATA["spi"])
         def my_index(values: np.ndarray, **kwargs: int) -> np.ndarray:
-            return np.random.randn(len(values))
+            return _standard_normal(len(values))
 
         result = my_index(sample_monthly_precip_da)
 
@@ -1511,7 +1516,7 @@ class TestHistoryProvenance:
             calculation_metadata_keys=["scale"],
         )
         def mock_index(values: np.ndarray, scale: int, **kwargs: int) -> np.ndarray:
-            return np.random.randn(len(values))
+            return _standard_normal(len(values))
 
         result = mock_index(sample_monthly_precip_da, scale=3)
 
@@ -1529,7 +1534,7 @@ class TestHistoryProvenance:
             index_display_name="SPI",
         )
         def mock_index(values: np.ndarray, **kwargs: int) -> np.ndarray:
-            return np.random.randn(len(values))
+            return _standard_normal(len(values))
 
         # use numpy array input (passthrough path)
         result = mock_index(np.array([1.0, 2.0, 3.0]))
@@ -1547,7 +1552,7 @@ class TestHistoryProvenance:
             # no calculation_metadata_keys
         )
         def mock_index(values: np.ndarray, **kwargs: int) -> np.ndarray:
-            return np.random.randn(len(values))
+            return _standard_normal(len(values))
 
         result = mock_index(sample_monthly_precip_da)
 
@@ -1595,7 +1600,7 @@ class TestValidateTimeDimension:
         # create DataArray with 'date' instead of 'time'
         date = pd.date_range("2020-01-01", periods=12, freq="MS")
         da = xr.DataArray(
-            np.random.randn(12),
+            _standard_normal(12),
             coords={"date": date},
             dims=["date"],
         )
@@ -1621,7 +1626,7 @@ class TestValidateTimeDimension:
         """Time as non-dimension coordinate is rejected."""
         # create DataArray where 'time' is a scalar coordinate, not a dimension
         da = xr.DataArray(
-            np.random.randn(10),
+            _standard_normal(10),
             coords={"x": np.arange(10), "time": pd.Timestamp("2020-01-01")},
             dims=["x"],
         )
@@ -1898,7 +1903,7 @@ class TestCoordinateValidationIntegration:
         # create DataArray with 'date' instead of 'time'
         date = pd.date_range("2020-01-01", periods=12, freq="MS")
         da = xr.DataArray(
-            np.random.randn(12),
+            _standard_normal(12),
             coords={"date": date},
             dims=["date"],
         )
@@ -2068,7 +2073,7 @@ class TestAlignInputs:
         # create PET with completely non-overlapping time range
         time = pd.date_range("2025-01-01", "2030-12-01", freq="MS")
         pet_no_overlap = xr.DataArray(
-            np.random.randn(len(time)),
+            _standard_normal(len(time)),
             coords={"time": time},
             dims=["time"],
         )
@@ -2086,7 +2091,7 @@ class TestAlignInputs:
         """Multiple secondary inputs are all aligned together."""
         # create third input with identical coords
         third_da = xr.DataArray(
-            np.random.randn(len(sample_monthly_precip_da)),
+            _standard_normal(len(sample_monthly_precip_da)),
             coords={"time": sample_monthly_precip_da.time},
             dims=["time"],
         )
@@ -2192,8 +2197,8 @@ class TestXarrayAdapterMultiInput:
 
         # numpy primary should pass through, no alignment
         # provide both as numpy arrays
-        numpy_precip = np.random.randn(100)
-        numpy_pet = np.random.randn(100)
+        numpy_precip = _standard_normal(100)
+        numpy_pet = _standard_normal(100)
         result = spei_func(numpy_precip, numpy_pet)
 
         # result should be numpy array (passthrough)
