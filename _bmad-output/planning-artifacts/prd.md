@@ -1,9 +1,22 @@
 ---
-stepsCompleted: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+workflowType: 'prd'
+workflow: 'edit'
+classification:
+  domain: 'Scientific Computing (Climate Science)'
+  projectType: 'Developer Tool / Library'
+  complexity: 'Medium'
 inputDocuments:
   - '_bmad-output/planning-artifacts/context.md'
   - 'docs/bmad/EDDI-BMAD-Retrospective.md'
-workflowType: 'prd'
+stepsCompleted: ['step-e-01-discovery', 'step-e-02-review', 'step-e-03-edit']
+lastEdited: '2026-02-08'
+editHistory:
+  - date: '2026-02-08'
+    changes: 'Expanded goals for ingest, data serving, API ergonomics, release tiers, and continuous quality improvements.'
+  - date: '2026-02-08'
+    changes: 'Applied validation-driven fixes: project-type compliance sections, leakage cleanup, and measurability tightening.'
+  - date: '2026-02-08'
+    changes: 'Applied post-validation simple fixes for wording precision and residual implementation-detail cleanup.'
 ---
 
 # Product Requirements Document - climate_indices xarray Integration + structlog Modernization
@@ -16,11 +29,16 @@ workflowType: 'prd'
 
 ## Executive Summary
 
-This PRD defines requirements for modernizing the `climate_indices` library with xarray support and structured logging. The project addresses user pain points around array handling ergonomics while maintaining numerical fidelity with the existing NumPy implementation. This is a **brownfield modernization** of a mature scientific library used by NOAA, research institutions, and operational drought monitoring systems.
+This PRD defines requirements for modernizing the `climate_indices` library with xarray support, structured logging, and a usable data product lifecycle. The project addresses user pain points around array handling ergonomics while maintaining numerical fidelity with the existing NumPy implementation. This is a **brownfield modernization** of a mature scientific library used by NOAA, research institutions, and operational drought monitoring systems.
 
 **Key Changes:**
 - Add native xarray support via adapter pattern (preserves existing NumPy API)
 - Replace basic logging with structlog for structured observability
+- Add monthly and daily ingest with dataset creation for SPI, SPEI, EDDI, PNP, and PET
+- Define low-cost scientific data serving strategy with downloadable artifacts and standard visualizations
+- Improve API ergonomics to rival xclim for common workflows
+- Introduce practical single-maintainer release tiers (dev/pre-release/stable) as an alternative to heavy GitFlow
+- Institutionalize continuous "boy scouting" improvements for code and docs quality
 - Maintain strict numerical equivalence with existing implementation
 - Phased delivery: MVP (SPI/SPEI/PET) → Phase 2 (EDDI/PNP/CLI) → Phase 3 (Palmer + deprecation)
 
@@ -67,6 +85,10 @@ This PRD defines requirements for modernizing the `climate_indices` library with
 2. **Friction Reduction:** xarray users eliminate manual `.values` extraction and metadata re-attachment
 3. **Zero Regressions:** Existing NumPy users continue without code changes
 4. **Improved Debugging:** structlog enables correlation of index calculations with upstream data pipelines
+5. **Monthly Coverage:** Monthly ingest jobs publish SPI/SPEI/PET datasets for all configured domains on schedule for 95% of cycles
+6. **Daily Coverage:** Daily ingest jobs publish EDDI/PNP/PET updates within 24 hours for 95% of cycles by end of Phase 2
+7. **Accessible Outputs:** At least 80% of pilot users can find and download expected datasets without maintainer support
+8. **API Ergonomics:** New user can run a baseline index workflow in <= 10 lines and <= 30 minutes
 
 ### Business Success
 **Definition:** Project sustainability and community health improve.
@@ -76,6 +98,8 @@ This PRD defines requirements for modernizing the `climate_indices` library with
 2. **Contribution Velocity:** External PRs increase due to clearer code organization
 3. **Ecosystem Alignment:** Featured in xarray/pangeo documentation as reference implementation
 4. **Risk Mitigation:** No breaking changes → preserves operational stability for NOAA users
+5. **Serving Cost Control:** Storage and egress costs remain under a defined monthly budget threshold
+6. **Release Predictability:** Stable releases follow a documented promotion path with no emergency rollback in first 3 months
 
 ### Technical Success
 **Definition:** Implementation is robust, testable, and scientifically sound.
@@ -85,6 +109,8 @@ This PRD defines requirements for modernizing the `climate_indices` library with
 2. **Performance:** xarray overhead < 5% for chunked operations (validated via benchmarks)
 3. **Metadata Integrity:** CF convention compliance tested via cf-checker integration
 4. **Type Safety:** mypy --strict passes on all new code
+5. **Dataset Freshness:** Published dataset metadata includes run timestamp and index provenance for every artifact
+6. **Quality Hygiene:** Each release includes at least one non-feature quality improvement (refactor, docs, test hardening, lint/type debt reduction)
 
 **Note:** Detailed scope breakdown and phasing strategy defined in Step 8 below.
 
@@ -220,6 +246,31 @@ ds_drought = spi.spi(ds['pr'], scale=3, distribution="gamma")
 
 ---
 
+### Journey 6: Data Consumer / Analyst (Distribution Persona)
+**Actor:** Regional drought analyst consuming published artifacts
+
+**Context:**
+- Needs monthly and daily drought-index datasets without building custom pipelines
+- Requires lightweight visual checks before downloading data
+- Works in bandwidth-constrained environments and needs low-friction downloads
+
+**Current Pain Points:**
+1. Must clone repos and run bespoke scripts to get latest artifacts
+2. Dataset naming/versioning is inconsistent across runs
+3. Visualization and download links are not discoverable in one place
+
+**Desired Outcome:**
+- Browse latest monthly and daily datasets for SPI/SPEI/EDDI/PNP/PET
+- Preview standardized visualizations per run
+- Download versioned NetCDF/Zarr artifacts directly
+
+**Success Criteria:**
+- Artifacts are available in a predictable path and naming convention
+- Each dataset includes run metadata and provenance
+- User can navigate from visualization to download in <= 2 clicks
+
+---
+
 ## Step 5: Domain Requirements
 
 ### Scientific Correctness Requirements
@@ -308,6 +359,29 @@ ds_drought = spi.spi(ds['pr'], scale=3, distribution="gamma")
 
 ---
 
+### Dataset Lifecycle and Distribution Requirements
+
+12. **Ingest Cadence**
+    - **Requirement:** Support monthly and daily ingest schedules for index production
+    - **MVP:** Monthly ingest for SPI/SPEI/PET
+    - **Phase 2:** Daily ingest for EDDI/PNP/PET and monthly refresh continuation
+
+13. **Dataset Build and Versioning**
+    - **Requirement:** Build reproducible, versioned datasets with run metadata
+    - **Versioning:** Include run date, cadence (monthly/daily), and semantic schema version
+    - **Traceability:** Link artifacts to source inputs and calculation parameters
+
+14. **Low-Cost Scientific Data Serving**
+    - **Requirement:** Select and document a serving backend that minimizes recurring cost while preserving usability
+    - **Decision Inputs:** Storage cost, egress cost, discoverability, contributor maintenance burden
+    - **Candidates:** Git LFS and object storage-backed static hosting
+
+15. **Visualization and Download Access**
+    - **Requirement:** Publish standardized visual summaries and direct download links for generated artifacts
+    - **Expectation:** Users can discover latest artifacts without reading source code
+
+---
+
 ## Step 6: Innovation Analysis
 
 **Conclusion:** No significant innovation signals detected. Skipped per BMAD workflow guidance.
@@ -321,6 +395,25 @@ ds_drought = spi.spi(ds['pr'], scale=3, distribution="gamma")
 ---
 
 ## Step 7: Project-Type Specific Requirements (Developer Tool)
+
+### Project-Type Compliance Details (developer_tool)
+
+1. **Language Matrix**
+   - **Requirement:** Document supported language/runtime combinations for this library
+   - **Current Matrix:**
+     - Python: 3.10, 3.11, 3.12, 3.13
+     - NumPy/SciPy/xarray: minimum supported versions tracked in packaging requirements
+   - **Expectation:** Matrix updates are reflected in CI and release documentation
+
+2. **Installation Methods**
+   - **Requirement:** Provide explicit, maintained installation paths for users and contributors
+   - **Supported Methods:**
+     - `pip install climate-indices` (primary distribution path)
+     - Source installation from repository for development and contribution
+     - Optional conda-forge distribution once Phase 2 packaging criteria are met
+   - **Expectation:** Installation docs include dependency prerequisites and quick verification commands
+
+---
 
 ### API Design Requirements
 
@@ -448,6 +541,22 @@ ds_drought = spi.spi(ds['pr'], scale=3, distribution="gamma")
 
 ---
 
+### Developer Experience and Delivery Workflow Requirements
+
+15. **Task-Based API Ergonomics**
+    - **Requirement:** Optimize public APIs for common workflows so they are comparable in ease of use to xclim
+    - **Acceptance Signal:** First-time users complete baseline SPI/SPEI runs with minimal configuration
+
+16. **Single-Maintainer Release Tiers**
+    - **Requirement:** Define a lightweight promotion model with dev, pre-release, and stable channels
+    - **Constraint:** Avoid heavyweight branching models that exceed solo-maintainer capacity
+
+17. **Continuous Boy-Scout Improvements**
+    - **Requirement:** Reserve recurring capacity for non-feature quality improvements
+    - **Scope:** Small refactors, docs cleanup, test debt reduction, typing/lint hardening
+
+---
+
 ## Step 8: Scoping and Phasing
 
 ### MVP Scope (Weeks 1-4) — "Prove the Pattern"
@@ -466,6 +575,12 @@ ds_drought = spi.spi(ds['pr'], scale=3, distribution="gamma")
   - Thornthwaite method (temperature-based)
   - Hargreaves method (temperature + radiation)
   - Minimal complexity (validates metadata handling)
+
+**Data Lifecycle (MVP):**
+- Monthly ingest pipeline for SPI/SPEI/PET inputs
+- Versioned dataset creation for monthly outputs
+- Initial publication path for downloadable artifacts
+- Standard visualization bundle for monthly runs (map + time-series summary)
 
 **Logging:**
 - structlog configuration (dual output)
@@ -506,6 +621,12 @@ ds_drought = spi.spi(ds['pr'], scale=3, distribution="gamma")
   - Tests different statistical approach
 - **PNP (Percent of Normal Precipitation)**
   - Simplest index (validates minimal metadata handling)
+
+**Data Lifecycle (Phase 2):**
+- Daily ingest and dataset generation for EDDI/PNP/PET
+- Unified artifact catalog for monthly + daily outputs
+- Download UX improvements and artifact metadata indexing
+- Lightweight hosted visualizations tied to published datasets
 
 **Tooling:**
 - CLI modernization (migrate from argparse to Click)
@@ -550,6 +671,11 @@ ds_drought = spi.spi(ds['pr'], scale=3, distribution="gamma")
 - Numba acceleration (critical loops)
 - Memory profiling and optimization
 
+**Operations Hardening:**
+- Finalize long-term low-cost serving architecture based on observed cost and usage
+- Mature release tier governance for stable cadence and rollback playbooks
+- Expand data discoverability and retention policy for historical datasets
+
 **Documentation:**
 - Full API stability guarantee
 - Performance comparison (vs. xclim)
@@ -588,6 +714,8 @@ ds_drought = spi.spi(ds['pr'], scale=3, distribution="gamma")
 | Solo developer bandwidth | AI-assisted development (BMAD), phased delivery |
 | Scope creep into Palmer during MVP | Hard scope boundary — Palmer is Phase 3 |
 | If blocked on adapter pattern | Fall back to separate namespace (`indices.xr.spi`) instead of dispatch |
+| Serving costs exceed expectations | Evaluate Git LFS vs object storage with monthly cost review and pivot trigger |
+| Release process too heavy for one maintainer | Use tiered release channels and automated quality gates instead of GitFlow overhead |
 
 ---
 
@@ -658,9 +786,9 @@ This section defines **what the system must do** to deliver the capabilities des
 - Provide clear error message listing available dimensions
 
 #### FR-INPUT-003: Multi-Input Alignment
-**Requirement:** Automatically align multiple xarray inputs (e.g., SPEI with precip + PET)
+**Requirement:** Automatically align two or more xarray inputs (e.g., SPEI with precip + PET)
 **Acceptance Criteria:**
-- Use xarray.align() with join='inner' by default
+- Align multi-input datasets using coordinate intersection by default
 - Warn if alignment drops data (non-overlapping coordinates)
 - Preserve chunking from first input
 - Document alignment behavior in docstring
@@ -677,7 +805,7 @@ This section defines **what the system must do** to deliver the capabilities des
 **Requirement:** Work with Dask-backed xarray arrays
 **Acceptance Criteria:**
 - Accept dask.array.Array as underlying storage
-- Use apply_ufunc with dask='parallelized'
+- Execute chunk-parallel computations without forcing eager evaluation
 - Preserve chunking in output
 - No automatic rechunking (user controls via .chunk())
 
@@ -686,7 +814,7 @@ This section defines **what the system must do** to deliver the capabilities des
 #### FR-STAT-001: Gamma Distribution Fitting
 **Requirement:** Fit gamma distribution to precipitation data with zero-inflation handling
 **Acceptance Criteria:**
-- Use scipy.stats.gamma.fit() for parameter estimation
+- Use a validated gamma-parameter estimation approach consistent with reference behavior
 - Handle zero-inflated data via empirical CDF for zeros
 - Apply maximum likelihood estimation (MLE)
 - Validate fit convergence (raise warning if failed)
@@ -773,7 +901,7 @@ This section defines **what the system must do** to deliver the capabilities des
 **Acceptance Criteria:**
 - All public functions have @overload signatures for NumPy and xarray paths
 - Return types specify np.ndarray vs xr.DataArray correctly
-- Optional parameters typed as Optional[T]
+- Optional parameters typed as `T | None`
 - Pass mypy --strict validation
 
 #### FR-API-003: Default Parameter Values
@@ -800,7 +928,7 @@ This section defines **what the system must do** to deliver the capabilities des
 - Check for required dimensions (time exists)
 - Validate scale in valid range (1-72)
 - Validate distribution in supported set
-- Raise ValueError with descriptive message (not generic exception)
+- Raise `ClimateIndicesError` subclasses with descriptive messages
 
 #### FR-ERROR-002: Computation Error Handling
 **Requirement:** Handle and report computation failures gracefully
@@ -965,10 +1093,10 @@ This section defines **what the system must do** to deliver the capabilities des
 - Results published in documentation
 
 #### FR-PERF-002: Chunked Computation Efficiency
-**Requirement:** Efficient computation on Dask-backed arrays
+**Requirement:** Chunked computation on Dask-backed arrays meets defined efficiency targets
 **Acceptance Criteria:**
 - Single-pass algorithms (no multiple .compute() calls)
-- Graph optimization via apply_ufunc
+- Use chunk-parallel execution patterns that avoid unnecessary graph expansion
 - Document recommended chunk sizes
 - Test with 10GB synthetic dataset
 
@@ -976,7 +1104,7 @@ This section defines **what the system must do** to deliver the capabilities des
 **Requirement:** Process datasets larger than available RAM
 **Acceptance Criteria:**
 - Support lazy evaluation (Dask)
-- No intermediate array materialization (use .map_blocks())
+- Avoid full intermediate array materialization during processing
 - Document memory usage patterns
 - Profile memory usage in tests
 
@@ -1007,9 +1135,9 @@ This section defines **what the system must do** to deliver the capabilities des
 - Lock file for reproducible development (uv.lock)
 
 #### FR-PKG-003: Version Compatibility
-**Requirement:** Support Python 3.9+
+**Requirement:** Support Python 3.10+
 **Acceptance Criteria:**
-- Test matrix: Python 3.9, 3.10, 3.11, 3.12, 3.13
+- Test matrix: Python 3.10, 3.11, 3.12, 3.13
 - CI tests all versions on PR
 - Document supported versions in README
 - Deprecation policy (12 months notice for version drops)
@@ -1021,6 +1149,103 @@ This section defines **what the system must do** to deliver the capabilities des
 - CHANGELOG.md marks xarray API as experimental
 - README.md clarifies API stability guarantees
 - No breaking changes within minor versions (even for beta)
+
+### 12. Ingest and Dataset Creation
+
+#### FR-INGEST-001: Monthly Ingest Pipeline
+**Requirement:** Ingest monthly climate inputs and generate index-ready datasets for SPI, SPEI, and PET
+**Acceptance Criteria:**
+- Monthly job ingests configured sources and validates required variables
+- Failed runs emit structured error context and retry guidance
+- Successful runs publish versioned monthly artifacts with provenance metadata
+- Run status is queryable from release notes or artifact manifest
+
+#### FR-INGEST-002: Daily Ingest Pipeline (Phase 2)
+**Requirement:** Ingest daily climate inputs and generate index-ready datasets for EDDI, PNP, and PET
+**Acceptance Criteria:**
+- Daily run completes within defined SLA window
+- Missing or delayed upstream data is flagged with warning state
+- Output metadata records cadence and effective data window
+- Daily artifacts coexist with monthly artifacts without naming conflicts
+
+#### FR-DATA-001: Dataset Build Standardization
+**Requirement:** Produce consistent dataset structures across all generated indices
+**Acceptance Criteria:**
+- Common coordinate conventions across SPI/SPEI/EDDI/PNP/PET outputs
+- Required global metadata fields present on every artifact
+- Index-specific metadata is added without breaking shared schema
+- Schema version is included and documented
+
+#### FR-DATA-002: Dataset Versioning and Retention
+**Requirement:** Version and retain generated artifacts using a documented retention policy
+**Acceptance Criteria:**
+- Artifacts include immutable version identifiers
+- Retention windows are defined for daily and monthly products
+- Archived artifacts remain reproducible via provenance metadata
+- Retention execution is automated and auditable
+
+### 13. Data Serving, Visualization, and Downloads
+
+#### FR-DIST-001: Low-Cost Serving Strategy
+**Requirement:** Provide a documented serving architecture that balances cost and scientific usability
+**Acceptance Criteria:**
+- Decision record compares Git LFS and object storage options
+- Selected backend includes a projected monthly storage + egress cost model for baseline usage
+- Baseline monthly spend target is <= $150 with documented assumptions
+- Artifact access pattern is documented for users and maintainers
+- Strategy is reviewed at least quarterly, and an architecture review is triggered if forecast spend exceeds target by >=20% for 2 consecutive months
+
+#### FR-DIST-002: Downloadable Artifact Publication
+**Requirement:** Publish direct downloads for current and historical datasets
+**Acceptance Criteria:**
+- Each run publishes stable links for all produced artifacts
+- Checksums or hash manifests are available for integrity validation
+- Download metadata includes created timestamp and schema version
+- Deprecated artifacts are marked and linked to replacements
+
+#### FR-VIZ-001: Standard Visualization Bundle
+**Requirement:** Generate standard visual outputs for each published run
+**Acceptance Criteria:**
+- Each run includes at least one regional map and one trend/time-series visualization
+- Visual outputs reference the exact artifact versions used
+- Visual generation failures do not block artifact publication
+- Visual assets are discoverable from the same index page as downloads
+
+#### FR-VIZ-002: Artifact Discovery UX
+**Requirement:** Make dataset and visualization discovery straightforward for non-maintainer users
+**Acceptance Criteria:**
+- A single entry point lists latest monthly and daily runs
+- Users can navigate from artifact listing to download in <= 2 clicks
+- Search/filter supports index type and cadence
+- Documentation includes a <= 3-step "find latest dataset" path
+
+### 14. Release Workflow and Quality Improvements
+
+#### FR-RELEASE-001: Tiered Release Promotion
+**Requirement:** Implement a lightweight dev/pre-release/stable promotion model suited for a solo maintainer
+**Acceptance Criteria:**
+- Every stable release has passed dev and pre-release checkpoints
+- Promotion criteria are explicit and documented
+- Rollback procedure is documented per tier
+- No mandatory long-lived branch model is required
+
+#### FR-RELEASE-002: Quality Gates for Promotion
+**Requirement:** Gate release promotion on automated quality checks
+**Acceptance Criteria:**
+- Required checks include tests, linting, typing, and targeted benchmark guardrails
+- Failed gates block promotion automatically
+- Gate status is visible in release workflow logs
+- Waivers require a documented rationale
+
+#### FR-QUALITY-001: Continuous Boy-Scout Backlog
+**Requirement:** Maintain a recurring backlog of small quality improvements
+**Acceptance Criteria:**
+- Each release cycle includes at least one completed quality task
+- At least 4 quality tasks are completed per quarter across tests/docs/refactor/tooling categories
+- Tasks are tagged by type (tests, docs, refactor, tooling)
+- Each completed task links to traceable evidence (issue/PR/changelog entry)
+- Open quality debt is tracked and prioritized transparently
+- Improvement tasks do not change scientific outputs unless explicitly scoped
 
 ---
 
@@ -1145,10 +1370,10 @@ Non-functional requirements define **how well** the system performs its function
 ### 3. Compatibility
 
 #### NFR-COMPAT-001: Python Version Support
-**Requirement:** Support Python 3.9 through 3.13
+**Requirement:** Support Python 3.10 through 3.13
 **Metric:** Test matrix passes on all supported versions
 **Measurement Method:**
-- GitHub Actions matrix: [3.9, 3.10, 3.11, 3.12, 3.13]
+- GitHub Actions matrix: [3.10, 3.11, 3.12, 3.13]
 - Test on official python:3.x Docker images
 - Test on both Linux and macOS
 
@@ -1166,7 +1391,7 @@ Non-functional requirements define **how well** the system performs its function
 **Minimum Versions:**
 - NumPy ≥ 1.23 (structured dtype improvements)
 - SciPy ≥ 1.10 (stats module stability)
-- xarray ≥ 2023.01 (apply_ufunc dask improvements)
+- xarray ≥ 2023.01 (improved Dask interoperability baseline)
 
 **Measurement Method:**
 - CI matrix: minimum versions + latest versions
@@ -1329,19 +1554,81 @@ Non-functional requirements define **how well** the system performs its function
 
 ---
 
+### 6. Data Operations and Release Governance
+
+#### NFR-OPS-001: Dataset Freshness SLA
+**Requirement:** Published datasets meet defined freshness targets for each cadence
+**Metric:** Monthly artifacts published within 48 hours of source availability; daily artifacts within 24 hours (Phase 2)
+**Measurement Method:**
+- Compare source availability timestamps to publication timestamps
+- Track SLA attainment in run metadata dashboard
+- Report monthly SLA compliance percentage
+
+**Acceptance Criteria:**
+- >=95% monthly runs meet freshness SLA
+- >=90% daily runs meet freshness SLA in first phase of daily rollout
+- SLA misses include categorized root-cause tags
+
+---
+
+#### NFR-OPS-002: Artifact Availability
+**Requirement:** Dataset downloads and visualization index remain reliably available
+**Metric:** 99.5% monthly uptime for artifact index and download endpoints
+**Measurement Method:**
+- Synthetic checks every 5 minutes
+- Monthly uptime aggregation with incident annotations
+- Separate tracking for index page and artifact links
+
+**Acceptance Criteria:**
+- Monthly uptime >=99.5%
+- Broken artifact link rate <0.5%
+- Incidents include recovery time and corrective action
+
+---
+
+#### NFR-COST-001: Serving Cost Ceiling
+**Requirement:** Data-serving architecture stays within solo-maintainer budget constraints
+**Metric:** Monthly storage + egress spend remains below defined budget threshold
+**Measurement Method:**
+- Collect monthly storage and transfer bills/estimates by backend
+- Compare actuals against budget threshold
+- Trigger architecture review when forecast exceeds threshold
+
+**Acceptance Criteria:**
+- No unplanned monthly overspend above threshold for 3 consecutive months
+- Cost reports published with each quarterly review
+- Documented decision log for cost-driven architecture changes
+
+---
+
+#### NFR-OPS-003: Release Promotion Reliability
+**Requirement:** Tier promotion workflow is predictable and low-overhead
+**Metric:** >=95% of release promotions complete without manual recovery
+**Measurement Method:**
+- Track promotion attempts and failure modes by tier
+- Record manual interventions and elapsed resolution time
+- Review reliability trend each release cycle
+
+**Acceptance Criteria:**
+- Promotion success rate >=95%
+- Median promotion turnaround <1 business day
+- Manual intervention steps are documented and reduced over time
+
+---
+
 ## Step 11: Document Complete
 
 This PRD is now complete with all 11 BMAD workflow steps. The document provides:
 
 - **Strategic Context:** User journeys, success criteria, and phasing strategy
 - **Domain Requirements:** Scientific correctness, CF compliance, and operational constraints
-- **60 Functional Requirements:** Organized across 11 capability areas (index calculation, input handling, statistical operations, metadata, API design, error handling, logging, testing, documentation, performance, packaging)
-- **23 Non-Functional Requirements:** Measurable quality attributes across performance, reliability, compatibility, integration, and maintainability
+- **61 Functional Requirements:** Organized across 14 capability areas (including ingest, dataset creation, serving, visualization, release workflow, and quality improvements)
+- **22 Non-Functional Requirements:** Measurable quality attributes across performance, reliability, compatibility, integration, maintainability, and data operations governance
 
 **Document Statistics:**
-- Total Requirements: 83 (60 FR + 23 NFR)
+- Total Requirements: 83 (61 FR + 22 NFR)
 - MVP Scope: SPI, SPEI, PET + structlog (Weeks 1-4)
-- Coverage: 5 user personas, 3 delivery phases, 11 domain requirements
+- Coverage: 6 user personas, 3 delivery phases, 15 domain requirements
 
 **Next BMAD Workflows:**
 - **Architecture Design:** Define adapter pattern implementation, module structure, and interface contracts
@@ -1356,3 +1643,4 @@ This PRD is now complete with all 11 BMAD workflow steps. The document provides:
 |------|---------|---------|
 | 2026-02-05 | 1.0 | Initial PRD complete (Steps 1-11) |
 | 2026-02-07 | 1.1 | Add EDDI NOAA reference validation to FR-TEST-004, Phase 2 testing scope, and Phase 2 success criteria |
+| 2026-02-08 | 1.2 | Expand PRD for monthly/daily ingest, low-cost data serving, visualization/download access, tiered release workflow, API ergonomics, and continuous quality improvements |
