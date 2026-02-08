@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from io import StringIO
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -204,19 +204,17 @@ class TestCheckLargeArrayMemory:
 
         # mock psutil as unavailable
         with patch.dict("sys.modules", {"psutil": None}):
-            with patch("builtins.__import__", side_effect=ImportError):
-                # trigger cache update
-                get_process_memory_mb()
+            # trigger cache update
+            get_process_memory_mb()
 
-                # create large array (mock nbytes to avoid actual memory allocation)
-                large_array = MagicMock(spec=np.ndarray)
-                large_array.nbytes = LARGE_ARRAY_THRESHOLD_BYTES + 1000
+            class MockArray:
+                nbytes = LARGE_ARRAY_THRESHOLD_BYTES + 1000
 
-                result = check_large_array_memory(large_array)
+            result = check_large_array_memory(MockArray())
 
-                assert result is not None
-                assert "array_memory_mb" in result
-                assert "process_memory_mb" not in result
+            assert result is not None
+            assert "array_memory_mb" in result
+            assert "process_memory_mb" not in result
 
 
 class TestInputElementsInLogs:
