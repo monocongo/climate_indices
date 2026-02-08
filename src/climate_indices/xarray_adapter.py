@@ -18,6 +18,7 @@ References:
 from __future__ import annotations
 
 import copy
+import datetime
 import functools
 import inspect
 from collections.abc import Callable
@@ -78,6 +79,10 @@ _NUMPY_COERCIBLE_TYPES = (
     np.integer,
     np.floating,
 )
+
+# history attribute formatting
+_HISTORY_SEPARATOR = "\n"
+_HISTORY_TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
 
 class InputType(Enum):
@@ -288,11 +293,98 @@ def _serialize_attr_value(value: Any) -> str | int | float | bool:
     )
 
 
+def _build_history_entry(
+    index_name: str,
+    version: str,
+    calculation_metadata: dict[str, Any] | None = None,
+) -> str:
+    """Build a CF-compliant history entry for a climate index calculation.
+
+    Args:
+        index_name: Display name of the climate index (e.g., "SPI")
+        version: Library version string (e.g., "2.0.0")
+        calculation_metadata: Optional dict containing calculation parameters
+            (e.g., scale, distribution). Enum values are serialized via .name.
+
+    Returns:
+        Formatted history entry: "YYYY-MM-DDTHH:MM:SSZ: {description} (climate_indices v{version})"
+
+    Examples:
+        >>> _build_history_entry("SPI", "2.0.0", {"scale": 3, "distribution": Distribution.gamma})
+        "2026-02-07T10:23:45Z: SPI-3 calculated using gamma distribution (climate_indices v2.0.0)"
+        >>> _build_history_entry("SPI", "2.0.0", {"scale": 3})
+        "2026-02-07T10:23:45Z: SPI-3 calculated (climate_indices v2.0.0)"
+        >>> _build_history_entry("SPI", "2.0.0")
+        "2026-02-07T10:23:45Z: SPI calculated (climate_indices v2.0.0)"
+    """
+    # generate UTC timestamp
+    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime(_HISTORY_TIMESTAMP_FORMAT)
+
+    # build description from metadata
+    description_parts = [index_name]
+
+    if calculation_metadata:
+        # add scale if present
+        scale = calculation_metadata.get("scale")
+        if scale is not None:
+            description_parts[0] = f"{index_name}-{scale}"
+
+        # build calculation description
+        distribution = calculation_metadata.get("distribution")
+        if distribution is not None:
+            # serialize enum to string using .name attribute
+            dist_name = distribution.name if isinstance(distribution, Enum) else str(distribution)
+            description = f"{description_parts[0]} calculated using {dist_name} distribution"
+        elif scale is not None:
+            description = f"{description_parts[0]} calculated"
+        else:
+            description = f"{index_name} calculated"
+    else:
+        description = f"{index_name} calculated"
+
+    return f"{timestamp}: {description} (climate_indices v{version})"
+
+
+def _append_history(
+    existing_attrs: dict[str, Any],
+    new_entry: str,
+) -> str:
+    """Append a new history entry to existing history attribute.
+
+    Follows CF Convention newline-delimited format for multi-entry history logs.
+
+    Args:
+        existing_attrs: Current attribute dictionary (may contain existing history)
+        new_entry: New history entry to append
+
+    Returns:
+        Updated history string with new entry appended
+
+    Examples:
+        >>> _append_history({}, "2026-02-07T10:00:00Z: SPI calculated")
+        "2026-02-07T10:00:00Z: SPI calculated"
+        >>> _append_history(
+        ...     {"history": "2026-02-06T09:00:00Z: Data prepared"},
+        ...     "2026-02-07T10:00:00Z: SPI calculated"
+        ... )
+        "2026-02-06T09:00:00Z: Data prepared\\n2026-02-07T10:00:00Z: SPI calculated"
+    """
+    existing = existing_attrs.get("history", "")
+
+    # treat falsy, non-string, or whitespace-only values as no existing history
+    if not existing or not isinstance(existing, str) or not existing.strip():
+        return new_entry
+
+    # append new entry with newline separator
+    return f"{existing.rstrip()}{_HISTORY_SEPARATOR}{new_entry}"
+
+
 def _build_output_dataarray(
     input_da: xr.DataArray,
     result_values: np.ndarray[Any, Any],
     cf_metadata: dict[str, str] | None = None,
     calculation_metadata: dict[str, Any] | None = None,
+    index_name: str | None = None,
 ) -> xr.DataArray:
     """Build output DataArray with preserved coordinates and metadata.
 
@@ -309,6 +401,8 @@ def _build_output_dataarray(
         calculation_metadata: Optional dict of calculation-specific metadata
             (e.g., scale, distribution) to add to DataArray attributes.
             Enum values are automatically serialized to .name strings.
+        index_name: Optional climate index display name for history tracking
+            (e.g., "SPI"). If provided, appends a CF-compliant history entry.
 
     Returns:
         DataArray with result_values and preserved coordinates/dims/attrs
@@ -318,7 +412,7 @@ def _build_output_dataarray(
         - Preserves coordinate ordering (dict insertion order)
         - CF metadata only affects DataArray-level attrs, not coord attrs
         - Preserves the input DataArray's .name attribute
-        - Attribute layering: input attrs → CF metadata → calculation metadata → version
+        - Attribute layering: input attrs → CF metadata → calculation metadata → version → history
     """
     # deep-copy DA-level attrs for output (prevents mutation)
     output_attrs = copy.deepcopy(input_da.attrs)
@@ -346,6 +440,11 @@ def _build_output_dataarray(
 
     output_attrs["climate_indices_version"] = __version__
 
+    # add history entry for provenance tracking
+    if index_name is not None:
+        history_entry = _build_history_entry(index_name, __version__, calculation_metadata)
+        output_attrs["history"] = _append_history(output_attrs, history_entry)
+
     # construct output with coords and dims from input
     result_da = xr.DataArray(
         result_values,
@@ -371,6 +470,7 @@ def xarray_adapter(
     time_dim: str = "time",
     infer_params: bool = True,
     calculation_metadata_keys: list[str] | tuple[str, ...] | None = None,
+    index_display_name: str | None = None,
 ) -> Callable[[Callable[..., np.ndarray[Any, Any]]], Callable[..., np.ndarray[Any, Any] | xr.DataArray]]:
     """Decorator factory that adapts NumPy index functions to accept xarray DataArrays.
 
@@ -391,6 +491,9 @@ def xarray_adapter(
             output metadata attributes. For example, ["scale", "distribution"] will
             add these kwargs to the output DataArray.attrs. Enum values are automatically
             serialized to their .name string representation.
+        index_display_name: Optional display name for the climate index (e.g., "SPI")
+            to include in the CF-compliant history attribute. If None, defaults to
+            the uppercase function name.
 
     Returns:
         Decorator function that wraps index computation functions
@@ -491,8 +594,13 @@ def xarray_adapter(
                     if key in valid_kwargs:
                         calc_metadata[key] = valid_kwargs[key]
 
+            # resolve index name for history tracking
+            resolved_index_name = index_display_name if index_display_name is not None else func.__name__.upper()
+
             # rewrap result as DataArray with preserved coordinates/metadata
-            result_da = _build_output_dataarray(input_da, result_values, cf_metadata, calc_metadata)
+            result_da = _build_output_dataarray(
+                input_da, result_values, cf_metadata, calc_metadata, index_name=resolved_index_name
+            )
 
             # log completion
             logger.info(

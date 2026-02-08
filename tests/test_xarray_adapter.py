@@ -9,6 +9,9 @@ This module tests Story 2.2 functionality:
 
 from __future__ import annotations
 
+import datetime
+import re
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -18,6 +21,8 @@ from climate_indices import compute, indices
 from climate_indices.exceptions import CoordinateValidationError
 from climate_indices.xarray_adapter import (
     CF_METADATA,
+    _append_history,
+    _build_history_entry,
     _build_output_dataarray,
     _infer_calibration_period,
     _infer_data_start_year,
@@ -749,6 +754,33 @@ class TestBuildOutputDataarray:
         assert "time" in output.coords
         assert output.coords["time"].attrs["axis"] == "T"
 
+    def test_history_added_when_index_name_provided(self, coord_rich_1d_da):
+        """History attribute should be added when index_name is provided."""
+        result_values = np.ones_like(coord_rich_1d_da.values)
+        output = _build_output_dataarray(
+            coord_rich_1d_da,
+            result_values,
+            calculation_metadata={"scale": 3, "distribution": indices.Distribution.gamma},
+            index_name="SPI",
+        )
+
+        assert "history" in output.attrs
+        assert "SPI-3 calculated using gamma distribution" in output.attrs["history"]
+        assert "climate_indices v" in output.attrs["history"]
+
+    def test_no_history_when_index_name_none(self, coord_rich_1d_da):
+        """History attribute should not be added when index_name is None."""
+        result_values = np.ones_like(coord_rich_1d_da.values)
+        output = _build_output_dataarray(
+            coord_rich_1d_da,
+            result_values,
+            calculation_metadata={"scale": 3},
+            index_name=None,
+        )
+
+        # history should not be present (backward compat for direct callers)
+        assert "history" not in output.attrs
+
 
 class TestCoordinatePreservationRoundTrip:
     """Integration tests for coordinate preservation through decorator pipeline."""
@@ -1049,7 +1081,7 @@ class TestAttributeLayering:
     """Test attribute layering: input → CF → calc → version."""
 
     def test_full_layering(self, sample_monthly_precip_da):
-        """All attribute sources layer correctly."""
+        """All attribute sources layer correctly: input → CF → calc → version → history."""
         cf_meta = {"long_name": "Standardized Precipitation Index", "units": "dimensionless"}
 
         @xarray_adapter(cf_metadata=cf_meta, calculation_metadata_keys=["scale", "distribution"])
@@ -1067,6 +1099,10 @@ class TestAttributeLayering:
         assert result.attrs["distribution"] == "gamma"
         # version always present
         assert "climate_indices_version" in result.attrs
+        # history present with expected content
+        assert "history" in result.attrs
+        assert "FULL_FUNCTION" in result.attrs["history"]
+        assert "gamma distribution" in result.attrs["history"]
 
     def test_cf_and_calc_keys_dont_collide(self, sample_monthly_precip_da):
         """CF and calculation metadata use different keys."""
@@ -1088,7 +1124,7 @@ class TestEndToEndIntegration:
     """End-to-end integration test with real SPI and full metadata capture."""
 
     def test_spi_with_calculation_metadata_keys(self, sample_monthly_precip_da):
-        """SPI with calculation_metadata_keys captures scale and distribution."""
+        """SPI with calculation_metadata_keys captures scale, distribution, and history."""
         # wrap SPI with calculation metadata capture
         wrapped_spi = xarray_adapter(
             cf_metadata=CF_METADATA["spi"],
@@ -1113,9 +1149,297 @@ class TestEndToEndIntegration:
         # version present
         assert "climate_indices_version" in result.attrs
 
+        # history present with SPI and gamma distribution
+        assert "history" in result.attrs
+        assert "SPI" in result.attrs["history"]
+        assert "gamma" in result.attrs["history"]
+
         # original input attrs preserved (not overridden by CF)
         # (input had "units" and "long_name" but they're overridden by CF)
 
         # result values are correct (not all NaN)
         assert not np.all(np.isnan(result.values))
         assert result.shape == sample_monthly_precip_da.shape
+
+
+class TestBuildHistoryEntry:
+    """Test history entry generation for provenance tracking."""
+
+    def test_entry_with_scale_and_distribution(self) -> None:
+        """History entry should include scale and distribution when both are provided."""
+        entry = _build_history_entry(
+            index_name="SPI",
+            version="2.0.0",
+            calculation_metadata={"scale": 3, "distribution": indices.Distribution.gamma},
+        )
+
+        assert "SPI-3 calculated using gamma distribution" in entry
+        assert "(climate_indices v2.0.0)" in entry
+
+    def test_entry_with_scale_only(self) -> None:
+        """History entry should include scale but not distribution when only scale provided."""
+        entry = _build_history_entry(
+            index_name="SPI",
+            version="2.0.0",
+            calculation_metadata={"scale": 6},
+        )
+
+        assert "SPI-6 calculated" in entry
+        assert "distribution" not in entry
+        assert "(climate_indices v2.0.0)" in entry
+
+    def test_entry_no_params(self) -> None:
+        """History entry should have basic format when no calculation metadata provided."""
+        entry = _build_history_entry(
+            index_name="SPI",
+            version="2.0.0",
+            calculation_metadata=None,
+        )
+
+        assert "SPI calculated" in entry
+        assert "(climate_indices v2.0.0)" in entry
+
+    def test_entry_empty_metadata(self) -> None:
+        """History entry should handle empty metadata dict same as None."""
+        entry = _build_history_entry(
+            index_name="SPI",
+            version="2.0.0",
+            calculation_metadata={},
+        )
+
+        assert "SPI calculated" in entry
+        assert "(climate_indices v2.0.0)" in entry
+
+    def test_timestamp_is_iso8601_utc(self) -> None:
+        """History entry timestamp should match ISO 8601 UTC format."""
+        entry = _build_history_entry(
+            index_name="SPI",
+            version="2.0.0",
+        )
+
+        # check for ISO 8601 timestamp pattern: YYYY-MM-DDTHH:MM:SSZ
+        pattern = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"
+        assert re.search(pattern, entry) is not None
+
+    def test_entry_contains_version(self) -> None:
+        """History entry should contain the library version string."""
+        test_version = "1.2.3"
+        entry = _build_history_entry(
+            index_name="SPI",
+            version=test_version,
+        )
+
+        assert f"climate_indices v{test_version}" in entry
+
+    def test_enum_distribution_serialized(self) -> None:
+        """Enum distribution values should be serialized to their .name attribute."""
+        entry = _build_history_entry(
+            index_name="SPI",
+            version="2.0.0",
+            calculation_metadata={"scale": 3, "distribution": indices.Distribution.pearson},
+        )
+
+        # should use enum .name, not the enum object
+        assert "pearson distribution" in entry
+        assert "Distribution.pearson" not in entry
+
+
+class TestAppendHistory:
+    """Test history attribute appending logic."""
+
+    def test_no_existing_history(self) -> None:
+        """When no existing history, should return just the new entry."""
+        result = _append_history(
+            existing_attrs={},
+            new_entry="2026-02-07T10:00:00Z: SPI calculated (climate_indices v2.0.0)",
+        )
+
+        assert result == "2026-02-07T10:00:00Z: SPI calculated (climate_indices v2.0.0)"
+
+    def test_append_to_existing(self) -> None:
+        """Should append new entry to existing history with newline separator."""
+        result = _append_history(
+            existing_attrs={"history": "2026-02-06T09:00:00Z: Data prepared"},
+            new_entry="2026-02-07T10:00:00Z: SPI calculated (climate_indices v2.0.0)",
+        )
+
+        expected = "2026-02-06T09:00:00Z: Data prepared\n2026-02-07T10:00:00Z: SPI calculated (climate_indices v2.0.0)"
+        assert result == expected
+
+    def test_append_to_whitespace_or_empty(self) -> None:
+        """Empty or whitespace-only existing history should be treated as no history."""
+        # empty string
+        result = _append_history(
+            existing_attrs={"history": ""},
+            new_entry="2026-02-07T10:00:00Z: SPI calculated (climate_indices v2.0.0)",
+        )
+        assert result == "2026-02-07T10:00:00Z: SPI calculated (climate_indices v2.0.0)"
+
+        # whitespace only
+        result = _append_history(
+            existing_attrs={"history": "   "},
+            new_entry="2026-02-07T10:00:00Z: SPI calculated (climate_indices v2.0.0)",
+        )
+        assert result == "2026-02-07T10:00:00Z: SPI calculated (climate_indices v2.0.0)"
+
+    def test_preserves_multi_line_existing(self) -> None:
+        """Should preserve all existing history entries when appending."""
+        existing_history = "2026-02-05T08:00:00Z: Data ingested\n2026-02-06T09:00:00Z: Quality control applied"
+
+        result = _append_history(
+            existing_attrs={"history": existing_history},
+            new_entry="2026-02-07T10:00:00Z: SPI calculated (climate_indices v2.0.0)",
+        )
+
+        expected = (
+            "2026-02-05T08:00:00Z: Data ingested\n"
+            "2026-02-06T09:00:00Z: Quality control applied\n"
+            "2026-02-07T10:00:00Z: SPI calculated (climate_indices v2.0.0)"
+        )
+        assert result == expected
+
+
+class TestHistoryProvenance:
+    """Test provenance tracking in history attribute through the decorator."""
+
+    def test_history_present(self, sample_monthly_precip_da: xr.DataArray) -> None:
+        """History attribute should be present in xarray output."""
+
+        @xarray_adapter(
+            cf_metadata=CF_METADATA["spi"],
+            calculation_metadata_keys=["scale"],
+        )
+        def mock_index(values: np.ndarray, scale: int, **kwargs: int) -> np.ndarray:
+            return np.random.randn(len(values))
+
+        result = mock_index(sample_monthly_precip_da, scale=3)
+
+        assert "history" in result.attrs
+
+    def test_history_contains_timestamp(self, sample_monthly_precip_da: xr.DataArray) -> None:
+        """History should contain ISO 8601 UTC timestamp."""
+
+        @xarray_adapter(
+            cf_metadata=CF_METADATA["spi"],
+            index_display_name="SPI",
+        )
+        def mock_index(values: np.ndarray, **kwargs: int) -> np.ndarray:
+            return np.random.randn(len(values))
+
+        result = mock_index(sample_monthly_precip_da)
+
+        # check for ISO 8601 pattern
+        pattern = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"
+        assert re.search(pattern, result.attrs["history"]) is not None
+
+    def test_history_contains_index_and_scale(self, sample_monthly_precip_da: xr.DataArray) -> None:
+        """History should include index name and scale when provided."""
+
+        @xarray_adapter(
+            cf_metadata=CF_METADATA["spi"],
+            calculation_metadata_keys=["scale"],
+            index_display_name="SPI",
+        )
+        def mock_index(values: np.ndarray, scale: int, **kwargs: int) -> np.ndarray:
+            return np.random.randn(len(values))
+
+        result = mock_index(sample_monthly_precip_da, scale=3)
+
+        assert "SPI-3" in result.attrs["history"]
+
+    def test_history_contains_distribution(self, sample_monthly_precip_da: xr.DataArray) -> None:
+        """History should include distribution when provided."""
+
+        @xarray_adapter(
+            cf_metadata=CF_METADATA["spi"],
+            calculation_metadata_keys=["scale", "distribution"],
+            index_display_name="SPI",
+        )
+        def mock_index(values: np.ndarray, scale: int, distribution: indices.Distribution, **kwargs: int) -> np.ndarray:
+            return np.random.randn(len(values))
+
+        result = mock_index(sample_monthly_precip_da, scale=3, distribution=indices.Distribution.gamma)
+
+        assert "gamma distribution" in result.attrs["history"]
+
+    def test_history_contains_library_version(self, sample_monthly_precip_da: xr.DataArray) -> None:
+        """History should include climate_indices version string."""
+
+        @xarray_adapter(
+            cf_metadata=CF_METADATA["spi"],
+            index_display_name="SPI",
+        )
+        def mock_index(values: np.ndarray, **kwargs: int) -> np.ndarray:
+            return np.random.randn(len(values))
+
+        result = mock_index(sample_monthly_precip_da)
+
+        assert "climate_indices v" in result.attrs["history"]
+
+    def test_default_index_name_from_function(self, sample_monthly_precip_da: xr.DataArray) -> None:
+        """When index_display_name not provided, should use uppercase function name."""
+
+        @xarray_adapter(cf_metadata=CF_METADATA["spi"])
+        def my_index(values: np.ndarray, **kwargs: int) -> np.ndarray:
+            return np.random.randn(len(values))
+
+        result = my_index(sample_monthly_precip_da)
+
+        assert "MY_INDEX calculated" in result.attrs["history"]
+
+    def test_preserves_existing_history(self, sample_monthly_precip_da: xr.DataArray) -> None:
+        """Should preserve and append to existing history attribute."""
+        # add existing history to input
+        sample_monthly_precip_da.attrs["history"] = "2026-02-06T09:00:00Z: Data prepared"
+
+        @xarray_adapter(
+            cf_metadata=CF_METADATA["spi"],
+            index_display_name="SPI",
+            calculation_metadata_keys=["scale"],
+        )
+        def mock_index(values: np.ndarray, scale: int, **kwargs: int) -> np.ndarray:
+            return np.random.randn(len(values))
+
+        result = mock_index(sample_monthly_precip_da, scale=3)
+
+        # both old and new entries should be present
+        assert "2026-02-06T09:00:00Z: Data prepared" in result.attrs["history"]
+        assert "SPI-3 calculated" in result.attrs["history"]
+        # should be newline-separated
+        assert "\n" in result.attrs["history"]
+
+    def test_not_present_on_numpy_passthrough(self) -> None:
+        """History should not be present when input is NumPy array (passthrough path)."""
+
+        @xarray_adapter(
+            cf_metadata=CF_METADATA["spi"],
+            index_display_name="SPI",
+        )
+        def mock_index(values: np.ndarray, **kwargs: int) -> np.ndarray:
+            return np.random.randn(len(values))
+
+        # use numpy array input (passthrough path)
+        result = mock_index(np.array([1.0, 2.0, 3.0]))
+
+        # result is ndarray, no attrs
+        assert isinstance(result, np.ndarray)
+        assert not hasattr(result, "attrs")
+
+    def test_history_with_no_calculation_metadata(self, sample_monthly_precip_da: xr.DataArray) -> None:
+        """History should be present even when no calculation metadata is captured."""
+
+        @xarray_adapter(
+            cf_metadata=CF_METADATA["spi"],
+            index_display_name="SPI",
+            # no calculation_metadata_keys
+        )
+        def mock_index(values: np.ndarray, **kwargs: int) -> np.ndarray:
+            return np.random.randn(len(values))
+
+        result = mock_index(sample_monthly_precip_da)
+
+        assert "history" in result.attrs
+        assert "SPI calculated" in result.attrs["history"]
+        # should not have scale or distribution in history
+        assert "SPI-" not in result.attrs["history"]
+        assert "distribution" not in result.attrs["history"]
