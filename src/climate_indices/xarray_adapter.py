@@ -31,6 +31,7 @@ import pandas as pd
 import xarray as xr
 
 from climate_indices import compute
+from climate_indices.compute import MIN_CALIBRATION_YEARS
 from climate_indices.exceptions import (
     CoordinateValidationError,
     InputAlignmentWarning,
@@ -432,6 +433,145 @@ def _validate_sufficient_data(time_coord: xr.DataArray, scale: int) -> None:
         )
 
 
+def _assess_nan_density(data: xr.DataArray) -> dict[str, Any]:
+    """Assess NaN density in input data for diagnostic logging.
+
+    Pure diagnostic function that computes NaN metrics without side effects.
+    The nan_positions mask is returned for reuse in propagation verification,
+    avoiding redundant computation.
+
+    Args:
+        data: Input DataArray to assess
+
+    Returns:
+        Dictionary containing:
+            - total_values: Total number of values in the array
+            - nan_count: Number of NaN values
+            - nan_ratio: Proportion of NaN values (0.0 to 1.0)
+            - has_nan: Boolean indicating presence of any NaN values
+            - nan_positions: Boolean numpy array mask (True where NaN, False otherwise)
+    """
+    values = data.values
+    nan_mask = np.isnan(values)
+    nan_count = int(np.sum(nan_mask))
+    total_values = int(values.size)
+
+    return {
+        "total_values": total_values,
+        "nan_count": nan_count,
+        "nan_ratio": nan_count / total_values if total_values > 0 else 0.0,
+        "has_nan": nan_count > 0,
+        "nan_positions": nan_mask,
+    }
+
+
+def _verify_nan_propagation(
+    input_nan_mask: np.ndarray[Any, Any],
+    output_values: np.ndarray[Any, Any],
+) -> bool:
+    """Verify that input NaN positions remain NaN in output.
+
+    Checks the NaN propagation contract: every input NaN position must be NaN
+    in the output. This is a one-directional check—output may have additional
+    NaN values from convolution padding or boundary effects, which is expected
+    and not considered a violation.
+
+    Args:
+        input_nan_mask: Boolean mask from input (True where NaN)
+        output_values: Output array values to verify
+
+    Returns:
+        True if NaN propagation contract holds (all input NaN → output NaN),
+        False if any input NaN position has a non-NaN output value
+    """
+    # get output NaN positions
+    output_nan_mask = np.isnan(output_values)
+
+    # check that all input NaN positions are still NaN in output
+    # input_nan_mask[i] == True implies output_nan_mask[i] == True
+    # equivalent to: NOT(input_nan AND NOT output_nan)
+    contract_holds = np.all(~input_nan_mask | output_nan_mask)
+
+    return bool(contract_holds)
+
+
+def _validate_calibration_non_nan_sample_size(
+    time_coord: xr.DataArray,
+    values: np.ndarray[Any, Any],
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    min_years: int = MIN_CALIBRATION_YEARS,
+) -> None:
+    """Validate sufficient non-NaN data in calibration period for distribution fitting.
+
+    Hard validation that raises an error when the calibration period has fewer than
+    the minimum required years of non-NaN data. This prevents impossible-to-fit
+    scenarios early in the pipeline, before expensive computation.
+
+    This is distinct from compute.py's _check_calibration_data_quality warning:
+    - This function: Hard error for <30 non-NaN years (fitting impossible)
+    - compute.py warning: Soft warning for >20% NaN density (fitting marginal)
+
+    Args:
+        time_coord: Time coordinate DataArray with datetime values
+        values: 1-D numpy array of data values to check
+        calibration_year_initial: Start year of calibration period (inclusive)
+        calibration_year_final: End year of calibration period (inclusive)
+        min_years: Minimum required years of non-NaN data (default: 30)
+
+    Raises:
+        InsufficientDataError: If calibration period has fewer than min_years
+            of non-NaN data, making distribution fitting impossible
+    """
+    # extract year values from time coordinate
+    time_years = pd.DatetimeIndex(time_coord.values).year.values
+
+    # find indices within calibration period
+    calibration_mask = (time_years >= calibration_year_initial) & (time_years <= calibration_year_final)
+
+    # extract calibration slice
+    calibration_values = values[calibration_mask]
+
+    if len(calibration_values) == 0:
+        raise InsufficientDataError(
+            message=(
+                f"Calibration period ({calibration_year_initial}-{calibration_year_final}) "
+                f"contains no data points. Check that calibration years overlap with time coordinate range."
+            ),
+            non_zero_count=0,
+            required_count=min_years,
+        )
+
+    # count non-NaN values
+    non_nan_count = int(np.sum(~np.isnan(calibration_values)))
+
+    # infer periods per year from time coordinate frequency
+    freq = xr.infer_freq(time_coord)  # type: ignore[no-untyped-call]
+    if freq in ("MS", "ME", "M"):
+        periods_per_year = 12
+    elif freq == "D":
+        periods_per_year = 365
+    else:
+        # fallback: estimate from total calibration span
+        periods_per_year = len(calibration_values) // (calibration_year_final - calibration_year_initial + 1)
+        if periods_per_year == 0:
+            periods_per_year = 12  # conservative default
+
+    # compute effective non-NaN years
+    effective_years = non_nan_count / periods_per_year
+
+    if effective_years < min_years:
+        raise InsufficientDataError(
+            message=(
+                f"Insufficient non-NaN data in calibration period ({calibration_year_initial}-{calibration_year_final}). "
+                f"Found {non_nan_count} non-NaN values ({effective_years:.1f} effective years), "
+                f"but at least {min_years} years of non-NaN data required for reliable distribution fitting."
+            ),
+            non_zero_count=non_nan_count,
+            required_count=int(min_years * periods_per_year),
+        )
+
+
 def _resolve_secondary_inputs(
     func: Callable[..., Any],
     args: tuple[Any, ...],
@@ -467,7 +607,7 @@ def _resolve_secondary_inputs(
     sig = inspect.signature(func)
     param_names = list(sig.parameters.keys())
 
-    resolved = {}
+    resolved: dict[str, tuple[int | None, Any]] = {}
 
     for name in additional_input_names:
         if name not in sig.parameters:
@@ -931,34 +1071,80 @@ def _run_xarray_path(
     calculation_metadata_keys: list[str] | tuple[str, ...] | None,
     index_display_name: str | None,
     additional_input_names: list[str] | None,
+    skipna: bool,
 ) -> xr.DataArray:
     """Execute the xarray adaptation flow for a wrapped function call."""
+    # check skipna parameter (Story 2.8)
+    if skipna:
+        raise NotImplementedError(
+            "skipna=True not yet implemented (FR-INPUT-004). "
+            "NaN values are propagated through calculations by default."
+        )
+
     input_da, modified_args, modified_kwargs, resolved_secondaries = _prepare_xarray_inputs(
         func, args, kwargs, data, time_dim, additional_input_names
     )
 
     _validate_inference_inputs(infer_params, input_da, time_dim, func, modified_args, modified_kwargs)
 
+    # assess NaN density for diagnostics (Story 2.8)
+    nan_assessment = _assess_nan_density(input_da)
+    if nan_assessment["has_nan"]:
+        _log().info(
+            "nan_detected_in_input",
+            function_name=func.__name__,
+            nan_count=nan_assessment["nan_count"],
+            nan_ratio=round(nan_assessment["nan_ratio"], 4),
+            total_values=nan_assessment["total_values"],
+        )
+
     numpy_values = input_da.values
     _extract_secondary_dataarray_values(additional_input_names, resolved_secondaries, modified_args, modified_kwargs)
     call_kwargs = _infer_call_kwargs(func, modified_args, modified_kwargs, infer_params, input_da, time_dim)
+
+    # validate calibration period has sufficient non-NaN data (Story 2.8)
+    if nan_assessment["has_nan"] and infer_params and time_dim in input_da.dims:
+        time_coord = input_da[time_dim]
+        cal_initial = call_kwargs.get("calibration_year_initial")
+        cal_final = call_kwargs.get("calibration_year_final")
+        if cal_initial is not None and cal_final is not None:
+            _validate_calibration_non_nan_sample_size(
+                time_coord,
+                numpy_values,
+                calibration_year_initial=cal_initial,
+                calibration_year_final=cal_final,
+            )
 
     sig = inspect.signature(func)
     valid_kwargs = {k: v for k, v in call_kwargs.items() if k in sig.parameters}
     numpy_args = (numpy_values,) + tuple(modified_args[1:])
     result_values = func(*numpy_args, **valid_kwargs)
 
+    # verify NaN propagation contract (Story 2.8)
+    if nan_assessment["has_nan"]:
+        if not _verify_nan_propagation(nan_assessment["nan_positions"], result_values):
+            _log().warning(
+                "nan_propagation_violation",
+                function_name=func.__name__,
+                message="Output missing NaN values present in input",
+            )
+
     calc_metadata = _capture_calculation_metadata(calculation_metadata_keys, valid_kwargs)
     resolved_index_name = index_display_name if index_display_name is not None else func.__name__.upper()
     result_da = _build_output_dataarray(input_da, result_values, cf_metadata, calc_metadata, index_name=resolved_index_name)
 
-    _log().info(
-        "xarray_adapter_completed",
-        function_name=func.__name__,
-        input_shape=input_da.shape,
-        output_shape=result_da.shape,
-        inferred_params=infer_params,
-    )
+    # log completion with NaN metrics (Story 2.8)
+    log_fields = {
+        "function_name": func.__name__,
+        "input_shape": input_da.shape,
+        "output_shape": result_da.shape,
+        "inferred_params": infer_params,
+    }
+    if nan_assessment["has_nan"]:
+        log_fields["input_nan_count"] = nan_assessment["nan_count"]
+        log_fields["input_nan_ratio"] = round(nan_assessment["nan_ratio"], 4)
+
+    _log().info("xarray_adapter_completed", **log_fields)
     return result_da
 
 
@@ -970,6 +1156,7 @@ def xarray_adapter(
     calculation_metadata_keys: list[str] | tuple[str, ...] | None = None,
     index_display_name: str | None = None,
     additional_input_names: list[str] | None = None,
+    skipna: bool = False,
 ) -> Callable[[Callable[..., np.ndarray[Any, Any]]], Callable[..., np.ndarray[Any, Any] | xr.DataArray]]:
     """Decorator factory that adapts NumPy index functions to accept xarray DataArrays.
 
@@ -998,6 +1185,10 @@ def xarray_adapter(
             (e.g., ["pet"] for SPEI). When provided, these inputs will be aligned with
             the primary input using xr.align(join='inner') before computation. Only
             DataArray secondaries are aligned; numpy secondaries pass through unchanged.
+        skipna: If False (default), NaN values are propagated through calculations
+            (NaN in → NaN out). If True, implements pairwise deletion for NaN handling
+            (FR-INPUT-004). Currently only skipna=False is implemented; skipna=True
+            raises NotImplementedError.
 
     Returns:
         Decorator function that wraps index computation functions
@@ -1048,8 +1239,8 @@ def xarray_adapter(
                 calculation_metadata_keys=calculation_metadata_keys,
                 index_display_name=index_display_name,
                 additional_input_names=additional_input_names,
+                skipna=skipna,
             )
-
         return wrapper
 
     return decorator

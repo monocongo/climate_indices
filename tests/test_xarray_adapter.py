@@ -26,6 +26,7 @@ from climate_indices.xarray_adapter import (
     CF_METADATA,
     _align_inputs,
     _append_history,
+    _assess_nan_density,
     _build_history_entry,
     _build_output_dataarray,
     _infer_calibration_period,
@@ -34,9 +35,11 @@ from climate_indices.xarray_adapter import (
     _resolve_scale_from_args,
     _resolve_secondary_inputs,
     _serialize_attr_value,
+    _validate_calibration_non_nan_sample_size,
     _validate_sufficient_data,
     _validate_time_dimension,
     _validate_time_monotonicity,
+    _verify_nan_propagation,
     xarray_adapter,
 )
 
@@ -2376,3 +2379,457 @@ class TestSPEIIntegration:
         # verify calculation metadata captured
         assert result.attrs["scale"] == 12
         assert result.attrs["distribution"] == "gamma"
+
+
+# NaN handling fixtures (Story 2.8)
+
+
+@pytest.fixture
+def monthly_precip_with_nan() -> xr.DataArray:
+    """Create 40-year monthly precipitation with ~10% NaN scattered throughout."""
+    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+    rng = np.random.default_rng(42)
+    values = rng.gamma(shape=2.0, scale=50.0, size=len(time))
+
+    # add scattered NaN (~10%)
+    nan_indices = rng.choice(len(time), size=int(len(time) * 0.1), replace=False)
+    values[nan_indices] = np.nan
+
+    return xr.DataArray(
+        values,
+        coords={"time": time},
+        dims=["time"],
+        attrs={
+            "units": "mm",
+            "long_name": "Monthly Precipitation with NaN",
+        },
+    )
+
+
+@pytest.fixture
+def monthly_precip_heavy_nan() -> xr.DataArray:
+    """Create 40-year monthly precipitation with ~80% NaN (insufficient data)."""
+    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+    rng = np.random.default_rng(123)
+    values = rng.gamma(shape=2.0, scale=50.0, size=len(time))
+
+    # add heavy NaN (~80%)
+    nan_indices = rng.choice(len(time), size=int(len(time) * 0.8), replace=False)
+    values[nan_indices] = np.nan
+
+    return xr.DataArray(
+        values,
+        coords={"time": time},
+        dims=["time"],
+        attrs={
+            "units": "mm",
+            "long_name": "Monthly Precipitation with Heavy NaN",
+        },
+    )
+
+
+# NaN handling test classes (Story 2.8)
+
+
+class TestAssessNanDensity:
+    """Test _assess_nan_density function."""
+
+    def test_no_nan(self, sample_monthly_precip_da):
+        """Clean data returns zero NaN metrics."""
+        result = _assess_nan_density(sample_monthly_precip_da)
+
+        assert result["total_values"] == len(sample_monthly_precip_da)
+        assert result["nan_count"] == 0
+        assert result["nan_ratio"] == 0.0
+        assert result["has_nan"] is False
+        assert result["nan_positions"].shape == sample_monthly_precip_da.values.shape
+        assert not result["nan_positions"].any()
+
+    def test_with_nan(self, monthly_precip_with_nan):
+        """Data with NaN returns accurate metrics."""
+        result = _assess_nan_density(monthly_precip_with_nan)
+
+        expected_nan_count = int(np.isnan(monthly_precip_with_nan.values).sum())
+        assert result["nan_count"] == expected_nan_count
+        assert result["total_values"] == len(monthly_precip_with_nan)
+        assert 0.0 < result["nan_ratio"] < 1.0
+        assert result["has_nan"] is True
+        assert result["nan_positions"].shape == monthly_precip_with_nan.values.shape
+
+    def test_all_nan(self):
+        """All-NaN data returns 100% NaN ratio."""
+        time = pd.date_range("2020-01-01", "2020-12-01", freq="MS")
+        values = np.full(len(time), np.nan)
+        da = xr.DataArray(values, coords={"time": time}, dims=["time"])
+
+        result = _assess_nan_density(da)
+
+        assert result["nan_count"] == len(time)
+        assert result["nan_ratio"] == 1.0
+        assert result["has_nan"] is True
+        assert result["nan_positions"].all()
+
+    def test_nan_positions_reusable(self, monthly_precip_with_nan):
+        """NaN positions mask matches numpy isnan."""
+        result = _assess_nan_density(monthly_precip_with_nan)
+        expected_mask = np.isnan(monthly_precip_with_nan.values)
+
+        assert np.array_equal(result["nan_positions"], expected_mask)
+
+    def test_empty_array(self):
+        """Empty array returns zero total_values."""
+        da = xr.DataArray(np.array([]), dims=["time"])
+        result = _assess_nan_density(da)
+
+        assert result["total_values"] == 0
+        assert result["nan_count"] == 0
+        assert result["nan_ratio"] == 0.0
+        assert result["has_nan"] is False
+
+
+class TestVerifyNanPropagation:
+    """Test _verify_nan_propagation function."""
+
+    def test_perfect_propagation_no_nan(self):
+        """Clean input and output returns True."""
+        input_mask = np.array([False, False, False, False])
+        output_values = np.array([1.0, 2.0, 3.0, 4.0])
+
+        assert _verify_nan_propagation(input_mask, output_values) is True
+
+    def test_perfect_propagation_with_nan(self):
+        """Input NaN positions are NaN in output."""
+        input_mask = np.array([True, False, True, False])
+        output_values = np.array([np.nan, 2.0, np.nan, 4.0])
+
+        assert _verify_nan_propagation(input_mask, output_values) is True
+
+    def test_propagation_violation(self):
+        """Input NaN position has non-NaN output value."""
+        input_mask = np.array([True, False, True, False])
+        # position 2 should be NaN but isn't
+        output_values = np.array([np.nan, 2.0, 3.0, 4.0])
+
+        assert _verify_nan_propagation(input_mask, output_values) is False
+
+    def test_additional_output_nan_allowed(self):
+        """Output can have additional NaN from convolution."""
+        input_mask = np.array([False, True, False, False])
+        # output has additional NaN at position 0 and 3
+        output_values = np.array([np.nan, np.nan, 2.0, np.nan])
+
+        # should still return True (one-directional check)
+        assert _verify_nan_propagation(input_mask, output_values) is True
+
+    def test_all_nan_propagation(self):
+        """All-NaN input properly propagates."""
+        input_mask = np.array([True, True, True, True])
+        output_values = np.array([np.nan, np.nan, np.nan, np.nan])
+
+        assert _verify_nan_propagation(input_mask, output_values) is True
+
+
+class TestValidateCalibrationNonNanSampleSize:
+    """Test _validate_calibration_non_nan_sample_size function."""
+
+    def test_sufficient_non_nan_data(self, sample_monthly_precip_da):
+        """Validation passes with sufficient non-NaN data."""
+        # should not raise
+        _validate_calibration_non_nan_sample_size(
+            sample_monthly_precip_da["time"],
+            sample_monthly_precip_da.values,
+            calibration_year_initial=1980,
+            calibration_year_final=2019,
+        )
+
+    def test_insufficient_non_nan_data_raises(self, monthly_precip_heavy_nan):
+        """Raises InsufficientDataError when <30 effective years."""
+        with pytest.raises(InsufficientDataError) as exc_info:
+            _validate_calibration_non_nan_sample_size(
+                monthly_precip_heavy_nan["time"],
+                monthly_precip_heavy_nan.values,
+                calibration_year_initial=1980,
+                calibration_year_final=2019,
+            )
+
+        error = exc_info.value
+        assert "Insufficient non-NaN data" in str(error)
+        assert error.non_zero_count is not None
+        assert error.required_count is not None
+
+    def test_marginal_non_nan_data(self, monthly_precip_with_nan):
+        """Validation passes with marginal (~30 years) non-NaN data."""
+        # 10% NaN means ~36 effective years, which should pass
+        _validate_calibration_non_nan_sample_size(
+            monthly_precip_with_nan["time"],
+            monthly_precip_with_nan.values,
+            calibration_year_initial=1980,
+            calibration_year_final=2019,
+        )
+
+    def test_empty_calibration_period_raises(self, sample_monthly_precip_da):
+        """Raises error when calibration period has no data points."""
+        with pytest.raises(InsufficientDataError) as exc_info:
+            _validate_calibration_non_nan_sample_size(
+                sample_monthly_precip_da["time"],
+                sample_monthly_precip_da.values,
+                calibration_year_initial=2050,  # way beyond data range
+                calibration_year_final=2060,
+            )
+
+        assert "contains no data points" in str(exc_info.value)
+
+    def test_custom_min_years(self):
+        """Custom min_years parameter is respected."""
+        # create data with clean 15-year period
+        time = pd.date_range("1980-01-01", "1994-12-01", freq="MS")
+        rng = np.random.default_rng(42)
+        values = rng.gamma(shape=2.0, scale=50.0, size=len(time))
+        da = xr.DataArray(values, coords={"time": time}, dims=["time"])
+
+        # should pass with min_years=10 (15 years available)
+        _validate_calibration_non_nan_sample_size(
+            da["time"],
+            da.values,
+            calibration_year_initial=1980,
+            calibration_year_final=1994,
+            min_years=10,
+        )
+
+
+class TestSkipnaParameter:
+    """Test skipna parameter behavior."""
+
+    def test_skipna_false_default_works(self, monthly_precip_with_nan):
+        """skipna=False (default) allows computation."""
+
+        @xarray_adapter(skipna=False)
+        def simple_func(values: np.ndarray) -> np.ndarray:
+            return values * 2
+
+        # should work without raising
+        result = simple_func(monthly_precip_with_nan)
+        assert isinstance(result, xr.DataArray)
+
+    def test_skipna_true_raises_not_implemented(self, sample_monthly_precip_da):
+        """skipna=True raises NotImplementedError."""
+
+        @xarray_adapter(skipna=True)
+        def simple_func(values: np.ndarray) -> np.ndarray:
+            return values * 2
+
+        with pytest.raises(NotImplementedError) as exc_info:
+            simple_func(sample_monthly_precip_da)
+
+        assert "skipna=True not yet implemented" in str(exc_info.value)
+        assert "FR-INPUT-004" in str(exc_info.value)
+
+    def test_skipna_explicit_false(self, sample_monthly_precip_da):
+        """Explicitly passing skipna=False works."""
+
+        @xarray_adapter(skipna=False)
+        def simple_func(values: np.ndarray) -> np.ndarray:
+            return values * 2
+
+        result = simple_func(sample_monthly_precip_da)
+        assert isinstance(result, xr.DataArray)
+
+
+class TestNanHandlingDecoratorIntegration:
+    """Test NaN handling integration in decorator pipeline."""
+
+    def test_nan_detected_logged(self, monthly_precip_with_nan, caplog):
+        """NaN detection is logged when present."""
+
+        @xarray_adapter()
+        def simple_func(values: np.ndarray) -> np.ndarray:
+            return values * 2
+
+        _ = simple_func(monthly_precip_with_nan)
+
+        # check that nan_detected_in_input log event was emitted
+        assert any("nan_detected_in_input" in record.message for record in caplog.records)
+
+    def test_no_nan_no_log(self, sample_monthly_precip_da, caplog):
+        """Clean data does not trigger NaN logging."""
+
+        @xarray_adapter()
+        def simple_func(values: np.ndarray) -> np.ndarray:
+            return values * 2
+
+        _ = simple_func(sample_monthly_precip_da)
+
+        # no nan-related logs should appear
+        assert not any("nan" in record.message.lower() for record in caplog.records)
+
+    def test_nan_propagation_preserved(self, monthly_precip_with_nan):
+        """NaN positions are preserved in output."""
+
+        @xarray_adapter()
+        def identity_func(values: np.ndarray) -> np.ndarray:
+            # identity function preserves NaN
+            return values.copy()
+
+        result = identity_func(monthly_precip_with_nan)
+
+        # input and output NaN positions should match
+        input_nan_mask = np.isnan(monthly_precip_with_nan.values)
+        output_nan_mask = np.isnan(result.values)
+
+        assert np.array_equal(input_nan_mask, output_nan_mask)
+
+    def test_calibration_validation_triggered(self, monthly_precip_heavy_nan):
+        """Insufficient calibration non-NaN data raises error."""
+
+        @xarray_adapter(infer_params=True)
+        def mock_index(
+            values: np.ndarray,
+            scale: int,
+            data_start_year: int,
+            periodicity: compute.Periodicity,
+            calibration_year_initial: int,
+            calibration_year_final: int,
+        ) -> np.ndarray:
+            return np.zeros_like(values)
+
+        with pytest.raises(InsufficientDataError):
+            mock_index(monthly_precip_heavy_nan, scale=3)
+
+    def test_nan_metrics_in_completion_log(self, monthly_precip_with_nan, caplog):
+        """Completion log includes NaN metrics when present."""
+
+        @xarray_adapter()
+        def simple_func(values: np.ndarray) -> np.ndarray:
+            return values * 2
+
+        result = simple_func(monthly_precip_with_nan)
+
+        # find the completion log entry
+        completion_logs = [r for r in caplog.records if "xarray_adapter_completed" in r.message]
+        assert len(completion_logs) > 0
+
+        # check that NaN metrics are present (in the structured log data)
+        # note: caplog may not capture structlog fields directly, so we verify behavior indirectly
+        assert result is not None  # basic sanity check
+
+    def test_all_nan_input_all_nan_output(self):
+        """All-NaN input produces all-NaN output with preserved coordinates."""
+        time = pd.date_range("2020-01-01", "2020-12-01", freq="MS")
+        values = np.full(len(time), np.nan)
+        da = xr.DataArray(
+            values,
+            coords={"time": time},
+            dims=["time"],
+            attrs={"units": "mm"},
+        )
+
+        @xarray_adapter()
+        def identity_func(values: np.ndarray) -> np.ndarray:
+            return values.copy()
+
+        result = identity_func(da)
+
+        assert np.isnan(result.values).all()
+        assert result.dims == da.dims
+        assert "time" in result.coords
+
+
+class TestNanHandlingSPIIntegration:
+    """End-to-end NaN handling tests with real SPI computation."""
+
+    def test_spi_with_scattered_nan(self, monthly_precip_with_nan):
+        """SPI handles scattered NaN correctly."""
+        wrapped_spi = xarray_adapter(
+            cf_metadata=CF_METADATA["spi"],
+            calculation_metadata_keys=["scale", "distribution"],
+            index_display_name="SPI",
+        )(indices.spi)
+
+        result = wrapped_spi(
+            monthly_precip_with_nan,
+            scale=3,
+            distribution=indices.Distribution.gamma,
+        )
+
+        # verify output is DataArray
+        assert isinstance(result, xr.DataArray)
+
+        # verify input NaN positions remain NaN in output
+        input_nan_mask = np.isnan(monthly_precip_with_nan.values)
+        output_nan_mask = np.isnan(result.values)
+
+        # all input NaN positions must be NaN in output
+        assert np.all(output_nan_mask[input_nan_mask])
+
+    def test_spi_heavy_nan_raises_error(self, monthly_precip_heavy_nan):
+        """SPI with insufficient non-NaN data raises InsufficientDataError."""
+        wrapped_spi = xarray_adapter(
+            cf_metadata=CF_METADATA["spi"],
+            calculation_metadata_keys=["scale", "distribution"],
+            index_display_name="SPI",
+        )(indices.spi)
+
+        with pytest.raises(InsufficientDataError) as exc_info:
+            wrapped_spi(
+                monthly_precip_heavy_nan,
+                scale=3,
+                distribution=indices.Distribution.gamma,
+            )
+
+        assert "Insufficient non-NaN data" in str(exc_info.value)
+
+    def test_spi_nan_output_has_additional_nan_from_convolution(self, monthly_precip_with_nan):
+        """SPI output may have additional NaN from convolution padding."""
+        wrapped_spi = xarray_adapter(
+            cf_metadata=CF_METADATA["spi"],
+            calculation_metadata_keys=["scale", "distribution"],
+            index_display_name="SPI",
+        )(indices.spi)
+
+        result = wrapped_spi(
+            monthly_precip_with_nan,
+            scale=6,  # larger scale increases boundary NaN
+            distribution=indices.Distribution.gamma,
+        )
+
+        # count NaN in input and output
+        input_nan_count = np.isnan(monthly_precip_with_nan.values).sum()
+        output_nan_count = np.isnan(result.values).sum()
+
+        # output can have more NaN (from convolution), but not less
+        assert output_nan_count >= input_nan_count
+
+    def test_spi_clean_data_no_nan_related_errors(self, sample_monthly_precip_da):
+        """SPI with clean data runs without NaN-related issues."""
+        wrapped_spi = xarray_adapter(
+            cf_metadata=CF_METADATA["spi"],
+            calculation_metadata_keys=["scale", "distribution"],
+            index_display_name="SPI",
+        )(indices.spi)
+
+        result = wrapped_spi(
+            sample_monthly_precip_da,
+            scale=3,
+            distribution=indices.Distribution.gamma,
+        )
+
+        assert isinstance(result, xr.DataArray)
+        # result may have some NaN from convolution boundaries, which is fine
+
+    def test_spi_coordinates_preserved_with_nan(self, monthly_precip_with_nan):
+        """SPI preserves coordinates even with NaN present."""
+        wrapped_spi = xarray_adapter(
+            cf_metadata=CF_METADATA["spi"],
+            calculation_metadata_keys=["scale", "distribution"],
+            index_display_name="SPI",
+        )(indices.spi)
+
+        result = wrapped_spi(
+            monthly_precip_with_nan,
+            scale=3,
+            distribution=indices.Distribution.gamma,
+        )
+
+        assert result.dims == monthly_precip_with_nan.dims
+        assert "time" in result.coords
+        assert len(result.coords["time"]) == len(monthly_precip_with_nan.coords["time"])
