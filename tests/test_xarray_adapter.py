@@ -17,9 +17,14 @@ import pytest
 import xarray as xr
 
 from climate_indices import compute, indices
-from climate_indices.exceptions import CoordinateValidationError, InsufficientDataError
+from climate_indices.exceptions import (
+    CoordinateValidationError,
+    InputAlignmentWarning,
+    InsufficientDataError,
+)
 from climate_indices.xarray_adapter import (
     CF_METADATA,
+    _align_inputs,
     _append_history,
     _build_history_entry,
     _build_output_dataarray,
@@ -27,6 +32,7 @@ from climate_indices.xarray_adapter import (
     _infer_data_start_year,
     _infer_periodicity,
     _resolve_scale_from_args,
+    _resolve_secondary_inputs,
     _serialize_attr_value,
     _validate_sufficient_data,
     _validate_time_dimension,
@@ -235,6 +241,50 @@ def short_monthly_da() -> xr.DataArray:
         coords={"time": time},
         dims=["time"],
         attrs={"units": "mm"},
+    )
+
+
+@pytest.fixture
+def sample_monthly_pet_da() -> xr.DataArray:
+    """Create a 1D monthly PET DataArray matching precip fixture (40 years, 1980-2019)."""
+    # 40 years * 12 months = 480 values, matching sample_monthly_precip_da
+    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+    # generate random PET values (typically higher than precip)
+    rng = np.random.default_rng(100)
+    values = rng.gamma(shape=2.5, scale=60.0, size=len(time))
+
+    return xr.DataArray(
+        values,
+        coords={"time": time},
+        dims=["time"],
+        attrs={
+            "units": "mm",
+            "long_name": "Monthly Potential Evapotranspiration",
+        },
+    )
+
+
+@pytest.fixture
+def sample_monthly_pet_offset_da() -> xr.DataArray:
+    """Create a 1D monthly PET DataArray with offset time range (1985-2024).
+
+    This fixture overlaps with sample_monthly_precip_da (1980-2019) only
+    during 1985-2019, useful for testing alignment behavior.
+    """
+    # 40 years offset by 5 years: 1985-2024
+    time = pd.date_range("1985-01-01", "2024-12-01", freq="MS")
+    # generate random PET values
+    rng = np.random.default_rng(101)
+    values = rng.gamma(shape=2.5, scale=60.0, size=len(time))
+
+    return xr.DataArray(
+        values,
+        coords={"time": time},
+        dims=["time"],
+        attrs={
+            "units": "mm",
+            "long_name": "Monthly Potential Evapotranspiration (Offset)",
+        },
     )
 
 
@@ -1866,3 +1916,447 @@ class TestCoordinateValidationIntegration:
             needs_params(non_monotonic_time_da)
 
         assert "not monotonically increasing" in str(exc_info.value).lower()
+
+
+class TestResolveSecondaryInputs:
+    """Test _resolve_secondary_inputs() helper function."""
+
+    def test_resolve_positional_argument(self):
+        """Resolve secondary input provided as positional argument."""
+
+        def spei_func(precip: np.ndarray, pet: np.ndarray, scale: int) -> np.ndarray:
+            return precip
+
+        precip_da = xr.DataArray([1, 2, 3])
+        pet_da = xr.DataArray([4, 5, 6])
+
+        resolved = _resolve_secondary_inputs(spei_func, (precip_da, pet_da, 3), {}, ["pet"])
+
+        assert "pet" in resolved
+        pos_index, value = resolved["pet"]
+        assert pos_index == 1
+        assert value is pet_da
+
+    def test_resolve_keyword_argument(self):
+        """Resolve secondary input provided as keyword argument."""
+
+        def spei_func(precip: np.ndarray, pet: np.ndarray, scale: int) -> np.ndarray:
+            return precip
+
+        precip_da = xr.DataArray([1, 2, 3])
+        pet_da = xr.DataArray([4, 5, 6])
+
+        resolved = _resolve_secondary_inputs(spei_func, (precip_da,), {"pet": pet_da, "scale": 3}, ["pet"])
+
+        assert "pet" in resolved
+        pos_index, value = resolved["pet"]
+        assert pos_index is None
+        assert value is pet_da
+
+    def test_missing_parameter_not_resolved(self):
+        """Parameters not provided are not included in result."""
+
+        def spei_func(precip: np.ndarray, pet: np.ndarray, scale: int) -> np.ndarray:
+            return precip
+
+        precip_da = xr.DataArray([1, 2, 3])
+
+        resolved = _resolve_secondary_inputs(spei_func, (precip_da,), {"scale": 3}, ["pet"])
+
+        # pet not provided, should not be in resolved dict
+        assert "pet" not in resolved
+
+    def test_multiple_secondaries(self):
+        """Resolve multiple secondary inputs."""
+
+        def multi_input(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
+            return a
+
+        a_da = xr.DataArray([1])
+        b_da = xr.DataArray([2])
+        c_da = xr.DataArray([3])
+
+        resolved = _resolve_secondary_inputs(multi_input, (a_da, b_da, c_da), {}, ["b", "c"])
+
+        assert len(resolved) == 2
+        assert resolved["b"] == (1, b_da)
+        assert resolved["c"] == (2, c_da)
+
+    def test_empty_additional_names(self):
+        """Empty additional_input_names returns empty dict."""
+
+        def simple_func(a: np.ndarray) -> np.ndarray:
+            return a
+
+        resolved = _resolve_secondary_inputs(simple_func, (xr.DataArray([1]),), {}, [])
+
+        assert resolved == {}
+
+    def test_parameter_not_in_signature(self):
+        """Parameters not in function signature are skipped."""
+
+        def simple_func(a: np.ndarray) -> np.ndarray:
+            return a
+
+        resolved = _resolve_secondary_inputs(simple_func, (xr.DataArray([1]),), {}, ["nonexistent"])
+
+        # nonexistent parameter should be skipped
+        assert "nonexistent" not in resolved
+
+
+class TestAlignInputs:
+    """Test _align_inputs() helper function."""
+
+    def test_identical_coordinates_no_warning(self, sample_monthly_precip_da, sample_monthly_pet_da):
+        """Aligning inputs with identical coordinates does not emit warning."""
+        secondaries = {"pet": sample_monthly_pet_da}
+
+        # use warnings module to capture warnings
+        import warnings
+
+        with warnings.catch_warnings(record=True) as warning_list:
+            warnings.simplefilter("always")
+            aligned_primary, aligned_secondaries = _align_inputs(sample_monthly_precip_da, secondaries, "time")
+
+        # no warnings should be emitted
+        assert len(warning_list) == 0
+
+        # outputs should match inputs (no trimming)
+        assert len(aligned_primary) == len(sample_monthly_precip_da)
+        assert len(aligned_secondaries["pet"]) == len(sample_monthly_pet_da)
+
+    def test_partial_overlap_emits_warning(self, sample_monthly_precip_da, sample_monthly_pet_offset_da):
+        """Aligning inputs with partial overlap emits InputAlignmentWarning."""
+        # precip: 1980-2019 (480 months)
+        # pet_offset: 1985-2024 (480 months)
+        # overlap: 1985-2019 (420 months)
+        secondaries = {"pet": sample_monthly_pet_offset_da}
+
+        with pytest.warns(InputAlignmentWarning) as warning_list:
+            aligned_primary, aligned_secondaries = _align_inputs(sample_monthly_precip_da, secondaries, "time")
+
+        # should emit exactly one warning
+        assert len(warning_list) == 1
+        warning = warning_list[0].message
+
+        # check warning attributes
+        assert warning.original_size == 480
+        assert warning.aligned_size == 420
+        assert warning.dropped_count == 60
+
+        # check aligned outputs
+        assert len(aligned_primary) == 420
+        assert len(aligned_secondaries["pet"]) == 420
+
+        # verify time range is the intersection (1985-2019)
+        assert pd.Timestamp(aligned_primary.time.values[0]).year == 1985
+        assert pd.Timestamp(aligned_primary.time.values[-1]).year == 2019
+
+    def test_empty_intersection_raises_error(self, sample_monthly_precip_da):
+        """Aligning inputs with no overlap raises CoordinateValidationError."""
+        # create PET with completely non-overlapping time range
+        time = pd.date_range("2025-01-01", "2030-12-01", freq="MS")
+        pet_no_overlap = xr.DataArray(
+            np.random.randn(len(time)),
+            coords={"time": time},
+            dims=["time"],
+        )
+
+        secondaries = {"pet": pet_no_overlap}
+
+        with pytest.raises(CoordinateValidationError) as exc_info:
+            _align_inputs(sample_monthly_precip_da, secondaries, "time")
+
+        assert "empty intersection" in str(exc_info.value).lower()
+        assert exc_info.value.coordinate_name == "time"
+        assert exc_info.value.reason == "empty_intersection_after_alignment"
+
+    def test_multiple_secondaries_aligned(self, sample_monthly_precip_da, sample_monthly_pet_da):
+        """Multiple secondary inputs are all aligned together."""
+        # create third input with identical coords
+        third_da = xr.DataArray(
+            np.random.randn(len(sample_monthly_precip_da)),
+            coords={"time": sample_monthly_precip_da.time},
+            dims=["time"],
+        )
+
+        secondaries = {"pet": sample_monthly_pet_da, "third": third_da}
+
+        aligned_primary, aligned_secondaries = _align_inputs(sample_monthly_precip_da, secondaries, "time")
+
+        # all should have same length
+        assert len(aligned_primary) == len(sample_monthly_precip_da)
+        assert len(aligned_secondaries["pet"]) == len(sample_monthly_precip_da)
+        assert len(aligned_secondaries["third"]) == len(sample_monthly_precip_da)
+
+    def test_empty_secondaries_returns_unchanged(self, sample_monthly_precip_da):
+        """Empty secondaries dict returns primary unchanged."""
+        aligned_primary, aligned_secondaries = _align_inputs(sample_monthly_precip_da, {}, "time")
+
+        assert aligned_primary is sample_monthly_precip_da
+        assert aligned_secondaries == {}
+
+    def test_alignment_preserves_attributes(self, sample_monthly_precip_da, sample_monthly_pet_da):
+        """Alignment preserves DataArray and coordinate attributes."""
+        secondaries = {"pet": sample_monthly_pet_da}
+
+        aligned_primary, aligned_secondaries = _align_inputs(sample_monthly_precip_da, secondaries, "time")
+
+        # check DataArray-level attrs preserved
+        assert aligned_primary.attrs["units"] == "mm"
+        assert aligned_primary.attrs["long_name"] == "Monthly Precipitation"
+        assert aligned_secondaries["pet"].attrs["units"] == "mm"
+
+
+class TestXarrayAdapterMultiInput:
+    """Test xarray_adapter decorator with multiple inputs (Story 3.1)."""
+
+    def test_two_dataarray_inputs_extracted(self, sample_monthly_precip_da, sample_monthly_pet_da):
+        """Decorator extracts values from both DataArray inputs."""
+
+        @xarray_adapter(additional_input_names=["pet"])
+        def spei_func(precip: np.ndarray, pet: np.ndarray, scale: int) -> np.ndarray:
+            # verify both inputs are numpy arrays
+            assert isinstance(precip, np.ndarray)
+            assert isinstance(pet, np.ndarray)
+            return precip - pet
+
+        result = spei_func(sample_monthly_precip_da, sample_monthly_pet_da, scale=3)
+
+        assert isinstance(result, xr.DataArray)
+        assert result.shape == sample_monthly_precip_da.shape
+
+    def test_alignment_applied_before_extraction(self, sample_monthly_precip_da, sample_monthly_pet_offset_da):
+        """Decorator aligns inputs before extracting values."""
+
+        @xarray_adapter(additional_input_names=["pet"])
+        def spei_func(precip: np.ndarray, pet: np.ndarray) -> np.ndarray:
+            # both should have same length after alignment
+            assert len(precip) == len(pet)
+            return precip - pet
+
+        with pytest.warns(InputAlignmentWarning):
+            result = spei_func(sample_monthly_precip_da, sample_monthly_pet_offset_da)
+
+        # result should match aligned size (1985-2019 = 420 months)
+        assert len(result) == 420
+
+    def test_numpy_secondary_passthrough(self, sample_monthly_precip_da):
+        """Numpy secondary inputs pass through without alignment."""
+
+        @xarray_adapter(additional_input_names=["threshold"])
+        def threshold_func(precip: np.ndarray, threshold: float) -> np.ndarray:
+            # threshold should remain a float, not be extracted
+            assert isinstance(threshold, (int, float))
+            return precip - threshold
+
+        result = threshold_func(sample_monthly_precip_da, threshold=100.0)
+
+        assert isinstance(result, xr.DataArray)
+        assert result.shape == sample_monthly_precip_da.shape
+
+    def test_mixed_dataarray_and_numpy_secondaries(self, sample_monthly_precip_da, sample_monthly_pet_da):
+        """Mixed DataArray and numpy secondaries handled correctly."""
+
+        @xarray_adapter(additional_input_names=["pet", "factor"])
+        def mixed_func(precip: np.ndarray, pet: np.ndarray, factor: float) -> np.ndarray:
+            assert isinstance(precip, np.ndarray)
+            assert isinstance(pet, np.ndarray)
+            assert isinstance(factor, (int, float))
+            return (precip - pet) * factor
+
+        result = mixed_func(sample_monthly_precip_da, sample_monthly_pet_da, factor=1.5)
+
+        assert isinstance(result, xr.DataArray)
+
+    def test_numpy_primary_passthrough_with_secondaries(self):
+        """Numpy primary input bypasses all multi-input logic."""
+
+        @xarray_adapter(additional_input_names=["pet"])
+        def spei_func(precip: np.ndarray, pet: np.ndarray) -> np.ndarray:
+            # verify both are numpy arrays in passthrough mode
+            assert isinstance(precip, np.ndarray)
+            assert isinstance(pet, np.ndarray)
+            return precip - pet
+
+        # numpy primary should pass through, no alignment
+        # provide both as numpy arrays
+        numpy_precip = np.random.randn(100)
+        numpy_pet = np.random.randn(100)
+        result = spei_func(numpy_precip, numpy_pet)
+
+        # result should be numpy array (passthrough)
+        assert isinstance(result, np.ndarray)
+
+    def test_secondary_as_kwarg(self, sample_monthly_precip_da, sample_monthly_pet_da):
+        """Secondary input provided as keyword argument."""
+
+        @xarray_adapter(additional_input_names=["pet"])
+        def spei_func(precip: np.ndarray, pet: np.ndarray, scale: int = 3) -> np.ndarray:
+            return precip - pet
+
+        result = spei_func(sample_monthly_precip_da, pet=sample_monthly_pet_da)
+
+        assert isinstance(result, xr.DataArray)
+        assert result.shape == sample_monthly_precip_da.shape
+
+    def test_cf_metadata_applied_with_multi_input(self, sample_monthly_precip_da, sample_monthly_pet_da):
+        """CF metadata correctly applied with multiple inputs."""
+
+        @xarray_adapter(
+            additional_input_names=["pet"],
+            cf_metadata={"long_name": "SPEI", "units": "dimensionless"},
+        )
+        def spei_func(precip: np.ndarray, pet: np.ndarray) -> np.ndarray:
+            return precip - pet
+
+        result = spei_func(sample_monthly_precip_da, sample_monthly_pet_da)
+
+        assert result.attrs["long_name"] == "SPEI"
+        assert result.attrs["units"] == "dimensionless"
+
+
+class TestCFMetadataRegistrySPEI:
+    """Test SPEI entry in CF_METADATA registry."""
+
+    def test_spei_metadata_exists(self):
+        """SPEI metadata entry exists in registry."""
+        assert "spei" in CF_METADATA
+
+    def test_spei_long_name(self):
+        """SPEI has correct long_name."""
+        assert CF_METADATA["spei"]["long_name"] == "Standardized Precipitation Evapotranspiration Index"
+
+    def test_spei_units(self):
+        """SPEI has correct units."""
+        assert CF_METADATA["spei"]["units"] == "dimensionless"
+
+    def test_spei_references(self):
+        """SPEI has references attribute."""
+        assert "references" in CF_METADATA["spei"]
+        assert "Vicente-Serrano" in CF_METADATA["spei"]["references"]
+        assert "2010" in CF_METADATA["spei"]["references"]
+
+    def test_spei_no_standard_name(self):
+        """SPEI does not have standard_name (not officially defined in CF)."""
+        # standard_name is optional, should not be present for SPEI
+        assert "standard_name" not in CF_METADATA["spei"]
+
+
+class TestSPEIIntegration:
+    """End-to-end integration tests for SPEI with real indices.spei() function."""
+
+    def test_spei_with_matching_dataarrays(self, sample_monthly_precip_da, sample_monthly_pet_da):
+        """SPEI computation with matching precipitation and PET DataArrays."""
+        # wrap real spei function with decorator
+        wrapped_spei = xarray_adapter(
+            additional_input_names=["pet_mm"],
+            cf_metadata=CF_METADATA["spei"],
+            calculation_metadata_keys=["scale", "distribution"],
+            index_display_name="SPEI",
+        )(indices.spei)
+
+        result = wrapped_spei(
+            sample_monthly_precip_da,
+            sample_monthly_pet_da,
+            scale=3,
+            distribution=indices.Distribution.gamma,
+        )
+
+        # verify output is DataArray with correct shape
+        assert isinstance(result, xr.DataArray)
+        assert result.shape == sample_monthly_precip_da.shape
+
+        # verify CF metadata applied
+        assert result.attrs["long_name"] == "Standardized Precipitation Evapotranspiration Index"
+        assert result.attrs["units"] == "dimensionless"
+
+    def test_spei_with_offset_dataarrays_aligned(
+        self, sample_monthly_precip_da, sample_monthly_pet_offset_da
+    ):
+        """SPEI computation aligns offset DataArrays correctly."""
+        wrapped_spei = xarray_adapter(
+            additional_input_names=["pet_mm"],
+            cf_metadata=CF_METADATA["spei"],
+            index_display_name="SPEI",
+        )(indices.spei)
+
+        with pytest.warns(InputAlignmentWarning) as warning_list:
+            result = wrapped_spei(
+                sample_monthly_precip_da,
+                sample_monthly_pet_offset_da,
+                scale=3,
+                distribution=indices.Distribution.gamma,
+            )
+
+        # verify warning was emitted
+        assert len(warning_list) == 1
+
+        # verify output reflects aligned size (1985-2019 = 420 months)
+        assert len(result) == 420
+
+    def test_spei_with_numpy_passthrough(self):
+        """SPEI with numpy inputs passes through unchanged."""
+        wrapped_spei = xarray_adapter(
+            additional_input_names=["pet_mm"],
+            cf_metadata=CF_METADATA["spei"],
+        )(indices.spei)
+
+        # generate numpy inputs
+        rng = np.random.default_rng(42)
+        precip_np = rng.gamma(shape=2.0, scale=50.0, size=480)
+        pet_np = rng.gamma(shape=2.5, scale=60.0, size=480)
+
+        result = wrapped_spei(
+            precip_np,
+            pet_np,
+            scale=3,
+            distribution=indices.Distribution.gamma,
+            data_start_year=1980,
+            periodicity=compute.Periodicity.monthly,
+            calibration_year_initial=1980,
+            calibration_year_final=2019,
+        )
+
+        # result should be numpy array (passthrough)
+        assert isinstance(result, np.ndarray)
+
+    def test_spei_history_entry(self, sample_monthly_precip_da, sample_monthly_pet_da):
+        """SPEI adds history entry to output."""
+        wrapped_spei = xarray_adapter(
+            additional_input_names=["pet_mm"],
+            cf_metadata=CF_METADATA["spei"],
+            calculation_metadata_keys=["scale"],
+            index_display_name="SPEI",
+        )(indices.spei)
+
+        result = wrapped_spei(
+            sample_monthly_precip_da,
+            sample_monthly_pet_da,
+            scale=6,
+            distribution=indices.Distribution.gamma,
+        )
+
+        # verify history attribute exists and contains expected content
+        assert "history" in result.attrs
+        history = result.attrs["history"]
+        assert "SPEI-6 calculated" in history
+        assert "climate_indices" in history
+
+    def test_spei_calculation_metadata(self, sample_monthly_precip_da, sample_monthly_pet_da):
+        """SPEI includes calculation metadata in output attributes."""
+        wrapped_spei = xarray_adapter(
+            additional_input_names=["pet_mm"],
+            calculation_metadata_keys=["scale", "distribution"],
+        )(indices.spei)
+
+        result = wrapped_spei(
+            sample_monthly_precip_da,
+            sample_monthly_pet_da,
+            scale=12,
+            distribution=indices.Distribution.gamma,
+        )
+
+        # verify calculation metadata captured
+        assert result.attrs["scale"] == 12
+        assert result.attrs["distribution"] == "gamma"

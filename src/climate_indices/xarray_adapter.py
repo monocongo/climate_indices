@@ -21,6 +21,7 @@ import copy
 import datetime
 import functools
 import inspect
+import warnings
 from collections.abc import Callable
 from enum import Enum, auto
 from typing import Any, TypedDict
@@ -32,6 +33,7 @@ import xarray as xr
 from climate_indices import compute
 from climate_indices.exceptions import (
     CoordinateValidationError,
+    InputAlignmentWarning,
     InputTypeError,
     InsufficientDataError,
 )
@@ -68,6 +70,17 @@ CF_METADATA: dict[str, CFAttributes] = {
             "Proceedings of the 8th Conference on Applied Climatology, "
             "17-22 January, Anaheim, CA. "
             "American Meteorological Society, Boston, MA, 179-184."
+        ),
+    },
+    "spei": {
+        "long_name": "Standardized Precipitation Evapotranspiration Index",
+        "units": "dimensionless",
+        "references": (
+            "Vicente-Serrano, S. M., Begueria, S., & Lopez-Moreno, J. I. (2010). "
+            "A Multiscalar Drought Index Sensitive to Global Warming: "
+            "The Standardized Precipitation Evapotranspiration Index. "
+            "Journal of Climate, 23(7), 1696-1718. "
+            "https://doi.org/10.1175/2009JCLI2909.1"
         ),
     },
 }
@@ -405,6 +418,144 @@ def _validate_sufficient_data(time_coord: xr.DataArray, scale: int) -> None:
         )
 
 
+def _resolve_secondary_inputs(
+    func: Callable[..., Any],
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    additional_input_names: list[str],
+) -> dict[str, tuple[int | None, Any]]:
+    """Resolve secondary input parameters from function arguments.
+
+    Uses function signature introspection to identify which parameters correspond
+    to additional inputs (e.g., "pet" for SPEI), and resolves their values from
+    the provided positional and keyword arguments.
+
+    Args:
+        func: The function being wrapped
+        args: Positional arguments passed to the function
+        kwargs: Keyword arguments passed to the function
+        additional_input_names: List of parameter names to resolve (e.g., ["pet"])
+
+    Returns:
+        Dict mapping parameter name to (positional_index | None, value).
+        positional_index is the position in args, or None if provided as kwarg.
+
+    Examples:
+        >>> def spei(precip, pet, scale): ...
+        >>> _resolve_secondary_inputs(spei, (precip_da, pet_da, 3), {}, ["pet"])
+        {"pet": (1, pet_da)}
+        >>> _resolve_secondary_inputs(spei, (precip_da,), {"pet": pet_da, "scale": 3}, ["pet"])
+        {"pet": (None, pet_da)}
+    """
+    if not additional_input_names:
+        return {}
+
+    sig = inspect.signature(func)
+    param_names = list(sig.parameters.keys())
+
+    resolved = {}
+
+    for name in additional_input_names:
+        if name not in sig.parameters:
+            # parameter not in function signature, skip
+            continue
+
+        # check if provided as keyword argument
+        if name in kwargs:
+            resolved[name] = (None, kwargs[name])
+            continue
+
+        # check if provided as positional argument
+        param_index = param_names.index(name)
+        if param_index < len(args):
+            resolved[name] = (param_index, args[param_index])
+
+    return resolved
+
+
+def _align_inputs(
+    primary: xr.DataArray,
+    secondaries: dict[str, xr.DataArray],
+    time_dim: str = "time",
+) -> tuple[xr.DataArray, dict[str, xr.DataArray]]:
+    """Align primary and secondary DataArrays using inner join on coordinates.
+
+    Ensures all input DataArrays share the same time coordinates by taking the
+    intersection of their time ranges. This is essential for multi-input indices
+    like SPEI where precipitation and PET must align.
+
+    Args:
+        primary: Primary input DataArray (e.g., precipitation)
+        secondaries: Dict mapping parameter names to secondary DataArrays (e.g., {"pet": pet_da})
+        time_dim: Name of the time dimension to align on (default: "time")
+
+    Returns:
+        Tuple of (aligned_primary, dict_of_aligned_secondaries)
+
+    Raises:
+        CoordinateValidationError: If alignment results in empty intersection (no overlapping time steps)
+
+    Warns:
+        InputAlignmentWarning: If alignment drops time steps from the primary input
+    """
+    if not secondaries:
+        # no secondaries to align, return primary unchanged
+        return primary, {}
+
+    # collect all DataArrays for alignment
+    all_arrays = [primary] + list(secondaries.values())
+
+    # align using inner join (intersection of coordinates)
+    aligned = xr.align(*all_arrays, join="inner")
+
+    # extract aligned arrays
+    aligned_primary = aligned[0]
+    aligned_secondaries = {name: aligned[i + 1] for i, name in enumerate(secondaries.keys())}
+
+    # check for empty intersection
+    if time_dim in aligned_primary.dims:
+        aligned_size = len(aligned_primary[time_dim])
+        original_size = len(primary[time_dim])
+
+        if aligned_size == 0:
+            raise CoordinateValidationError(
+                message=(
+                    f"Input alignment resulted in empty intersection on '{time_dim}' coordinate. "
+                    f"Primary input and secondary inputs have no overlapping time steps. "
+                    f"Check that your input time ranges overlap."
+                ),
+                coordinate_name=time_dim,
+                reason="empty_intersection_after_alignment",
+            )
+
+        # emit warning if data was dropped
+        if aligned_size < original_size:
+            dropped_count = original_size - aligned_size
+            warning_msg = (
+                f"Input alignment dropped {dropped_count} time step(s) from primary input. "
+                f"Original size: {original_size}, aligned size: {aligned_size}. "
+                f"Computation will use only the intersection of input time ranges."
+            )
+            logger.warning(
+                "input_alignment_dropped_data",
+                original_size=original_size,
+                aligned_size=aligned_size,
+                dropped_count=dropped_count,
+                time_dim=time_dim,
+            )
+            warnings.warn(
+                InputAlignmentWarning(
+                    message=warning_msg,
+                    original_size=original_size,
+                    aligned_size=aligned_size,
+                    dropped_count=dropped_count,
+                ),
+                stacklevel=3,
+            )
+
+    return aligned_primary, aligned_secondaries
+
+
 def _serialize_attr_value(value: Any) -> str | int | float | bool:
     """Serialize attribute values for xarray compatibility.
 
@@ -627,19 +778,21 @@ def xarray_adapter(
     infer_params: bool = True,
     calculation_metadata_keys: list[str] | tuple[str, ...] | None = None,
     index_display_name: str | None = None,
+    additional_input_names: list[str] | None = None,
 ) -> Callable[[Callable[..., np.ndarray[Any, Any]]], Callable[..., np.ndarray[Any, Any] | xr.DataArray]]:
     """Decorator factory that adapts NumPy index functions to accept xarray DataArrays.
 
-    This decorator implements the adapter contract: extract → infer → compute → rewrap → log.
+    This decorator implements the adapter contract: detect → [resolve → align] → extract → infer → compute → rewrap → log.
     It transparently handles both NumPy arrays (passthrough) and xarray DataArrays (extract,
-    compute with NumPy function, rewrap result).
+    compute with NumPy function, rewrap result). For multi-input functions, it aligns DataArrays
+    using inner join before computation.
 
     Args:
         cf_metadata: Optional dict of CF Convention metadata to apply to output DataArray.
             Keys should be CF attribute names (e.g., 'standard_name', 'long_name', 'units').
             These override conflicting attributes from the input DataArray.
         time_dim: Name of the time dimension in the input DataArray (default: "time").
-            Used for parameter inference.
+            Used for parameter inference and alignment.
         infer_params: If True, automatically infer missing parameters (data_start_year,
             periodicity, calibration_year_initial, calibration_year_final) from the time
             coordinate. Explicit parameter values always override inferred values.
@@ -650,6 +803,10 @@ def xarray_adapter(
         index_display_name: Optional display name for the climate index (e.g., "SPI")
             to include in the CF-compliant history attribute. If None, defaults to
             the uppercase function name.
+        additional_input_names: Optional list of parameter names for secondary inputs
+            (e.g., ["pet"] for SPEI). When provided, these inputs will be aligned with
+            the primary input using xr.align(join='inner') before computation. Only
+            DataArray secondaries are aligned; numpy secondaries pass through unchanged.
 
     Returns:
         Decorator function that wraps index computation functions
@@ -689,24 +846,68 @@ def xarray_adapter(
             if input_type == InputType.NUMPY:
                 return func(*args, **kwargs)
 
-            # xarray path: validate → extract → infer → compute → rewrap → log
+            # xarray path: detect → [resolve → align] → validate → extract → infer → compute → rewrap → log
             input_da = data
+
+            # resolve and align secondary inputs (Story 3.1)
+            modified_args = list(args)
+            modified_kwargs = dict(kwargs)
+
+            if additional_input_names:
+                # resolve secondary inputs from args/kwargs
+                resolved_secondaries = _resolve_secondary_inputs(func, args, kwargs, additional_input_names)
+
+                # filter to only DataArray secondaries for alignment
+                # (numpy secondaries pass through unchanged)
+                dataarray_secondaries = {
+                    name: value for name, (_, value) in resolved_secondaries.items() if isinstance(value, xr.DataArray)
+                }
+
+                if dataarray_secondaries:
+                    # align primary + DataArray secondaries
+                    aligned_primary, aligned_secondaries = _align_inputs(input_da, dataarray_secondaries, time_dim)
+
+                    # update input_da to use aligned primary
+                    input_da = aligned_primary
+
+                    # replace args[0] with aligned primary
+                    modified_args[0] = aligned_primary
+
+                    # replace aligned secondaries in args/kwargs
+                    for name, (pos_index, _) in resolved_secondaries.items():
+                        if name in aligned_secondaries:
+                            if pos_index is not None:
+                                # replace positional arg
+                                modified_args[pos_index] = aligned_secondaries[name]
+                            else:
+                                # replace kwarg
+                                modified_kwargs[name] = aligned_secondaries[name]
 
             # coordinate validation (Story 2.7)
             if infer_params:
                 _validate_time_dimension(input_da, time_dim)
                 time_coord = input_da[time_dim]
                 _validate_time_monotonicity(time_coord)
-                resolved_scale = _resolve_scale_from_args(func, args, kwargs)
+                resolved_scale = _resolve_scale_from_args(func, modified_args, modified_kwargs)
                 if resolved_scale is not None:
                     _validate_sufficient_data(time_coord, resolved_scale)
 
-            # extract numpy values
+            # extract numpy values from primary
             numpy_values = input_da.values
 
+            # extract numpy values from secondary DataArrays (if any)
+            if additional_input_names:
+                for name, (pos_index, value) in resolved_secondaries.items():
+                    if isinstance(value, xr.DataArray):
+                        # extract .values from aligned DataArray
+                        if pos_index is not None:
+                            modified_args[pos_index] = modified_args[pos_index].values
+                        else:
+                            modified_kwargs[name] = modified_kwargs[name].values
+
             # build kwargs for the wrapped function
-            # start with explicitly provided kwargs
-            call_kwargs = dict(kwargs)
+            # start with explicitly provided kwargs (including extracted secondaries)
+            call_kwargs = dict(modified_kwargs)
 
             # infer missing parameters if enabled and time dimension exists
             if infer_params and time_dim in input_da.dims:
@@ -718,7 +919,7 @@ def xarray_adapter(
                 # bind provided args/kwargs to see what's already specified
                 try:
                     # bind_partial allows missing parameters (we'll fill them)
-                    bound = sig.bind_partial(*args, **kwargs)
+                    bound = sig.bind_partial(*modified_args, **modified_kwargs)
                     bound.apply_defaults()
                     provided_params = set(bound.arguments.keys())
                 except TypeError:
@@ -743,7 +944,7 @@ def xarray_adapter(
 
             # call wrapped numpy function with extracted values
             # replace first arg (DataArray) with numpy values
-            numpy_args = (numpy_values,) + args[1:]
+            numpy_args = (numpy_values,) + tuple(modified_args[1:])
 
             # filter call_kwargs to only include params the function accepts
             sig = inspect.signature(func)

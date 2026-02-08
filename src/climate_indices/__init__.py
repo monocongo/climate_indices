@@ -2,7 +2,11 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
-from climate_indices.exceptions import ClimateIndicesError, ClimateIndicesWarning
+from climate_indices.exceptions import (
+    ClimateIndicesError,
+    ClimateIndicesWarning,
+    InputAlignmentWarning,
+)
 from climate_indices.logging_config import configure_logging
 from climate_indices.xarray_adapter import (
     CF_METADATA,
@@ -24,6 +28,7 @@ __all__ = [
     "ClimateIndicesError",
     "ClimateIndicesWarning",
     "configure_logging",
+    "InputAlignmentWarning",
     "InputType",
     "detect_input_type",
     "xarray_adapter",
