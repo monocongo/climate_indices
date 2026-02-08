@@ -9,6 +9,7 @@ This module tests Story 2.2 functionality:
 
 from __future__ import annotations
 
+import logging
 import re
 
 import numpy as np
@@ -3042,7 +3043,8 @@ class TestNanHandlingDecoratorIntegration:
         def simple_func(values: np.ndarray) -> np.ndarray:
             return values * 2
 
-        _ = simple_func(monthly_precip_with_nan)
+        with caplog.at_level(logging.INFO):
+            _ = simple_func(monthly_precip_with_nan)
 
         # check that nan_detected_in_input log event was emitted
         assert any("nan_detected_in_input" in record.message for record in caplog.records)
@@ -3099,7 +3101,8 @@ class TestNanHandlingDecoratorIntegration:
         def simple_func(values: np.ndarray) -> np.ndarray:
             return values * 2
 
-        result = simple_func(monthly_precip_with_nan)
+        with caplog.at_level(logging.INFO):
+            result = simple_func(monthly_precip_with_nan)
 
         # find the completion log entry
         completion_logs = [r for r in caplog.records if "xarray_adapter_completed" in r.message]
@@ -3562,3 +3565,44 @@ class TestDaskBackedArraySupport:
         # verify no NaN in middle of series (edges may have NaN from convolution)
         middle_slice = computed_result[100:400]
         assert not np.all(np.isnan(middle_slice.values))
+
+    def test_nan_handling_dask_path(self, dask_monthly_precip_1d):
+        """NaN handling preserves Dask backing and NaN positions."""
+        from dask.array import Array as DaskArray
+
+        # create data with NaN at specific positions
+        # compute to numpy, inject NaN, then re-chunk as Dask
+        numpy_values = dask_monthly_precip_1d.compute().values.copy()
+        numpy_values[10] = np.nan
+        numpy_values[50] = np.nan
+        numpy_values[100] = np.nan
+
+        data_with_nan = xr.DataArray(
+            numpy_values,
+            coords=dask_monthly_precip_1d.coords,
+            dims=dask_monthly_precip_1d.dims,
+            attrs=dask_monthly_precip_1d.attrs,
+            name=dask_monthly_precip_1d.name,
+        ).chunk({"time": -1})
+
+        # wrap SPI with xarray_adapter
+        wrapped_spi = xarray_adapter(
+            cf_metadata=CF_METADATA["spi"],
+            calculation_metadata_keys=["scale", "distribution"],
+            index_display_name="SPI",
+        )(indices.spi)
+
+        result = wrapped_spi(
+            data_with_nan,
+            scale=3,
+            distribution=indices.Distribution.gamma,
+        )
+
+        # verify result is still Dask-backed
+        assert isinstance(result.data, DaskArray)
+
+        # compute and verify NaN positions preserved
+        computed_result = result.compute()
+        assert np.isnan(computed_result.values[10])
+        assert np.isnan(computed_result.values[50])
+        assert np.isnan(computed_result.values[100])

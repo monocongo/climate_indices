@@ -948,7 +948,7 @@ def _validate_dask_chunks(data: xr.DataArray, time_dim: str) -> None:
         return
 
     # get chunks for time dimension
-    # data.chunks is a dict mapping dimension name to tuple of chunk sizes
+    # data.chunks is a tuple-of-tuples indexed by dimension position
     time_chunks = data.chunks[data.dims.index(time_dim)]
 
     # validate single chunk on time dimension
@@ -1480,28 +1480,20 @@ def xarray_adapter(
                 }
 
                 # collect input DataArrays for apply_ufunc in parameter order
-                # primary + resolved secondaries
+                # primary + aligned secondaries (reuse resolution from earlier in wrapper)
                 input_dataarrays = [input_da]
-                if additional_input_names:
-                    resolved_secondaries = _resolve_secondary_inputs(func, args, kwargs, additional_input_names)
-                    # get parameter order from signature
-                    param_names = list(sig.parameters.keys())
+                if additional_input_names and resolved_secondaries:
                     for name in additional_input_names:
-                        if name in resolved_secondaries:
-                            _, value = resolved_secondaries[name]
-                            if isinstance(value, xr.DataArray):
-                                # use aligned version from modified_args/modified_kwargs
-                                found = False
-                                for pos_idx, arg_val in enumerate(modified_args):
-                                    if pos_idx > 0 and isinstance(arg_val, xr.DataArray):
-                                        # check if this corresponds to the secondary
-                                        param_idx = param_names.index(name) if name in param_names else -1
-                                        if param_idx == pos_idx:
-                                            input_dataarrays.append(arg_val)
-                                            found = True
-                                            break
-                                if not found and name in modified_kwargs:
-                                    input_dataarrays.append(modified_kwargs[name])
+                        if name not in resolved_secondaries:
+                            continue
+                        pos_index, original_value = resolved_secondaries[name]
+                        if not isinstance(original_value, xr.DataArray):
+                            continue
+                        # pull the aligned DataArray from modified_args or modified_kwargs
+                        if pos_index is not None:
+                            input_dataarrays.append(modified_args[pos_index])
+                        else:
+                            input_dataarrays.append(modified_kwargs[name])
 
                 # create closure capturing valid_kwargs
                 def _numpy_func_wrapper(*numpy_arrays: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
