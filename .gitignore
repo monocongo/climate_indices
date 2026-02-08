@@ -84,3 +84,4 @@ _bmad/
 
 # Claude Code session data
 .claude/
+.codex/

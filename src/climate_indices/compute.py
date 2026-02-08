@@ -2,7 +2,7 @@
 Common classes and functions used to compute the various climate indices.
 """
 
-import logging
+import warnings
 from enum import Enum
 
 import numpy as np
@@ -11,6 +11,15 @@ import scipy.version
 from packaging.version import Version
 
 from climate_indices import lmoments, utils
+from climate_indices.exceptions import (
+    DistributionFittingError,
+    GoodnessOfFitWarning,
+    InsufficientDataError,
+    MissingDataWarning,
+    PearsonFittingError,
+    ShortCalibrationWarning,
+)
+from climate_indices.logging_config import get_logger
 
 # declare the function names that should be included in the public API for this module
 __all__ = [
@@ -28,8 +37,8 @@ __all__ = [
 # depending on the version of scipy we may need to use a workaround due to a bug in some versions of scipy
 _do_pearson3_workaround = Version(scipy.version.version) < Version("1.6.0")
 
-# Retrieve logger and set desired logging level
-_logger = utils.get_logger(__name__, logging.WARN)
+# module-level structlog logger
+_logger = get_logger(__name__)
 
 # Configuration constants for distribution fitting and validation
 # Minimum number of non-zero values required for Pearson Type III L-moments computation
@@ -39,29 +48,15 @@ MIN_NON_ZERO_VALUES_FOR_PEARSON = 4
 # Values above this percentage indicate systemic issues with the dataset
 HIGH_FAILURE_RATE_THRESHOLD = 0.8  # 80%
 
+# Data quality warning thresholds
+# Maximum acceptable proportion of missing data in calibration period
+MISSING_DATA_THRESHOLD = 0.20  # 20%
 
-# Custom exception classes for distribution fitting
-class DistributionFittingError(Exception):
-    """Base exception for distribution fitting failures."""
+# Minimum recommended calibration period length in years
+MIN_CALIBRATION_YEARS = 30
 
-    pass
-
-
-class InsufficientDataError(DistributionFittingError):
-    """Raised when there is insufficient data for distribution fitting."""
-
-    def __init__(self, message, non_zero_count=None, required_count=None):
-        super().__init__(message)
-        self.non_zero_count = non_zero_count
-        self.required_count = required_count
-
-
-class PearsonFittingError(DistributionFittingError):
-    """Raised when Pearson Type III distribution fitting fails."""
-
-    def __init__(self, message, underlying_error=None):
-        super().__init__(message)
-        self.underlying_error = underlying_error
+# Kolmogorov-Smirnov test p-value threshold for goodness-of-fit warnings
+GOODNESS_OF_FIT_P_VALUE_THRESHOLD = 0.05
 
 
 class DistributionFallbackStrategy:
@@ -76,7 +71,7 @@ class DistributionFallbackStrategy:
         """
         self.max_nan_percentage = max_nan_percentage
         self.high_failure_threshold = high_failure_threshold
-        self._logger = utils.get_logger(self.__class__.__name__, logging.WARN)
+        self._logger = get_logger(self.__class__.__name__)
 
     def should_fallback_from_excessive_nans(self, values: np.ndarray) -> bool:
         """Check if fallback is needed due to excessive NaN values."""
@@ -142,8 +137,8 @@ class Periodicity(Enum):
     def from_string(s):
         try:
             return Periodicity[s]
-        except KeyError:
-            raise ValueError(f"No periodicity enumeration corresponding to {s}")
+        except KeyError as err:
+            raise ValueError(f"No periodicity enumeration corresponding to {s}") from err
 
     def unit(self):
         if self.name == "monthly":
@@ -173,7 +168,12 @@ def _validate_array(
     if len(values.shape) == 1:
         if periodicity is None:
             message = "1-D input array requires a corresponding periodicity argument, none provided"
-            _logger.error(message)
+            _logger.error(
+                "validation_error",
+                operation="validate_array",
+                reason="missing_periodicity",
+                shape=str(values.shape),
+            )
             raise ValueError(message)
 
         elif periodicity is Periodicity.monthly:
@@ -188,7 +188,12 @@ def _validate_array(
 
         else:
             message = f"Unsupported periodicity argument: '{periodicity}'"
-            _logger.error(message)
+            _logger.error(
+                "validation_error",
+                operation="validate_array",
+                reason="unsupported_periodicity",
+                periodicity=str(periodicity),
+            )
             raise ValueError(message)
 
     elif (len(values.shape) != 2) or (values.shape[1] not in (12, 366)):
@@ -196,7 +201,12 @@ def _validate_array(
 
         # neither a 1-D nor a 2-D array with valid shape was passed in
         message = f"Invalid input array with shape: {values.shape}"
-        _logger.error(message)
+        _logger.error(
+            "validation_error",
+            operation="validate_array",
+            reason="invalid_shape",
+            shape=str(values.shape),
+        )
         raise ValueError(message)
 
     return values
@@ -257,7 +267,12 @@ def sum_to_scale(
 
 def _log_and_raise_shape_error(shape: tuple[int]):
     message = f"Invalid shape of input data array: {shape}"
-    _logger.error(message)
+    _logger.error(
+        "validation_error",
+        operation="validate_shape",
+        reason="invalid_shape",
+        shape=str(shape),
+    )
     raise ValueError(message)
 
 
@@ -335,6 +350,38 @@ def adjust_calibration_years(data_start_year, data_end_year, calibration_start_y
     return calibration_start_year, calibration_end_year
 
 
+def _summarize_array(arr: np.ndarray | None, name: str = "array") -> str:
+    """Summarize a numpy array for error messages.
+
+    For small arrays (≤12 elements), returns the full array representation.
+    For larger arrays, returns a summary with shape, min, max, mean, and nan count.
+
+    Args:
+        arr: The array to summarize, or None
+        name: Name to use in the summary (e.g., "alphas", "values")
+
+    Returns:
+        A string representation suitable for error messages
+    """
+    if arr is None:
+        return f"{name}=None"
+
+    if arr.size <= 12:
+        return f"{name}={arr}"
+
+    nan_count = np.sum(np.isnan(arr))
+    # use nanmin/nanmax/nanmean to avoid errors when all values are NaN
+    min_val = np.nanmin(arr) if not np.all(np.isnan(arr)) else np.nan
+    max_val = np.nanmax(arr) if not np.all(np.isnan(arr)) else np.nan
+    mean_val = np.nanmean(arr) if not np.all(np.isnan(arr)) else np.nan
+
+    return (
+        f"{name}: shape={arr.shape}, "
+        f"min={min_val:.4g}, max={max_val:.4g}, mean={mean_val:.4g}, "
+        f"nan_count={nan_count}/{arr.size}"
+    )
+
+
 def calculate_time_step_params(time_step_values):
     """
     Calculate Pearson Type III parameters for a time step's values.
@@ -365,7 +412,7 @@ def calculate_time_step_params(time_step_values):
         return probability_of_zero, params["loc"], params["scale"], params["skew"]
     except ValueError as e:
         message = f"L-moments fitting failed: {e}. Consider using Gamma distribution for this dataset."
-        raise PearsonFittingError(message, underlying_error=e)
+        raise PearsonFittingError(message, underlying_error=e) from e
 
 
 def pearson_parameters(
@@ -398,6 +445,14 @@ def pearson_parameters(
         returned array 3 :second Pearson Type III distribution parameter (scale)
         returned array 4: third Pearson Type III distribution parameter (skew)
     """
+    log = _logger.bind(
+        operation="pearson_parameters",
+        distribution="pearson3",
+        periodicity=str(periodicity),
+        calibration_period=f"{calibration_start_year}-{calibration_end_year}",
+    )
+    log.info("distribution_fitting_started")
+
     values = reshape_values(values, periodicity)
     time_steps_per_year = validate_values_shape(values)
     data_end_year = data_start_year + values.shape[0]
@@ -407,6 +462,10 @@ def pearson_parameters(
     calibration_begin_index = calibration_start_year - data_start_year
     calibration_end_index = (calibration_end_year - data_start_year) + 1
     calibration_values = values[calibration_begin_index:calibration_end_index, :]
+
+    # check calibration data quality and emit warnings if needed
+    _check_calibration_data_quality(calibration_values, calibration_start_year, calibration_end_year)
+
     probabilities_of_zero = np.zeros((time_steps_per_year,))
     locs = np.zeros((time_steps_per_year,))
     scales = np.zeros((time_steps_per_year,))
@@ -438,6 +497,10 @@ def pearson_parameters(
             context="pearson_parameters computation",
         )
 
+    # check goodness-of-fit and emit warning if poor
+    _check_goodness_of_fit_pearson(calibration_values, probabilities_of_zero, locs, scales, skews)
+
+    log.info("distribution_fitting_completed", output_shape=str(probabilities_of_zero.shape))
     return probabilities_of_zero, locs, scales, skews
 
 
@@ -622,7 +685,22 @@ def _pearson_fit(
         trace_mask = np.logical_and((values < 0.0005), (probabilities_of_zero <= 0.0))
 
         # get the Pearson Type III cumulative density function value
-        values = scipy.stats.pearson3.cdf(values, skew, loc, scale)
+        try:
+            values = scipy.stats.pearson3.cdf(values, skew, loc, scale)
+        except (ValueError, RuntimeError, FloatingPointError) as e:
+            raise DistributionFittingError(
+                f"Pearson Type III distribution CDF computation failed: {e}",
+                distribution_name="pearson3",
+                input_shape=values.shape,
+                parameters={
+                    "skew": _summarize_array(skew, "skew"),
+                    "loc": _summarize_array(loc, "loc"),
+                    "scale": _summarize_array(scale, "scale"),
+                    "values": _summarize_array(values, "values"),
+                },
+                suggestion="Try using gamma distribution instead",
+                underlying_error=e,
+            ) from e
 
         # turn zero, trace, or minimum values either into either zero
         # or minimum value based on the probability of zero
@@ -647,7 +725,22 @@ def _pearson_fit(
             # of a normal distribution are less than or equal to the computed
             # probabilities, as determined by the normal distribution's
             # quantile (or inverse cumulative distribution) function
-            fitted_values = scipy.stats.norm.ppf(probabilities)
+            try:
+                fitted_values = scipy.stats.norm.ppf(probabilities)
+            except (ValueError, RuntimeError, FloatingPointError) as e:
+                raise DistributionFittingError(
+                    f"Normal distribution inverse CDF (ppf) computation failed during Pearson transformation: {e}",
+                    distribution_name="pearson3",
+                    input_shape=probabilities.shape,
+                    parameters={
+                        "probabilities": _summarize_array(probabilities, "probabilities"),
+                        "skew": _summarize_array(skew, "skew"),
+                        "loc": _summarize_array(loc, "loc"),
+                        "scale": _summarize_array(scale, "scale"),
+                    },
+                    suggestion="Try using gamma distribution instead",
+                    underlying_error=e,
+                ) from e
 
         else:
             fitted_values = values
@@ -699,6 +792,13 @@ def transform_fitted_pearson(
              and shape of the input array
     :rtype: numpy.ndarray of floats
     """
+    log = _logger.bind(
+        operation="transform_fitted_pearson",
+        distribution="pearson3",
+        periodicity=str(periodicity),
+        input_shape=str(values.shape),
+    )
+    log.info("distribution_transform_started")
 
     # sanity check for the fitting parameters arguments
     pearson_param_args = [probabilities_of_zero, locs, scales, skews]
@@ -741,7 +841,199 @@ def transform_fitted_pearson(
     # fit each value to the Pearson Type III distribution
     values = _pearson_fit(values, probabilities_of_zero, skews, locs, scales)
 
+    log.info("distribution_transform_completed", output_shape=str(values.shape))
     return values
+
+
+def _check_calibration_data_quality(
+    calibration_values: np.ndarray,
+    calibration_start_year: int,
+    calibration_end_year: int,
+) -> None:
+    """
+    Check calibration period data quality and emit warnings if issues are detected.
+
+    Emits warnings for:
+    1. Short calibration period (< MIN_CALIBRATION_YEARS)
+    2. Excessive missing data (> MISSING_DATA_THRESHOLD)
+
+    :param calibration_values: Calibration data array with shape (years, time_steps)
+    :param calibration_start_year: Start year of calibration period
+    :param calibration_end_year: End year of calibration period (inclusive)
+    """
+    # check calibration period length
+    actual_years = (calibration_end_year - calibration_start_year) + 1
+    if actual_years < MIN_CALIBRATION_YEARS:
+        message = (
+            f"Calibration period is {actual_years} years, which is shorter than the "
+            f"recommended minimum of {MIN_CALIBRATION_YEARS} years. "
+            f"Shorter periods may not capture the full range of climate variability."
+        )
+        warning = ShortCalibrationWarning(
+            message,
+            actual_years=actual_years,
+            required_years=MIN_CALIBRATION_YEARS,
+        )
+        warnings.warn(warning, stacklevel=3)
+
+    # check for excessive missing data
+    total_values = calibration_values.size
+    if total_values > 0:
+        missing_count = np.count_nonzero(np.isnan(calibration_values))
+        missing_ratio = missing_count / total_values
+        if missing_ratio > MISSING_DATA_THRESHOLD:
+            message = (
+                f"Calibration period has {missing_ratio:.1%} missing data, which exceeds the "
+                f"recommended threshold of {MISSING_DATA_THRESHOLD:.1%}. High missing data rates "
+                f"may reduce the reliability of distribution fitting."
+            )
+            warning = MissingDataWarning(
+                message,
+                missing_ratio=missing_ratio,
+                threshold=MISSING_DATA_THRESHOLD,
+            )
+            warnings.warn(warning, stacklevel=3)
+
+
+def _check_goodness_of_fit_gamma(
+    calibration_values: np.ndarray,
+    alphas: np.ndarray,
+    betas: np.ndarray,
+) -> None:
+    """
+    Check goodness-of-fit for gamma distribution and emit aggregated warning if poor.
+
+    Performs Kolmogorov-Smirnov tests for each time step and aggregates
+    poor fits into a single warning to avoid flooding users with warnings.
+
+    :param calibration_values: Calibration data with shape (years, time_steps)
+    :param alphas: Shape parameters for gamma distribution
+    :param betas: Scale parameters for gamma distribution
+    """
+    time_steps = calibration_values.shape[1]
+    poor_fit_steps = []
+
+    for time_step_index in range(time_steps):
+        time_step_values = calibration_values[:, time_step_index]
+        # remove NaN values for KS test
+        valid_values = time_step_values[~np.isnan(time_step_values)]
+
+        if len(valid_values) > 0:
+            alpha = alphas[time_step_index]
+            beta = betas[time_step_index]
+
+            # skip if parameters are invalid
+            if not (np.isfinite(alpha) and np.isfinite(beta) and alpha > 0 and beta > 0):
+                continue
+
+            # perform Kolmogorov-Smirnov test
+            try:
+                ks_statistic, p_value = scipy.stats.kstest(
+                    valid_values,
+                    lambda x, a=alpha, s=beta: scipy.stats.gamma.cdf(x, a=a, scale=s),
+                )
+                if p_value < GOODNESS_OF_FIT_P_VALUE_THRESHOLD:
+                    poor_fit_steps.append((time_step_index, p_value))
+            except Exception:
+                # ignore fitting errors during goodness-of-fit check
+                continue
+
+    if poor_fit_steps:
+        # show up to 5 examples
+        examples = poor_fit_steps[:5]
+        example_text = ", ".join([f"step {idx} (p={p:.4f})" for idx, p in examples])
+        if len(poor_fit_steps) > 5:
+            example_text += f", and {len(poor_fit_steps) - 5} more"
+
+        message = (
+            f"Gamma distribution shows poor goodness-of-fit for {len(poor_fit_steps)} of "
+            f"{time_steps} time steps (p < {GOODNESS_OF_FIT_P_VALUE_THRESHOLD}). "
+            f"Examples: {example_text}. Consider using a different distribution or "
+            f"investigating data quality issues."
+        )
+        warning = GoodnessOfFitWarning(
+            message,
+            distribution_name="gamma",
+            threshold=GOODNESS_OF_FIT_P_VALUE_THRESHOLD,
+            poor_fit_count=len(poor_fit_steps),
+            total_steps=time_steps,
+        )
+        warnings.warn(warning, stacklevel=3)
+
+
+def _check_goodness_of_fit_pearson(
+    calibration_values: np.ndarray,
+    probabilities_of_zero: np.ndarray,
+    locs: np.ndarray,
+    scales: np.ndarray,
+    skews: np.ndarray,
+) -> None:
+    """
+    Check goodness-of-fit for Pearson Type III distribution and emit aggregated warning if poor.
+
+    Performs Kolmogorov-Smirnov tests for each time step and aggregates
+    poor fits into a single warning to avoid flooding users with warnings.
+
+    :param calibration_values: Calibration data with shape (years, time_steps)
+    :param probabilities_of_zero: Probability of zero for each time step
+    :param locs: Location parameters for Pearson Type III distribution
+    :param scales: Scale parameters for Pearson Type III distribution
+    :param skews: Skewness parameters for Pearson Type III distribution
+    """
+    time_steps = calibration_values.shape[1]
+    poor_fit_steps = []
+
+    for time_step_index in range(time_steps):
+        time_step_values = calibration_values[:, time_step_index]
+        loc = locs[time_step_index]
+        scale = scales[time_step_index]
+        skew = skews[time_step_index]
+
+        # skip time steps where fitting failed (all parameters are zero)
+        if loc == 0 and scale == 0 and skew == 0:
+            continue
+
+        # filter out NaN and zero values for non-zero distribution
+        valid_values = time_step_values[~np.isnan(time_step_values) & (time_step_values != 0)]
+
+        if len(valid_values) > 0:
+            # skip if parameters are invalid
+            if not (np.isfinite(loc) and np.isfinite(scale) and np.isfinite(skew) and scale > 0):
+                continue
+
+            # perform Kolmogorov-Smirnov test
+            try:
+                ks_statistic, p_value = scipy.stats.kstest(
+                    valid_values,
+                    lambda x, sk=skew, loc_=loc, sc=scale: scipy.stats.pearson3.cdf(x, sk, loc=loc_, scale=sc),
+                )
+                if p_value < GOODNESS_OF_FIT_P_VALUE_THRESHOLD:
+                    poor_fit_steps.append((time_step_index, p_value))
+            except Exception:
+                # ignore fitting errors during goodness-of-fit check
+                continue
+
+    if poor_fit_steps:
+        # show up to 5 examples
+        examples = poor_fit_steps[:5]
+        example_text = ", ".join([f"step {idx} (p={p:.4f})" for idx, p in examples])
+        if len(poor_fit_steps) > 5:
+            example_text += f", and {len(poor_fit_steps) - 5} more"
+
+        message = (
+            f"Pearson Type III distribution shows poor goodness-of-fit for {len(poor_fit_steps)} of "
+            f"{time_steps} time steps (p < {GOODNESS_OF_FIT_P_VALUE_THRESHOLD}). "
+            f"Examples: {example_text}. Consider using a different distribution or "
+            f"investigating data quality issues."
+        )
+        warning = GoodnessOfFitWarning(
+            message,
+            distribution_name="pearson3",
+            threshold=GOODNESS_OF_FIT_P_VALUE_THRESHOLD,
+            poor_fit_count=len(poor_fit_steps),
+            total_steps=time_steps,
+        )
+        warnings.warn(warning, stacklevel=3)
 
 
 def _replace_zeros_with_nan(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -792,6 +1084,13 @@ def gamma_parameters(
         and shape of the input array
     :rtype: tuple of two 2-D numpy.ndarrays of floats, alphas and betas
     """
+    log = _logger.bind(
+        operation="gamma_parameters",
+        distribution="gamma",
+        periodicity=str(periodicity),
+        calibration_period=f"{calibration_start_year}-{calibration_end_year}",
+    )
+    log.info("distribution_fitting_started")
 
     # if we're passed all missing values then we can't compute anything,
     # then we return an array of missing values
@@ -808,6 +1107,9 @@ def gamma_parameters(
 
     # validate (and possibly reshape) the input array
     values = _validate_array(values, periodicity)
+
+    # save reference to original values before zero replacement for data quality checks
+    original_values = values
 
     # replace zeros with NaNs (zeros are excluded from gamma fitting)
     _, values = _replace_zeros_with_nan(values)
@@ -829,6 +1131,10 @@ def gamma_parameters(
     # get the values for the current calendar time step
     # that fall within the calibration years period
     calibration_values = values[calibration_begin_index:calibration_end_index, :]
+    original_calibration = original_values[calibration_begin_index:calibration_end_index, :]
+
+    # check calibration data quality and emit warnings if needed
+    _check_calibration_data_quality(original_calibration, calibration_start_year, calibration_end_year)
 
     # compute the gamma distribution's shape and scale parameters, alpha and beta
     # using method of moments estimation
@@ -840,6 +1146,10 @@ def gamma_parameters(
     alphas = (1 + np.sqrt(1 + 4 * a / 3)) / (4 * a)
     betas = means / alphas
 
+    # check goodness-of-fit and emit warning if poor
+    _check_goodness_of_fit_gamma(calibration_values, alphas, betas)
+
+    log.info("distribution_fitting_completed", output_shape=str(alphas.shape))
     return alphas, betas
 
 
@@ -848,6 +1158,8 @@ def scale_values(
     scale: int,
     periodicity: Periodicity,
 ):
+    _logger.debug("scaling_started", operation="scale_values", scale=scale, periodicity=str(periodicity))
+
     # we expect to operate upon a 1-D array, so if we've been passed a 2-D array
     # then we flatten it, otherwise raise an error
     shape = values.shape
@@ -864,7 +1176,7 @@ def scale_values(
 
     # clip any negative values to zero
     if np.amin(values) < 0.0:
-        _logger.warn("Input contains negative values -- all negatives clipped to zero")
+        _logger.warning("negative_values_clipped", operation="scale_values")
         values = np.clip(values, a_min=0.0, a_max=None)
 
     # get a sliding sums array, with each time step's value scaled
@@ -880,8 +1192,9 @@ def scale_values(
         scaled_values = utils.reshape_to_2d(scaled_values, 366)
 
     else:
-        raise ValueError("Invalid periodicity argument: %s" % periodicity)
+        raise ValueError(f"Invalid periodicity argument: {periodicity}")
 
+    _logger.debug("scaling_completed", operation="scale_values", output_shape=str(scaled_values.shape))
     return scaled_values
 
 
@@ -919,6 +1232,13 @@ def transform_fitted_gamma(
         and shape of the input array
     :rtype: numpy.ndarray of floats
     """
+    log = _logger.bind(
+        operation="transform_fitted_gamma",
+        distribution="gamma",
+        periodicity=str(periodicity),
+        input_shape=str(values.shape),
+    )
+    log.info("distribution_transform_started")
 
     # if we're passed all missing values then we can't compute anything,
     # then we return the same array of missing values
@@ -960,7 +1280,21 @@ def transform_fitted_gamma(
         )
 
     # find the gamma probability values using the gamma CDF
-    gamma_probabilities = scipy.stats.gamma.cdf(values_for_fitting, a=alphas, scale=betas)
+    try:
+        gamma_probabilities = scipy.stats.gamma.cdf(values_for_fitting, a=alphas, scale=betas)
+    except (ValueError, RuntimeError, FloatingPointError) as e:
+        raise DistributionFittingError(
+            f"Gamma distribution CDF computation failed: {e}",
+            distribution_name="gamma",
+            input_shape=values_for_fitting.shape,
+            parameters={
+                "alphas": _summarize_array(alphas, "alphas"),
+                "betas": _summarize_array(betas, "betas"),
+                "values": _summarize_array(values_for_fitting, "values"),
+            },
+            suggestion="Try using pearson3 distribution instead",
+            underlying_error=e,
+        ) from e
 
     # where the input values were zero the CDF will have returned NaN, but since
     # we're treating zeros as a separate probability mass we should treat the
@@ -975,4 +1309,20 @@ def transform_fitted_gamma(
     # a normal distribution are less than or equal to the computed probabilities,
     # as determined by the normal distribution's quantile (or inverse
     # cumulative distribution) function
-    return scipy.stats.norm.ppf(probabilities)
+    try:
+        result = scipy.stats.norm.ppf(probabilities)
+        log.info("distribution_transform_completed", output_shape=str(result.shape))
+        return result
+    except (ValueError, RuntimeError, FloatingPointError) as e:
+        raise DistributionFittingError(
+            f"Normal distribution inverse CDF (ppf) computation failed during gamma transformation: {e}",
+            distribution_name="gamma",
+            input_shape=probabilities.shape,
+            parameters={
+                "probabilities": _summarize_array(probabilities, "probabilities"),
+                "alphas": _summarize_array(alphas, "alphas"),
+                "betas": _summarize_array(betas, "betas"),
+            },
+            suggestion="Try using pearson3 distribution instead",
+            underlying_error=e,
+        ) from e

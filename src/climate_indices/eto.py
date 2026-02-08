@@ -21,16 +21,20 @@ Goswami, D. Yogi (2015) Principles of Solar Engineering, Third Edition
 ISBN 97-8-146656-3780
 """
 
+from __future__ import annotations
+
 import calendar
-import logging
 import math
+import time
 
 import numpy as np
 
 from climate_indices import utils
+from climate_indices.logging_config import get_logger
+from climate_indices.performance import check_large_array_memory
 
-# Retrieve logger and set desired logging level
-_logger = utils.get_logger(__name__, logging.DEBUG)
+# retrieve structlog logger for this module
+_logger = get_logger(__name__)
 
 # declare the function names that should be included in the public API for this module
 __all__ = ["eto_hargreaves", "eto_thornthwaite"]
@@ -230,7 +234,6 @@ def eto_thornthwaite(
     :return: estimated potential evapotranspiration, in millimeters/month
     :rtype: 1-D numpy.ndarray of floats with shape: (total # of months)
     """
-
     original_length = monthly_temps_celsius.size
 
     # validate the input data array
@@ -316,60 +319,87 @@ def eto_hargreaves(
         _logger.error(message)
         raise ValueError(message)
 
-    # validate temperature relationships: tmin <= tmean <= tmax
-    # use warnings rather than errors since real-world data may have some anomalies
-    tmin_gt_tmax = np.sum(daily_tmin_celsius > daily_tmax_celsius)
-    if tmin_gt_tmax > 0:
-        _logger.warning(f"Found {tmin_gt_tmax} instances where tmin > tmax. This may indicate data quality issues.")
-
-    tmean_outside_range = np.sum(
-        (daily_tmean_celsius < daily_tmin_celsius) | (daily_tmean_celsius > daily_tmax_celsius)
+    # bind context and emit calculation_started event
+    log = _logger.bind(
+        index_type="pet_hargreaves",
+        input_shape=daily_tmean_celsius.shape,
+        input_elements=daily_tmean_celsius.size,
     )
-    if tmean_outside_range > 0:
-        _logger.warning(
-            f"Found {tmean_outside_range} instances where tmean is outside [tmin, tmax] range. "
-            "This may indicate data quality issues."
+    log.info("calculation_started")
+    t0 = time.perf_counter()
+    memory_metrics = check_large_array_memory(daily_tmin_celsius, daily_tmax_celsius, daily_tmean_celsius)
+
+    try:
+        # validate temperature relationships: tmin <= tmean <= tmax
+        # use warnings rather than errors since real-world data may have some anomalies
+        tmin_gt_tmax = np.sum(daily_tmin_celsius > daily_tmax_celsius)
+        if tmin_gt_tmax > 0:
+            _logger.warning(f"Found {tmin_gt_tmax} instances where tmin > tmax. This may indicate data quality issues.")
+
+        tmean_outside_range = np.sum(
+            (daily_tmean_celsius < daily_tmin_celsius) | (daily_tmean_celsius > daily_tmax_celsius)
         )
+        if tmean_outside_range > 0:
+            _logger.warning(
+                f"Found {tmean_outside_range} instances where tmean is outside [tmin, tmax] range. "
+                "This may indicate data quality issues."
+            )
 
-    # keep the original length for conversion back to original size
-    original_length = daily_tmean_celsius.size
+        # keep the original length for conversion back to original size
+        original_length = daily_tmean_celsius.size
 
-    # reshape to 2-D with 366 days per year, if not already in this shape
-    daily_tmin_celsius = utils.reshape_to_2d(daily_tmin_celsius, 366)
-    daily_tmax_celsius = utils.reshape_to_2d(daily_tmax_celsius, 366)
-    daily_tmean_celsius = utils.reshape_to_2d(daily_tmean_celsius, 366)
+        # reshape to 2-D with 366 days per year, if not already in this shape
+        daily_tmin_celsius = utils.reshape_to_2d(daily_tmin_celsius, 366)
+        daily_tmax_celsius = utils.reshape_to_2d(daily_tmax_celsius, 366)
+        daily_tmean_celsius = utils.reshape_to_2d(daily_tmean_celsius, 366)
 
-    # at this point we assume that our dataset array has shape (years, 366)
-    # where each row is a year with 366 columns of daily values
+        # at this point we assume that our dataset array has shape (years, 366)
+        # where each row is a year with 366 columns of daily values
 
-    # convert the latitude from degrees to radians
-    latitude = math.radians(latitude_degrees)
+        # convert the latitude from degrees to radians
+        latitude = math.radians(latitude_degrees)
 
-    # allocate the PET array we'll fill
-    pet = np.full(daily_tmean_celsius.shape, np.nan)
-    for day_of_year in range(1, daily_tmean_celsius.shape[1] + 1):
-        # calculate the angle of solar declination and sunset hour angle
-        solar_declination = _solar_declination(day_of_year)
-        sunset_hour_angle = _sunset_hour_angle(latitude, solar_declination)
+        # allocate the PET array we'll fill
+        pet = np.full(daily_tmean_celsius.shape, np.nan)
+        for day_of_year in range(1, daily_tmean_celsius.shape[1] + 1):
+            # calculate the angle of solar declination and sunset hour angle
+            solar_declination = _solar_declination(day_of_year)
+            sunset_hour_angle = _sunset_hour_angle(latitude, solar_declination)
 
-        # calculate the inverse relative distance between earth and sun
-        # from the day of the year, based on FAO equation 23 in
-        # Allen et al (1998).
-        inv_rel_distance = 1 + (0.033 * math.cos((2.0 * math.pi / 365.0) * day_of_year))
+            # calculate the inverse relative distance between earth and sun
+            # from the day of the year, based on FAO equation 23 in
+            # Allen et al (1998).
+            inv_rel_distance = 1 + (0.033 * math.cos((2.0 * math.pi / 365.0) * day_of_year))
 
-        # extraterrestrial radiation
-        tmp1 = (24.0 * 60.0) / math.pi
-        tmp2 = sunset_hour_angle * math.sin(latitude) * math.sin(solar_declination)
-        tmp3 = math.cos(latitude) * math.cos(solar_declination) * math.sin(sunset_hour_angle)
-        et_radiation = tmp1 * _SOLAR_CONSTANT * inv_rel_distance * (tmp2 + tmp3)
+            # extraterrestrial radiation
+            tmp1 = (24.0 * 60.0) / math.pi
+            tmp2 = sunset_hour_angle * math.sin(latitude) * math.sin(solar_declination)
+            tmp3 = math.cos(latitude) * math.cos(solar_declination) * math.sin(sunset_hour_angle)
+            et_radiation = tmp1 * _SOLAR_CONSTANT * inv_rel_distance * (tmp2 + tmp3)
 
-        for year in range(daily_tmean_celsius.shape[0]):
-            # calculate the Hargreaves equation
-            tmin = daily_tmin_celsius[year, day_of_year - 1]
-            tmax = daily_tmax_celsius[year, day_of_year - 1]
-            tmean = daily_tmean_celsius[year, day_of_year - 1]
-            pet[year, day_of_year - 1] = 0.0023 * (tmean + 17.8) * (tmax - tmin) ** 0.5 * 0.408 * et_radiation
+            for year in range(daily_tmean_celsius.shape[0]):
+                # calculate the Hargreaves equation
+                tmin = daily_tmin_celsius[year, day_of_year - 1]
+                tmax = daily_tmax_celsius[year, day_of_year - 1]
+                tmean = daily_tmean_celsius[year, day_of_year - 1]
+                pet[year, day_of_year - 1] = 0.0023 * (tmean + 17.8) * (tmax - tmin) ** 0.5 * 0.408 * et_radiation
 
-    # reshape the dataset from (years, 366) into (total days),
-    # i.e. convert from 2-D to 1-D, and truncate to the original length
-    return pet.reshape(-1)[0:original_length]
+        # reshape the dataset from (years, 366) into (total days),
+        # i.e. convert from 2-D to 1-D, and truncate to the original length
+        result = pet.reshape(-1)[0:original_length]
+        duration_ms = (time.perf_counter() - t0) * 1000.0
+        log.info(
+            "calculation_completed",
+            duration_ms=round(duration_ms, 2),
+            output_shape=result.shape,
+            **(memory_metrics or {}),
+        )
+        return result
+    except Exception as exc:
+        log.error(
+            "calculation_failed",
+            exc_info=True,
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+        )
+        raise

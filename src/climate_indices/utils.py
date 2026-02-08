@@ -6,6 +6,11 @@ from datetime import datetime
 
 import numpy as np
 
+from climate_indices.logging_config import get_logger as _get_structlog_logger
+
+# module-level structlog logger
+_logger = _get_structlog_logger(__name__)
+
 # declare the function names that should be included in the public API for this module
 __all__ = [
     "compute_days",
@@ -170,7 +175,7 @@ def is_data_valid(
         valid_flag = not np.all(np.isnan(data))
 
     else:
-        _logger.warning("Invalid data type")
+        _logger.warning("validation_warning", reason="invalid_data_type")
         valid_flag = False
 
     return valid_flag
@@ -212,13 +217,24 @@ def reshape_to_2d(
             message = (
                 "Values array has an invalid shape (2-D but second " + f"dimension not {second_axis_length}): {shape}"
             )
-            _logger.error(message)
+            _logger.error(
+                "array_reshape_error",
+                operation="reshape_to_2d",
+                reason="invalid_2d_shape",
+                actual_shape=str(shape),
+                expected_second_dim=second_axis_length,
+            )
             raise ValueError(message)
 
     # otherwise make sure that we've been passed a flat (1-D) array of values
     elif len(shape) != 1:
         message = f"Values array has an invalid shape (not 1-D or 2-D): {shape}"
-        _logger.error(message)
+        _logger.error(
+            "array_reshape_error",
+            operation="reshape_to_2d",
+            reason="invalid_dimensionality",
+            actual_shape=str(shape),
+        )
         raise ValueError(message)
 
     # pad the end of the original array in order
@@ -233,7 +249,14 @@ def reshape_to_2d(
     first_axis_length = int(values.shape[0] / second_axis_length)
 
     # return the reshaped array
-    return np.reshape(values, (first_axis_length, second_axis_length))
+    result = np.reshape(values, (first_axis_length, second_axis_length))
+    _logger.debug(
+        "array_reshaped",
+        operation="reshape_to_2d",
+        input_shape=str(shape),
+        output_shape=str(result.shape),
+    )
+    return result
 
 
 def reshape_to_divs_years_months(
@@ -257,20 +280,35 @@ def reshape_to_divs_years_months(
             return monthly_values
         else:
             message = "Values array has an invalid shape (3-D but " + "third dimension is not 12): " + str(shape)
-            _logger.error(message)
+            _logger.error(
+                "array_reshape_error",
+                operation="reshape_to_divs_years_months",
+                reason="invalid_3d_shape",
+                actual_shape=str(shape),
+            )
             raise ValueError(message)
 
     # otherwise make sure that we've been passed in a 2-D array of values
     elif len(shape) != 2:
         message = "Values array has an invalid shape (not 2-D or 3-D): " + str(shape)
-        _logger.error(message)
+        _logger.error(
+            "array_reshape_error",
+            operation="reshape_to_divs_years_months",
+            reason="invalid_dimensionality",
+            actual_shape=str(shape),
+        )
         raise ValueError(message)
 
     # otherwise make sure that we've been passed in a 2-D array
     # of values with the final dimension size == 12
     elif shape[1] != 12:
         message = "Values array has an invalid shape (second dimension " + "should be 12, but is not): " + str(shape)
-        _logger.error(message)
+        _logger.error(
+            "array_reshape_error",
+            operation="reshape_to_divs_years_months",
+            reason="invalid_second_dimension",
+            actual_shape=str(shape),
+        )
         raise ValueError(message)
 
     # we should have an ordinal number of years now (ordinally divisible by 12)
@@ -339,7 +377,12 @@ def transform_to_366day(
     # validate the arguments
     if len(original.shape) > 1:
         message = "Invalid input array: only 1-D arrays are supported"
-        _logger.error(message)
+        _logger.error(
+            "array_transformation_error",
+            operation="transform_to_366day",
+            reason="only_1d_supported",
+            actual_shape=str(original.shape),
+        )
         raise ValueError(message)
 
     # allocate the new array for 366 daily values per year,
@@ -403,6 +446,12 @@ def transform_to_366day(
 
         all_leap_index += 366
 
+    _logger.debug(
+        "array_transformation_completed",
+        operation="transform_to_366day",
+        input_size=original.size,
+        output_size=all_leap.size,
+    )
     return all_leap
 
 
@@ -491,7 +540,10 @@ def transform_to_gregorian(
 
         original_index += 366
 
+    _logger.debug(
+        "array_transformation_completed",
+        operation="transform_to_gregorian",
+        input_size=original.size,
+        output_size=gregorian.size,
+    )
     return gregorian
-
-
-_logger = get_logger(__name__, logging.DEBUG)
