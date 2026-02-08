@@ -9,7 +9,6 @@ This module tests Story 2.2 functionality:
 
 from __future__ import annotations
 
-import datetime
 import re
 
 import numpy as np
@@ -18,7 +17,7 @@ import pytest
 import xarray as xr
 
 from climate_indices import compute, indices
-from climate_indices.exceptions import CoordinateValidationError
+from climate_indices.exceptions import CoordinateValidationError, InsufficientDataError
 from climate_indices.xarray_adapter import (
     CF_METADATA,
     _append_history,
@@ -27,7 +26,11 @@ from climate_indices.xarray_adapter import (
     _infer_calibration_period,
     _infer_data_start_year,
     _infer_periodicity,
+    _resolve_scale_from_args,
     _serialize_attr_value,
+    _validate_sufficient_data,
+    _validate_time_dimension,
+    _validate_time_monotonicity,
     xarray_adapter,
 )
 
@@ -184,6 +187,55 @@ def multi_coord_da() -> xr.DataArray:
     }
 
     return da
+
+
+@pytest.fixture
+def no_time_dim_da() -> xr.DataArray:
+    """Create DataArray without a time dimension."""
+    # spatial coordinates only
+    x = np.arange(10)
+    lat = np.arange(5) * 10.0
+    rng = np.random.default_rng(42)
+    values = rng.gamma(shape=2.0, scale=50.0, size=(len(x), len(lat)))
+
+    return xr.DataArray(
+        values,
+        coords={"x": x, "lat": lat},
+        dims=["x", "lat"],
+        attrs={"units": "mm"},
+    )
+
+
+@pytest.fixture
+def non_monotonic_time_da() -> xr.DataArray:
+    """Create DataArray with non-monotonic (shuffled) time coordinate."""
+    time = pd.date_range("2020-01-01", "2020-12-01", freq="MS")
+    # shuffle the time coordinate
+    shuffled_time = time[[0, 2, 1, 3, 5, 4, 6, 8, 7, 9, 11, 10]]
+    rng = np.random.default_rng(42)
+    values = rng.gamma(shape=2.0, scale=50.0, size=len(time))
+
+    return xr.DataArray(
+        values,
+        coords={"time": shuffled_time},
+        dims=["time"],
+        attrs={"units": "mm"},
+    )
+
+
+@pytest.fixture
+def short_monthly_da() -> xr.DataArray:
+    """Create short DataArray with only 3 months."""
+    time = pd.date_range("2020-01-01", "2020-03-01", freq="MS")
+    rng = np.random.default_rng(42)
+    values = rng.gamma(shape=2.0, scale=50.0, size=len(time))
+
+    return xr.DataArray(
+        values,
+        coords={"time": time},
+        dims=["time"],
+        attrs={"units": "mm"},
+    )
 
 
 class TestXarrayAdapterNumpyPassthrough:
@@ -1443,3 +1495,374 @@ class TestHistoryProvenance:
         # should not have scale or distribution in history
         assert "SPI-" not in result.attrs["history"]
         assert "distribution" not in result.attrs["history"]
+
+
+class TestValidateTimeDimension:
+    """Test _validate_time_dimension() function."""
+
+    def test_valid_time_dimension_passes(self, sample_monthly_precip_da):
+        """Valid time dimension does not raise."""
+        # should not raise
+        _validate_time_dimension(sample_monthly_precip_da, "time")
+
+    def test_missing_dimension_raises(self, no_time_dim_da):
+        """Missing time dimension raises CoordinateValidationError."""
+        with pytest.raises(CoordinateValidationError) as exc_info:
+            _validate_time_dimension(no_time_dim_da, "time")
+
+        assert "not found" in str(exc_info.value).lower()
+        assert exc_info.value.coordinate_name == "time"
+        assert exc_info.value.reason == "missing_dimension"
+
+    def test_error_message_includes_available_dims(self, no_time_dim_da):
+        """Error message lists available dimensions."""
+        with pytest.raises(CoordinateValidationError) as exc_info:
+            _validate_time_dimension(no_time_dim_da, "time")
+
+        error_msg = str(exc_info.value)
+        assert "['x', 'lat']" in error_msg
+
+    def test_error_message_suggests_time_dim_parameter(self, no_time_dim_da):
+        """Error message suggests using time_dim parameter."""
+        with pytest.raises(CoordinateValidationError) as exc_info:
+            _validate_time_dimension(no_time_dim_da, "time")
+
+        assert "time_dim parameter" in str(exc_info.value)
+
+    def test_custom_dimension_name_validated(self):
+        """Validation works with custom time dimension name."""
+        # create DataArray with 'date' instead of 'time'
+        date = pd.date_range("2020-01-01", periods=12, freq="MS")
+        da = xr.DataArray(
+            np.random.randn(12),
+            coords={"date": date},
+            dims=["date"],
+        )
+
+        # should not raise when checking for 'date'
+        _validate_time_dimension(da, "date")
+
+        # should raise when checking for 'time'
+        with pytest.raises(CoordinateValidationError):
+            _validate_time_dimension(da, "time")
+
+    def test_scalar_dataarray_raises(self):
+        """Scalar DataArray (no dims) raises error."""
+        scalar_da = xr.DataArray(42.0)
+
+        with pytest.raises(CoordinateValidationError) as exc_info:
+            _validate_time_dimension(scalar_da, "time")
+
+        # should show empty dims list
+        assert "[]" in str(exc_info.value)
+
+    def test_time_as_coordinate_but_not_dimension_raises(self):
+        """Time as non-dimension coordinate is rejected."""
+        # create DataArray where 'time' is a scalar coordinate, not a dimension
+        da = xr.DataArray(
+            np.random.randn(10),
+            coords={"x": np.arange(10), "time": pd.Timestamp("2020-01-01")},
+            dims=["x"],
+        )
+
+        with pytest.raises(CoordinateValidationError):
+            _validate_time_dimension(da, "time")
+
+    def test_empty_dataarray_with_time_dim_passes(self):
+        """Empty DataArray with time dim (0 elements) passes dimension check."""
+        empty_da = xr.DataArray(
+            [],
+            coords={"time": pd.DatetimeIndex([])},
+            dims=["time"],
+        )
+
+        # dimension exists, so validation passes
+        _validate_time_dimension(empty_da, "time")
+
+
+class TestValidateTimeMonotonicity:
+    """Test _validate_time_monotonicity() function."""
+
+    def test_monotonic_increasing_passes(self):
+        """Monotonically increasing time coordinate passes."""
+        time = pd.date_range("2020-01-01", periods=12, freq="MS")
+        time_coord = xr.DataArray(time, dims=["time"])
+
+        # should not raise
+        _validate_time_monotonicity(time_coord)
+
+    def test_reversed_time_raises(self):
+        """Reversed time coordinate raises CoordinateValidationError."""
+        time = pd.date_range("2020-01-01", periods=12, freq="MS")[::-1]
+        time_coord = xr.DataArray(time, dims=["time"])
+
+        with pytest.raises(CoordinateValidationError) as exc_info:
+            _validate_time_monotonicity(time_coord)
+
+        assert "not monotonically increasing" in str(exc_info.value).lower()
+        assert exc_info.value.reason == "not_monotonic"
+
+    def test_shuffled_time_raises(self, non_monotonic_time_da):
+        """Shuffled time coordinate raises CoordinateValidationError."""
+        with pytest.raises(CoordinateValidationError) as exc_info:
+            _validate_time_monotonicity(non_monotonic_time_da["time"])
+
+        assert "not monotonically increasing" in str(exc_info.value).lower()
+
+    def test_duplicate_timestamps_pass(self):
+        """Duplicate timestamps pass (is_monotonic_increasing allows duplicates)."""
+        time = pd.to_datetime(["2020-01-01", "2020-02-01", "2020-02-01", "2020-03-01"])
+        time_coord = xr.DataArray(time, dims=["time"])
+
+        # pandas is_monotonic_increasing allows duplicates (non-decreasing)
+        # should not raise
+        _validate_time_monotonicity(time_coord)
+
+    def test_error_suggests_sortby(self):
+        """Error message suggests using sortby()."""
+        time = pd.date_range("2020-01-01", periods=12, freq="MS")[::-1]
+        time_coord = xr.DataArray(time, dims=["time"])
+
+        with pytest.raises(CoordinateValidationError) as exc_info:
+            _validate_time_monotonicity(time_coord)
+
+        assert "sortby" in str(exc_info.value)
+
+    def test_single_element_passes(self):
+        """Single-element time coordinate passes (trivially monotonic)."""
+        time_coord = xr.DataArray([pd.Timestamp("2020-01-01")], dims=["time"])
+
+        # should not raise
+        _validate_time_monotonicity(time_coord)
+
+    def test_two_element_increasing_passes(self):
+        """Two-element increasing time coordinate passes."""
+        time = pd.to_datetime(["2020-01-01", "2020-02-01"])
+        time_coord = xr.DataArray(time, dims=["time"])
+
+        # should not raise
+        _validate_time_monotonicity(time_coord)
+
+    def test_two_element_decreasing_raises(self):
+        """Two-element decreasing time coordinate raises."""
+        time = pd.to_datetime(["2020-02-01", "2020-01-01"])
+        time_coord = xr.DataArray(time, dims=["time"])
+
+        with pytest.raises(CoordinateValidationError):
+            _validate_time_monotonicity(time_coord)
+
+
+class TestValidateSufficientData:
+    """Test _validate_sufficient_data() function."""
+
+    def test_sufficient_data_passes(self):
+        """Time coordinate with enough elements passes."""
+        time = pd.date_range("2020-01-01", periods=12, freq="MS")
+        time_coord = xr.DataArray(time, dims=["time"])
+
+        # 12 months >= scale 3
+        _validate_sufficient_data(time_coord, scale=3)
+
+    def test_insufficient_data_raises(self, short_monthly_da):
+        """Time coordinate with too few elements raises InsufficientDataError."""
+        with pytest.raises(InsufficientDataError) as exc_info:
+            _validate_sufficient_data(short_monthly_da["time"], scale=6)
+
+        assert "insufficient data" in str(exc_info.value).lower()
+        assert exc_info.value.non_zero_count == 3
+        assert exc_info.value.required_count == 6
+
+    def test_exact_boundary_passes(self):
+        """Time coordinate with exactly scale elements passes."""
+        time = pd.date_range("2020-01-01", periods=3, freq="MS")
+        time_coord = xr.DataArray(time, dims=["time"])
+
+        # exactly 3 months for scale 3
+        _validate_sufficient_data(time_coord, scale=3)
+
+    def test_error_message_includes_counts(self, short_monthly_da):
+        """Error message includes actual and required counts."""
+        with pytest.raises(InsufficientDataError) as exc_info:
+            _validate_sufficient_data(short_monthly_da["time"], scale=6)
+
+        error_msg = str(exc_info.value)
+        assert "3 time steps" in error_msg
+        assert "at least 6 required" in error_msg
+
+    def test_scale_one_edge_case(self):
+        """Scale=1 requires at least 1 timestep."""
+        time = pd.date_range("2020-01-01", periods=1, freq="MS")
+        time_coord = xr.DataArray(time, dims=["time"])
+
+        # 1 timestep >= scale 1
+        _validate_sufficient_data(time_coord, scale=1)
+
+    def test_empty_time_coord_raises(self):
+        """Empty time coordinate raises for any scale."""
+        empty_time = xr.DataArray([], dims=["time"])
+
+        with pytest.raises(InsufficientDataError):
+            _validate_sufficient_data(empty_time, scale=1)
+
+
+class TestResolveScaleFromArgs:
+    """Test _resolve_scale_from_args() function."""
+
+    def test_scale_from_kwargs(self):
+        """Scale extracted from kwargs."""
+
+        def func(values: np.ndarray, scale: int) -> np.ndarray:
+            return values
+
+        result = _resolve_scale_from_args(func, (np.array([1, 2, 3]),), {"scale": 3})
+        assert result == 3
+
+    def test_scale_from_positional_args(self):
+        """Scale extracted from positional arguments."""
+
+        def func(values: np.ndarray, scale: int) -> np.ndarray:
+            return values
+
+        result = _resolve_scale_from_args(func, (np.array([1, 2, 3]), 6), {})
+        assert result == 6
+
+    def test_scale_not_in_signature_returns_none(self):
+        """Function without scale parameter returns None."""
+
+        def func(values: np.ndarray, other_param: int) -> np.ndarray:
+            return values
+
+        result = _resolve_scale_from_args(func, (np.array([1, 2, 3]),), {"other_param": 5})
+        assert result is None
+
+    def test_scale_not_provided_returns_none(self):
+        """Scale in signature but not provided returns None."""
+
+        def func(values: np.ndarray, scale: int) -> np.ndarray:
+            return values
+
+        result = _resolve_scale_from_args(func, (np.array([1, 2, 3]),), {})
+        assert result is None
+
+    def test_binding_failure_returns_none(self):
+        """Binding failure gracefully returns None."""
+
+        def func(values: np.ndarray, scale: int) -> np.ndarray:
+            return values
+
+        # pass extra unexpected arguments to cause binding failure
+        result = _resolve_scale_from_args(func, (np.array([1, 2, 3]),), {"unexpected": 99})
+        # should not crash, returns None
+        assert result is None
+
+
+class TestCoordinateValidationIntegration:
+    """Integration tests for coordinate validation through the decorator."""
+
+    def test_missing_time_dimension_raises(self, no_time_dim_da):
+        """Missing time dimension raises during xarray processing."""
+
+        @xarray_adapter(infer_params=True)
+        def needs_time(values: np.ndarray, data_start_year: int) -> np.ndarray:
+            return values
+
+        with pytest.raises(CoordinateValidationError) as exc_info:
+            needs_time(no_time_dim_da)
+
+        assert "not found" in str(exc_info.value).lower()
+
+    def test_non_monotonic_time_raises(self, non_monotonic_time_da):
+        """Non-monotonic time coordinate raises during xarray processing."""
+
+        @xarray_adapter(infer_params=True)
+        def needs_time(values: np.ndarray, data_start_year: int) -> np.ndarray:
+            return values
+
+        with pytest.raises(CoordinateValidationError) as exc_info:
+            needs_time(non_monotonic_time_da)
+
+        assert "not monotonically increasing" in str(exc_info.value).lower()
+
+    def test_insufficient_data_raises(self, short_monthly_da):
+        """Insufficient data for scale raises InsufficientDataError."""
+
+        @xarray_adapter(infer_params=True)
+        def needs_scale(values: np.ndarray, scale: int, data_start_year: int) -> np.ndarray:
+            return values
+
+        with pytest.raises(InsufficientDataError) as exc_info:
+            needs_scale(short_monthly_da, scale=6)
+
+        assert "insufficient data" in str(exc_info.value).lower()
+
+    def test_valid_data_passes_validation(self, sample_monthly_precip_da):
+        """Valid data passes all validation checks."""
+
+        @xarray_adapter(infer_params=True)
+        def needs_scale(values: np.ndarray, scale: int, data_start_year: int) -> np.ndarray:
+            return values * scale
+
+        result = needs_scale(sample_monthly_precip_da, scale=3)
+
+        # should succeed and return DataArray
+        assert isinstance(result, xr.DataArray)
+        assert result.shape == sample_monthly_precip_da.shape
+
+    def test_infer_params_false_skips_validation(self, no_time_dim_da):
+        """infer_params=False skips coordinate validation."""
+
+        @xarray_adapter(infer_params=False)
+        def simple_func(values: np.ndarray) -> np.ndarray:
+            return values
+
+        # should not raise even though time dimension is missing
+        result = simple_func(no_time_dim_da)
+        assert isinstance(result, xr.DataArray)
+
+    def test_numpy_passthrough_skips_validation(self):
+        """NumPy input bypasses all validation."""
+
+        @xarray_adapter(infer_params=True)
+        def needs_params(values: np.ndarray, scale: int, data_start_year: int) -> np.ndarray:
+            return values
+
+        numpy_input = np.array([1.0, 2.0])
+
+        # numpy passthrough should work even though data would fail validation
+        result = needs_params(numpy_input, scale=10, data_start_year=2020)
+        assert isinstance(result, np.ndarray)
+
+    def test_custom_time_dim_validated(self):
+        """Custom time_dim parameter is validated."""
+        # create DataArray with 'date' instead of 'time'
+        date = pd.date_range("2020-01-01", periods=12, freq="MS")
+        da = xr.DataArray(
+            np.random.randn(12),
+            coords={"date": date},
+            dims=["date"],
+        )
+
+        @xarray_adapter(time_dim="date", infer_params=True)
+        def needs_date(values: np.ndarray, data_start_year: int) -> np.ndarray:
+            return values
+
+        # should not raise
+        result = needs_date(da)
+        assert isinstance(result, xr.DataArray)
+
+    def test_validation_happens_before_inference(self, non_monotonic_time_da):
+        """Validation runs before parameter inference (fails fast)."""
+
+        @xarray_adapter(infer_params=True)
+        def needs_params(
+            values: np.ndarray,
+            data_start_year: int,
+            periodicity: compute.Periodicity,
+        ) -> np.ndarray:
+            return values
+
+        # should raise validation error, not inference error
+        with pytest.raises(CoordinateValidationError) as exc_info:
+            needs_params(non_monotonic_time_da)
+
+        assert "not monotonically increasing" in str(exc_info.value).lower()

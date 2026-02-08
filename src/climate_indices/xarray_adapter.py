@@ -30,7 +30,11 @@ import pandas as pd
 import xarray as xr
 
 from climate_indices import compute
-from climate_indices.exceptions import CoordinateValidationError, InputTypeError
+from climate_indices.exceptions import (
+    CoordinateValidationError,
+    InputTypeError,
+    InsufficientDataError,
+)
 from climate_indices.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -212,7 +216,7 @@ def _infer_periodicity(time_coord: xr.DataArray) -> compute.Periodicity:
             reason="insufficient data points",
         )
 
-    freq = xr.infer_freq(time_coord)
+    freq = xr.infer_freq(time_coord)  # type: ignore[no-untyped-call]
 
     if freq is None:
         raise CoordinateValidationError(
@@ -247,6 +251,158 @@ def _infer_calibration_period(time_coord: xr.DataArray) -> tuple[int, int]:
     first_year = pd.Timestamp(time_coord.values[0]).year
     last_year = pd.Timestamp(time_coord.values[-1]).year
     return (first_year, last_year)
+
+
+def _validate_time_dimension(data: xr.DataArray, time_dim: str) -> None:
+    """Validate that the time dimension exists in the input DataArray.
+
+    Args:
+        data: Input DataArray to validate
+        time_dim: Name of the expected time dimension
+
+    Raises:
+        CoordinateValidationError: If the time dimension is not found
+    """
+    if time_dim not in data.dims:
+        available_dims = list(data.dims)
+        error_msg = (
+            f"Time dimension '{time_dim}' not found in input. "
+            f"Available dimensions: {available_dims}. "
+            f"Use time_dim parameter to specify custom name."
+        )
+        logger.error(
+            "time_dimension_missing",
+            time_dim=time_dim,
+            available_dims=available_dims,
+            data_shape=data.shape,
+        )
+        raise CoordinateValidationError(
+            message=error_msg,
+            coordinate_name=time_dim,
+            reason="missing_dimension",
+        )
+
+
+def _validate_time_monotonicity(time_coord: xr.DataArray) -> None:
+    """Validate that the time coordinate is monotonically increasing.
+
+    Args:
+        time_coord: Time coordinate DataArray to validate
+
+    Raises:
+        CoordinateValidationError: If the time coordinate is not monotonically increasing
+    """
+    # handle standard pandas datetime
+    try:
+        time_index = pd.DatetimeIndex(time_coord.values)
+        is_monotonic = time_index.is_monotonic_increasing
+    except (TypeError, ValueError):
+        # fallback for cftime calendars or other non-standard datetime types
+        try:
+            # use numpy diff comparison for non-standard calendars
+            time_values = time_coord.values
+            if len(time_values) < 2:
+                # trivially monotonic for 0 or 1 element
+                return
+            # compare consecutive elements
+            diffs = np.diff(time_values.astype("datetime64[ns]").astype(np.int64))
+            is_monotonic = np.all(diffs > 0)
+        except (TypeError, ValueError):
+            # if conversion fails, raise validation error
+            coord_name = str(time_coord.name) if time_coord.name is not None else "time"
+            raise CoordinateValidationError(
+                message=f"Cannot validate time coordinate monotonicity: unsupported datetime type {type(time_coord.values[0])}",
+                coordinate_name=coord_name,
+                reason="unsupported_datetime_type",
+            ) from None
+
+    if not is_monotonic:
+        dim_name = time_coord.dims[0] if time_coord.dims else "time"
+
+        # check for NaT/NaN values
+        try:
+            has_nat = pd.isna(time_coord.values).any()
+            if has_nat:
+                error_msg = (
+                    "Time coordinate is not monotonically increasing. "
+                    "Found NaT (Not-a-Time) or NaN values. "
+                    "Remove invalid timestamps before processing."
+                )
+            else:
+                error_msg = (
+                    f"Time coordinate is not monotonically increasing. "
+                    f"Sort the data using data.sortby('{dim_name}') before processing."
+                )
+        except (TypeError, ValueError):
+            # fallback if NaT check fails
+            error_msg = (
+                f"Time coordinate is not monotonically increasing. "
+                f"Sort the data using data.sortby('{dim_name}') before processing."
+            )
+
+        logger.error(
+            "time_coordinate_not_monotonic",
+            coordinate_name=dim_name,
+            coordinate_length=len(time_coord),
+        )
+        raise CoordinateValidationError(
+            message=error_msg,
+            coordinate_name=str(dim_name),
+            reason="not_monotonic",
+        )
+
+
+def _resolve_scale_from_args(func: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, Any]) -> int | None:
+    """Resolve the scale parameter from function arguments.
+
+    Args:
+        func: The function being called
+        args: Positional arguments passed to the function
+        kwargs: Keyword arguments passed to the function
+
+    Returns:
+        The scale value if present in the signature and provided, None otherwise
+    """
+    try:
+        sig = inspect.signature(func)
+        # check if scale is in the signature
+        if "scale" not in sig.parameters:
+            return None
+
+        # bind provided args/kwargs to extract scale
+        bound = sig.bind_partial(*args, **kwargs)
+        return bound.arguments.get("scale")
+    except (TypeError, ValueError):
+        # if binding fails, return None
+        return None
+
+
+def _validate_sufficient_data(time_coord: xr.DataArray, scale: int) -> None:
+    """Validate that there is sufficient data for the given scale.
+
+    Args:
+        time_coord: Time coordinate DataArray
+        scale: Scale parameter for the index calculation
+
+    Raises:
+        InsufficientDataError: If there are fewer time steps than the scale requires
+    """
+    n_timesteps = len(time_coord)
+    if n_timesteps < scale:
+        error_msg = (
+            f"Insufficient data for scale={scale}: {n_timesteps} time steps available, but at least {scale} required."
+        )
+        logger.error(
+            "insufficient_data_for_scale",
+            scale=scale,
+            available_timesteps=n_timesteps,
+            required_timesteps=scale,
+        )
+        raise InsufficientDataError(
+            message=error_msg,
+            non_zero_count=n_timesteps,
+            required_count=scale,
+        )
 
 
 def _serialize_attr_value(value: Any) -> str | int | float | bool:
@@ -533,8 +689,17 @@ def xarray_adapter(
             if input_type == InputType.NUMPY:
                 return func(*args, **kwargs)
 
-            # xarray path: extract → infer → compute → rewrap → log
+            # xarray path: validate → extract → infer → compute → rewrap → log
             input_da = data
+
+            # coordinate validation (Story 2.7)
+            if infer_params:
+                _validate_time_dimension(input_da, time_dim)
+                time_coord = input_da[time_dim]
+                _validate_time_monotonicity(time_coord)
+                resolved_scale = _resolve_scale_from_args(func, args, kwargs)
+                if resolved_scale is not None:
+                    _validate_sufficient_data(time_coord, resolved_scale)
 
             # extract numpy values
             numpy_values = input_da.values
