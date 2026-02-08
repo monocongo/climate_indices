@@ -1455,7 +1455,7 @@ def xarray_adapter(
                 inferred_params = _infer_temporal_parameters(func, input_da, modified_args, modified_kwargs, time_dim)
                 # log which parameters were inferred and their values
                 if inferred_params:
-                    logger.info(
+                    _log().info(
                         "parameters_inferred",
                         function_name=func.__name__,
                         **{k: str(v) for k, v in inferred_params.items()},
@@ -1638,6 +1638,22 @@ def xarray_adapter(
             result_da = _build_output_dataarray(
                 input_da, result_values, cf_metadata, calc_metadata, index_name=resolved_index_name
             )
+
+            # log completion with NaN metrics (Story 2.8)
+            log_fields = {
+                "function_name": func.__name__,
+                "input_shape": input_da.shape,
+                "output_shape": result_da.shape,
+                "inferred_params": infer_params,
+            }
+            if nan_assessment["has_nan"]:
+                log_fields["input_nan_count"] = nan_assessment["nan_count"]
+                log_fields["input_nan_ratio"] = round(nan_assessment["nan_ratio"], 4)
+
+            _log().info("xarray_adapter_completed", **log_fields)
+
+            return result_da
+
         return wrapper
 
     return decorator
