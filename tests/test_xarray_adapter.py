@@ -28,14 +28,17 @@ from climate_indices.xarray_adapter import (
     _append_history,
     _assess_nan_density,
     _build_history_entry,
+    _build_output_attrs,
     _build_output_dataarray,
     _infer_calibration_period,
     _infer_data_start_year,
     _infer_periodicity,
+    _is_dask_backed,
     _resolve_scale_from_args,
     _resolve_secondary_inputs,
     _serialize_attr_value,
     _validate_calibration_non_nan_sample_size,
+    _validate_dask_chunks,
     _validate_sufficient_data,
     _validate_time_dimension,
     _validate_time_monotonicity,
@@ -294,6 +297,102 @@ def sample_monthly_pet_offset_da() -> xr.DataArray:
             "long_name": "Monthly Potential Evapotranspiration (Offset)",
         },
     )
+
+
+@pytest.fixture
+def dask_monthly_precip_1d() -> xr.DataArray:
+    """Create 1-D Dask-backed monthly precipitation DataArray (40 years, 1980-2019).
+
+    Time dimension is a single chunk (required for SPI/SPEI).
+    """
+    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+    rng = np.random.default_rng(42)
+    values = rng.gamma(shape=2.0, scale=50.0, size=len(time))
+
+    da = xr.DataArray(
+        values,
+        coords={"time": time},
+        dims=["time"],
+        attrs={
+            "units": "mm",
+            "long_name": "Monthly Precipitation (Dask)",
+        },
+        name="precip_dask",
+    )
+    # chunk time as single chunk (required for climate indices)
+    return da.chunk({"time": -1})
+
+
+@pytest.fixture
+def dask_monthly_precip_3d() -> xr.DataArray:
+    """Create 3-D Dask-backed monthly precipitation DataArray (40 years, 5 lat, 6 lon).
+
+    Time dimension is a single chunk, spatial dimensions are chunked.
+    """
+    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+    lat = np.linspace(30.0, 50.0, 5)
+    lon = np.linspace(-120.0, -100.0, 6)
+    rng = np.random.default_rng(99)
+    values = rng.gamma(shape=2.0, scale=50.0, size=(len(time), len(lat), len(lon)))
+
+    da = xr.DataArray(
+        values,
+        coords={"time": time, "lat": lat, "lon": lon},
+        dims=["time", "lat", "lon"],
+        attrs={
+            "units": "mm",
+            "long_name": "Gridded Precipitation (Dask)",
+        },
+        name="precip_grid_dask",
+    )
+    # chunk: single time chunk, spatial chunks
+    return da.chunk({"time": -1, "lat": 2, "lon": 3})
+
+
+@pytest.fixture
+def dask_multi_time_chunk() -> xr.DataArray:
+    """Create 3-D Dask-backed DataArray with time split into multiple chunks (invalid).
+
+    This fixture intentionally violates the chunking constraint to test validation.
+    """
+    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+    lat = np.linspace(30.0, 50.0, 5)
+    lon = np.linspace(-120.0, -100.0, 6)
+    rng = np.random.default_rng(99)
+    values = rng.gamma(shape=2.0, scale=50.0, size=(len(time), len(lat), len(lon)))
+
+    da = xr.DataArray(
+        values,
+        coords={"time": time, "lat": lat, "lon": lon},
+        dims=["time", "lat", "lon"],
+        attrs={"units": "mm"},
+    )
+    # chunk time into multiple chunks (invalid for climate indices)
+    return da.chunk({"time": 120, "lat": 2, "lon": 3})
+
+
+@pytest.fixture
+def dask_monthly_pet_da() -> xr.DataArray:
+    """Create 1-D Dask-backed monthly PET DataArray matching dask_monthly_precip_1d.
+
+    For testing multi-input functions like SPEI with Dask arrays.
+    """
+    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+    rng = np.random.default_rng(100)
+    values = rng.gamma(shape=2.5, scale=60.0, size=len(time))
+
+    da = xr.DataArray(
+        values,
+        coords={"time": time},
+        dims=["time"],
+        attrs={
+            "units": "mm",
+            "long_name": "Monthly PET (Dask)",
+        },
+        name="pet_dask",
+    )
+    # chunk time as single chunk
+    return da.chunk({"time": -1})
 
 
 class TestXarrayAdapterNumpyPassthrough:
@@ -2290,9 +2389,7 @@ class TestSPEIIntegration:
         assert result.attrs["long_name"] == "Standardized Precipitation Evapotranspiration Index"
         assert result.attrs["units"] == "dimensionless"
 
-    def test_spei_with_offset_dataarrays_aligned(
-        self, sample_monthly_precip_da, sample_monthly_pet_offset_da
-    ):
+    def test_spei_with_offset_dataarrays_aligned(self, sample_monthly_precip_da, sample_monthly_pet_offset_da):
         """SPEI computation aligns offset DataArrays correctly."""
         wrapped_spei = xarray_adapter(
             additional_input_names=["pet_mm"],
@@ -2833,3 +2930,335 @@ class TestNanHandlingSPIIntegration:
         assert result.dims == monthly_precip_with_nan.dims
         assert "time" in result.coords
         assert len(result.coords["time"]) == len(monthly_precip_with_nan.coords["time"])
+
+
+class TestIsDaskBacked:
+    """Test _is_dask_backed() helper function."""
+
+    def test_in_memory_array_returns_false(self, sample_monthly_precip_da):
+        """In-memory DataArray is not Dask-backed."""
+        assert not _is_dask_backed(sample_monthly_precip_da)
+
+    def test_dask_array_returns_true(self, dask_monthly_precip_1d):
+        """Dask-backed DataArray is detected."""
+        assert _is_dask_backed(dask_monthly_precip_1d)
+
+
+class TestValidateDaskChunks:
+    """Test _validate_dask_chunks() validation function."""
+
+    def test_single_time_chunk_passes(self, dask_monthly_precip_3d):
+        """Single time chunk with spatial chunks passes validation."""
+        # should not raise
+        _validate_dask_chunks(dask_monthly_precip_3d, "time")
+
+    def test_multi_time_chunk_raises_error(self, dask_multi_time_chunk):
+        """Multiple time chunks raises CoordinateValidationError."""
+        with pytest.raises(CoordinateValidationError) as exc_info:
+            _validate_dask_chunks(dask_multi_time_chunk, "time")
+
+        assert exc_info.value.reason == "multi_chunked_time_dimension"
+        assert "chunk({'time': -1})" in str(exc_info.value)
+
+    def test_missing_time_dim_skipped(self, no_time_dim_da):
+        """Validation skipped when time dimension doesn't exist."""
+        # convert to dask-backed
+        dask_da = no_time_dim_da.chunk({"x": 2})
+
+        # should not raise (time dim doesn't exist, validation skipped)
+        _validate_dask_chunks(dask_da, "time")
+
+
+class TestBuildOutputAttrs:
+    """Test _build_output_attrs() attribute construction helper."""
+
+    def test_version_always_present(self, sample_monthly_precip_da):
+        """Output attrs always include climate_indices_version."""
+        attrs = _build_output_attrs(sample_monthly_precip_da)
+
+        assert "climate_indices_version" in attrs
+        assert isinstance(attrs["climate_indices_version"], str)
+
+    def test_cf_metadata_applied(self, sample_monthly_precip_da):
+        """CF metadata is merged into output attrs."""
+        cf_meta = {
+            "long_name": "Standardized Precipitation Index",
+            "units": "dimensionless",
+        }
+
+        attrs = _build_output_attrs(sample_monthly_precip_da, cf_metadata=cf_meta)
+
+        assert attrs["long_name"] == "Standardized Precipitation Index"
+        assert attrs["units"] == "dimensionless"
+
+    def test_calculation_metadata_serialized(self, sample_monthly_precip_da):
+        """Calculation metadata is serialized (enums → .name)."""
+        calc_meta = {
+            "scale": 3,
+            "distribution": indices.Distribution.gamma,
+        }
+
+        attrs = _build_output_attrs(sample_monthly_precip_da, calculation_metadata=calc_meta)
+
+        assert attrs["scale"] == 3
+        assert attrs["distribution"] == "gamma"  # enum serialized to name
+
+    def test_history_added(self, sample_monthly_precip_da):
+        """History entry is added when index_name provided."""
+        attrs = _build_output_attrs(
+            sample_monthly_precip_da,
+            calculation_metadata={"scale": 3},
+            index_name="SPI",
+        )
+
+        assert "history" in attrs
+        assert "SPI-3 calculated" in attrs["history"]
+
+
+class TestDaskBackedArraySupport:
+    """Test Dask-backed array execution path (Story 2.9)."""
+
+    def test_output_is_dask_backed(self, dask_monthly_precip_1d):
+        """Output DataArray is Dask-backed (lazy evaluation)."""
+        wrapped_spi = xarray_adapter(
+            cf_metadata=CF_METADATA["spi"],
+            calculation_metadata_keys=["scale", "distribution"],
+            index_display_name="SPI",
+        )(indices.spi)
+
+        result = wrapped_spi(
+            dask_monthly_precip_1d,
+            scale=3,
+            distribution=indices.Distribution.gamma,
+        )
+
+        # verify output is Dask-backed
+        assert result.chunks is not None
+        assert hasattr(result.data, "dask")
+
+    def test_no_compute_triggered(self, dask_monthly_precip_1d):
+        """Computation is not triggered until .compute() is called."""
+        wrapped_spi = xarray_adapter(
+            cf_metadata=CF_METADATA["spi"],
+            calculation_metadata_keys=["scale", "distribution"],
+            index_display_name="SPI",
+        )(indices.spi)
+
+        result = wrapped_spi(
+            dask_monthly_precip_1d,
+            scale=3,
+            distribution=indices.Distribution.gamma,
+        )
+
+        # verify result is still lazy (has dask graph)
+        assert hasattr(result.data, "dask")
+        assert len(result.data.dask) > 0  # type: ignore[attr-defined]
+
+    def test_spatial_chunks_preserved(self, dask_monthly_precip_3d):
+        """Spatial chunks are preserved in output."""
+        wrapped_spi = xarray_adapter(
+            cf_metadata=CF_METADATA["spi"],
+            calculation_metadata_keys=["scale", "distribution"],
+            index_display_name="SPI",
+        )(indices.spi)
+
+        result = wrapped_spi(
+            dask_monthly_precip_3d,
+            scale=3,
+            distribution=indices.Distribution.gamma,
+        )
+
+        # verify spatial chunks preserved
+        input_chunks = dask_monthly_precip_3d.chunks
+        output_chunks = result.chunks
+
+        # time chunk should match (single chunk)
+        assert len(output_chunks[0]) == len(input_chunks[0])
+        # spatial chunks should be preserved
+        assert output_chunks[1] == input_chunks[1]  # lat
+        assert output_chunks[2] == input_chunks[2]  # lon
+
+    def test_dimension_order_preserved(self, dask_monthly_precip_3d):
+        """Dimension order is preserved (time, lat, lon)."""
+        wrapped_spi = xarray_adapter(
+            cf_metadata=CF_METADATA["spi"],
+            calculation_metadata_keys=["scale", "distribution"],
+            index_display_name="SPI",
+        )(indices.spi)
+
+        result = wrapped_spi(
+            dask_monthly_precip_3d,
+            scale=3,
+            distribution=indices.Distribution.gamma,
+        )
+
+        # verify dimension order preserved
+        assert result.dims == dask_monthly_precip_3d.dims
+        assert result.dims == ("time", "lat", "lon")
+
+    def test_cf_metadata_applied(self, dask_monthly_precip_1d):
+        """CF metadata is applied to Dask output."""
+        wrapped_spi = xarray_adapter(
+            cf_metadata=CF_METADATA["spi"],
+            calculation_metadata_keys=["scale", "distribution"],
+            index_display_name="SPI",
+        )(indices.spi)
+
+        result = wrapped_spi(
+            dask_monthly_precip_1d,
+            scale=3,
+            distribution=indices.Distribution.gamma,
+        )
+
+        assert result.attrs["long_name"] == "Standardized Precipitation Index"
+        assert result.attrs["units"] == "dimensionless"
+        assert "McKee" in result.attrs["references"]
+
+    def test_history_attribute_present(self, dask_monthly_precip_1d):
+        """History attribute is added to Dask output."""
+        wrapped_spi = xarray_adapter(
+            cf_metadata=CF_METADATA["spi"],
+            calculation_metadata_keys=["scale", "distribution"],
+            index_display_name="SPI",
+        )(indices.spi)
+
+        result = wrapped_spi(
+            dask_monthly_precip_1d,
+            scale=3,
+            distribution=indices.Distribution.gamma,
+        )
+
+        assert "history" in result.attrs
+        assert "SPI-3 calculated" in result.attrs["history"]
+        assert "climate_indices v" in result.attrs["history"]
+
+    def test_coordinate_attrs_preserved(self, dask_monthly_precip_1d):
+        """Coordinate attributes are preserved in Dask output."""
+        # add attrs to input time coord
+        dask_monthly_precip_1d.coords["time"].attrs = {
+            "axis": "T",
+            "standard_name": "time",
+        }
+
+        wrapped_spi = xarray_adapter(
+            cf_metadata=CF_METADATA["spi"],
+            calculation_metadata_keys=["scale", "distribution"],
+            index_display_name="SPI",
+        )(indices.spi)
+
+        result = wrapped_spi(
+            dask_monthly_precip_1d,
+            scale=3,
+            distribution=indices.Distribution.gamma,
+        )
+
+        assert result.coords["time"].attrs["axis"] == "T"
+        assert result.coords["time"].attrs["standard_name"] == "time"
+
+    def test_name_preserved(self, dask_monthly_precip_1d):
+        """DataArray .name attribute is preserved."""
+        wrapped_spi = xarray_adapter(
+            cf_metadata=CF_METADATA["spi"],
+            calculation_metadata_keys=["scale", "distribution"],
+            index_display_name="SPI",
+        )(indices.spi)
+
+        result = wrapped_spi(
+            dask_monthly_precip_1d,
+            scale=3,
+            distribution=indices.Distribution.gamma,
+        )
+
+        assert result.name == dask_monthly_precip_1d.name
+
+    def test_multi_input_dask_support(self, dask_monthly_precip_1d, dask_monthly_pet_da):
+        """Multi-input functions (SPEI) work with Dask arrays."""
+
+        # create a mock SPEI function for testing
+        @xarray_adapter(
+            cf_metadata=CF_METADATA["spei"],
+            calculation_metadata_keys=["scale", "distribution"],
+            index_display_name="SPEI",
+            additional_input_names=["pet"],
+        )
+        def mock_spei(
+            precip: np.ndarray,
+            pet: np.ndarray,
+            scale: int,
+            distribution: indices.Distribution,
+            data_start_year: int,
+            periodicity: indices.compute.Periodicity,
+            calibration_year_initial: int,
+            calibration_year_final: int,
+        ) -> np.ndarray:
+            # simplified SPEI: just use precip - pet difference
+            diff = precip - pet
+            return indices.spi(
+                diff,
+                scale,
+                distribution,
+                data_start_year,
+                periodicity,
+                calibration_year_initial,
+                calibration_year_final,
+            )
+
+        result = mock_spei(
+            dask_monthly_precip_1d,
+            dask_monthly_pet_da,
+            scale=3,
+            distribution=indices.Distribution.gamma,
+        )
+
+        # verify output is Dask-backed
+        assert result.chunks is not None
+        assert hasattr(result.data, "dask")
+
+    def test_in_memory_path_unchanged(self, sample_monthly_precip_da):
+        """In-memory path behavior is unchanged (regression test)."""
+        wrapped_spi = xarray_adapter(
+            cf_metadata=CF_METADATA["spi"],
+            calculation_metadata_keys=["scale", "distribution"],
+            index_display_name="SPI",
+        )(indices.spi)
+
+        result = wrapped_spi(
+            sample_monthly_precip_da,
+            scale=3,
+            distribution=indices.Distribution.gamma,
+        )
+
+        # verify output is NOT Dask-backed (in-memory)
+        assert result.chunks is None
+        assert not hasattr(result.data, "dask")
+
+        # verify CF metadata applied
+        assert result.attrs["long_name"] == "Standardized Precipitation Index"
+
+    def test_dask_spi_integration(self, dask_monthly_precip_1d):
+        """Integration test: Dask SPI produces correct values when computed."""
+        wrapped_spi = xarray_adapter(
+            cf_metadata=CF_METADATA["spi"],
+            calculation_metadata_keys=["scale", "distribution"],
+            index_display_name="SPI",
+        )(indices.spi)
+
+        result = wrapped_spi(
+            dask_monthly_precip_1d,
+            scale=3,
+            distribution=indices.Distribution.gamma,
+        )
+
+        # compute the result
+        computed_result = result.compute()
+
+        # verify output shape matches input
+        assert computed_result.shape == dask_monthly_precip_1d.shape
+
+        # verify output contains expected SPI range (roughly -3 to 3)
+        assert -4.0 < float(computed_result.min()) < 4.0
+        assert -4.0 < float(computed_result.max()) < 4.0
+
+        # verify no NaN in middle of series (edges may have NaN from convolution)
+        middle_slice = computed_result[100:400]
+        assert not np.all(np.isnan(middle_slice.values))
