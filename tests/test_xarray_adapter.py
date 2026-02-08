@@ -532,6 +532,14 @@ class TestCFMetadataRegistry:
                 assert isinstance(value, str), f"Entry '{index_name}', key '{key}' is not a string"
                 assert value.strip(), f"Entry '{index_name}', key '{key}' is empty or whitespace"
 
+    def test_registry_contains_all_indices(self):
+        """Registry contains all expected drought and PET indices."""
+        expected_indices = {"spi", "spei", "pet_thornthwaite", "pet_hargreaves"}
+        actual_indices = set(CF_METADATA.keys())
+        assert expected_indices == actual_indices, (
+            f"Registry mismatch. Expected: {expected_indices}, Got: {actual_indices}"
+        )
+
 
 class TestXarrayAdapterCFMetadata:
     """Test CF metadata application."""
@@ -2662,6 +2670,60 @@ class TestCFMetadataRegistrySPEI:
         assert "standard_name" not in CF_METADATA["spei"]
 
 
+class TestCFMetadataRegistryPETThornthwaite:
+    """Test PET Thornthwaite entry in CF_METADATA registry."""
+
+    def test_pet_thornthwaite_metadata_exists(self):
+        """PET Thornthwaite metadata entry exists in registry."""
+        assert "pet_thornthwaite" in CF_METADATA
+
+    def test_pet_thornthwaite_long_name(self):
+        """PET Thornthwaite has correct long_name."""
+        assert CF_METADATA["pet_thornthwaite"]["long_name"] == "Potential Evapotranspiration (Thornthwaite method)"
+
+    def test_pet_thornthwaite_units(self):
+        """PET Thornthwaite has correct units."""
+        assert CF_METADATA["pet_thornthwaite"]["units"] == "mm/month"
+
+    def test_pet_thornthwaite_references(self):
+        """PET Thornthwaite has references attribute."""
+        assert "references" in CF_METADATA["pet_thornthwaite"]
+        assert "Thornthwaite" in CF_METADATA["pet_thornthwaite"]["references"]
+        assert "1948" in CF_METADATA["pet_thornthwaite"]["references"]
+
+    def test_pet_thornthwaite_no_standard_name(self):
+        """PET Thornthwaite does not have standard_name (not officially defined in CF)."""
+        # standard_name is optional, should not be present for PET methods
+        assert "standard_name" not in CF_METADATA["pet_thornthwaite"]
+
+
+class TestCFMetadataRegistryPETHargreaves:
+    """Test PET Hargreaves entry in CF_METADATA registry."""
+
+    def test_pet_hargreaves_metadata_exists(self):
+        """PET Hargreaves metadata entry exists in registry."""
+        assert "pet_hargreaves" in CF_METADATA
+
+    def test_pet_hargreaves_long_name(self):
+        """PET Hargreaves has correct long_name."""
+        assert CF_METADATA["pet_hargreaves"]["long_name"] == "Potential Evapotranspiration (Hargreaves method)"
+
+    def test_pet_hargreaves_units(self):
+        """PET Hargreaves has correct units."""
+        assert CF_METADATA["pet_hargreaves"]["units"] == "mm/day"
+
+    def test_pet_hargreaves_references(self):
+        """PET Hargreaves has references attribute."""
+        assert "references" in CF_METADATA["pet_hargreaves"]
+        assert "Hargreaves" in CF_METADATA["pet_hargreaves"]["references"]
+        assert "1985" in CF_METADATA["pet_hargreaves"]["references"]
+
+    def test_pet_hargreaves_no_standard_name(self):
+        """PET Hargreaves does not have standard_name (not officially defined in CF)."""
+        # standard_name is optional, should not be present for PET methods
+        assert "standard_name" not in CF_METADATA["pet_hargreaves"]
+
+
 class TestSPEIIntegration:
     """End-to-end integration tests for SPEI with real indices.spei() function."""
 
@@ -2777,6 +2839,206 @@ class TestSPEIIntegration:
         # verify calculation metadata captured
         assert result.attrs["scale"] == 12
         assert result.attrs["distribution"] == "gamma"
+
+
+class TestSPEIPearsonIntegration:
+    """End-to-end integration tests for SPEI with Pearson Type III distribution (Story 3.4)."""
+
+    def test_spei_pearson_xarray_matching_dataarrays(self, sample_monthly_precip_da, sample_monthly_pet_da):
+        """SPEI Pearson computation with matching precipitation and PET DataArrays."""
+        wrapped_spei = xarray_adapter(
+            additional_input_names=["pet_mm"],
+            cf_metadata=CF_METADATA["spei"],
+            calculation_metadata_keys=["scale", "distribution"],
+            index_display_name="SPEI",
+        )(indices.spei)
+
+        result = wrapped_spei(
+            sample_monthly_precip_da,
+            sample_monthly_pet_da,
+            scale=3,
+            distribution=indices.Distribution.pearson,
+        )
+
+        # verify output is DataArray with correct shape
+        assert isinstance(result, xr.DataArray)
+        assert result.shape == sample_monthly_precip_da.shape
+
+        # verify CF metadata applied
+        assert result.attrs["long_name"] == "Standardized Precipitation Evapotranspiration Index"
+        assert result.attrs["units"] == "dimensionless"
+
+        # verify distribution attribute is pearson
+        assert result.attrs["distribution"] == "pearson"
+
+    def test_spei_pearson_xarray_numpy_equivalence(self, sample_monthly_precip_da, sample_monthly_pet_da):
+        """SPEI Pearson via xarray adapter matches raw indices.spei() computation."""
+        wrapped_spei = xarray_adapter(
+            additional_input_names=["pet_mm"],
+            cf_metadata=CF_METADATA["spei"],
+        )(indices.spei)
+
+        # compute via xarray adapter
+        result_xarray = wrapped_spei(
+            sample_monthly_precip_da,
+            sample_monthly_pet_da,
+            scale=6,
+            distribution=indices.Distribution.pearson,
+        )
+
+        # compute via raw indices.spei() with same inputs
+        result_numpy = indices.spei(
+            precips_mm=sample_monthly_precip_da.values,
+            pet_mm=sample_monthly_pet_da.values,
+            scale=6,
+            distribution=indices.Distribution.pearson,
+            data_start_year=1980,
+            periodicity=compute.Periodicity.monthly,
+            calibration_year_initial=1980,
+            calibration_year_final=2019,
+        )
+
+        # compare values at 0.001 tolerance (Pearson has wider numerical variation)
+        np.testing.assert_allclose(result_xarray.values, result_numpy, atol=0.001, equal_nan=True)
+
+    def test_spei_pearson_reference_fixture_validation(
+        self,
+        precips_mm_monthly,
+        pet_thornthwaite_mm,
+        spei_6_month_pearson3,
+        data_year_start_monthly,
+        data_year_end_monthly,
+    ):
+        """SPEI Pearson validates against NOAA reference implementation."""
+        wrapped_spei = xarray_adapter(
+            additional_input_names=["pet_mm"],
+            cf_metadata=CF_METADATA["spei"],
+        )(indices.spei)
+
+        # fixtures are 2D (years, months) - flatten to 1D time series
+        # precips_mm_monthly shape: (123, 12) -> 1476 months
+        precip_flat = precips_mm_monthly.flatten()
+        pet_flat = pet_thornthwaite_mm.flatten()
+
+        # wrap flattened fixtures in DataArrays (1895-2017, 1476 months)
+        time = pd.date_range(
+            f"{data_year_start_monthly}-01-01",
+            periods=len(precip_flat),
+            freq="MS",
+        )
+
+        precip_da = xr.DataArray(
+            precip_flat,
+            coords={"time": time},
+            dims=["time"],
+            attrs={"units": "mm", "long_name": "Monthly Precipitation"},
+        )
+
+        pet_da = xr.DataArray(
+            pet_flat,
+            coords={"time": time},
+            dims=["time"],
+            attrs={"units": "mm", "long_name": "Monthly PET (Thornthwaite)"},
+        )
+
+        # compute SPEI-6 Pearson through xarray adapter
+        result = wrapped_spei(
+            precip_da,
+            pet_da,
+            scale=6,
+            distribution=indices.Distribution.pearson,
+        )
+
+        # compare against NOAA reference at 0.001 tolerance
+        np.testing.assert_allclose(result.values, spei_6_month_pearson3, atol=0.001, equal_nan=True)
+
+    def test_spei_pearson_xarray_offset_alignment(self, sample_monthly_precip_da, sample_monthly_pet_offset_da):
+        """SPEI Pearson with misaligned precip/PET emits alignment warning."""
+        wrapped_spei = xarray_adapter(
+            additional_input_names=["pet_mm"],
+            cf_metadata=CF_METADATA["spei"],
+            index_display_name="SPEI",
+        )(indices.spei)
+
+        with pytest.warns(InputAlignmentWarning) as warning_list:
+            result = wrapped_spei(
+                sample_monthly_precip_da,
+                sample_monthly_pet_offset_da,
+                scale=3,
+                distribution=indices.Distribution.pearson,
+            )
+
+        # verify warning was emitted
+        assert len(warning_list) == 1
+
+        # verify output reflects aligned size (1985-2019 = 420 months)
+        assert len(result) == 420
+
+    def test_spei_pearson_numpy_passthrough(self):
+        """SPEI Pearson with numpy inputs passes through unchanged."""
+        wrapped_spei = xarray_adapter(
+            additional_input_names=["pet_mm"],
+            cf_metadata=CF_METADATA["spei"],
+        )(indices.spei)
+
+        # generate numpy inputs
+        rng = np.random.default_rng(42)
+        precip_np = rng.gamma(shape=2.0, scale=50.0, size=480)
+        pet_np = rng.gamma(shape=2.5, scale=60.0, size=480)
+
+        result = wrapped_spei(
+            precip_np,
+            pet_np,
+            scale=3,
+            distribution=indices.Distribution.pearson,
+            data_start_year=1980,
+            periodicity=compute.Periodicity.monthly,
+            calibration_year_initial=1980,
+            calibration_year_final=2019,
+        )
+
+        # result should be numpy array (passthrough)
+        assert isinstance(result, np.ndarray)
+
+    def test_spei_pearson_history_entry(self, sample_monthly_precip_da, sample_monthly_pet_da):
+        """SPEI Pearson adds history entry to output."""
+        wrapped_spei = xarray_adapter(
+            additional_input_names=["pet_mm"],
+            cf_metadata=CF_METADATA["spei"],
+            calculation_metadata_keys=["scale"],
+            index_display_name="SPEI",
+        )(indices.spei)
+
+        result = wrapped_spei(
+            sample_monthly_precip_da,
+            sample_monthly_pet_da,
+            scale=6,
+            distribution=indices.Distribution.pearson,
+        )
+
+        # verify history attribute exists and contains expected content
+        assert "history" in result.attrs
+        history = result.attrs["history"]
+        assert "SPEI-6 calculated" in history
+        assert "climate_indices" in history
+
+    def test_spei_pearson_calculation_metadata(self, sample_monthly_precip_da, sample_monthly_pet_da):
+        """SPEI Pearson includes calculation metadata in output attributes."""
+        wrapped_spei = xarray_adapter(
+            additional_input_names=["pet_mm"],
+            calculation_metadata_keys=["scale", "distribution"],
+        )(indices.spei)
+
+        result = wrapped_spei(
+            sample_monthly_precip_da,
+            sample_monthly_pet_da,
+            scale=12,
+            distribution=indices.Distribution.pearson,
+        )
+
+        # verify calculation metadata captured
+        assert result.attrs["scale"] == 12
+        assert result.attrs["distribution"] == "pearson"
 
 
 # NaN handling fixtures (Story 2.8)
@@ -3233,6 +3495,132 @@ class TestNanHandlingSPIIntegration:
         assert result.dims == monthly_precip_with_nan.dims
         assert "time" in result.coords
         assert len(result.coords["time"]) == len(monthly_precip_with_nan.coords["time"])
+
+
+@pytest.fixture
+def monthly_precip_pet_with_nan() -> tuple[xr.DataArray, xr.DataArray]:
+    """Create paired 40-year monthly precip/PET with ~10% NaN scattered throughout."""
+    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+    rng = np.random.default_rng(42)
+    precip_values = rng.gamma(shape=2.0, scale=50.0, size=len(time))
+    pet_values = rng.gamma(shape=2.5, scale=60.0, size=len(time))
+
+    # add scattered NaN (~10%) at same positions
+    nan_indices = rng.choice(len(time), size=int(len(time) * 0.1), replace=False)
+    precip_values[nan_indices] = np.nan
+    pet_values[nan_indices] = np.nan
+
+    precip_da = xr.DataArray(
+        precip_values,
+        coords={"time": time},
+        dims=["time"],
+        attrs={"units": "mm", "long_name": "Monthly Precipitation with NaN"},
+    )
+
+    pet_da = xr.DataArray(
+        pet_values,
+        coords={"time": time},
+        dims=["time"],
+        attrs={"units": "mm", "long_name": "Monthly PET with NaN"},
+    )
+
+    return precip_da, pet_da
+
+
+@pytest.fixture
+def monthly_precip_pet_sparse() -> tuple[xr.DataArray, xr.DataArray]:
+    """Create paired monthly precip/PET with extremely sparse data (triggers fitting errors)."""
+    # only 24 months of data (insufficient for Pearson fitting)
+    time = pd.date_range("1980-01-01", "1981-12-01", freq="MS")
+    rng = np.random.default_rng(99)
+    precip_values = rng.gamma(shape=2.0, scale=50.0, size=len(time))
+    pet_values = rng.gamma(shape=2.5, scale=60.0, size=len(time))
+
+    precip_da = xr.DataArray(
+        precip_values,
+        coords={"time": time},
+        dims=["time"],
+        attrs={"units": "mm", "long_name": "Monthly Precipitation (Sparse)"},
+    )
+
+    pet_da = xr.DataArray(
+        pet_values,
+        coords={"time": time},
+        dims=["time"],
+        attrs={"units": "mm", "long_name": "Monthly PET (Sparse)"},
+    )
+
+    return precip_da, pet_da
+
+
+class TestSPEIPearsonErrorHandling:
+    """Error handling tests for SPEI with Pearson Type III distribution (Story 3.4)."""
+
+    def test_spei_pearson_with_scattered_nan(self, monthly_precip_pet_with_nan):
+        """SPEI Pearson handles scattered NaN correctly in paired inputs."""
+        precip_da, pet_da = monthly_precip_pet_with_nan
+
+        wrapped_spei = xarray_adapter(
+            additional_input_names=["pet_mm"],
+            cf_metadata=CF_METADATA["spei"],
+            calculation_metadata_keys=["scale", "distribution"],
+            index_display_name="SPEI",
+        )(indices.spei)
+
+        result = wrapped_spei(
+            precip_da,
+            pet_da,
+            scale=3,
+            distribution=indices.Distribution.pearson,
+        )
+
+        # verify output is DataArray
+        assert isinstance(result, xr.DataArray)
+
+        # verify input NaN positions remain NaN in output
+        input_nan_mask = np.isnan(precip_da.values)
+        output_nan_mask = np.isnan(result.values)
+
+        # all input NaN positions must be NaN in output
+        assert np.all(output_nan_mask[input_nan_mask])
+
+    def test_spei_pearson_no_fallback_to_gamma(self, monthly_precip_pet_sparse):
+        """SPEI Pearson handles sparse data with warnings (no silent fallback to gamma).
+
+        Unlike SPI (which falls back from Pearson to gamma), SPEI intentionally does not
+        fall back because water balance can be negative, making gamma inappropriate.
+        With sparse data, Pearson fitting logs warnings but completes with default parameters.
+        """
+        precip_da, pet_da = monthly_precip_pet_sparse
+
+        wrapped_spei = xarray_adapter(
+            additional_input_names=["pet_mm"],
+            cf_metadata=CF_METADATA["spei"],
+            calculation_metadata_keys=["scale", "distribution"],
+            index_display_name="SPEI",
+        )(indices.spei)
+
+        # sparse data (24 months) triggers warnings but completes (no fallback to gamma)
+        import warnings
+
+        with warnings.catch_warnings(record=True) as warning_list:
+            warnings.simplefilter("always")
+            result = wrapped_spei(
+                precip_da,
+                pet_da,
+                scale=6,
+                distribution=indices.Distribution.pearson,
+            )
+
+        # verify result is DataArray with pearson distribution (no fallback)
+        assert isinstance(result, xr.DataArray)
+        assert result.attrs["distribution"] == "pearson"
+
+        # verify warnings were emitted about short calibration period
+        warning_messages = [str(w.message) for w in warning_list]
+        assert any("shorter than the recommended" in msg or "High failure rate" in msg for msg in warning_messages), (
+            "Expected warnings about short calibration period or fitting failures"
+        )
 
 
 class TestIsDaskBacked:

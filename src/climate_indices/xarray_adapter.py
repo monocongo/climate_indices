@@ -91,6 +91,26 @@ CF_METADATA: dict[str, CFAttributes] = {
             "https://doi.org/10.1175/2009JCLI2909.1"
         ),
     },
+    "pet_thornthwaite": {
+        "long_name": "Potential Evapotranspiration (Thornthwaite method)",
+        "units": "mm/month",
+        "references": (
+            "Thornthwaite, C. W. (1948). "
+            "An approach toward a rational classification of climate. "
+            "Geographical Review, 38(1), 55-94. "
+            "https://doi.org/10.2307/210739"
+        ),
+    },
+    "pet_hargreaves": {
+        "long_name": "Potential Evapotranspiration (Hargreaves method)",
+        "units": "mm/day",
+        "references": (
+            "Hargreaves, G. H., & Samani, Z. A. (1985). "
+            "Reference crop evapotranspiration from temperature. "
+            "Applied Engineering in Agriculture, 1(2), 96-99. "
+            "https://doi.org/10.13031/2013.26773"
+        ),
+    },
 }
 
 # types that can be safely coerced to np.ndarray by the existing numpy functions
@@ -1239,8 +1259,7 @@ def _run_xarray_path(
     # check skipna parameter (Story 2.8)
     if skipna:
         raise NotImplementedError(
-            "skipna=True not yet implemented (FR-INPUT-004). "
-            "NaN values are propagated through calculations by default."
+            "skipna=True not yet implemented (FR-INPUT-004). NaN values are propagated through calculations by default."
         )
 
     input_da, modified_args, modified_kwargs, resolved_secondaries = _prepare_xarray_inputs(
@@ -1293,7 +1312,9 @@ def _run_xarray_path(
 
     calc_metadata = _capture_calculation_metadata(calculation_metadata_keys, valid_kwargs)
     resolved_index_name = index_display_name if index_display_name is not None else func.__name__.upper()
-    result_da = _build_output_dataarray(input_da, result_values, cf_metadata, calc_metadata, index_name=resolved_index_name)
+    result_da = _build_output_dataarray(
+        input_da, result_values, cf_metadata, calc_metadata, index_name=resolved_index_name
+    )
 
     # log completion with NaN metrics (Story 2.8)
     log_fields = {
