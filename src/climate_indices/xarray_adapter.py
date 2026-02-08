@@ -893,12 +893,17 @@ def _infer_temporal_parameters(
     if "periodicity" in sig.parameters and "periodicity" not in provided_params:
         inferred["periodicity"] = _infer_periodicity(time_coord)
 
-    # infer calibration period if not provided
-    if "calibration_year_initial" in sig.parameters and "calibration_year_initial" not in provided_params:
+    # infer calibration period if either param is not provided
+    needs_cal_initial = (
+        "calibration_year_initial" in sig.parameters and "calibration_year_initial" not in provided_params
+    )
+    needs_cal_final = "calibration_year_final" in sig.parameters and "calibration_year_final" not in provided_params
+
+    if needs_cal_initial or needs_cal_final:
         cal_start, cal_end = _infer_calibration_period(time_coord)
-        if "calibration_year_initial" not in provided_params:
+        if needs_cal_initial:
             inferred["calibration_year_initial"] = cal_start
-        if "calibration_year_final" in sig.parameters and "calibration_year_final" not in provided_params:
+        if needs_cal_final:
             inferred["calibration_year_final"] = cal_end
 
     return inferred
@@ -1448,6 +1453,13 @@ def xarray_adapter(
             inferred_params: dict[str, Any] = {}
             if infer_params:
                 inferred_params = _infer_temporal_parameters(func, input_da, modified_args, modified_kwargs, time_dim)
+                # log which parameters were inferred and their values
+                if inferred_params:
+                    logger.info(
+                        "parameters_inferred",
+                        function_name=func.__name__,
+                        **{k: str(v) for k, v in inferred_params.items()},
+                    )
 
             # branch: Dask execution or in-memory execution
             if is_dask:

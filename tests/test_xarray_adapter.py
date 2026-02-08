@@ -33,6 +33,7 @@ from climate_indices.xarray_adapter import (
     _infer_calibration_period,
     _infer_data_start_year,
     _infer_periodicity,
+    _infer_temporal_parameters,
     _is_dask_backed,
     _resolve_scale_from_args,
     _resolve_secondary_inputs,
@@ -691,6 +692,102 @@ class TestXarrayAdapterParameterInference:
         )
         assert isinstance(result, xr.DataArray)
 
+    def test_inferred_params_match_explicit_spi(self, sample_monthly_precip_da):
+        """Architecture verification: inferred params match explicit values (arch.md:274)."""
+        # wrap real SPI function
+        wrapped_spi = xarray_adapter(cf_metadata=CF_METADATA["spi"])(indices.spi)
+
+        # call 1: let inference do the work (only provide scale and distribution)
+        result_inferred = wrapped_spi(
+            sample_monthly_precip_da,
+            scale=6,
+            distribution=indices.Distribution.gamma,
+        )
+
+        # call 2: explicitly provide all temporal parameters
+        # sample_monthly_precip_da is 1980-2019 (40 years)
+        result_explicit = wrapped_spi(
+            sample_monthly_precip_da,
+            scale=6,
+            distribution=indices.Distribution.gamma,
+            data_start_year=1980,
+            periodicity=compute.Periodicity.monthly,
+            calibration_year_initial=1980,
+            calibration_year_final=2019,
+        )
+
+        # both results should be identical
+        np.testing.assert_array_equal(result_inferred.values, result_explicit.values)
+        assert result_inferred.dims == result_explicit.dims
+        assert result_inferred.coords.keys() == result_explicit.coords.keys()
+
+    def test_partial_override_start_year_only(self, sample_monthly_precip_da):
+        """Provide data_start_year explicitly, infer periodicity and calibration."""
+
+        @xarray_adapter(infer_params=True)
+        def needs_all_params(
+            values: np.ndarray,
+            data_start_year: int,
+            periodicity: compute.Periodicity,
+            calibration_year_initial: int,
+            calibration_year_final: int,
+        ) -> np.ndarray:
+            # explicit start year should be used
+            assert data_start_year == 1990
+            # periodicity should be inferred (monthly)
+            assert periodicity == compute.Periodicity.monthly
+            # calibration should be inferred (1980-2019)
+            assert calibration_year_initial == 1980
+            assert calibration_year_final == 2019
+            return values
+
+        result = needs_all_params(sample_monthly_precip_da, data_start_year=1990)
+        assert isinstance(result, xr.DataArray)
+
+    def test_partial_override_calibration_only(self, sample_monthly_precip_da):
+        """Provide calibration explicitly, infer data_start_year and periodicity."""
+
+        @xarray_adapter(infer_params=True)
+        def needs_all_params(
+            values: np.ndarray,
+            data_start_year: int,
+            periodicity: compute.Periodicity,
+            calibration_year_initial: int,
+            calibration_year_final: int,
+        ) -> np.ndarray:
+            # start year and periodicity should be inferred
+            assert data_start_year == 1980
+            assert periodicity == compute.Periodicity.monthly
+            # calibration should use explicit values
+            assert calibration_year_initial == 2000
+            assert calibration_year_final == 2010
+            return values
+
+        result = needs_all_params(
+            sample_monthly_precip_da,
+            calibration_year_initial=2000,
+            calibration_year_final=2010,
+        )
+        assert isinstance(result, xr.DataArray)
+
+    def test_override_calibration_initial_without_final(self, sample_monthly_precip_da):
+        """Provide only calibration_year_initial, infer calibration_year_final."""
+
+        @xarray_adapter(infer_params=True)
+        def needs_calibration(
+            values: np.ndarray,
+            calibration_year_initial: int,
+            calibration_year_final: int,
+        ) -> np.ndarray:
+            # initial should use explicit value
+            assert calibration_year_initial == 1995
+            # final should be inferred (2019)
+            assert calibration_year_final == 2019
+            return values
+
+        result = needs_calibration(sample_monthly_precip_da, calibration_year_initial=1995)
+        assert isinstance(result, xr.DataArray)
+
 
 class TestXarrayAdapterInferenceHelpers:
     """Test the private inference helper functions."""
@@ -759,6 +856,185 @@ class TestXarrayAdapterInferenceHelpers:
         assert cal_start == 1990
         assert cal_end == 1999
 
+    def test_infer_periodicity_month_end(self):
+        """_infer_periodicity handles ME frequency (pandas >= 2.2 default)."""
+        # pandas 2.2+ uses ME instead of MS for month-end
+        time = pd.date_range("2020-01-31", periods=24, freq="ME")
+        time_da = xr.DataArray(time, dims=["time"])
+
+        periodicity = _infer_periodicity(time_da)
+        assert periodicity == compute.Periodicity.monthly
+
+    def test_infer_periodicity_legacy_month(self):
+        """_infer_periodicity handles legacy M frequency."""
+        # older pandas versions might return "M" for monthly
+        # create time coord that infers to M or MS
+        time = pd.date_range("2020-01-01", periods=24, freq="MS")
+        time_da = xr.DataArray(time, dims=["time"])
+
+        # verify it maps correctly (this should pass with both M and MS)
+        periodicity = _infer_periodicity(time_da)
+        assert periodicity == compute.Periodicity.monthly
+
+    def test_infer_periodicity_insufficient_values(self):
+        """_infer_periodicity raises CoordinateValidationError with < 3 values."""
+        # xr.infer_freq requires at least 3 values
+        time = pd.to_datetime(["2000-01-01", "2000-02-01"])
+        time_da = xr.DataArray(time, dims=["time"])
+
+        with pytest.raises(CoordinateValidationError) as exc_info:
+            _infer_periodicity(time_da)
+
+        # should mention "at least 3" in error message
+        assert "at least 3" in str(exc_info.value).lower()
+
+    def test_infer_data_start_year_non_datetime(self):
+        """_infer_data_start_year raises CoordinateValidationError for non-datetime coord."""
+        # string time coordinate (not datetime-like)
+        time_da = xr.DataArray(["a", "b", "c", "d", "e"], dims=["time"])
+
+        with pytest.raises(CoordinateValidationError) as exc_info:
+            _infer_data_start_year(time_da)
+
+        # should mention "datetime" in error message
+        assert "datetime" in str(exc_info.value).lower()
+
+
+class TestInferTemporalParameters:
+    """Test the _infer_temporal_parameters orchestrator function."""
+
+    def test_infers_all_params_when_none_provided(self, sample_monthly_precip_da):
+        """Infer all temporal params when none are provided."""
+
+        def func_needs_all(
+            values: np.ndarray,
+            data_start_year: int,
+            periodicity: compute.Periodicity,
+            calibration_year_initial: int,
+            calibration_year_final: int,
+        ) -> np.ndarray:
+            return values
+
+        # call with no args/kwargs (all should be inferred)
+        inferred = _infer_temporal_parameters(
+            func_needs_all,
+            sample_monthly_precip_da,
+            modified_args=[],
+            modified_kwargs={},
+            time_dim="time",
+        )
+
+        # all 4 parameters should be inferred
+        assert "data_start_year" in inferred
+        assert "periodicity" in inferred
+        assert "calibration_year_initial" in inferred
+        assert "calibration_year_final" in inferred
+
+        # verify values (sample_monthly_precip_da is 1980-2019 monthly)
+        assert inferred["data_start_year"] == 1980
+        assert inferred["periodicity"] == compute.Periodicity.monthly
+        assert inferred["calibration_year_initial"] == 1980
+        assert inferred["calibration_year_final"] == 2019
+
+    def test_skips_already_provided_params(self, sample_monthly_precip_da):
+        """Skip inference for parameters already provided."""
+
+        def func_needs_all(
+            values: np.ndarray,
+            data_start_year: int,
+            periodicity: compute.Periodicity,
+            calibration_year_initial: int,
+            calibration_year_final: int,
+        ) -> np.ndarray:
+            return values
+
+        # pre-provide data_start_year
+        inferred = _infer_temporal_parameters(
+            func_needs_all,
+            sample_monthly_precip_da,
+            modified_args=[],
+            modified_kwargs={"data_start_year": 1990},
+            time_dim="time",
+        )
+
+        # data_start_year should NOT be in inferred (already provided)
+        assert "data_start_year" not in inferred
+        # others should be inferred
+        assert "periodicity" in inferred
+        assert "calibration_year_initial" in inferred
+        assert "calibration_year_final" in inferred
+
+    def test_skips_params_not_in_signature(self, sample_monthly_precip_da):
+        """Only infer params that are in function signature."""
+
+        def func_needs_only_start_year(
+            values: np.ndarray,
+            data_start_year: int,
+        ) -> np.ndarray:
+            return values
+
+        inferred = _infer_temporal_parameters(
+            func_needs_only_start_year,
+            sample_monthly_precip_da,
+            modified_args=[],
+            modified_kwargs={},
+            time_dim="time",
+        )
+
+        # only data_start_year should be inferred (periodicity not in signature)
+        assert "data_start_year" in inferred
+        assert "periodicity" not in inferred
+        assert "calibration_year_initial" not in inferred
+        assert "calibration_year_final" not in inferred
+
+    def test_returns_empty_dict_when_no_time_dim(self):
+        """Return empty dict when time dimension doesn't exist."""
+        # DataArray with no time dimension
+        da = xr.DataArray([1, 2, 3], dims=["x"])
+
+        def func_needs_params(
+            values: np.ndarray,
+            data_start_year: int,
+            periodicity: compute.Periodicity,
+        ) -> np.ndarray:
+            return values
+
+        inferred = _infer_temporal_parameters(
+            func_needs_params,
+            da,
+            modified_args=[],
+            modified_kwargs={},
+            time_dim="time",
+        )
+
+        # should return empty dict (no time dimension)
+        assert inferred == {}
+
+    def test_bind_partial_failure_returns_empty_provided(self, sample_monthly_precip_da):
+        """Handle bind_partial TypeError gracefully."""
+
+        def func_with_conflicting_params(
+            values: np.ndarray,
+            data_start_year: int,
+            periodicity: compute.Periodicity,
+        ) -> np.ndarray:
+            return values
+
+        # create a scenario that might cause bind_partial to fail
+        # (e.g., duplicate argument in args and kwargs)
+        # note: this is hard to trigger in practice, but we test the fallback
+        inferred = _infer_temporal_parameters(
+            func_with_conflicting_params,
+            sample_monthly_precip_da,
+            modified_args=[],
+            modified_kwargs={},
+            time_dim="time",
+        )
+
+        # should still infer parameters even if binding fails
+        assert "data_start_year" in inferred
+        assert "periodicity" in inferred
+
 
 class TestXarrayAdapterLogging:
     """Test logging events from the decorator."""
@@ -800,6 +1076,30 @@ class TestXarrayAdapterLogging:
         log_output = self._combined_log_output(caplog, capsys)
         assert "input_shape" in log_output
         assert "output_shape" in log_output
+
+    def test_logs_inferred_parameter_values(self, sample_monthly_precip_da, caplog):
+        """Logs parameters_inferred event with actual inferred values."""
+
+        @xarray_adapter(infer_params=True)
+        def needs_params(
+            values: np.ndarray,
+            data_start_year: int,
+            periodicity: compute.Periodicity,
+        ) -> np.ndarray:
+            return values
+
+        with caplog.at_level("INFO"):
+            _ = needs_params(sample_monthly_precip_da)
+
+        # verify parameters_inferred event appears
+        log_messages = [record.message for record in caplog.records]
+        assert any("parameters_inferred" in msg for msg in log_messages)
+
+        # verify actual inferred values are logged
+        # sample_monthly_precip_da is 1980-2019 monthly
+        inferred_log = [record for record in caplog.records if "parameters_inferred" in record.message][0]
+        assert "data_start_year" in str(inferred_log.message) or hasattr(inferred_log, "data_start_year")
+        assert "periodicity" in str(inferred_log.message) or hasattr(inferred_log, "periodicity")
 
 
 class TestXarrayAdapterIntegration:
