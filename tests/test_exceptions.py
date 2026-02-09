@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pickle
+import warnings
 
 import pytest
 
@@ -46,6 +47,43 @@ class TestExceptionHierarchy:
         assert issubclass(ClimateIndicesError, Exception)
 
 
+class TestWarningHierarchy:
+    """Verify the warning class hierarchy structure."""
+
+    def test_all_warnings_inherit_from_base(self) -> None:
+        """All custom warnings should inherit from ClimateIndicesWarning."""
+        assert issubclass(exceptions.MissingDataWarning, exceptions.ClimateIndicesWarning)
+        assert issubclass(exceptions.ShortCalibrationWarning, exceptions.ClimateIndicesWarning)
+        assert issubclass(exceptions.GoodnessOfFitWarning, exceptions.ClimateIndicesWarning)
+        assert issubclass(exceptions.InputAlignmentWarning, exceptions.ClimateIndicesWarning)
+
+    def test_base_warning_inherits_from_user_warning(self) -> None:
+        """ClimateIndicesWarning should inherit from UserWarning."""
+        assert issubclass(exceptions.ClimateIndicesWarning, UserWarning)
+
+    def test_warnings_not_subclass_of_exception_base(self) -> None:
+        """Warning classes should NOT inherit from ClimateIndicesError."""
+        assert not issubclass(exceptions.ClimateIndicesWarning, ClimateIndicesError)
+        assert not issubclass(exceptions.MissingDataWarning, ClimateIndicesError)
+        assert not issubclass(exceptions.ShortCalibrationWarning, ClimateIndicesError)
+        assert not issubclass(exceptions.GoodnessOfFitWarning, ClimateIndicesError)
+        assert not issubclass(exceptions.InputAlignmentWarning, ClimateIndicesError)
+
+    def test_exceptions_not_subclass_of_warning_base(self) -> None:
+        """Exception classes should NOT inherit from ClimateIndicesWarning."""
+        assert not issubclass(ClimateIndicesError, exceptions.ClimateIndicesWarning)
+        assert not issubclass(exceptions.DistributionFittingError, exceptions.ClimateIndicesWarning)
+        assert not issubclass(exceptions.InsufficientDataError, exceptions.ClimateIndicesWarning)
+
+    def test_missing_data_warning_direct_subclass(self) -> None:
+        """MissingDataWarning should be a direct subclass of ClimateIndicesWarning."""
+        assert exceptions.MissingDataWarning.__bases__ == (exceptions.ClimateIndicesWarning,)
+
+    def test_short_calibration_warning_direct_subclass(self) -> None:
+        """ShortCalibrationWarning should be a direct subclass of ClimateIndicesWarning."""
+        assert exceptions.ShortCalibrationWarning.__bases__ == (exceptions.ClimateIndicesWarning,)
+
+
 class TestExceptionCatchAll:
     """Verify that ClimateIndicesError can catch all library exceptions."""
 
@@ -83,6 +121,49 @@ class TestExceptionCatchAll:
         """ClimateIndicesError should catch InvalidArgumentError."""
         with pytest.raises(ClimateIndicesError):
             raise exceptions.InvalidArgumentError("test error")
+
+
+class TestWarningCatchAll:
+    """Verify that ClimateIndicesWarning can catch all library warnings."""
+
+    def test_catch_missing_data_warning(self) -> None:
+        """ClimateIndicesWarning should catch MissingDataWarning."""
+        with pytest.warns(exceptions.ClimateIndicesWarning):
+            warnings.warn("test warning", exceptions.MissingDataWarning, stacklevel=2)
+
+    def test_catch_short_calibration_warning(self) -> None:
+        """ClimateIndicesWarning should catch ShortCalibrationWarning."""
+        with pytest.warns(exceptions.ClimateIndicesWarning):
+            warnings.warn("test warning", exceptions.ShortCalibrationWarning, stacklevel=2)
+
+    def test_catch_goodness_of_fit_warning(self) -> None:
+        """ClimateIndicesWarning should catch GoodnessOfFitWarning."""
+        with pytest.warns(exceptions.ClimateIndicesWarning):
+            warnings.warn("test warning", exceptions.GoodnessOfFitWarning, stacklevel=2)
+
+    def test_catch_input_alignment_warning(self) -> None:
+        """ClimateIndicesWarning should catch InputAlignmentWarning."""
+        with pytest.warns(exceptions.ClimateIndicesWarning):
+            warnings.warn("test warning", exceptions.InputAlignmentWarning, stacklevel=2)
+
+
+class TestWarningFilterability:
+    """Verify that warnings can be filtered using standard Python warning filters."""
+
+    def test_filter_all_library_warnings(self) -> None:
+        """Filtering ClimateIndicesWarning should suppress all library warning subclasses."""
+        with warnings.catch_warnings(record=True) as warning_list:
+            warnings.simplefilter("always")
+            warnings.filterwarnings("ignore", category=exceptions.ClimateIndicesWarning)
+
+            # emit all warning types
+            warnings.warn("missing data", exceptions.MissingDataWarning, stacklevel=2)
+            warnings.warn("short calibration", exceptions.ShortCalibrationWarning, stacklevel=2)
+            warnings.warn("poor fit", exceptions.GoodnessOfFitWarning, stacklevel=2)
+            warnings.warn("alignment needed", exceptions.InputAlignmentWarning, stacklevel=2)
+
+            # verify none were recorded (all filtered)
+            assert len(warning_list) == 0
 
 
 class TestExceptionContextAttributes:
@@ -205,6 +286,25 @@ class TestExceptionContextAttributes:
         assert exc.underlying_error is None
 
 
+class TestKeywordOnlyEnforcement:
+    """Verify that context attributes must be passed as keywords."""
+
+    @pytest.mark.parametrize(
+        "exception_class,positional_args",
+        [
+            (exceptions.InvalidArgumentError, ("message", "scale")),
+            (exceptions.MissingDataWarning, ("message", 0.15)),
+            (exceptions.ShortCalibrationWarning, ("message", 25)),
+            (exceptions.GoodnessOfFitWarning, ("message", "gamma")),
+            (exceptions.InputAlignmentWarning, ("message", 100)),
+        ],
+    )
+    def test_positional_arguments_rejected(self, exception_class, positional_args) -> None:
+        """Context attributes should reject positional arguments and require keywords."""
+        with pytest.raises(TypeError, match="positional"):
+            exception_class(*positional_args)
+
+
 class TestBackwardCompatibility:
     """Verify backward compatibility with imports from compute module."""
 
@@ -242,6 +342,35 @@ class TestBackwardCompatibility:
             assert e.required_count == 10
 
 
+class TestAllExports:
+    """Verify __all__ completeness and correctness."""
+
+    def test_all_contains_expected_names(self) -> None:
+        """__all__ should contain exactly the 13 documented exception and warning classes."""
+        expected_names = {
+            "ClimateIndicesError",
+            "DistributionFittingError",
+            "InsufficientDataError",
+            "PearsonFittingError",
+            "DimensionMismatchError",
+            "CoordinateValidationError",
+            "InputTypeError",
+            "InvalidArgumentError",
+            "ClimateIndicesWarning",
+            "MissingDataWarning",
+            "ShortCalibrationWarning",
+            "GoodnessOfFitWarning",
+            "InputAlignmentWarning",
+        }
+        assert set(exceptions.__all__) == expected_names
+
+    def test_all_exports_are_classes(self) -> None:
+        """Every name in __all__ should resolve to an actual class."""
+        for name in exceptions.__all__:
+            cls = getattr(exceptions, name)
+            assert isinstance(cls, type), f"{name} is not a class"
+
+
 class TestExceptionPickling:
     """Verify exceptions can be pickled for Dask multiprocessing.
 
@@ -274,7 +403,7 @@ class TestExceptionPickling:
             ),
         ],
     )
-    def test_exception_pickle_roundtrip(self, exception_class, init_args, init_kwargs):
+    def test_exception_pickle_roundtrip(self, exception_class, init_args, init_kwargs) -> None:
         """All exception classes should survive pickle roundtrip with attributes intact."""
         # create exception
         original = exception_class(*init_args, **init_kwargs)
@@ -320,7 +449,7 @@ class TestWarningPickling:
             ),
         ],
     )
-    def test_warning_pickle_roundtrip(self, warning_class, init_args, init_kwargs):
+    def test_warning_pickle_roundtrip(self, warning_class, init_args, init_kwargs) -> None:
         """All warning classes should survive pickle roundtrip with attributes intact."""
         # create warning
         original = warning_class(*init_args, **init_kwargs)
@@ -344,7 +473,7 @@ class TestWarningPickling:
 class TestWarningAttributes:
     """Verify warning classes store context attributes correctly."""
 
-    def test_input_alignment_warning_attributes(self):
+    def test_input_alignment_warning_attributes(self) -> None:
         """InputAlignmentWarning should store alignment context."""
         warning = exceptions.InputAlignmentWarning(
             "Inputs aligned",
@@ -357,20 +486,20 @@ class TestWarningAttributes:
         assert warning.dropped_count == 20
         assert str(warning) == "Inputs aligned"
 
-    def test_input_alignment_warning_defaults(self):
+    def test_input_alignment_warning_defaults(self) -> None:
         """InputAlignmentWarning attributes should default to None."""
         warning = exceptions.InputAlignmentWarning("Aligned")
         assert warning.original_size is None
         assert warning.aligned_size is None
         assert warning.dropped_count is None
 
-    def test_missing_data_warning_attributes(self):
+    def test_missing_data_warning_attributes(self) -> None:
         """MissingDataWarning should store missing data ratios."""
         warning = exceptions.MissingDataWarning("Missing data", missing_ratio=0.15, threshold=0.20)
         assert warning.missing_ratio == pytest.approx(0.15)
         assert warning.threshold == pytest.approx(0.20)
 
-    def test_short_calibration_warning_attributes(self):
+    def test_short_calibration_warning_attributes(self) -> None:
         """ShortCalibrationWarning should store calibration period info."""
         warning = exceptions.ShortCalibrationWarning(
             "Short period",
@@ -380,48 +509,73 @@ class TestWarningAttributes:
         assert warning.actual_years == 25
         assert warning.required_years == 30
 
-    def test_goodness_of_fit_warning_attributes(self):
+    def test_goodness_of_fit_warning_attributes(self) -> None:
         """GoodnessOfFitWarning should store fit statistic info."""
         warning = exceptions.GoodnessOfFitWarning(
             "Poor fit",
             distribution_name="gamma",
             p_value=0.03,
             threshold=0.05,
+            poor_fit_count=15,
+            total_steps=100,
         )
         assert warning.distribution_name == "gamma"
         assert warning.p_value == pytest.approx(0.03)
         assert warning.threshold == pytest.approx(0.05)
+        assert warning.poor_fit_count == 15
+        assert warning.total_steps == 100
+
+    def test_missing_data_warning_defaults(self) -> None:
+        """MissingDataWarning attributes should default to None."""
+        warning = exceptions.MissingDataWarning("Missing data")
+        assert warning.missing_ratio is None
+        assert warning.threshold is None
+
+    def test_short_calibration_warning_defaults(self) -> None:
+        """ShortCalibrationWarning attributes should default to None."""
+        warning = exceptions.ShortCalibrationWarning("Short period")
+        assert warning.actual_years is None
+        assert warning.required_years is None
+
+    def test_goodness_of_fit_warning_defaults(self) -> None:
+        """GoodnessOfFitWarning attributes should default to None."""
+        warning = exceptions.GoodnessOfFitWarning("Poor fit")
+        assert warning.distribution_name is None
+        assert warning.p_value is None
+        assert warning.threshold is None
+        assert warning.poor_fit_count is None
+        assert warning.total_steps is None
 
 
 class TestExceptionReprStr:
     """Verify repr and str produce useful output for debugging."""
 
-    def test_base_exception_repr(self):
+    def test_base_exception_repr(self) -> None:
         """ClimateIndicesError repr should be informative."""
         exc = exceptions.ClimateIndicesError("Something went wrong")
         repr_str = repr(exc)
         assert "ClimateIndicesError" in repr_str
         assert "Something went wrong" in repr_str
 
-    def test_insufficient_data_error_repr_with_attrs(self):
+    def test_insufficient_data_error_repr_with_attrs(self) -> None:
         """InsufficientDataError repr should include error message."""
         exc = exceptions.InsufficientDataError("Not enough data", non_zero_count=5, required_count=10)
         repr_str = repr(exc)
         assert "InsufficientDataError" in repr_str
         assert "Not enough data" in repr_str
 
-    def test_dimension_mismatch_error_repr(self):
+    def test_dimension_mismatch_error_repr(self) -> None:
         """DimensionMismatchError repr should show dimensions."""
         exc = exceptions.DimensionMismatchError("Dimension mismatch", expected_dims=(10, 20), actual_dims=(10, 30))
         repr_str = repr(exc)
         assert "DimensionMismatchError" in repr_str
 
-    def test_str_returns_message(self):
+    def test_str_returns_message(self) -> None:
         """str(exception) should return the error message."""
         exc = exceptions.InvalidArgumentError("Invalid scale parameter")
         assert str(exc) == "Invalid scale parameter"
 
-    def test_warning_repr(self):
+    def test_warning_repr(self) -> None:
         """Warning repr should be informative."""
         warning = exceptions.InputAlignmentWarning(
             "Aligned inputs",
