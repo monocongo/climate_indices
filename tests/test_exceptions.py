@@ -367,8 +367,8 @@ class TestWarningAttributes:
     def test_missing_data_warning_attributes(self):
         """MissingDataWarning should store missing data ratios."""
         warning = exceptions.MissingDataWarning("Missing data", missing_ratio=0.15, threshold=0.20)
-        assert warning.missing_ratio == 0.15
-        assert warning.threshold == 0.20
+        assert warning.missing_ratio == pytest.approx(0.15)
+        assert warning.threshold == pytest.approx(0.20)
 
     def test_short_calibration_warning_attributes(self):
         """ShortCalibrationWarning should store calibration period info."""
@@ -389,8 +389,8 @@ class TestWarningAttributes:
             threshold=0.05,
         )
         assert warning.distribution_name == "gamma"
-        assert warning.p_value == 0.03
-        assert warning.threshold == 0.05
+        assert warning.p_value == pytest.approx(0.03)
+        assert warning.threshold == pytest.approx(0.05)
 
 
 class TestExceptionReprStr:
