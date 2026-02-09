@@ -392,6 +392,28 @@ def _validate_latitude_range(
             )
 
 
+def _build_latitude_attr(latitude: float | xr.DataArray) -> str | int | float | bool:
+    """Serialize latitude for storage as a DataArray attribute.
+
+    Args:
+        latitude: Latitude value as a scalar or xr.DataArray
+
+    Returns:
+        Serialized latitude suitable for xarray attribute storage
+    """
+    if isinstance(latitude, xr.DataArray):
+        lat_metadata = {
+            "name": latitude.name,
+            "dims": tuple(str(d) for d in latitude.dims),
+            "shape": tuple(int(s) for s in latitude.shape),
+            "min": float(latitude.min().values),
+            "max": float(latitude.max().values),
+        }
+        return _serialize_attr_value(lat_metadata)
+    else:
+        return _serialize_attr_value(latitude)
+
+
 def _is_time_coord_monotonic(time_coord: xr.DataArray) -> bool:
     """Return True if the time coordinate is monotonically increasing."""
     try:
@@ -1155,125 +1177,6 @@ def _build_output_dataarray(
     return result_da
 
 
-def _prepare_xarray_inputs(
-    func: Callable[..., Any],
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
-    input_da: xr.DataArray,
-    time_dim: str,
-    additional_input_names: list[str] | None,
-) -> tuple[xr.DataArray, list[Any], dict[str, Any], dict[str, tuple[int | None, Any]]]:
-    """Resolve, align, and stage xarray inputs before computation."""
-    modified_args = list(args)
-    modified_kwargs = dict(kwargs)
-    resolved_secondaries: dict[str, tuple[int | None, Any]] = {}
-
-    if not additional_input_names:
-        return input_da, modified_args, modified_kwargs, resolved_secondaries
-
-    resolved_secondaries = _resolve_secondary_inputs(func, args, kwargs, additional_input_names)
-    dataarray_secondaries = {
-        name: value for name, (_, value) in resolved_secondaries.items() if isinstance(value, xr.DataArray)
-    }
-    if not dataarray_secondaries:
-        return input_da, modified_args, modified_kwargs, resolved_secondaries
-
-    aligned_primary, aligned_secondaries = _align_inputs(input_da, dataarray_secondaries, time_dim)
-    input_da = aligned_primary
-    modified_args[0] = aligned_primary
-
-    for name, (pos_index, _) in resolved_secondaries.items():
-        if name not in aligned_secondaries:
-            continue
-        if pos_index is not None:
-            modified_args[pos_index] = aligned_secondaries[name]
-        else:
-            modified_kwargs[name] = aligned_secondaries[name]
-
-    return input_da, modified_args, modified_kwargs, resolved_secondaries
-
-
-def _validate_inference_inputs(
-    infer_params: bool,
-    input_da: xr.DataArray,
-    time_dim: str,
-    func: Callable[..., Any],
-    modified_args: list[Any],
-    modified_kwargs: dict[str, Any],
-) -> None:
-    """Run validation checks required for parameter inference."""
-    if not infer_params:
-        return
-
-    _validate_time_dimension(input_da, time_dim)
-    time_coord = input_da[time_dim]
-    _validate_time_monotonicity(time_coord)
-    resolved_scale = _resolve_scale_from_args(func, tuple(modified_args), modified_kwargs)
-    if resolved_scale is not None:
-        _validate_sufficient_data(time_coord, resolved_scale)
-
-
-def _extract_secondary_dataarray_values(
-    additional_input_names: list[str] | None,
-    resolved_secondaries: dict[str, tuple[int | None, Any]],
-    modified_args: list[Any],
-    modified_kwargs: dict[str, Any],
-) -> None:
-    """Replace aligned secondary DataArray inputs with NumPy values in-place."""
-    if not additional_input_names:
-        return
-
-    for name, (pos_index, value) in resolved_secondaries.items():
-        if not isinstance(value, xr.DataArray):
-            continue
-        if pos_index is not None:
-            modified_args[pos_index] = modified_args[pos_index].values
-        else:
-            modified_kwargs[name] = modified_kwargs[name].values
-
-
-def _get_provided_params(sig: inspect.Signature, args: list[Any], kwargs: dict[str, Any]) -> set[str]:
-    """Return provided parameter names from bound args/kwargs."""
-    try:
-        bound = sig.bind_partial(*args, **kwargs)
-        bound.apply_defaults()
-        return set(bound.arguments.keys())
-    except TypeError:
-        return set()
-
-
-def _infer_call_kwargs(
-    func: Callable[..., Any],
-    modified_args: list[Any],
-    modified_kwargs: dict[str, Any],
-    infer_params: bool,
-    input_da: xr.DataArray,
-    time_dim: str,
-) -> dict[str, Any]:
-    """Build call kwargs, filling inferable values when needed."""
-    call_kwargs = dict(modified_kwargs)
-    if not (infer_params and time_dim in input_da.dims):
-        return call_kwargs
-
-    time_coord = input_da[time_dim]
-    sig = inspect.signature(func)
-    provided_params = _get_provided_params(sig, modified_args, modified_kwargs)
-
-    if "data_start_year" in sig.parameters and "data_start_year" not in provided_params:
-        call_kwargs["data_start_year"] = _infer_data_start_year(time_coord)
-
-    if "periodicity" in sig.parameters and "periodicity" not in provided_params:
-        call_kwargs["periodicity"] = _infer_periodicity(time_coord)
-
-    if "calibration_year_initial" in sig.parameters and "calibration_year_initial" not in provided_params:
-        cal_start, cal_end = _infer_calibration_period(time_coord)
-        call_kwargs["calibration_year_initial"] = cal_start
-        if "calibration_year_final" in sig.parameters and "calibration_year_final" not in provided_params:
-            call_kwargs["calibration_year_final"] = cal_end
-
-    return call_kwargs
-
-
 def _capture_calculation_metadata(
     calculation_metadata_keys: list[str] | tuple[str, ...] | None,
     valid_kwargs: dict[str, Any],
@@ -1289,93 +1192,83 @@ def _capture_calculation_metadata(
     return calc_metadata
 
 
-def _run_xarray_path(
-    func: Callable[..., np.ndarray[Any, Any]],
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
-    data: xr.DataArray,
+def _collect_input_dataarrays(
+    input_da: xr.DataArray,
+    additional_input_names: list[str] | None,
+    resolved_secondaries: dict[str, tuple[int | None, Any]],
+    modified_args: list[Any],
+    modified_kwargs: dict[str, Any],
+) -> list[xr.DataArray]:
+    """Collect primary + aligned secondary DataArrays for apply_ufunc.
+
+    Args:
+        input_da: Primary input DataArray
+        additional_input_names: Names of additional input parameters
+        resolved_secondaries: Mapping of secondary input name to (position, value)
+        modified_args: Modified positional arguments (with aligned secondaries)
+        modified_kwargs: Modified keyword arguments (with aligned secondaries)
+
+    Returns:
+        List of DataArrays to pass to apply_ufunc (primary + secondaries in order)
+    """
+    input_dataarrays = [input_da]
+    if additional_input_names and resolved_secondaries:
+        for name in additional_input_names:
+            if name not in resolved_secondaries:
+                continue
+            pos_index, original_value = resolved_secondaries[name]
+            if not isinstance(original_value, xr.DataArray):
+                continue
+            # pull the aligned DataArray from modified_args or modified_kwargs
+            if pos_index is not None:
+                input_dataarrays.append(modified_args[pos_index])
+            else:
+                input_dataarrays.append(modified_kwargs[name])
+    return input_dataarrays
+
+
+def _finalize_ufunc_result(
+    result_da: xr.DataArray,
+    input_da: xr.DataArray,
+    valid_kwargs: dict[str, Any],
     *,
     cf_metadata: dict[str, str] | None,
-    time_dim: str,
-    infer_params: bool,
     calculation_metadata_keys: list[str] | tuple[str, ...] | None,
     index_display_name: str | None,
-    additional_input_names: list[str] | None,
-    skipna: bool,
+    func_name: str,
 ) -> xr.DataArray:
-    """Execute the xarray adaptation flow for a wrapped function call."""
-    # check skipna parameter (Story 2.8)
-    if skipna:
-        raise NotImplementedError(
-            "skipna=True not yet implemented (FR-INPUT-004). NaN values are propagated through calculations by default."
-        )
+    """Apply post-apply_ufunc processing: reorder dims, attach metadata, copy coord attrs.
 
-    input_da, modified_args, modified_kwargs, resolved_secondaries = _prepare_xarray_inputs(
-        func, args, kwargs, data, time_dim, additional_input_names
-    )
+    Args:
+        result_da: Result DataArray from apply_ufunc
+        input_da: Original input DataArray
+        valid_kwargs: Filtered kwargs passed to the wrapped function
+        cf_metadata: CF convention metadata for the output
+        calculation_metadata_keys: Keys to extract from valid_kwargs for metadata
+        index_display_name: Display name for the index (or None to use func_name.upper())
+        func_name: Name of the wrapped function
 
-    _validate_inference_inputs(infer_params, input_da, time_dim, func, modified_args, modified_kwargs)
+    Returns:
+        Finalized DataArray with restored dimensions, metadata, and coordinate attributes
+    """
+    # restore dimension order (apply_ufunc moves core dims to end)
+    if result_da.dims != input_da.dims:
+        result_da = result_da.transpose(*input_da.dims)
 
-    # assess NaN density for diagnostics (Story 2.8)
-    nan_assessment = _assess_nan_density(input_da)
-    if nan_assessment["has_nan"]:
-        _log().info(
-            "nan_detected_in_input",
-            function_name=func.__name__,
-            nan_count=nan_assessment["nan_count"],
-            nan_ratio=round(nan_assessment["nan_ratio"], 4),
-            total_values=nan_assessment["total_values"],
-        )
-
-    numpy_values = input_da.values
-    _extract_secondary_dataarray_values(additional_input_names, resolved_secondaries, modified_args, modified_kwargs)
-    call_kwargs = _infer_call_kwargs(func, modified_args, modified_kwargs, infer_params, input_da, time_dim)
-
-    # validate calibration period has sufficient non-NaN data (Story 2.8)
-    if nan_assessment["has_nan"] and infer_params and time_dim in input_da.dims:
-        time_coord = input_da[time_dim]
-        cal_initial = call_kwargs.get("calibration_year_initial")
-        cal_final = call_kwargs.get("calibration_year_final")
-        if cal_initial is not None and cal_final is not None:
-            _validate_calibration_non_nan_sample_size(
-                time_coord,
-                numpy_values,
-                calibration_year_initial=cal_initial,
-                calibration_year_final=cal_final,
-            )
-
-    sig = inspect.signature(func)
-    valid_kwargs = {k: v for k, v in call_kwargs.items() if k in sig.parameters}
-    numpy_args = (numpy_values,) + tuple(modified_args[1:])
-    result_values = func(*numpy_args, **valid_kwargs)
-
-    # verify NaN propagation contract (Story 2.8)
-    if nan_assessment["has_nan"]:
-        if not _verify_nan_propagation(nan_assessment["nan_positions"], result_values):
-            _log().warning(
-                "nan_propagation_violation",
-                function_name=func.__name__,
-                message="Output missing NaN values present in input",
-            )
-
+    # apply metadata using _build_output_attrs
     calc_metadata = _capture_calculation_metadata(calculation_metadata_keys, valid_kwargs)
-    resolved_index_name = index_display_name if index_display_name is not None else func.__name__.upper()
-    result_da = _build_output_dataarray(
-        input_da, result_values, cf_metadata, calc_metadata, index_name=resolved_index_name
-    )
+    resolved_index_name = index_display_name if index_display_name is not None else func_name.upper()
+    output_attrs = _build_output_attrs(input_da, cf_metadata, calc_metadata, index_name=resolved_index_name)
+    result_da.attrs.update(output_attrs)
 
-    # log completion with NaN metrics (Story 2.8)
-    log_fields = {
-        "function_name": func.__name__,
-        "input_shape": input_da.shape,
-        "output_shape": result_da.shape,
-        "inferred_params": infer_params,
-    }
-    if nan_assessment["has_nan"]:
-        log_fields["input_nan_count"] = nan_assessment["nan_count"]
-        log_fields["input_nan_ratio"] = round(nan_assessment["nan_ratio"], 4)
+    # deep-copy coordinate attrs
+    for coord_name in result_da.coords:
+        if coord_name in input_da.coords:
+            result_da.coords[coord_name].attrs = copy.deepcopy(input_da.coords[coord_name].attrs)
 
-    _log().info("xarray_adapter_completed", **log_fields)
+    # preserve .name
+    result_da.name = input_da.name
+
     return result_da
 
 
@@ -1472,6 +1365,7 @@ def xarray_adapter(
             # resolve and align secondary inputs (Story 3.1)
             modified_args = list(args)
             modified_kwargs = dict(kwargs)
+            resolved_secondaries: dict[str, tuple[int | None, Any]] = {}
 
             if additional_input_names:
                 # resolve secondary inputs from args/kwargs
@@ -1550,19 +1444,9 @@ def xarray_adapter(
 
                 # collect input DataArrays for apply_ufunc in parameter order
                 # primary + aligned secondaries (reuse resolution from earlier in wrapper)
-                input_dataarrays = [input_da]
-                if additional_input_names and resolved_secondaries:
-                    for name in additional_input_names:
-                        if name not in resolved_secondaries:
-                            continue
-                        pos_index, original_value = resolved_secondaries[name]
-                        if not isinstance(original_value, xr.DataArray):
-                            continue
-                        # pull the aligned DataArray from modified_args or modified_kwargs
-                        if pos_index is not None:
-                            input_dataarrays.append(modified_args[pos_index])
-                        else:
-                            input_dataarrays.append(modified_kwargs[name])
+                input_dataarrays = _collect_input_dataarrays(
+                    input_da, additional_input_names, resolved_secondaries, modified_args, modified_kwargs
+                )
 
                 # create closure capturing valid_kwargs
                 def _numpy_func_wrapper(*numpy_arrays: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
@@ -1579,29 +1463,16 @@ def xarray_adapter(
                     output_dtypes=[float],
                 )
 
-                # restore dimension order (apply_ufunc moves core dims to end)
-                if result_da.dims != input_da.dims:
-                    result_da = result_da.transpose(*input_da.dims)
-
-                # apply metadata using _build_output_attrs
-                calc_metadata: dict[str, Any] | None = None
-                if calculation_metadata_keys is not None:
-                    calc_metadata = {}
-                    for key in calculation_metadata_keys:
-                        if key in valid_kwargs:
-                            calc_metadata[key] = valid_kwargs[key]
-
-                resolved_index_name = index_display_name if index_display_name is not None else func.__name__.upper()
-                output_attrs = _build_output_attrs(input_da, cf_metadata, calc_metadata, index_name=resolved_index_name)
-                result_da.attrs.update(output_attrs)
-
-                # deep-copy coordinate attrs
-                for coord_name in result_da.coords:
-                    if coord_name in input_da.coords:
-                        result_da.coords[coord_name].attrs = copy.deepcopy(input_da.coords[coord_name].attrs)
-
-                # preserve .name
-                result_da.name = input_da.name
+                # finalize result: restore dims, attach metadata, copy coord attrs
+                result_da = _finalize_ufunc_result(
+                    result_da,
+                    input_da,
+                    valid_kwargs,
+                    cf_metadata=cf_metadata,
+                    calculation_metadata_keys=calculation_metadata_keys,
+                    index_display_name=index_display_name,
+                    func_name=func.__name__,
+                )
 
                 # log completion (NaN metrics omitted for Dask—would trigger compute)
                 _log().info(
@@ -1670,19 +1541,9 @@ def xarray_adapter(
                         )
 
                 # collect input DataArrays for apply_ufunc in parameter order
-                input_dataarrays = [input_da]
-                if additional_input_names and resolved_secondaries:
-                    for name in additional_input_names:
-                        if name not in resolved_secondaries:
-                            continue
-                        pos_index, original_value = resolved_secondaries[name]
-                        if not isinstance(original_value, xr.DataArray):
-                            continue
-                        # pull the aligned DataArray from modified_args or modified_kwargs
-                        if pos_index is not None:
-                            input_dataarrays.append(modified_args[pos_index])
-                        else:
-                            input_dataarrays.append(modified_kwargs[name])
+                input_dataarrays = _collect_input_dataarrays(
+                    input_da, additional_input_names, resolved_secondaries, modified_args, modified_kwargs
+                )
 
                 # create closure capturing valid_kwargs
                 def _numpy_func_wrapper(*numpy_arrays: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
@@ -1698,29 +1559,16 @@ def xarray_adapter(
                     output_dtypes=[float],
                 )
 
-                # restore dimension order (apply_ufunc moves core dims to end)
-                if result_da.dims != input_da.dims:
-                    result_da = result_da.transpose(*input_da.dims)
-
-                # apply metadata using _build_output_attrs
-                calc_metadata: dict[str, Any] | None = None
-                if calculation_metadata_keys is not None:
-                    calc_metadata = {}
-                    for key in calculation_metadata_keys:
-                        if key in valid_kwargs:
-                            calc_metadata[key] = valid_kwargs[key]
-
-                resolved_index_name = index_display_name if index_display_name is not None else func.__name__.upper()
-                output_attrs = _build_output_attrs(input_da, cf_metadata, calc_metadata, index_name=resolved_index_name)
-                result_da.attrs.update(output_attrs)
-
-                # deep-copy coordinate attrs
-                for coord_name in result_da.coords:
-                    if coord_name in input_da.coords:
-                        result_da.coords[coord_name].attrs = copy.deepcopy(input_da.coords[coord_name].attrs)
-
-                # preserve .name
-                result_da.name = input_da.name
+                # finalize result: restore dims, attach metadata, copy coord attrs
+                result_da = _finalize_ufunc_result(
+                    result_da,
+                    input_da,
+                    valid_kwargs,
+                    cf_metadata=cf_metadata,
+                    calculation_metadata_keys=calculation_metadata_keys,
+                    index_display_name=index_display_name,
+                    func_name=func.__name__,
+                )
 
                 # log completion
                 log_fields = {
@@ -1785,12 +1633,7 @@ def xarray_adapter(
                     )
 
             # capture calculation metadata from resolved kwargs
-            calc_metadata = None
-            if calculation_metadata_keys is not None:
-                calc_metadata = {}
-                for key in calculation_metadata_keys:
-                    if key in valid_kwargs:
-                        calc_metadata[key] = valid_kwargs[key]
+            calc_metadata = _capture_calculation_metadata(calculation_metadata_keys, valid_kwargs)
 
             # resolve index name for history tracking
             resolved_index_name = index_display_name if index_display_name is not None else func.__name__.upper()
@@ -2002,17 +1845,7 @@ def pet_thornthwaite(
     result.attrs["history"] = _append_history(temp_da.attrs, history_entry)
 
     # add calculation metadata as attributes
-    if isinstance(lat_for_ufunc, xr.DataArray):
-        lat_metadata = {
-            "name": lat_for_ufunc.name,
-            "dims": tuple(str(d) for d in lat_for_ufunc.dims),
-            "shape": tuple(int(s) for s in lat_for_ufunc.shape),
-            "min": float(lat_for_ufunc.min().values),
-            "max": float(lat_for_ufunc.max().values),
-        }
-        result.attrs["latitude"] = _serialize_attr_value(lat_metadata)
-    else:
-        result.attrs["latitude"] = _serialize_attr_value(lat_for_ufunc)
+    result.attrs["latitude"] = _build_latitude_attr(lat_for_ufunc)
     result.attrs["data_start_year"] = data_start_year
 
     _log().info(
@@ -2257,17 +2090,7 @@ def pet_hargreaves(
     result.attrs["history"] = _append_history(tmin_aligned.attrs, history_entry)
 
     # add calculation metadata as attributes
-    if isinstance(lat_for_ufunc, xr.DataArray):
-        lat_metadata = {
-            "name": lat_for_ufunc.name,
-            "dims": tuple(str(d) for d in lat_for_ufunc.dims),
-            "shape": tuple(int(s) for s in lat_for_ufunc.shape),
-            "min": float(lat_for_ufunc.min().values),
-            "max": float(lat_for_ufunc.max().values),
-        }
-        result.attrs["latitude"] = _serialize_attr_value(lat_metadata)
-    else:
-        result.attrs["latitude"] = _serialize_attr_value(lat_for_ufunc)
+    result.attrs["latitude"] = _build_latitude_attr(lat_for_ufunc)
 
     _log().info(
         "pet_hargreaves_completed",
