@@ -1582,6 +1582,117 @@ def xarray_adapter(
                     total_values=nan_assessment["total_values"],
                 )
 
+            # build kwargs for the wrapped function
+            # start with explicitly provided kwargs (including extracted secondaries)
+            call_kwargs = dict(modified_kwargs)
+
+            # apply inferred params (already computed above before the branch)
+            call_kwargs.update(inferred_params)
+
+            # filter call_kwargs to only include params the function accepts
+            sig = inspect.signature(func)
+            valid_kwargs = {k: v for k, v in call_kwargs.items() if k in sig.parameters}
+
+            # check if input is multi-dimensional (has spatial dims beyond time)
+            # and has a time dimension (required for apply_ufunc with input_core_dims)
+            if input_da.ndim > 1 and time_dim in input_da.dims:
+                # ═══════════════════════════════════════════════════════════════════
+                # Multi-dimensional in-memory execution path
+                # ═══════════════════════════════════════════════════════════════════
+                # use xr.apply_ufunc with vectorize=True to handle spatial broadcasting
+                # similar to Dask path but without dask="parallelized"
+
+                # validate calibration period has sufficient non-NaN data (Story 2.8)
+                if nan_assessment["has_nan"] and infer_params and time_dim in input_da.dims:
+                    time_coord = input_da[time_dim]
+                    cal_initial = call_kwargs.get("calibration_year_initial")
+                    cal_final = call_kwargs.get("calibration_year_final")
+                    if cal_initial is not None and cal_final is not None:
+                        # for multi-dimensional validation, use first spatial point
+                        sample_values = input_da.values
+                        if sample_values.ndim > 1:
+                            # extract first spatial slice along time dimension
+                            slices = [slice(None)] + [0] * (sample_values.ndim - 1)
+                            sample_values = sample_values[tuple(slices)]
+                        _validate_calibration_non_nan_sample_size(
+                            time_coord,
+                            sample_values,
+                            calibration_year_initial=cal_initial,
+                            calibration_year_final=cal_final,
+                        )
+
+                # collect input DataArrays for apply_ufunc in parameter order
+                input_dataarrays = [input_da]
+                if additional_input_names and resolved_secondaries:
+                    for name in additional_input_names:
+                        if name not in resolved_secondaries:
+                            continue
+                        pos_index, original_value = resolved_secondaries[name]
+                        if not isinstance(original_value, xr.DataArray):
+                            continue
+                        # pull the aligned DataArray from modified_args or modified_kwargs
+                        if pos_index is not None:
+                            input_dataarrays.append(modified_args[pos_index])
+                        else:
+                            input_dataarrays.append(modified_kwargs[name])
+
+                # create closure capturing valid_kwargs
+                def _numpy_func_wrapper(*numpy_arrays: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
+                    return func(*numpy_arrays, **valid_kwargs)
+
+                # call apply_ufunc without Dask support (in-memory vectorization)
+                result_da: xr.DataArray = xr.apply_ufunc(
+                    _numpy_func_wrapper,
+                    *input_dataarrays,
+                    input_core_dims=[[time_dim]] * len(input_dataarrays),
+                    output_core_dims=[[time_dim]],
+                    vectorize=True,
+                    output_dtypes=[float],
+                )
+
+                # restore dimension order (apply_ufunc moves core dims to end)
+                if result_da.dims != input_da.dims:
+                    result_da = result_da.transpose(*input_da.dims)
+
+                # apply metadata using _build_output_attrs
+                calc_metadata: dict[str, Any] | None = None
+                if calculation_metadata_keys is not None:
+                    calc_metadata = {}
+                    for key in calculation_metadata_keys:
+                        if key in valid_kwargs:
+                            calc_metadata[key] = valid_kwargs[key]
+
+                resolved_index_name = index_display_name if index_display_name is not None else func.__name__.upper()
+                output_attrs = _build_output_attrs(input_da, cf_metadata, calc_metadata, index_name=resolved_index_name)
+                result_da.attrs.update(output_attrs)
+
+                # deep-copy coordinate attrs
+                for coord_name in result_da.coords:
+                    if coord_name in input_da.coords:
+                        result_da.coords[coord_name].attrs = copy.deepcopy(input_da.coords[coord_name].attrs)
+
+                # preserve .name
+                result_da.name = input_da.name
+
+                # log completion
+                log_fields = {
+                    "function_name": func.__name__,
+                    "input_shape": input_da.shape,
+                    "output_shape": result_da.shape,
+                    "inferred_params": infer_params,
+                    "vectorized": True,
+                }
+                if nan_assessment["has_nan"]:
+                    log_fields["input_nan_count"] = nan_assessment["nan_count"]
+                    log_fields["input_nan_ratio"] = round(nan_assessment["nan_ratio"], 4)
+
+                _log().info("xarray_adapter_completed", **log_fields)
+                return result_da
+
+            # ═══════════════════════════════════════════════════════════════════
+            # 1D in-memory execution path
+            # ═══════════════════════════════════════════════════════════════════
+
             # extract numpy values from primary
             numpy_values = input_da.values
 
@@ -1594,13 +1705,6 @@ def xarray_adapter(
                             modified_args[pos_index] = modified_args[pos_index].values
                         else:
                             modified_kwargs[name] = modified_kwargs[name].values
-
-            # build kwargs for the wrapped function
-            # start with explicitly provided kwargs (including extracted secondaries)
-            call_kwargs = dict(modified_kwargs)
-
-            # apply inferred params (already computed above before the branch)
-            call_kwargs.update(inferred_params)
 
             # validate calibration period has sufficient non-NaN data (Story 2.8)
             # this validation requires .values, so it only runs in the in-memory path
@@ -1620,10 +1724,6 @@ def xarray_adapter(
             # call wrapped numpy function with extracted values
             # replace first arg (DataArray) with numpy values
             numpy_args = (numpy_values,) + tuple(modified_args[1:])
-
-            # filter call_kwargs to only include params the function accepts
-            sig = inspect.signature(func)
-            valid_kwargs = {k: v for k, v in call_kwargs.items() if k in sig.parameters}
 
             result_values = func(*numpy_args, **valid_kwargs)
 
