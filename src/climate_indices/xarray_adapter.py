@@ -21,6 +21,7 @@ import copy
 import datetime
 import functools
 import inspect
+import json
 import warnings
 from collections.abc import Callable
 from enum import Enum, auto
@@ -350,6 +351,45 @@ def _validate_time_monotonicity(time_coord: xr.DataArray) -> None:
         coordinate_name=str(dim_name),
         reason="not_monotonic",
     )
+
+
+def _validate_latitude_range(
+    latitude: float | int | np.floating | np.integer | xr.DataArray,
+) -> None:
+    """Validate that latitude values are within [-90, 90].
+
+    Args:
+        latitude: Latitude value(s) as a scalar or xr.DataArray
+
+    Raises:
+        ValueError: If latitude is NaN, contains only NaNs, or has values outside [-90, 90]
+    """
+    if isinstance(latitude, xr.DataArray):
+        lat_min = float(latitude.min(skipna=True).values)
+        lat_max = float(latitude.max(skipna=True).values)
+
+        if np.isnan(lat_min) or np.isnan(lat_max):
+            raise ValueError(
+                "latitude DataArray contains only NaN values. Provide valid latitude coordinates within [-90, 90]."
+            )
+
+        if lat_min < -90 or lat_max > 90:
+            raise ValueError(
+                f"latitude values must be within [-90, 90]. "
+                f"Got range [{lat_min:.2f}, {lat_max:.2f}]. "
+                "Check that latitude coordinates use decimal degrees, not radians."
+            )
+    else:
+        lat_value = float(latitude)
+
+        if np.isnan(lat_value):
+            raise ValueError("latitude is NaN. Provide a valid latitude value within [-90, 90].")
+
+        if lat_value < -90 or lat_value > 90:
+            raise ValueError(
+                f"latitude must be within [-90, 90]. Got {lat_value:.2f}. "
+                "Check that latitude uses decimal degrees, not radians."
+            )
 
 
 def _is_time_coord_monotonic(time_coord: xr.DataArray) -> bool:
@@ -733,17 +773,19 @@ def _align_inputs(
 def _serialize_attr_value(value: Any) -> str | int | float | bool:
     """Serialize attribute values for xarray compatibility.
 
-    Converts enum instances to their string name representation, passes through
-    native xarray-serializable types, and raises TypeError for non-serializable types.
+    Converts enum instances to their string name representation, serializes dicts
+    to JSON strings, passes through native xarray-serializable types, and raises
+    TypeError for non-serializable types.
 
     Args:
         value: Attribute value to serialize
 
     Returns:
-        Serialized value: enum→name string, or passthrough for str/int/float/bool/numpy scalars
+        Serialized value: enum→name string, dict→JSON string, or passthrough
+        for str/int/float/bool/numpy scalars
 
     Raises:
-        TypeError: If value is not serializable (dict, list, complex objects)
+        TypeError: If value is not serializable (list, complex objects)
 
     Examples:
         >>> _serialize_attr_value(Distribution.gamma)
@@ -752,6 +794,8 @@ def _serialize_attr_value(value: Any) -> str | int | float | bool:
         42
         >>> _serialize_attr_value("monthly")
         'monthly'
+        >>> _serialize_attr_value({"min": -5.0, "max": 45.0})
+        '{"min": -5.0, "max": 45.0}'
         >>> _serialize_attr_value([1, 2])
         TypeError: ...
     """
@@ -767,10 +811,14 @@ def _serialize_attr_value(value: Any) -> str | int | float | bool:
     if isinstance(value, (str, int, float, bool)):
         return value
 
+    # dict → JSON string
+    if isinstance(value, dict):
+        return json.dumps(value)
+
     # reject non-serializable types
     raise TypeError(
         f"Cannot serialize attribute value of type {type(value).__name__}. "
-        f"Supported types: Enum, str, int, float, bool, numpy scalars."
+        f"Supported types: Enum, dict, str, int, float, bool, numpy scalars."
     )
 
 
@@ -1851,8 +1899,20 @@ def pet_thornthwaite(
     # detect input type for routing
     input_type = detect_input_type(temperature)
 
+    # validate latitude range for all paths
+    _validate_latitude_range(latitude)
+
     # numpy passthrough
     if input_type == InputType.NUMPY:
+        # validate latitude is scalar when temperature is numpy
+        if isinstance(latitude, xr.DataArray):
+            raise TypeError(
+                "latitude must be a scalar (float, int, or numpy scalar) when "
+                "temperature is a numpy array. "
+                f"Got xr.DataArray with dims={latitude.dims}. "
+                "Use a scalar latitude or convert temperature to xr.DataArray "
+                "for spatial broadcasting."
+            )
         # convert latitude to float if it's a numpy scalar
         lat_float = float(latitude) if isinstance(latitude, np.floating) else latitude
         # delegate to indices.pet with explicit data_start_year requirement
@@ -1942,9 +2002,17 @@ def pet_thornthwaite(
     result.attrs["history"] = _append_history(temp_da.attrs, history_entry)
 
     # add calculation metadata as attributes
-    result.attrs["latitude"] = (
-        _serialize_attr_value(lat_for_ufunc) if not isinstance(lat_for_ufunc, xr.DataArray) else lat_desc
-    )
+    if isinstance(lat_for_ufunc, xr.DataArray):
+        lat_metadata = {
+            "name": lat_for_ufunc.name,
+            "dims": tuple(str(d) for d in lat_for_ufunc.dims),
+            "shape": tuple(int(s) for s in lat_for_ufunc.shape),
+            "min": float(lat_for_ufunc.min().values),
+            "max": float(lat_for_ufunc.max().values),
+        }
+        result.attrs["latitude"] = _serialize_attr_value(lat_metadata)
+    else:
+        result.attrs["latitude"] = _serialize_attr_value(lat_for_ufunc)
     result.attrs["data_start_year"] = data_start_year
 
     _log().info(
@@ -2055,8 +2123,29 @@ def pet_hargreaves(
     # detect input type for routing
     input_type = detect_input_type(daily_tmin_celsius)
 
+    # validate tmin and tmax are same input type (Fix 2)
+    tmax_input_type = detect_input_type(daily_tmax_celsius)
+    if input_type != tmax_input_type:
+        raise TypeError(
+            "daily_tmin_celsius and daily_tmax_celsius must be the same type. "
+            f"Got tmin={input_type.name}, tmax={tmax_input_type.name}. "
+            "Convert both to the same type (both numpy arrays or both xr.DataArray)."
+        )
+
+    # validate latitude range for all paths (Fix 3)
+    _validate_latitude_range(latitude)
+
     # numpy passthrough
     if input_type == InputType.NUMPY:
+        # validate latitude is scalar when temperature inputs are numpy
+        if isinstance(latitude, xr.DataArray):
+            raise TypeError(
+                "latitude must be a scalar (float, int, or numpy scalar) when "
+                "temperature inputs are numpy arrays. "
+                f"Got xr.DataArray with dims={latitude.dims}. "
+                "Use a scalar latitude or convert temperature inputs to xr.DataArray "
+                "for spatial broadcasting."
+            )
         # convert latitude to float if it's a numpy scalar
         lat_float = float(latitude) if isinstance(latitude, np.floating) else latitude
         # auto-derive tmean as per Hargreaves standard approach
@@ -2168,9 +2257,17 @@ def pet_hargreaves(
     result.attrs["history"] = _append_history(tmin_aligned.attrs, history_entry)
 
     # add calculation metadata as attributes
-    result.attrs["latitude"] = (
-        _serialize_attr_value(lat_for_ufunc) if not isinstance(lat_for_ufunc, xr.DataArray) else lat_desc
-    )
+    if isinstance(lat_for_ufunc, xr.DataArray):
+        lat_metadata = {
+            "name": lat_for_ufunc.name,
+            "dims": tuple(str(d) for d in lat_for_ufunc.dims),
+            "shape": tuple(int(s) for s in lat_for_ufunc.shape),
+            "min": float(lat_for_ufunc.min().values),
+            "max": float(lat_for_ufunc.max().values),
+        }
+        result.attrs["latitude"] = _serialize_attr_value(lat_metadata)
+    else:
+        result.attrs["latitude"] = _serialize_attr_value(lat_for_ufunc)
 
     _log().info(
         "pet_hargreaves_completed",

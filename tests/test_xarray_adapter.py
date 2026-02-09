@@ -1120,11 +1120,15 @@ class TestSerializeAttrValue:
         assert isinstance(result, float)
         assert not isinstance(result, np.floating)
 
-    def test_dict_raises_typeerror(self):
-        """Dict values raise TypeError."""
-        with pytest.raises(TypeError) as exc_info:
-            _serialize_attr_value({"key": "value"})
-        assert "Cannot serialize" in str(exc_info.value)
+    def test_dict_to_json_string(self):
+        """Dict values serialize to JSON strings."""
+        result = _serialize_attr_value({"key": "value", "number": 42})
+        assert isinstance(result, str)
+        # verify it's valid JSON by parsing it back
+        import json
+
+        parsed = json.loads(result)
+        assert parsed == {"key": "value", "number": 42}
 
     def test_list_raises_typeerror(self):
         """List values raise TypeError."""
