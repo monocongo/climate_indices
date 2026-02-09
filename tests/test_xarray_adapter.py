@@ -1262,12 +1262,13 @@ class TestBuildOutputDataarray:
 
     def test_coord_attrs_deep_copied(self, coord_rich_1d_da):
         """Mutating input coord attrs after call does not affect output."""
-        result_values = np.ones_like(coord_rich_1d_da.values)
-        output = _build_output_dataarray(coord_rich_1d_da, result_values)
+        input_da = coord_rich_1d_da.copy(deep=True)
+        result_values = np.ones_like(input_da.values)
+        output = _build_output_dataarray(input_da, result_values)
 
-        # mutate input coord attrs after building output
-        coord_rich_1d_da.coords["time"].attrs["axis"] = "X"  # wrong!
-        coord_rich_1d_da.coords["month"].attrs["mutated"] = "yes"
+        # mutate the copy's coord attrs after building output
+        input_da.coords["time"].attrs["axis"] = "X"
+        input_da.coords["month"].attrs["mutated"] = "yes"
 
         # output should be unaffected
         assert output.coords["time"].attrs["axis"] == "T"
