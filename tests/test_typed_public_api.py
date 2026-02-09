@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
-import pytest
 import xarray as xr
 
 from climate_indices import spei, spi
 from climate_indices.compute import Periodicity
 from climate_indices.indices import Distribution
 from climate_indices.xarray_adapter import xarray_adapter
+
+# fixtures now consolidated in conftest.py
 
 
 class TestSPIOverloads:
