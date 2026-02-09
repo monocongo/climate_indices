@@ -173,7 +173,22 @@ class TestSPIOverloads:
             distribution=Distribution.gamma,
         )
 
-        xr.testing.assert_identical(result_typed, result_manual)
+        # compare values and coordinates (ignoring timestamp in history attribute)
+        xr.testing.assert_equal(result_typed, result_manual)
+
+        # verify both have history attributes with matching content (ignoring timestamp prefix)
+        assert "history" in result_typed.attrs
+        assert "history" in result_manual.attrs
+        # history format: "YYYY-MM-DD HH:MM:SS climate_indices <version> SPI(...)"
+        # extract content after timestamp (skip first 20 chars: "YYYY-MM-DD HH:MM:SS ")
+        history_typed_content = result_typed.attrs["history"][20:]
+        history_manual_content = result_manual.attrs["history"][20:]
+        assert history_typed_content == history_manual_content
+
+        # verify all non-history attributes are identical
+        attrs_typed = {k: v for k, v in result_typed.attrs.items() if k != "history"}
+        attrs_manual = {k: v for k, v in result_manual.attrs.items() if k != "history"}
+        assert attrs_typed == attrs_manual
 
 
 class TestSPEIOverloads:
@@ -315,7 +330,22 @@ class TestSPEIOverloads:
             distribution=Distribution.gamma,
         )
 
-        xr.testing.assert_identical(result_typed, result_manual)
+        # compare values and coordinates (ignoring timestamp in history attribute)
+        xr.testing.assert_equal(result_typed, result_manual)
+
+        # verify both have history attributes with matching content (ignoring timestamp prefix)
+        assert "history" in result_typed.attrs
+        assert "history" in result_manual.attrs
+        # history format: "YYYY-MM-DD HH:MM:SS climate_indices <version> SPEI(...)"
+        # extract content after timestamp (skip first 20 chars: "YYYY-MM-DD HH:MM:SS ")
+        history_typed_content = result_typed.attrs["history"][20:]
+        history_manual_content = result_manual.attrs["history"][20:]
+        assert history_typed_content == history_manual_content
+
+        # verify all non-history attributes are identical
+        attrs_typed = {k: v for k, v in result_typed.attrs.items() if k != "history"}
+        attrs_manual = {k: v for k, v in result_manual.attrs.items() if k != "history"}
+        assert attrs_typed == attrs_manual
 
     def test_spei_pearson_numpy_returns_ndarray(self) -> None:
         """SPEI Pearson with NumPy input should return numpy.ndarray."""
