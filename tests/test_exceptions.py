@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pickle
+
 import pytest
 
 from climate_indices import ClimateIndicesError, compute, exceptions
@@ -238,3 +240,194 @@ class TestBackwardCompatibility:
         except compute.InsufficientDataError as e:
             assert e.non_zero_count == 5
             assert e.required_count == 10
+
+
+class TestExceptionPickling:
+    """Verify exceptions can be pickled for Dask multiprocessing.
+
+    Dask uses pickle to serialize exceptions across workers. All custom exceptions
+    must be picklable to support distributed computation error reporting.
+    """
+
+    @pytest.mark.parametrize(
+        "exception_class,init_args,init_kwargs",
+        [
+            (exceptions.ClimateIndicesError, ("base error",), {}),
+            (exceptions.DistributionFittingError, ("fitting failed",), {}),
+            (exceptions.InsufficientDataError, ("not enough data",), {"non_zero_count": 5, "required_count": 10}),
+            (exceptions.PearsonFittingError, ("pearson failed",), {}),
+            (
+                exceptions.DimensionMismatchError,
+                ("dims don't match",),
+                {"expected_dims": (10, 20), "actual_dims": (10, 30)},
+            ),
+            (
+                exceptions.CoordinateValidationError,
+                ("bad coords",),
+                {"coordinate_name": "time", "reason": "not monotonic"},
+            ),
+            (exceptions.InputTypeError, ("wrong type",), {"expected_type": type(None), "actual_type": type([])}),
+            (
+                exceptions.InvalidArgumentError,
+                ("bad arg",),
+                {"argument_name": "scale", "argument_value": "-1", "valid_values": "positive integers"},
+            ),
+        ],
+    )
+    def test_exception_pickle_roundtrip(self, exception_class, init_args, init_kwargs):
+        """All exception classes should survive pickle roundtrip with attributes intact."""
+        # create exception
+        original = exception_class(*init_args, **init_kwargs)
+
+        # pickle and unpickle
+        pickled = pickle.dumps(original)
+        restored = pickle.loads(pickled)
+
+        # verify type preserved
+        assert type(restored) is type(original)
+
+        # verify message preserved
+        assert str(restored) == str(original)
+
+        # verify custom attributes preserved
+        for attr_name, attr_value in init_kwargs.items():
+            assert hasattr(restored, attr_name)
+            assert getattr(restored, attr_name) == attr_value
+
+
+class TestWarningPickling:
+    """Verify warnings can be pickled for Dask multiprocessing."""
+
+    @pytest.mark.parametrize(
+        "warning_class,init_args,init_kwargs",
+        [
+            (exceptions.ClimateIndicesWarning, ("base warning",), {}),
+            (exceptions.MissingDataWarning, ("missing data",), {"missing_ratio": 0.15, "threshold": 0.20}),
+            (
+                exceptions.ShortCalibrationWarning,
+                ("short calibration",),
+                {"actual_years": 25, "required_years": 30},
+            ),
+            (
+                exceptions.GoodnessOfFitWarning,
+                ("poor fit",),
+                {"distribution_name": "gamma", "p_value": 0.03, "threshold": 0.05},
+            ),
+            (
+                exceptions.InputAlignmentWarning,
+                ("alignment needed",),
+                {"original_size": 100, "aligned_size": 80, "dropped_count": 20},
+            ),
+        ],
+    )
+    def test_warning_pickle_roundtrip(self, warning_class, init_args, init_kwargs):
+        """All warning classes should survive pickle roundtrip with attributes intact."""
+        # create warning
+        original = warning_class(*init_args, **init_kwargs)
+
+        # pickle and unpickle
+        pickled = pickle.dumps(original)
+        restored = pickle.loads(pickled)
+
+        # verify type preserved
+        assert type(restored) is type(original)
+
+        # verify message preserved
+        assert str(restored) == str(original)
+
+        # verify custom attributes preserved
+        for attr_name, attr_value in init_kwargs.items():
+            assert hasattr(restored, attr_name)
+            assert getattr(restored, attr_name) == attr_value
+
+
+class TestWarningAttributes:
+    """Verify warning classes store context attributes correctly."""
+
+    def test_input_alignment_warning_attributes(self):
+        """InputAlignmentWarning should store alignment context."""
+        warning = exceptions.InputAlignmentWarning(
+            "Inputs aligned",
+            original_size=100,
+            aligned_size=80,
+            dropped_count=20,
+        )
+        assert warning.original_size == 100
+        assert warning.aligned_size == 80
+        assert warning.dropped_count == 20
+        assert str(warning) == "Inputs aligned"
+
+    def test_input_alignment_warning_defaults(self):
+        """InputAlignmentWarning attributes should default to None."""
+        warning = exceptions.InputAlignmentWarning("Aligned")
+        assert warning.original_size is None
+        assert warning.aligned_size is None
+        assert warning.dropped_count is None
+
+    def test_missing_data_warning_attributes(self):
+        """MissingDataWarning should store missing data ratios."""
+        warning = exceptions.MissingDataWarning("Missing data", missing_ratio=0.15, threshold=0.20)
+        assert warning.missing_ratio == pytest.approx(0.15)
+        assert warning.threshold == pytest.approx(0.20)
+
+    def test_short_calibration_warning_attributes(self):
+        """ShortCalibrationWarning should store calibration period info."""
+        warning = exceptions.ShortCalibrationWarning(
+            "Short period",
+            actual_years=25,
+            required_years=30,
+        )
+        assert warning.actual_years == 25
+        assert warning.required_years == 30
+
+    def test_goodness_of_fit_warning_attributes(self):
+        """GoodnessOfFitWarning should store fit statistic info."""
+        warning = exceptions.GoodnessOfFitWarning(
+            "Poor fit",
+            distribution_name="gamma",
+            p_value=0.03,
+            threshold=0.05,
+        )
+        assert warning.distribution_name == "gamma"
+        assert warning.p_value == pytest.approx(0.03)
+        assert warning.threshold == pytest.approx(0.05)
+
+
+class TestExceptionReprStr:
+    """Verify repr and str produce useful output for debugging."""
+
+    def test_base_exception_repr(self):
+        """ClimateIndicesError repr should be informative."""
+        exc = exceptions.ClimateIndicesError("Something went wrong")
+        repr_str = repr(exc)
+        assert "ClimateIndicesError" in repr_str
+        assert "Something went wrong" in repr_str
+
+    def test_insufficient_data_error_repr_with_attrs(self):
+        """InsufficientDataError repr should include error message."""
+        exc = exceptions.InsufficientDataError("Not enough data", non_zero_count=5, required_count=10)
+        repr_str = repr(exc)
+        assert "InsufficientDataError" in repr_str
+        assert "Not enough data" in repr_str
+
+    def test_dimension_mismatch_error_repr(self):
+        """DimensionMismatchError repr should show dimensions."""
+        exc = exceptions.DimensionMismatchError("Dimension mismatch", expected_dims=(10, 20), actual_dims=(10, 30))
+        repr_str = repr(exc)
+        assert "DimensionMismatchError" in repr_str
+
+    def test_str_returns_message(self):
+        """str(exception) should return the error message."""
+        exc = exceptions.InvalidArgumentError("Invalid scale parameter")
+        assert str(exc) == "Invalid scale parameter"
+
+    def test_warning_repr(self):
+        """Warning repr should be informative."""
+        warning = exceptions.InputAlignmentWarning(
+            "Aligned inputs",
+            original_size=100,
+            aligned_size=80,
+            dropped_count=20,
+        )
+        repr_str = repr(warning)
+        assert "InputAlignmentWarning" in repr_str

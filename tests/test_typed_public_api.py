@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from typing import Any, Callable
+
 import numpy as np
-import pandas as pd
-import pytest
 import xarray as xr
 
 from climate_indices import spei, spi
@@ -12,45 +12,64 @@ from climate_indices.compute import Periodicity
 from climate_indices.indices import Distribution
 from climate_indices.xarray_adapter import xarray_adapter
 
-
-@pytest.fixture
-def sample_monthly_precip_da() -> xr.DataArray:
-    """Create a 1D monthly precipitation DataArray (40 years, 1980-2019)."""
-    # 40 years * 12 months = 480 values
-    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
-    # generate random precipitation values
-    rng = np.random.default_rng(42)
-    values = rng.gamma(shape=2.0, scale=50.0, size=len(time))
-
-    return xr.DataArray(
-        values,
-        coords={"time": time},
-        dims=["time"],
-        attrs={
-            "units": "mm",
-            "long_name": "Monthly Precipitation",
-        },
-    )
+# fixtures now consolidated in conftest.py
 
 
-@pytest.fixture
-def sample_monthly_pet_da() -> xr.DataArray:
-    """Create a 1D monthly PET DataArray (40 years, 1980-2019)."""
-    # 40 years * 12 months = 480 values
-    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
-    # generate random PET values (typically smaller than precip)
-    rng = np.random.default_rng(43)
-    values = rng.gamma(shape=2.0, scale=30.0, size=len(time))
+def _verify_xarray_matches_manual_wrapping(
+    typed_func: Callable[..., xr.DataArray],
+    indices_func: Callable[..., np.ndarray],
+    cf_metadata: dict[str, Any],
+    index_display_name: str,
+    calculation_metadata_keys: list[str],
+    typed_call_kwargs: dict[str, Any],
+    manual_call_args: tuple[Any, ...],
+    manual_call_kwargs: dict[str, Any],
+    additional_input_names: list[str] | None = None,
+) -> None:
+    """Helper to verify typed function matches manually-wrapped version.
 
-    return xr.DataArray(
-        values,
-        coords={"time": time},
-        dims=["time"],
-        attrs={
-            "units": "mm",
-            "long_name": "Monthly PET",
-        },
-    )
+    Args:
+        typed_func: The typed public API function (e.g., spi, spei)
+        indices_func: The original indices module function
+        cf_metadata: CF metadata dict for the index
+        index_display_name: Display name for the index (e.g., "SPI", "SPEI")
+        calculation_metadata_keys: Keys to include in calculation metadata
+        typed_call_kwargs: Kwargs to pass to typed function
+        manual_call_args: Positional args to pass to manually wrapped function
+        manual_call_kwargs: Kwargs to pass to manually wrapped function
+        additional_input_names: Additional input parameter names for adapter
+    """
+    # manually wrap the function
+    adapter_kwargs: dict[str, Any] = {
+        "cf_metadata": cf_metadata,
+        "index_display_name": index_display_name,
+        "calculation_metadata_keys": calculation_metadata_keys,
+    }
+    if additional_input_names:
+        adapter_kwargs["additional_input_names"] = additional_input_names
+
+    manual_wrapped = xarray_adapter(**adapter_kwargs)(indices_func)
+
+    # call both versions
+    result_typed = typed_func(**typed_call_kwargs)
+    result_manual = manual_wrapped(*manual_call_args, **manual_call_kwargs)
+
+    # compare values and coordinates (ignoring timestamp in history attribute)
+    xr.testing.assert_equal(result_typed, result_manual)
+
+    # verify both have history attributes with matching content (ignoring timestamp prefix)
+    assert "history" in result_typed.attrs
+    assert "history" in result_manual.attrs
+    # history format: "YYYY-MM-DD HH:MM:SS climate_indices <version> <INDEX>(...)"
+    # extract content after timestamp (skip first 20 chars: "YYYY-MM-DD HH:MM:SS ")
+    history_typed_content = result_typed.attrs["history"][20:]
+    history_manual_content = result_manual.attrs["history"][20:]
+    assert history_typed_content == history_manual_content
+
+    # verify all non-history attributes are identical
+    attrs_typed = {k: v for k, v in result_typed.attrs.items() if k != "history"}
+    attrs_manual = {k: v for k, v in result_manual.attrs.items() if k != "history"}
+    assert attrs_typed == attrs_manual
 
 
 class TestSPIOverloads:
@@ -151,29 +170,26 @@ class TestSPIOverloads:
 
     def test_spi_xarray_matches_manual_wrapping(self, sample_monthly_precip_da: xr.DataArray) -> None:
         """Results for xarray inputs should match manually-wrapped function."""
-        # import the original function and wrap it manually
         from climate_indices.indices import spi as indices_spi
         from climate_indices.xarray_adapter import CF_METADATA
 
-        manual_wrapped = xarray_adapter(
+        _verify_xarray_matches_manual_wrapping(
+            typed_func=spi,
+            indices_func=indices_spi,
             cf_metadata=CF_METADATA["spi"],
             index_display_name="SPI",
             calculation_metadata_keys=["scale", "distribution", "calibration_year_initial", "calibration_year_final"],
-        )(indices_spi)
-
-        result_typed = spi(
-            values=sample_monthly_precip_da,
-            scale=6,
-            distribution=Distribution.gamma,
+            typed_call_kwargs={
+                "values": sample_monthly_precip_da,
+                "scale": 6,
+                "distribution": Distribution.gamma,
+            },
+            manual_call_args=(sample_monthly_precip_da,),
+            manual_call_kwargs={
+                "scale": 6,
+                "distribution": Distribution.gamma,
+            },
         )
-
-        result_manual = manual_wrapped(
-            sample_monthly_precip_da,
-            scale=6,
-            distribution=Distribution.gamma,
-        )
-
-        xr.testing.assert_identical(result_typed, result_manual)
 
 
 class TestSPEIOverloads:
@@ -290,32 +306,28 @@ class TestSPEIOverloads:
         self, sample_monthly_precip_da: xr.DataArray, sample_monthly_pet_da: xr.DataArray
     ) -> None:
         """Results for xarray inputs should match manually-wrapped function."""
-        # import the original function and wrap it manually
         from climate_indices.indices import spei as indices_spei
         from climate_indices.xarray_adapter import CF_METADATA
 
-        manual_wrapped = xarray_adapter(
+        _verify_xarray_matches_manual_wrapping(
+            typed_func=spei,
+            indices_func=indices_spei,
             cf_metadata=CF_METADATA["spei"],
             index_display_name="SPEI",
             calculation_metadata_keys=["scale", "distribution", "calibration_year_initial", "calibration_year_final"],
+            typed_call_kwargs={
+                "precips_mm": sample_monthly_precip_da,
+                "pet_mm": sample_monthly_pet_da,
+                "scale": 6,
+                "distribution": Distribution.gamma,
+            },
+            manual_call_args=(sample_monthly_precip_da, sample_monthly_pet_da),
+            manual_call_kwargs={
+                "scale": 6,
+                "distribution": Distribution.gamma,
+            },
             additional_input_names=["pet_mm"],
-        )(indices_spei)
-
-        result_typed = spei(
-            precips_mm=sample_monthly_precip_da,
-            pet_mm=sample_monthly_pet_da,
-            scale=6,
-            distribution=Distribution.gamma,
         )
-
-        result_manual = manual_wrapped(
-            sample_monthly_precip_da,
-            sample_monthly_pet_da,
-            scale=6,
-            distribution=Distribution.gamma,
-        )
-
-        xr.testing.assert_identical(result_typed, result_manual)
 
 
 class TestModuleExports:

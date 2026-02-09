@@ -14,6 +14,8 @@ from climate_indices.xarray_adapter import (
     CFAttributes,
     InputType,
     detect_input_type,
+    pet_hargreaves,
+    pet_thornthwaite,
     xarray_adapter,
 )
 
@@ -32,6 +34,8 @@ __all__ = [
     "InputAlignmentWarning",
     "InputType",
     "detect_input_type",
+    "pet_hargreaves",
+    "pet_thornthwaite",
     "spei",
     "spi",
     "xarray_adapter",
