@@ -34,7 +34,7 @@ The following indices are provided:
 -  `SPEI <https://www.researchgate.net/publication/252361460_The_Standardized_Precipitation-Evapotranspiration_Index_SPEI_a_multiscalar_drought_index>`__,
    Standardized Precipitation Evapotranspiration Index, utilizing both gamma and Pearson Type III distributions
 -  `PET <https://www.ncdc.noaa.gov/monitoring-references/dyk/potential-evapotranspiration>`__,
-   Potential Evapotranspiration, utilizing either `Thornthwaite <http://dx.doi.org/10.2307/21073>`_
+   Potential Evapotranspiration, utilizing either `Thornthwaite <https://doi.org/10.2307/210739>`_
    or `Hargreaves <http://dx.doi.org/10.13031/2013.26773>`_ equations
 -  `PNP <http://www.droughtmanagement.info/percent-of-normal-precipitation/>`__,
    Percentage of Normal Precipitation
@@ -401,6 +401,7 @@ User Guides
    :maxdepth: 2
 
    quickstart
+   algorithms
    xarray_migration
 
 
