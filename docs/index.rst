@@ -403,6 +403,7 @@ User Guides
    quickstart
    algorithms
    xarray_migration
+   troubleshooting
 
 
 API Reference
