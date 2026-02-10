@@ -1,4 +1,4 @@
-![Banner Image](assets/Global_Monthly_SPI.jpg)
+![Banner Image](https://raw.githubusercontent.com/monocongo/climate_indices/master/assets/Global_Monthly_SPI.jpg)
 
 # climate_indices
 
@@ -48,8 +48,8 @@ This is a developmental/forked version of code that was originally developed by 
 See [drought.gov](https://www.drought.gov/drought/python-climate-indices).
 
 - [__Documentation__](https://climate-indices.readthedocs.io/en/latest/)
-- [__License__](LICENSE)
-- [__Disclaimer__](DISCLAIMER)
+- [__License__](https://github.com/monocongo/climate_indices/blob/master/LICENSE)
+- [__Disclaimer__](https://github.com/monocongo/climate_indices/blob/master/DISCLAIMER)
 
 ## Migration Guide for v2.2.0
 
