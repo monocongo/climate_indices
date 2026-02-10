@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "climate_indices"
-version = '2.2.0'
+version = '2.2.1'
 description = 'Reference implementations of various climate indices typically used for drought monitoring'
 authors = [{name = "James Adams", email = "monocongo@gmail.com"}]
 readme = 'README.md'
