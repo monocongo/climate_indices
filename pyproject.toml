@@ -137,6 +137,9 @@ strict = true
 [tool.pytest.ini_options]
 filterwarnings = [
     'ignore::FutureWarning',
+    'ignore::climate_indices.exceptions.ShortCalibrationWarning',
+    'ignore::climate_indices.exceptions.GoodnessOfFitWarning',
+    'ignore::climate_indices.exceptions.MissingDataWarning',
 ]
 markers = [
     "benchmark: performance benchmark tests (deselect with '-m \"not benchmark\"')",
