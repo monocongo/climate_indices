@@ -21,6 +21,7 @@ import copy
 import datetime
 import functools
 import inspect
+import json
 import warnings
 from collections.abc import Callable
 from enum import Enum, auto
@@ -30,7 +31,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from climate_indices import compute
+from climate_indices import compute, eto, indices
+from climate_indices.compute import MIN_CALIBRATION_YEARS
 from climate_indices.exceptions import (
     CoordinateValidationError,
     InputAlignmentWarning,
@@ -88,6 +90,26 @@ CF_METADATA: dict[str, CFAttributes] = {
             "The Standardized Precipitation Evapotranspiration Index. "
             "Journal of Climate, 23(7), 1696-1718. "
             "https://doi.org/10.1175/2009JCLI2909.1"
+        ),
+    },
+    "pet_thornthwaite": {
+        "long_name": "Potential Evapotranspiration (Thornthwaite method)",
+        "units": "mm/month",
+        "references": (
+            "Thornthwaite, C. W. (1948). "
+            "An approach toward a rational classification of climate. "
+            "Geographical Review, 38(1), 55-94. "
+            "https://doi.org/10.2307/210739"
+        ),
+    },
+    "pet_hargreaves": {
+        "long_name": "Potential Evapotranspiration (Hargreaves method)",
+        "units": "mm/day",
+        "references": (
+            "Hargreaves, G. H., & Samani, Z. A. (1985). "
+            "Reference crop evapotranspiration from temperature. "
+            "Applied Engineering in Agriculture, 1(2), 96-99. "
+            "https://doi.org/10.13031/2013.26773"
         ),
     },
 }
@@ -331,6 +353,67 @@ def _validate_time_monotonicity(time_coord: xr.DataArray) -> None:
     )
 
 
+def _validate_latitude_range(
+    latitude: float | int | np.floating | np.integer | xr.DataArray,
+) -> None:
+    """Validate that latitude values are within [-90, 90].
+
+    Args:
+        latitude: Latitude value(s) as a scalar or xr.DataArray
+
+    Raises:
+        ValueError: If latitude is NaN, contains only NaNs, or has values outside [-90, 90]
+    """
+    if isinstance(latitude, xr.DataArray):
+        lat_min = float(latitude.min(skipna=True).values)
+        lat_max = float(latitude.max(skipna=True).values)
+
+        if np.isnan(lat_min) or np.isnan(lat_max):
+            raise ValueError(
+                "latitude DataArray contains only NaN values. Provide valid latitude coordinates within [-90, 90]."
+            )
+
+        if lat_min < -90 or lat_max > 90:
+            raise ValueError(
+                f"latitude values must be within [-90, 90]. "
+                f"Got range [{lat_min:.2f}, {lat_max:.2f}]. "
+                "Check that latitude coordinates use decimal degrees, not radians."
+            )
+    else:
+        lat_value = float(latitude)
+
+        if np.isnan(lat_value):
+            raise ValueError("latitude is NaN. Provide a valid latitude value within [-90, 90].")
+
+        if lat_value < -90 or lat_value > 90:
+            raise ValueError(
+                f"latitude must be within [-90, 90]. Got {lat_value:.2f}. "
+                "Check that latitude uses decimal degrees, not radians."
+            )
+
+
+def _build_latitude_attr(latitude: float | xr.DataArray) -> str | int | float | bool:
+    """Serialize latitude for storage as a DataArray attribute.
+
+    Args:
+        latitude: Latitude value as a scalar or xr.DataArray
+
+    Returns:
+        Serialized latitude suitable for xarray attribute storage
+    """
+    if isinstance(latitude, xr.DataArray):
+        lat_metadata = {
+            "name": latitude.name,
+            "dims": tuple(str(d) for d in latitude.dims),
+            "shape": tuple(int(s) for s in latitude.shape),
+            "min": float(latitude.min().values),
+            "max": float(latitude.max().values),
+        }
+        return _serialize_attr_value(lat_metadata)
+    else:
+        return _serialize_attr_value(latitude)
+
+
 def _is_time_coord_monotonic(time_coord: xr.DataArray) -> bool:
     """Return True if the time coordinate is monotonically increasing."""
     try:
@@ -432,6 +515,145 @@ def _validate_sufficient_data(time_coord: xr.DataArray, scale: int) -> None:
         )
 
 
+def _assess_nan_density(data: xr.DataArray) -> dict[str, Any]:
+    """Assess NaN density in input data for diagnostic logging.
+
+    Pure diagnostic function that computes NaN metrics without side effects.
+    The nan_positions mask is returned for reuse in propagation verification,
+    avoiding redundant computation.
+
+    Args:
+        data: Input DataArray to assess
+
+    Returns:
+        Dictionary containing:
+            - total_values: Total number of values in the array
+            - nan_count: Number of NaN values
+            - nan_ratio: Proportion of NaN values (0.0 to 1.0)
+            - has_nan: Boolean indicating presence of any NaN values
+            - nan_positions: Boolean numpy array mask (True where NaN, False otherwise)
+    """
+    values = data.values
+    nan_mask = np.isnan(values)
+    nan_count = int(np.sum(nan_mask))
+    total_values = int(values.size)
+
+    return {
+        "total_values": total_values,
+        "nan_count": nan_count,
+        "nan_ratio": nan_count / total_values if total_values > 0 else 0.0,
+        "has_nan": nan_count > 0,
+        "nan_positions": nan_mask,
+    }
+
+
+def _verify_nan_propagation(
+    input_nan_mask: np.ndarray[Any, Any],
+    output_values: np.ndarray[Any, Any],
+) -> bool:
+    """Verify that input NaN positions remain NaN in output.
+
+    Checks the NaN propagation contract: every input NaN position must be NaN
+    in the output. This is a one-directional check—output may have additional
+    NaN values from convolution padding or boundary effects, which is expected
+    and not considered a violation.
+
+    Args:
+        input_nan_mask: Boolean mask from input (True where NaN)
+        output_values: Output array values to verify
+
+    Returns:
+        True if NaN propagation contract holds (all input NaN → output NaN),
+        False if any input NaN position has a non-NaN output value
+    """
+    # get output NaN positions
+    output_nan_mask = np.isnan(output_values)
+
+    # check that all input NaN positions are still NaN in output
+    # input_nan_mask[i] == True implies output_nan_mask[i] == True
+    # equivalent to: NOT(input_nan AND NOT output_nan)
+    contract_holds = np.all(~input_nan_mask | output_nan_mask)
+
+    return bool(contract_holds)
+
+
+def _validate_calibration_non_nan_sample_size(
+    time_coord: xr.DataArray,
+    values: np.ndarray[Any, Any],
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    min_years: int = MIN_CALIBRATION_YEARS,
+) -> None:
+    """Validate sufficient non-NaN data in calibration period for distribution fitting.
+
+    Hard validation that raises an error when the calibration period has fewer than
+    the minimum required years of non-NaN data. This prevents impossible-to-fit
+    scenarios early in the pipeline, before expensive computation.
+
+    This is distinct from compute.py's _check_calibration_data_quality warning:
+    - This function: Hard error for <30 non-NaN years (fitting impossible)
+    - compute.py warning: Soft warning for >20% NaN density (fitting marginal)
+
+    Args:
+        time_coord: Time coordinate DataArray with datetime values
+        values: 1-D numpy array of data values to check
+        calibration_year_initial: Start year of calibration period (inclusive)
+        calibration_year_final: End year of calibration period (inclusive)
+        min_years: Minimum required years of non-NaN data (default: 30)
+
+    Raises:
+        InsufficientDataError: If calibration period has fewer than min_years
+            of non-NaN data, making distribution fitting impossible
+    """
+    # extract year values from time coordinate
+    time_years = pd.DatetimeIndex(time_coord.values).year.values
+
+    # find indices within calibration period
+    calibration_mask = (time_years >= calibration_year_initial) & (time_years <= calibration_year_final)
+
+    # extract calibration slice
+    calibration_values = values[calibration_mask]
+
+    if len(calibration_values) == 0:
+        raise InsufficientDataError(
+            message=(
+                f"Calibration period ({calibration_year_initial}-{calibration_year_final}) "
+                f"contains no data points. Check that calibration years overlap with time coordinate range."
+            ),
+            non_zero_count=0,
+            required_count=min_years,
+        )
+
+    # count non-NaN values
+    non_nan_count = int(np.sum(~np.isnan(calibration_values)))
+
+    # infer periods per year from time coordinate frequency
+    freq = xr.infer_freq(time_coord)  # type: ignore[no-untyped-call]
+    if freq in ("MS", "ME", "M"):
+        periods_per_year = 12
+    elif freq == "D":
+        periods_per_year = 365
+    else:
+        # fallback: estimate from total calibration span
+        periods_per_year = len(calibration_values) // (calibration_year_final - calibration_year_initial + 1)
+        if periods_per_year == 0:
+            periods_per_year = 12  # conservative default
+
+    # compute effective non-NaN years
+    effective_years = non_nan_count / periods_per_year
+
+    if effective_years < min_years:
+        raise InsufficientDataError(
+            message=(
+                f"Insufficient non-NaN data in calibration period ({calibration_year_initial}-{calibration_year_final}). "
+                f"Found {non_nan_count} non-NaN values ({effective_years:.1f} effective years), "
+                f"but at least {min_years} years of non-NaN data required for reliable distribution fitting."
+            ),
+            non_zero_count=non_nan_count,
+            required_count=int(min_years * periods_per_year),
+        )
+
+
 def _resolve_secondary_inputs(
     func: Callable[..., Any],
     args: tuple[Any, ...],
@@ -467,7 +689,7 @@ def _resolve_secondary_inputs(
     sig = inspect.signature(func)
     param_names = list(sig.parameters.keys())
 
-    resolved = {}
+    resolved: dict[str, tuple[int | None, Any]] = {}
 
     for name in additional_input_names:
         if name not in sig.parameters:
@@ -573,17 +795,19 @@ def _align_inputs(
 def _serialize_attr_value(value: Any) -> str | int | float | bool:
     """Serialize attribute values for xarray compatibility.
 
-    Converts enum instances to their string name representation, passes through
-    native xarray-serializable types, and raises TypeError for non-serializable types.
+    Converts enum instances to their string name representation, serializes dicts
+    to JSON strings, passes through native xarray-serializable types, and raises
+    TypeError for non-serializable types.
 
     Args:
         value: Attribute value to serialize
 
     Returns:
-        Serialized value: enum→name string, or passthrough for str/int/float/bool/numpy scalars
+        Serialized value: enum→name string, dict→JSON string, or passthrough
+        for str/int/float/bool/numpy scalars
 
     Raises:
-        TypeError: If value is not serializable (dict, list, complex objects)
+        TypeError: If value is not serializable (list, complex objects)
 
     Examples:
         >>> _serialize_attr_value(Distribution.gamma)
@@ -592,6 +816,8 @@ def _serialize_attr_value(value: Any) -> str | int | float | bool:
         42
         >>> _serialize_attr_value("monthly")
         'monthly'
+        >>> _serialize_attr_value({"min": -5.0, "max": 45.0})
+        '{"min": -5.0, "max": 45.0}'
         >>> _serialize_attr_value([1, 2])
         TypeError: ...
     """
@@ -607,10 +833,14 @@ def _serialize_attr_value(value: Any) -> str | int | float | bool:
     if isinstance(value, (str, int, float, bool)):
         return value
 
+    # dict → JSON string
+    if isinstance(value, dict):
+        return json.dumps(value)
+
     # reject non-serializable types
     raise TypeError(
         f"Cannot serialize attribute value of type {type(value).__name__}. "
-        f"Supported types: Enum, str, int, float, bool, numpy scalars."
+        f"Supported types: Enum, dict, str, int, float, bool, numpy scalars."
     )
 
 
@@ -700,6 +930,196 @@ def _append_history(
     return f"{existing.rstrip()}{_HISTORY_SEPARATOR}{new_entry}"
 
 
+def _infer_temporal_parameters(
+    func: Callable[..., Any],
+    input_da: xr.DataArray,
+    modified_args: list[Any],
+    modified_kwargs: dict[str, Any],
+    time_dim: str,
+) -> dict[str, Any]:
+    """Infer missing temporal parameters from time coordinate metadata.
+
+    Pure metadata-based inference—operates only on coordinate values, safe for
+    Dask arrays. Does NOT include calibration NaN validation (requires .values).
+
+    Args:
+        func: The function being wrapped
+        input_da: Input DataArray with time coordinate
+        modified_args: Positional arguments (may be modified by alignment)
+        modified_kwargs: Keyword arguments (may be modified by alignment)
+        time_dim: Name of the time dimension
+
+    Returns:
+        Dictionary of inferred parameters (data_start_year, periodicity,
+        calibration_year_initial, calibration_year_final). Only includes
+        parameters that are in the function signature and not already provided.
+    """
+    inferred: dict[str, Any] = {}
+
+    # skip if time dimension doesn't exist
+    if time_dim not in input_da.dims:
+        return inferred
+
+    time_coord = input_da[time_dim]
+
+    # use inspect to determine which parameters the function accepts
+    sig = inspect.signature(func)
+
+    # bind provided args/kwargs to see what's already specified
+    try:
+        # bind_partial allows missing parameters (we'll fill them)
+        bound = sig.bind_partial(*modified_args, **modified_kwargs)
+        bound.apply_defaults()
+        provided_params = set(bound.arguments.keys())
+    except TypeError:
+        # if binding fails, skip inference
+        provided_params = set()
+
+    # infer data_start_year if not provided
+    if "data_start_year" in sig.parameters and "data_start_year" not in provided_params:
+        inferred["data_start_year"] = _infer_data_start_year(time_coord)
+
+    # infer periodicity if not provided
+    if "periodicity" in sig.parameters and "periodicity" not in provided_params:
+        inferred["periodicity"] = _infer_periodicity(time_coord)
+
+    # infer calibration period if either param is not provided
+    needs_cal_initial = (
+        "calibration_year_initial" in sig.parameters and "calibration_year_initial" not in provided_params
+    )
+    needs_cal_final = "calibration_year_final" in sig.parameters and "calibration_year_final" not in provided_params
+
+    if needs_cal_initial or needs_cal_final:
+        cal_start, cal_end = _infer_calibration_period(time_coord)
+        if needs_cal_initial:
+            inferred["calibration_year_initial"] = cal_start
+        if needs_cal_final:
+            inferred["calibration_year_final"] = cal_end
+
+    return inferred
+
+
+def _is_dask_backed(data: xr.DataArray) -> bool:
+    """Check if a DataArray is backed by a Dask array.
+
+    Uses the canonical xarray idiom (data.chunks is not None) to detect Dask-backed
+    arrays without importing dask.array directly.
+
+    Args:
+        data: DataArray to check
+
+    Returns:
+        True if data is Dask-backed, False otherwise
+    """
+    return data.chunks is not None
+
+
+def _validate_dask_chunks(data: xr.DataArray, time_dim: str) -> None:
+    """Validate that the time dimension is not split across multiple Dask chunks.
+
+    SPI/SPEI require the full time series for distribution fitting, so the time
+    dimension must be in a single chunk (or unchunked). Spatial dimensions can
+    be arbitrarily chunked for parallel computation.
+
+    Args:
+        data: Dask-backed DataArray to validate
+        time_dim: Name of the time dimension
+
+    Raises:
+        CoordinateValidationError: If time dimension is split across multiple chunks,
+            with a message including the exact rechunking command to fix it
+    """
+    # skip validation if time dimension doesn't exist (already validated elsewhere)
+    if time_dim not in data.dims:
+        return
+
+    # skip validation if not chunked (shouldn't happen since we call this after is_dask check)
+    if data.chunks is None:
+        return
+
+    # get chunks for time dimension
+    # data.chunks is a tuple-of-tuples indexed by dimension position
+    time_chunks = data.chunks[data.dims.index(time_dim)]
+
+    # validate single chunk on time dimension
+    if len(time_chunks) > 1:
+        error_msg = (
+            f"Time dimension '{time_dim}' is split across {len(time_chunks)} chunks. "
+            f"Climate indices require the full time series for distribution fitting. "
+            f"Rechunk using: data = data.chunk({{'{time_dim}': -1}})"
+        )
+        _log().error(
+            "multi_chunked_time_dimension",
+            time_dim=time_dim,
+            num_chunks=len(time_chunks),
+            chunk_sizes=time_chunks,
+        )
+        raise CoordinateValidationError(
+            message=error_msg,
+            coordinate_name=time_dim,
+            reason="multi_chunked_time_dimension",
+        )
+
+
+def _build_output_attrs(
+    input_da: xr.DataArray,
+    cf_metadata: dict[str, str] | None = None,
+    calculation_metadata: dict[str, Any] | None = None,
+    index_name: str | None = None,
+) -> dict[str, Any]:
+    """Build output attributes with CF metadata, calculation metadata, version, and history.
+
+    Pure attribute construction—extracts the dict-building logic from _build_output_dataarray()
+    so both in-memory and Dask execution paths can apply identical metadata.
+
+    Args:
+        input_da: Original input DataArray with full coordinate metadata
+        cf_metadata: Optional CF Convention metadata to apply to DataArray-level attributes
+        calculation_metadata: Optional dict of calculation-specific metadata
+            (e.g., scale, distribution). Enum values are automatically serialized to .name strings.
+        index_name: Optional climate index display name for history tracking
+            (e.g., "SPI"). If provided, appends a CF-compliant history entry.
+
+    Returns:
+        Dictionary of attributes to assign to output DataArray
+
+    Notes:
+        - Attribute layering: input attrs → CF metadata → calculation metadata → version → history
+    """
+    # deep-copy DA-level attrs for output (prevents mutation)
+    output_attrs = copy.deepcopy(input_da.attrs)
+
+    # apply CF metadata overrides to DA-level attrs only
+    if cf_metadata is not None:
+        output_attrs.update(cf_metadata)
+
+    # add calculation metadata (e.g., scale, distribution)
+    if calculation_metadata is not None:
+        for key, value in calculation_metadata.items():
+            try:
+                output_attrs[key] = _serialize_attr_value(value)
+            except TypeError as e:
+                _log().warning(
+                    "calculation_metadata_serialization_failed",
+                    key=key,
+                    value_type=type(value).__name__,
+                    error=str(e),
+                )
+
+    # add library version for provenance
+    # deferred import to avoid circular dependency (__init__.py imports this module)
+    from climate_indices import __version__
+
+    output_attrs["climate_indices_version"] = __version__
+
+    # add history entry for provenance tracking
+    if index_name is not None:
+        history_entry = _build_history_entry(index_name, __version__, calculation_metadata)
+        output_attrs["history"] = _append_history(output_attrs, history_entry)
+
+    return output_attrs
+
+
 def _build_output_dataarray(
     input_da: xr.DataArray,
     result_values: np.ndarray[Any, Any],
@@ -735,36 +1155,8 @@ def _build_output_dataarray(
         - Preserves the input DataArray's .name attribute
         - Attribute layering: input attrs → CF metadata → calculation metadata → version → history
     """
-    # deep-copy DA-level attrs for output (prevents mutation)
-    output_attrs = copy.deepcopy(input_da.attrs)
-
-    # apply CF metadata overrides to DA-level attrs only
-    if cf_metadata is not None:
-        output_attrs.update(cf_metadata)
-
-    # add calculation metadata (e.g., scale, distribution)
-    if calculation_metadata is not None:
-        for key, value in calculation_metadata.items():
-            try:
-                output_attrs[key] = _serialize_attr_value(value)
-            except TypeError as e:
-                _log().warning(
-                    "calculation_metadata_serialization_failed",
-                    key=key,
-                    value_type=type(value).__name__,
-                    error=str(e),
-                )
-
-    # add library version for provenance
-    # deferred import to avoid circular dependency (__init__.py imports this module)
-    from climate_indices import __version__
-
-    output_attrs["climate_indices_version"] = __version__
-
-    # add history entry for provenance tracking
-    if index_name is not None:
-        history_entry = _build_history_entry(index_name, __version__, calculation_metadata)
-        output_attrs["history"] = _append_history(output_attrs, history_entry)
+    # build output attrs using extracted helper
+    output_attrs = _build_output_attrs(input_da, cf_metadata, calculation_metadata, index_name)
 
     # construct output with coords and dims from input
     result_da = xr.DataArray(
@@ -785,125 +1177,6 @@ def _build_output_dataarray(
     return result_da
 
 
-def _prepare_xarray_inputs(
-    func: Callable[..., Any],
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
-    input_da: xr.DataArray,
-    time_dim: str,
-    additional_input_names: list[str] | None,
-) -> tuple[xr.DataArray, list[Any], dict[str, Any], dict[str, tuple[int | None, Any]]]:
-    """Resolve, align, and stage xarray inputs before computation."""
-    modified_args = list(args)
-    modified_kwargs = dict(kwargs)
-    resolved_secondaries: dict[str, tuple[int | None, Any]] = {}
-
-    if not additional_input_names:
-        return input_da, modified_args, modified_kwargs, resolved_secondaries
-
-    resolved_secondaries = _resolve_secondary_inputs(func, args, kwargs, additional_input_names)
-    dataarray_secondaries = {
-        name: value for name, (_, value) in resolved_secondaries.items() if isinstance(value, xr.DataArray)
-    }
-    if not dataarray_secondaries:
-        return input_da, modified_args, modified_kwargs, resolved_secondaries
-
-    aligned_primary, aligned_secondaries = _align_inputs(input_da, dataarray_secondaries, time_dim)
-    input_da = aligned_primary
-    modified_args[0] = aligned_primary
-
-    for name, (pos_index, _) in resolved_secondaries.items():
-        if name not in aligned_secondaries:
-            continue
-        if pos_index is not None:
-            modified_args[pos_index] = aligned_secondaries[name]
-        else:
-            modified_kwargs[name] = aligned_secondaries[name]
-
-    return input_da, modified_args, modified_kwargs, resolved_secondaries
-
-
-def _validate_inference_inputs(
-    infer_params: bool,
-    input_da: xr.DataArray,
-    time_dim: str,
-    func: Callable[..., Any],
-    modified_args: list[Any],
-    modified_kwargs: dict[str, Any],
-) -> None:
-    """Run validation checks required for parameter inference."""
-    if not infer_params:
-        return
-
-    _validate_time_dimension(input_da, time_dim)
-    time_coord = input_da[time_dim]
-    _validate_time_monotonicity(time_coord)
-    resolved_scale = _resolve_scale_from_args(func, tuple(modified_args), modified_kwargs)
-    if resolved_scale is not None:
-        _validate_sufficient_data(time_coord, resolved_scale)
-
-
-def _extract_secondary_dataarray_values(
-    additional_input_names: list[str] | None,
-    resolved_secondaries: dict[str, tuple[int | None, Any]],
-    modified_args: list[Any],
-    modified_kwargs: dict[str, Any],
-) -> None:
-    """Replace aligned secondary DataArray inputs with NumPy values in-place."""
-    if not additional_input_names:
-        return
-
-    for name, (pos_index, value) in resolved_secondaries.items():
-        if not isinstance(value, xr.DataArray):
-            continue
-        if pos_index is not None:
-            modified_args[pos_index] = modified_args[pos_index].values
-        else:
-            modified_kwargs[name] = modified_kwargs[name].values
-
-
-def _get_provided_params(sig: inspect.Signature, args: list[Any], kwargs: dict[str, Any]) -> set[str]:
-    """Return provided parameter names from bound args/kwargs."""
-    try:
-        bound = sig.bind_partial(*args, **kwargs)
-        bound.apply_defaults()
-        return set(bound.arguments.keys())
-    except TypeError:
-        return set()
-
-
-def _infer_call_kwargs(
-    func: Callable[..., Any],
-    modified_args: list[Any],
-    modified_kwargs: dict[str, Any],
-    infer_params: bool,
-    input_da: xr.DataArray,
-    time_dim: str,
-) -> dict[str, Any]:
-    """Build call kwargs, filling inferable values when needed."""
-    call_kwargs = dict(modified_kwargs)
-    if not (infer_params and time_dim in input_da.dims):
-        return call_kwargs
-
-    time_coord = input_da[time_dim]
-    sig = inspect.signature(func)
-    provided_params = _get_provided_params(sig, modified_args, modified_kwargs)
-
-    if "data_start_year" in sig.parameters and "data_start_year" not in provided_params:
-        call_kwargs["data_start_year"] = _infer_data_start_year(time_coord)
-
-    if "periodicity" in sig.parameters and "periodicity" not in provided_params:
-        call_kwargs["periodicity"] = _infer_periodicity(time_coord)
-
-    if "calibration_year_initial" in sig.parameters and "calibration_year_initial" not in provided_params:
-        cal_start, cal_end = _infer_calibration_period(time_coord)
-        call_kwargs["calibration_year_initial"] = cal_start
-        if "calibration_year_final" in sig.parameters and "calibration_year_final" not in provided_params:
-            call_kwargs["calibration_year_final"] = cal_end
-
-    return call_kwargs
-
-
 def _capture_calculation_metadata(
     calculation_metadata_keys: list[str] | tuple[str, ...] | None,
     valid_kwargs: dict[str, Any],
@@ -919,46 +1192,83 @@ def _capture_calculation_metadata(
     return calc_metadata
 
 
-def _run_xarray_path(
-    func: Callable[..., np.ndarray[Any, Any]],
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
-    data: xr.DataArray,
+def _collect_input_dataarrays(
+    input_da: xr.DataArray,
+    additional_input_names: list[str] | None,
+    resolved_secondaries: dict[str, tuple[int | None, Any]],
+    modified_args: list[Any],
+    modified_kwargs: dict[str, Any],
+) -> list[xr.DataArray]:
+    """Collect primary + aligned secondary DataArrays for apply_ufunc.
+
+    Args:
+        input_da: Primary input DataArray
+        additional_input_names: Names of additional input parameters
+        resolved_secondaries: Mapping of secondary input name to (position, value)
+        modified_args: Modified positional arguments (with aligned secondaries)
+        modified_kwargs: Modified keyword arguments (with aligned secondaries)
+
+    Returns:
+        List of DataArrays to pass to apply_ufunc (primary + secondaries in order)
+    """
+    input_dataarrays = [input_da]
+    if additional_input_names and resolved_secondaries:
+        for name in additional_input_names:
+            if name not in resolved_secondaries:
+                continue
+            pos_index, original_value = resolved_secondaries[name]
+            if not isinstance(original_value, xr.DataArray):
+                continue
+            # pull the aligned DataArray from modified_args or modified_kwargs
+            if pos_index is not None:
+                input_dataarrays.append(modified_args[pos_index])
+            else:
+                input_dataarrays.append(modified_kwargs[name])
+    return input_dataarrays
+
+
+def _finalize_ufunc_result(
+    result_da: xr.DataArray,
+    input_da: xr.DataArray,
+    valid_kwargs: dict[str, Any],
     *,
     cf_metadata: dict[str, str] | None,
-    time_dim: str,
-    infer_params: bool,
     calculation_metadata_keys: list[str] | tuple[str, ...] | None,
     index_display_name: str | None,
-    additional_input_names: list[str] | None,
+    func_name: str,
 ) -> xr.DataArray:
-    """Execute the xarray adaptation flow for a wrapped function call."""
-    input_da, modified_args, modified_kwargs, resolved_secondaries = _prepare_xarray_inputs(
-        func, args, kwargs, data, time_dim, additional_input_names
-    )
+    """Apply post-apply_ufunc processing: reorder dims, attach metadata, copy coord attrs.
 
-    _validate_inference_inputs(infer_params, input_da, time_dim, func, modified_args, modified_kwargs)
+    Args:
+        result_da: Result DataArray from apply_ufunc
+        input_da: Original input DataArray
+        valid_kwargs: Filtered kwargs passed to the wrapped function
+        cf_metadata: CF convention metadata for the output
+        calculation_metadata_keys: Keys to extract from valid_kwargs for metadata
+        index_display_name: Display name for the index (or None to use func_name.upper())
+        func_name: Name of the wrapped function
 
-    numpy_values = input_da.values
-    _extract_secondary_dataarray_values(additional_input_names, resolved_secondaries, modified_args, modified_kwargs)
-    call_kwargs = _infer_call_kwargs(func, modified_args, modified_kwargs, infer_params, input_da, time_dim)
+    Returns:
+        Finalized DataArray with restored dimensions, metadata, and coordinate attributes
+    """
+    # restore dimension order (apply_ufunc moves core dims to end)
+    if result_da.dims != input_da.dims:
+        result_da = result_da.transpose(*input_da.dims)
 
-    sig = inspect.signature(func)
-    valid_kwargs = {k: v for k, v in call_kwargs.items() if k in sig.parameters}
-    numpy_args = (numpy_values,) + tuple(modified_args[1:])
-    result_values = func(*numpy_args, **valid_kwargs)
-
+    # apply metadata using _build_output_attrs
     calc_metadata = _capture_calculation_metadata(calculation_metadata_keys, valid_kwargs)
-    resolved_index_name = index_display_name if index_display_name is not None else func.__name__.upper()
-    result_da = _build_output_dataarray(input_da, result_values, cf_metadata, calc_metadata, index_name=resolved_index_name)
+    resolved_index_name = index_display_name if index_display_name is not None else func_name.upper()
+    output_attrs = _build_output_attrs(input_da, cf_metadata, calc_metadata, index_name=resolved_index_name)
+    result_da.attrs.update(output_attrs)
 
-    _log().info(
-        "xarray_adapter_completed",
-        function_name=func.__name__,
-        input_shape=input_da.shape,
-        output_shape=result_da.shape,
-        inferred_params=infer_params,
-    )
+    # deep-copy coordinate attrs
+    for coord_name in result_da.coords:
+        if coord_name in input_da.coords:
+            result_da.coords[coord_name].attrs = copy.deepcopy(input_da.coords[coord_name].attrs)
+
+    # preserve .name
+    result_da.name = input_da.name
+
     return result_da
 
 
@@ -970,6 +1280,7 @@ def xarray_adapter(
     calculation_metadata_keys: list[str] | tuple[str, ...] | None = None,
     index_display_name: str | None = None,
     additional_input_names: list[str] | None = None,
+    skipna: bool = False,
 ) -> Callable[[Callable[..., np.ndarray[Any, Any]]], Callable[..., np.ndarray[Any, Any] | xr.DataArray]]:
     """Decorator factory that adapts NumPy index functions to accept xarray DataArrays.
 
@@ -998,6 +1309,10 @@ def xarray_adapter(
             (e.g., ["pet"] for SPEI). When provided, these inputs will be aligned with
             the primary input using xr.align(join='inner') before computation. Only
             DataArray secondaries are aligned; numpy secondaries pass through unchanged.
+        skipna: If False (default), NaN values are propagated through calculations
+            (NaN in → NaN out). If True, implements pairwise deletion for NaN handling
+            (FR-INPUT-004). Currently only skipna=False is implemented; skipna=True
+            raises NotImplementedError.
 
     Returns:
         Decorator function that wraps index computation functions
@@ -1037,19 +1352,751 @@ def xarray_adapter(
             if input_type == InputType.NUMPY:
                 return func(*args, **kwargs)
 
-            return _run_xarray_path(
-                func,
-                args,
-                kwargs,
-                data,
-                cf_metadata=cf_metadata,
-                time_dim=time_dim,
-                infer_params=infer_params,
-                calculation_metadata_keys=calculation_metadata_keys,
-                index_display_name=index_display_name,
-                additional_input_names=additional_input_names,
+            # xarray path: detect → [resolve → align] → validate → extract → infer → compute → rewrap → log
+            input_da = data
+
+            # check skipna parameter (Story 2.8)
+            if skipna:
+                raise NotImplementedError(
+                    "skipna=True not yet implemented (FR-INPUT-004). "
+                    "NaN values are propagated through calculations by default."
+                )
+
+            # resolve and align secondary inputs (Story 3.1)
+            modified_args = list(args)
+            modified_kwargs = dict(kwargs)
+            resolved_secondaries: dict[str, tuple[int | None, Any]] = {}
+
+            if additional_input_names:
+                # resolve secondary inputs from args/kwargs
+                resolved_secondaries = _resolve_secondary_inputs(func, args, kwargs, additional_input_names)
+
+                # filter to only DataArray secondaries for alignment
+                # (numpy secondaries pass through unchanged)
+                dataarray_secondaries = {
+                    name: value for name, (_, value) in resolved_secondaries.items() if isinstance(value, xr.DataArray)
+                }
+
+                if dataarray_secondaries:
+                    # align primary + DataArray secondaries
+                    aligned_primary, aligned_secondaries = _align_inputs(input_da, dataarray_secondaries, time_dim)
+
+                    # update input_da to use aligned primary
+                    input_da = aligned_primary
+
+                    # replace args[0] with aligned primary
+                    modified_args[0] = aligned_primary
+
+                    # replace aligned secondaries in args/kwargs
+                    for name, (pos_index, _) in resolved_secondaries.items():
+                        if name in aligned_secondaries:
+                            if pos_index is not None:
+                                # replace positional arg
+                                modified_args[pos_index] = aligned_secondaries[name]
+                            else:
+                                # replace kwarg
+                                modified_kwargs[name] = aligned_secondaries[name]
+
+            # coordinate validation (Story 2.7)
+            if infer_params:
+                _validate_time_dimension(input_da, time_dim)
+                time_coord = input_da[time_dim]
+                _validate_time_monotonicity(time_coord)
+                resolved_scale = _resolve_scale_from_args(func, tuple(modified_args), modified_kwargs)
+                if resolved_scale is not None:
+                    _validate_sufficient_data(time_coord, resolved_scale)
+
+            # detect Dask-backed arrays (Story 2.9)
+            is_dask = _is_dask_backed(input_da)
+            if is_dask:
+                # validate chunking constraints for Dask
+                _validate_dask_chunks(input_da, time_dim)
+
+            # infer temporal parameters if enabled (shared path)
+            inferred_params: dict[str, Any] = {}
+            if infer_params:
+                inferred_params = _infer_temporal_parameters(func, input_da, modified_args, modified_kwargs, time_dim)
+                # log which parameters were inferred and their values
+                if inferred_params:
+                    _log().info(
+                        "parameters_inferred",
+                        function_name=func.__name__,
+                        **{k: str(v) for k, v in inferred_params.items()},
+                    )
+
+            # branch: Dask execution or in-memory execution
+            if is_dask:
+                # ═══════════════════════════════════════════════════════════════════
+                # Dask execution path (Story 2.9)
+                # ═══════════════════════════════════════════════════════════════════
+
+                # build call_kwargs from modified_kwargs + inferred params
+                call_kwargs = dict(modified_kwargs)
+                call_kwargs.update(inferred_params)
+
+                # filter kwargs to function signature, excluding DataArray secondary names
+                # (secondaries are positional args to apply_ufunc, not kwargs)
+                sig = inspect.signature(func)
+                secondary_names = set(additional_input_names or [])
+                valid_kwargs = {
+                    k: v for k, v in call_kwargs.items() if k in sig.parameters and k not in secondary_names
+                }
+
+                # collect input DataArrays for apply_ufunc in parameter order
+                # primary + aligned secondaries (reuse resolution from earlier in wrapper)
+                input_dataarrays = _collect_input_dataarrays(
+                    input_da, additional_input_names, resolved_secondaries, modified_args, modified_kwargs
+                )
+
+                # create closure capturing valid_kwargs
+                def _numpy_func_wrapper(*numpy_arrays: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
+                    return func(*numpy_arrays, **valid_kwargs)
+
+                # call apply_ufunc with Dask support
+                result_da: xr.DataArray = xr.apply_ufunc(
+                    _numpy_func_wrapper,
+                    *input_dataarrays,
+                    input_core_dims=[[time_dim]] * len(input_dataarrays),
+                    output_core_dims=[[time_dim]],
+                    dask="parallelized",
+                    vectorize=True,
+                    output_dtypes=[float],
+                )
+
+                # finalize result: restore dims, attach metadata, copy coord attrs
+                result_da = _finalize_ufunc_result(
+                    result_da,
+                    input_da,
+                    valid_kwargs,
+                    cf_metadata=cf_metadata,
+                    calculation_metadata_keys=calculation_metadata_keys,
+                    index_display_name=index_display_name,
+                    func_name=func.__name__,
+                )
+
+                # log completion (NaN metrics omitted for Dask—would trigger compute)
+                _log().info(
+                    "xarray_adapter_completed",
+                    function_name=func.__name__,
+                    input_shape=input_da.shape,
+                    output_shape=result_da.shape,
+                    inferred_params=infer_params,
+                    dask_backed=True,
+                )
+
+                return result_da
+
+            # ═══════════════════════════════════════════════════════════════════
+            # In-memory execution path (original logic)
+            # ═══════════════════════════════════════════════════════════════════
+
+            # assess NaN density for diagnostics (Story 2.8)
+            nan_assessment = _assess_nan_density(input_da)
+            if nan_assessment["has_nan"]:
+                _log().info(
+                    "nan_detected_in_input",
+                    function_name=func.__name__,
+                    nan_count=nan_assessment["nan_count"],
+                    nan_ratio=round(nan_assessment["nan_ratio"], 4),
+                    total_values=nan_assessment["total_values"],
+                )
+
+            # build kwargs for the wrapped function
+            # start with explicitly provided kwargs (including extracted secondaries)
+            call_kwargs = dict(modified_kwargs)
+
+            # apply inferred params (already computed above before the branch)
+            call_kwargs.update(inferred_params)
+
+            # filter call_kwargs to only include params the function accepts
+            sig = inspect.signature(func)
+            valid_kwargs = {k: v for k, v in call_kwargs.items() if k in sig.parameters}
+
+            # check if input is multi-dimensional (has spatial dims beyond time)
+            # and has a time dimension (required for apply_ufunc with input_core_dims)
+            if input_da.ndim > 1 and time_dim in input_da.dims:
+                # ═══════════════════════════════════════════════════════════════════
+                # Multi-dimensional in-memory execution path
+                # ═══════════════════════════════════════════════════════════════════
+                # use xr.apply_ufunc with vectorize=True to handle spatial broadcasting
+                # similar to Dask path but without dask="parallelized"
+
+                # validate calibration period has sufficient non-NaN data (Story 2.8)
+                if nan_assessment["has_nan"] and infer_params and time_dim in input_da.dims:
+                    time_coord = input_da[time_dim]
+                    cal_initial = call_kwargs.get("calibration_year_initial")
+                    cal_final = call_kwargs.get("calibration_year_final")
+                    if cal_initial is not None and cal_final is not None:
+                        # for multi-dimensional validation, use first spatial point
+                        sample_values = input_da.values
+                        if sample_values.ndim > 1:
+                            # extract first spatial slice along time dimension
+                            slices = [slice(None)] + [0] * (sample_values.ndim - 1)
+                            sample_values = sample_values[tuple(slices)]
+                        _validate_calibration_non_nan_sample_size(
+                            time_coord,
+                            sample_values,
+                            calibration_year_initial=cal_initial,
+                            calibration_year_final=cal_final,
+                        )
+
+                # collect input DataArrays for apply_ufunc in parameter order
+                input_dataarrays = _collect_input_dataarrays(
+                    input_da, additional_input_names, resolved_secondaries, modified_args, modified_kwargs
+                )
+
+                # create closure capturing valid_kwargs
+                def _numpy_func_wrapper(*numpy_arrays: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
+                    return func(*numpy_arrays, **valid_kwargs)
+
+                # call apply_ufunc without Dask support (in-memory vectorization)
+                result_da: xr.DataArray = xr.apply_ufunc(
+                    _numpy_func_wrapper,
+                    *input_dataarrays,
+                    input_core_dims=[[time_dim]] * len(input_dataarrays),
+                    output_core_dims=[[time_dim]],
+                    vectorize=True,
+                    output_dtypes=[float],
+                )
+
+                # finalize result: restore dims, attach metadata, copy coord attrs
+                result_da = _finalize_ufunc_result(
+                    result_da,
+                    input_da,
+                    valid_kwargs,
+                    cf_metadata=cf_metadata,
+                    calculation_metadata_keys=calculation_metadata_keys,
+                    index_display_name=index_display_name,
+                    func_name=func.__name__,
+                )
+
+                # log completion
+                log_fields = {
+                    "function_name": func.__name__,
+                    "input_shape": input_da.shape,
+                    "output_shape": result_da.shape,
+                    "inferred_params": infer_params,
+                    "vectorized": True,
+                }
+                if nan_assessment["has_nan"]:
+                    log_fields["input_nan_count"] = nan_assessment["nan_count"]
+                    log_fields["input_nan_ratio"] = round(nan_assessment["nan_ratio"], 4)
+
+                _log().info("xarray_adapter_completed", **log_fields)
+                return result_da
+
+            # ═══════════════════════════════════════════════════════════════════
+            # 1D in-memory execution path
+            # ═══════════════════════════════════════════════════════════════════
+
+            # extract numpy values from primary
+            numpy_values = input_da.values
+
+            # extract numpy values from secondary DataArrays (if any)
+            if additional_input_names:
+                for name, (pos_index, value) in resolved_secondaries.items():
+                    if isinstance(value, xr.DataArray):
+                        # extract .values from aligned DataArray
+                        if pos_index is not None:
+                            modified_args[pos_index] = modified_args[pos_index].values
+                        else:
+                            modified_kwargs[name] = modified_kwargs[name].values
+
+            # validate calibration period has sufficient non-NaN data (Story 2.8)
+            # this validation requires .values, so it only runs in the in-memory path
+            if nan_assessment["has_nan"] and infer_params and time_dim in input_da.dims:
+                time_coord = input_da[time_dim]
+                # check if we have calibration years (either inferred or provided)
+                cal_initial = call_kwargs.get("calibration_year_initial")
+                cal_final = call_kwargs.get("calibration_year_final")
+                if cal_initial is not None and cal_final is not None:
+                    _validate_calibration_non_nan_sample_size(
+                        time_coord,
+                        numpy_values,
+                        calibration_year_initial=cal_initial,
+                        calibration_year_final=cal_final,
+                    )
+
+            # call wrapped numpy function with extracted values
+            # replace first arg (DataArray) with numpy values
+            numpy_args = (numpy_values,) + tuple(modified_args[1:])
+
+            result_values = func(*numpy_args, **valid_kwargs)
+
+            # verify NaN propagation contract (Story 2.8)
+            if nan_assessment["has_nan"]:
+                if not _verify_nan_propagation(nan_assessment["nan_positions"], result_values):
+                    _log().warning(
+                        "nan_propagation_violation",
+                        function_name=func.__name__,
+                        message="Output missing NaN values present in input",
+                    )
+
+            # capture calculation metadata from resolved kwargs
+            calc_metadata = _capture_calculation_metadata(calculation_metadata_keys, valid_kwargs)
+
+            # resolve index name for history tracking
+            resolved_index_name = index_display_name if index_display_name is not None else func.__name__.upper()
+
+            # rewrap result as DataArray with preserved coordinates/metadata
+            result_da = _build_output_dataarray(
+                input_da, result_values, cf_metadata, calc_metadata, index_name=resolved_index_name
             )
+
+            # log completion with NaN metrics (Story 2.8)
+            log_fields = {
+                "function_name": func.__name__,
+                "input_shape": input_da.shape,
+                "output_shape": result_da.shape,
+                "inferred_params": infer_params,
+            }
+            if nan_assessment["has_nan"]:
+                log_fields["input_nan_count"] = nan_assessment["nan_count"]
+                log_fields["input_nan_ratio"] = round(nan_assessment["nan_ratio"], 4)
+
+            _log().info("xarray_adapter_completed", **log_fields)
+
+            return result_da
 
         return wrapper
 
     return decorator
+
+
+def pet_thornthwaite(
+    temperature: np.ndarray | xr.DataArray,
+    latitude: float | np.floating | xr.DataArray,
+    data_start_year: int | None = None,
+    time_dim: str = "time",
+) -> np.ndarray | xr.DataArray:
+    """Compute potential evapotranspiration using Thornthwaite method.
+
+    This function provides xarray DataArray support for the Thornthwaite PET calculation.
+    Unlike the @xarray_adapter decorator (designed for time-series inputs aligned along
+    a time dimension), this function uses xr.apply_ufunc to handle spatial broadcasting
+    of the latitude parameter across gridded temperature data.
+
+    Args:
+        temperature: Monthly average temperature values in degrees Celsius.
+            For numpy: 1-D array of monthly temperatures
+            For xarray: DataArray with time dimension (may have additional spatial dims)
+        latitude: Latitude in degrees north (range: -90 to 90).
+            For numpy: scalar float
+            For xarray: scalar float or DataArray(lat,) for spatial broadcasting
+        data_start_year: Initial year of the input dataset. If None and temperature
+            is a DataArray with datetime coordinate, will be inferred from the first timestamp.
+        time_dim: Name of the time dimension in the input DataArray (default: "time").
+            Only used for xarray inputs.
+
+    Returns:
+        PET values in mm/month, same shape and type as input temperature:
+        - numpy input → numpy array output
+        - xarray input → xarray DataArray output with CF metadata and provenance
+
+    Raises:
+        InputTypeError: If temperature is not numpy-coercible or xr.DataArray
+        CoordinateValidationError: If time dimension missing/invalid (xarray path)
+        ValueError: If latitude is out of range [-90, 90]
+
+    Examples:
+        >>> # NumPy path: 40 years of monthly temps at single location
+        >>> temps = np.random.uniform(10, 25, 480)
+        >>> pet = pet_thornthwaite(temps, latitude=40.0, data_start_year=1980)
+        >>> pet.shape
+        (480,)
+
+        >>> # xarray path: 1-D time series
+        >>> temp_da = xr.DataArray(
+        ...     temps,
+        ...     coords={'time': pd.date_range('1980-01', periods=480, freq='MS')},
+        ...     dims=['time']
+        ... )
+        >>> pet_da = pet_thornthwaite(temp_da, latitude=40.0)
+        >>> pet_da.attrs['long_name']
+        'Potential Evapotranspiration (Thornthwaite method)'
+
+        >>> # xarray path: gridded data with spatial broadcasting
+        >>> temp_grid = xr.DataArray(
+        ...     np.random.uniform(10, 25, (480, 4, 3)),
+        ...     coords={
+        ...         'time': pd.date_range('1980-01', periods=480, freq='MS'),
+        ...         'lat': [30, 35, 40, 45],
+        ...         'lon': [-120, -110, -100]
+        ...     },
+        ...     dims=['time', 'lat', 'lon']
+        ... )
+        >>> lat_array = xr.DataArray([30, 35, 40, 45], dims=['lat'])
+        >>> pet_grid = pet_thornthwaite(temp_grid, lat_array)
+        >>> pet_grid.shape
+        (480, 4, 3)
+
+    Notes:
+        - The underlying indices.pet() function expects 1-D temperature arrays and
+          scalar latitude. For gridded inputs, xr.apply_ufunc with vectorize=True
+          automatically loops over non-time dimensions.
+        - Dask-backed DataArrays remain lazy (dask="parallelized")
+        - CF Convention metadata and provenance history are automatically applied
+          to xarray outputs
+        - NaN values in temperature are propagated through the calculation
+    """
+    # detect input type for routing
+    input_type = detect_input_type(temperature)
+
+    # validate latitude range for all paths
+    _validate_latitude_range(latitude)
+
+    # numpy passthrough
+    if input_type == InputType.NUMPY:
+        # validate latitude is scalar when temperature is numpy
+        if isinstance(latitude, xr.DataArray):
+            raise TypeError(
+                "latitude must be a scalar (float, int, or numpy scalar) when "
+                "temperature is a numpy array. "
+                f"Got xr.DataArray with dims={latitude.dims}. "
+                "Use a scalar latitude or convert temperature to xr.DataArray "
+                "for spatial broadcasting."
+            )
+        # convert latitude to float if it's a numpy scalar
+        lat_float = float(latitude) if isinstance(latitude, np.floating) else latitude
+        # delegate to indices.pet with explicit data_start_year requirement
+        if data_start_year is None:
+            raise ValueError("data_start_year is required for numpy inputs")
+        return indices.pet(temperature, lat_float, data_start_year)
+
+    # xarray path: validate → infer → compute → rewrap
+    temp_da = temperature
+
+    # validate time dimension
+    _validate_time_dimension(temp_da, time_dim)
+    time_coord = temp_da.coords[time_dim]
+    _validate_time_monotonicity(time_coord)
+
+    # infer data_start_year if not provided
+    if data_start_year is None:
+        data_start_year = _infer_data_start_year(time_coord)
+        _log().debug(
+            "pet_data_start_year_inferred",
+            inferred_year=data_start_year,
+            time_coord_first=str(time_coord.values[0]),
+        )
+
+    # normalize latitude for xr.apply_ufunc
+    # convert scalar numpy types to python float for compatibility
+    if isinstance(latitude, (float, int, np.floating, np.integer)):
+        lat_for_ufunc: float | xr.DataArray = float(latitude)
+    else:
+        # assume it's already an xr.DataArray
+        lat_for_ufunc = latitude
+
+    # wrapper function to handle read-only array views from apply_ufunc
+    # the underlying eto.eto_thornthwaite modifies the temp array in-place,
+    # so we must create a writable copy
+    def _pet_with_copy(temps: np.ndarray, lat: float, year: int) -> np.ndarray:
+        """Wrapper for indices.pet that creates a writable copy of temps."""
+        return indices.pet(temps.copy(), lat, year)
+
+    # compute using xr.apply_ufunc with spatial broadcasting
+    # input_core_dims: temperature's time dim is "core", latitude and year are scalars per iteration
+    # output_core_dims: preserve time dimension in output
+    # vectorize=True: loop over non-core dims (lat, lon) calling indices.pet per gridpoint
+    # dask_gufunc_kwargs: allow_rechunk=True permits chunked core dimensions (for dask arrays)
+    result = xr.apply_ufunc(
+        _pet_with_copy,
+        temp_da,
+        lat_for_ufunc,
+        data_start_year,
+        input_core_dims=[[time_dim], [], []],
+        output_core_dims=[[time_dim]],
+        vectorize=True,
+        dask="parallelized",
+        dask_gufunc_kwargs={"allow_rechunk": True},
+        output_dtypes=[float],
+    )
+
+    # restore original dimension order (apply_ufunc places output core dims last)
+    result = result.transpose(*temp_da.dims)
+
+    # apply CF metadata from registry
+    cf_attrs = CF_METADATA["pet_thornthwaite"]
+    result.attrs.update(cf_attrs)
+
+    # copy over non-conflicting attributes from input
+    for key, value in temp_da.attrs.items():
+        if key not in result.attrs:
+            result.attrs[key] = value
+
+    # add version attribute
+    from climate_indices import __version__
+
+    result.attrs["climate_indices_version"] = __version__
+
+    # build and append history entry
+    # serialize latitude for history
+    if isinstance(lat_for_ufunc, xr.DataArray):
+        lat_desc = f"DataArray(dims={lat_for_ufunc.dims})"
+    else:
+        lat_desc = str(lat_for_ufunc)
+
+    history_entry = _build_history_entry(
+        "PET Thornthwaite",
+        __version__,
+        {"latitude": lat_desc, "data_start_year": data_start_year},
+    )
+    result.attrs["history"] = _append_history(temp_da.attrs, history_entry)
+
+    # add calculation metadata as attributes
+    result.attrs["latitude"] = _build_latitude_attr(lat_for_ufunc)
+    result.attrs["data_start_year"] = data_start_year
+
+    _log().info(
+        "pet_thornthwaite_completed",
+        input_shape=temp_da.shape,
+        output_shape=result.shape,
+        data_start_year=data_start_year,
+        latitude=lat_desc,
+    )
+
+    return result
+
+
+def pet_hargreaves(
+    daily_tmin_celsius: np.ndarray | xr.DataArray,
+    daily_tmax_celsius: np.ndarray | xr.DataArray,
+    latitude: float | np.floating | xr.DataArray,
+    time_dim: str = "time",
+) -> np.ndarray | xr.DataArray:
+    """Compute potential evapotranspiration using Hargreaves method.
+
+    This function provides xarray DataArray support for the Hargreaves PET calculation.
+    Unlike Thornthwaite (monthly), Hargreaves uses daily min/max temperature data.
+    The mean temperature is automatically derived as (tmin + tmax) / 2.
+
+    Args:
+        daily_tmin_celsius: Daily minimum temperature values in degrees Celsius.
+            For numpy: 1-D array of daily temperatures
+            For xarray: DataArray with time dimension (may have additional spatial dims)
+        daily_tmax_celsius: Daily maximum temperature values in degrees Celsius.
+            Must align with daily_tmin_celsius for xarray inputs.
+            For numpy: 1-D array of daily temperatures
+            For xarray: DataArray with time dimension (may have additional spatial dims)
+        latitude: Latitude in degrees north (range: -90 to 90).
+            For numpy: scalar float
+            For xarray: scalar float or DataArray(lat,) for spatial broadcasting
+        time_dim: Name of the time dimension in the input DataArray (default: "time").
+            Only used for xarray inputs.
+
+    Returns:
+        PET values in mm/day, same shape and type as input temperature:
+        - numpy input → numpy array output
+        - xarray input → xarray DataArray output with CF metadata and provenance
+
+    Raises:
+        InputTypeError: If temperature inputs are not numpy-coercible or xr.DataArray
+        CoordinateValidationError: If time dimension missing/invalid or tmin/tmax don't align
+        InputAlignmentWarning: If tmin/tmax have different time coordinates (auto-aligned)
+        ValueError: If latitude is out of range [-90, 90]
+
+    Examples:
+        >>> # NumPy path: 5 years of daily temps at single location
+        >>> tmin = np.random.uniform(5, 15, 1825)
+        >>> tmax = np.random.uniform(15, 30, 1825)
+        >>> pet = pet_hargreaves(tmin, tmax, latitude=40.0)
+        >>> pet.shape
+        (1825,)
+
+        >>> # xarray path: 1-D time series
+        >>> tmin_da = xr.DataArray(
+        ...     tmin,
+        ...     coords={'time': pd.date_range('2015-01-01', periods=1825, freq='D')},
+        ...     dims=['time']
+        ... )
+        >>> tmax_da = xr.DataArray(
+        ...     tmax,
+        ...     coords={'time': pd.date_range('2015-01-01', periods=1825, freq='D')},
+        ...     dims=['time']
+        ... )
+        >>> pet_da = pet_hargreaves(tmin_da, tmax_da, latitude=40.0)
+        >>> pet_da.attrs['long_name']
+        'Potential Evapotranspiration (Hargreaves method)'
+
+        >>> # xarray path: gridded data with spatial broadcasting
+        >>> tmin_grid = xr.DataArray(
+        ...     np.random.uniform(5, 15, (1825, 4, 3)),
+        ...     coords={
+        ...         'time': pd.date_range('2015-01-01', periods=1825, freq='D'),
+        ...         'lat': [30, 35, 40, 45],
+        ...         'lon': [-120, -110, -100]
+        ...     },
+        ...     dims=['time', 'lat', 'lon']
+        ... )
+        >>> tmax_grid = xr.DataArray(
+        ...     np.random.uniform(15, 30, (1825, 4, 3)),
+        ...     coords={
+        ...         'time': pd.date_range('2015-01-01', periods=1825, freq='D'),
+        ...         'lat': [30, 35, 40, 45],
+        ...         'lon': [-120, -110, -100]
+        ...     },
+        ...     dims=['time', 'lat', 'lon']
+        ... )
+        >>> lat_array = xr.DataArray([30, 35, 40, 45], dims=['lat'])
+        >>> pet_grid = pet_hargreaves(tmin_grid, tmax_grid, lat_array)
+        >>> pet_grid.shape
+        (1825, 4, 3)
+
+    Notes:
+        - The underlying eto.eto_hargreaves() expects 1-D arrays and scalar latitude.
+          For gridded inputs, xr.apply_ufunc with vectorize=True loops over spatial dims.
+        - For xarray inputs with misaligned time coordinates, xr.align(join='inner')
+          is automatically applied, and InputAlignmentWarning is emitted if timesteps differ.
+        - Mean temperature is auto-derived: tmean = (tmin + tmax) / 2
+        - Dask-backed DataArrays remain lazy (dask="parallelized")
+        - CF Convention metadata and provenance history are automatically applied
+        - NaN values in temperature are propagated through the calculation
+    """
+    # detect input type for routing
+    input_type = detect_input_type(daily_tmin_celsius)
+
+    # validate tmin and tmax are same input type (Fix 2)
+    tmax_input_type = detect_input_type(daily_tmax_celsius)
+    if input_type != tmax_input_type:
+        raise TypeError(
+            "daily_tmin_celsius and daily_tmax_celsius must be the same type. "
+            f"Got tmin={input_type.name}, tmax={tmax_input_type.name}. "
+            "Convert both to the same type (both numpy arrays or both xr.DataArray)."
+        )
+
+    # validate latitude range for all paths (Fix 3)
+    _validate_latitude_range(latitude)
+
+    # numpy passthrough
+    if input_type == InputType.NUMPY:
+        # validate latitude is scalar when temperature inputs are numpy
+        if isinstance(latitude, xr.DataArray):
+            raise TypeError(
+                "latitude must be a scalar (float, int, or numpy scalar) when "
+                "temperature inputs are numpy arrays. "
+                f"Got xr.DataArray with dims={latitude.dims}. "
+                "Use a scalar latitude or convert temperature inputs to xr.DataArray "
+                "for spatial broadcasting."
+            )
+        # convert latitude to float if it's a numpy scalar
+        lat_float = float(latitude) if isinstance(latitude, np.floating) else latitude
+        # auto-derive tmean as per Hargreaves standard approach
+        tmean = (daily_tmin_celsius + daily_tmax_celsius) / 2.0
+        # delegate to eto.eto_hargreaves
+        return eto.eto_hargreaves(daily_tmin_celsius, daily_tmax_celsius, tmean, lat_float)
+
+    # xarray path: validate → align → compute → rewrap
+    tmin_da = daily_tmin_celsius
+    tmax_da = daily_tmax_celsius
+
+    # validate time dimension on both inputs
+    _validate_time_dimension(tmin_da, time_dim)
+    _validate_time_dimension(tmax_da, time_dim)
+    tmin_time_coord = tmin_da.coords[time_dim]
+    tmax_time_coord = tmax_da.coords[time_dim]
+    _validate_time_monotonicity(tmin_time_coord)
+    _validate_time_monotonicity(tmax_time_coord)
+
+    # align tmin and tmax along time dimension (inner join)
+    # this handles cases where they have different time ranges
+    tmin_aligned, tmax_aligned = xr.align(tmin_da, tmax_da, join="inner")
+
+    # warn if alignment dropped timesteps
+    original_tmin_len = len(tmin_time_coord)
+    original_tmax_len = len(tmax_time_coord)
+    aligned_len = len(tmin_aligned.coords[time_dim])
+
+    if aligned_len < original_tmin_len or aligned_len < original_tmax_len:
+        warnings.warn(
+            f"Input alignment: tmin had {original_tmin_len} timesteps, "
+            f"tmax had {original_tmax_len} timesteps. "
+            f"After inner join, {aligned_len} timesteps remain. "
+            f"Non-overlapping timesteps were dropped.",
+            InputAlignmentWarning,
+            stacklevel=2,
+        )
+
+    # raise error if no overlap
+    if aligned_len == 0:
+        raise CoordinateValidationError(
+            f"No overlapping timesteps found between tmin and tmax along '{time_dim}' dimension. "
+            f"Cannot proceed with PET calculation."
+        )
+
+    # derive tmean
+    tmean_da = (tmin_aligned + tmax_aligned) / 2.0
+
+    # normalize latitude for xr.apply_ufunc
+    if isinstance(latitude, (float, int, np.floating, np.integer)):
+        lat_for_ufunc: float | xr.DataArray = float(latitude)
+    else:
+        # assume it's already an xr.DataArray
+        lat_for_ufunc = latitude
+
+    # wrapper function to handle read-only array views from apply_ufunc
+    # eto.eto_hargreaves may modify arrays in-place, so create writable copies
+    def _hargreaves_with_copy(tmin: np.ndarray, tmax: np.ndarray, tmean: np.ndarray, lat: float) -> np.ndarray:
+        """Wrapper for eto.eto_hargreaves that creates writable copies."""
+        return eto.eto_hargreaves(tmin.copy(), tmax.copy(), tmean.copy(), lat)
+
+    # compute using xr.apply_ufunc with spatial broadcasting
+    result = xr.apply_ufunc(
+        _hargreaves_with_copy,
+        tmin_aligned,
+        tmax_aligned,
+        tmean_da,
+        lat_for_ufunc,
+        input_core_dims=[[time_dim], [time_dim], [time_dim], []],
+        output_core_dims=[[time_dim]],
+        vectorize=True,
+        dask="parallelized",
+        dask_gufunc_kwargs={"allow_rechunk": True},
+        output_dtypes=[float],
+    )
+
+    # restore original dimension order (apply_ufunc places output core dims last)
+    # if latitude was a DataArray with extra dims, result will have those too
+    # prioritize tmin dimensions, then any extra dimensions from latitude broadcast
+    desired_dims = list(tmin_aligned.dims) + [d for d in result.dims if d not in tmin_aligned.dims]
+    result = result.transpose(*desired_dims)
+
+    # apply CF metadata from registry
+    cf_attrs = CF_METADATA["pet_hargreaves"]
+    result.attrs.update(cf_attrs)
+
+    # copy over non-conflicting attributes from tmin (primary input)
+    for key, value in tmin_aligned.attrs.items():
+        if key not in result.attrs:
+            result.attrs[key] = value
+
+    # add version attribute
+    from climate_indices import __version__
+
+    result.attrs["climate_indices_version"] = __version__
+
+    # build and append history entry
+    # serialize latitude for history
+    if isinstance(lat_for_ufunc, xr.DataArray):
+        lat_desc = f"DataArray(dims={lat_for_ufunc.dims})"
+    else:
+        lat_desc = str(lat_for_ufunc)
+
+    history_entry = _build_history_entry(
+        "PET Hargreaves",
+        __version__,
+        {"latitude": lat_desc},
+    )
+    result.attrs["history"] = _append_history(tmin_aligned.attrs, history_entry)
+
+    # add calculation metadata as attributes
+    result.attrs["latitude"] = _build_latitude_attr(lat_for_ufunc)
+
+    _log().info(
+        "pet_hargreaves_completed",
+        input_shape=tmin_aligned.shape,
+        output_shape=result.shape,
+        latitude=lat_desc,
+    )
+
+    return result
