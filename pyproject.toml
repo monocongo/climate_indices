@@ -24,6 +24,7 @@ classifiers = [
 packages = [{include = 'climate_indices', from = 'src'}]
 requires-python = ">=3.10,<3.14"
 dependencies = [
+    "numpy>=2.2.6,<2.4",
     "scipy>=1.15.3",
     "structlog>=24.1.0",
     # remaining dependencies are required for the CLI (console) scripts
@@ -175,4 +176,7 @@ dev = [
     "ruff>=0.12.7",
     "sphinx-autodoc-typehints>=3.0.1",
     "twine>=6.1.0",
+]
+security = [
+    "pip-audit>=2.9.0",
 ]

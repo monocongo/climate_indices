@@ -35,9 +35,20 @@ jobs:
     - name: Run tests
       run: uv run pytest
 
+  security-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --group security
+      - run: uv run pip-audit
+
   # Build and publish to PyPI
   release:
-    needs: test
+    needs: [test, security-audit]
     runs-on: ubuntu-latest
     environment: release  # Requires manual approval
 
