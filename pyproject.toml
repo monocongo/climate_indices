@@ -8,6 +8,8 @@ version = '2.2.0'
 description = 'Reference implementations of various climate indices typically used for drought monitoring'
 authors = [{name = "James Adams", email = "monocongo@gmail.com"}]
 readme = 'README.md'
+license = {file = "LICENSE"}
+keywords = ["climate", "drought", "meteorology", "SPI", "SPEI", "PET", "precipitation", "evapotranspiration"]
 classifiers = [
      'Development Status :: 5 - Production/Stable',
      'Intended Audience :: Developers',
@@ -21,7 +23,6 @@ classifiers = [
      'Topic :: Software Development :: Libraries :: Python Modules',
      'Topic :: Scientific/Engineering :: Atmospheric Science',
 ]
-packages = [{include = 'climate_indices', from = 'src'}]
 requires-python = ">=3.10,<3.14"
 dependencies = [
     "scipy>=1.15.3",
@@ -61,22 +62,10 @@ spi = "climate_indices.__spi__:main"
 
 [project.urls]
 'Homepage' = 'https://github.com/monocongo/climate_indices'
+'Documentation' = 'https://climate-indices.readthedocs.io/en/latest/'
+'Repository' = 'https://github.com/monocongo/climate_indices'
 'Bug Tracker' = 'https://github.com/monocongo/climate_indices/issues'
-
-[tool.black]
-line-length = 120
-target-version = ['py310', 'py311', 'py312', 'py313']
-include = '\.pyi?$'
-exclude = '''
-/(
-    \.git
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | build
-  | dist
-)/
-'''
+'Changelog' = 'https://github.com/monocongo/climate_indices/blob/master/CHANGELOG.md'
 
 [tool.ruff]
 target-version = "py310"
@@ -96,7 +85,7 @@ select = [
     "UP", # pyupgrade
 ]
 ignore = [
-    "E501",  # line too long, handled by black
+    "E501",  # line too long, handled by ruff formatter
     "B008",  # do not perform function calls in argument defaults
 ]
 per-file-ignores = {"__init__.py" = ["F401"], "tests/**/*" = ["B011"]}
