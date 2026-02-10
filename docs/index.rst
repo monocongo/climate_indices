@@ -395,6 +395,14 @@ it loads the pre-computed fitting values from the NetCDF file specified by the `
 option.
 
 
+User Guides
+-----------
+.. toctree::
+   :maxdepth: 2
+
+   xarray_migration
+
+
 API Reference
 --------------
 .. toctree::
