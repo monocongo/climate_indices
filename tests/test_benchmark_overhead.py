@@ -32,7 +32,8 @@ _OVERHEAD_ITERATIONS = 5
 # (sub-millisecond for these test cases). The higher threshold accommodates CI runner
 # variability and asymmetric test cases (e.g., PET Hargreaves xarray path computes
 # tmean internally while NumPy baseline receives pre-computed tmean).
-_OVERHEAD_THRESHOLD = 0.80  # 80%
+# 80%
+_OVERHEAD_THRESHOLD = 0.80
 
 
 # ==============================================================================
