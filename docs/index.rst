@@ -400,6 +400,7 @@ User Guides
 .. toctree::
    :maxdepth: 2
 
+   quickstart
    xarray_migration
 
 

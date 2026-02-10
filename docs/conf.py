@@ -200,3 +200,12 @@ intersphinx_mapping = {
     "xarray": ("https://docs.xarray.dev/en/stable/", None),
     "scipy": ("https://docs.scipy.org/doc/scipy/", None),
 }
+
+# -- Options for doctest extension -------------------------------------------
+doctest_global_setup = """
+import numpy as np
+import pandas as pd
+import xarray as xr
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+"""
