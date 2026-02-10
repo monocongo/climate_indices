@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from climate_indices import indices, spi, spei
+from climate_indices import indices, spei, spi
 from climate_indices.compute import Periodicity
 from climate_indices.eto import eto_hargreaves
 from climate_indices.indices import Distribution
@@ -25,12 +25,14 @@ from climate_indices.xarray_adapter import pet_hargreaves, pet_thornthwaite
 
 # number of repetitions for stable overhead measurement
 _OVERHEAD_ITERATIONS = 5
-# overhead threshold: 65% accounts for xarray machinery overhead (apply_ufunc,
+# overhead threshold: 80% accounts for xarray machinery overhead (apply_ufunc,
 # coordinate handling, metadata propagation) on small 1D arrays. For gridded data
 # (the primary use case), this overhead is amortized across thousands of spatial
 # points and becomes negligible (<5%). Absolute performance remains fast
-# (sub-millisecond for these test cases).
-_OVERHEAD_THRESHOLD = 0.65  # 65%
+# (sub-millisecond for these test cases). The higher threshold accommodates CI runner
+# variability and asymmetric test cases (e.g., PET Hargreaves xarray path computes
+# tmean internally while NumPy baseline receives pre-computed tmean).
+_OVERHEAD_THRESHOLD = 0.80  # 80%
 
 
 # ==============================================================================
