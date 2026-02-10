@@ -45,6 +45,16 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Validate version consistency
+      run: |
+        TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+        PYPROJECT_VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+        if [ "$TAG_VERSION" != "$PYPROJECT_VERSION" ]; then
+          echo "::error::Tag version ($TAG_VERSION) does not match pyproject.toml version ($PYPROJECT_VERSION)"
+          exit 1
+        fi
+        echo "Version validated: $TAG_VERSION"
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
@@ -60,6 +70,13 @@ jobs:
 
     - name: Check package
       run: twine check dist/*
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: dist
+        path: dist/
+        retention-days: 30
 
     - name: Upload to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
