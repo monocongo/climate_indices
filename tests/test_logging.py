@@ -272,7 +272,7 @@ class TestJSONOutputValidity:
 
         assert event["count"] == 42
         assert isinstance(event["count"], int)
-        assert event["ratio"] == 3.14
+        assert event["ratio"] == pytest.approx(3.14)
         assert isinstance(event["ratio"], float)
         assert event["enabled"] is True
         assert event["disabled"] is False
