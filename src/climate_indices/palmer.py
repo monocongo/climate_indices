@@ -1,6 +1,7 @@
 """Compute palmer drought indices"""
 
 import logging
+from typing import Any
 
 import numpy as np
 
@@ -55,7 +56,7 @@ def _calc_recharge(
     ss: float,
     su: float,
     awc: float,
-) -> (float, float, float, float, float, float):
+) -> tuple[float, float, float, float, float, float]:
     """
     Calculate recharge, runoff, residual moisture, loss
     to both surface and under layers
@@ -132,7 +133,7 @@ def _calc_recharge(
     return et, tl, r, ro, sss, ssu
 
 
-def _calc_alpha(data: dict) -> None:
+def _calc_alpha(data: dict[str, Any]) -> None:
     """
     Calculate alpha parameters
 
@@ -146,7 +147,7 @@ def _calc_alpha(data: dict) -> None:
             data["alpha"][idx] = 1.0
 
 
-def _calc_beta(data: dict) -> None:
+def _calc_beta(data: dict[str, Any]) -> None:
     """
     Calculate beta parameters
 
@@ -160,7 +161,7 @@ def _calc_beta(data: dict) -> None:
             data["beta"][idx] = 1.0
 
 
-def _calc_gamma(data: dict) -> None:
+def _calc_gamma(data: dict[str, Any]) -> None:
     """
     Calculate gamma parameters
 
@@ -174,7 +175,7 @@ def _calc_gamma(data: dict) -> None:
             data["gamma"][idx] = 1.0
 
 
-def _calc_delta(data: dict) -> None:
+def _calc_delta(data: dict[str, Any]) -> None:
     """
     Calculate delta parameters
 
@@ -186,7 +187,7 @@ def _calc_delta(data: dict) -> None:
             data["delta"][idx] = data["tlsum"][idx] / pl
 
 
-def _calc_water_balances(data: dict) -> None:
+def _calc_water_balances(data: dict[str, Any]) -> None:
     """
     Perform water balance calculations
 
@@ -237,7 +238,7 @@ def _calc_water_balances(data: dict) -> None:
             su = ssu
 
 
-def _calc_cafec_coefficients(data: dict) -> None:
+def _calc_cafec_coefficients(data: dict[str, Any]) -> None:
     """
     Calculate CAFEC Coefficients
 
@@ -249,7 +250,7 @@ def _calc_cafec_coefficients(data: dict) -> None:
     _calc_delta(data)
 
 
-def _calc_zindex_factors(data: dict) -> None:
+def _calc_zindex_factors(data: dict[str, Any]) -> None:
     """
     Calculate Z-Index weighting factors (variable AK)
 
@@ -261,7 +262,7 @@ def _calc_zindex_factors(data: dict) -> None:
     data["trat"] = (data["petsum"] + data["rsum"] + data["rosum"]) / (data["psum"] + data["tlsum"])
 
 
-def _avg_calibration_sums(data: dict) -> None:
+def _avg_calibration_sums(data: dict[str, Any]) -> None:
     """
     Average the sums over the calibration period
 
@@ -279,7 +280,7 @@ def _avg_calibration_sums(data: dict) -> None:
     data["rosum"] = data["rosum"] / n_calb_years
 
 
-def _calc_kfactors(data: dict) -> None:
+def _calc_kfactors(data: dict[str, Any]) -> None:
     """
     Calculate K Factors
 
@@ -342,7 +343,7 @@ def _case(prob: float, x1: float, x2: float, x3: float) -> float:
     return (1.0 - pro) * x3 + pro * x2
 
 
-def _assign(data: dict) -> None:
+def _assign(data: dict[str, Any]) -> None:
     """
     Assign x values
 
@@ -411,7 +412,7 @@ def _assign(data: dict) -> None:
     # data["k8max"] = 0
 
 
-def _statement_220(data: dict) -> None:
+def _statement_220(data: dict[str, Any]) -> None:
     """
     Save this month's calculated variables (v,pro,x1,x2,x3) for
     use with next month's data
@@ -429,7 +430,7 @@ def _statement_220(data: dict) -> None:
     data["x3"] = data["px3"][year, month]
 
 
-def _statement_210(data: dict) -> None:
+def _statement_210(data: dict[str, Any]) -> None:
     """
     prob(end) returns to 0. A possible abatement has fizzled out,
     so we accept all stored values of x3
@@ -465,7 +466,7 @@ def _statement_210(data: dict) -> None:
     _statement_220(data)
 
 
-def _statement_200(data: dict) -> None:
+def _statement_200(data: dict[str, Any]) -> None:
     """
     Continue x1 and x2 calculations
     if either indicates the start of a new wet or drought,
@@ -545,7 +546,7 @@ def _statement_200(data: dict) -> None:
     _statement_220(data)
 
 
-def _statement_190(data: dict) -> None:
+def _statement_190(data: dict[str, Any]) -> None:
     """
     drought or wet continues, calculate prob(end) (variable ze)
 
@@ -571,7 +572,7 @@ def _statement_190(data: dict) -> None:
     _statement_200(data)
 
 
-def _statement_180(data: dict) -> None:
+def _statement_180(data: dict[str, Any]) -> None:
     """
     drought abatement is possible
 
@@ -593,7 +594,7 @@ def _statement_180(data: dict) -> None:
     _statement_190(data)
 
 
-def _statement_170(data: dict) -> None:
+def _statement_170(data: dict[str, Any]) -> None:
     """
     Wet spell abatement is possible
 
@@ -615,7 +616,7 @@ def _statement_170(data: dict) -> None:
     _statement_190(data)
 
 
-def _calc_zindex(data: dict) -> None:
+def _calc_zindex(data: dict[str, Any]) -> None:
     """
     Calculate Z Index
 
@@ -688,7 +689,7 @@ def _calc_zindex(data: dict) -> None:
             continue
 
 
-def _finish_up(data: dict) -> None:
+def _finish_up(data: dict[str, Any]) -> None:
     """
     Wet spell abatement is possible
 
@@ -712,7 +713,7 @@ def _finish_up(data: dict) -> None:
         )
 
 
-def _validate_fitting_params(data: dict, fitting_params: dict) -> None:
+def _validate_fitting_params(data: dict[str, Any], fitting_params: dict[str, Any] | None) -> None:
     """
     Validate the fitting parameters
 
@@ -742,8 +743,8 @@ def _initialize_data(
     data_start_year: int,
     calibration_year_initial: int,
     calibration_year_final: int,
-    fitting_params: dict = None,
-) -> dict:
+    fitting_params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """
     Initialize the data
 
@@ -758,11 +759,11 @@ def _initialize_data(
     :return dictionary of intialized parameters
     :rtype: dict
     """
-    data = {}
+    data: dict[str, Any] = {}
     # reshape precipitation values to (years, 12)
     data["precips"] = utils.reshape_to_2d(precips, 12)
     data["pet"] = utils.reshape_to_2d(pet, 12)
-    n_years = data["precips"].shape[0]
+    n_years = int(data["precips"].shape[0])
     data["awc"] = awc
     data["awc_bot"] = _get_awc_bot(awc)
     data["n_years"] = n_years
@@ -825,8 +826,8 @@ def pdsi(
     data_start_year: int,
     calibration_year_initial: int,
     calibration_year_final: int,
-    fitting_params: dict = None,
-) -> (np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict):
+    fitting_params: dict[str, Any] | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any] | None]:
     """
     Compute the Palmer Drought Severity Index (PDSI),
     Palmer Hydrological Drought Index (PHDI),
@@ -849,7 +850,7 @@ def pdsi(
     # Validate inputs
     # if we're passed all missing values then we can't compute anything,
     # so we return the same array of missing values
-    if (np.ma.is_masked(precips) and precips.mask.all()) or np.all(np.isnan(precips)):
+    if (isinstance(precips, np.ma.MaskedArray) and precips.mask.all()) or np.all(np.isnan(precips)):
         return precips, precips, precips, precips, None
 
     # validate that the two input arrays are compatible
