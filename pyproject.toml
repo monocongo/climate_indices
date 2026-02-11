@@ -24,7 +24,8 @@ classifiers = [
 packages = [{include = 'climate_indices', from = 'src'}]
 requires-python = ">=3.10,<3.14"
 dependencies = [
-    "numpy>=2.2.6,<2.4",
+    # TODO: relax <2.4 ceiling after updating eto.py to avoid float() on 1-D NumPy arrays
+    "numpy>=2.2,<2.4",
     "scipy>=1.15.3",
     "structlog>=24.1.0",
     # remaining dependencies are required for the CLI (console) scripts

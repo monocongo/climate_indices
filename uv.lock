@@ -485,7 +485,7 @@ requires-dist = [
     { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.100.0" },
     { name = "jupyter", marker = "extra == 'dev'", specifier = ">=1.1.1" },
     { name = "matplotlib", marker = "extra == 'dev'", specifier = ">=3.10.3" },
-    { name = "numpy", specifier = ">=2.2.6,<2.4" },
+    { name = "numpy", specifier = ">=2.2,<2.4" },
     { name = "psutil", marker = "extra == 'performance'", specifier = ">=5.9.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.4.1" },
     { name = "pytest-benchmark", marker = "extra == 'dev'", specifier = ">=4.0.0" },
