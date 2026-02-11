@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stable NumPy API. No breaking changes within minor versions.
 - **`BetaFeatureWarning`**: New warning class for beta/experimental features
   (subclass of `ClimateIndicesWarning`)
+- **`ClimateIndicesDeprecationWarning`**: New warning class for deprecated features with dual
+  inheritance from both `ClimateIndicesWarning` and `DeprecationWarning`, enabling
+  filterability by either category. Includes context attributes for deprecation version,
+  removal version, alternative, and migration URL
+- **`emit_deprecation_warning()`**: Helper function for standardized deprecation messages with
+  automatic URL construction and consistent formatting
 - **Docker Support**: Dockerfile for containerized deployment (#586)
 - **`.dockerignore`**: Optimized Docker builds by excluding unnecessary files
 - **PyPI Release Guide**: Comprehensive release documentation (`docs/pypi_release_guide.md`, `docs/pypi_release.rst`)

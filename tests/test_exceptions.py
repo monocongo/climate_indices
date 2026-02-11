@@ -57,6 +57,7 @@ class TestWarningHierarchy:
         assert issubclass(exceptions.GoodnessOfFitWarning, exceptions.ClimateIndicesWarning)
         assert issubclass(exceptions.InputAlignmentWarning, exceptions.ClimateIndicesWarning)
         assert issubclass(exceptions.BetaFeatureWarning, exceptions.ClimateIndicesWarning)
+        assert issubclass(exceptions.ClimateIndicesDeprecationWarning, exceptions.ClimateIndicesWarning)
 
     def test_base_warning_inherits_from_user_warning(self) -> None:
         """ClimateIndicesWarning should inherit from UserWarning."""
@@ -70,6 +71,12 @@ class TestWarningHierarchy:
         assert not issubclass(exceptions.GoodnessOfFitWarning, ClimateIndicesError)
         assert not issubclass(exceptions.InputAlignmentWarning, ClimateIndicesError)
         assert not issubclass(exceptions.BetaFeatureWarning, ClimateIndicesError)
+        assert not issubclass(exceptions.ClimateIndicesDeprecationWarning, ClimateIndicesError)
+
+    def test_deprecation_warning_dual_inheritance(self) -> None:
+        """ClimateIndicesDeprecationWarning should inherit from both base warning classes."""
+        assert issubclass(exceptions.ClimateIndicesDeprecationWarning, exceptions.ClimateIndicesWarning)
+        assert issubclass(exceptions.ClimateIndicesDeprecationWarning, DeprecationWarning)
 
     def test_exceptions_not_subclass_of_warning_base(self) -> None:
         """Exception classes should NOT inherit from ClimateIndicesWarning."""
@@ -153,6 +160,11 @@ class TestWarningCatchAll:
         with pytest.warns(exceptions.ClimateIndicesWarning):
             warnings.warn("test warning", exceptions.BetaFeatureWarning, stacklevel=2)
 
+    def test_catch_deprecation_warning(self) -> None:
+        """ClimateIndicesWarning should catch ClimateIndicesDeprecationWarning."""
+        with pytest.warns(exceptions.ClimateIndicesWarning):
+            warnings.warn("test warning", exceptions.ClimateIndicesDeprecationWarning, stacklevel=2)
+
 
 class TestWarningFilterability:
     """Verify that warnings can be filtered using standard Python warning filters."""
@@ -169,9 +181,44 @@ class TestWarningFilterability:
             warnings.warn("poor fit", exceptions.GoodnessOfFitWarning, stacklevel=2)
             warnings.warn("alignment needed", exceptions.InputAlignmentWarning, stacklevel=2)
             warnings.warn("beta feature", exceptions.BetaFeatureWarning, stacklevel=2)
+            warnings.warn("deprecated", exceptions.ClimateIndicesDeprecationWarning, stacklevel=2)
 
             # verify none were recorded (all filtered)
             assert len(warning_list) == 0
+
+
+class TestDeprecationWarningFilterability:
+    """Verify that deprecation warnings can be filtered by both base classes."""
+
+    def test_filter_via_climate_indices_warning(self) -> None:
+        """Deprecation warnings should be filtered by ClimateIndicesWarning."""
+        with warnings.catch_warnings(record=True) as warning_list:
+            warnings.simplefilter("always")
+            warnings.filterwarnings("ignore", category=exceptions.ClimateIndicesWarning)
+
+            warnings.warn("deprecated", exceptions.ClimateIndicesDeprecationWarning, stacklevel=2)
+
+            assert len(warning_list) == 0
+
+    def test_filter_via_deprecation_warning(self) -> None:
+        """Deprecation warnings should be filtered by DeprecationWarning."""
+        with warnings.catch_warnings(record=True) as warning_list:
+            warnings.simplefilter("always")
+            warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+            warnings.warn("deprecated", exceptions.ClimateIndicesDeprecationWarning, stacklevel=2)
+
+            assert len(warning_list) == 0
+
+    def test_catch_via_climate_indices_warning(self) -> None:
+        """Deprecation warnings should be catchable via ClimateIndicesWarning."""
+        with pytest.warns(exceptions.ClimateIndicesWarning):
+            warnings.warn("deprecated", exceptions.ClimateIndicesDeprecationWarning, stacklevel=2)
+
+    def test_catch_via_deprecation_warning(self) -> None:
+        """Deprecation warnings should be catchable via DeprecationWarning."""
+        with pytest.warns(DeprecationWarning):
+            warnings.warn("deprecated", exceptions.ClimateIndicesDeprecationWarning, stacklevel=2)
 
 
 class TestExceptionContextAttributes:
@@ -305,6 +352,7 @@ class TestKeywordOnlyEnforcement:
             (exceptions.ShortCalibrationWarning, ("message", 25)),
             (exceptions.GoodnessOfFitWarning, ("message", "gamma")),
             (exceptions.InputAlignmentWarning, ("message", 100)),
+            (exceptions.ClimateIndicesDeprecationWarning, ("message", "2.3.0")),
         ],
     )
     def test_positional_arguments_rejected(self, exception_class, positional_args) -> None:
@@ -354,7 +402,7 @@ class TestAllExports:
     """Verify __all__ completeness and correctness."""
 
     def test_all_contains_expected_names(self) -> None:
-        """__all__ should contain exactly the 14 documented exception and warning classes."""
+        """__all__ should contain all documented exception and warning classes plus helpers."""
         expected_names = {
             "ClimateIndicesError",
             "DistributionFittingError",
@@ -370,14 +418,17 @@ class TestAllExports:
             "GoodnessOfFitWarning",
             "InputAlignmentWarning",
             "BetaFeatureWarning",
+            "ClimateIndicesDeprecationWarning",
+            "emit_deprecation_warning",
         }
         assert set(exceptions.__all__) == expected_names
 
-    def test_all_exports_are_classes(self) -> None:
-        """Every name in __all__ should resolve to an actual class."""
+    def test_all_exports_are_classes_or_functions(self) -> None:
+        """Every name in __all__ should resolve to an actual class or function."""
         for name in exceptions.__all__:
-            cls = getattr(exceptions, name)
-            assert isinstance(cls, type), f"{name} is not a class"
+            obj = getattr(exceptions, name)
+            # should be either a class or a callable function
+            assert isinstance(obj, type) or callable(obj), f"{name} is neither a class nor callable"
 
 
 class TestExceptionPickling:
@@ -455,6 +506,16 @@ class TestWarningPickling:
                 exceptions.InputAlignmentWarning,
                 ("alignment needed",),
                 {"original_size": 100, "aligned_size": 80, "dropped_count": 20},
+            ),
+            (
+                exceptions.ClimateIndicesDeprecationWarning,
+                ("deprecated feature",),
+                {
+                    "deprecated_in": "2.3.0",
+                    "removal_version": "3.0.0",
+                    "alternative": "Use new_feature instead",
+                    "migration_url": "https://example.com/guide",
+                },
             ),
         ],
     )
@@ -554,6 +615,145 @@ class TestWarningAttributes:
         assert warning.threshold is None
         assert warning.poor_fit_count is None
         assert warning.total_steps is None
+
+    def test_deprecation_warning_attributes(self) -> None:
+        """ClimateIndicesDeprecationWarning should store all context attributes."""
+        warning = exceptions.ClimateIndicesDeprecationWarning(
+            "Feature deprecated",
+            deprecated_in="2.3.0",
+            removal_version="3.0.0",
+            alternative="Use new_api instead",
+            migration_url="https://docs.example.com/migration",
+        )
+        assert warning.deprecated_in == "2.3.0"
+        assert warning.removal_version == "3.0.0"
+        assert warning.alternative == "Use new_api instead"
+        assert warning.migration_url == "https://docs.example.com/migration"
+        assert str(warning) == "Feature deprecated"
+
+    def test_deprecation_warning_defaults(self) -> None:
+        """ClimateIndicesDeprecationWarning attributes should default to None."""
+        warning = exceptions.ClimateIndicesDeprecationWarning("Deprecated")
+        assert warning.deprecated_in is None
+        assert warning.removal_version is None
+        assert warning.alternative is None
+        assert warning.migration_url is None
+
+
+class TestEmitDeprecationWarning:
+    """Verify the emit_deprecation_warning helper function."""
+
+    def test_full_message_content(self) -> None:
+        """Helper should construct standardized deprecation message."""
+        with pytest.warns(exceptions.ClimateIndicesDeprecationWarning) as record:
+            exceptions.emit_deprecation_warning(
+                feature="Parameter 'old_param'",
+                alternative="Use 'new_param' instead",
+                deprecated_in="2.3.0",
+                removal_version="3.0.0",
+            )
+
+        assert len(record) == 1
+        warning_message = str(record[0].message)
+        assert "Parameter 'old_param'" in warning_message
+        assert "deprecated since version 2.3.0" in warning_message
+        assert "Use 'new_param' instead" in warning_message
+        assert "removed in version 3.0.0" in warning_message
+        assert "Migration guide:" in warning_message
+
+    def test_default_migration_url(self) -> None:
+        """Helper should use base docs URL when migration_url is None."""
+        with pytest.warns(exceptions.ClimateIndicesDeprecationWarning) as record:
+            exceptions.emit_deprecation_warning(
+                feature="old_feature",
+                alternative="use new_feature",
+                deprecated_in="2.0.0",
+                removal_version="3.0.0",
+                migration_url=None,
+            )
+
+        warning_message = str(record[0].message)
+        assert "https://climate-indices.readthedocs.io/en/stable/deprecations" in warning_message
+
+    def test_relative_url_construction(self) -> None:
+        """Helper should append relative paths to base URL."""
+        with pytest.warns(exceptions.ClimateIndicesDeprecationWarning) as record:
+            exceptions.emit_deprecation_warning(
+                feature="old_api",
+                alternative="use new_api",
+                deprecated_in="2.1.0",
+                removal_version="3.0.0",
+                migration_url="api-changes.html",
+            )
+
+        warning_message = str(record[0].message)
+        assert "https://climate-indices.readthedocs.io/en/stable/deprecations/api-changes.html" in warning_message
+
+    def test_absolute_url_passthrough(self) -> None:
+        """Helper should pass through absolute URLs unchanged."""
+        custom_url = "https://example.com/custom/migration/guide"
+        with pytest.warns(exceptions.ClimateIndicesDeprecationWarning) as record:
+            exceptions.emit_deprecation_warning(
+                feature="feature_x",
+                alternative="use feature_y",
+                deprecated_in="2.2.0",
+                removal_version="3.0.0",
+                migration_url=custom_url,
+            )
+
+        warning_message = str(record[0].message)
+        assert custom_url in warning_message
+
+    def test_filterability_via_climate_indices_warning(self) -> None:
+        """Warnings emitted by helper should be filterable via ClimateIndicesWarning."""
+        with warnings.catch_warnings(record=True) as warning_list:
+            warnings.simplefilter("always")
+            warnings.filterwarnings("ignore", category=exceptions.ClimateIndicesWarning)
+
+            exceptions.emit_deprecation_warning(
+                feature="test",
+                alternative="use other",
+                deprecated_in="1.0.0",
+                removal_version="2.0.0",
+            )
+
+            assert len(warning_list) == 0
+
+    def test_filterability_via_deprecation_warning(self) -> None:
+        """Warnings emitted by helper should be filterable via DeprecationWarning."""
+        with warnings.catch_warnings(record=True) as warning_list:
+            warnings.simplefilter("always")
+            warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+            exceptions.emit_deprecation_warning(
+                feature="test",
+                alternative="use other",
+                deprecated_in="1.0.0",
+                removal_version="2.0.0",
+            )
+
+            assert len(warning_list) == 0
+
+    def test_keyword_only_enforcement(self) -> None:
+        """Helper should reject positional arguments."""
+        with pytest.raises(TypeError, match="positional"):
+            exceptions.emit_deprecation_warning(  # type: ignore[misc]
+                "feature",
+                "alternative",
+                "1.0.0",
+                "2.0.0",
+            )
+
+    def test_custom_stacklevel(self) -> None:
+        """Helper should accept custom stacklevel parameter."""
+        with pytest.warns(exceptions.ClimateIndicesDeprecationWarning):
+            exceptions.emit_deprecation_warning(
+                feature="test",
+                alternative="use other",
+                deprecated_in="1.0.0",
+                removal_version="2.0.0",
+                stacklevel=2,
+            )
 
 
 class TestExceptionReprStr:
