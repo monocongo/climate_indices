@@ -86,7 +86,7 @@ jobs:
         uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081  # v5
 
       - name: Install minimum dependencies
-        run: uv sync --dev --resolution lowest-direct
+        run: uv sync --no-dev --group test --resolution lowest-direct
 
       - name: Run tests with minimum dependencies
         run: uv run pytest

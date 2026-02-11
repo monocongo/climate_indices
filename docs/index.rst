@@ -403,6 +403,7 @@ User Guides
    quickstart
    algorithms
    xarray_migration
+   deprecations/index
    troubleshooting
 
 
