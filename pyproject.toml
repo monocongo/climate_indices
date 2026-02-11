@@ -35,6 +35,10 @@ dependencies = [
     "xarray>=2025.6.1",
 ]
 [project.optional-dependencies]
+# NOTE: Test dependencies are intentionally duplicated in [dependency-groups].test below.
+# This is required because pip uses [project.optional-dependencies] for `pip install .[test]`
+# while uv uses [dependency-groups] for `uv sync --group test`. Both systems need the same
+# dependencies but use different configuration sections. See [dependency-groups].test for details.
 test = [
     "coverage>=7.10.1",
     "hypothesis>=6.100.0",
@@ -57,7 +61,7 @@ docs = [
     "sphinx>=8.1.3",
     "sphinx-autodoc-typehints>=3.0.1",
     "sphinx-rtd-theme>=1.0",
-    "toml>=0.10.2",
+    "tomli>=2.0.0; python_version < '3.11'",
 ]
 performance = [
     "psutil>=5.9.0",
@@ -186,6 +190,11 @@ exclude = [
 ]
 
 [dependency-groups]
+# NOTE: Test dependencies are intentionally duplicated from [project.optional-dependencies].test.
+# PEP 735 dependency groups are used by modern tools like uv (`uv sync --group test`) but are
+# not recognized by pip. We maintain both sections to support both ecosystems. Unfortunately,
+# [project.optional-dependencies] does not support {include-group} references, so the duplication
+# must be maintained manually. Keep these sections synchronized when updating test dependencies.
 test = [
     "coverage>=7.10.1",
     "hypothesis>=6.100.0",
@@ -204,7 +213,7 @@ dev = [
     "sphinx>=8.1.3",
     "sphinx-autodoc-typehints>=3.0.1",
     "sphinx-rtd-theme>=1.0",
-    "toml>=0.10.2",
+    "tomli>=2.0.0; python_version < '3.11'",
     "twine>=6.1.0",
     "types-psutil>=5.9.0",
 ]

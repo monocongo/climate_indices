@@ -14,7 +14,10 @@
 import os
 import sys
 
-import toml
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 
 # since our source files are under a src folder we need to add that as our first path
 sys.path.insert(0, os.path.abspath("../src"))
@@ -25,7 +28,8 @@ project = "climate_indices"
 author = "James Adams"
 
 # parse the version information from pyproject.toml
-pyproject = toml.load("../pyproject.toml")
+with open("../pyproject.toml", "rb") as f:
+    pyproject = tomllib.load(f)
 
 # get the full release version, including alpha/beta/rc tags
 release = pyproject["project"]["version"]

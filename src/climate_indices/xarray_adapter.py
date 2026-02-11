@@ -1565,7 +1565,7 @@ def xarray_adapter(
                     return func(*numpy_arrays, **valid_kwargs)
 
                 # call apply_ufunc without Dask support (in-memory vectorization)
-                result_array: xr.DataArray = xr.apply_ufunc(
+                result_da: xr.DataArray = xr.apply_ufunc(  # type: ignore[no-redef]
                     _numpy_func_wrapper,
                     *input_dataarrays,
                     input_core_dims=[[time_dim]] * len(input_dataarrays),

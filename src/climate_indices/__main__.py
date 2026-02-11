@@ -60,7 +60,7 @@ def init_worker(arrays_and_shapes: dict[str, tuple[Any, ...]]) -> None:
     _global_shared_arrays = arrays_and_shapes
 
 
-def _validate_args(args: argparse.Namespace) -> None:
+def _validate_args(args: argparse.Namespace) -> InputType:
     """
     Validate the processing settings to confirm that proper argument
     combinations have been provided.
@@ -481,8 +481,6 @@ def _log_status(args_dict: dict[str, Any]) -> None:
 
     else:
         _logger.info("Computing {index}".format(index=args_dict["index"].upper()))
-
-    return True
 
 
 def _build_arguments(keyword_args: dict[str, Any]) -> dict[str, Any]:
