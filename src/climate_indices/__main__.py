@@ -45,7 +45,7 @@ class InputType(Enum):
     timeseries = 3
 
 
-def init_worker(arrays_and_shapes):
+def init_worker(arrays_and_shapes: dict[str, tuple[Any, ...]]) -> None:
     """
     Initialization function that assigns named arrays into the global variable.
 
@@ -60,7 +60,7 @@ def init_worker(arrays_and_shapes):
     _global_shared_arrays = arrays_and_shapes
 
 
-def _validate_args(args):
+def _validate_args(args: argparse.Namespace) -> None:
     """
     Validate the processing settings to confirm that proper argument
     combinations have been provided.
@@ -446,7 +446,7 @@ def _validate_args(args):
     return input_type
 
 
-def _get_scale_increment(args_dict):
+def _get_scale_increment(args_dict: dict[str, Any]) -> str:
     if args_dict["periodicity"] == compute.Periodicity.daily:
         scale_increment = "day"
     elif args_dict["periodicity"] == compute.Periodicity.monthly:
@@ -457,7 +457,7 @@ def _get_scale_increment(args_dict):
     return scale_increment
 
 
-def _log_status(args_dict):
+def _log_status(args_dict: dict[str, Any]) -> None:
     # get the scale increment for use in later log messages
     if "scale" in args_dict:
         if "distribution" in args_dict:
@@ -485,7 +485,7 @@ def _log_status(args_dict):
     return True
 
 
-def _build_arguments(keyword_args):
+def _build_arguments(keyword_args: dict[str, Any]) -> dict[str, Any]:
     """
     Builds a dictionary of function arguments appropriate to the index to be computed.
 
@@ -519,7 +519,7 @@ def _build_arguments(keyword_args):
     return function_arguments
 
 
-def _get_variable_attributes(args_dict):
+def _get_variable_attributes(args_dict: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     if args_dict["index"] == "spi":
         long_name = "Standardized Precipitation Index ({dist} distribution), ".format(
             dist=args_dict["distribution"].value.capitalize()
@@ -676,7 +676,7 @@ def _drop_data_into_shared_arrays_divisions(
     return output_shape
 
 
-def _compute_write_index(keyword_arguments):
+def _compute_write_index(keyword_arguments: dict[str, Any]) -> None:
     """
     Computes a climate index and writes the result into a corresponding NetCDF.
 
@@ -1096,7 +1096,7 @@ def _compute_write_index(keyword_arguments):
         return netcdf_file_name, output_var_name
 
 
-def _pet(temperatures, latitude, parameters):
+def _pet(temperatures: np.ndarray, latitude: float, parameters: dict[str, Any]) -> np.ndarray:
     return indices.pet(
         temperature_celsius=temperatures,
         latitude_degrees=latitude,
@@ -1104,7 +1104,7 @@ def _pet(temperatures, latitude, parameters):
     )
 
 
-def _spi(precips, parameters):
+def _spi(precips: np.ndarray, parameters: dict[str, Any]) -> np.ndarray:
     return indices.spi(
         values=precips,
         scale=parameters["scale"],
@@ -1116,7 +1116,7 @@ def _spi(precips, parameters):
     )
 
 
-def _spei(precips, pet_mm, parameters):
+def _spei(precips: np.ndarray, pet_mm: np.ndarray, parameters: dict[str, Any]) -> np.ndarray:
     return indices.spei(
         precips_mm=precips,
         pet_mm=pet_mm,
@@ -1129,7 +1129,7 @@ def _spei(precips, pet_mm, parameters):
     )
 
 
-def _pnp(precips, parameters):
+def _pnp(precips: np.ndarray, parameters: dict[str, Any]) -> np.ndarray:
     return indices.percentage_of_normal(
         precips,
         scale=parameters["scale"],
@@ -1140,7 +1140,7 @@ def _pnp(precips, parameters):
     )
 
 
-def _init_worker(shared_arrays_dict):
+def _init_worker(shared_arrays_dict: dict[str, Any]) -> None:
     global _global_shared_arrays
     _global_shared_arrays = shared_arrays_dict
 
