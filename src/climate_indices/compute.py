@@ -7,8 +7,6 @@ from enum import Enum
 
 import numpy as np
 import scipy.stats
-import scipy.version
-from packaging.version import Version
 
 from climate_indices import lmoments, utils
 from climate_indices.exceptions import (
@@ -33,9 +31,6 @@ __all__ = [
     "PearsonFittingError",
     "DistributionFallbackStrategy",
 ]
-
-# depending on the version of scipy we may need to use a workaround due to a bug in some versions of scipy
-_do_pearson3_workaround = Version(scipy.version.version) < Version("1.6.0")
 
 # module-level structlog logger
 _logger = get_logger(__name__)
