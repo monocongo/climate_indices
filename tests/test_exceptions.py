@@ -56,6 +56,7 @@ class TestWarningHierarchy:
         assert issubclass(exceptions.ShortCalibrationWarning, exceptions.ClimateIndicesWarning)
         assert issubclass(exceptions.GoodnessOfFitWarning, exceptions.ClimateIndicesWarning)
         assert issubclass(exceptions.InputAlignmentWarning, exceptions.ClimateIndicesWarning)
+        assert issubclass(exceptions.BetaFeatureWarning, exceptions.ClimateIndicesWarning)
 
     def test_base_warning_inherits_from_user_warning(self) -> None:
         """ClimateIndicesWarning should inherit from UserWarning."""
@@ -68,6 +69,7 @@ class TestWarningHierarchy:
         assert not issubclass(exceptions.ShortCalibrationWarning, ClimateIndicesError)
         assert not issubclass(exceptions.GoodnessOfFitWarning, ClimateIndicesError)
         assert not issubclass(exceptions.InputAlignmentWarning, ClimateIndicesError)
+        assert not issubclass(exceptions.BetaFeatureWarning, ClimateIndicesError)
 
     def test_exceptions_not_subclass_of_warning_base(self) -> None:
         """Exception classes should NOT inherit from ClimateIndicesWarning."""
@@ -146,6 +148,11 @@ class TestWarningCatchAll:
         with pytest.warns(exceptions.ClimateIndicesWarning):
             warnings.warn("test warning", exceptions.InputAlignmentWarning, stacklevel=2)
 
+    def test_catch_beta_feature_warning(self) -> None:
+        """ClimateIndicesWarning should catch BetaFeatureWarning."""
+        with pytest.warns(exceptions.ClimateIndicesWarning):
+            warnings.warn("test warning", exceptions.BetaFeatureWarning, stacklevel=2)
+
 
 class TestWarningFilterability:
     """Verify that warnings can be filtered using standard Python warning filters."""
@@ -161,6 +168,7 @@ class TestWarningFilterability:
             warnings.warn("short calibration", exceptions.ShortCalibrationWarning, stacklevel=2)
             warnings.warn("poor fit", exceptions.GoodnessOfFitWarning, stacklevel=2)
             warnings.warn("alignment needed", exceptions.InputAlignmentWarning, stacklevel=2)
+            warnings.warn("beta feature", exceptions.BetaFeatureWarning, stacklevel=2)
 
             # verify none were recorded (all filtered)
             assert len(warning_list) == 0
@@ -346,7 +354,7 @@ class TestAllExports:
     """Verify __all__ completeness and correctness."""
 
     def test_all_contains_expected_names(self) -> None:
-        """__all__ should contain exactly the 13 documented exception and warning classes."""
+        """__all__ should contain exactly the 14 documented exception and warning classes."""
         expected_names = {
             "ClimateIndicesError",
             "DistributionFittingError",
@@ -361,6 +369,7 @@ class TestAllExports:
             "ShortCalibrationWarning",
             "GoodnessOfFitWarning",
             "InputAlignmentWarning",
+            "BetaFeatureWarning",
         }
         assert set(exceptions.__all__) == expected_names
 

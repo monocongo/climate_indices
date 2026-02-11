@@ -13,6 +13,10 @@ The design philosophy:
 References:
     Architecture Decision 1: Wrapper Approach (NumPy core + xarray adapter)
     Architecture Decision 2: Decorator Pattern (@xarray_adapter)
+
+.. warning:: **Beta Feature** — The xarray adapter layer is beta and may change
+   in future minor releases. The NumPy computation core (``indices.py``,
+   ``compute.py``) is stable. No breaking changes will occur within a minor version.
 """
 
 from __future__ import annotations
@@ -65,6 +69,8 @@ class CFAttributes(_CFAttributesRequired, total=False):
 
     Required keys: long_name, units, references.
     Optional keys: standard_name (only when officially defined in CF conventions).
+
+    .. note:: Part of the beta xarray adapter layer. See :doc:`xarray_migration`.
     """
 
     standard_name: str
@@ -137,6 +143,8 @@ class InputType(Enum):
 
     Used by detect_input_type() to determine which computation path to use.
 
+    .. note:: Part of the beta xarray adapter layer. See :doc:`xarray_migration`.
+
     Attributes:
         NUMPY: Input is NumPy-coercible (ndarray, list, tuple, scalars)
         XARRAY: Input is xarray.DataArray
@@ -152,6 +160,8 @@ def detect_input_type(data: Any) -> InputType:
     This is a pure classifier—it determines the type category but does not
     perform any data transformation or coercion. The actual dispatch logic
     is handled by the @xarray_adapter decorator (Story 2.2).
+
+    .. note:: Part of the beta xarray adapter layer. See :doc:`xarray_migration`.
 
     Args:
         data: Input data to classify
@@ -1290,6 +1300,10 @@ def xarray_adapter(
     compute with NumPy function, rewrap result). For multi-input functions, it aligns DataArrays
     using inner join before computation.
 
+    .. warning:: **Beta Feature** — The ``@xarray_adapter`` decorator and all xarray
+       dispatch infrastructure are beta. The decorator interface may change in future
+       minor releases. NumPy passthrough behavior is stable.
+
     Args:
         cf_metadata: Optional dict of CF Convention metadata to apply to output DataArray.
             Keys should be CF attribute names (e.g., 'standard_name', 'long_name', 'units').
@@ -1677,6 +1691,10 @@ def pet_thornthwaite(
     a time dimension), this function uses xr.apply_ufunc to handle spatial broadcasting
     of the latitude parameter across gridded temperature data.
 
+    .. warning:: **Beta Feature (xarray path)** — When called with ``xr.DataArray``
+       input, this function uses the beta xarray adapter layer. The NumPy array
+       interface and underlying computation are stable.
+
     Args:
         temperature: Monthly average temperature values in degrees Celsius.
             For numpy: 1-D array of monthly temperatures
@@ -1876,6 +1894,10 @@ def pet_hargreaves(
     This function provides xarray DataArray support for the Hargreaves PET calculation.
     Unlike Thornthwaite (monthly), Hargreaves uses daily min/max temperature data.
     The mean temperature is automatically derived as (tmin + tmax) / 2.
+
+    .. warning:: **Beta Feature (xarray path)** — When called with ``xr.DataArray``
+       input, this function uses the beta xarray adapter layer. The NumPy array
+       interface and underlying computation are stable.
 
     Args:
         daily_tmin_celsius: Daily minimum temperature values in degrees Celsius.

@@ -22,6 +22,7 @@ __all__ = [
     "ShortCalibrationWarning",
     "GoodnessOfFitWarning",
     "InputAlignmentWarning",
+    "BetaFeatureWarning",
 ]
 
 
@@ -321,3 +322,16 @@ class InputAlignmentWarning(ClimateIndicesWarning):
         self.original_size = original_size
         self.aligned_size = aligned_size
         self.dropped_count = dropped_count
+
+
+class BetaFeatureWarning(ClimateIndicesWarning):
+    """Warning for features marked as beta/experimental.
+
+    Beta features have stable behavior within a minor version but their API
+    surface (parameter names, return types, metadata attributes) may change
+    in future minor releases. The core computation results are identical
+    to the stable NumPy API.
+
+    Users can suppress beta warnings via:
+        warnings.filterwarnings("ignore", category=BetaFeatureWarning)
+    """

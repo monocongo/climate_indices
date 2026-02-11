@@ -3,6 +3,7 @@
 from importlib.metadata import PackageNotFoundError, version
 
 from climate_indices.exceptions import (
+    BetaFeatureWarning,
     ClimateIndicesError,
     ClimateIndicesWarning,
     InputAlignmentWarning,
@@ -26,6 +27,7 @@ except PackageNotFoundError:
 
 __all__ = [
     "__version__",
+    "BetaFeatureWarning",
     "CF_METADATA",
     "CFAttributes",
     "ClimateIndicesError",

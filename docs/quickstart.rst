@@ -90,6 +90,11 @@ The **time coordinate** is essential for the xarray API — it enables automatic
 start year and periodicity. The **units attributes** document the expected units: precipitation in
 mm/month and temperature in degrees Celsius.
 
+.. warning:: **Beta Feature**
+
+   The xarray API shown below is **beta** and may change in future minor releases.
+   Computation results are identical to the stable NumPy API shown later in this tutorial.
+
 
 Compute Indices with xarray (Recommended)
 ==========================================

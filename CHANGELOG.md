@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **xarray DataArray API (Beta)**: Native xarray support for `spi()`, `spei()`,
+  `pet_thornthwaite()`, and `pet_hargreaves()` — marked as beta/experimental.
+  The xarray interface (parameter inference, metadata, coordinate handling) may
+  change in future minor releases. Computation results are identical to the
+  stable NumPy API. No breaking changes within minor versions.
+- **`BetaFeatureWarning`**: New warning class for beta/experimental features
+  (subclass of `ClimateIndicesWarning`)
 - **Docker Support**: Dockerfile for containerized deployment (#586)
 - **`.dockerignore`**: Optimized Docker builds by excluding unnecessary files
 - **PyPI Release Guide**: Comprehensive release documentation (`docs/pypi_release_guide.md`, `docs/pypi_release.rst`)

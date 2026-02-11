@@ -10,6 +10,13 @@ Introduction
 
 Starting with version 2.2.0, the ``climate_indices`` library provides native support for xarray DataArrays alongside the traditional NumPy array API. This migration guide helps existing users understand the benefits of adopting the xarray API and provides practical examples for transitioning from NumPy-based workflows to xarray-based workflows.
 
+.. warning:: **Beta Feature**
+
+   The xarray DataArray API described in this guide is **beta**. The interface
+   (parameter inference, metadata attributes, coordinate handling) may change in
+   future minor releases. The underlying computation results are identical to the
+   stable NumPy API. No breaking changes will occur within a minor version.
+
 **Who this guide is for:** Users currently working with NumPy arrays who want to leverage xarray's labeled dimensions, automatic metadata handling, and coordinate-aware operations.
 
 **What changed:** All primary index functions (``spi()``, ``spei()``, ``pet_thornthwaite()``, ``pet_hargreaves()``) now accept both ``np.ndarray`` and ``xr.DataArray`` inputs. When you pass an xarray DataArray, the library automatically:

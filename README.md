@@ -71,6 +71,21 @@ GitHub issue, and implemented no sooner than 12 months after announcement with a
 
 Python 3.9 support was dropped in v2.2.0 (August 2025) due to `scipy>=1.15.3` requiring 3.10+.
 
+### API Stability
+
+| API Surface | Status | Guarantee |
+|:------------|:------:|:----------|
+| NumPy array functions (`indices.spi`, `indices.spei`, `indices.pet`) | **Stable** | No breaking changes in minor versions |
+| xarray DataArray functions (`spi()`, `spei()`, `pet_thornthwaite()`, `pet_hargreaves()`) | **Beta** | No breaking changes in patch versions |
+
+**Stable API**: The NumPy-based computation functions follow strict semantic versioning.
+
+**Beta API**: The xarray adapter layer provides automatic parameter inference, coordinate
+preservation, CF metadata, and Dask support. While beta, computation results are **identical**
+to the stable NumPy API — only the interface surface (parameter names, metadata attributes,
+coordinate handling) may evolve. Beta features are tagged with ``BetaFeatureWarning`` and
+marked in docstrings.
+
 ## Migration Guide for v2.2.0
 
 **Breaking Change: Exception-Based Error Handling**

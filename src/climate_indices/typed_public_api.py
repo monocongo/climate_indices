@@ -9,6 +9,9 @@ correctness by narrowing return types based on input types:
 
 Design: Pre-build decorated functions at module level for performance. The public
 functions filter None kwargs and delegate to the pre-built wrapped functions.
+
+.. warning:: **Beta Feature (xarray path)** — The xarray DataArray overloads in
+   this module are beta. The NumPy overloads are stable.
 """
 
 from __future__ import annotations
@@ -87,6 +90,12 @@ def spi(
     For NumPy inputs, all temporal parameters are required.
     For xarray inputs, temporal parameters are optional and will be inferred from
     coordinate attributes if not provided.
+
+    .. warning:: **Beta Feature (xarray path only)** — When called with an
+       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
+       The xarray interface (parameter inference, metadata handling, coordinate
+       preservation) may change in future minor releases. The NumPy array interface
+       is stable.
 
     Args:
         values: 1-D numpy array or xarray DataArray of precipitation values.
@@ -172,6 +181,12 @@ def spei(
     For NumPy inputs, all temporal parameters are required.
     For xarray inputs, temporal parameters are optional and will be inferred from
     coordinate attributes if not provided.
+
+    .. warning:: **Beta Feature (xarray path only)** — When called with an
+       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
+       The xarray interface (parameter inference, metadata handling, coordinate
+       preservation) may change in future minor releases. The NumPy array interface
+       is stable.
 
     Args:
         precips_mm: Array of monthly precipitation values in millimeters.

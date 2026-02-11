@@ -9,6 +9,9 @@ API Reference
 Public API — Index Functions
 -----------------------------
 
+.. note:: The xarray DataArray overloads in ``typed_public_api`` are **beta**.
+   NumPy overloads are stable. See :doc:`xarray_migration` for details.
+
 climate_indices.typed_public_api
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -18,6 +21,9 @@ climate_indices.typed_public_api
 
 xarray Integration
 ------------------
+
+.. warning:: **Beta Feature** — The xarray adapter layer is beta.
+   See :doc:`xarray_migration` for stability guarantees.
 
 climate_indices.xarray_adapter
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
