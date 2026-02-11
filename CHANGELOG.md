@@ -16,9 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Test Fixture Management Guide**: Documentation for test data management (`docs/test_fixture_management.md`)
 - **Visualization Notebook**: New notebook for precipitation/SPI visualization (`notebooks/visualize_precip_spi.ipynb`)
 - **Lock File**: Added `uv.lock` for reproducible dependency resolution
+- **Documentation**: Supported Python versions table and deprecation policy in README
 
 ### Changed
 
+- **CI/CD**: Enhanced test matrix with Python 3.10-3.13 on Linux and macOS
+- **CI/CD**: Added minimum dependency version testing (`--resolution lowest-direct`)
+- **CI/CD**: Added ruff and mypy checks as CI lint job
+- **CI/CD**: Modernized all GitHub Actions to v4/v5 versions
 - **GitHub Actions**: Updated unit tests workflow with improved configuration
 - **Documentation Index**: Reorganized Sphinx documentation structure
 - **Notebooks**: Improved examples in existing Jupyter notebooks

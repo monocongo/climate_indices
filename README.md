@@ -51,6 +51,26 @@ See [drought.gov](https://www.drought.gov/drought/python-climate-indices).
 - [__License__](https://github.com/monocongo/climate_indices/blob/master/LICENSE)
 - [__Disclaimer__](https://github.com/monocongo/climate_indices/blob/master/DISCLAIMER)
 
+## Supported Python Versions
+
+| Python Version | Status | Notes |
+|:--------------:|:------:|:------|
+| 3.10 | Supported | Minimum supported version |
+| 3.11 | Supported | |
+| 3.12 | Supported | |
+| 3.13 | Supported | Latest supported version |
+
+All versions are tested on Linux (ubuntu-latest). Python 3.10 and 3.13 are additionally
+tested on macOS. Both latest and minimum declared dependency versions are tested in CI.
+
+### Version Support Policy
+
+This project provides **12 months notice** before dropping support for a Python version.
+When a version approaches end-of-life, removal will be announced via the CHANGELOG and a
+GitHub issue, and implemented no sooner than 12 months after announcement with a version bump.
+
+Python 3.9 support was dropped in v2.2.0 (August 2025) due to `scipy>=1.15.3` requiring 3.10+.
+
 ## Migration Guide for v2.2.0
 
 **Breaking Change: Exception-Based Error Handling**
