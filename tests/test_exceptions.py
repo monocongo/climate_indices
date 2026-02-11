@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import pickle
 import warnings
 
@@ -735,13 +736,11 @@ class TestEmitDeprecationWarning:
             assert len(warning_list) == 0
 
     def test_keyword_only_enforcement(self) -> None:
-        """Helper should reject positional arguments."""
-        with pytest.raises(TypeError, match="positional"):
-            exceptions.emit_deprecation_warning(  # type: ignore[misc]
-                "feature",
-                "alternative",
-                "1.0.0",
-                "2.0.0",
+        """All parameters of emit_deprecation_warning must be keyword-only."""
+        sig = inspect.signature(exceptions.emit_deprecation_warning)
+        for name, param in sig.parameters.items():
+            assert param.kind == inspect.Parameter.KEYWORD_ONLY, (
+                f"Parameter '{name}' should be KEYWORD_ONLY, got {param.kind.name}"
             )
 
     def test_custom_stacklevel(self) -> None:
