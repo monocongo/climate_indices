@@ -826,11 +826,11 @@ def _serialize_attr_value(value: Any) -> str | int | float | bool:
         return value.name
 
     # numpy scalar → python scalar
-    if isinstance(value, (np.integer, np.floating)):
+    if isinstance(value, np.integer | np.floating):
         return value.item()
 
     # passthrough native serializable types
-    if isinstance(value, (str, int, float, bool)):
+    if isinstance(value, str | int | float | bool):
         return value
 
     # dict → JSON string
@@ -1782,7 +1782,7 @@ def pet_thornthwaite(
 
     # normalize latitude for xr.apply_ufunc
     # convert scalar numpy types to python float for compatibility
-    if isinstance(latitude, (float, int, np.floating, np.integer)):
+    if isinstance(latitude, float | int | np.floating | np.integer):
         lat_for_ufunc: float | xr.DataArray = float(latitude)
     else:
         # assume it's already an xr.DataArray
@@ -2028,7 +2028,7 @@ def pet_hargreaves(
     tmean_da = (tmin_aligned + tmax_aligned) / 2.0
 
     # normalize latitude for xr.apply_ufunc
-    if isinstance(latitude, (float, int, np.floating, np.integer)):
+    if isinstance(latitude, float | int | np.floating | np.integer):
         lat_for_ufunc: float | xr.DataArray = float(latitude)
     else:
         # assume it's already an xr.DataArray

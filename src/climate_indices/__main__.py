@@ -1825,48 +1825,48 @@ if __name__ == "__main__":
 
     """
     SYNOPSIS:
-        
-    The main program in the provided code excerpt is designed to process climate indices on NetCDF 
-    gridded datasets in parallel, leveraging Python's multiprocessing module. The process can be 
+
+    The main program in the provided code excerpt is designed to process climate indices on NetCDF
+    gridded datasets in parallel, leveraging Python's multiprocessing module. The process can be
     broken down into several key steps, which together implement a quasi "map-reduce" model for parallel
     computation. Here's an overview of how it works:
-    
+
     Step 1: Initialization and Argument Parsing
-    The program starts by parsing command-line arguments that specify the details of the computation, 
-    such as the index to compute (e.g., SPI, SPEI), the input NetCDF files, and various parameters 
-    relevant to the computation. It then validates these arguments to ensure they form a coherent set 
+    The program starts by parsing command-line arguments that specify the details of the computation,
+    such as the index to compute (e.g., SPI, SPEI), the input NetCDF files, and various parameters
+    relevant to the computation. It then validates these arguments to ensure they form a coherent set
     of instructions for the computation.
-    
+
     Step 2: Setting Up Multiprocessing
-    Based on the command-line arguments, the program determines the number of worker processes to use. 
+    Based on the command-line arguments, the program determines the number of worker processes to use.
     It can use all available CPUs minus one, a single process, or all CPUs, depending on the user's choice.
-    Global shared arrays are prepared for use by worker processes. These arrays hold the input data 
+    Global shared arrays are prepared for use by worker processes. These arrays hold the input data
     (e.g., precipitation, temperature) and the results of the computations.
-    
+
     Step 3: Data Preparation
-    The input data from NetCDF files is loaded into shared memory arrays. This step involves reading the data, 
+    The input data from NetCDF files is loaded into shared memory arrays. This step involves reading the data,
     possibly converting units, and then distributing it across shared arrays that worker processes can access.
-    The program checks the dimensions and shapes of the input data to ensure they match expected patterns, 
+    The program checks the dimensions and shapes of the input data to ensure they match expected patterns,
     adjusting as necessary to fit the computation requirements.
-    
+
     Step 4: Parallel Computation ("Map")
-    The program splits the computation into chunks that can be processed independently. 
+    The program splits the computation into chunks that can be processed independently.
     This is the "map" part of the "map-reduce" model.
-    Worker processes are spawned, each taking a portion of the data from the shared arrays 
+    Worker processes are spawned, each taking a portion of the data from the shared arrays
     to compute the climate index (e.g., SPI, SPEI) over that subset.
-    Each worker applies the computation function along the specified axis of the data chunk it has been given. 
+    Each worker applies the computation function along the specified axis of the data chunk it has been given.
     This could involve complex calculations like the Thornthwaite method for PET or statistical analysis for SPI.
-    
+
     Step 5: Aggregating Results ("Reduce")
     Once all worker processes complete their computations, the results are aggregated back into a single dataset. Summary
     This is the "reduce" part of the "map-reduce" model.
-    The program collects the computed indices from the shared arrays and assembles them into a coherent 
+    The program collects the computed indices from the shared arrays and assembles them into a coherent
     output dataset, maintaining the correct dimensions and metadata.
-    
+
     Step 6: Writing Output
-    The final step involves writing the computed indices back to NetCDF files. 
+    The final step involves writing the computed indices back to NetCDF files.
     Each index computed (e.g., SPI, SPEI, PET) is saved in its own file.
-    The program ensures that the output files contain all necessary metadata and are structured 
+    The program ensures that the output files contain all necessary metadata and are structured
     correctly to be used in further analysis or visualization.
     """
     main()

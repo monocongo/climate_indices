@@ -726,7 +726,7 @@ def _validate_fitting_params(data: dict, fitting_params: dict) -> None:
         for param in ["alpha", "beta", "gamma", "delta"]:
             if (
                 param in fitting_params
-                and isinstance(fitting_params[param], (list, tuple, np.ndarray))
+                and isinstance(fitting_params[param], list | tuple | np.ndarray)
                 and len(fitting_params[param]) == 12
             ):
                 data[param] = np.array(fitting_params[param])

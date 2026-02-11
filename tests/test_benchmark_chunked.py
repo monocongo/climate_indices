@@ -108,8 +108,7 @@ class TestChunkedWeakScaling:
         sample_data = rng.gamma(shape=2.0, scale=50.0, size=(n_time, _CHUNK_LAT, n_lon))
 
         # create dask array by replicating the sample across lat chunks
-        arrays = [da.from_array(sample_data, chunks=(_CHUNK_TIME, _CHUNK_LAT, _CHUNK_LON))
-                  for _ in range(n_chunks)]
+        arrays = [da.from_array(sample_data, chunks=(_CHUNK_TIME, _CHUNK_LAT, _CHUNK_LON)) for _ in range(n_chunks)]
         dask_data = da.concatenate(arrays, axis=1)
 
         # create coordinates (datetime time coordinate for parameter inference)
@@ -210,15 +209,11 @@ class TestChunkedWeakScaling:
 
         # baseline: 1 chunk, processes scheduler, 1 worker (includes multiprocessing overhead)
         da_baseline = self._create_chunked_precip(n_chunks=1)
-        t_baseline = self._measure_compute_time(
-            da_baseline, scheduler="processes", num_workers=1
-        )
+        t_baseline = self._measure_compute_time(da_baseline, scheduler="processes", num_workers=1)
 
         # scaled: N chunks, processes scheduler, N workers
         da_scaled = self._create_chunked_precip(n_chunks=num_workers)
-        t_scaled = self._measure_compute_time(
-            da_scaled, scheduler="processes", num_workers=num_workers
-        )
+        t_scaled = self._measure_compute_time(da_scaled, scheduler="processes", num_workers=num_workers)
 
         efficiency = t_baseline / t_scaled if t_scaled > 0 else 0.0
 
