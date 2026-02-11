@@ -3,8 +3,10 @@ stepsCompleted: [1, 2, 3, 4, 5, 6, 7, 8]
 lastStep: 8
 status: 'complete'
 completedAt: '2026-02-05'
+revisedAt: '2026-02-09'
+revisionReason: 'Updated for PRD v1.1 - Added EDDI NOAA reference validation requirements (Phase 2)'
 inputDocuments:
-  - 'feature/bmad-xarray-prd:_bmad-output/planning-artifacts/prd.md'
+  - '_bmad-output/planning-artifacts/prd.md (v1.1)'
   - 'docs/floating_point_best_practices.md'
   - 'docs/test_fixture_management.md'
   - 'docs/case-studies/eddi-bmad-retrospective.md'
@@ -177,6 +179,14 @@ xarray + dask remain core dependencies (already required by CLI).
 - Keys: long_name, units, references, standard_name
 - **Rule:** Never hard-code CF attributes inline. Always use registry.
 
+### Pattern 8: Reference Dataset Validation Testing (Phase 2)
+- Separate test module: `tests/test_reference_validation.py` for validating against published reference datasets
+- NOAA reference datasets stored in `tests/data/reference/` with provenance metadata
+- EDDI validation tolerance: 1e-5 (looser than equivalence tests due to non-parametric ranking FP accumulation)
+- Reference dataset registry tracks source, provenance, format, and expected tolerance
+- **Rule:** Reference validation tests are separate from equivalence tests (different tolerances, different failure modes)
+- **Rationale:** Phase 2 requirement (FR-TEST-004) - EDDI outputs must validate against NOAA reference data
+
 ## Project Structure & Boundaries
 
 ### New Files (MVP)
@@ -186,6 +196,11 @@ xarray + dask remain core dependencies (already required by CLI).
 - `tests/test_xarray_adapter.py` — Equivalence, metadata, inference, Dask tests
 - `tests/test_logging.py` — structlog configuration and output tests
 - `tests/test_exceptions.py` — Exception hierarchy tests
+
+### New Files (Phase 2)
+- `tests/test_reference_validation.py` — NOAA reference dataset validation (EDDI tolerance: 1e-5)
+- `tests/data/reference/` — Directory structure for reference datasets with provenance tracking
+- `tests/data/reference/eddi_noaa_reference.nc` — NOAA EDDI reference outputs for validation
 
 ### Modified Files (MVP)
 - `src/climate_indices/__init__.py` — Add public re-exports for xarray-aware API
@@ -268,13 +283,18 @@ ruff format --check src/climate_indices/ tests/
 uv run pytest tests/ -v --cov=src/climate_indices --cov-report=term
 ```
 
-### Key Validation Checks
+### Key Validation Checks (MVP)
 - `test_spi_xarray_equivalence`: xarray SPI == NumPy SPI within 1e-8
 - `test_metadata_preservation`: coordinates and CF attributes intact
 - `test_parameter_inference`: inferred params match explicit values
 - `test_backward_compat`: existing NumPy API unchanged
 - `test_structlog_json_output`: JSON format parseable
 - `test_exception_hierarchy`: ClimateIndicesError catches all subclasses
+
+### Key Validation Checks (Phase 2)
+- `test_eddi_noaa_reference_validation`: EDDI outputs match NOAA reference data within 1e-5 tolerance
+- Reference dataset provenance documented and verifiable
+- Tolerance rationale documented (non-parametric ranking has different FP accumulation than parametric fitting)
 
 ## Post-Architecture Actions
 
@@ -287,3 +307,21 @@ uv run pytest tests/ -v --cov=src/climate_indices --cov-report=term
 - **Epic/Story Breakdown**: Decompose MVP scope into implementable stories
 - **Implementation Readiness Check**: Validate PRD + Architecture alignment before coding
 - **Implementation**: Begin with exceptions.py → logging_config.py → xarray_adapter.py
+
+---
+
+## Revision History
+
+### Version 1.0 (2026-02-05)
+- Initial architecture complete (8 steps)
+- Based on PRD v1.0
+- Defined MVP scope: SPI, SPEI, PET + structlog integration
+- Established core patterns: decorator-based adapter, registry metadata, hybrid logging
+
+### Version 1.1 (2026-02-09)
+- Updated for PRD v1.1 requirements
+- **Added Pattern 8**: Reference Dataset Validation Testing (Phase 2)
+- **Extended Project Structure**: Added Phase 2 test infrastructure (`test_reference_validation.py`, `tests/data/reference/`)
+- **Updated Verification Plan**: Added EDDI NOAA reference validation (tolerance: 1e-5)
+- **Rationale**: PRD v1.1 added FR-TEST-004 requirement for EDDI validation against NOAA reference data
+- **Impact**: Phase 2-scoped changes only; MVP architecture unchanged

@@ -138,11 +138,22 @@ strict = true
 [tool.pytest.ini_options]
 filterwarnings = [
     'ignore::FutureWarning',
+    'ignore::climate_indices.exceptions.ShortCalibrationWarning',
+    'ignore::climate_indices.exceptions.GoodnessOfFitWarning',
+    'ignore::climate_indices.exceptions.MissingDataWarning',
 ]
 markers = [
     "benchmark: performance benchmark tests (deselect with '-m \"not benchmark\"')",
     "slow: slow tests that may be skipped in CI (deselect with '-m \"not slow\"')",
 ]
+addopts = "-m 'not benchmark'"
+
+[tool.pytest-benchmark]
+min_rounds = 5
+warmup = true
+warmup_iterations = 1
+columns = ["mean", "stddev", "rounds", "iterations"]
+sort = "mean"
 
 [tool.hatch.build.targets.sdist]
 exclude = [
