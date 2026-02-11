@@ -134,6 +134,9 @@ module = [
 ]
 strict = true
 
+[[tool.mypy.overrides]]
+module = ["climate_indices.__spi__"]
+ignore_errors = true
 
 [tool.pytest.ini_options]
 filterwarnings = [

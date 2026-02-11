@@ -174,7 +174,7 @@ def is_data_valid(
     elif isinstance(data, np.ndarray):
         valid_flag = not np.all(np.isnan(data))
     else:
-        _logger.warning("validation_warning", reason="invalid_data_type")
+        _logger.warning("validation_warning", reason="invalid_data_type")  # type: ignore[unreachable]
         valid_flag = False
 
     return valid_flag

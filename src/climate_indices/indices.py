@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -111,7 +111,7 @@ def _validate_distribution(distribution: Distribution) -> None:
         InvalidArgumentError: If distribution is not a Distribution enum member
     """
     if not isinstance(distribution, Distribution):
-        message = (
+        message = (  # type: ignore[unreachable]
             f"Unsupported distribution: {distribution}. "
             f"Supported distributions: gamma, pearson. "
             f"Use indices.Distribution.gamma or indices.Distribution.pearson."
@@ -134,7 +134,7 @@ def _validate_periodicity(periodicity: compute.Periodicity) -> None:
         InvalidArgumentError: If periodicity is not a Periodicity enum member
     """
     if not isinstance(periodicity, compute.Periodicity):
-        message = (
+        message = (  # type: ignore[unreachable]
             f"Invalid periodicity argument: {periodicity}. "
             f"Periodicity must be a Periodicity enum member. "
             f"Supported values: monthly, daily. "
@@ -662,7 +662,7 @@ def percentage_of_normal(
 
 def pet(
     temperature_celsius: np.ndarray,
-    latitude_degrees: float,
+    latitude_degrees: float | np.ndarray,
     data_start_year: int,
 ) -> np.ndarray:
     """
@@ -719,7 +719,7 @@ def pet(
         # or numpy.apply_along_axis() where we've had to duplicate values in a 3-D
         # array of latitudes in order to correspond with a 3-D array of temperatures.
         if isinstance(latitude_degrees, np.ndarray):
-            latitude_degrees = latitude_degrees.flat[0]
+            latitude_degrees = cast(float, latitude_degrees.flat[0])
 
         # make sure we're not dealing with a NaN or out-of-range latitude value
         if (latitude_degrees is not None) and not np.isnan(latitude_degrees) and (-90.0 < latitude_degrees < 90.0):

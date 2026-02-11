@@ -28,7 +28,7 @@ _KEY_RESULT_PMDI = "result_array_pmdi"
 _KEY_RESULT_ZINDEX = "result_array_zindex"
 
 # global dictionary to contain shared arrays for use by worker processes
-_global_shared_arrays = {}
+_global_shared_arrays: dict[str, Any] = {}
 
 # Retrieve logger and set desired logging level
 _logger = utils.get_logger(__name__, logging.INFO)
@@ -261,7 +261,7 @@ def _validate_args(args: argparse.Namespace) -> InputType:
                         raise ValueError(msg)
 
                 else:
-                    msg = "Failed to determine the input type " + "(gridded, timeseries, or US climate division)"
+                    msg = "Failed to determine the input type " + "(gridded, timeseries, or US climate division)"  # type: ignore[unreachable]
                     _logger.error(msg)
                     raise ValueError(msg)
 
@@ -347,7 +347,7 @@ def _validate_args(args: argparse.Namespace) -> InputType:
                         raise ValueError(msg)
 
                 else:
-                    msg = "Failed to determine the input type " + "(gridded, timeseries, or US climate division)"
+                    msg = "Failed to determine the input type " + "(gridded, timeseries, or US climate division)"  # type: ignore[unreachable]
                     _logger.error(msg)
                     raise ValueError(msg)
 
@@ -557,7 +557,7 @@ def _get_variable_attributes(args_dict: dict[str, Any]) -> tuple[str, dict[str, 
 
 def _drop_data_into_shared_arrays_grid(
     dataset: xr.Dataset,
-    var_names: list,
+    var_names: list[str],
     periodicity: compute.Periodicity,
     data_start_year: int,
 ) -> tuple[int, ...]:
@@ -607,7 +607,7 @@ def _drop_data_into_shared_arrays_grid(
         # create a shared memory array, wrap it as a numpy array and
         # copy the data (values) from this variable's DataArray
         shared_array = multiprocessing.Array("d", int(np.prod(var_values.shape)))
-        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(var_values.shape)
+        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(var_values.shape)  # type: ignore[call-overload]
         np.copyto(shared_array_np, var_values)
 
         # add to the dictionary of arrays
@@ -619,6 +619,7 @@ def _drop_data_into_shared_arrays_grid(
         # drop the variable from the dataset (we're assuming this frees the memory)
         dataset = dataset.drop_vars(names=[var_name])
 
+    assert output_shape is not None, "No variables processed; output shape is unknown"
     return output_shape
 
 
@@ -655,7 +656,7 @@ def _drop_data_into_shared_arrays_divisions(
         # create a shared memory array, wrap it as a numpy array and
         # copy the data (values) from this variable's DataArray
         shared_array = multiprocessing.Array("d", int(np.prod(dataset[var_name].shape)))
-        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(dataset[var_name].shape)
+        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(dataset[var_name].shape)  # type: ignore[call-overload]
         np.copyto(shared_array_np, dataset[var_name].values)
 
         # add to the dictionary of arrays
@@ -671,10 +672,11 @@ def _drop_data_into_shared_arrays_divisions(
         # drop the variable from the dataset (we're assuming this frees the memory)
         dataset = dataset.drop_vars(names=[var_name])
 
+    assert output_shape is not None, "No variables processed; output shape is unknown"
     return output_shape
 
 
-def _compute_write_index(keyword_arguments: dict[str, Any]) -> None:
+def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] | None:
     """
     Computes a climate index and writes the result into a corresponding NetCDF.
 
@@ -821,7 +823,7 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> None:
         # copy the data (values) from this variable's DataArray
         var_name = keyword_arguments["var_name_awc"]
         shared_array = multiprocessing.Array("d", int(np.prod(awc_dataset[var_name].shape)))
-        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(awc_dataset[var_name].shape)
+        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(awc_dataset[var_name].shape)  # type: ignore[call-overload]
         np.copyto(shared_array_np, awc_dataset[var_name].values)
 
         # add to the dictionary of arrays
@@ -987,6 +989,7 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> None:
         # write the dataset as NetCDF
         netcdf_file_name = keyword_arguments["output_file_base"] + "_" + var_name_zindex + ".nc"
         dataset.to_netcdf(netcdf_file_name)
+        return None
 
     else:
         # add an array to hold results to the dictionary of arrays
@@ -1026,7 +1029,7 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> None:
             # copy the data (values) from this variable's DataArray
             da_lat = dataset["lat"]
             shared_array = multiprocessing.Array("d", int(np.prod(da_lat.shape)))
-            shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(da_lat.shape)
+            shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(da_lat.shape)  # type: ignore[call-overload]
             np.copyto(shared_array_np, da_lat.values)
 
             # add to the dictionary of arrays
@@ -1145,12 +1148,12 @@ def _init_worker(shared_arrays_dict: dict[str, Any]) -> None:
 
 def _parallel_process(
     index: str,
-    arrays_dict: dict,
-    input_var_names: dict,
+    arrays_dict: dict[str, Any],
+    input_var_names: dict[str, str],
     output_var_name: str,
     input_type: InputType,
-    args,
-):
+    args: dict[str, Any],
+) -> None:
     """
     TODO document this function
 
@@ -1260,7 +1263,7 @@ def _parallel_process(
             pool.map(_apply_along_axis, chunk_params)
 
 
-def _apply_along_axis(params):
+def _apply_along_axis(params: dict[str, Any]) -> None:
     """
     Like numpy.apply_along_axis(), but with arguments in a dict instead.
     Applicable for applying a function across subarrays of a single input array.
@@ -1360,7 +1363,7 @@ def _apply_along_axis_double(
             raise ValueError(f"Unsupported input type: '{params['input_type']}'")
 
 
-def _apply_along_axis_palmers(params):
+def _apply_along_axis_palmers(params: dict[str, Any]) -> None:
     """
     Applies the Palmer computation function across subarrays of
     the Palmer-specific input (shared-memory) arrays.
@@ -1478,7 +1481,7 @@ def _prepare_file(
     return netcdf_file
 
 
-def main():  # type: () -> None
+def main() -> None:
     """
     This function is used to perform climate indices processing on NetCDF
     gridded datasets.
@@ -1687,7 +1690,9 @@ def process_climate_indices(
                 }
 
                 # run PET computation, getting the PET file and corresponding variable name for later use
-                arguments.netcdf_pet, arguments.var_name_pet = _compute_write_index(kwargs)
+                result = _compute_write_index(kwargs)
+                assert result is not None, "PET computation should return file and variable name"
+                arguments.netcdf_pet, arguments.var_name_pet = result
 
                 # remove temporary file
                 if netcdf_temp != arguments.netcdf_temp:

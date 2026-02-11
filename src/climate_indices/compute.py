@@ -162,7 +162,7 @@ def _validate_array(
     # validate (and possibly reshape) the input array
     if len(values.shape) == 1:
         if periodicity is None:
-            message = "1-D input array requires a corresponding periodicity argument, none provided"
+            message = "1-D input array requires a corresponding periodicity argument, none provided"  # type: ignore[unreachable]
             _logger.error(
                 "validation_error",
                 operation="validate_array",
@@ -182,7 +182,7 @@ def _validate_array(
             values = utils.reshape_to_2d(values, 366)
 
         else:
-            message = f"Unsupported periodicity argument: '{periodicity}'"
+            message = f"Unsupported periodicity argument: '{periodicity}'"  # type: ignore[unreachable]
             _logger.error(
                 "validation_error",
                 operation="validate_array",
