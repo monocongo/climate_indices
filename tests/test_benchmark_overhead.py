@@ -2,8 +2,8 @@
 Performance overhead benchmarks for xarray adapter layer.
 
 Validates FR-PERF-001 and NFR-PERF-001:
-- xarray path should add <5% overhead vs NumPy path
-- CI fails if benchmarks regress >10%
+- xarray path overhead threshold set to 80% vs NumPy path for 1D arrays
+- CI fails if benchmarks regress beyond threshold
 
 Tests are marked with @pytest.mark.benchmark and excluded from default test runs.
 Run explicitly with: pytest -m benchmark --benchmark-enable
@@ -11,7 +11,7 @@ Run explicitly with: pytest -m benchmark --benchmark-enable
 
 from __future__ import annotations
 
-from timeit import timeit
+from timeit import repeat
 
 import numpy as np
 import pytest
@@ -23,15 +23,15 @@ from climate_indices.eto import eto_hargreaves
 from climate_indices.indices import Distribution
 from climate_indices.xarray_adapter import pet_hargreaves, pet_thornthwaite
 
-# number of repetitions for stable overhead measurement
-_OVERHEAD_ITERATIONS = 5
+# measurement parameters for stable overhead measurement using timeit.repeat
+_OVERHEAD_REPEAT = 7  # independent trials (min filters CI noise)
+_OVERHEAD_NUMBER = 3  # calls per trial (amortizes per-call overhead)
 # overhead threshold: 80% accounts for xarray machinery overhead (apply_ufunc,
 # coordinate handling, metadata propagation) on small 1D arrays. For gridded data
 # (the primary use case), this overhead is amortized across thousands of spatial
 # points and becomes negligible (<5%). Absolute performance remains fast
-# (sub-millisecond for these test cases). The higher threshold accommodates CI runner
-# variability and asymmetric test cases (e.g., PET Hargreaves xarray path computes
-# tmean internally while NumPy baseline receives pre-computed tmean).
+# (sub-millisecond for these test cases). Note asymmetric test cases: PET Hargreaves
+# xarray path computes tmean internally while NumPy baseline receives pre-computed tmean.
 _OVERHEAD_THRESHOLD = 0.80  # 80%
 
 
@@ -213,29 +213,34 @@ class TestOverheadThreshold:
     - xarray apply_ufunc machinery (~0.2ms for PET functions)
     - Coordinate/metadata handling
 
-    Threshold set to 65% for 1D arrays. For gridded data (primary use case),
-    overhead is amortized across spatial dimensions and approaches <5% per pixel.
+    Threshold set to 80% for 1D arrays. For gridded data (primary use case),
+    overhead is amortized across spatial dimensions and becomes negligible.
     Absolute times remain fast (all operations <3ms for 40-year monthly or 5-year daily).
+
+    Uses timeit.repeat with min selection (standard Python benchmarking practice)
+    to filter upward outliers from CI noise while catching real regressions.
     """
 
     @staticmethod
     def _measure_overhead(
         numpy_fn,
         xarray_fn,
-        iterations: int = _OVERHEAD_ITERATIONS,
+        trials: int = _OVERHEAD_REPEAT,
+        number: int = _OVERHEAD_NUMBER,
     ) -> tuple[float, float, float]:
         """
-        Run both paths and return (numpy_mean, xarray_mean, overhead_ratio).
+        Run both paths and return (numpy_min, xarray_min, overhead_ratio).
 
+        Uses timeit.repeat with min selection to filter CI noise (standard practice).
         Includes warmup calls to avoid first-call JIT/import effects.
         """
         # warmup
         numpy_fn()
         xarray_fn()
 
-        # measure
-        numpy_time = timeit(numpy_fn, number=iterations) / iterations
-        xarray_time = timeit(xarray_fn, number=iterations) / iterations
+        # measure: repeat trials, take min per trial, normalize by calls per trial
+        numpy_time = min(repeat(numpy_fn, number=number, repeat=trials)) / number
+        xarray_time = min(repeat(xarray_fn, number=number, repeat=trials)) / number
         overhead = (xarray_time - numpy_time) / numpy_time if numpy_time > 0 else 0.0
         return numpy_time, xarray_time, overhead
 
@@ -244,7 +249,7 @@ class TestOverheadThreshold:
         bench_monthly_precip_np: np.ndarray,
         bench_monthly_precip_da: xr.DataArray,
     ) -> None:
-        """Verify SPI xarray overhead <5%."""
+        """Verify SPI xarray overhead stays within threshold."""
         np_time, xa_time, overhead = self._measure_overhead(
             lambda: indices.spi(
                 values=bench_monthly_precip_np,
@@ -273,7 +278,7 @@ class TestOverheadThreshold:
         bench_monthly_precip_da: xr.DataArray,
         bench_monthly_pet_da: xr.DataArray,
     ) -> None:
-        """Verify SPEI xarray overhead <5%."""
+        """Verify SPEI xarray overhead stays within threshold."""
         np_time, xa_time, overhead = self._measure_overhead(
             lambda: indices.spei(
                 precips_mm=bench_monthly_precip_np,
@@ -302,7 +307,7 @@ class TestOverheadThreshold:
         bench_monthly_temp_np: np.ndarray,
         bench_monthly_temp_da: xr.DataArray,
     ) -> None:
-        """Verify PET Thornthwaite xarray overhead <5%."""
+        """Verify PET Thornthwaite xarray overhead stays within threshold."""
         np_time, xa_time, overhead = self._measure_overhead(
             lambda: indices.pet(
                 temperature_celsius=bench_monthly_temp_np,
@@ -326,7 +331,7 @@ class TestOverheadThreshold:
         bench_daily_tmin_da: xr.DataArray,
         bench_daily_tmax_da: xr.DataArray,
     ) -> None:
-        """Verify PET Hargreaves xarray overhead <5%."""
+        """Verify PET Hargreaves xarray overhead stays within threshold."""
         # numpy path requires tmean
         tmean = (bench_daily_tmin_np + bench_daily_tmax_np) / 2.0
 
