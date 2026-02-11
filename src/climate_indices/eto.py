@@ -1,14 +1,12 @@
-"""
-Module for calculation of potential evapotranspiration.
+"""Module for calculation of potential evapotranspiration.
 
---------------------------------------------------------------------------------
-Credits:
+Credits
+-------
+Derived from original code found in PyETo:
+https://github.com/woodcrafty/PyETo
 
-Derived from original code found here: https://github.com/woodcrafty/PyETo
-
---------------------------------------------------------------------------------
-References:
-
+References
+----------
 Thornthwaite, C.W. (1948) An approach toward a rational classification
 of climate. Geographical Review, Vol. 38, 55-94.
 https://www.jstor.org/stable/210739

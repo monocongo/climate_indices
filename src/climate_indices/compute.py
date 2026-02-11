@@ -222,15 +222,13 @@ def sum_to_scale(
     the number of values to sum is 3 then the resulting array
     will be [np.nan, np.nan, 13, 12, 9, 6, 9, 16, 18].
 
-    More generally:
+    More generally::
 
-    Y = f(X, n)
+        Y = f(X, n)
 
-    Y[i] == np.nan, where i < n
-    Y[i] == sum(X[i - n + 1:i + 1]), where i >= n - 1 and X[i - n + 1:i + 1]
-        contains no NaN values
-    Y[i] == np.nan, where i >= n - 1 and X[i - n + 1:i + 1] contains
-        one or more NaN values
+        Y[i] = np.nan, where i < n - 1
+        Y[i] = sum(X[i - n + 1 : i + 1]), where i >= n - 1 and X[i - n + 1 : i + 1] contains no NaN values
+        Y[i] = np.nan, where i >= n - 1 and X[i - n + 1 : i + 1] contains one or more NaN values
 
     :param values: the array of values over which we'll compute sliding sums
     :param scale: the number of values for which each sliding summation will

@@ -171,21 +171,15 @@ def spi(
     :param data_start_year: the initial year of the input precipitation dataset
     :param calibration_year_initial: initial year of the calibration period
     :param calibration_year_final: final year of the calibration period
-    :param periodicity: the periodicity of the time series represented by the
-        input data, valid/supported values are 'monthly' and 'daily'
-        'monthly' indicates an array of monthly values, assumed to span full
-         years, i.e. the first value corresponds to January of the initial year
-         and any missing final months of the final year filled with NaN values,
-         with size == # of years * 12
-         'daily' indicates an array of full years of daily values with 366 days
-         per year, as if each year were a leap year and any missing final months
-         of the final year filled with NaN values, with array size == (# years * 366)
+    :param periodicity: periodicity of the input time series; use
+        ``compute.Periodicity.monthly`` for monthly data (12 values/year) or
+        ``compute.Periodicity.daily`` for daily data (366 values/year).
     :param fitting_params: optional dictionary of pre-computed distribution
         fitting parameters, if the distribution is gamma then this dict should
         contain two arrays, keyed as "alpha" and "beta", and if the
         distribution is Pearson then this dict should contain four arrays keyed
         as "prob_zero", "loc", "scale", and "skew".
-    :return SPI values fitted to the gamma distribution at the specified time
+    :return: SPI values fitted to the gamma distribution at the specified time
         step scale, unitless
     :rtype: 1-D numpy.ndarray of floats of the same length as the input array
         of precipitation values
@@ -368,15 +362,9 @@ def spei(
         before computing the indicator
     :param distribution: distribution type to be used for the internal
         fitting/transform computation
-    :param periodicity: the periodicity of the time series represented by the
-        input data, valid/supported values are 'monthly' and 'daily'
-        'monthly' indicates an array of monthly values, assumed to span full
-         years, i.e. the first value corresponds to January of the initial year
-         and any missing final months of the final year filled with NaN values,
-         with size == # of years * 12
-         'daily' indicates an array of full years of daily values with 366 days
-         per year, as if each year were a leap year and any missing final months
-         of the final year filled with NaN values, with array size == (# years * 366)
+    :param periodicity: periodicity of the input time series; use
+        ``compute.Periodicity.monthly`` for monthly data (12 values/year) or
+        ``compute.Periodicity.daily`` for daily data (366 values/year).
     :param data_start_year: the initial year of the input datasets (assumes that
         the two inputs cover the same period)
     :param calibration_year_initial: initial year of the calibration period
@@ -550,15 +538,9 @@ def percentage_of_normal(
         over which the normal average for each calendar time step is computed
     :param calibration_end_year: the final year of the calibration period over
         which the normal average for each calendar time step is computed
-    :param periodicity: the periodicity of the time series represented by the
-        input data, valid/supported values are 'monthly' and 'daily'
-        'monthly' indicates an array of monthly values, assumed to span full
-         years, i.e. the first value corresponds to January of the initial year
-         and any missing final months of the final year filled with NaN values,
-         with size == # of years * 12
-         'daily' indicates an array of full years of daily values with 366 days
-         per year, as if each year were a leap year and any missing final months
-         of the final year filled with NaN values, with array size == (# years * 366)
+    :param periodicity: periodicity of the input time series; use
+        ``compute.Periodicity.monthly`` for monthly data (12 values/year) or
+        ``compute.Periodicity.daily`` for daily data (366 values/year).
     :return: percent of normal precipitation values corresponding to the
         scaled precipitation values array
     :rtype: numpy.ndarray of type float
@@ -719,6 +701,10 @@ def pet(
         # or numpy.apply_along_axis() where we've had to duplicate values in a 3-D
         # array of latitudes in order to correspond with a 3-D array of temperatures.
         if isinstance(latitude_degrees, np.ndarray):
+            if latitude_degrees.size == 0:
+                message = "Invalid latitude value: empty latitude array (must contain at least one value)"
+                _logger.error(message)
+                raise ValueError(message)
             latitude_degrees = cast(float, latitude_degrees.flat[0])
 
         # make sure we're not dealing with a NaN or out-of-range latitude value

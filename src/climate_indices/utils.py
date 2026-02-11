@@ -161,7 +161,7 @@ def is_data_valid(
     (ndarray or MaskArray) which is not all-NaN.
 
     :param data: data object, expected as either numpy.ndarry or numpy.ma.MaskArray
-    :return True if array is non-NaN for at least one element
+    :return: True if array is non-NaN for at least one element
         and is an array type valid for processing by other modules
     :rtype: boolean
     """

@@ -17,8 +17,7 @@
    :target: https://opensource.org/licenses/BSD-3-Clause
 .. |Python| image:: https://img.shields.io/pypi/pyversions/climate-indices
 
-.. |Build| |Coverage| |Quality| |License| |Python|
-|Build| |License| |Python|
+|Build| |Coverage| |Quality| |License| |Python|
 
 Climate Indices in Python
 =============================================
@@ -402,6 +401,7 @@ User Guides
 
    quickstart
    algorithms
+   pypi_release
    xarray_migration
    deprecations/index
    troubleshooting

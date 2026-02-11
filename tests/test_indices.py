@@ -86,6 +86,10 @@ def test_pet(
         err_msg="1-element array latitude should produce identical results to scalar latitude",
     )
 
+    # confirm that an empty latitude array raises a controlled ValueError
+    with pytest.raises(ValueError, match="empty latitude array"):
+        indices.pet(temps_celsius, np.array([]), data_year_start_monthly)
+
 
 @pytest.mark.usefixtures(
     "precips_mm_monthly",

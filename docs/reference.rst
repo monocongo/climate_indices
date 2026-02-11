@@ -30,6 +30,11 @@ climate_indices.xarray_adapter
 
 .. automodule:: climate_indices.xarray_adapter
    :members:
+   :exclude-members: InputType
+
+.. autoclass:: climate_indices.xarray_adapter.InputType
+   :members:
+   :no-index:
 
 
 Core Computation Modules
