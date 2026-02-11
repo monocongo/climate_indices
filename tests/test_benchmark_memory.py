@@ -61,14 +61,16 @@ psutil = pytest.importorskip("psutil")
 # PRD-specified dimensions for ~49GB virtual dataset (documented in section 3.4.3)
 _SPEC_N_LAT = 1440
 _SPEC_N_LON = 720
-_SPEC_N_TIME = 6400  # corrected from PRD's 1200 to reach ~49GB with float64
+# corrected from PRD's 1200 to reach ~49GB with float64
+_SPEC_N_TIME = 6400
 _SPEC_CHUNK_LAT = 100
 _SPEC_CHUNK_LON = 100
 
 # CI-friendly defaults (~225 MB virtual dataset)
 _DEFAULT_N_LAT = 36
 _DEFAULT_N_LON = 18
-_DEFAULT_N_TIME = 480  # 40 years monthly
+# 40 years monthly
+_DEFAULT_N_TIME = 480
 _DEFAULT_CHUNK_LAT = 18
 _DEFAULT_CHUNK_LON = 18
 
@@ -87,14 +89,17 @@ _SPI_SCALE = 3
 _SPI_DISTRIBUTION = Distribution.gamma
 
 # memory budgets (in GB)
-_PEAK_MEMORY_HARD_LIMIT_GB = 16.0  # hard limit for strict mode
-_PEAK_MEMORY_IDEAL_LIMIT_GB = 8.0  # ideal limit (reported but not enforced)
+# hard limit for strict mode
+_PEAK_MEMORY_HARD_LIMIT_GB = 16.0
+# ideal limit (reported but not enforced)
+_PEAK_MEMORY_IDEAL_LIMIT_GB = 8.0
 
 # minimum virtual dataset size (in GB) to run the peak memory test
 _MIN_VIRTUAL_DATASET_GB = 1.0
 
 # RSS sampling interval for peak memory tracking (in seconds)
-_RSS_SAMPLE_INTERVAL_S = 0.01  # 10ms
+# 10ms
+_RSS_SAMPLE_INTERVAL_S = 0.01
 
 
 class _PeakRSSMonitor:
@@ -335,8 +340,10 @@ class TestMemoryEfficiency:
             # the entire result into memory
             num_tiles = min(4, len(result_lazy.chunks[1]) * len(result_lazy.chunks[2]))
             for i in range(num_tiles):
-                lat_idx = i % len(result_lazy.chunks[1])
-                lon_idx = i // len(result_lazy.chunks[1])
+                # row index (advances after exhausting all longitude chunks)
+                lat_idx = i // len(result_lazy.chunks[2])
+                # column index (cycles through longitude chunks)
+                lon_idx = i % len(result_lazy.chunks[2])
                 # compute single spatial tile
                 _ = result_lazy.isel(
                     lat=slice(lat_idx * _CHUNK_LAT, (lat_idx + 1) * _CHUNK_LAT),

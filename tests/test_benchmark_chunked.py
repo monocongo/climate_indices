@@ -167,9 +167,12 @@ class TestChunkedWeakScaling:
 
             # check chunk counts
             time_chunks, lat_chunks, lon_chunks = da.chunks
-            assert len(time_chunks) == 1  # single time chunk
-            assert len(lat_chunks) == n_chunks  # n spatial chunks along lat
-            assert len(lon_chunks) == 1  # single lon chunk
+            # single time chunk
+            assert len(time_chunks) == 1
+            # n spatial chunks along lat
+            assert len(lat_chunks) == n_chunks
+            # single lon chunk
+            assert len(lon_chunks) == 1
 
             # check chunk sizes
             assert time_chunks[0] == _CHUNK_TIME

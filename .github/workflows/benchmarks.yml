@@ -24,7 +24,7 @@ jobs:
         uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081  # v5
 
       - name: Set up project
-        run: uv sync --dev
+        run: uv sync --group dev
 
       - name: Run benchmarks
         run: |
