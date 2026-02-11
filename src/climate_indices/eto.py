@@ -156,7 +156,7 @@ def _daylight_hours(
 
 def _monthly_mean_daylight_hours(
     latitude_radians: float,
-    leap=False,
+    leap: bool = False,
 ) -> np.ndarray:
     """
     Computes the monthly mean daylight hours at the specified latitude.
