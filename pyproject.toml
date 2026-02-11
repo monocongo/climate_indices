@@ -192,5 +192,6 @@ dev = [
     "twine>=6.1.0",
 ]
 security = [
+    "cryptography>=46.0.5",
     "pip-audit>=2.9.0",
 ]
