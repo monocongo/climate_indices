@@ -29,6 +29,7 @@ from typing import Any, TypedDict
 
 import numpy as np
 import pandas as pd
+import structlog.stdlib
 import xarray as xr
 
 from climate_indices import compute, eto, indices
@@ -42,7 +43,7 @@ from climate_indices.exceptions import (
 from climate_indices.logging_config import get_logger
 
 
-def _log():
+def _log() -> structlog.stdlib.BoundLogger:
     """Return a logger resolved at call time.
 
     Tests reset structlog globals between cases. Resolving lazily avoids
@@ -338,7 +339,7 @@ def _validate_time_monotonicity(time_coord: xr.DataArray) -> None:
     if is_monotonic:
         return
 
-    dim_name = time_coord.dims[0] if time_coord.dims else "time"
+    dim_name = str(time_coord.dims[0]) if time_coord.dims else "time"
     error_msg = _build_non_monotonic_message(time_coord, dim_name)
 
     _log().error(
@@ -1550,7 +1551,7 @@ def xarray_adapter(
                     return func(*numpy_arrays, **valid_kwargs)
 
                 # call apply_ufunc without Dask support (in-memory vectorization)
-                result_da: xr.DataArray = xr.apply_ufunc(
+                result_array: xr.DataArray = xr.apply_ufunc(
                     _numpy_func_wrapper,
                     *input_dataarrays,
                     input_core_dims=[[time_dim]] * len(input_dataarrays),
@@ -1761,9 +1762,13 @@ def pet_thornthwaite(
         # delegate to indices.pet with explicit data_start_year requirement
         if data_start_year is None:
             raise ValueError("data_start_year is required for numpy inputs")
+        # narrow type for mypy
+        assert isinstance(temperature, np.ndarray)
         return indices.pet(temperature, lat_float, data_start_year)
 
     # xarray path: validate → infer → compute → rewrap
+    # at this point temperature must be an xr.DataArray (numpy path returned above)
+    assert isinstance(temperature, xr.DataArray)
     temp_da = temperature
 
     # validate time dimension
@@ -1856,7 +1861,8 @@ def pet_thornthwaite(
         latitude=lat_desc,
     )
 
-    return result
+    result_array: xr.DataArray = result
+    return result_array
 
 
 def pet_hargreaves(
@@ -1982,11 +1988,17 @@ def pet_hargreaves(
         # convert latitude to float if it's a numpy scalar
         lat_float = float(latitude) if isinstance(latitude, np.floating) else latitude
         # auto-derive tmean as per Hargreaves standard approach
+        # narrow types for mypy
+        assert isinstance(daily_tmin_celsius, np.ndarray)
+        assert isinstance(daily_tmax_celsius, np.ndarray)
         tmean = (daily_tmin_celsius + daily_tmax_celsius) / 2.0
         # delegate to eto.eto_hargreaves
         return eto.eto_hargreaves(daily_tmin_celsius, daily_tmax_celsius, tmean, lat_float)
 
     # xarray path: validate → align → compute → rewrap
+    # at this point both inputs must be xr.DataArray (numpy path returned above)
+    assert isinstance(daily_tmin_celsius, xr.DataArray)
+    assert isinstance(daily_tmax_celsius, xr.DataArray)
     tmin_da = daily_tmin_celsius
     tmax_da = daily_tmax_celsius
 
@@ -2099,4 +2111,5 @@ def pet_hargreaves(
         latitude=lat_desc,
     )
 
-    return result
+    result_array: xr.DataArray = result
+    return result_array
