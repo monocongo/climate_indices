@@ -14,7 +14,10 @@
 import os
 import sys
 
-import toml
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 
 # since our source files are under a src folder we need to add that as our first path
 sys.path.insert(0, os.path.abspath("../src"))
@@ -25,7 +28,8 @@ project = "climate_indices"
 author = "James Adams"
 
 # parse the version information from pyproject.toml
-pyproject = toml.load("../pyproject.toml")
+with open("../pyproject.toml", "rb") as f:
+    pyproject = tomllib.load(f)
 
 # get the full release version, including alpha/beta/rc tags
 release = pyproject["project"]["version"]
@@ -46,8 +50,10 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.doctest",
     "sphinx.ext.intersphinx",
+    "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
     "sphinx.ext.githubpages",
+    "sphinx_autodoc_typehints",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -67,15 +73,34 @@ master_doc = "index"
 #
 # This is also used if you do content translation via gettext catalogs.
 # Usually you set "language" from the command line for these cases.
-language = None
+language = "en"
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path .
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "source/**"]
 
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = "sphinx"
+
+# -- Autodoc configuration ---------------------------------------------------
+autodoc_default_options = {
+    "members": True,
+    "undoc-members": True,
+    "show-inheritance": True,
+    "member-order": "bysource",
+}
+autodoc_typehints = "description"
+
+# -- Napoleon configuration --------------------------------------------------
+napoleon_google_docstring = True
+napoleon_numpy_docstring = False
+napoleon_include_init_with_doc = True
+napoleon_attr_annotations = True
+
+# -- sphinx-autodoc-typehints ------------------------------------------------
+typehints_fully_qualified = False
+always_document_param_types = True
 
 
 # -- Options for HTML output -------------------------------------------------
@@ -83,7 +108,7 @@ pygments_style = "sphinx"
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = "sphinxdoc"
+html_theme = "sphinx_rtd_theme"
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
@@ -173,5 +198,18 @@ texinfo_documents = [
 
 # -- Options for intersphinx extension ---------------------------------------
 
-# Example configuration for intersphinx: refer to the Python standard library.
-# intersphinx_mapping = {'https://docs.python.org/': None}(climate_indices)
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+    "numpy": ("https://numpy.org/doc/stable/", None),
+    "xarray": ("https://docs.xarray.dev/en/stable/", None),
+    "scipy": ("https://docs.scipy.org/doc/scipy/", None),
+}
+
+# -- Options for doctest extension -------------------------------------------
+doctest_global_setup = """
+import numpy as np
+import pandas as pd
+import xarray as xr
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+"""

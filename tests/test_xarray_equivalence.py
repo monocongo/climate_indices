@@ -317,17 +317,92 @@ class TestSPEIXarrayEquivalence:
 
 
 class TestPETXarrayEquivalence:
-    """Verify PET xarray results match NumPy reference computations.
+    """Verify PET xarray results match NumPy reference computations."""
 
-    These tests are stubbed pending Epic 3 implementation of PET xarray wrappers.
-    """
+    def test_pet_thornthwaite_equivalence(
+        self,
+        bench_monthly_temp_np: np.ndarray,
+        bench_monthly_temp_da: xr.DataArray,
+    ):
+        """Thornthwaite PET xarray should match NumPy computation.
 
-    @pytest.mark.skip(reason="Awaiting Epic 3 PET xarray wrappers")
-    def test_pet_thornthwaite_equivalence(self):
-        """Thornthwaite PET xarray should match NumPy computation."""
-        pass
+        Verifies that wrapping monthly temperature data in xarray DataArray
+        produces numerically identical PET results to the NumPy path.
+        """
+        # import here to avoid circular dependency
+        from climate_indices.xarray_adapter import pet_thornthwaite
 
-    @pytest.mark.skip(reason="Awaiting Epic 3 PET xarray wrappers")
-    def test_pet_hargreaves_equivalence(self):
-        """Hargreaves PET xarray should match NumPy computation."""
-        pass
+        # latitude for testing - typical mid-latitude location
+        latitude = 40.0
+
+        # compute via NumPy path
+        numpy_result = indices.pet(
+            temperature_celsius=bench_monthly_temp_np,
+            latitude_degrees=latitude,
+            data_start_year=1980,
+        )
+
+        # compute via xarray path (fixture already has proper time coords)
+        xarray_result = pet_thornthwaite(
+            temperature=bench_monthly_temp_da,
+            latitude=latitude,
+        )
+
+        # verify equivalence
+        assert isinstance(xarray_result, xr.DataArray)
+
+        np.testing.assert_allclose(
+            xarray_result.values,
+            numpy_result,
+            atol=1e-8,
+            rtol=1e-7,
+            equal_nan=True,
+            err_msg="PET Thornthwaite differs between NumPy and xarray paths",
+        )
+
+    def test_pet_hargreaves_equivalence(
+        self,
+        bench_daily_tmin_np: np.ndarray,
+        bench_daily_tmax_np: np.ndarray,
+        bench_daily_tmin_da: xr.DataArray,
+        bench_daily_tmax_da: xr.DataArray,
+    ):
+        """Hargreaves PET xarray should match NumPy computation.
+
+        Verifies that wrapping daily tmin/tmax data in xarray DataArrays
+        produces numerically identical PET results to the NumPy path.
+        """
+        # import here to avoid circular dependency
+        from climate_indices.eto import eto_hargreaves
+        from climate_indices.xarray_adapter import pet_hargreaves
+
+        # latitude for testing - typical mid-latitude location
+        latitude = 40.0
+
+        # compute via NumPy path - eto_hargreaves requires tmean as well
+        tmean_np = (bench_daily_tmin_np + bench_daily_tmax_np) / 2.0
+        numpy_result = eto_hargreaves(
+            daily_tmin_celsius=bench_daily_tmin_np,
+            daily_tmax_celsius=bench_daily_tmax_np,
+            daily_tmean_celsius=tmean_np,
+            latitude_degrees=latitude,
+        )
+
+        # compute via xarray path (pet_hargreaves derives tmean automatically)
+        xarray_result = pet_hargreaves(
+            daily_tmin_celsius=bench_daily_tmin_da,
+            daily_tmax_celsius=bench_daily_tmax_da,
+            latitude=latitude,
+        )
+
+        # verify equivalence
+        assert isinstance(xarray_result, xr.DataArray)
+
+        np.testing.assert_allclose(
+            xarray_result.values,
+            numpy_result,
+            atol=1e-8,
+            rtol=1e-7,
+            equal_nan=True,
+            err_msg="PET Hargreaves differs between NumPy and xarray paths",
+        )

@@ -18,7 +18,7 @@ _logger = utils.get_logger(__name__, logging.WARN)
 MIN_VALUES_FOR_LMOMENTS = 4
 
 
-def fit(timeseries: np.ndarray) -> dict:
+def fit(timeseries: np.ndarray) -> dict[str, float]:
     """
     Returns the L-Moments fit (loc, scale, skew) corresponding to the
     input array of values.
@@ -39,7 +39,7 @@ def fit(timeseries: np.ndarray) -> dict:
     return _estimate_pearson3_parameters(lmoments)
 
 
-def _estimate_pearson3_parameters(lmoments: np.ndarray) -> dict:
+def _estimate_pearson3_parameters(lmoments: np.ndarray) -> dict[str, float]:
     """
     Estimate parameters via L-moments for the Pearson Type III distribution,
     based on Fortran code written for inclusion in IBM Research Report RC20525,
@@ -158,12 +158,12 @@ def _estimate_lmoments(
             sums[j] = sums[j] + term
 
     y = float(number_of_values)
-    z = float(number_of_values)
-    sums[0] = sums[0] / z
+    z_val: float = float(number_of_values)
+    sums[0] = sums[0] / z_val
     for j in range(1, 3):
         y = y - 1.0
-        z = z * y
-        sums[j] = sums[j] / z
+        z_val = z_val * y
+        sums[j] = sums[j] / z_val
 
     k = 3
     p0 = -1.0

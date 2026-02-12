@@ -6,6 +6,7 @@ users to catch all library-specific errors with a single handler.
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 __all__ = [
@@ -22,7 +23,13 @@ __all__ = [
     "ShortCalibrationWarning",
     "GoodnessOfFitWarning",
     "InputAlignmentWarning",
+    "BetaFeatureWarning",
+    "ClimateIndicesDeprecationWarning",
+    "emit_deprecation_warning",
 ]
+
+# private constant for constructing migration guide URLs
+_MIGRATION_GUIDE_URL_BASE = "https://climate-indices.readthedocs.io/en/stable/deprecations/"
 
 
 class ClimateIndicesError(Exception):
@@ -321,3 +328,101 @@ class InputAlignmentWarning(ClimateIndicesWarning):
         self.original_size = original_size
         self.aligned_size = aligned_size
         self.dropped_count = dropped_count
+
+
+class BetaFeatureWarning(ClimateIndicesWarning):
+    """Warning for features marked as beta/experimental.
+
+    Beta features have stable behavior within a minor version but their API
+    surface (parameter names, return types, metadata attributes) may change
+    in future minor releases. The core computation results are identical
+    to the stable NumPy API.
+
+    Users can suppress beta warnings via:
+        warnings.filterwarnings("ignore", category=BetaFeatureWarning)
+    """
+
+    pass
+
+
+class ClimateIndicesDeprecationWarning(ClimateIndicesWarning, DeprecationWarning):
+    """Warning for deprecated features scheduled for removal.
+
+    This warning class dual-inherits from both ClimateIndicesWarning and
+    DeprecationWarning, enabling users to filter by either category:
+
+        # filter all library warnings
+        warnings.filterwarnings("ignore", category=ClimateIndicesWarning)
+
+        # filter all deprecation warnings (including this library's)
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+    Attributes:
+        deprecated_in: Version where the feature was deprecated (e.g., "2.3.0")
+        removal_version: Version where the feature will be removed (e.g., "3.0.0")
+        alternative: Recommended replacement feature or approach
+        migration_url: URL to migration guide or None for default docs
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        deprecated_in: str | None = None,
+        removal_version: str | None = None,
+        alternative: str | None = None,
+        migration_url: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.deprecated_in = deprecated_in
+        self.removal_version = removal_version
+        self.alternative = alternative
+        self.migration_url = migration_url
+
+
+def emit_deprecation_warning(
+    *,
+    feature: str,
+    alternative: str,
+    deprecated_in: str,
+    removal_version: str,
+    migration_url: str | None = None,
+    stacklevel: int = 3,
+) -> None:
+    """Emit a standardized deprecation warning.
+
+    This helper constructs a consistent deprecation message and emits it
+    using the ClimateIndicesDeprecationWarning category.
+
+    Args:
+        feature: Description of what is deprecated (e.g., "Parameter 'fitdict'")
+        alternative: Recommended replacement (e.g., "Use 'distribution_params' instead")
+        deprecated_in: Version where deprecation was introduced (e.g., "2.3.0")
+        removal_version: Version where feature will be removed (e.g., "3.0.0")
+        migration_url: URL to migration guide. If None, uses base docs URL.
+            If relative path (no scheme), appends to _MIGRATION_GUIDE_URL_BASE.
+        stacklevel: Stack level for warnings.warn (default 3 for typical call depth)
+    """
+    # construct migration URL
+    if migration_url is None:
+        url = _MIGRATION_GUIDE_URL_BASE.rstrip("/")
+    elif "://" in migration_url:
+        # absolute URL
+        url = migration_url
+    else:
+        # relative path
+        url = _MIGRATION_GUIDE_URL_BASE.rstrip("/") + "/" + migration_url.lstrip("/")
+
+    # construct message
+    message = (
+        f"{feature} is deprecated since version {deprecated_in}. "
+        f"{alternative}. "
+        f"This will be removed in version {removal_version}. "
+        f"Migration guide: {url}"
+    )
+
+    warnings.warn(
+        message,
+        ClimateIndicesDeprecationWarning,
+        stacklevel=stacklevel,
+    )
