@@ -54,7 +54,7 @@ src/climate_indices/
 ├── 🚪 CLI Entry Points
 │   ├── __main__.py              🔴 CRITICAL - Full-featured CLI
 │   │   ├── Entry: climate_indices, process_climate_indices
-│   │   ├── Lines: 1826
+│   │   ├── Lines: 1872
 │   │   ├── Purpose: Batch processing of NetCDF datasets (all indices)
 │   │   ├── Features:
 │   │   │   ├── Multiprocessing pool for gridded data
@@ -66,7 +66,7 @@ src/climate_indices/
 │   │
 │   └── __spi__.py               🟡 HIGH PRIORITY - Specialized SPI CLI
 │       ├── Entry: spi
-│       ├── Lines: 1478
+│       ├── Lines: 1477
 │       ├── Purpose: SPI computation with parameter caching
 │       ├── Features:
 │       │   ├── Distribution fitting parameter save/load (NetCDF)
@@ -80,7 +80,7 @@ src/climate_indices/
 ```
 ├── 🌐 Public APIs
 │   ├── __init__.py              🔴 CRITICAL - Package exports
-│   │   ├── Lines: 43
+│   │   ├── Lines: 42
 │   │   ├── Purpose: Define public API surface
 │   │   ├── Exports:
 │   │   │   ├── Modern API: spi(), spei() from typed_public_api
@@ -106,7 +106,7 @@ src/climate_indices/
 │   │   └── AI Note: Preferred API for new code; strict type checking enforced
 │   │
 │   ├── xarray_adapter.py        🔴 CRITICAL (EXPANDED IN 2.2.0)
-│   │   ├── Lines: 1417 (was ~400 in 2.1.0)
+│   │   ├── Lines: 2102 (was ~400 in 2.1.0)
 │   │   ├── Purpose: CF-compliant xarray interface
 │   │   ├── Features:
 │   │   │   ├── Input type detection (DataArray, Dataset, ndarray)
@@ -125,7 +125,7 @@ src/climate_indices/
 │   │   └── AI Note: Primary entry point for modern xarray workflows
 │   │
 │   └── indices.py               🟡 HIGH PRIORITY - Legacy numpy API
-│       ├── Lines: 701
+│       ├── Lines: 856
 │       ├── Purpose: Backward-compatible numpy interface
 │       ├── Stability: MUST remain stable (breaking changes require major version)
 │       ├── Functions:
@@ -141,7 +141,7 @@ src/climate_indices/
 ```
 ├── 🧮 Core Computation
 │   ├── compute.py               🔴 CRITICAL - Mathematical core
-│   │   ├── Lines: 1127
+│   │   ├── Lines: 1328
 │   │   ├── Purpose: Core algorithms for climate index calculation
 │   │   ├── Key Functions:
 │   │   │   ├── scale_values() - Rolling sum for temporal scaling
@@ -159,7 +159,7 @@ src/climate_indices/
 │   │   └── AI Note: Pure functions, heavily tested, ~100% coverage
 │   │
 │   └── palmer.py                🟡 HIGH PRIORITY - Palmer indices
-│       ├── Lines: 806
+│       ├── Lines: 912
 │       ├── Purpose: Palmer Drought Index family
 │       ├── Indices Computed:
 │       │   ├── PDSI - Palmer Drought Severity Index
@@ -174,7 +174,7 @@ src/climate_indices/
 ```
 ├── 📐 Math/Statistics
 │   ├── eto.py                   🟡 HIGH PRIORITY - PET methods
-│   │   ├── Lines: 416
+│   │   ├── Lines: 405
 │   │   ├── Purpose: Potential Evapotranspiration computation
 │   │   ├── Methods:
 │   │   │   ├── Thornthwaite (1948) - Monthly PET from temperature + latitude
@@ -188,7 +188,7 @@ src/climate_indices/
 │   │   └── AI Note: Self-contained, no upper-layer dependencies
 │   │
 │   └── lmoments.py              🟢 SPECIALTY - L-moments
-│       ├── Lines: 94
+│       ├── Lines: 188
 │       ├── Purpose: L-moments for robust Pearson Type III fitting
 │       ├── Algorithm: Hosking (1990) L-moments
 │       └── AI Note: Used by compute.pearson_parameters()
@@ -198,7 +198,7 @@ src/climate_indices/
 ```
 └── 🏗️  Infrastructure
     ├── exceptions.py            🔴 CRITICAL - Exception hierarchy
-    │   ├── Lines: 324
+    │   ├── Lines: 323
     │   ├── Purpose: Structured error handling
     │   ├── Base: ClimateIndicesError (catch-all)
     │   ├── Computation Errors:
@@ -218,7 +218,7 @@ src/climate_indices/
     │   └── AI Note: All exceptions carry context attributes for debugging
     │
     ├── logging_config.py        🟢 UTILITY - Structured logging
-    │   ├── Lines: 76
+    │   ├── Lines: 146
     │   ├── Purpose: Configure structlog for library
     │   ├── Features:
     │   │   ├── JSON serialization for file logs
@@ -228,7 +228,7 @@ src/climate_indices/
     │   └── AI Note: Call configure_logging() before library use
     │
     ├── utils.py                 🟡 HIGH PRIORITY - Utilities
-    │   ├── Lines: 396
+    │   ├── Lines: 549
     │   ├── Purpose: Cross-cutting utility functions
     │   ├── Key Functions:
     │   │   ├── Calendar conversions:
@@ -245,7 +245,7 @@ src/climate_indices/
     │   └── AI Note: Pure functions, widely used across codebase
     │
     └── performance.py           🟢 NEW IN 2.2.0 - Performance tracking
-        ├── Lines: 112
+        ├── Lines: 118
         ├── Purpose: Observability and profiling
         ├── Features:
         │   ├── @measure_execution_time decorator
@@ -261,7 +261,7 @@ src/climate_indices/
 tests/
 ├── 📋 Fixture Definition
 │   ├── conftest.py              🔴 CRITICAL - Shared fixtures
-│   │   ├── Lines: 1005
+│   │   ├── Lines: 1004
 │   │   ├── Scope: Session-scoped for performance
 │   │   ├── Fixture Categories:
 │   │   │   ├── Numpy arrays (precips, temps, PET)
@@ -375,17 +375,17 @@ docs/
 ├── unit-tests-workflow.yml      🔴 CRITICAL - Test matrix
 │   ├── Trigger: Push, PR
 │   ├── Matrix: Python 3.10-3.13 × ubuntu-latest
-│   ├── Steps: uv sync → pytest → codecov
+│   ├── Steps: uv sync --dev → pytest
 │   └── Purpose: Ensure compatibility across Python versions
 │
 ├── release.yml                  🟡 Automated PyPI releases
 │   ├── Trigger: Git tag (vX.Y.Z)
-│   ├── Steps: Build (hatchling) → Publish (PyPI) → GitHub Release
+│   ├── Steps: Test matrix → Build → twine check → Publish (PyPI trusted publishing)
 │   └── Purpose: Streamline release process
 │
 └── benchmarks.yml               🟢 NEW IN 2.2.0 - Performance tracking
-    ├── Trigger: Manual dispatch, scheduled (weekly)
-    ├── Steps: pytest -m benchmark → compare → artifact
+    ├── Trigger: PR to master, manual dispatch
+    ├── Steps: uv sync --group dev → pytest -m benchmark --benchmark-enable → artifact → optional compare
     └── Purpose: Detect performance regressions
 ```
 

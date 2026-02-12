@@ -48,9 +48,8 @@ ENTRYPOINT ["python", "-m", "climate_indices"]
 **Steps**:
 1. Checkout code
 2. Setup Python and uv
-3. Install dependencies: `uv sync --group dev`
+3. Install dependencies: `uv sync --dev`
 4. Run tests: `pytest`
-5. Upload coverage to Codecov
 
 **Configuration**:
 ```yaml
@@ -69,8 +68,9 @@ strategy:
 3. Build distribution: `python -m build`
    - Wheel: `climate_indices-X.Y.Z-py3-none-any.whl`
    - Source dist: `climate_indices-X.Y.Z.tar.gz`
-4. Publish to PyPI using `PYPI_API_TOKEN`
-5. Create GitHub release with artifacts
+4. Validate package metadata: `twine check dist/*`
+5. Publish to PyPI using trusted publishing (OIDC, no `PYPI_API_TOKEN`)
+6. `release` environment requires manual approval before publish
 
 **Release Process**:
 ```bash
@@ -83,21 +83,21 @@ git push origin master --tags
 
 # 3. GitHub Actions automatically:
 #    - Builds packages
-#    - Uploads to PyPI
-#    - Creates GitHub release
+#    - Runs twine checks
+#    - Uploads to PyPI (trusted publishing)
 ```
 
 ### 3. Benchmarks Workflow (`benchmarks.yml`)
 
-**Trigger**: Manual dispatch, scheduled (weekly)
+**Trigger**: Pull requests targeting `master`, manual dispatch
 
 **Steps**:
 1. Checkout code
 2. Setup Python and uv
-3. Install dependencies with performance group: `uv sync --group dev --group performance`
-4. Run benchmarks: `pytest -m benchmark --benchmark-json`
-5. Compare against baseline
-6. Store results as artifact
+3. Install dependencies: `uv sync --group dev`
+4. Run benchmarks: `pytest -m benchmark --benchmark-enable --benchmark-json=benchmark-results.json --benchmark-columns=mean,stddev,rounds`
+5. Store results as artifact
+6. Compare against baseline when `.benchmarks/baseline.json` exists
 
 **Benchmark Results**:
 - Stored in GitHub Actions artifacts
@@ -215,9 +215,9 @@ configure_logging(
 - Logged in structured format
 
 ### Coverage Tracking
-- **Service**: Codecov
+- **Service**: No external upload step in current GitHub Actions workflows
 - **Target**: >90% line coverage
-- **Badge**: Displayed on GitHub README
+- **Verification**: Enforced via test suite execution in CI
 
 ---
 

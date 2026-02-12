@@ -128,13 +128,10 @@
   "existing_documentation": {
     "sphinx_rst": [
       "index.rst",
-      "quickstart.rst",
-      "algorithms.rst",
       "reference.rst",
-      "xarray_migration.rst",
       "pypi_release.rst",
-      "deprecations/index.rst",
-      "troubleshooting.rst"
+      "source/modules.rst",
+      "source/tests.rst"
     ],
     "readme_files": [
       "README.md",
@@ -145,7 +142,7 @@
   "test_infrastructure": {
     "test_framework": "pytest",
     "fixture_file": "tests/conftest.py",
-    "fixture_line_count": 1005,
+    "fixture_line_count": 1004,
     "test_categories": {
       "core_functionality": [
         "test_indices.py",
@@ -192,12 +189,12 @@
     "release": {
       "file": ".github/workflows/release.yml",
       "trigger": "git_tag",
-      "actions": "build, pypi_publish, github_release"
+      "actions": "test_matrix, build, twine_check, pypi_publish_trusted"
     },
     "benchmarks": {
       "file": ".github/workflows/benchmarks.yml",
-      "trigger": "manual_dispatch, scheduled_weekly",
-      "actions": "benchmark_run, compare, artifact_store"
+      "trigger": "pull_request_master, manual_dispatch",
+      "actions": "benchmark_run_with_json, artifact_store, optional_baseline_compare"
     }
   },
   "architectural_invariants": [

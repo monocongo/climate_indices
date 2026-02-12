@@ -252,7 +252,7 @@ Before submitting:
 2. Add high-level function to `indices.py` (numpy API)
 3. Add wrapper to `xarray_adapter.py` (xarray API)
 4. Add tests in `tests/test_compute.py`, `test_indices.py`, `test_xarray_adapter.py`
-5. Update documentation in `docs/algorithms.rst`
+5. Update documentation in `docs/reference.rst`
 
 ### Fixing a Bug
 1. Write a failing test that reproduces the bug
