@@ -10,15 +10,13 @@ Satisfies FR-TEST-005 (Property-Based Testing).
 
 from __future__ import annotations
 
+import logging
 import warnings
 
 import numpy as np
 import pytest
 from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
-
-# load logging suppression fixture for Hypothesis tests
-pytest_plugins = ["tests.helpers.logging"]
 
 from climate_indices import compute, eto, indices, palmer
 from climate_indices.exceptions import GoodnessOfFitWarning, MissingDataWarning, ShortCalibrationWarning
@@ -32,6 +30,9 @@ from tests.helpers.strategies import (
     valid_latitude,
     valid_scale,
 )
+
+# disable logging output during hypothesis test runs to reduce noise
+logging.disable(logging.CRITICAL)
 
 # ============================================================================
 # Group A: Boundedness Tests
