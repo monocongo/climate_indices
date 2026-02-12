@@ -1,8 +1,13 @@
+import logging
+
 import numpy as np
 import pytest
 
 from climate_indices import compute, indices
 from climate_indices.exceptions import InvalidArgumentError
+
+# disable logging messages
+logging.disable(logging.CRITICAL)
 
 UNEXPECTED_ALL_NANS_MESSAGE = "All-NaN input array does not result in the expected all-NaN result"
 

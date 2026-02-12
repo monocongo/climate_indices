@@ -7,7 +7,6 @@ pytest_plugins = [
     "tests.conftest_numpy",
     "tests.conftest_xarray",
     "tests.conftest_benchmark",
-    "tests.helpers.logging",
 ]
 
 # ==============================================================================
