@@ -17,11 +17,11 @@ import pytest
 from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
-from climate_indices import compute, eto, indices, palmer
-from climate_indices.exceptions import GoodnessOfFitWarning, MissingDataWarning, ShortCalibrationWarning
-
 # load logging suppression fixture for Hypothesis tests
 pytest_plugins = ["tests.helpers.logging"]
+
+from climate_indices import compute, eto, indices, palmer
+from climate_indices.exceptions import GoodnessOfFitWarning, MissingDataWarning, ShortCalibrationWarning
 
 # import shared Hypothesis strategies
 from tests.helpers.strategies import (
