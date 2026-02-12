@@ -2231,7 +2231,7 @@ class TestXarrayAdapterMultiInput:
         @xarray_adapter(additional_input_names=["threshold"])
         def threshold_func(precip: np.ndarray, threshold: float) -> np.ndarray:
             # threshold should remain a float, not be extracted
-            assert isinstance(threshold, (int, float))
+            assert isinstance(threshold, int | float)
             return precip - threshold
 
         result = threshold_func(sample_monthly_precip_da, threshold=100.0)
@@ -2246,7 +2246,7 @@ class TestXarrayAdapterMultiInput:
         def mixed_func(precip: np.ndarray, pet: np.ndarray, factor: float) -> np.ndarray:
             assert isinstance(precip, np.ndarray)
             assert isinstance(pet, np.ndarray)
-            assert isinstance(factor, (int, float))
+            assert isinstance(factor, int | float)
             return (precip - pet) * factor
 
         result = mixed_func(sample_monthly_precip_da, sample_monthly_pet_da, factor=1.5)

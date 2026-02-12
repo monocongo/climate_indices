@@ -213,7 +213,7 @@ class TestZeroPrecipitationFix:
             )
 
             # Check log output for high failure rate warning
-            log_output = log_capture.getvalue()
+            log_capture.getvalue()
 
             # The test should verify the new architecture works by checking that:
             # 1. Function completes without crashing
@@ -534,7 +534,7 @@ class TestZeroPrecipitationFix:
             compute.calculate_time_step_params(insufficient_data)
         except compute.DistributionFittingError as e:
             # Should catch both InsufficientDataError and PearsonFittingError
-            assert isinstance(e, (compute.InsufficientDataError, compute.PearsonFittingError))
+            assert isinstance(e, compute.InsufficientDataError | compute.PearsonFittingError)
             assert str(e)  # Should have meaningful message
 
         # Test with SPI - should handle the exception gracefully via fallback strategy

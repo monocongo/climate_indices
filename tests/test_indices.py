@@ -76,6 +76,20 @@ def test_pet(
     # in the relevant test_compute.py or test_eto.py codes
     indices.pet(temps_celsius, np.array([latitude_degrees]), data_year_start_monthly)
 
+    # verify that 1-element array latitude produces identical results to scalar latitude
+    # this validates the removal of the size > 1 guard in indices.py:721
+    pet_scalar = indices.pet(temps_celsius, latitude_degrees, data_year_start_monthly)
+    pet_array_1elem = indices.pet(temps_celsius, np.array([latitude_degrees]), data_year_start_monthly)
+    np.testing.assert_array_equal(
+        pet_scalar,
+        pet_array_1elem,
+        err_msg="1-element array latitude should produce identical results to scalar latitude",
+    )
+
+    # confirm that an empty latitude array raises a controlled ValueError
+    with pytest.raises(ValueError, match="empty latitude array"):
+        indices.pet(temps_celsius, np.array([]), data_year_start_monthly)
+
 
 @pytest.mark.usefixtures(
     "precips_mm_monthly",
@@ -361,6 +375,110 @@ def test_spi(
             calibration_year_end_monthly,
             "unsupported_value",
         )
+
+
+def test_masked_array_edge_cases(
+    precips_mm_monthly,
+    data_year_start_monthly,
+    data_year_end_monthly,
+) -> None:
+    """
+    Test MaskedArray edge cases to validate the isinstance(x, np.ma.MaskedArray)
+    and x.mask.all() pattern used throughout the codebase.
+
+    Tests three scenarios:
+    (a) MaskedArray with mask=False (no values masked)
+    (b) MaskedArray with partial mask (some values masked)
+    (c) MaskedArray with full mask (all values masked)
+    """
+    # setup: create test data
+    scale = 6
+    distribution = indices.Distribution.gamma
+    periodicity = compute.Periodicity.monthly
+
+    # (a) MaskedArray with mask=False - should work normally
+    masked_no_mask = np.ma.array(precips_mm_monthly, mask=False)
+    result_no_mask = indices.spi(
+        masked_no_mask,
+        scale,
+        distribution,
+        data_year_start_monthly,
+        data_year_start_monthly,
+        data_year_end_monthly,
+        periodicity,
+    )
+    # should produce valid results (not all NaN)
+    assert not np.all(np.isnan(result_no_mask)), "MaskedArray with mask=False should produce valid results"
+
+    # (b) MaskedArray with partial mask - should handle partially masked data
+    partial_mask = np.zeros(precips_mm_monthly.shape, dtype=bool)
+    # mask the first 10% of values
+    mask_count = max(1, precips_mm_monthly.size // 10)
+    partial_mask.flat[:mask_count] = True
+    masked_partial = np.ma.array(precips_mm_monthly, mask=partial_mask)
+    result_partial = indices.spi(
+        masked_partial,
+        scale,
+        distribution,
+        data_year_start_monthly,
+        data_year_start_monthly,
+        data_year_end_monthly,
+        periodicity,
+    )
+    # should produce results with some valid values (not all NaN)
+    assert not np.all(np.isnan(result_partial)), "MaskedArray with partial mask should produce some valid results"
+    # some values may be NaN due to masking
+    assert result_partial.size > 0, "Result should have non-zero size"
+
+    # (c) MaskedArray with full mask - should return quickly without computation
+    masked_full = np.ma.array(precips_mm_monthly, mask=True)
+    result_full = indices.spi(
+        masked_full,
+        scale,
+        distribution,
+        data_year_start_monthly,
+        data_year_start_monthly,
+        data_year_end_monthly,
+        periodicity,
+    )
+    # should return all NaN or all masked
+    assert np.all(np.isnan(result_full)) or (isinstance(result_full, np.ma.MaskedArray) and result_full.mask.all()), (
+        "MaskedArray with full mask should return all NaN or fully masked result"
+    )
+
+    # also test a compute function directly: transform_fitted_gamma
+    # this validates the pattern at the compute module level
+    # create monthly test data (12 months minimum required)
+    test_values = np.array([10.0, 20.0, 30.0, 40.0, 50.0, 15.0, 25.0, 35.0, 45.0, 55.0, 12.0, 22.0])
+
+    # (a) no mask
+    masked_values_no_mask = np.ma.array(test_values, mask=False)
+    result_compute_no_mask = compute.transform_fitted_gamma(
+        masked_values_no_mask,
+        1900,  # data_start_year
+        1900,  # calibration_start_year
+        1901,  # calibration_end_year
+        compute.Periodicity.monthly,
+    )
+    assert not np.all(np.isnan(result_compute_no_mask)), (
+        "compute.transform_fitted_gamma with mask=False should produce valid results"
+    )
+
+    # (c) full mask - should trigger early return
+    masked_values_full = np.ma.array(test_values, mask=True)
+    result_compute_full = compute.transform_fitted_gamma(
+        masked_values_full,
+        1900,
+        1900,
+        1901,
+        compute.Periodicity.monthly,
+    )
+    # should return the input masked array (early return)
+    np.testing.assert_array_equal(
+        result_compute_full,
+        masked_values_full,
+        err_msg="compute.transform_fitted_gamma should return input when fully masked",
+    )
 
 
 @pytest.mark.usefixtures(

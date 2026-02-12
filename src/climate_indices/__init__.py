@@ -3,9 +3,12 @@
 from importlib.metadata import PackageNotFoundError, version
 
 from climate_indices.exceptions import (
+    BetaFeatureWarning,
+    ClimateIndicesDeprecationWarning,
     ClimateIndicesError,
     ClimateIndicesWarning,
     InputAlignmentWarning,
+    emit_deprecation_warning,
 )
 from climate_indices.logging_config import configure_logging
 from climate_indices.typed_public_api import spei, spi
@@ -26,14 +29,17 @@ except PackageNotFoundError:
 
 __all__ = [
     "__version__",
+    "BetaFeatureWarning",
     "CF_METADATA",
     "CFAttributes",
+    "ClimateIndicesDeprecationWarning",
     "ClimateIndicesError",
     "ClimateIndicesWarning",
     "configure_logging",
     "InputAlignmentWarning",
     "InputType",
     "detect_input_type",
+    "emit_deprecation_warning",
     "pet_hargreaves",
     "pet_thornthwaite",
     "spei",

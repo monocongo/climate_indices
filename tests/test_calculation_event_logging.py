@@ -104,7 +104,7 @@ class TestSPIEventLogging:
         # verify completed event fields
         completed = completed_events[0]
         assert "duration_ms" in completed
-        assert isinstance(completed["duration_ms"], (int, float))
+        assert isinstance(completed["duration_ms"], int | float)
         assert completed["duration_ms"] > 0
         assert "output_shape" in completed
         # json serializes tuples as lists
@@ -388,7 +388,7 @@ class TestDurationAndShapeFields:
         assert len(completed_events) == 1
 
         duration = completed_events[0]["duration_ms"]
-        assert isinstance(duration, (int, float))
+        assert isinstance(duration, int | float)
         assert duration > 0
         # verify it's rounded to 2 decimal places or is an integer
         assert duration == round(duration, 2)
