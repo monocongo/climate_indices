@@ -45,6 +45,9 @@ test = [
     "pytest>=8.4.1",
     "pytest-benchmark>=4.0.0",
     "pytest-cov>=6.2.1",
+    "pytest-randomly>=3.16.0",
+    "pytest-timeout>=2.3.1",
+    "pytest-xdist>=3.6.1",
 ]
 dev = [
     "climate-indices[test,docs]",
@@ -139,6 +142,7 @@ module = ["climate_indices.__spi__"]
 ignore_errors = true
 
 [tool.pytest.ini_options]
+testpaths = ["tests"]
 filterwarnings = [
     'ignore::FutureWarning',
     'ignore::climate_indices.exceptions.ShortCalibrationWarning',
@@ -148,8 +152,9 @@ filterwarnings = [
 markers = [
     "benchmark: performance benchmark tests (deselect with '-m \"not benchmark\"')",
     "slow: slow tests that may be skipped in CI (deselect with '-m \"not slow\"')",
+    "integration: tests requiring external resources or full pipeline",
 ]
-addopts = "-m 'not benchmark'"
+addopts = "-m 'not benchmark' --strict-markers --tb=short"
 
 [tool.pytest-benchmark]
 min_rounds = 5
@@ -157,6 +162,26 @@ warmup = true
 warmup_iterations = 1
 columns = ["mean", "stddev", "rounds", "iterations"]
 sort = "mean"
+
+[tool.coverage.run]
+source = ["src/climate_indices"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 70
+exclude_lines = [
+    "if self.debug:",
+    "pragma: no cover",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+show_missing = true
+
+[tool.coverage.html]
+directory = "htmlcov"
 
 [tool.hatch.build.targets.sdist]
 exclude = [
@@ -204,6 +229,9 @@ test = [
     "pytest>=8.4.1",
     "pytest-benchmark>=4.0.0",
     "pytest-cov>=6.2.1",
+    "pytest-randomly>=3.16.0",
+    "pytest-timeout>=2.3.1",
+    "pytest-xdist>=3.6.1",
 ]
 dev = [
     {include-group = "test"},
