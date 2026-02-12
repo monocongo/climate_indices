@@ -511,7 +511,7 @@ class TestNoDeprecationWarnings:
                 for warning in w
                 if issubclass(
                     warning.category,
-                    (DeprecationWarning, PendingDeprecationWarning, FutureWarning),
+                    DeprecationWarning | PendingDeprecationWarning | FutureWarning,
                 )
             ]
 
@@ -553,7 +553,7 @@ class TestNoDeprecationWarnings:
                 for warning in w
                 if issubclass(
                     warning.category,
-                    (DeprecationWarning, PendingDeprecationWarning, FutureWarning),
+                    DeprecationWarning | PendingDeprecationWarning | FutureWarning,
                 )
             ]
 

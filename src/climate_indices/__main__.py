@@ -28,7 +28,7 @@ _KEY_RESULT_PMDI = "result_array_pmdi"
 _KEY_RESULT_ZINDEX = "result_array_zindex"
 
 # global dictionary to contain shared arrays for use by worker processes
-_global_shared_arrays = {}
+_global_shared_arrays: dict[str, Any] = {}
 
 # Retrieve logger and set desired logging level
 _logger = utils.get_logger(__name__, logging.INFO)
@@ -45,7 +45,7 @@ class InputType(Enum):
     timeseries = 3
 
 
-def init_worker(arrays_and_shapes):
+def init_worker(arrays_and_shapes: dict[str, tuple[Any, ...]]) -> None:
     """
     Initialization function that assigns named arrays into the global variable.
 
@@ -60,7 +60,7 @@ def init_worker(arrays_and_shapes):
     _global_shared_arrays = arrays_and_shapes
 
 
-def _validate_args(args):
+def _validate_args(args: argparse.Namespace) -> InputType:
     """
     Validate the processing settings to confirm that proper argument
     combinations have been provided.
@@ -261,7 +261,7 @@ def _validate_args(args):
                         raise ValueError(msg)
 
                 else:
-                    msg = "Failed to determine the input type " + "(gridded, timeseries, or US climate division)"
+                    msg = "Failed to determine the input type " + "(gridded, timeseries, or US climate division)"  # type: ignore[unreachable]
                     _logger.error(msg)
                     raise ValueError(msg)
 
@@ -347,7 +347,7 @@ def _validate_args(args):
                         raise ValueError(msg)
 
                 else:
-                    msg = "Failed to determine the input type " + "(gridded, timeseries, or US climate division)"
+                    msg = "Failed to determine the input type " + "(gridded, timeseries, or US climate division)"  # type: ignore[unreachable]
                     _logger.error(msg)
                     raise ValueError(msg)
 
@@ -446,7 +446,7 @@ def _validate_args(args):
     return input_type
 
 
-def _get_scale_increment(args_dict):
+def _get_scale_increment(args_dict: dict[str, Any]) -> str:
     if args_dict["periodicity"] == compute.Periodicity.daily:
         scale_increment = "day"
     elif args_dict["periodicity"] == compute.Periodicity.monthly:
@@ -457,7 +457,7 @@ def _get_scale_increment(args_dict):
     return scale_increment
 
 
-def _log_status(args_dict):
+def _log_status(args_dict: dict[str, Any]) -> None:
     # get the scale increment for use in later log messages
     if "scale" in args_dict:
         if "distribution" in args_dict:
@@ -482,10 +482,8 @@ def _log_status(args_dict):
     else:
         _logger.info("Computing {index}".format(index=args_dict["index"].upper()))
 
-    return True
 
-
-def _build_arguments(keyword_args):
+def _build_arguments(keyword_args: dict[str, Any]) -> dict[str, Any]:
     """
     Builds a dictionary of function arguments appropriate to the index to be computed.
 
@@ -519,7 +517,7 @@ def _build_arguments(keyword_args):
     return function_arguments
 
 
-def _get_variable_attributes(args_dict):
+def _get_variable_attributes(args_dict: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     if args_dict["index"] == "spi":
         long_name = "Standardized Precipitation Index ({dist} distribution), ".format(
             dist=args_dict["distribution"].value.capitalize()
@@ -559,7 +557,7 @@ def _get_variable_attributes(args_dict):
 
 def _drop_data_into_shared_arrays_grid(
     dataset: xr.Dataset,
-    var_names: list,
+    var_names: list[str],
     periodicity: compute.Periodicity,
     data_start_year: int,
 ) -> tuple[int, ...]:
@@ -609,7 +607,7 @@ def _drop_data_into_shared_arrays_grid(
         # create a shared memory array, wrap it as a numpy array and
         # copy the data (values) from this variable's DataArray
         shared_array = multiprocessing.Array("d", int(np.prod(var_values.shape)))
-        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(var_values.shape)
+        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(var_values.shape)  # type: ignore[call-overload]
         np.copyto(shared_array_np, var_values)
 
         # add to the dictionary of arrays
@@ -621,6 +619,7 @@ def _drop_data_into_shared_arrays_grid(
         # drop the variable from the dataset (we're assuming this frees the memory)
         dataset = dataset.drop_vars(names=[var_name])
 
+    assert output_shape is not None, "No variables processed; output shape is unknown"
     return output_shape
 
 
@@ -657,7 +656,7 @@ def _drop_data_into_shared_arrays_divisions(
         # create a shared memory array, wrap it as a numpy array and
         # copy the data (values) from this variable's DataArray
         shared_array = multiprocessing.Array("d", int(np.prod(dataset[var_name].shape)))
-        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(dataset[var_name].shape)
+        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(dataset[var_name].shape)  # type: ignore[call-overload]
         np.copyto(shared_array_np, dataset[var_name].values)
 
         # add to the dictionary of arrays
@@ -673,10 +672,11 @@ def _drop_data_into_shared_arrays_divisions(
         # drop the variable from the dataset (we're assuming this frees the memory)
         dataset = dataset.drop_vars(names=[var_name])
 
+    assert output_shape is not None, "No variables processed; output shape is unknown"
     return output_shape
 
 
-def _compute_write_index(keyword_arguments):
+def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] | None:
     """
     Computes a climate index and writes the result into a corresponding NetCDF.
 
@@ -823,7 +823,7 @@ def _compute_write_index(keyword_arguments):
         # copy the data (values) from this variable's DataArray
         var_name = keyword_arguments["var_name_awc"]
         shared_array = multiprocessing.Array("d", int(np.prod(awc_dataset[var_name].shape)))
-        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(awc_dataset[var_name].shape)
+        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(awc_dataset[var_name].shape)  # type: ignore[call-overload]
         np.copyto(shared_array_np, awc_dataset[var_name].values)
 
         # add to the dictionary of arrays
@@ -989,6 +989,7 @@ def _compute_write_index(keyword_arguments):
         # write the dataset as NetCDF
         netcdf_file_name = keyword_arguments["output_file_base"] + "_" + var_name_zindex + ".nc"
         dataset.to_netcdf(netcdf_file_name)
+        return None
 
     else:
         # add an array to hold results to the dictionary of arrays
@@ -1028,7 +1029,7 @@ def _compute_write_index(keyword_arguments):
             # copy the data (values) from this variable's DataArray
             da_lat = dataset["lat"]
             shared_array = multiprocessing.Array("d", int(np.prod(da_lat.shape)))
-            shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(da_lat.shape)
+            shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(da_lat.shape)  # type: ignore[call-overload]
             np.copyto(shared_array_np, da_lat.values)
 
             # add to the dictionary of arrays
@@ -1096,7 +1097,7 @@ def _compute_write_index(keyword_arguments):
         return netcdf_file_name, output_var_name
 
 
-def _pet(temperatures, latitude, parameters):
+def _pet(temperatures: np.ndarray, latitude: float, parameters: dict[str, Any]) -> np.ndarray:
     return indices.pet(
         temperature_celsius=temperatures,
         latitude_degrees=latitude,
@@ -1104,7 +1105,7 @@ def _pet(temperatures, latitude, parameters):
     )
 
 
-def _spi(precips, parameters):
+def _spi(precips: np.ndarray, parameters: dict[str, Any]) -> np.ndarray:
     return indices.spi(
         values=precips,
         scale=parameters["scale"],
@@ -1116,7 +1117,7 @@ def _spi(precips, parameters):
     )
 
 
-def _spei(precips, pet_mm, parameters):
+def _spei(precips: np.ndarray, pet_mm: np.ndarray, parameters: dict[str, Any]) -> np.ndarray:
     return indices.spei(
         precips_mm=precips,
         pet_mm=pet_mm,
@@ -1129,7 +1130,7 @@ def _spei(precips, pet_mm, parameters):
     )
 
 
-def _pnp(precips, parameters):
+def _pnp(precips: np.ndarray, parameters: dict[str, Any]) -> np.ndarray:
     return indices.percentage_of_normal(
         precips,
         scale=parameters["scale"],
@@ -1140,19 +1141,19 @@ def _pnp(precips, parameters):
     )
 
 
-def _init_worker(shared_arrays_dict):
+def _init_worker(shared_arrays_dict: dict[str, Any]) -> None:
     global _global_shared_arrays
     _global_shared_arrays = shared_arrays_dict
 
 
 def _parallel_process(
     index: str,
-    arrays_dict: dict,
-    input_var_names: dict,
+    arrays_dict: dict[str, Any],
+    input_var_names: dict[str, str],
     output_var_name: str,
     input_type: InputType,
-    args,
-):
+    args: dict[str, Any],
+) -> None:
     """
     TODO document this function
 
@@ -1262,7 +1263,7 @@ def _parallel_process(
             pool.map(_apply_along_axis, chunk_params)
 
 
-def _apply_along_axis(params):
+def _apply_along_axis(params: dict[str, Any]) -> None:
     """
     Like numpy.apply_along_axis(), but with arguments in a dict instead.
     Applicable for applying a function across subarrays of a single input array.
@@ -1362,7 +1363,7 @@ def _apply_along_axis_double(
             raise ValueError(f"Unsupported input type: '{params['input_type']}'")
 
 
-def _apply_along_axis_palmers(params):
+def _apply_along_axis_palmers(params: dict[str, Any]) -> None:
     """
     Applies the Palmer computation function across subarrays of
     the Palmer-specific input (shared-memory) arrays.
@@ -1480,7 +1481,7 @@ def _prepare_file(
     return netcdf_file
 
 
-def main():  # type: () -> None
+def main() -> None:
     """
     This function is used to perform climate indices processing on NetCDF
     gridded datasets.
@@ -1689,7 +1690,9 @@ def process_climate_indices(
                 }
 
                 # run PET computation, getting the PET file and corresponding variable name for later use
-                arguments.netcdf_pet, arguments.var_name_pet = _compute_write_index(kwargs)
+                result = _compute_write_index(kwargs)
+                assert result is not None, "PET computation should return file and variable name"
+                arguments.netcdf_pet, arguments.var_name_pet = result
 
                 # remove temporary file
                 if netcdf_temp != arguments.netcdf_temp:
@@ -1825,48 +1828,48 @@ if __name__ == "__main__":
 
     """
     SYNOPSIS:
-        
-    The main program in the provided code excerpt is designed to process climate indices on NetCDF 
-    gridded datasets in parallel, leveraging Python's multiprocessing module. The process can be 
+
+    The main program in the provided code excerpt is designed to process climate indices on NetCDF
+    gridded datasets in parallel, leveraging Python's multiprocessing module. The process can be
     broken down into several key steps, which together implement a quasi "map-reduce" model for parallel
     computation. Here's an overview of how it works:
-    
+
     Step 1: Initialization and Argument Parsing
-    The program starts by parsing command-line arguments that specify the details of the computation, 
-    such as the index to compute (e.g., SPI, SPEI), the input NetCDF files, and various parameters 
-    relevant to the computation. It then validates these arguments to ensure they form a coherent set 
+    The program starts by parsing command-line arguments that specify the details of the computation,
+    such as the index to compute (e.g., SPI, SPEI), the input NetCDF files, and various parameters
+    relevant to the computation. It then validates these arguments to ensure they form a coherent set
     of instructions for the computation.
-    
+
     Step 2: Setting Up Multiprocessing
-    Based on the command-line arguments, the program determines the number of worker processes to use. 
+    Based on the command-line arguments, the program determines the number of worker processes to use.
     It can use all available CPUs minus one, a single process, or all CPUs, depending on the user's choice.
-    Global shared arrays are prepared for use by worker processes. These arrays hold the input data 
+    Global shared arrays are prepared for use by worker processes. These arrays hold the input data
     (e.g., precipitation, temperature) and the results of the computations.
-    
+
     Step 3: Data Preparation
-    The input data from NetCDF files is loaded into shared memory arrays. This step involves reading the data, 
+    The input data from NetCDF files is loaded into shared memory arrays. This step involves reading the data,
     possibly converting units, and then distributing it across shared arrays that worker processes can access.
-    The program checks the dimensions and shapes of the input data to ensure they match expected patterns, 
+    The program checks the dimensions and shapes of the input data to ensure they match expected patterns,
     adjusting as necessary to fit the computation requirements.
-    
+
     Step 4: Parallel Computation ("Map")
-    The program splits the computation into chunks that can be processed independently. 
+    The program splits the computation into chunks that can be processed independently.
     This is the "map" part of the "map-reduce" model.
-    Worker processes are spawned, each taking a portion of the data from the shared arrays 
+    Worker processes are spawned, each taking a portion of the data from the shared arrays
     to compute the climate index (e.g., SPI, SPEI) over that subset.
-    Each worker applies the computation function along the specified axis of the data chunk it has been given. 
+    Each worker applies the computation function along the specified axis of the data chunk it has been given.
     This could involve complex calculations like the Thornthwaite method for PET or statistical analysis for SPI.
-    
+
     Step 5: Aggregating Results ("Reduce")
     Once all worker processes complete their computations, the results are aggregated back into a single dataset. Summary
     This is the "reduce" part of the "map-reduce" model.
-    The program collects the computed indices from the shared arrays and assembles them into a coherent 
+    The program collects the computed indices from the shared arrays and assembles them into a coherent
     output dataset, maintaining the correct dimensions and metadata.
-    
+
     Step 6: Writing Output
-    The final step involves writing the computed indices back to NetCDF files. 
+    The final step involves writing the computed indices back to NetCDF files.
     Each index computed (e.g., SPI, SPEI, PET) is saved in its own file.
-    The program ensures that the output files contain all necessary metadata and are structured 
+    The program ensures that the output files contain all necessary metadata and are structured
     correctly to be used in further analysis or visualization.
     """
     main()

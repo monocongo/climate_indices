@@ -334,7 +334,7 @@ class TestRequiredFieldsPresent:
         for field in REQUIRED_FIELDS:
             assert field in event
             # ensure they're not nested inside another structure
-            assert isinstance(event[field], (str, int, float, bool, type(None)))
+            assert isinstance(event[field], str | int | float | bool | type(None))
 
     def test_required_field_types(self, json_log_capture):
         """timestamp, level, event, logger are all strings."""

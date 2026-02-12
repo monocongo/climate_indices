@@ -13,6 +13,10 @@ The design philosophy:
 References:
     Architecture Decision 1: Wrapper Approach (NumPy core + xarray adapter)
     Architecture Decision 2: Decorator Pattern (@xarray_adapter)
+
+.. warning:: **Beta Feature** — The xarray adapter layer is beta and may change
+   in future minor releases. The NumPy computation core (``indices.py``,
+   ``compute.py``) is stable. No breaking changes will occur within a minor version.
 """
 
 from __future__ import annotations
@@ -29,6 +33,7 @@ from typing import Any, TypedDict
 
 import numpy as np
 import pandas as pd
+import structlog.stdlib
 import xarray as xr
 
 from climate_indices import compute, eto, indices
@@ -42,7 +47,7 @@ from climate_indices.exceptions import (
 from climate_indices.logging_config import get_logger
 
 
-def _log():
+def _log() -> structlog.stdlib.BoundLogger:
     """Return a logger resolved at call time.
 
     Tests reset structlog globals between cases. Resolving lazily avoids
@@ -64,6 +69,8 @@ class CFAttributes(_CFAttributesRequired, total=False):
 
     Required keys: long_name, units, references.
     Optional keys: standard_name (only when officially defined in CF conventions).
+
+    .. note:: Part of the beta xarray adapter layer. See :doc:`xarray_migration`.
     """
 
     standard_name: str
@@ -136,6 +143,8 @@ class InputType(Enum):
 
     Used by detect_input_type() to determine which computation path to use.
 
+    .. note:: Part of the beta xarray adapter layer. See :doc:`xarray_migration`.
+
     Attributes:
         NUMPY: Input is NumPy-coercible (ndarray, list, tuple, scalars)
         XARRAY: Input is xarray.DataArray
@@ -151,6 +160,8 @@ def detect_input_type(data: Any) -> InputType:
     This is a pure classifier—it determines the type category but does not
     perform any data transformation or coercion. The actual dispatch logic
     is handled by the @xarray_adapter decorator (Story 2.2).
+
+    .. note:: Part of the beta xarray adapter layer. See :doc:`xarray_migration`.
 
     Args:
         data: Input data to classify
@@ -338,7 +349,7 @@ def _validate_time_monotonicity(time_coord: xr.DataArray) -> None:
     if is_monotonic:
         return
 
-    dim_name = time_coord.dims[0] if time_coord.dims else "time"
+    dim_name = str(time_coord.dims[0]) if time_coord.dims else "time"
     error_msg = _build_non_monotonic_message(time_coord, dim_name)
 
     _log().error(
@@ -826,11 +837,11 @@ def _serialize_attr_value(value: Any) -> str | int | float | bool:
         return value.name
 
     # numpy scalar → python scalar
-    if isinstance(value, (np.integer, np.floating)):
+    if isinstance(value, np.integer | np.floating):
         return value.item()
 
     # passthrough native serializable types
-    if isinstance(value, (str, int, float, bool)):
+    if isinstance(value, str | int | float | bool):
         return value
 
     # dict → JSON string
@@ -1289,6 +1300,10 @@ def xarray_adapter(
     compute with NumPy function, rewrap result). For multi-input functions, it aligns DataArrays
     using inner join before computation.
 
+    .. warning:: **Beta Feature** — The ``@xarray_adapter`` decorator and all xarray
+       dispatch infrastructure are beta. The decorator interface may change in future
+       minor releases. NumPy passthrough behavior is stable.
+
     Args:
         cf_metadata: Optional dict of CF Convention metadata to apply to output DataArray.
             Keys should be CF attribute names (e.g., 'standard_name', 'long_name', 'units').
@@ -1550,7 +1565,7 @@ def xarray_adapter(
                     return func(*numpy_arrays, **valid_kwargs)
 
                 # call apply_ufunc without Dask support (in-memory vectorization)
-                result_da: xr.DataArray = xr.apply_ufunc(
+                result_da: xr.DataArray = xr.apply_ufunc(  # type: ignore[no-redef]
                     _numpy_func_wrapper,
                     *input_dataarrays,
                     input_core_dims=[[time_dim]] * len(input_dataarrays),
@@ -1676,6 +1691,10 @@ def pet_thornthwaite(
     a time dimension), this function uses xr.apply_ufunc to handle spatial broadcasting
     of the latitude parameter across gridded temperature data.
 
+    .. warning:: **Beta Feature (xarray path)** — When called with ``xr.DataArray``
+       input, this function uses the beta xarray adapter layer. The NumPy array
+       interface and underlying computation are stable.
+
     Args:
         temperature: Monthly average temperature values in degrees Celsius.
             For numpy: 1-D array of monthly temperatures
@@ -1761,9 +1780,13 @@ def pet_thornthwaite(
         # delegate to indices.pet with explicit data_start_year requirement
         if data_start_year is None:
             raise ValueError("data_start_year is required for numpy inputs")
+        # narrow type for mypy
+        assert isinstance(temperature, np.ndarray)
         return indices.pet(temperature, lat_float, data_start_year)
 
     # xarray path: validate → infer → compute → rewrap
+    # at this point temperature must be an xr.DataArray (numpy path returned above)
+    assert isinstance(temperature, xr.DataArray)
     temp_da = temperature
 
     # validate time dimension
@@ -1782,7 +1805,7 @@ def pet_thornthwaite(
 
     # normalize latitude for xr.apply_ufunc
     # convert scalar numpy types to python float for compatibility
-    if isinstance(latitude, (float, int, np.floating, np.integer)):
+    if isinstance(latitude, float | int | np.floating | np.integer):
         lat_for_ufunc: float | xr.DataArray = float(latitude)
     else:
         # assume it's already an xr.DataArray
@@ -1856,7 +1879,8 @@ def pet_thornthwaite(
         latitude=lat_desc,
     )
 
-    return result
+    result_array: xr.DataArray = result
+    return result_array
 
 
 def pet_hargreaves(
@@ -1870,6 +1894,10 @@ def pet_hargreaves(
     This function provides xarray DataArray support for the Hargreaves PET calculation.
     Unlike Thornthwaite (monthly), Hargreaves uses daily min/max temperature data.
     The mean temperature is automatically derived as (tmin + tmax) / 2.
+
+    .. warning:: **Beta Feature (xarray path)** — When called with ``xr.DataArray``
+       input, this function uses the beta xarray adapter layer. The NumPy array
+       interface and underlying computation are stable.
 
     Args:
         daily_tmin_celsius: Daily minimum temperature values in degrees Celsius.
@@ -1982,11 +2010,17 @@ def pet_hargreaves(
         # convert latitude to float if it's a numpy scalar
         lat_float = float(latitude) if isinstance(latitude, np.floating) else latitude
         # auto-derive tmean as per Hargreaves standard approach
+        # narrow types for mypy
+        assert isinstance(daily_tmin_celsius, np.ndarray)
+        assert isinstance(daily_tmax_celsius, np.ndarray)
         tmean = (daily_tmin_celsius + daily_tmax_celsius) / 2.0
         # delegate to eto.eto_hargreaves
         return eto.eto_hargreaves(daily_tmin_celsius, daily_tmax_celsius, tmean, lat_float)
 
     # xarray path: validate → align → compute → rewrap
+    # at this point both inputs must be xr.DataArray (numpy path returned above)
+    assert isinstance(daily_tmin_celsius, xr.DataArray)
+    assert isinstance(daily_tmax_celsius, xr.DataArray)
     tmin_da = daily_tmin_celsius
     tmax_da = daily_tmax_celsius
 
@@ -2028,7 +2062,7 @@ def pet_hargreaves(
     tmean_da = (tmin_aligned + tmax_aligned) / 2.0
 
     # normalize latitude for xr.apply_ufunc
-    if isinstance(latitude, (float, int, np.floating, np.integer)):
+    if isinstance(latitude, float | int | np.floating | np.integer):
         lat_for_ufunc: float | xr.DataArray = float(latitude)
     else:
         # assume it's already an xr.DataArray
@@ -2099,4 +2133,5 @@ def pet_hargreaves(
         latitude=lat_desc,
     )
 
-    return result
+    result_array: xr.DataArray = result
+    return result_array
