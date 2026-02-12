@@ -7,6 +7,95 @@ import xarray as xr
 
 
 @pytest.fixture(scope="session")
+def make_dataarray():
+    """Factory fixture for creating xarray DataArrays with sensible defaults.
+
+    This factory reduces duplication by providing a configurable DataArray
+    constructor. Use it when you need a test-specific DataArray instead of
+    one of the pre-defined fixtures.
+
+    Returns:
+        Callable that creates DataArrays with customizable parameters
+
+    Example:
+        def test_something(make_dataarray):
+            da = make_dataarray(freq="MS", periods=480, dims=1, seed=42)
+            assert len(da.time) == 480
+    """
+
+    def _make(
+        *,
+        freq: str = "MS",
+        periods: int = 480,
+        dims: int = 1,
+        seed: int = 42,
+        fill_value: float | None = None,
+        name: str = "test_data",
+        start_date: str = "1980-01-01",
+    ) -> xr.DataArray:
+        """Create a DataArray with specified parameters.
+
+        Args:
+            freq: Pandas frequency string ("MS" for monthly, "D" for daily)
+            periods: Number of time steps
+            dims: Number of dimensions (1, 2, or 3)
+            seed: Random seed for reproducibility
+            fill_value: If provided, use constant values instead of random
+            name: DataArray name
+            start_date: Start date string
+
+        Returns:
+            xarray DataArray
+        """
+        rng = np.random.default_rng(seed)
+        time = pd.date_range(start_date, periods=periods, freq=freq)
+
+        if dims == 1:
+            if fill_value is not None:
+                values = np.full(periods, fill_value)
+            else:
+                values = rng.gamma(shape=2.0, scale=50.0, size=periods)
+            return xr.DataArray(
+                values,
+                coords={"time": time},
+                dims=["time"],
+                attrs={"units": "mm"},
+                name=name,
+            )
+        elif dims == 2:
+            lat = np.linspace(30.0, 50.0, 5)
+            if fill_value is not None:
+                values = np.full((periods, len(lat)), fill_value)
+            else:
+                values = rng.gamma(shape=2.0, scale=50.0, size=(periods, len(lat)))
+            return xr.DataArray(
+                values,
+                coords={"time": time, "lat": lat},
+                dims=["time", "lat"],
+                attrs={"units": "mm"},
+                name=name,
+            )
+        elif dims == 3:
+            lat = np.linspace(30.0, 50.0, 5)
+            lon = np.linspace(-120.0, -100.0, 6)
+            if fill_value is not None:
+                values = np.full((periods, len(lat), len(lon)), fill_value)
+            else:
+                values = rng.gamma(shape=2.0, scale=50.0, size=(periods, len(lat), len(lon)))
+            return xr.DataArray(
+                values,
+                coords={"time": time, "lat": lat, "lon": lon},
+                dims=["time", "lat", "lon"],
+                attrs={"units": "mm"},
+                name=name,
+            )
+        else:
+            raise ValueError(f"dims must be 1, 2, or 3, got {dims}")
+
+    return _make
+
+
+@pytest.fixture(scope="session")
 def sample_monthly_precip_da() -> xr.DataArray:
     """Create a 1D monthly precipitation DataArray (40 years, 1980-2019)."""
     # 40 years * 12 months = 480 values
