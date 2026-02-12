@@ -30,9 +30,27 @@ _OVERHEAD_NUMBER = 3  # calls per trial (amortizes per-call overhead)
 # coordinate handling, metadata propagation) on small 1D arrays. For gridded data
 # (the primary use case), this overhead is amortized across thousands of spatial
 # points and becomes negligible (<5%). Absolute performance remains fast
-# (sub-millisecond for these test cases). Note asymmetric test cases: PET Hargreaves
-# xarray path computes tmean internally while NumPy baseline receives pre-computed tmean.
+# (sub-millisecond for these test cases).
 _OVERHEAD_THRESHOLD = 0.80  # 80%
+
+
+def _pet_hargreaves_numpy(
+    daily_tmin_celsius: np.ndarray,
+    daily_tmax_celsius: np.ndarray,
+    latitude_degrees: float,
+) -> np.ndarray:
+    """
+    NumPy PET Hargreaves path with equivalent work to the xarray adapter.
+
+    Computes daily mean temperature in-function so timed baseline matches
+    xarray path behavior (which derives tmean internally).
+    """
+    return eto_hargreaves(
+        daily_tmin_celsius=daily_tmin_celsius,
+        daily_tmax_celsius=daily_tmax_celsius,
+        daily_tmean_celsius=(daily_tmin_celsius + daily_tmax_celsius) / 2.0,
+        latitude_degrees=latitude_degrees,
+    )
 
 
 # ==============================================================================
@@ -154,13 +172,10 @@ class TestPETHargreavesBenchmark:
         bench_daily_tmax_np: np.ndarray,
     ) -> None:
         """NumPy PET Hargreaves baseline (1D arrays, latitude=40.0)."""
-        # eto_hargreaves requires tmean as well as tmin/tmax
-        tmean = (bench_daily_tmin_np + bench_daily_tmax_np) / 2.0
         benchmark(
-            eto_hargreaves,
+            _pet_hargreaves_numpy,
             daily_tmin_celsius=bench_daily_tmin_np,
             daily_tmax_celsius=bench_daily_tmax_np,
-            daily_tmean_celsius=tmean,
             latitude_degrees=40.0,
         )
 
@@ -332,14 +347,10 @@ class TestOverheadThreshold:
         bench_daily_tmax_da: xr.DataArray,
     ) -> None:
         """Verify PET Hargreaves xarray overhead stays within threshold."""
-        # numpy path requires tmean
-        tmean = (bench_daily_tmin_np + bench_daily_tmax_np) / 2.0
-
         np_time, xa_time, overhead = self._measure_overhead(
-            lambda: eto_hargreaves(
+            lambda: _pet_hargreaves_numpy(
                 daily_tmin_celsius=bench_daily_tmin_np,
                 daily_tmax_celsius=bench_daily_tmax_np,
-                daily_tmean_celsius=tmean,
                 latitude_degrees=40.0,
             ),
             lambda: pet_hargreaves(
