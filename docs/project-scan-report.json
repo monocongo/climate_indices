@@ -1,0 +1,233 @@
+{
+  "workflow_metadata": {
+    "workflow_name": "document-project",
+    "workflow_version": "1.0",
+    "execution_date": "2026-02-11",
+    "execution_mode": "initial_scan",
+    "scan_level": "deep",
+    "bmad_version": "1.0"
+  },
+  "project_classification": {
+    "repository_type": "monolith",
+    "project_type": "library",
+    "primary_language": "python",
+    "python_versions": ["3.10", "3.11", "3.12", "3.13"],
+    "architecture_pattern": "layered_library",
+    "build_system": "hatchling",
+    "package_manager": "uv",
+    "entry_points": [
+      "climate_indices",
+      "process_climate_indices",
+      "spi"
+    ]
+  },
+  "repository_info": {
+    "name": "climate_indices",
+    "version": "2.2.0",
+    "license": "BSD-3-Clause",
+    "url": "https://github.com/monocongo/climate_indices",
+    "documentation_url": "https://climate-indices.readthedocs.io/",
+    "pypi_url": "https://pypi.org/project/climate-indices/",
+    "branch": "feature/bmad-project-docs"
+  },
+  "technology_stack": {
+    "core_dependencies": {
+      "scipy": ">=1.15.3",
+      "xarray": ">=2025.6.1",
+      "dask": ">=2025.7.0",
+      "structlog": ">=24.1.0",
+      "cftime": ">=1.6.4.post1",
+      "h5netcdf": ">=1.6.3"
+    },
+    "development_tools": {
+      "testing": "pytest",
+      "property_based_testing": "hypothesis",
+      "benchmarking": "pytest-benchmark",
+      "type_checking": "mypy",
+      "linting": "ruff",
+      "documentation": "sphinx"
+    }
+  },
+  "source_structure": {
+    "source_root": "src/climate_indices/",
+    "module_count": 14,
+    "test_directory": "tests/",
+    "test_file_count": 26,
+    "documentation_directory": "docs/",
+    "ci_cd_directory": ".github/workflows/",
+    "ci_cd_workflow_count": 3
+  },
+  "layer_inventory": {
+    "cli_layer": [
+      "__main__.py",
+      "__spi__.py"
+    ],
+    "public_api_layer": [
+      "__init__.py",
+      "typed_public_api.py",
+      "xarray_adapter.py",
+      "indices.py"
+    ],
+    "computation_layer": [
+      "compute.py",
+      "palmer.py"
+    ],
+    "math_statistics_layer": [
+      "eto.py",
+      "lmoments.py"
+    ],
+    "infrastructure_layer": [
+      "exceptions.py",
+      "logging_config.py",
+      "utils.py",
+      "performance.py"
+    ]
+  },
+  "generated_documentation": {
+    "index.md": {
+      "status": "generated",
+      "purpose": "Master documentation index (AI entry point)",
+      "file_path": "docs/index.md"
+    },
+    "project-overview.md": {
+      "status": "generated",
+      "purpose": "Executive summary and project classification",
+      "file_path": "docs/project-overview.md"
+    },
+    "architecture.md": {
+      "status": "generated",
+      "purpose": "Technical architecture documentation",
+      "file_path": "docs/architecture.md"
+    },
+    "source-tree-analysis.md": {
+      "status": "generated",
+      "purpose": "Annotated directory structure",
+      "file_path": "docs/source-tree-analysis.md"
+    },
+    "component-inventory.md": {
+      "status": "generated",
+      "purpose": "Module and component catalog",
+      "file_path": "docs/component-inventory.md"
+    },
+    "development-guide.md": {
+      "status": "generated",
+      "purpose": "Development setup and workflow",
+      "file_path": "docs/development-guide.md"
+    },
+    "deployment-guide.md": {
+      "status": "generated",
+      "purpose": "Docker and CI/CD documentation",
+      "file_path": "docs/deployment-guide.md"
+    },
+    "contribution-guide.md": {
+      "status": "generated",
+      "purpose": "Contributing guidelines",
+      "file_path": "docs/contribution-guide.md"
+    }
+  },
+  "existing_documentation": {
+    "sphinx_rst": [
+      "index.rst",
+      "reference.rst",
+      "pypi_release.rst",
+      "source/modules.rst",
+      "source/tests.rst"
+    ],
+    "readme_files": [
+      "README.md",
+      "CONTRIBUTING.md",
+      "CHANGELOG.md"
+    ]
+  },
+  "test_infrastructure": {
+    "test_framework": "pytest",
+    "fixture_file": "tests/conftest.py",
+    "fixture_line_count": 1004,
+    "test_categories": {
+      "core_functionality": [
+        "test_indices.py",
+        "test_compute.py",
+        "test_xarray_adapter.py",
+        "test_typed_public_api.py",
+        "test_eto.py"
+      ],
+      "quality_assurance": [
+        "test_backward_compat.py",
+        "test_xarray_equivalence.py",
+        "test_property_based.py",
+        "test_type_checking.py"
+      ],
+      "validation": [
+        "test_exceptions.py",
+        "test_input_validation.py",
+        "test_metadata_validation.py",
+        "test_computation_errors.py",
+        "test_data_quality_warnings.py",
+        "test_input_type_detection.py"
+      ],
+      "observability": [
+        "test_logging.py",
+        "test_logging_config.py",
+        "test_error_context_logging.py",
+        "test_calculation_event_logging.py",
+        "test_performance_metrics.py"
+      ],
+      "performance": [
+        "test_benchmark_overhead.py",
+        "test_benchmark_chunked.py",
+        "test_benchmark_memory.py"
+      ]
+    },
+    "coverage_target": ">90%"
+  },
+  "ci_cd_pipelines": {
+    "unit_tests": {
+      "file": ".github/workflows/unit-tests-workflow.yml",
+      "trigger": "push, pull_request",
+      "matrix": "python-3.10-3.13 x ubuntu-latest"
+    },
+    "release": {
+      "file": ".github/workflows/release.yml",
+      "trigger": "git_tag",
+      "actions": "test_matrix, build, twine_check, pypi_publish_trusted"
+    },
+    "benchmarks": {
+      "file": ".github/workflows/benchmarks.yml",
+      "trigger": "pull_request_master, manual_dispatch",
+      "actions": "benchmark_run_with_json, artifact_store, optional_baseline_compare"
+    }
+  },
+  "architectural_invariants": [
+    "Time dimension in Dask arrays must be single chunk (time: -1)",
+    "Calibration period minimum 30 years (warning if violated)",
+    "Distribution fitting requires minimum 10 non-zero values",
+    "Legacy numpy API (indices.py) must maintain backward compatibility",
+    "Strict mypy compliance enforced on typed_public_api.py"
+  ],
+  "workflow_completion": {
+    "current_step": "completed",
+    "steps_executed": [
+      "load_documentation_requirements",
+      "determine_mode_and_scan_level",
+      "detect_project_structure",
+      "discover_existing_documentation",
+      "analyze_technology_stack",
+      "conditional_analysis_deep_scan",
+      "source_tree_analysis",
+      "development_operational_info",
+      "architecture_documentation",
+      "supporting_documentation",
+      "master_index_generation",
+      "validation"
+    ],
+    "completion_date": "2026-02-11",
+    "total_files_generated": 9,
+    "validation_status": "passed"
+  },
+  "next_steps": [
+    "Commit generated documentation to feature branch",
+    "Create pull request for review",
+    "Merge to master after approval",
+    "Update ReadTheDocs build configuration if needed"
+  ]
+}
