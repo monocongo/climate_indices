@@ -89,13 +89,13 @@ The **climate_indices** library implements a **layered library architecture** op
 **Purpose**: Command-line interfaces for batch processing NetCDF datasets.
 
 **Modules**:
-- **`__main__.py`** (1826 lines): Full-featured CLI supporting SPI, SPEI, PET, Palmer, and PNP indices
+- **`__main__.py`** (1872 lines): Full-featured CLI supporting SPI, SPEI, PET, Palmer, and PNP indices
   - Multiprocessing pool for gridded data parallelization
   - NetCDF dimension validation and coordinate conversion
   - Shared memory arrays for worker processes
   - Input type detection (grid, divisions, timeseries)
 
-- **`__spi__.py`** (1478 lines): Specialized SPI computation CLI
+- **`__spi__.py`** (1477 lines): Specialized SPI computation CLI
   - Distribution fitting parameter save/load for reusability
   - Parallel fitting and SPI computation
   - Supports gamma and Pearson Type III distributions
@@ -118,14 +118,14 @@ spi = "climate_indices.__spi__:main"
   - Enforces keyword-only arguments
   - Full mypy --strict compliance
 
-- **`xarray_adapter.py`** (1417 lines, expanded in 2.2.0): CF-compliant xarray interface
+- **`xarray_adapter.py`** (2102 lines, expanded in 2.2.0): CF-compliant xarray interface
   - Input type detection (`DataArray`, `Dataset`, `ndarray`)
   - Coordinate validation and alignment
   - CF metadata preservation and generation
   - Dask array support with chunking validation
   - PET computation (Thornthwaite, Hargreaves)
 
-- **`indices.py`** (701 lines): Legacy numpy API
+- **`indices.py`** (856 lines): Legacy numpy API
   - Backward-compatible function signatures
   - Direct numpy array inputs/outputs
   - Distribution enum (`Distribution.gamma`, `Distribution.pearson`)
@@ -140,14 +140,14 @@ spi = "climate_indices.__spi__:main"
 **Purpose**: Core mathematical algorithms for climate index calculation.
 
 **Modules**:
-- **`compute.py`** (1127 lines): Core computation functions
+- **`compute.py`** (1328 lines): Core computation functions
   - `scale_values()`: Rolling sum computation for temporal scaling
   - `gamma_parameters()`, `pearson_parameters()`: Distribution fitting
   - `transform_fitted_gamma()`, `transform_fitted_pearson()`: CDF transformation
   - `sum_to_scale()`: Optimized sliding window summation
   - `Periodicity` enum: `monthly` (12 steps/year), `daily` (366 steps/year)
 
-- **`palmer.py`** (806 lines): Palmer Drought Index family
+- **`palmer.py`** (912 lines): Palmer Drought Index family
   - PDSI (Palmer Drought Severity Index)
   - PHDI (Palmer Hydrological Drought Index)
   - PMDI (Palmer Modified Drought Index)
@@ -178,7 +178,7 @@ spi = "climate_indices.__spi__:main"
 **Purpose**: Low-level mathematical and statistical functions.
 
 **Modules**:
-- **`eto.py`** (416 lines): Potential Evapotranspiration methods
+- **`eto.py`** (405 lines): Potential Evapotranspiration methods
   - **Thornthwaite (1948)**: Monthly PET from temperature and latitude
     - Heat index computation
     - Day length adjustment based on latitude
@@ -186,7 +186,7 @@ spi = "climate_indices.__spi__:main"
     - Requires tmin, tmax, and latitude
     - Extraterrestrial radiation calculation
 
-- **`lmoments.py`** (94 lines): L-moments for robust distribution fitting
+- **`lmoments.py`** (188 lines): L-moments for robust distribution fitting
   - Implements Hosking (1990) L-moments algorithm
   - Used for Pearson Type III parameter estimation
   - More robust than method of moments for skewed distributions
@@ -197,26 +197,26 @@ spi = "climate_indices.__spi__:main"
 **Purpose**: Cross-cutting concerns (utilities, logging, error handling).
 
 **Modules**:
-- **`exceptions.py`** (324 lines): Exception hierarchy
+- **`exceptions.py`** (323 lines): Exception hierarchy
   - Base: `ClimateIndicesError` (catch-all for library errors)
   - Computation: `DistributionFittingError`, `InsufficientDataError`, `PearsonFittingError`
   - Validation: `DimensionMismatchError`, `CoordinateValidationError`, `InputTypeError`, `InvalidArgumentError`
   - Warnings: `MissingDataWarning`, `ShortCalibrationWarning`, `GoodnessOfFitWarning`, `InputAlignmentWarning`
   - All exceptions carry context attributes (e.g., `distribution_name`, `input_shape`, `parameters`)
 
-- **`logging_config.py`** (76 lines): Structured logging configuration
+- **`logging_config.py`** (146 lines): Structured logging configuration
   - `configure_logging()`: Sets up structlog with JSON serialization
   - Console: Human-readable colored output
   - File: JSON-formatted for log aggregators
   - Context binding for tracing
 
-- **`utils.py`** (396 lines): Utility functions
+- **`utils.py`** (549 lines): Utility functions
   - Calendar conversions: `transform_to_366day()`, `transform_to_gregorian()`
   - Data validation: `is_data_valid()`
   - Array reshaping: `reshape_to_2d()`, `reshape_to_divs()`
   - Periodicity utilities: `gregorian_length_as_366day()`
 
-- **`performance.py`** (112 lines): Performance tracking
+- **`performance.py`** (118 lines): Performance tracking
   - `@measure_execution_time` decorator
   - Memory usage tracking
   - Computation duration logging
@@ -257,11 +257,10 @@ climate_indices/
 ├── docs/                         # Documentation
 │   ├── conf.py                   # Sphinx configuration
 │   ├── index.rst                 # Main Sphinx doc (ReadTheDocs)
-│   ├── algorithms.rst            # Mathematical specifications
-│   ├── quickstart.rst            # Getting started guide
 │   ├── reference.rst             # API reference (autodoc)
-│   ├── xarray_migration.rst      # Migration guide to xarray API
-│   ├── deprecations/             # Deprecation notices
+│   ├── pypi_release.rst          # PyPI release guide
+│   ├── source/modules.rst        # Sphinx module toctree
+│   ├── source/tests.rst          # Sphinx tests module reference
 │   └── *.md                      # AI-readable docs (BMAD format, NEW)
 │
 ├── .github/workflows/            # CI/CD pipelines
@@ -380,7 +379,7 @@ result_da = xr.apply_ufunc(
 ### Test Organization (26 Test Files)
 ```
 tests/
-├── conftest.py                      # 1005 lines - Session-scoped fixtures
+├── conftest.py                      # 1004 lines - Session-scoped fixtures
 │
 ├── Core Functionality Tests
 │   ├── test_indices.py              # Legacy numpy API tests
@@ -466,9 +465,9 @@ Matrix:
 Steps:
   1. Checkout code
   2. Setup Python + uv
-  3. uv sync --group dev
+  3. uv sync --dev
   4. Run pytest
-  5. Upload coverage to Codecov
+  5. Complete matrix test run
 ```
 
 #### 2. release.yml
@@ -477,19 +476,19 @@ Steps:
 Steps:
   1. Checkout code
   2. Build sdist and wheel (hatchling)
-  3. Publish to PyPI (PYPI_API_TOKEN)
-  4. Create GitHub release
+  3. Publish to PyPI via trusted publishing (OIDC)
 ```
 
 #### 3. benchmarks.yml (NEW in 2.2.0)
-**Trigger**: Manual dispatch, scheduled (weekly)
+**Trigger**: Pull request to master, manual dispatch
 ```yaml
 Steps:
   1. Checkout code
   2. Setup Python + uv
-  3. Run pytest -m benchmark --benchmark-json
-  4. Compare against baseline
-  5. Post results as artifact
+  3. uv sync --group dev
+  4. Run pytest -m benchmark --benchmark-enable --benchmark-json
+  5. Compare against baseline
+  6. Post results as artifact
 ```
 
 ### Docker Container

@@ -27,7 +27,7 @@ The **climate_indices** library provides reference implementations of climate in
 - **Build System**: Hatchling (PEP 517) + uv for dependency management
 - **Architecture Pattern**: Layered Library (CLI → Public API → Computation → Math → Infrastructure)
 - **Entry Points**: 3 CLI commands (`climate_indices`, `process_climate_indices`, `spi`)
-- **Test Coverage**: >90% (26 test files with 1005-line fixture system)
+- **Test Coverage**: >90% (26 test files with 1004-line fixture system)
 
 ## Documentation Structure
 
@@ -87,13 +87,10 @@ This documentation set is optimized for AI agents and provides comprehensive tec
 Comprehensive end-user documentation hosted on ReadTheDocs:
 
 1. **[index.rst](./index.rst)** - Main landing page with badges and navigation
-2. **[quickstart.rst](./quickstart.rst)** - Getting started guide
-3. **[algorithms.rst](./algorithms.rst)** - Mathematical specifications and methodologies
-4. **[reference.rst](./reference.rst)** - API reference (auto-generated from docstrings)
-5. **[xarray_migration.rst](./xarray_migration.rst)** - Migration guide from numpy to xarray API
-6. **[pypi_release.rst](./pypi_release.rst)** - PyPI release guide for maintainers
-7. **[deprecations/index.rst](./deprecations/index.rst)** - Deprecation notices
-8. **[troubleshooting.rst](./troubleshooting.rst)** - Common issues and solutions
+2. **[reference.rst](./reference.rst)** - API reference (auto-generated from docstrings)
+3. **[pypi_release.rst](./pypi_release.rst)** - PyPI release guide for maintainers
+4. **[source/modules.rst](./source/modules.rst)** - Sphinx module toctree
+5. **[source/tests.rst](./source/tests.rst)** - Sphinx test module reference
 
 ### Supporting Documentation
 
@@ -162,24 +159,24 @@ uv run pytest
 
 | Module | Layer | Purpose | Lines | Priority |
 |--------|-------|---------|-------|----------|
-| `__main__.py` | CLI | Full-featured CLI (all indices) | 1826 | 🔴 CRITICAL |
-| `__spi__.py` | CLI | Specialized SPI CLI (param caching) | 1478 | 🟡 HIGH |
+| `__main__.py` | CLI | Full-featured CLI (all indices) | 1872 | 🔴 CRITICAL |
+| `__spi__.py` | CLI | Specialized SPI CLI (param caching) | 1477 | 🟡 HIGH |
 | `typed_public_api.py` | API | Strict mypy-compliant API (NEW 2.2.0) | 210 | 🟢 NEW |
-| `xarray_adapter.py` | API | Modern xarray interface (EXPANDED 2.2.0) | 1417 | 🔴 CRITICAL |
-| `indices.py` | API | Legacy numpy API (STABLE) | 701 | 🟡 HIGH |
-| `compute.py` | Computation | Core algorithms | 1127 | 🔴 CRITICAL |
-| `palmer.py` | Computation | Palmer drought indices | 806 | 🟡 HIGH |
-| `eto.py` | Math | PET methods | 416 | 🟡 HIGH |
-| `lmoments.py` | Math | L-moments for fitting | 94 | 🟢 SPECIALTY |
-| `exceptions.py` | Infrastructure | Exception hierarchy | 324 | 🔴 CRITICAL |
-| `utils.py` | Infrastructure | Utilities | 396 | 🟡 HIGH |
-| `logging_config.py` | Infrastructure | Structured logging | 76 | 🟢 STANDARD |
-| `performance.py` | Infrastructure | Performance tracking (NEW 2.2.0) | 112 | 🟢 NEW |
+| `xarray_adapter.py` | API | Modern xarray interface (EXPANDED 2.2.0) | 2102 | 🔴 CRITICAL |
+| `indices.py` | API | Legacy numpy API (STABLE) | 856 | 🟡 HIGH |
+| `compute.py` | Computation | Core algorithms | 1328 | 🔴 CRITICAL |
+| `palmer.py` | Computation | Palmer drought indices | 912 | 🟡 HIGH |
+| `eto.py` | Math | PET methods | 405 | 🟡 HIGH |
+| `lmoments.py` | Math | L-moments for fitting | 188 | 🟢 SPECIALTY |
+| `exceptions.py` | Infrastructure | Exception hierarchy | 323 | 🔴 CRITICAL |
+| `utils.py` | Infrastructure | Utilities | 549 | 🟡 HIGH |
+| `logging_config.py` | Infrastructure | Structured logging | 146 | 🟢 STANDARD |
+| `performance.py` | Infrastructure | Performance tracking (NEW 2.2.0) | 118 | 🟢 NEW |
 
 ## Testing Infrastructure
 
 - **Test Files**: 26 test files organized by functionality
-- **Fixtures**: 1005-line `conftest.py` with session-scoped fixtures
+- **Fixtures**: 1004-line `conftest.py` with session-scoped fixtures
 - **Categories**: Core functionality, QA (backward compat, property-based), validation, observability, performance benchmarks
 - **Coverage**: >90% line coverage
 - **Framework**: pytest + hypothesis (property-based) + pytest-benchmark
@@ -203,7 +200,7 @@ AI agents should be aware of these constraints:
 ## Recent Changes (v2.2.0)
 
 - ✨ **NEW**: `typed_public_api.py` - Strict mypy-compliant API
-- 📈 **EXPANDED**: `xarray_adapter.py` - 400 → 1417 lines (comprehensive xarray support)
+- 📈 **EXPANDED**: `xarray_adapter.py` - 400 → 2102 lines (comprehensive xarray support)
 - 🧪 **NEW**: Property-based testing with hypothesis
 - 🏎️ **NEW**: Benchmark suite with `test_benchmark_*.py` files
 - 🔒 **NEW**: Enhanced exception hierarchy with context attributes

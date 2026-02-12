@@ -50,7 +50,7 @@ ENTRYPOINT ["python", "-m", "climate_indices"]
 2. Setup Python and uv
 3. Install dependencies: `uv sync --group dev`
 4. Run tests: `pytest`
-5. Upload coverage to Codecov
+5. Complete matrix test run (no external coverage upload step in this workflow)
 
 **Configuration**:
 ```yaml
@@ -69,8 +69,7 @@ strategy:
 3. Build distribution: `python -m build`
    - Wheel: `climate_indices-X.Y.Z-py3-none-any.whl`
    - Source dist: `climate_indices-X.Y.Z.tar.gz`
-4. Publish to PyPI using `PYPI_API_TOKEN`
-5. Create GitHub release with artifacts
+4. Publish to PyPI via trusted publishing (OIDC, no API token required)
 
 **Release Process**:
 ```bash
@@ -83,18 +82,17 @@ git push origin master --tags
 
 # 3. GitHub Actions automatically:
 #    - Builds packages
-#    - Uploads to PyPI
-#    - Creates GitHub release
+#    - Uploads to PyPI via trusted publishing
 ```
 
 ### 3. Benchmarks Workflow (`benchmarks.yml`)
 
-**Trigger**: Manual dispatch, scheduled (weekly)
+**Trigger**: Pull requests targeting `master`, manual dispatch
 
 **Steps**:
 1. Checkout code
 2. Setup Python and uv
-3. Install dependencies with performance group: `uv sync --group dev --group performance`
+3. Install dependencies: `uv sync --group dev`
 4. Run benchmarks: `pytest -m benchmark --benchmark-json`
 5. Compare against baseline
 6. Store results as artifact
@@ -215,7 +213,7 @@ configure_logging(
 - Logged in structured format
 
 ### Coverage Tracking
-- **Service**: Codecov
+- **Service**: pytest-cov output in CI/local runs
 - **Target**: >90% line coverage
 - **Badge**: Displayed on GitHub README
 
