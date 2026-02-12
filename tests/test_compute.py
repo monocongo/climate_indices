@@ -1,12 +1,7 @@
-import logging
-
 import numpy as np
 import pytest
 
 from climate_indices import compute
-
-# disable logging messages
-logging.disable(logging.CRITICAL)
 
 UNEXPECTED_PEARSON3_MESSAGE = "Transformed Pearson Type III fitted values not computed as expected"
 UNEXPECTED_SLIDING_SUMS_MESSAGE = "Sliding sums not computed as expected"
