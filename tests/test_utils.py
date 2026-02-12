@@ -3,7 +3,6 @@ import pytest
 
 from climate_indices import utils
 
-
 # Tests for `climate_indices.utils.py`
 
 
