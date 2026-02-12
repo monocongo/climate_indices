@@ -201,3 +201,8 @@ dev = [
     "sphinx-autodoc-typehints>=3.0.1",
     "twine>=6.1.0",
 ]
+security = [
+    "cryptography>=46.0.5",
+    "jaraco-context>=6.1.0",
+    "pip-audit>=2.9.0",
+]
