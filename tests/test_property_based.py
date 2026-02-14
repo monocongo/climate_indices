@@ -31,8 +31,14 @@ from tests.helpers.strategies import (
     valid_scale,
 )
 
-# disable logging output during hypothesis test runs to reduce noise
-logging.disable(logging.CRITICAL)
+
+@pytest.fixture(scope="module", autouse=True)
+def suppress_logging_for_module():
+    """Temporarily suppress logging while this module runs."""
+    previous_disable_level = logging.root.manager.disable
+    logging.disable(logging.CRITICAL)
+    yield
+    logging.disable(previous_disable_level)
 
 # ============================================================================
 # Group A: Boundedness Tests

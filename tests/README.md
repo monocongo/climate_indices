@@ -48,9 +48,9 @@ Fixtures are split across focused modules for maintainability:
 ## Shared Test Utilities
 
 ### `helpers/logging.py`
-- `suppress_logging`: Autouse fixture that disables logging during tests
+- `suppress_logging`: Opt-in fixture that disables logging during tests
 - Reduces noise in test output (especially for Hypothesis property-based tests)
-- Automatically applied to all test modules
+- Applied only in tests/modules that explicitly request it
 
 ### `helpers/strategies.py`
 Reusable Hypothesis strategies for property-based testing:
