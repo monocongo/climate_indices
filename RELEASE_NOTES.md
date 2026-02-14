@@ -288,7 +288,7 @@ All dependencies bumped to latest stable versions. See CHANGELOG.md for full ver
 
 ---
 
-## 📋 Full PR List (18 merged PRs since v2.2.0)
+## 📋 Full PR List (17 merged PRs since v2.2.0)
 
 **Epics:**
 - #600: Epic 1 — Error handling & structured logging
@@ -304,6 +304,8 @@ All dependencies bumped to latest stable versions. See CHANGELOG.md for full ver
 
 **Infrastructure:**
 - #599: BMAD planning artifacts
+- #609: Dependency security hardening and CI follow-up fixes
+- #613: Documentation architecture and contribution guide updates
 
 **Dependency Updates (Dependabot):**
 - #602: urllib3 security update
