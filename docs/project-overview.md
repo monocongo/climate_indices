@@ -180,7 +180,7 @@ uv run pytest -m benchmark
 ## AI-Assisted Development Guidance
 
 ### Recommended Starting Points for AI Agents
-1. **For understanding computation**: Start with `docs/index.rst` (Sphinx overview), then `src/climate_indices/compute.py`
+1. **For understanding computation**: Start with `docs/source/modules.rst` (Sphinx), then `src/climate_indices/compute.py`
 2. **For understanding API**: Read `src/climate_indices/typed_public_api.py` (strict mypy typing) and `src/climate_indices/xarray_adapter.py`
 3. **For understanding CLI**: Examine `src/climate_indices/__main__.py` (full-featured) and `src/climate_indices/__spi__.py` (specialized)
 4. **For testing patterns**: Review `tests/conftest.py` (fixtures), `tests/test_xarray_adapter.py` (modern API), `tests/test_property_based.py` (invariants)
@@ -225,4 +225,4 @@ uv run pytest -m benchmark
 
 ---
 
-**Next Steps**: See [architecture.md](./architecture.md) for detailed technical architecture, [development-guide.md](./development-guide.md) for setup instructions, and [reference.rst](./reference.rst) for Sphinx API documentation.
+**Next Steps**: See [architecture.md](./architecture.md) for detailed technical architecture, [development-guide.md](./development-guide.md) for setup instructions, and [reference.rst](./reference.rst) for API reference details.

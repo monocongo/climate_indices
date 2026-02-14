@@ -48,9 +48,8 @@ ENTRYPOINT ["python", "-m", "climate_indices"]
 **Steps**:
 1. Checkout code
 2. Setup Python and uv
-3. Install dependencies: `uv sync --group dev`
+3. Install dependencies: `uv sync --dev`
 4. Run tests: `pytest`
-5. Complete matrix test run (no external coverage upload step in this workflow)
 
 **Configuration**:
 ```yaml
@@ -69,7 +68,9 @@ strategy:
 3. Build distribution: `python -m build`
    - Wheel: `climate_indices-X.Y.Z-py3-none-any.whl`
    - Source dist: `climate_indices-X.Y.Z.tar.gz`
-4. Publish to PyPI via trusted publishing (OIDC, no API token required)
+4. Validate package metadata: `twine check dist/*`
+5. Publish to PyPI using trusted publishing (OIDC, no `PYPI_API_TOKEN`)
+6. `release` environment requires manual approval before publish
 
 **Release Process**:
 ```bash
@@ -82,7 +83,8 @@ git push origin master --tags
 
 # 3. GitHub Actions automatically:
 #    - Builds packages
-#    - Uploads to PyPI via trusted publishing
+#    - Runs twine checks
+#    - Uploads to PyPI (trusted publishing)
 ```
 
 ### 3. Benchmarks Workflow (`benchmarks.yml`)
@@ -93,9 +95,9 @@ git push origin master --tags
 1. Checkout code
 2. Setup Python and uv
 3. Install dependencies: `uv sync --group dev`
-4. Run benchmarks: `pytest -m benchmark --benchmark-json`
-5. Compare against baseline
-6. Store results as artifact
+4. Run benchmarks: `pytest -m benchmark --benchmark-enable --benchmark-json=benchmark-results.json --benchmark-columns=mean,stddev,rounds`
+5. Store results as artifact
+6. Compare against baseline when `.benchmarks/baseline.json` exists
 
 **Benchmark Results**:
 - Stored in GitHub Actions artifacts
@@ -213,9 +215,9 @@ configure_logging(
 - Logged in structured format
 
 ### Coverage Tracking
-- **Service**: pytest-cov output in CI/local runs
+- **Service**: No external upload step in current GitHub Actions workflows
 - **Target**: >90% line coverage
-- **Badge**: Displayed on GitHub README
+- **Verification**: Enforced via test suite execution in CI
 
 ---
 

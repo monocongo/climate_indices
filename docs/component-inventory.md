@@ -10,7 +10,7 @@ This document provides a comprehensive catalog of all modules in the `climate_in
 
 ### `__main__.py` - Full-Featured CLI
 **Location**: `src/climate_indices/__main__.py`
-**Lines**: 1826
+**Lines**: 1872
 **Purpose**: Command-line interface for batch processing NetCDF datasets with all supported indices.
 
 #### Entry Points
@@ -73,7 +73,7 @@ climate_indices \
 
 ### `__spi__.py` - Specialized SPI CLI
 **Location**: `src/climate_indices/__spi__.py`
-**Lines**: 1478
+**Lines**: 1477
 **Purpose**: Specialized CLI for SPI computation with distribution fitting parameter caching.
 
 #### Entry Point
@@ -145,7 +145,7 @@ spi \
 
 ### `__init__.py` - Package Exports
 **Location**: `src/climate_indices/__init__.py`
-**Lines**: 43
+**Lines**: 42
 **Purpose**: Define public API surface and package metadata.
 
 #### Exported Symbols
@@ -263,7 +263,7 @@ import numpy.typing as npt
 
 ### `xarray_adapter.py` - CF-Compliant xarray Interface (EXPANDED in 2.2.0)
 **Location**: `src/climate_indices/xarray_adapter.py`
-**Lines**: 1417 (was ~400 in 2.1.0)
+**Lines**: 2102 (was ~400 in 2.1.0)
 **Purpose**: Modern xarray interface with CF metadata support.
 
 #### Key Functions
@@ -368,7 +368,7 @@ CF_METADATA = {
 
 ### `indices.py` - Legacy NumPy API (STABLE)
 **Location**: `src/climate_indices/indices.py`
-**Lines**: 701
+**Lines**: 856
 **Purpose**: Backward-compatible numpy interface.
 
 #### Stability Guarantee
@@ -448,7 +448,7 @@ class Distribution(Enum):
 
 ### `compute.py` - Mathematical Core
 **Location**: `src/climate_indices/compute.py`
-**Lines**: 1127
+**Lines**: 1328
 **Purpose**: Core algorithms for climate index calculation.
 
 #### Periodicity Enum
@@ -560,7 +560,7 @@ def transform_fitted_pearson(
 
 ### `palmer.py` - Palmer Drought Indices
 **Location**: `src/climate_indices/palmer.py`
-**Lines**: 806
+**Lines**: 912
 **Purpose**: Palmer Drought Index family computation.
 
 #### Indices Computed
@@ -609,7 +609,7 @@ def palmer(
 
 ### `eto.py` - Potential Evapotranspiration
 **Location**: `src/climate_indices/eto.py`
-**Lines**: 416
+**Lines**: 405
 **Purpose**: PET computation using Thornthwaite and Hargreaves methods.
 
 #### Thornthwaite Method (1948)
@@ -670,7 +670,7 @@ def hargreaves(
 
 ### `lmoments.py` - L-Moments
 **Location**: `src/climate_indices/lmoments.py`
-**Lines**: 94
+**Lines**: 188
 **Purpose**: L-moments for robust Pearson Type III fitting.
 
 #### Key Function
@@ -706,7 +706,7 @@ Called by `compute.pearson_parameters()` for robust parameter estimation.
 
 ### `exceptions.py` - Exception Hierarchy
 **Location**: `src/climate_indices/exceptions.py`
-**Lines**: 324
+**Lines**: 323
 **Purpose**: Structured error handling with context attributes.
 
 #### Exception Hierarchy
@@ -773,7 +773,7 @@ except DistributionFittingError as e:
 
 ### `logging_config.py` - Structured Logging
 **Location**: `src/climate_indices/logging_config.py`
-**Lines**: 76
+**Lines**: 146
 **Purpose**: Configure structlog for library.
 
 #### Public Function
@@ -816,7 +816,7 @@ configure_logging(
 
 ### `utils.py` - Utility Functions
 **Location**: `src/climate_indices/utils.py`
-**Lines**: 396
+**Lines**: 549
 **Purpose**: Cross-cutting utility functions.
 
 #### Calendar Conversions
@@ -899,7 +899,7 @@ def get_logger(
 
 ### `performance.py` - Performance Tracking (NEW in 2.2.0)
 **Location**: `src/climate_indices/performance.py`
-**Lines**: 112
+**Lines**: 118
 **Purpose**: Observability and profiling utilities.
 
 #### Decorator

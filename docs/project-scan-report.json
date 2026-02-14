@@ -189,12 +189,12 @@
     "release": {
       "file": ".github/workflows/release.yml",
       "trigger": "git_tag",
-      "actions": "build, pypi_publish_trusted"
+      "actions": "test_matrix, build, twine_check, pypi_publish_trusted"
     },
     "benchmarks": {
       "file": ".github/workflows/benchmarks.yml",
       "trigger": "pull_request_master, manual_dispatch",
-      "actions": "benchmark_run, compare, artifact_store"
+      "actions": "benchmark_run_with_json, artifact_store, optional_baseline_compare"
     }
   },
   "architectural_invariants": [

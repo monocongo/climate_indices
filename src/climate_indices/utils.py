@@ -31,8 +31,8 @@ __all__ = [
 def compute_days(
     initial_year: int,
     total_months: int,
-    initial_month=1,
-    units_start_year=1800,
+    initial_month: int = 1,
+    units_start_year: int = 1800,
 ) -> np.ndarray:
     """
     Computes the "number of days" equivalent for regular, incremental monthly
@@ -77,7 +77,7 @@ def compute_days(
 
 def count_zeros_and_non_missings(
     values: np.ndarray,
-) -> (int, int):
+) -> tuple[int, int]:
     """
     Given an input array of values return a count of the zeros
     and non-missing values. Missing values assumed to be numpy.NaNs.
@@ -94,10 +94,10 @@ def count_zeros_and_non_missings(
     zeros = values.size - np.count_nonzero(values)
     non_missings = np.count_nonzero(~np.isnan(values))
 
-    return zeros, non_missings
+    return int(zeros), int(non_missings)
 
 
-def get_logger(name, level):
+def get_logger(name: str, level: int) -> logging.Logger:
     """
     Sets up a basic, global _logger
 
@@ -121,7 +121,7 @@ def get_tolerance(dim: np.ndarray) -> float:
     Always greater than zero.
     """
     tol = np.abs(np.diff(dim)).min() / 10
-    return max(tol, np.finfo(tol.dtype).resolution)
+    return float(max(tol, np.finfo(tol.dtype).resolution))
 
 
 def sign_change(
@@ -161,7 +161,7 @@ def is_data_valid(
     (ndarray or MaskArray) which is not all-NaN.
 
     :param data: data object, expected as either numpy.ndarry or numpy.ma.MaskArray
-    :return True if array is non-NaN for at least one element
+    :return: True if array is non-NaN for at least one element
         and is an array type valid for processing by other modules
     :rtype: boolean
     """
@@ -173,9 +173,8 @@ def is_data_valid(
 
     elif isinstance(data, np.ndarray):
         valid_flag = not np.all(np.isnan(data))
-
     else:
-        _logger.warning("validation_warning", reason="invalid_data_type")
+        _logger.warning("validation_warning", reason="invalid_data_type")  # type: ignore[unreachable]
         valid_flag = False
 
     return valid_flag
@@ -184,15 +183,15 @@ def is_data_valid(
 def rmse(
     predictions: np.ndarray,
     targets: np.ndarray,
-) -> np.ndarray:
+) -> float:
     """
     Root mean square error
 
     :param predictions: np.ndarray
     :param targets: np.ndarray
-    :return: np.ndarray
+    :return: float
     """
-    return np.sqrt(((predictions - targets) ** 2).mean())
+    return float(np.sqrt(((predictions - targets) ** 2).mean()))
 
 
 def reshape_to_2d(

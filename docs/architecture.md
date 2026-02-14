@@ -259,8 +259,8 @@ climate_indices/
 │   ├── index.rst                 # Main Sphinx doc (ReadTheDocs)
 │   ├── reference.rst             # API reference (autodoc)
 │   ├── pypi_release.rst          # PyPI release guide
-│   ├── source/modules.rst        # Sphinx module toctree
-│   ├── source/tests.rst          # Sphinx tests module reference
+│   ├── source/modules.rst        # Package module docs (autodoc)
+│   ├── source/tests.rst          # Test module docs (autodoc)
 │   └── *.md                      # AI-readable docs (BMAD format, NEW)
 │
 ├── .github/workflows/            # CI/CD pipelines
@@ -467,7 +467,6 @@ Steps:
   2. Setup Python + uv
   3. uv sync --dev
   4. Run pytest
-  5. Complete matrix test run
 ```
 
 #### 2. release.yml
@@ -476,19 +475,20 @@ Steps:
 Steps:
   1. Checkout code
   2. Build sdist and wheel (hatchling)
-  3. Publish to PyPI via trusted publishing (OIDC)
+  3. Run twine package checks
+  4. Publish to PyPI (trusted publishing via OIDC)
 ```
 
 #### 3. benchmarks.yml (NEW in 2.2.0)
-**Trigger**: Pull request to master, manual dispatch
+**Trigger**: Pull request to `master`, manual dispatch
 ```yaml
 Steps:
   1. Checkout code
   2. Setup Python + uv
   3. uv sync --group dev
   4. Run pytest -m benchmark --benchmark-enable --benchmark-json
-  5. Compare against baseline
-  6. Post results as artifact
+  5. Upload benchmark artifact
+  6. Compare against baseline when available
 ```
 
 ### Docker Container

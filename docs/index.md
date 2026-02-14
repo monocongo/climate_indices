@@ -86,11 +86,11 @@ This documentation set is optimized for AI agents and provides comprehensive tec
 
 Comprehensive end-user documentation hosted on ReadTheDocs:
 
-1. **[index.rst](./index.rst)** - Main landing page with badges and navigation
-2. **[reference.rst](./reference.rst)** - API reference (auto-generated from docstrings)
-3. **[pypi_release.rst](./pypi_release.rst)** - PyPI release guide for maintainers
-4. **[source/modules.rst](./source/modules.rst)** - Sphinx module toctree
-5. **[source/tests.rst](./source/tests.rst)** - Sphinx test module reference
+1. **[index.rst](./index.rst)** - Main landing page and usage overview
+2. **[reference.rst](./reference.rst)** - API reference entry point
+3. **[source/modules.rst](./source/modules.rst)** - Package module reference (autodoc)
+4. **[source/tests.rst](./source/tests.rst)** - Test module reference (autodoc)
+5. **[pypi_release.rst](./pypi_release.rst)** - PyPI release guide for maintainers
 
 ### Supporting Documentation
 

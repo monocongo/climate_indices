@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from enum import Enum
+from typing import Any, cast
 
 import numpy as np
 
@@ -40,7 +41,7 @@ SCALE_MAX = 72
 _fallback_strategy = compute.DistributionFallbackStrategy()
 
 
-def _norm_fitdict(params: dict):
+def _norm_fitdict(params: dict[str, Any] | None) -> dict[str, Any] | None:
     """
     Compatibility shim. Convert old accepted parameter dictionaries
     into new, consistently keyed parameter dictionaries. If given
@@ -110,7 +111,7 @@ def _validate_distribution(distribution: Distribution) -> None:
         InvalidArgumentError: If distribution is not a Distribution enum member
     """
     if not isinstance(distribution, Distribution):
-        message = (
+        message = (  # type: ignore[unreachable]
             f"Unsupported distribution: {distribution}. "
             f"Supported distributions: gamma, pearson. "
             f"Use indices.Distribution.gamma or indices.Distribution.pearson."
@@ -133,7 +134,7 @@ def _validate_periodicity(periodicity: compute.Periodicity) -> None:
         InvalidArgumentError: If periodicity is not a Periodicity enum member
     """
     if not isinstance(periodicity, compute.Periodicity):
-        message = (
+        message = (  # type: ignore[unreachable]
             f"Invalid periodicity argument: {periodicity}. "
             f"Periodicity must be a Periodicity enum member. "
             f"Supported values: monthly, daily. "
@@ -155,7 +156,7 @@ def spi(
     calibration_year_initial: int,
     calibration_year_final: int,
     periodicity: compute.Periodicity,
-    fitting_params: dict = None,
+    fitting_params: dict[str, Any] | None = None,
 ) -> np.ndarray:
     """
     Computes SPI (Standardized Precipitation Index).
@@ -170,21 +171,15 @@ def spi(
     :param data_start_year: the initial year of the input precipitation dataset
     :param calibration_year_initial: initial year of the calibration period
     :param calibration_year_final: final year of the calibration period
-    :param periodicity: the periodicity of the time series represented by the
-        input data, valid/supported values are 'monthly' and 'daily'
-        'monthly' indicates an array of monthly values, assumed to span full
-         years, i.e. the first value corresponds to January of the initial year
-         and any missing final months of the final year filled with NaN values,
-         with size == # of years * 12
-         'daily' indicates an array of full years of daily values with 366 days
-         per year, as if each year were a leap year and any missing final months
-         of the final year filled with NaN values, with array size == (# years * 366)
+    :param periodicity: periodicity of the input time series; use
+        ``compute.Periodicity.monthly`` for monthly data (12 values/year) or
+        ``compute.Periodicity.daily`` for daily data (366 values/year).
     :param fitting_params: optional dictionary of pre-computed distribution
         fitting parameters, if the distribution is gamma then this dict should
         contain two arrays, keyed as "alpha" and "beta", and if the
         distribution is Pearson then this dict should contain four arrays keyed
         as "prob_zero", "loc", "scale", and "skew".
-    :return SPI values fitted to the gamma distribution at the specified time
+    :return: SPI values fitted to the gamma distribution at the specified time
         step scale, unitless
     :rtype: 1-D numpy.ndarray of floats of the same length as the input array
         of precipitation values
@@ -219,7 +214,7 @@ def spi(
 
         # if we're passed all missing values then we can't compute
         # anything, so we return the same array of missing values
-        if (np.ma.is_masked(values) and values.mask.all()) or np.all(np.isnan(values)):
+        if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
             duration_ms = (time.perf_counter() - t0) * 1000.0
             log.info(
                 "calculation_completed",
@@ -327,7 +322,8 @@ def spi(
             output_shape=result.shape,
             **(memory_metrics or {}),
         )
-        return result
+        result_values: np.ndarray = result
+        return result_values
     except Exception as exc:
         log.error(
             "calculation_failed",
@@ -348,7 +344,7 @@ def spei(
     data_start_year: int,
     calibration_year_initial: int,
     calibration_year_final: int,
-    fitting_params: dict = None,
+    fitting_params: dict[str, Any] | None = None,
 ) -> np.ndarray:
     """
     Compute SPEI fitted to the specified distribution.
@@ -366,15 +362,9 @@ def spei(
         before computing the indicator
     :param distribution: distribution type to be used for the internal
         fitting/transform computation
-    :param periodicity: the periodicity of the time series represented by the
-        input data, valid/supported values are 'monthly' and 'daily'
-        'monthly' indicates an array of monthly values, assumed to span full
-         years, i.e. the first value corresponds to January of the initial year
-         and any missing final months of the final year filled with NaN values,
-         with size == # of years * 12
-         'daily' indicates an array of full years of daily values with 366 days
-         per year, as if each year were a leap year and any missing final months
-         of the final year filled with NaN values, with array size == (# years * 366)
+    :param periodicity: periodicity of the input time series; use
+        ``compute.Periodicity.monthly`` for monthly data (12 values/year) or
+        ``compute.Periodicity.daily`` for daily data (366 values/year).
     :param data_start_year: the initial year of the input datasets (assumes that
         the two inputs cover the same period)
     :param calibration_year_initial: initial year of the calibration period
@@ -408,11 +398,12 @@ def spei(
 
     try:
         # Normalize fitting param keys
-        fitting_params = _norm_fitdict(fitting_params)
+        fitting_params_normalized = _norm_fitdict(fitting_params)
+        fitting_params = fitting_params_normalized
 
         # if we're passed all missing values then we can't compute anything,
         # so we return the same array of missing values
-        if (np.ma.is_masked(precips_mm) and precips_mm.mask.all()) or np.all(np.isnan(precips_mm)):
+        if (isinstance(precips_mm, np.ma.MaskedArray) and precips_mm.mask.all()) or np.all(np.isnan(precips_mm)):
             duration_ms = (time.perf_counter() - t0) * 1000.0
             log.info(
                 "calculation_completed",
@@ -505,7 +496,8 @@ def spei(
             output_shape=result.shape,
             **(memory_metrics or {}),
         )
-        return result
+        result_values: np.ndarray = result
+        return result_values
     except Exception as exc:
         log.error(
             "calculation_failed",
@@ -546,15 +538,9 @@ def percentage_of_normal(
         over which the normal average for each calendar time step is computed
     :param calibration_end_year: the final year of the calibration period over
         which the normal average for each calendar time step is computed
-    :param periodicity: the periodicity of the time series represented by the
-        input data, valid/supported values are 'monthly' and 'daily'
-        'monthly' indicates an array of monthly values, assumed to span full
-         years, i.e. the first value corresponds to January of the initial year
-         and any missing final months of the final year filled with NaN values,
-         with size == # of years * 12
-         'daily' indicates an array of full years of daily values with 366 days
-         per year, as if each year were a leap year and any missing final months
-         of the final year filled with NaN values, with array size == (# years * 366)
+    :param periodicity: periodicity of the input time series; use
+        ``compute.Periodicity.monthly`` for monthly data (12 values/year) or
+        ``compute.Periodicity.daily`` for daily data (366 values/year).
     :return: percent of normal precipitation values corresponding to the
         scaled precipitation values array
     :rtype: numpy.ndarray of type float
@@ -578,12 +564,14 @@ def percentage_of_normal(
         # if doing monthly then we'll use 12 periods, corresponding to calendar
         # months, if daily assume years w/366 days
         if periodicity == compute.Periodicity.monthly:
-            periodicity = 12
+            period_length = 12
         elif periodicity == compute.Periodicity.daily:
-            periodicity = 366
+            period_length = 366
+        else:
+            raise ValueError(f"Unsupported periodicity: {periodicity}")
 
         # bypass processing if all values are masked
-        if np.ma.is_masked(values) and values.mask.all():
+        if isinstance(values, np.ma.MaskedArray) and values.mask.all():
             duration_ms = (time.perf_counter() - t0) * 1000.0
             log.info(
                 "calculation_completed",
@@ -614,16 +602,16 @@ def percentage_of_normal(
         # extract the timesteps over which we'll compute the normal
         # average for each time step of the year
         calibration_years = calibration_end_year - calibration_start_year + 1
-        calibration_start_index = (calibration_start_year - data_start_year) * periodicity
-        calibration_end_index = calibration_start_index + (calibration_years * periodicity)
+        calibration_start_index = (calibration_start_year - data_start_year) * period_length
+        calibration_end_index = calibration_start_index + (calibration_years * period_length)
         calibration_period_sums = scale_sums[calibration_start_index:calibration_end_index]
 
         # for each time step in the calibration period, get the average of
         # the scale sum for that calendar time step (i.e. average all January sums,
         # then all February sums, etc.)
-        averages = np.full((periodicity,), np.nan)
-        for i in range(periodicity):
-            averages[i] = np.nanmean(calibration_period_sums[i::periodicity])
+        averages = np.full((period_length,), np.nan)
+        for i in range(period_length):
+            averages[i] = np.nanmean(calibration_period_sums[i::period_length])
 
         # TODO replace the below loop with a vectorized implementation
         # for each time step of the scale_sums array find its corresponding
@@ -631,7 +619,7 @@ def percentage_of_normal(
         percentages_of_normal = np.full(scale_sums.shape, np.nan)
         for i in range(scale_sums.size):
             # make sure we don't have a zero divisor
-            divisor = averages[i % periodicity]
+            divisor = averages[i % period_length]
             if divisor > 0.0:
                 percentages_of_normal[i] = scale_sums[i] / divisor
 
@@ -656,7 +644,7 @@ def percentage_of_normal(
 
 def pet(
     temperature_celsius: np.ndarray,
-    latitude_degrees: float,
+    latitude_degrees: float | np.ndarray,
     data_start_year: int,
 ) -> np.ndarray:
     """
@@ -712,8 +700,12 @@ def pet(
         # the first one -- useful when applying this function with xarray.GroupBy
         # or numpy.apply_along_axis() where we've had to duplicate values in a 3-D
         # array of latitudes in order to correspond with a 3-D array of temperatures.
-        if isinstance(latitude_degrees, np.ndarray) and (latitude_degrees.size > 1):
-            latitude_degrees = latitude_degrees.flat[0]
+        if isinstance(latitude_degrees, np.ndarray):
+            if latitude_degrees.size == 0:
+                message = "Invalid latitude value: empty latitude array (must contain at least one value)"
+                _logger.error(message)
+                raise ValueError(message)
+            latitude_degrees = cast(float, latitude_degrees.flat[0])
 
         # make sure we're not dealing with a NaN or out-of-range latitude value
         if (latitude_degrees is not None) and not np.isnan(latitude_degrees) and (-90.0 < latitude_degrees < 90.0):

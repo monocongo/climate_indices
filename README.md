@@ -1,4 +1,4 @@
-![Banner Image](assets/Global_Monthly_SPI.jpg)
+![Banner Image](https://raw.githubusercontent.com/monocongo/climate_indices/master/assets/Global_Monthly_SPI.jpg)
 
 # climate_indices
 
@@ -48,8 +48,43 @@ This is a developmental/forked version of code that was originally developed by 
 See [drought.gov](https://www.drought.gov/drought/python-climate-indices).
 
 - [__Documentation__](https://climate-indices.readthedocs.io/en/latest/)
-- [__License__](LICENSE)
-- [__Disclaimer__](DISCLAIMER)
+- [__License__](https://github.com/monocongo/climate_indices/blob/master/LICENSE)
+- [__Disclaimer__](https://github.com/monocongo/climate_indices/blob/master/DISCLAIMER)
+
+## Supported Python Versions
+
+| Python Version | Status | Notes |
+|:--------------:|:------:|:------|
+| 3.10 | Supported | Minimum supported version |
+| 3.11 | Supported | |
+| 3.12 | Supported | |
+| 3.13 | Supported | Latest supported version |
+
+All versions are tested on Linux (ubuntu-latest). Python 3.10 and 3.13 are additionally
+tested on macOS. Both latest and minimum declared dependency versions are tested in CI.
+
+### Version Support Policy
+
+This project provides **12 months notice** before dropping support for a Python version.
+When a version approaches end-of-life, removal will be announced via the CHANGELOG and a
+GitHub issue, and implemented no sooner than 12 months after announcement with a version bump.
+
+Python 3.9 support was dropped in v2.2.0 (August 2025) due to `scipy>=1.15.3` requiring 3.10+.
+
+### API Stability
+
+| API Surface | Status | Guarantee |
+|:------------|:------:|:----------|
+| NumPy array functions (`indices.spi`, `indices.spei`, `indices.pet`) | **Stable** | No breaking changes in minor versions |
+| xarray DataArray functions (`spi()`, `spei()`, `pet_thornthwaite()`, `pet_hargreaves()`) | **Beta** | No breaking changes in patch versions |
+
+**Stable API**: The NumPy-based computation functions follow strict semantic versioning.
+
+**Beta API**: The xarray adapter layer provides automatic parameter inference, coordinate
+preservation, CF metadata, and Dask support. While beta, computation results are **identical**
+to the stable NumPy API — only the interface surface (parameter names, metadata attributes,
+coordinate handling) may evolve. Beta features are tagged with ``BetaFeatureWarning`` and
+marked in docstrings.
 
 ## Migration Guide for v2.2.0
 

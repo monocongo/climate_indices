@@ -380,12 +380,12 @@ docs/
 │
 ├── release.yml                  🟡 Automated PyPI releases
 │   ├── Trigger: Git tag (vX.Y.Z)
-│   ├── Steps: Build (python -m build) → Publish (PyPI via trusted publishing)
+│   ├── Steps: Test matrix → Build → twine check → Publish (PyPI trusted publishing)
 │   └── Purpose: Streamline release process
 │
 └── benchmarks.yml               🟢 NEW IN 2.2.0 - Performance tracking
-    ├── Trigger: Pull request to master, manual dispatch
-    ├── Steps: uv sync --group dev → pytest -m benchmark --benchmark-enable → compare → artifact
+    ├── Trigger: PR to master, manual dispatch
+    ├── Steps: uv sync --group dev → pytest -m benchmark --benchmark-enable → artifact → optional compare
     └── Purpose: Detect performance regressions
 ```
 
