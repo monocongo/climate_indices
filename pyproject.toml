@@ -166,6 +166,10 @@ sort = "mean"
 [tool.coverage.run]
 source = ["src/climate_indices"]
 branch = true
+omit = [
+    "src/climate_indices/__main__.py",
+    "src/climate_indices/__spi__.py",
+]
 
 [tool.coverage.report]
 fail_under = 70

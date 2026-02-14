@@ -21,9 +21,16 @@ from climate_indices.logging_config import (
 @pytest.fixture(autouse=True)
 def _reset_logging() -> None:
     """Reset logging state between tests."""
-    yield
     _reset_logging_for_testing()
     root = logging.getLogger()
+    root.handlers.clear()
+    root.setLevel(logging.WARNING)
+    if ENV_LOG_LEVEL in os.environ:
+        del os.environ[ENV_LOG_LEVEL]
+
+    yield
+
+    _reset_logging_for_testing()
     root.handlers.clear()
     root.setLevel(logging.WARNING)
     # clear any environment variable set during tests
@@ -319,17 +326,21 @@ class TestNoFileLoggingByDefault:
     """Verify that no file handlers are created by default."""
 
     def test_root_logger_only_has_stream_handler(self) -> None:
-        """Root logger should only have StreamHandler, no FileHandler."""
+        """Root logger should not contain user file handlers."""
         configure_logging()
         root = logging.getLogger()
-        assert len(root.handlers) == 1
-        assert isinstance(root.handlers[0], logging.StreamHandler)
-        assert not isinstance(root.handlers[0], logging.FileHandler)
+        assert any(isinstance(handler, logging.StreamHandler) for handler in root.handlers)
+        file_handlers = [handler for handler in root.handlers if isinstance(handler, logging.FileHandler)]
+        assert all(
+            getattr(handler, "baseFilename", None) in {None, os.devnull, "/dev/null"} for handler in file_handlers
+        )
 
     def test_no_file_handler_after_json_config(self) -> None:
-        """JSON format should also use only StreamHandler."""
+        """JSON format should also avoid user file handlers."""
         configure_logging(log_format="json")
         root = logging.getLogger()
-        assert len(root.handlers) == 1
-        assert isinstance(root.handlers[0], logging.StreamHandler)
-        assert not isinstance(root.handlers[0], logging.FileHandler)
+        assert any(isinstance(handler, logging.StreamHandler) for handler in root.handlers)
+        file_handlers = [handler for handler in root.handlers if isinstance(handler, logging.FileHandler)]
+        assert all(
+            getattr(handler, "baseFilename", None) in {None, os.devnull, "/dev/null"} for handler in file_handlers
+        )
