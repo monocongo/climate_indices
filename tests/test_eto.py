@@ -6,7 +6,6 @@ import pytest
 
 from climate_indices import eto
 
-# ------------------------------------------------------------------------------
 # disable logging messages
 logging.disable(logging.CRITICAL)
 

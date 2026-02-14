@@ -16,6 +16,11 @@ from climate_indices.xarray_adapter import xarray_adapter
 # fixtures now consolidated in conftest.py
 
 
+def _history_without_timestamp_prefix(history_value: str) -> str:
+    """Return history content after the leading timestamp prefix."""
+    return history_value.split(": ", 1)[1] if ": " in history_value else history_value
+
+
 def _verify_xarray_matches_manual_wrapping(
     typed_func: Callable[..., xr.DataArray],
     indices_func: Callable[..., np.ndarray],
@@ -61,10 +66,9 @@ def _verify_xarray_matches_manual_wrapping(
     # verify both have history attributes with matching content (ignoring timestamp prefix)
     assert "history" in result_typed.attrs
     assert "history" in result_manual.attrs
-    # history format: "YYYY-MM-DD HH:MM:SS climate_indices <version> <INDEX>(...)"
-    # extract content after timestamp (skip first 20 chars: "YYYY-MM-DD HH:MM:SS ")
-    history_typed_content = result_typed.attrs["history"][20:]
-    history_manual_content = result_manual.attrs["history"][20:]
+    # history strings include a dynamic timestamp prefix; compare stable suffix only.
+    history_typed_content = _history_without_timestamp_prefix(result_typed.attrs["history"])
+    history_manual_content = _history_without_timestamp_prefix(result_manual.attrs["history"])
     assert history_typed_content == history_manual_content
 
     # verify all non-history attributes are identical

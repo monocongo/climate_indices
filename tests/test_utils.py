@@ -8,7 +8,6 @@ from climate_indices import utils
 # disable logging messages
 logging.disable(logging.CRITICAL)
 
-
 # Tests for `climate_indices.utils.py`
 
 
