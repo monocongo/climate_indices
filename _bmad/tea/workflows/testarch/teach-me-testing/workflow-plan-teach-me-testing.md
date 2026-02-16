@@ -21,7 +21,7 @@ foundationCompletedDate: 2026-01-28
 ## Discovery Notes
 
 **User's Vision:**
-Create an ongoing learning companion that teaches testing progressively through a structured curriculum. Users at the company (and beyond) lack testing knowledge regardless of experience level - from hobbyist beginners to experienced VPs. The TEA (Test Architecture Enterprise) module has extensive documentation (~24k lines, 200 files, 9 workflows, 34 knowledge fragments), but manual teaching doesn't scale. This workflow solves that by providing self-paced, structured learning with state persistence across multiple sessions.
+Create an ongoing learning companion that teaches testing progressively through a structured curriculum. Users at the company (and beyond) lack testing knowledge regardless of experience level - from hobbyist beginners to experienced VPs. The TEA (Test Architecture Enterprise) module has extensive documentation (~24k lines, 200 files, 9 workflows, 35 knowledge fragments), but manual teaching doesn't scale. This workflow solves that by providing self-paced, structured learning with state persistence across multiple sessions.
 
 **Who It's For:**
 
@@ -384,7 +384,7 @@ teach-me-testing/
 **Expertise:**
 
 - Deep knowledge of testing principles (risk-based, test pyramid, types)
-- Expert in TEA methodology (9 workflows, architecture patterns, 34 knowledge fragments)
+- Expert in TEA methodology (9 workflows, architecture patterns, 35 knowledge fragments)
 - Familiar with Playwright, test automation, CI/CD
 - Teaching pedagogy: progressive learning, knowledge validation, role-based examples
 
@@ -459,7 +459,7 @@ teach-me-testing/
 
 **Session 7 Special Handling:**
 
-- Exploratory menu-driven deep-dive into 34 knowledge fragments
+- Exploratory menu-driven deep-dive into 35 knowledge fragments
 - Organized by categories (Testing Patterns, Playwright Utils, Config/Governance, etc.)
 - Links to GitHub for browsing
 
@@ -720,7 +720,7 @@ teach-me-testing/
 **Teaching Topics:**
 
 - What is TEA and why it exists
-- 9 workflows + 34 knowledge fragments
+- 9 workflows + 35 knowledge fragments
 - Quality standards (Definition of Done)
 - Risk-based testing (P0-P3 matrix)
 - TEA engagement models (Lite/Solo/Integrated/Enterprise/Brownfield)
@@ -788,7 +788,7 @@ teach-me-testing/
 **Created:** 2026-01-28
 **Files:** `steps-c/step-04-session-07.md` ✓
 **Session:** Advanced Patterns (ongoing)
-**Format:** Menu-driven exploration of 34 knowledge fragments
+**Format:** Menu-driven exploration of 35 knowledge fragments
 **Categories:** Testing Patterns (9), Playwright Utils (11), Config/Governance (6), Quality Frameworks (5), Auth/Security (3)
 **No Quiz:** Exploratory session, score: 100 on completion
 **Special:** Repeatable, user can explore multiple fragments, returns to hub
@@ -840,7 +840,7 @@ teach-me-testing/
 2. `data/role-paths.yaml` ✓ - Role customizations for QA/Dev/Lead/VP with focus areas and teaching adaptations
 3. `data/session-content-map.yaml` ✓ - Maps sessions to TEA docs, knowledge fragments, online URLs, workflows
 4. `data/quiz-questions.yaml` ✓ - Question bank for sessions 1-6 (session 7 is exploratory, no quiz)
-5. `data/tea-resources-index.yaml` ✓ - Comprehensive index of 32 docs + 34 knowledge fragments with GitHub links
+5. `data/tea-resources-index.yaml` ✓ - Comprehensive index of 32 docs + 35 knowledge fragments with GitHub links
 
 **All 5 data files complete.**
 

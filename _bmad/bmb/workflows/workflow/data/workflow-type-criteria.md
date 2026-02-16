@@ -1,17 +1,11 @@
 # Workflow Type Criteria
 
-**Purpose:** Key decisions when designing a workflow.
-
----
-
 ## Key Decisions
 
 1. **Module affiliation** - Standalone or part of a module?
 2. **Continuable** - Can it span multiple sessions?
 3. **Edit/Validate support** - Will it have edit and validate flows?
 4. **Document output** - Does it produce a document?
-
----
 
 ## 1. Module Affiliation
 
@@ -26,8 +20,6 @@
 - Stored in module's workflows directory
 
 **BMB additional variable:** `{bmb_creations_output_folder}`
-
----
 
 ## 2. Continuable or Single-Session?
 
@@ -54,8 +46,6 @@ lastContinued: '2025-01-02'
 **Required:**
 - Standard `step-01-init.md` (no continuation logic)
 - No `stepsCompleted` tracking needed
-
----
 
 ## 3. Edit/Validate Support
 
@@ -89,8 +79,6 @@ workflow-folder/
 
 **Use when:** Complex workflows that will be maintained
 
----
-
 ## 4. Document Output
 
 ### Document-Producing
@@ -103,8 +91,6 @@ workflow-folder/
 - Performs actions without persistent output
 - May produce temporary files
 - Focus on execution, not creation
-
----
 
 ## Decision Tree
 
@@ -123,30 +109,6 @@ START: Creating a workflow
    ├─ YES → Tri-modal (steps-c/, steps-e/, steps-v/)
    └─ NO  → Create-only (steps-c/ only)
 ```
-
----
-
-## Questions to Ask User
-
-**Module:**
-"Is this workflow standalone or part of a specific module (BMB, BMM, CIS, BMGD)?"
-
-**Continuable:**
-"Could this workflow consume many tokens or require multiple sessions?
-- If YES: Add continuation support
-- If NO: Keep it simple for single-session"
-
-**Edit/Validate:**
-"Will this workflow need edit and validate capabilities, or just create?
-- Create only: Simpler, faster
-- Create + Edit + Validate: More robust, maintainable"
-
-**Document:**
-"Does this workflow produce a document/output file?"
-- If YES: Use free-form template (recommended)
-- If NO: What does it produce?
-
----
 
 ## Output Format Decision
 

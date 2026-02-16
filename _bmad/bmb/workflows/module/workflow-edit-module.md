@@ -3,7 +3,7 @@ name: edit-module
 description: Edit existing BMAD modules while maintaining coherence
 web_bundle: true
 installed_path: '{project-root}/_bmad/bmb/workflows/module'
-editWorkflow: './steps-e/step-01-assess.md'
+editWorkflow: './steps-e/step-01-load-target.md'
 ---
 
 # Edit Module

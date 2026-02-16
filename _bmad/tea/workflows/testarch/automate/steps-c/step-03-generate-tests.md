@@ -57,7 +57,7 @@ const subprocessContext = {
   config: {
     test_framework: config.test_framework,
     use_playwright_utils: config.tea_use_playwright_utils,
-    use_mcp_enhancements: config.tea_use_mcp_enhancements
+    browser_automation: config.tea_browser_automation  // "auto" | "cli" | "mcp" | "none"
   },
   timestamp: timestamp
 };

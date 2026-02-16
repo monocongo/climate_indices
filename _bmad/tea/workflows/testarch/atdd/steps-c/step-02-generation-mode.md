@@ -1,6 +1,7 @@
 ---
 name: 'step-02-generation-mode'
 description: 'Choose AI generation or recording mode'
+outputFile: '{test_artifacts}/atdd-checklist-{story_id}.md'
 nextStepFile: './step-03-test-strategy.md'
 ---
 
@@ -47,23 +48,63 @@ Proceed directly to test strategy if this applies.
 
 ## 2. Optional Mode: Recording (Complex UI)
 
-Use recording only when:
+Use recording when UI interactions need live browser verification.
 
-- UI interactions are complex (drag/drop, multi-step wizards)
-- `config.tea_use_mcp_enhancements` is true
-- Playwright MCP tools are available
+**Tool selection based on `config.tea_browser_automation`:**
 
-If recording mode is chosen:
+If `auto`:
 
-- Confirm MCP availability
-- Record selectors and interactions
-- Capture outputs needed for test generation
+> **Note:** `${timestamp}` is a placeholder the agent should replace with a unique value (e.g., epoch seconds) for session isolation.
+
+- **Simple recording** (snapshot selectors, capture structure): Use CLI
+  - `playwright-cli -s=tea-atdd-${timestamp} open <url>` → `playwright-cli -s=tea-atdd-${timestamp} snapshot` → extract refs
+- **Complex recording** (drag/drop, wizards, multi-step state): Use MCP
+  - Full browser automation with rich tool semantics
+- **Fallback:** If preferred tool unavailable, use the other; if neither, skip recording
+
+If `cli`:
+
+- Use Playwright CLI for all recording
+- `playwright-cli -s=tea-atdd-${timestamp} open <url>`, `snapshot`, `screenshot`, `click <ref>`, etc.
+
+If `mcp`:
+
+- Use Playwright MCP tools for all recording (current behavior)
+- Confirm MCP availability, record selectors and interactions
+
+If `none`:
+
+- Skip recording mode entirely, use AI generation from documentation
 
 ---
 
 ## 3. Confirm Mode
 
 State the chosen mode and why. Then proceed.
+
+---
+
+## 4. Save Progress
+
+**Save this step's accumulated work to `{outputFile}`.**
+
+- **If `{outputFile}` does not exist** (first save), create it with YAML frontmatter:
+
+  ```yaml
+  ---
+  stepsCompleted: ['step-02-generation-mode']
+  lastStep: 'step-02-generation-mode'
+  lastSaved: '{date}'
+  ---
+  ```
+
+  Then write this step's output below the frontmatter.
+
+- **If `{outputFile}` already exists**, update:
+  - Add `'step-02-generation-mode'` to `stepsCompleted` array (only if not already present)
+  - Set `lastStep: 'step-02-generation-mode'`
+  - Set `lastSaved: '{date}'`
+  - Append this step's output to the appropriate section.
 
 Load next step: `{nextStepFile}`
 

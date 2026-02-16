@@ -2,6 +2,7 @@
 name: 'step-04e-aggregate-nfr'
 description: 'Aggregate NFR domain assessments into executive summary'
 nextStepFile: './step-05-generate-report.md'
+outputFile: '{test_artifacts}/nfr-assessment.md'
 ---
 
 # Step 4E: Aggregate NFR Assessment Results
@@ -192,6 +193,32 @@ fs.writeFileSync('/tmp/tea-nfr-summary-{{timestamp}}.json', JSON.stringify(execu
 
 ---
 
+---
+
+### 8. Save Progress
+
+**Save this step's accumulated work to `{outputFile}`.**
+
+- **If `{outputFile}` does not exist** (first save), create it using the workflow template (if available) with YAML frontmatter:
+
+  ```yaml
+  ---
+  stepsCompleted: ['step-04e-aggregate-nfr']
+  lastStep: 'step-04e-aggregate-nfr'
+  lastSaved: '{date}'
+  ---
+  ```
+
+  Then write this step's output below the frontmatter.
+
+- **If `{outputFile}` already exists**, update:
+  - Add `'step-04e-aggregate-nfr'` to `stepsCompleted` array (only if not already present)
+  - Set `lastStep: 'step-04e-aggregate-nfr'`
+  - Set `lastSaved: '{date}'`
+  - Append this step's output to the appropriate section of the document.
+
+---
+
 ## EXIT CONDITION
 
 Proceed to Step 5 when:
@@ -200,6 +227,7 @@ Proceed to Step 5 when:
 - ✅ Overall risk calculated
 - ✅ Compliance aggregated
 - ✅ Summary saved
+- ✅ Progress saved to output document
 
 Load next step: `{nextStepFile}`
 

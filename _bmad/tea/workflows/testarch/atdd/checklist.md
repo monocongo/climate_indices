@@ -170,7 +170,7 @@ Before starting this workflow, verify:
 
 ### ATDD Checklist Document Created
 
-- [ ] Output file created at `{output_folder}/atdd-checklist-{story_id}.md`
+- [ ] Output file created at `{test_artifacts}/atdd-checklist-{story_id}.md`
 - [ ] Document follows template structure from `atdd-checklist-template.md`
 - [ ] Document includes all required sections:
   - [ ] Story summary

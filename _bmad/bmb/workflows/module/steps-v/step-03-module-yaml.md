@@ -3,7 +3,7 @@ name: 'step-03-module-yaml'
 description: 'Validate module.yaml against conventions'
 
 nextStepFile: './step-04-agent-specs.md'
-moduleYamlConventionsFile: '../../data/module-yaml-conventions.md'
+moduleYamlConventionsFile: '../data/module-yaml-conventions.md'
 validationReportOutput: '{validation_report_output}'
 targetPath: '{validation_target_path}'
 ---

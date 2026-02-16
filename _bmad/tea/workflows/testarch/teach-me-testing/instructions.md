@@ -94,7 +94,7 @@ Complete all 7 sessions to receive your TEA Academy completion certificate with:
 1. **Set aside dedicated time** - Each session requires focus (30-90 min)
 2. **Take notes** - Session notes are generated, but add your own insights
 3. **Apply immediately** - Practice concepts on your current project
-4. **Explore fragments** - Session 7 has 34 knowledge fragments to deep-dive
+4. **Explore fragments** - Session 7 has 35 knowledge fragments to deep-dive
 5. **Share with team** - Help others learn by sharing your experience
 
 ## Customization by Role

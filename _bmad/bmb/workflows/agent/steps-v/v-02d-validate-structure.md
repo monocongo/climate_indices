@@ -4,8 +4,7 @@ description: 'Validate YAML structure and append to report'
 
 nextStepFile: './v-02e-validate-sidecar.md'
 validationReport: '{bmb_creations_output_folder}/validation-report-{agent-name}.md'
-simpleValidation: ../data/simple-agent-validation.md
-expertValidation: ../data/expert-agent-validation.md
+agentValidation: ../data/agent-validation.md
 agentCompilation: ../data/agent-compilation.md
 agentFile: '{agent-file-path}'
 ---
@@ -44,7 +43,7 @@ Validate the agent's YAML structure and completeness against BMAD standards as d
 
 ### 1. Load References
 
-Read `{agentCompilation}`, `{simpleValidation}`, `{expertValidation}`, `{validationReport}`, and `{agentFile}`.
+Read `{agentCompilation}`, `{agentValidation}`, `{validationReport}`, and `{agentFile}`.
 
 ### 2. Validate Structure
 
@@ -64,7 +63,7 @@ Perform these checks systematically - validate EVERY rule specified in agentComp
 - [ ] Boolean fields are actual booleans (not strings)
 
 #### C. Section Completeness
-- [ ] All required sections present based on agent type
+- [ ] All required sections present based on hasSidecar value
 - [ ] Sections not empty unless explicitly optional
 - [ ] Proper markdown heading hierarchy (##, ###)
 - [ ] No orphaned content without section headers
@@ -75,27 +74,24 @@ Perform these checks systematically - validate EVERY rule specified in agentComp
 - [ ] No malformed YAML structures
 - [ ] File references use correct path format
 
-#### E. Agent Type Specific Checks
+#### E. Agent Configuration Specific Checks
 
-**For Simple Agents (hasSidecar is false/absent, module is 'stand-alone'):**
+**For Agents WITHOUT Sidecar (hasSidecar is false):**
 - [ ] No sidecar requirements
 - [ ] No sidecar-folder path in metadata
-- [ ] Basic fields complete
-- [ ] No expert-only configuration present
+- [ ] If critical_actions present, no sidecar file references
 - [ ] Menu handlers use only internal references (#) or inline prompts
+- [ ] Total size under ~250 lines (unless justified)
 
-**For Expert Agents (hasSidecar is true):**
-- [ ] Sidecar flag set correctly in metadata
+**For Agents WITH Sidecar (hasSidecar is true):**
+- [ ] hasSidecar flag set correctly in metadata
 - [ ] Sidecar folder path specified in metadata
-- [ ] All expert fields present
-- [ ] Advanced features properly configured
-- [ ] Menu handlers reference sidecar files or have inline prompts
-
-**For Module Agents (module is a module code like 'bmm', 'bmb', etc.):**
-- [ ] Module property is valid module code
-- [ ] Exec paths for menu handlers start with `{project-root}/_bmad/{module}/...`
-- [ ] Referenced files exist under the module directory
-- [ ] If also hasSidecar: true, sidecar configuration is valid
+- [ ] critical_actions section present with minimum requirements:
+  - [ ] Loads sidecar memories
+  - [ ] Loads sidecar instructions
+  - [ ] Restricts file access to sidecar folder
+- [ ] All critical_actions reference correct `{project-root}/_bmad/_memory/` paths
+- [ ] Menu handlers that update sidecar use correct path format
 
 ### 3. Append Findings to Report
 
@@ -106,14 +102,16 @@ Append to `{validationReport}`:
 
 **Status:** {✅ PASS / ⚠️ WARNING / ❌ FAIL}
 
-**Agent Type:** {simple|expert|module}
+**Configuration:** Agent {WITH|WITHOUT} sidecar
+
+**hasSidecar:** {true|false}
 
 **Checks:**
 - [ ] Valid YAML syntax
-- [ ] Required fields present (name, description, type, persona)
-- [ ] Field types correct (arrays, strings)
+- [ ] Required fields present (name, description, persona, menu)
+- [ ] Field types correct (arrays, strings, booleans)
 - [ ] Consistent 2-space indentation
-- [ ] Agent type appropriate structure
+- [ ] Configuration appropriate structure
 
 **Detailed Findings:**
 

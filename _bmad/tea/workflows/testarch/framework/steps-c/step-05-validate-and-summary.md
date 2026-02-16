@@ -1,6 +1,7 @@
 ---
 name: 'step-05-validate-and-summary'
 description: 'Validate against checklist and summarize'
+outputFile: '{test_artifacts}/framework-setup-progress.md'
 ---
 
 # Step 5: Validate & Summarize
@@ -55,6 +56,30 @@ Report:
 - Artifacts created
 - Next steps (install deps, run tests)
 - Knowledge fragments applied
+
+---
+
+### 3. Save Progress
+
+**Save this step's accumulated work to `{outputFile}`.**
+
+- **If `{outputFile}` does not exist** (first save), create it with YAML frontmatter:
+
+  ```yaml
+  ---
+  stepsCompleted: ['step-05-validate-and-summary']
+  lastStep: 'step-05-validate-and-summary'
+  lastSaved: '{date}'
+  ---
+  ```
+
+  Then write this step's output below the frontmatter.
+
+- **If `{outputFile}` already exists**, update:
+  - Add `'step-05-validate-and-summary'` to `stepsCompleted` array (only if not already present)
+  - Set `lastStep: 'step-05-validate-and-summary'`
+  - Set `lastSaved: '{date}'`
+  - Append this step's output to the appropriate section of the document.
 
 ## 🚨 SYSTEM SUCCESS/FAILURE METRICS:
 

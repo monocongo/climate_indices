@@ -3,6 +3,7 @@ name: 'step-03-scaffold-framework'
 description: 'Create directory structure, config, fixtures, factories, and sample tests'
 nextStepFile: './step-04-docs-and-scripts.md'
 knowledgeIndex: '{project-root}/_bmad/tea/testarch/tea-index.csv'
+outputFile: '{test_artifacts}/framework-setup-progress.md'
 ---
 
 # Step 3: Scaffold Framework
@@ -105,6 +106,30 @@ Create helpers for:
 - API clients (if needed)
 - Network utilities
 - Auth helpers
+
+---
+
+### 6. Save Progress
+
+**Save this step's accumulated work to `{outputFile}`.**
+
+- **If `{outputFile}` does not exist** (first save), create it with YAML frontmatter:
+
+  ```yaml
+  ---
+  stepsCompleted: ['step-03-scaffold-framework']
+  lastStep: 'step-03-scaffold-framework'
+  lastSaved: '{date}'
+  ---
+  ```
+
+  Then write this step's output below the frontmatter.
+
+- **If `{outputFile}` already exists**, update:
+  - Add `'step-03-scaffold-framework'` to `stepsCompleted` array (only if not already present)
+  - Set `lastStep: 'step-03-scaffold-framework'`
+  - Set `lastSaved: '{date}'`
+  - Append this step's output to the appropriate section of the document.
 
 Load next step: `{nextStepFile}`
 

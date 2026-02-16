@@ -2,7 +2,8 @@
 name: 'step-02-generate-pipeline'
 description: 'Generate CI pipeline configuration'
 nextStepFile: './step-03-configure-quality-gates.md'
-outputFile: '{project-root}/.github/workflows/test.yml'
+pipelineOutputFile: '{project-root}/.github/workflows/test.yml'
+outputFile: '{test_artifacts}/ci-pipeline-progress.md'
 ---
 
 # Step 2: Generate CI Pipeline
@@ -66,7 +67,31 @@ Include stages:
 - Capture artifacts (HTML report, JUnit XML, traces/videos on failure)
 - Cache dependencies (node_modules / pnpm / npm cache)
 
-Write the selected pipeline configuration to `{outputFile}` (or adjust the path if a non-GitHub platform was chosen).
+Write the selected pipeline configuration to `{pipelineOutputFile}` (or adjust the path if a non-GitHub platform was chosen).
+
+---
+
+### 4. Save Progress
+
+**Save this step's accumulated work to `{outputFile}`.**
+
+- **If `{outputFile}` does not exist** (first save), create it with YAML frontmatter:
+
+  ```yaml
+  ---
+  stepsCompleted: ['step-02-generate-pipeline']
+  lastStep: 'step-02-generate-pipeline'
+  lastSaved: '{date}'
+  ---
+  ```
+
+  Then write this step's output below the frontmatter.
+
+- **If `{outputFile}` already exists**, update:
+  - Add `'step-02-generate-pipeline'` to `stepsCompleted` array (only if not already present)
+  - Set `lastStep: 'step-02-generate-pipeline'`
+  - Set `lastSaved: '{date}'`
+  - Append this step's output to the appropriate section of the document.
 
 Load next step: `{nextStepFile}`
 

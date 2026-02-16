@@ -3,6 +3,7 @@ name: 'step-04-docs-and-scripts'
 description: 'Document setup and add package.json scripts'
 nextStepFile: './step-05-validate-and-summary.md'
 outputFile: '{test_dir}/README.md'
+progressFile: '{test_artifacts}/framework-setup-progress.md'
 ---
 
 # Step 4: Documentation & Scripts
@@ -55,6 +56,28 @@ Add at minimum:
 - `test:e2e`: framework execution command
 
 ---
+
+### 3. Save Progress
+
+**Save this step's accumulated work to `{progressFile}`.**
+
+- **If `{progressFile}` does not exist** (first save), create it with YAML frontmatter:
+
+  ```yaml
+  ---
+  stepsCompleted: ['step-04-docs-and-scripts']
+  lastStep: 'step-04-docs-and-scripts'
+  lastSaved: '{date}'
+  ---
+  ```
+
+  Then write this step's output below the frontmatter.
+
+- **If `{progressFile}` already exists**, update:
+  - Add `'step-04-docs-and-scripts'` to `stepsCompleted` array (only if not already present)
+  - Set `lastStep: 'step-04-docs-and-scripts'`
+  - Set `lastSaved: '{date}'`
+  - Append this step's output to the appropriate section of the document.
 
 Load next step: `{nextStepFile}`
 

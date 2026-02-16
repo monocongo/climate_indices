@@ -1,6 +1,7 @@
 ---
 name: 'step-03-test-strategy'
 description: 'Map acceptance criteria to test levels and priorities'
+outputFile: '{test_artifacts}/atdd-checklist-{story_id}.md'
 nextStepFile: './step-04-generate-tests.md'
 ---
 
@@ -61,6 +62,30 @@ Assign P0–P3 priorities using risk and business impact.
 ## 4. Confirm Red Phase Requirements
 
 Ensure all tests are designed to **fail before implementation** (TDD red phase).
+
+---
+
+## 5. Save Progress
+
+**Save this step's accumulated work to `{outputFile}`.**
+
+- **If `{outputFile}` does not exist** (first save), create it with YAML frontmatter:
+
+  ```yaml
+  ---
+  stepsCompleted: ['step-03-test-strategy']
+  lastStep: 'step-03-test-strategy'
+  lastSaved: '{date}'
+  ---
+  ```
+
+  Then write this step's output below the frontmatter.
+
+- **If `{outputFile}` already exists**, update:
+  - Add `'step-03-test-strategy'` to `stepsCompleted` array (only if not already present)
+  - Set `lastStep: 'step-03-test-strategy'`
+  - Set `lastSaved: '{date}'`
+  - Append this step's output to the appropriate section.
 
 Load next step: `{nextStepFile}`
 

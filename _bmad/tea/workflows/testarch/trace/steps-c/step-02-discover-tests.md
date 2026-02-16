@@ -2,6 +2,7 @@
 name: 'step-02-discover-tests'
 description: 'Discover and catalog tests by level'
 nextStepFile: './step-03-map-criteria.md'
+outputFile: '{test_artifacts}/traceability-report.md'
 ---
 
 # Step 2: Discover & Catalog Tests
@@ -54,6 +55,30 @@ Classify as:
 - Unit
 
 Record test IDs, describe blocks, and priority markers if present.
+
+---
+
+### 3. Save Progress
+
+**Save this step's accumulated work to `{outputFile}`.**
+
+- **If `{outputFile}` does not exist** (first save), create it using the workflow template (if available) with YAML frontmatter:
+
+  ```yaml
+  ---
+  stepsCompleted: ['step-02-discover-tests']
+  lastStep: 'step-02-discover-tests'
+  lastSaved: '{date}'
+  ---
+  ```
+
+  Then write this step's output below the frontmatter.
+
+- **If `{outputFile}` already exists**, update:
+  - Add `'step-02-discover-tests'` to `stepsCompleted` array (only if not already present)
+  - Set `lastStep: 'step-02-discover-tests'`
+  - Set `lastSaved: '{date}'`
+  - Append this step's output to the appropriate section of the document.
 
 Load next step: `{nextStepFile}`
 

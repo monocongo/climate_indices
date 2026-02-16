@@ -3,7 +3,7 @@ name: 'step-02-discovery'
 description: 'Discover what user wants holistically'
 
 # File References
-nextStepFile: './step-03-type-metadata.md'
+nextStepFile: './step-03-sidecar-metadata.md'
 agentPlan: '{bmb_creations_output_folder}/agent-plan-{agent_name}.md'
 brainstormContext: ../data/brainstorm-context.md
 

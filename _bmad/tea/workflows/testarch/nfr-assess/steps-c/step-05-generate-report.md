@@ -1,7 +1,7 @@
 ---
 name: 'step-05-generate-report'
 description: 'Create NFR report and validation summary'
-outputFile: '{output_folder}/nfr-assessment.md'
+outputFile: '{test_artifacts}/nfr-assessment.md'
 ---
 
 # Step 5: Generate Report & Validate
@@ -49,9 +49,35 @@ Use `nfr-report-template.md` to produce `{outputFile}` containing:
 
 Validate against `checklist.md` and fix gaps.
 
+- [ ] CLI sessions cleaned up (no orphaned browsers)
+
 ---
 
-## 3. Completion Summary
+## 3. Save Progress
+
+**Save this step's accumulated work to `{outputFile}`.**
+
+- **If `{outputFile}` does not exist** (first save), create it using the workflow template (if available) with YAML frontmatter:
+
+  ```yaml
+  ---
+  stepsCompleted: ['step-05-generate-report']
+  lastStep: 'step-05-generate-report'
+  lastSaved: '{date}'
+  ---
+  ```
+
+  Then write this step's output below the frontmatter.
+
+- **If `{outputFile}` already exists**, update:
+  - Add `'step-05-generate-report'` to `stepsCompleted` array (only if not already present)
+  - Set `lastStep: 'step-05-generate-report'`
+  - Set `lastSaved: '{date}'`
+  - Append this step's output to the appropriate section of the document.
+
+---
+
+## 4. Completion Summary
 
 Report:
 

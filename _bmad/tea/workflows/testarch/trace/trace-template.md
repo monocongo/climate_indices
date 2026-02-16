@@ -1,3 +1,9 @@
+---
+stepsCompleted: []
+lastStep: ''
+lastSaved: ''
+---
+
 # Traceability Matrix & Gate Decision - Story {STORY_ID}
 
 **Story:** {STORY_TITLE}

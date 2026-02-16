@@ -14,7 +14,7 @@ partyModeWorkflow: '{project-root}/_bmad/core/workflows/party-mode/workflow.md'
 
 ## STEP GOAL:
 
-To provide menu-driven exploration of 34 TEA knowledge fragments organized by category, allowing deep-dive into specific advanced topics on-demand.
+To provide menu-driven exploration of 35 TEA knowledge fragments organized by category, allowing deep-dive into specific advanced topics on-demand.
 
 ## MANDATORY EXECUTION RULES (READ FIRST):
 
@@ -57,7 +57,7 @@ To provide menu-driven exploration of 34 TEA knowledge fragments organized by ca
 - Can revisit this session anytime
 - No quiz - this is reference learning
 
-**34 Knowledge Fragments organized by category:**
+**35 Knowledge Fragments organized by category:**
 
 Let's explore!"
 

@@ -2,6 +2,7 @@
 name: 'step-01-preflight'
 description: 'Verify prerequisites and detect CI platform'
 nextStepFile: './step-02-generate-pipeline.md'
+outputFile: '{test_artifacts}/ci-pipeline-progress.md'
 ---
 
 # Step 1: Preflight Checks
@@ -77,6 +78,30 @@ If missing: **HALT** with "Run `framework` workflow first."
 
 - Read `.nvmrc` if present (default to Node 24+ LTS if missing)
 - Read `package.json` for dependency caching strategy
+
+---
+
+### 6. Save Progress
+
+**Save this step's accumulated work to `{outputFile}`.**
+
+- **If `{outputFile}` does not exist** (first save), create it with YAML frontmatter:
+
+  ```yaml
+  ---
+  stepsCompleted: ['step-01-preflight']
+  lastStep: 'step-01-preflight'
+  lastSaved: '{date}'
+  ---
+  ```
+
+  Then write this step's output below the frontmatter.
+
+- **If `{outputFile}` already exists**, update:
+  - Add `'step-01-preflight'` to `stepsCompleted` array (only if not already present)
+  - Set `lastStep: 'step-01-preflight'`
+  - Set `lastSaved: '{date}'`
+  - Append this step's output to the appropriate section of the document.
 
 Load next step: `{nextStepFile}`
 

@@ -88,3 +88,6 @@ _bmad/
 
 # Git worktrees
 .worktrees/
+
+# Local reports
+reports/

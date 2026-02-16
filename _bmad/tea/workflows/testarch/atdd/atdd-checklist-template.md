@@ -1,3 +1,9 @@
+---
+stepsCompleted: []
+lastStep: ''
+lastSaved: ''
+---
+
 # ATDD Checklist - Epic {epic_num}, Story {story_num}: {story_title}
 
 **Date:** {date}

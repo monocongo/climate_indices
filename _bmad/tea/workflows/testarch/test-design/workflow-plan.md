@@ -16,7 +16,7 @@
   - step-02-apply-edit.md
 
   ## Outputs
-  - {output_folder}/test-design-architecture.md (system-level)
+  - {test_artifacts}/test-design-architecture.md (system-level)
 
-- {output_folder}/test-design-qa.md (system-level)
-- {output_folder}/test-design-epic-{epic_num}.md (epic-level)
+- {test_artifacts}/test-design-qa.md (system-level)
+- {test_artifacts}/test-design-epic-{epic_num}.md (epic-level)

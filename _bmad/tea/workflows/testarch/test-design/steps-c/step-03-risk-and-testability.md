@@ -2,6 +2,7 @@
 name: 'step-03-risk-and-testability'
 description: 'Perform testability review (system-level) and risk assessment'
 nextStepFile: './step-04-coverage-plan.md'
+outputFile: '{test_artifacts}/test-design-progress.md'
 ---
 
 # Step 3: Testability & Risk Assessment
@@ -70,6 +71,30 @@ Using `risk-governance.md` and `probability-impact.md` (if loaded):
 ## 3. Summarize Risk Findings
 
 Summarize the highest risks and their mitigation priorities.
+
+---
+
+### 4. Save Progress
+
+**Save this step's accumulated work to `{outputFile}`.**
+
+- **If `{outputFile}` does not exist** (first save), create it with YAML frontmatter:
+
+  ```yaml
+  ---
+  stepsCompleted: ['step-03-risk-and-testability']
+  lastStep: 'step-03-risk-and-testability'
+  lastSaved: '{date}'
+  ---
+  ```
+
+  Then write this step's output below the frontmatter.
+
+- **If `{outputFile}` already exists**, update:
+  - Add `'step-03-risk-and-testability'` to `stepsCompleted` array (only if not already present)
+  - Set `lastStep: 'step-03-risk-and-testability'`
+  - Set `lastSaved: '{date}'`
+  - Append this step's output to the appropriate section of the document.
 
 Load next step: `{nextStepFile}`
 

@@ -16,6 +16,6 @@
   - step-02-apply-edit.md
 
   ## Outputs
-  - {output_folder}/traceability-matrix.md
+  - {test_artifacts}/traceability-matrix.md
 
 - Gate decision summary (if evidence available)

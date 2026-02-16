@@ -1,73 +1,38 @@
 # Agent Metadata Properties
 
-Core identification and classification properties for all agents.
+| Property | Format | Rules |
+|----------|--------|-------|
+| `id` | `_bmad/agents/{agent-name}/{agent-name}.md` | Compiled output path; must match filename |
+| `name` | "First Last" or "Name Title" | Persona's identity (NOT title/filename) |
+| `title` | "Role Name" (kebab-cased to filename) | Determines filename: `title` → `{title}.agent.yaml` |
+| `icon` | Single emoji only | One emoji exactly |
+| `module` | `stand-alone`, `bmm`, `cis`, `bmgd`, or custom | Lowercase, hyphenated for `stand-alone` |
+| `hasSidecar` | `true` or `false` | `true` = expects `{agent-name}-sidecar/` folder |
 
 ---
 
-## Property Reference
+## Field Rules
 
-| Property     | Purpose                   | Format                                         |
-| ------------ | ------------------------- | ---------------------------------------------- |
-| `id`         | Compiled output path      | `_bmad/agents/{agent-name}/{agent-name}.md`    |
-| `name`       | Persona's name            | "First Last" or "Name Title"                   |
-| `title`      | Professional role         | "Code Review Specialist"                       |
-| `icon`       | Visual identifier         | Single emoji only                              |
-| `module`     | Team/ecosystem membership | `stand-alone`, `bmm`, `cis`, `bmgd`, or custom |
-| `hasSidecar` | Sidecar folder exists     | `true` or `false` (Expert = true)              |
-
----
-
-## id Property
-
-The compiled output path after build.
-
-**Format:** `_bmad/agents/{agent-name}/{agent-name}.md`
-
-**Examples:**
+### `id`
 ```yaml
 id: _bmad/agents/commit-poet/commit-poet.md
-id: _bmad/agents/journal-keeper/journal-keeper.md
-id: _bmad/agents/security-engineer/security-engineer.md
 ```
+- Unique identifier for future lookup
+- Conventionally matches filename pattern
 
-**Note:** The `id` is a unique identifier for potential future lookup if many compiled agents are merged into a single file. Conventionally matches the agent's filename pattern.
-
----
-
-## name Property
-
-The persona's identity - what the agent is called.
-
-**Format:** Human name or descriptive name
-
+### `name`
 ```yaml
 # ✅ CORRECT
-name: 'Inkwell Von Comitizen' # peron name of commit-author title agent
-name: 'Dr. Demento'  # person name for a joke writer agent
-name: 'Clarity' # person name for a guided thought coach agent
+name: 'Inkwell Von Comitizen'
+name: 'Dr. Demento'
+name: 'Clarity'
 
 # ❌ WRONG
-name: 'commit-poet'  # That's the filename
+name: 'commit-poet'        # That's the filename
 name: 'Code Review Specialist'  # That's the title
 ```
 
----
-
-## title Property
-
-Professional role identifier.
-
-**Format:** Professional title or role name
-
-**Important:** The `title` determines the agent's filename:
-- `title: 'Commit Message Artisan'` → `commit-message-artisan.agent.yaml`
-- `title: 'Strategic Business Analyst'` → `strategic-business-analyst.agent.yaml`
-- `title: 'Code Review Specialist'` → `code-review-specialist.agent.yaml`
-
-The `id` and filename are derived from the `title` (kebab-cased).
-
-**Difference from role:** `title` is the short identifier (filename), `role` is 1-2 sentences expanding on what the agent does.
-
+### `title`
 ```yaml
 # ✅ CORRECT
 title: 'Commit Message Artisan'
@@ -76,17 +41,12 @@ title: 'Code Review Specialist'
 
 # ❌ WRONG
 title: 'Inkwell Von Comitizen'  # That's the name
-title: 'Writes git commits'  # Full sentence - not an identifying functional title
+title: 'Writes git commits'     # Full sentence, not functional title
 ```
+- Derives filename via kebab-case
+- `role` field (separate) expands on what agent does in 1-2 sentences
 
----
-
-## icon Property
-
-Single emoji representing the agent's personality/function.
-
-**Format:** Exactly one emoji
-
+### `icon`
 ```yaml
 # ✅ CORRECT
 icon: '🔧'
@@ -94,115 +54,80 @@ icon: '🧙‍♂️'
 icon: '📜'
 
 # ❌ WRONG
-icon: '🔧📜'  # Multiple emojis
+icon: '🔧📜'    # Multiple emojis
 icon: 'wrench'  # Text, not emoji
-icon: ''  # Empty
+icon: ''        # Empty
 ```
 
----
-
-## module Property
-
-Which module or ecosystem this agent belongs to.
-
-**Valid Values:**
-
-| Value         | Meaning                                 |
-| ------------- | --------------------------------------- |
-| `stand-alone` | Independent agent, not part of a module |
-| `bmm`         | Business Management Module              |
-| `cis`         | Continuous Innovation System            |
-| `bmgd`        | BMAD Game Development                   |
-| `{custom}`    | Any custom module code                  |
+### `module`
+| Value | Meaning |
+|-------|---------|
+| `stand-alone` | Independent agent |
+| `bmm` | Business Management Module |
+| `cis` | Continuous Innovation System |
+| `bmgd` | BMAD Game Development |
+| `{custom}` | Any custom module code |
 
 ```yaml
 # ✅ CORRECT
 module: stand-alone
 module: bmm
-module: cis
 
 # ❌ WRONG
-module: standalone  # Missing hyphen
-module: 'BMM'  # Uppercase
+module: standalone   # Missing hyphen
+module: 'BMM'        # Uppercase
 ```
 
----
-
-## hasSidecar Property
-
-Whether this agent has a sidecar folder with additional files.
-
-**Format:** Boolean (`true` or `false`)
-
-| Agent Type | hasSidecar           |
-| ---------- | -------------------- |
-| Simple     | `false`              |
-| Expert     | `true`               |
-| Module     | depends on structure |
-
+### `hasSidecar`
 ```yaml
 # Simple Agent
 hasSidecar: false
 
-# Expert Agent
+# Expert Agent (has sidecar folder)
 hasSidecar: true
 ```
-
-**Note:** If `hasSidecar: true`, the compiler expects a `{agent-name}-sidecar/` folder.
-
----
-
-## Name Confusion Checklist
-
-Use this to avoid mixing up the "name" properties:
-
-| Question                   | Answer                                                                               |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| What's the file called?    | Derived from `title`: `"Commit Message Artisan"` → `commit-message-artisan.agent.yaml` |
-| What's the persona called? | `name` - "Inkwell Von Comitizen" (who the agent is)                                  |
-| What's their job title?    | `title` - "Commit Message Artisan" (determines filename)                             |
-| What do they do?           | `role` - 1-2 sentences expanding on the title                                       |
-| What's the unique key?     | `id` - `_bmad/agents/commit-message-artisan/commit-message-artisan.md` (future lookup) |
+- If `true`: compiler expects `{agent-name}-sidecar/` folder
 
 ---
 
-## Common Issues
+## Name Confusion Prevention
 
-### Issue: name = title
+| Question | Answer |
+|----------|--------|
+| What's the file called? | Derived from `title`: `"Commit Message Artisan"` → `commit-message-artisan.agent.yaml` |
+| What's the persona called? | `name` — "Inkwell Von Comitizen" |
+| What's their job title? | `title` — "Commit Message Artisan" |
+| What do they do? | `role` — 1-2 sentences expanding on title |
+| What's the unique key? | `id` — `_bmad/agents/{name}/{name}.md` |
 
-**Wrong:**
+---
+
+## Common Anti-Patterns
+
 ```yaml
+# ❌ name = title (duplicate)
 name: 'Commit Message Artisan'
 title: 'Commit Message Artisan'
-```
 
-**Fix:**
-```yaml
+# ✅ Fix: separate identity from role
 name: 'Inkwell Von Comitizen'
 title: 'Commit Message Artisan'
 ```
 
-### Issue: id path mismatch
-
-**Wrong:** Agent file is `my-agent.agent.yaml` but:
 ```yaml
+# ❌ id path mismatch
+# File: my-agent.agent.yaml
 id: _bmad/agents/different-agent/different-agent.md
-```
 
-**Fix:** The `id` must match the filename:
-```yaml
+# ✅ Fix: match filename
 id: _bmad/agents/my-agent/my-agent.md
 ```
 
-### Issue: Wrong module format
-
-**Wrong:**
 ```yaml
+# ❌ Wrong module format
 module: Standalone
 module: STAND_ALONE
-```
 
-**Fix:**
-```yaml
-module: stand-alone  # lowercase, hyphenated
+# ✅ Fix: lowercase, hyphenated
+module: stand-alone
 ```

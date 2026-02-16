@@ -2,6 +2,7 @@
 name: 'step-02-select-framework'
 description: 'Select Playwright or Cypress and justify choice'
 nextStepFile: './step-03-scaffold-framework.md'
+outputFile: '{test_artifacts}/framework-setup-progress.md'
 ---
 
 # Step 2: Framework Selection
@@ -58,6 +59,30 @@ Respect `framework_preference` if explicitly set.
 ## 2. Announce Decision
 
 State the selected framework and reasoning.
+
+---
+
+### 3. Save Progress
+
+**Save this step's accumulated work to `{outputFile}`.**
+
+- **If `{outputFile}` does not exist** (first save), create it with YAML frontmatter:
+
+  ```yaml
+  ---
+  stepsCompleted: ['step-02-select-framework']
+  lastStep: 'step-02-select-framework'
+  lastSaved: '{date}'
+  ---
+  ```
+
+  Then write this step's output below the frontmatter.
+
+- **If `{outputFile}` already exists**, update:
+  - Add `'step-02-select-framework'` to `stepsCompleted` array (only if not already present)
+  - Set `lastStep: 'step-02-select-framework'`
+  - Set `lastSaved: '{date}'`
+  - Append this step's output to the appropriate section of the document.
 
 Load next step: `{nextStepFile}`
 

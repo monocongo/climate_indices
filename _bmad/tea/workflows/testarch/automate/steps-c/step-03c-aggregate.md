@@ -1,6 +1,7 @@
 ---
 name: 'step-03c-aggregate'
 description: 'Aggregate subprocess outputs and complete test infrastructure'
+outputFile: '{test_artifacts}/automation-summary.md'
 nextStepFile: './step-04-validate-and-summarize.md'
 ---
 
@@ -276,6 +277,30 @@ Proceed to Step 4 when:
 - ✅ All fixtures and helpers created
 - ✅ Summary statistics calculated and saved
 - ✅ Output displayed to user
+
+---
+
+### 7. Save Progress
+
+**Save this step's accumulated work to `{outputFile}`.**
+
+- **If `{outputFile}` does not exist** (first save), create it with YAML frontmatter:
+
+  ```yaml
+  ---
+  stepsCompleted: ['step-03c-aggregate']
+  lastStep: 'step-03c-aggregate'
+  lastSaved: '{date}'
+  ---
+  ```
+
+  Then write this step's output below the frontmatter.
+
+- **If `{outputFile}` already exists**, update:
+  - Add `'step-03c-aggregate'` to `stepsCompleted` array (only if not already present)
+  - Set `lastStep: 'step-03c-aggregate'`
+  - Set `lastSaved: '{date}'`
+  - Append this step's output to the appropriate section.
 
 Load next step: `{nextStepFile}`
 

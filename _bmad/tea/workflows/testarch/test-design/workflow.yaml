@@ -6,6 +6,7 @@ author: "BMad"
 # Critical variables from config
 config_source: "{project-root}/_bmad/tea/config.yaml"
 output_folder: "{config_source}:output_folder"
+test_artifacts: "{config_source}:test_artifacts"
 user_name: "{config_source}:user_name"
 communication_language: "{config_source}:communication_language"
 document_output_language: "{config_source}:document_output_language"
@@ -32,20 +33,20 @@ outputs:
   # System-Level Mode (Phase 3) - TWO documents
   - id: test-design-architecture
     description: "System-level test architecture: Architectural concerns, testability gaps, NFR requirements for Architecture/Dev teams"
-    path: "{output_folder}/test-design-architecture.md"
+    path: "{test_artifacts}/test-design-architecture.md"
     mode: system-level
     audience: architecture
 
   - id: test-design-qa
     description: "System-level test design: Test execution recipe, coverage plan, Sprint 0 setup for QA team"
-    path: "{output_folder}/test-design-qa.md"
+    path: "{test_artifacts}/test-design-qa.md"
     mode: system-level
     audience: qa
 
   # Epic-Level Mode (Phase 4) - ONE document (unchanged)
   - id: epic-level
     description: "Epic-level test plan (Phase 4)"
-    path: "{output_folder}/test-design-epic-{epic_num}.md"
+    path: "{test_artifacts}/test-design-epic-{epic_num}.md"
     mode: epic-level
 # Note: No default_output_file - mode detection determines which outputs to write
 

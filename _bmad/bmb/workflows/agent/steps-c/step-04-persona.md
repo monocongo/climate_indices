@@ -10,8 +10,8 @@ principlesCrafting: ../data/principles-crafting.md
 communicationPresets: ../data/communication-presets.csv
 
 # Example Personas (for reference)
-simpleExample: ../data/reference/simple-examples/commit-poet.agent.yaml
-expertExample: ../data/reference/expert-examples/journal-keeper/journal-keeper.agent.yaml
+simpleExample: ../data/reference/without-sidecar/commit-poet.agent.yaml
+expertExample: ../data/reference/with-sidecar/journal-keeper/journal-keeper.agent.yaml
 
 # Task References
 advancedElicitationTask: '{project-root}/_bmad/core/workflows/advanced-elicitation/workflow.xml'

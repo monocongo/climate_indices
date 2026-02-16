@@ -177,6 +177,9 @@ sessions:
           - network-error-monitor.md
           - contract-testing.md
 
+        browser_automation:
+          - playwright-cli.md
+
         configuration_governance:
           - playwright-config.md
           - ci-burn-in.md
@@ -201,4 +204,4 @@ sessions:
     key_concepts:
       - "Menu-driven fragment exploration"
       - "Just-in-time deep-dive learning"
-      - "34 knowledge fragments organized by category"
+      - "35 knowledge fragments organized by category"

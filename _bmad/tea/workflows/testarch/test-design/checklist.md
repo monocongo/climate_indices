@@ -48,7 +48,7 @@
 - [ ] Priority levels assigned (P0/P1/P2/P3)
 - [ ] P0 scenarios meet strict criteria (blocks core + high risk + no workaround)
 - [ ] Data prerequisites identified
-- [ ] Tooling requirements documented
+- [ ] Tooling/access requirements documented when applicable
 - [ ] Execution order defined (smoke → P0 → P1 → P2/P3)
 
 ### Step 4: Deliverables Generation
@@ -177,6 +177,45 @@
 - [ ] Risk assessment informs `gate` workflow criteria
 - [ ] Integrates with `ci` workflow execution order
 
+## Accountability & Logistics
+
+### Not in Scope
+
+- [ ] Out-of-scope items explicitly listed with reasoning
+- [ ] Mitigation noted for each excluded item
+- [ ] Exclusions reviewed and accepted by stakeholders
+
+### Entry Criteria
+
+- [ ] Prerequisites for testing start are clearly defined
+- [ ] Environment readiness included
+- [ ] Test data readiness included
+- [ ] Sprint 0 blocker resolution referenced
+
+### Exit Criteria
+
+- [ ] Pass/fail thresholds defined for each priority level
+- [ ] Bug severity gate defined (e.g., no open P0/P1 bugs)
+- [ ] Coverage sufficiency criteria specified
+
+### Project Team (Optional)
+
+- [ ] If included, key roles identified (QA Lead, Dev Lead, PM, Architect minimum)
+- [ ] If included, testing responsibilities mapped to roles
+- [ ] If included, names populated where available (placeholders acceptable for draft)
+
+### Tooling & Access (System-Level Only, If Applicable)
+
+- [ ] If non-standard tools or access requests exist, list them
+- [ ] Access requirements identified for each tool/service
+- [ ] Status tracked (Ready/Pending) when applicable
+
+### Interworking & Regression
+
+- [ ] Impacted services/components identified
+- [ ] Regression scope defined per impacted service
+- [ ] Cross-team coordination noted where needed
+
 ## System-Level Mode: Two-Document Validation
 
 **When in system-level mode (PRD + ADR input), validate BOTH documents:**
@@ -233,7 +272,7 @@
 
 - [ ] **Purpose statement** at top (test execution recipe)
 - [ ] **Executive Summary** with risk summary and coverage summary
-- [ ] **Dependencies & Test Blockers** section in POSITION 2 (right after Executive Summary)
+- [ ] **Dependencies & Test Blockers** section appears near the top (immediately after Executive Summary, or after Not in Scope)
   - [ ] Backend/Architecture dependencies listed (what QA needs from other teams)
   - [ ] QA infrastructure setup listed (factories, fixtures, environments)
   - [ ] Code example with playwright-utils if config.tea_use_playwright_utils is true
@@ -256,7 +295,11 @@
 - [ ] **QA Effort Estimate** section (QA effort ONLY)
   - [ ] Interval-based estimates (e.g., "~1-2 weeks" NOT "36 hours")
   - [ ] NO DevOps, Backend, Data Eng, Finance effort
-  - [ ] NO Sprint breakdowns (too prescriptive)
+  - [ ] No per-sprint effort breakdowns in this section
+- [ ] **Sprint Planning Handoff** section (optional)
+  - [ ] Only include if implementation tasks must be scheduled
+  - [ ] Owners assigned (QA/Dev/Platform/etc)
+  - [ ] Target sprint may be noted, but avoid detailed per-sprint breakdowns
 - [ ] **Appendix A: Code Examples & Tagging**
 - [ ] **Appendix B: Knowledge Base References**
 
@@ -272,8 +315,8 @@
 - [ ] ❌ NO Follow-on Workflows section (BMAD commands self-explanatory)
 - [ ] ❌ NO Approval section
 - [ ] ❌ NO Infrastructure/DevOps/Finance effort tables (out of scope)
-- [ ] ❌ NO Sprint 0/1/2/3 breakdown tables
-- [ ] ❌ NO Next Steps section
+- [ ] ❌ NO detailed sprint-by-sprint breakdown tables (use Sprint Planning Handoff if needed)
+- [ ] ❌ NO generic Next Steps section (use Sprint Planning Handoff if needed)
 
 ### Cross-Document Consistency
 

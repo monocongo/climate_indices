@@ -2,6 +2,7 @@
 name: 'step-03f-aggregate-scores'
 description: 'Aggregate quality dimension scores into overall 0-100 score'
 nextStepFile: './step-04-generate-report.md'
+outputFile: '{test_artifacts}/test-review.md'
 ---
 
 # Step 3F: Aggregate Quality Scores
@@ -213,6 +214,32 @@ fs.writeFileSync('/tmp/tea-test-review-summary-{{timestamp}}.json', JSON.stringi
 
 ---
 
+---
+
+### 7. Save Progress
+
+**Save this step's accumulated work to `{outputFile}`.**
+
+- **If `{outputFile}` does not exist** (first save), create it using the workflow template (if available) with YAML frontmatter:
+
+  ```yaml
+  ---
+  stepsCompleted: ['step-03f-aggregate-scores']
+  lastStep: 'step-03f-aggregate-scores'
+  lastSaved: '{date}'
+  ---
+  ```
+
+  Then write this step's output below the frontmatter.
+
+- **If `{outputFile}` already exists**, update:
+  - Add `'step-03f-aggregate-scores'` to `stepsCompleted` array (only if not already present)
+  - Set `lastStep: 'step-03f-aggregate-scores'`
+  - Set `lastSaved: '{date}'`
+  - Append this step's output to the appropriate section of the document.
+
+---
+
 ## EXIT CONDITION
 
 Proceed to Step 4 when:
@@ -223,6 +250,7 @@ Proceed to Step 4 when:
 - ✅ Recommendations prioritized
 - ✅ Summary saved to temp file
 - ✅ Output displayed to user
+- ✅ Progress saved to output document
 
 Load next step: `{nextStepFile}`
 

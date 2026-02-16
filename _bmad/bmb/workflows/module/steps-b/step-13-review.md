@@ -3,7 +3,7 @@ name: 'step-13-review'
 description: 'Read through the brief together, "Does this excite you?"'
 
 nextStepFile: './step-14-finalize.md'
-briefTemplateFile: '../../templates/brief-template.md'
+briefTemplateFile: '../templates/brief-template.md'
 ---
 
 # Step 13: Review

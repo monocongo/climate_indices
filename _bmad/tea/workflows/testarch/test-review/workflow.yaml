@@ -6,6 +6,7 @@ author: "BMad"
 # Critical variables from config
 config_source: "{project-root}/_bmad/tea/config.yaml"
 output_folder: "{config_source}:output_folder"
+test_artifacts: "{config_source}:test_artifacts"
 user_name: "{config_source}:user_name"
 communication_language: "{config_source}:communication_language"
 document_output_language: "{config_source}:document_output_language"
@@ -23,7 +24,7 @@ variables:
   review_scope: "single" # single (one file), directory (folder), suite (all tests)
 
 # Output configuration
-default_output_file: "{output_folder}/test-review.md"
+default_output_file: "{test_artifacts}/test-review.md"
 
 # Required tools
 required_tools:

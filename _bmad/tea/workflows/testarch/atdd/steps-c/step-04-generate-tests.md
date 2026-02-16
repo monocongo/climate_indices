@@ -59,7 +59,8 @@ const subprocessContext = {
   knowledge_fragments_loaded: /* list of fragments */,
   config: {
     test_framework: config.test_framework,
-    use_playwright_utils: config.tea_use_playwright_utils
+    use_playwright_utils: config.tea_use_playwright_utils,
+    browser_automation: config.tea_browser_automation
   },
   timestamp: timestamp
 };

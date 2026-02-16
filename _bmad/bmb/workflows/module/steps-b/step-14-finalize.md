@@ -2,7 +2,7 @@
 name: 'step-14-finalize'
 description: 'Final polish, output the brief document'
 
-briefTemplateFile: '../../templates/brief-template.md'
+briefTemplateFile: '../templates/brief-template.md'
 bmbCreationsOutputFolder: '{bmb_creations_output_folder}'
 ---
 
