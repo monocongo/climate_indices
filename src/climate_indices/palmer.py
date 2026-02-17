@@ -1,17 +1,40 @@
-"""Compute palmer drought indices"""
+"""Compute palmer drought indices.
 
+This module contains:
+- SECTION 1: NumPy core computation engine (existing palmer.pdsi function)
+- SECTION 2: xarray adapter layer (palmer_xarray manual wrapper)
+
+The xarray wrapper uses Pattern C (manual wrapper) rather than the @xarray_adapter
+decorator because Palmer returns multiple outputs (4 arrays + params_dict) as an
+xr.Dataset, which is incompatible with the single-output decorator design.
+"""
+
+from __future__ import annotations
+
+import copy
 import time
+import warnings
 from typing import Any
 
 import numpy as np
+import xarray as xr
 
 from climate_indices import utils
+from climate_indices.exceptions import CoordinateValidationError, InputAlignmentWarning
 from climate_indices.logging_config import get_logger
+from climate_indices.xarray_adapter import (
+    _append_history,
+    _build_history_entry,
+    _infer_calibration_period,
+    _infer_data_start_year,
+    _validate_time_dimension,
+    _validate_time_monotonicity,
+)
 
 _logger = get_logger(__name__)
 
 # declare the function names that should be included in the public API for this module
-__all__ = ["pdsi"]
+__all__ = ["pdsi", "palmer_xarray"]
 
 AWCTOP = 1.0
 K8_SIZE = 40
@@ -935,6 +958,268 @@ def pdsi(
         )
 
         return pdsi_result, phdi, wplm, z, params
+
+    except Exception:
+        duration_ms = (time.perf_counter() - t0) * 1000.0
+        log.error("calculation_failed", duration_ms=round(duration_ms, 2))
+        raise
+
+
+# ============================================================================
+# SECTION 2: XARRAY ADAPTER LAYER
+# ============================================================================
+# Manual wrapper for Palmer multi-output Dataset return.
+# Pattern C from research: required because @xarray_adapter only supports
+# single-output functions returning np.ndarray, while Palmer returns a 5-tuple
+# (pdsi, phdi, pmdi, z_index, params_dict) that must be assembled into xr.Dataset.
+
+# variable names for the 4 Palmer output arrays
+_PALMER_VARIABLE_NAMES = ("pdsi", "phdi", "pmdi", "z_index")
+
+# placeholder CF-style metadata for each variable
+# will be replaced by CF metadata registry entries in Story 4.5
+_PALMER_VARIABLE_ATTRS: dict[str, dict[str, str]] = {
+    "pdsi": {
+        "long_name": "Palmer Drought Severity Index",
+        "units": "",
+    },
+    "phdi": {
+        "long_name": "Palmer Hydrological Drought Index",
+        "units": "",
+    },
+    "pmdi": {
+        "long_name": "Palmer Modified Drought Index",
+        "units": "",
+    },
+    "z_index": {
+        "long_name": "Palmer Z-Index",
+        "units": "",
+    },
+}
+
+
+def palmer_xarray(
+    precip_da: xr.DataArray,
+    pet_da: xr.DataArray,
+    awc: float,
+    data_start_year: int | None = None,
+    calibration_year_initial: int | None = None,
+    calibration_year_final: int | None = None,
+    fitting_params: dict[str, Any] | None = None,
+    time_dim: str = "time",
+) -> xr.Dataset:
+    """Compute Palmer drought indices with xarray Dataset return.
+
+    This is a manual wrapper around the NumPy-based ``pdsi()`` function that
+    accepts xarray DataArrays and returns an ``xr.Dataset`` containing all four
+    Palmer indices (PDSI, PHDI, PMDI, Z-Index) with preserved coordinates and
+    provenance metadata.
+
+    A manual wrapper (Pattern C) is used instead of the ``@xarray_adapter``
+    decorator because Palmer returns multiple output arrays plus a calibration
+    parameters dictionary, which is incompatible with the decorator's
+    single-output design.
+
+    .. warning:: **Beta Feature** -- The xarray adapter layer is beta and may
+       change in future minor releases. The NumPy ``pdsi()`` function is stable.
+
+    Args:
+        precip_da: Monthly precipitation values in inches as xr.DataArray
+            with a time dimension.
+        pet_da: Monthly potential evapotranspiration values in inches as
+            xr.DataArray with a time dimension. Must align with precip_da.
+        awc: Available water capacity (soil constant) in inches. Scalar float
+            for uniform AWC. Spatial DataArray support added in Story 4.4.
+        data_start_year: Initial year of the input datasets. If None, inferred
+            from the first timestamp in the time coordinate.
+        calibration_year_initial: Initial year of the calibration period.
+            If None, inferred from the first year of the time coordinate.
+        calibration_year_final: Final year of the calibration period.
+            If None, inferred from the last year of the time coordinate.
+        fitting_params: Optional dictionary of pre-computed fitting parameters
+            (alpha, beta, gamma, delta). If None, parameters are calibrated
+            from the data.
+        time_dim: Name of the time dimension (default: "time").
+
+    Returns:
+        xr.Dataset with data variables "pdsi", "phdi", "pmdi", "z_index",
+        each preserving coordinates and dimensions from the input DataArrays.
+        Dataset-level attrs include calibration parameters and provenance.
+
+    Raises:
+        CoordinateValidationError: If time dimension is missing, not monotonic,
+            or inputs have no overlapping time steps.
+        ValueError: If precip and PET arrays are incompatible sizes.
+
+    Examples:
+        >>> import xarray as xr
+        >>> import pandas as pd
+        >>> import numpy as np
+        >>> time_coord = pd.date_range("1980-01", periods=480, freq="MS")
+        >>> precip = xr.DataArray(
+        ...     np.random.uniform(0, 5, 480),
+        ...     coords={"time": time_coord},
+        ...     dims=["time"],
+        ... )
+        >>> pet = xr.DataArray(
+        ...     np.random.uniform(1, 4, 480),
+        ...     coords={"time": time_coord},
+        ...     dims=["time"],
+        ... )
+        >>> ds = palmer_xarray(precip, pet, awc=5.0)
+        >>> list(ds.data_vars)
+        ['pdsi', 'phdi', 'pmdi', 'z_index']
+    """
+    log = _logger.bind(
+        index_type="palmer_xarray",
+        awc=awc,
+        time_dim=time_dim,
+        precip_shape=precip_da.shape,
+        pet_shape=pet_da.shape,
+    )
+    log.info("calculation_started")
+    t0 = time.perf_counter()
+
+    try:
+        # -- validate time dimension on both inputs --
+        _validate_time_dimension(precip_da, time_dim)
+        _validate_time_dimension(pet_da, time_dim)
+
+        precip_time = precip_da[time_dim]
+        pet_time = pet_da[time_dim]
+        _validate_time_monotonicity(precip_time)
+        _validate_time_monotonicity(pet_time)
+
+        # -- align inputs (inner join on time coordinate) --
+        precip_aligned, pet_aligned = xr.align(precip_da, pet_da, join="inner")
+        aligned_len = len(precip_aligned[time_dim])
+        original_precip_len = len(precip_time)
+        original_pet_len = len(pet_time)
+
+        if aligned_len == 0:
+            raise CoordinateValidationError(
+                message=(f"No overlapping time steps between precip and PET along '{time_dim}' dimension."),
+                coordinate_name=time_dim,
+                reason="empty_intersection_after_alignment",
+            )
+
+        if aligned_len < original_precip_len or aligned_len < original_pet_len:
+            dropped = max(original_precip_len, original_pet_len) - aligned_len
+            log.warning(
+                "input_alignment_dropped_data",
+                original_precip_len=original_precip_len,
+                original_pet_len=original_pet_len,
+                aligned_len=aligned_len,
+            )
+            warnings.warn(
+                InputAlignmentWarning(
+                    message=(
+                        f"Input alignment dropped time steps. "
+                        f"precip had {original_precip_len}, PET had {original_pet_len}, "
+                        f"aligned to {aligned_len}."
+                    ),
+                    original_size=max(original_precip_len, original_pet_len),
+                    aligned_size=aligned_len,
+                    dropped_count=dropped,
+                ),
+                stacklevel=2,
+            )
+
+        # -- infer temporal parameters from time coordinate --
+        time_coord = precip_aligned[time_dim]
+
+        if data_start_year is None:
+            data_start_year = _infer_data_start_year(time_coord)
+
+        if calibration_year_initial is None or calibration_year_final is None:
+            cal_start, cal_end = _infer_calibration_period(time_coord)
+            if calibration_year_initial is None:
+                calibration_year_initial = cal_start
+            if calibration_year_final is None:
+                calibration_year_final = cal_end
+
+        log.info(
+            "parameters_resolved",
+            data_start_year=data_start_year,
+            calibration_year_initial=calibration_year_initial,
+            calibration_year_final=calibration_year_final,
+        )
+
+        # -- extract numpy arrays --
+        precip_values = precip_aligned.values
+        pet_values = pet_aligned.values
+
+        # -- call existing NumPy core function --
+        pdsi_arr, phdi_arr, pmdi_arr, z_arr, params_dict = pdsi(
+            precips=precip_values,
+            pet=pet_values,
+            awc=float(awc),
+            data_start_year=data_start_year,
+            calibration_year_initial=calibration_year_initial,
+            calibration_year_final=calibration_year_final,
+            fitting_params=fitting_params,
+        )
+
+        # -- build output Dataset --
+        output_arrays = {
+            "pdsi": pdsi_arr,
+            "phdi": phdi_arr,
+            "pmdi": pmdi_arr,
+            "z_index": z_arr,
+        }
+
+        data_vars: dict[str, xr.DataArray] = {}
+        for var_name in _PALMER_VARIABLE_NAMES:
+            # build per-variable attrs from placeholder metadata
+            var_attrs = copy.deepcopy(_PALMER_VARIABLE_ATTRS[var_name])
+            da = xr.DataArray(
+                output_arrays[var_name],
+                coords=precip_aligned.coords,
+                dims=precip_aligned.dims,
+                attrs=var_attrs,
+                name=var_name,
+            )
+            data_vars[var_name] = da
+
+        ds = xr.Dataset(data_vars)
+
+        # -- add Dataset-level attributes --
+        from climate_indices import __version__
+
+        ds.attrs["climate_indices_version"] = __version__
+
+        # store calibration parameters (basic -- full JSON serialization in Story 4.6)
+        if params_dict is not None:
+            for param_name in ("alpha", "beta", "gamma", "delta"):
+                if param_name in params_dict:
+                    ds.attrs[f"palmer_{param_name}"] = params_dict[param_name].tolist()
+
+        # add provenance history
+        history_entry = _build_history_entry(
+            "Palmer",
+            __version__,
+            {
+                "awc": awc,
+                "calibration_year_initial": calibration_year_initial,
+                "calibration_year_final": calibration_year_final,
+            },
+        )
+        ds.attrs["history"] = _append_history(precip_aligned.attrs, history_entry)
+
+        # deep-copy coordinate attrs to prevent mutation
+        for coord_name in ds.coords:
+            if coord_name in precip_aligned.coords:
+                ds.coords[coord_name].attrs = copy.deepcopy(precip_aligned.coords[coord_name].attrs)
+
+        duration_ms = (time.perf_counter() - t0) * 1000.0
+        log.info(
+            "calculation_completed",
+            duration_ms=round(duration_ms, 2),
+            output_variables=list(_PALMER_VARIABLE_NAMES),
+            output_shape=pdsi_arr.shape,
+        )
+
+        return ds
 
     except Exception:
         duration_ms = (time.perf_counter() - t0) * 1000.0
