@@ -930,6 +930,7 @@ def _infer_temporal_parameters(
         inferred["periodicity"] = _infer_periodicity(time_coord)
 
     # infer calibration period if either param is not provided
+    # SPI/SPEI use calibration_year_initial/calibration_year_final
     needs_cal_initial = (
         "calibration_year_initial" in sig.parameters and "calibration_year_initial" not in provided_params
     )
@@ -941,6 +942,19 @@ def _infer_temporal_parameters(
             inferred["calibration_year_initial"] = cal_start
         if needs_cal_final:
             inferred["calibration_year_final"] = cal_end
+
+    # PNP uses calibration_start_year/calibration_end_year
+    needs_cal_start = (
+        "calibration_start_year" in sig.parameters and "calibration_start_year" not in provided_params
+    )
+    needs_cal_end = "calibration_end_year" in sig.parameters and "calibration_end_year" not in provided_params
+
+    if needs_cal_start or needs_cal_end:
+        cal_start, cal_end = _infer_calibration_period(time_coord)
+        if needs_cal_start:
+            inferred["calibration_start_year"] = cal_start
+        if needs_cal_end:
+            inferred["calibration_end_year"] = cal_end
 
     return inferred
 
