@@ -1,14 +1,14 @@
 """Compute palmer drought indices"""
 
-import logging
+import time
 from typing import Any
 
 import numpy as np
 
 from climate_indices import utils
+from climate_indices.logging_config import get_logger
 
-# Retrieve logger and set desired logging level
-_logger = utils.get_logger(__name__, logging.DEBUG)
+_logger = get_logger(__name__)
 
 # declare the function names that should be included in the public API for this module
 __all__ = ["pdsi"]
@@ -526,7 +526,6 @@ def _statement_200(data: dict[str, Any]) -> None:
     # time x3 will reach a value where it is the value of x (pdsi).
     # At that time, the assign method backtracs through choosing
     # the appropriate x1 or x2 to be that month's x.
-    # _logger.debug(f"no value assigned; will backtrack later k8:{data['k8']},y:{year},m:{month}")
     if data["k8"] >= data["sx"].shape[0] + 1:
         vals = [0] * (data["k8"] - data["sx"].shape[0] + 2)
         data["sx"] = np.append(data["sx"], vals)
@@ -847,67 +846,97 @@ def pdsi(
     :rtype: four numpy.ndarrays of the PDSI values and a dictionary of the fitted parameters
     """
 
-    # Validate inputs
-    # if we're passed all missing values then we can't compute anything,
-    # so we return the same array of missing values
-    if (isinstance(precips, np.ma.MaskedArray) and precips.mask.all()) or np.all(np.isnan(precips)):
-        return precips, precips, precips, precips, None
-
-    # validate that the two input arrays are compatible
-    if precips.size != pet.size:
-        message = "Incompatible precipitation and PET arrays"
-        _logger.error(message)
-        raise ValueError(message)
-
-    # clip any negative values to zero
-    if np.amin(precips) < 0.0:
-        _logger.warning("Input contains negative values -- all negatives clipped to zero")
-        precips = np.clip(precips, a_min=0.0, a_max=None)
-
-    # remember the original length of the input array, in order to facilitate
-    # returning an array of the same size
-    original_length = precips.size
-
-    # Initialize data
-    data = _initialize_data(
-        precips=precips,
-        pet=pet,
+    # bind structured logging context for this calculation
+    log = _logger.bind(
+        index_type="pdsi",
         awc=awc,
         data_start_year=data_start_year,
         calibration_year_initial=calibration_year_initial,
         calibration_year_final=calibration_year_final,
-        fitting_params=fitting_params,
+        input_shape=precips.shape,
+        input_elements=precips.size,
     )
+    log.info("calculation_started")
+    t0 = time.perf_counter()
 
-    # Water balance calcs
-    _calc_water_balances(data)
+    try:
+        # if we're passed all missing values then we can't compute anything,
+        # so we return the same array of missing values
+        if (isinstance(precips, np.ma.MaskedArray) and precips.mask.all()) or np.all(np.isnan(precips)):
+            duration_ms = (time.perf_counter() - t0) * 1000.0
+            log.info(
+                "calculation_completed",
+                duration_ms=round(duration_ms, 2),
+                result="all_missing",
+            )
+            return precips, precips, precips, precips, None
 
-    # Get Cafec coefficients
-    if data["calibrate"]:
-        _calc_cafec_coefficients(data)
+        # validate that the two input arrays are compatible
+        if precips.size != pet.size:
+            message = "Incompatible precipitation and PET arrays"
+            log.error("validation_failed", reason=message)
+            raise ValueError(message)
 
-    # Calculate Z-Index weighting factors (variable AK)
-    _calc_zindex_factors(data)
+        # clip any negative values to zero
+        if np.amin(precips) < 0.0:
+            log.warning("negative_values_clipped", field="precips")
+            precips = np.clip(precips, a_min=0.0, a_max=None)
 
-    # Sum variables now become averages over the calibration period
-    # (currently not used - uncomment if want to export later)
-    # _avg_calibration_sums(data)
+        # remember the original length of the input array, in order to facilitate
+        # returning an array of the same size
+        original_length = precips.size
 
-    # reread monthly parameters for calculation of the 'K' monthly
-    # weighting factors used in z-index calculation
-    _calc_kfactors(data)
+        # Initialize data
+        data = _initialize_data(
+            precips=precips,
+            pet=pet,
+            awc=awc,
+            data_start_year=data_start_year,
+            calibration_year_initial=calibration_year_initial,
+            calibration_year_final=calibration_year_final,
+            fitting_params=fitting_params,
+        )
 
-    # Calculate the z-index (moisture anomaly) and pdsi (variable x)
-    _calc_zindex(data)
+        # Water balance calcs
+        _calc_water_balances(data)
 
-    _finish_up(data)
+        # Get Cafec coefficients
+        if data["calibrate"]:
+            _calc_cafec_coefficients(data)
 
-    # Format values
-    pdsi = data["pdsi"].flatten()[0:original_length]
-    phdi = data["phdi"].flatten()[0:original_length]
-    wplm = data["wplm"].flatten()[0:original_length]
-    z = data["z"].flatten()[0:original_length]
-    params = {key: data[key] for key in ["alpha", "beta", "gamma", "delta"]}
+        # Calculate Z-Index weighting factors (variable AK)
+        _calc_zindex_factors(data)
 
-    # return results
-    return pdsi, phdi, wplm, z, params
+        # Sum variables now become averages over the calibration period
+        # (currently not used - uncomment if want to export later)
+        # _avg_calibration_sums(data)
+
+        # reread monthly parameters for calculation of the 'K' monthly
+        # weighting factors used in z-index calculation
+        _calc_kfactors(data)
+
+        # Calculate the z-index (moisture anomaly) and pdsi (variable x)
+        _calc_zindex(data)
+
+        _finish_up(data)
+
+        # Format values
+        pdsi_result = data["pdsi"].flatten()[0:original_length]
+        phdi = data["phdi"].flatten()[0:original_length]
+        wplm = data["wplm"].flatten()[0:original_length]
+        z = data["z"].flatten()[0:original_length]
+        params = {key: data[key] for key in ["alpha", "beta", "gamma", "delta"]}
+
+        duration_ms = (time.perf_counter() - t0) * 1000.0
+        log.info(
+            "calculation_completed",
+            duration_ms=round(duration_ms, 2),
+            output_elements=pdsi_result.size,
+        )
+
+        return pdsi_result, phdi, wplm, z, params
+
+    except Exception:
+        duration_ms = (time.perf_counter() - t0) * 1000.0
+        log.error("calculation_failed", duration_ms=round(duration_ms, 2))
+        raise
