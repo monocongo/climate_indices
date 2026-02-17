@@ -604,3 +604,313 @@ def test_spi_all_zeros_does_not_crash(length: int, scale: int) -> None:
             assert result is not None, "SPI returned None for all-zero input"
         except Exception as e:
             pytest.fail(f"SPI crashed on all-zero input: {e}")
+
+
+# ============================================================================
+# Group F: PNP (Percentage of Normal) Property Tests
+# ============================================================================
+
+
+@given(precip=monthly_precipitation_array(), scale=valid_scale())
+@settings(max_examples=15, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+def test_pnp_output_shape_matches_input(precip: np.ndarray, scale: int) -> None:
+    """Verify PNP output shape matches input shape.
+
+    Property: Shape preservation - output array should have same length as input.
+    """
+    result = indices.percentage_of_normal(
+        precip,
+        scale=scale,
+        data_start_year=1950,
+        calibration_start_year=1950,
+        calibration_end_year=1950 + len(precip) // 12 - 1,
+        periodicity=compute.Periodicity.monthly,
+    )
+
+    assert result.shape == precip.shape, f"Shape mismatch: input {precip.shape}, output {result.shape}"
+
+
+@given(precip=monthly_precipitation_array(), scale=valid_scale())
+@settings(max_examples=15, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+def test_pnp_non_negative_for_non_negative_input(precip: np.ndarray, scale: int) -> None:
+    """Verify PNP is non-negative when input precipitation is non-negative.
+
+    Property: Percentage of normal is a ratio of non-negative sliding sums
+    to non-negative averages, so the result should be >= 0.
+    """
+    result = indices.percentage_of_normal(
+        precip,
+        scale=scale,
+        data_start_year=1950,
+        calibration_start_year=1950,
+        calibration_end_year=1950 + len(precip) // 12 - 1,
+        periodicity=compute.Periodicity.monthly,
+    )
+
+    valid_values = result[~np.isnan(result)]
+    if len(valid_values) > 0:
+        assert np.all(valid_values >= 0.0), "PNP contains negative values for non-negative input"
+
+
+def test_pnp_uniform_precipitation_yields_approximately_one() -> None:
+    """Verify PNP returns ~1.0 for uniform constant precipitation.
+
+    Property: When precipitation is constant across all months, the percentage
+    of normal should be exactly 1.0 (100% of normal) at every non-NaN position.
+    """
+    num_years = 40
+    # constant precipitation across all months
+    precip = np.full(num_years * 12, 50.0)
+    scale = 1
+
+    result = indices.percentage_of_normal(
+        precip,
+        scale=scale,
+        data_start_year=1950,
+        calibration_start_year=1950,
+        calibration_end_year=1989,
+        periodicity=compute.Periodicity.monthly,
+    )
+
+    valid_values = result[~np.isnan(result)]
+    assert len(valid_values) > 0, "Should produce some valid PNP values"
+    np.testing.assert_allclose(
+        valid_values,
+        1.0,
+        atol=1e-10,
+        err_msg="Uniform precipitation should yield PNP of exactly 1.0",
+    )
+
+
+@given(
+    multiplier=st.floats(min_value=0.5, max_value=3.0, allow_nan=False, allow_infinity=False),
+)
+@settings(max_examples=20, deadline=None)
+def test_pnp_scales_linearly_with_input(multiplier: float) -> None:
+    """Verify PNP scales linearly when input is uniformly scaled.
+
+    Property: If all precipitation values are multiplied by k, the PNP values
+    at non-NaN positions should also be multiplied by k (since both the sliding
+    sum and the calibration average scale by the same factor, PNP = k*sum / (k*avg) = 1.0
+    ... actually, PNP = k*sum / avg = k * (sum/avg) = k * original_pnp).
+
+    Wait - the calibration average is computed from the SAME scaled data, so:
+    PNP_scaled = (k * sum_i) / (k * avg_j) = sum_i / avg_j = PNP_original.
+
+    So PNP should be IDENTICAL regardless of uniform scaling.
+    """
+    num_years = 35
+    rng = np.random.default_rng(42)
+    base_precip = rng.gamma(shape=2.0, scale=50.0, size=num_years * 12)
+    scaled_precip = base_precip * multiplier
+    scale = 3
+
+    result_base = indices.percentage_of_normal(
+        base_precip,
+        scale=scale,
+        data_start_year=1950,
+        calibration_start_year=1950,
+        calibration_end_year=1950 + num_years - 1,
+        periodicity=compute.Periodicity.monthly,
+    )
+
+    result_scaled = indices.percentage_of_normal(
+        scaled_precip,
+        scale=scale,
+        data_start_year=1950,
+        calibration_start_year=1950,
+        calibration_end_year=1950 + num_years - 1,
+        periodicity=compute.Periodicity.monthly,
+    )
+
+    # both should be identical (scale-invariant when calibration period == data period)
+    valid_mask = ~np.isnan(result_base) & ~np.isnan(result_scaled)
+    if np.any(valid_mask):
+        np.testing.assert_allclose(
+            result_scaled[valid_mask],
+            result_base[valid_mask],
+            rtol=1e-10,
+            err_msg="PNP should be scale-invariant when calibration == data period",
+        )
+
+
+# ============================================================================
+# Group G: PCI (Precipitation Concentration Index) Property Tests
+# ============================================================================
+
+
+def test_pci_uniform_distribution_bounded() -> None:
+    """Verify PCI for uniform daily rainfall stays within expected bounds.
+
+    Property: PCI for uniform daily rainfall should be deterministic and
+    bounded. Due to the month-length boundaries used in the PCI algorithm,
+    equal daily rainfall does not produce equal monthly totals, so the
+    theoretical minimum of 100/12 is not achieved. However, the value
+    should be consistent and bounded within [8.0, 12.0].
+    """
+    # 366-day year with equal rain each day
+    rainfall = np.full(366, 10.0)
+    result = indices.pci(rainfall)
+
+    assert 8.0 < result[0] < 12.0, f"Uniform PCI {result[0]} outside expected bounds [8, 12]"
+
+    # verify determinism: same input always produces same output
+    result2 = indices.pci(rainfall)
+    assert result[0] == result2[0], "PCI should be deterministic"
+
+
+def test_pci_365_uniform_distribution_bounded() -> None:
+    """Verify PCI for uniform 365-day rainfall stays within expected bounds.
+
+    Property: Same as above but for non-leap year.
+    """
+    rainfall = np.full(365, 10.0)
+    result = indices.pci(rainfall)
+
+    assert 8.0 < result[0] < 12.0, f"Uniform PCI (365) {result[0]} outside expected bounds [8, 12]"
+
+
+@given(
+    rain_rate=st.floats(min_value=0.1, max_value=100.0, allow_nan=False, allow_infinity=False),
+)
+@settings(max_examples=30, deadline=None)
+def test_pci_positive_for_positive_input(rain_rate: float) -> None:
+    """Verify PCI is always positive for valid positive inputs.
+
+    Property: PCI = (sum of squared monthly totals) / (total squared) * 100.
+    For positive inputs, both numerator and denominator are positive, so PCI > 0.
+    """
+    rainfall = np.full(366, rain_rate)
+    result = indices.pci(rainfall)
+
+    assert result.shape == (1,), "PCI should return a 1-element array"
+    assert result[0] > 0, "PCI should be positive for positive rainfall"
+
+
+@given(
+    rain_rate=st.floats(min_value=0.1, max_value=100.0, allow_nan=False, allow_infinity=False),
+)
+@settings(max_examples=30, deadline=None)
+def test_pci_output_is_scalar_array(rain_rate: float) -> None:
+    """Verify PCI output is a 1-element array.
+
+    Property: PCI computes a single concentration index for one year of data.
+    """
+    rainfall = np.full(366, rain_rate)
+    result = indices.pci(rainfall)
+
+    assert isinstance(result, np.ndarray), "PCI should return numpy array"
+    assert result.shape == (1,), f"PCI should return shape (1,), got {result.shape}"
+
+
+def test_pci_concentrated_distribution_yields_higher_value() -> None:
+    """Verify concentrated rainfall yields higher PCI than uniform.
+
+    Property: PCI measures concentration. More concentrated rainfall
+    should produce a higher PCI value.
+    """
+    # uniform distribution (366 days)
+    uniform_rain = np.full(366, 10.0)
+
+    # concentrated distribution: all rain in January (first 31 days)
+    concentrated_rain = np.zeros(366)
+    concentrated_rain[:31] = 10.0 * (366.0 / 31.0)  # same total rainfall
+
+    pci_uniform = indices.pci(uniform_rain)
+    pci_concentrated = indices.pci(concentrated_rain)
+
+    assert pci_concentrated[0] > pci_uniform[0], (
+        f"Concentrated PCI ({pci_concentrated[0]}) should be higher than "
+        f"uniform PCI ({pci_uniform[0]})"
+    )
+
+
+def test_pci_scale_invariant() -> None:
+    """Verify PCI is invariant to uniform scaling of rainfall.
+
+    Property: PCI = sum(p_i^2) / (sum(p_i))^2 * 100.
+    If all p_i are multiplied by k: PCI = sum((k*p_i)^2) / (sum(k*p_i))^2 * 100
+    = k^2 * sum(p_i^2) / (k * sum(p_i))^2 * 100 = sum(p_i^2) / (sum(p_i))^2 * 100.
+    So PCI is independent of total rainfall amount.
+    """
+    rng = np.random.default_rng(123)
+    rainfall = rng.gamma(shape=2.0, scale=5.0, size=366)
+
+    pci_original = indices.pci(rainfall)
+    pci_doubled = indices.pci(rainfall * 2.0)
+    pci_halved = indices.pci(rainfall * 0.5)
+
+    np.testing.assert_allclose(
+        pci_original[0], pci_doubled[0], rtol=1e-10,
+        err_msg="PCI should be scale-invariant (doubled)",
+    )
+    np.testing.assert_allclose(
+        pci_original[0], pci_halved[0], rtol=1e-10,
+        err_msg="PCI should be scale-invariant (halved)",
+    )
+
+
+# ============================================================================
+# Group H: SPEI Additional Property Tests
+# ============================================================================
+
+
+@given(precip=monthly_precipitation_array(), pet_array=monthly_precipitation_array(), scale=valid_scale())
+@settings(max_examples=15, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+def test_spei_output_shape_matches_input(
+    precip: np.ndarray, pet_array: np.ndarray, scale: int
+) -> None:
+    """Verify SPEI output shape matches input shape.
+
+    Property: Shape preservation - output array should have same length as input.
+    """
+    min_length = min(len(precip), len(pet_array))
+    precip = precip[:min_length]
+    pet_array = pet_array[:min_length]
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=ShortCalibrationWarning)
+        warnings.filterwarnings("ignore", category=GoodnessOfFitWarning)
+        warnings.filterwarnings("ignore", category=MissingDataWarning)
+
+        result = indices.spei(
+            precip,
+            pet_array,
+            scale=scale,
+            distribution=indices.Distribution.gamma,
+            periodicity=compute.Periodicity.monthly,
+            data_start_year=1950,
+            calibration_year_initial=1950,
+            calibration_year_final=1950 + min_length // 12 - 1,
+        )
+
+    assert result.shape == precip.shape, f"Shape mismatch: input {precip.shape}, output {result.shape}"
+
+
+@given(length=st.integers(min_value=360, max_value=600), scale=valid_scale())
+@settings(max_examples=10, deadline=None)
+def test_spei_all_nan_returns_all_nan(length: int, scale: int) -> None:
+    """Verify SPEI returns all NaN when both inputs are all NaN.
+
+    Property: All-NaN input should produce all-NaN output.
+    """
+    precip = np.full(length, np.nan)
+    pet = np.full(length, np.nan)
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=ShortCalibrationWarning)
+        warnings.filterwarnings("ignore", category=GoodnessOfFitWarning)
+        warnings.filterwarnings("ignore", category=MissingDataWarning)
+
+        result = indices.spei(
+            precip,
+            pet,
+            scale=scale,
+            distribution=indices.Distribution.gamma,
+            periodicity=compute.Periodicity.monthly,
+            data_start_year=1950,
+            calibration_year_initial=1950,
+            calibration_year_final=1950 + length // 12 - 1,
+        )
+
+    assert np.all(np.isnan(result)), "All-NaN input did not produce all-NaN SPEI output"
