@@ -28,6 +28,7 @@ import time
 import numpy as np
 
 from climate_indices import utils
+from climate_indices.exceptions import InvalidArgumentError
 from climate_indices.logging_config import get_logger
 from climate_indices.performance import check_large_array_memory
 
@@ -73,22 +74,25 @@ def _sunset_hour_angle(
 
     # validate the latitude argument
     if not _LATITUDE_RADIANS_MIN <= latitude_radians <= _LATITUDE_RADIANS_MAX:
-        raise ValueError(
-            f"latitude outside valid range [{_LATITUDE_RADIANS_MIN!r} to {_LATITUDE_RADIANS_MAX!r}]: {latitude_radians!r}"
+        raise InvalidArgumentError(
+            f"Latitude outside valid range [{_LATITUDE_RADIANS_MIN!r} to {_LATITUDE_RADIANS_MAX!r}]. "
+            f"Received: {latitude_radians!r}",
+            argument_name="latitude_radians",
+            argument_value=str(latitude_radians),
+            valid_values=f"[{_LATITUDE_RADIANS_MIN!r}, {_LATITUDE_RADIANS_MAX!r}]",
         )
 
     # validate the solar declination angle argument, which can vary between
     # -23.45 and +23.45 degrees see Goswami (2015) p.40, and
     # http://www.itacanet.org/the-sun-as-a-source-of-energy/part-1-solar-astronomy/
     if not _SOLAR_DECLINATION_RADIANS_MIN <= solar_declination_radians <= _SOLAR_DECLINATION_RADIANS_MAX:
-        raise ValueError(
-            "solar declination angle outside the valid range ["
-            + str(_SOLAR_DECLINATION_RADIANS_MIN)
-            + " to "
-            + str(_SOLAR_DECLINATION_RADIANS_MAX)
-            + "]: "
-            + str(solar_declination_radians)
-            + " (actual value)"
+        raise InvalidArgumentError(
+            f"Solar declination angle outside valid range "
+            f"[{_SOLAR_DECLINATION_RADIANS_MIN} to {_SOLAR_DECLINATION_RADIANS_MAX}]. "
+            f"Received: {solar_declination_radians}",
+            argument_name="solar_declination_radians",
+            argument_value=str(solar_declination_radians),
+            valid_values=f"[{_SOLAR_DECLINATION_RADIANS_MIN}, {_SOLAR_DECLINATION_RADIANS_MAX}]",
         )
 
     # calculate the cosine of the sunset hour angle (*Ws* in FAO 25)
@@ -117,7 +121,12 @@ def _solar_declination(
     :raise ValueError: if the day of year value is not within the range [1-366]
     """
     if not 1 <= day_of_year <= 366:
-        raise ValueError(f"Day of the year must be in the range [1-366]: {day_of_year!r}")
+        raise InvalidArgumentError(
+            f"Day of the year must be in the range [1, 366]. Received: {day_of_year!r}",
+            argument_name="day_of_year",
+            argument_value=str(day_of_year),
+            valid_values="[1, 366]",
+        )
 
     return 0.409 * math.sin((2.0 * math.pi / 365.0) * day_of_year - 1.39)
 
@@ -140,12 +149,12 @@ def _daylight_hours(
     # range of 0 to pi radians (180 degrees), inclusive
     # see http://mypages.iit.edu/~maslanka/SolarGeo.pdf
     if not 0.0 <= sunset_hour_angle_radians <= math.pi:
-        raise ValueError(
-            "sunset hour angle outside valid range [0.0 to "
-            + str(math.pi)
-            + "] : "
-            + str(sunset_hour_angle_radians)
-            + " (actual value)"
+        raise InvalidArgumentError(
+            f"Sunset hour angle outside valid range [0.0 to {math.pi}]. "
+            f"Received: {sunset_hour_angle_radians}",
+            argument_name="sunset_hour_angle_radians",
+            argument_value=str(sunset_hour_angle_radians),
+            valid_values=f"[0.0, {math.pi}]",
         )
 
     # calculate daylight hours from the sunset hour angle
@@ -313,9 +322,18 @@ def eto_hargreaves(
 
     # validate the input data arrays
     if not (daily_tmin_celsius.size == daily_tmax_celsius.size == daily_tmean_celsius.size):
-        message = "Incompatible array sizes"
+        message = (
+            "Incompatible array sizes for Hargreaves ETo: "
+            f"tmin={daily_tmin_celsius.size}, tmax={daily_tmax_celsius.size}, "
+            f"tmean={daily_tmean_celsius.size}. All arrays must have the same size."
+        )
         _logger.error(message)
-        raise ValueError(message)
+        raise InvalidArgumentError(
+            message,
+            argument_name="daily_tmin_celsius/daily_tmax_celsius/daily_tmean_celsius",
+            argument_value=f"sizes ({daily_tmin_celsius.size}, {daily_tmax_celsius.size}, {daily_tmean_celsius.size})",
+            valid_values="All arrays must have equal size",
+        )
 
     # bind context and emit calculation_started event
     log = _logger.bind(
