@@ -11,13 +11,21 @@ from typing import Any
 
 __all__ = [
     "ClimateIndicesError",
+    "ComputationError",
+    "ConvergenceError",
+    "CoordinateValidationError",
+    "DataShapeError",
+    "DimensionMismatchError",
     "DistributionFittingError",
     "InsufficientDataError",
-    "PearsonFittingError",
-    "DimensionMismatchError",
-    "CoordinateValidationError",
+    "InsufficientNonZeroValuesError",
     "InputTypeError",
     "InvalidArgumentError",
+    "InvalidDistributionError",
+    "InvalidScaleError",
+    "PearsonFittingError",
+    "PeriodicityError",
+    "ShortCalibrationPeriodError",
     "ClimateIndicesWarning",
     "MissingDataWarning",
     "ShortCalibrationWarning",
@@ -41,8 +49,34 @@ class ClimateIndicesError(Exception):
     pass
 
 
-class DistributionFittingError(ClimateIndicesError):
-    """Base exception for distribution fitting failures.
+class ComputationError(ClimateIndicesError):
+    """Base exception for algorithm and computation failures.
+
+    Raised when a numerical algorithm or computation step fails during
+    index calculation. This covers distribution fitting failures,
+    convergence problems, and other algorithmic issues.
+
+    Catch this exception to handle any computation failure raised by the library.
+
+    Attributes:
+        algorithm: Name of the algorithm that failed (e.g., "gamma_fit", "pearson3_lmoments")
+        underlying_error: The original exception that caused the failure
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        algorithm: str | None = None,
+        underlying_error: Exception | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.algorithm = algorithm
+        self.underlying_error = underlying_error
+
+
+class DistributionFittingError(ComputationError):
+    """Exception for distribution fitting failures.
 
     Raised when statistical distribution fitting operations fail due to
     data quality issues or numerical problems.
@@ -65,23 +99,54 @@ class DistributionFittingError(ClimateIndicesError):
         suggestion: str | None = None,
         underlying_error: Exception | None = None,
     ) -> None:
-        super().__init__(message)
+        super().__init__(message, underlying_error=underlying_error)
         self.distribution_name = distribution_name
         self.input_shape = input_shape
         self.parameters = parameters
         self.suggestion = suggestion
-        self.underlying_error = underlying_error
 
 
-class InsufficientDataError(DistributionFittingError):
-    """Raised when there is insufficient data for distribution fitting.
+class ConvergenceError(ComputationError):
+    """Raised when a numerical fitting algorithm fails to converge.
 
-    This exception includes context about how much valid data was found
-    versus what is required for reliable distribution fitting.
+    This exception is raised when iterative algorithms (e.g., L-moments
+    estimation, maximum likelihood fitting) do not converge within the
+    allowed number of iterations or produce numerically unstable results.
+
+    Attributes:
+        algorithm: Name of the algorithm that failed to converge
+        iterations: Number of iterations attempted before failure
+        distribution_name: Name of the distribution being fitted (if applicable)
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        algorithm: str | None = None,
+        iterations: int | None = None,
+        distribution_name: str | None = None,
+        underlying_error: Exception | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            algorithm=algorithm,
+            underlying_error=underlying_error,
+        )
+        self.iterations = iterations
+        self.distribution_name = distribution_name
+
+
+class InsufficientDataError(ClimateIndicesError):
+    """Raised when there is insufficient data for computation.
+
+    This exception covers cases where the available data is too sparse
+    or too short for reliable calculation. It is a precondition failure
+    rather than a computation failure.
 
     Attributes:
         non_zero_count: Number of non-zero values found in the data
-        required_count: Minimum number of values required for fitting
+        required_count: Minimum number of values required
     """
 
     def __init__(
@@ -93,6 +158,51 @@ class InsufficientDataError(DistributionFittingError):
         super().__init__(message)
         self.non_zero_count = non_zero_count
         self.required_count = required_count
+
+
+class ShortCalibrationPeriodError(InsufficientDataError):
+    """Raised when the calibration period is too short for reliable fitting.
+
+    This is a specialization of InsufficientDataError for cases where
+    the calibration period does not span enough years.
+
+    Attributes:
+        actual_years: The actual number of calibration years available
+        required_years: The minimum number of years required
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        actual_years: int | None = None,
+        required_years: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.actual_years = actual_years
+        self.required_years = required_years
+
+
+class InsufficientNonZeroValuesError(InsufficientDataError):
+    """Raised when there are too few non-zero values for distribution fitting.
+
+    This is a specialization of InsufficientDataError for the common case
+    where a time step has too few non-zero precipitation values to fit
+    a gamma or Pearson distribution.
+
+    Attributes:
+        non_zero_count: Number of non-zero values found
+        required_count: Minimum number of non-zero values needed
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        non_zero_count: int | None = None,
+        required_count: int | None = None,
+    ) -> None:
+        super().__init__(message, non_zero_count=non_zero_count, required_count=required_count)
 
 
 class PearsonFittingError(DistributionFittingError):
@@ -110,8 +220,7 @@ class PearsonFittingError(DistributionFittingError):
         message: str,
         underlying_error: Exception | None = None,
     ) -> None:
-        super().__init__(message)
-        self.underlying_error = underlying_error
+        super().__init__(message, underlying_error=underlying_error)
 
 
 class DimensionMismatchError(ClimateIndicesError):
@@ -204,6 +313,116 @@ class InvalidArgumentError(ClimateIndicesError):
         self.argument_name = argument_name
         self.argument_value = argument_value
         self.valid_values = valid_values
+
+
+class InvalidDistributionError(InvalidArgumentError):
+    """Raised when an unsupported distribution name is provided.
+
+    This is a specialization of InvalidArgumentError for cases where a
+    distribution argument does not match any supported distribution
+    (e.g., "weibull" when only "gamma" and "pearson3" are supported).
+
+    Attributes:
+        distribution: The invalid distribution name that was provided
+        supported: List of supported distribution names
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        distribution: str | None = None,
+        supported: list[str] | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            argument_name="distribution",
+            argument_value=distribution,
+            valid_values=", ".join(supported) if supported else None,
+        )
+        self.distribution = distribution
+        self.supported = supported
+
+
+class InvalidScaleError(InvalidArgumentError):
+    """Raised when an invalid scale value is provided.
+
+    This is a specialization of InvalidArgumentError for the common case
+    of scale parameter validation failures. The scale must be a positive
+    integer within the supported range for the given periodicity.
+
+    Attributes:
+        scale_value: The invalid scale value that was provided
+        valid_range: Human-readable description of the valid scale range
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        scale_value: int | None = None,
+        valid_range: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            argument_name="scale",
+            argument_value=str(scale_value) if scale_value is not None else None,
+            valid_values=valid_range,
+        )
+        self.scale_value = scale_value
+        self.valid_range = valid_range
+
+
+class PeriodicityError(InvalidArgumentError):
+    """Raised when an invalid or unsupported periodicity value is provided.
+
+    This is a specialization of InvalidArgumentError for the common case
+    of periodicity validation failures across compute, indices, and CLI
+    modules. The periodicity argument must be a valid Periodicity enum
+    member (monthly or daily).
+
+    Attributes:
+        periodicity_value: The invalid periodicity value that was provided
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        periodicity_value: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            argument_name="periodicity",
+            argument_value=periodicity_value,
+            valid_values="Periodicity.monthly, Periodicity.daily",
+        )
+        self.periodicity_value = periodicity_value
+
+
+class DataShapeError(ClimateIndicesError):
+    """Raised when input array shape does not match expected structure.
+
+    This exception is raised when NumPy arrays have shapes that cannot
+    be reshaped or processed for the given computation. Unlike
+    DimensionMismatchError (which applies to xarray named dimensions),
+    this applies to raw array shape validation.
+
+    Attributes:
+        expected_shape: Description of the expected shape (e.g., "(years, 12)")
+        actual_shape: The actual shape of the input array
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        expected_shape: str | None = None,
+        actual_shape: tuple[int, ...] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.expected_shape = expected_shape
+        self.actual_shape = actual_shape
 
 
 # Warning Classes
