@@ -224,3 +224,87 @@ def spei(
         kwargs["calibration_year_final"] = calibration_year_final
 
     return _wrapped_spei(precips_mm, pet_mm, **kwargs)
+
+
+# Percentage of Normal (PNP) overloads
+_wrapped_percentage_of_normal = xarray_adapter(
+    cf_metadata=CF_METADATA["percentage_of_normal"],  # type: ignore[arg-type]
+    index_display_name="PNP",
+    calculation_metadata_keys=["scale", "calibration_start_year", "calibration_end_year"],
+)(indices.percentage_of_normal)
+
+
+@overload
+def percentage_of_normal(
+    values: npt.NDArray[np.float64],
+    scale: int,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
+) -> npt.NDArray[np.float64]: ...
+
+
+@overload
+def percentage_of_normal(
+    values: xr.DataArray,
+    scale: int,
+    data_start_year: int | None = None,
+    calibration_start_year: int | None = None,
+    calibration_end_year: int | None = None,
+    periodicity: Periodicity | None = None,
+) -> xr.DataArray: ...
+
+
+def percentage_of_normal(
+    values: npt.NDArray[np.float64] | xr.DataArray,
+    scale: int,
+    data_start_year: int | None = None,
+    calibration_start_year: int | None = None,
+    calibration_end_year: int | None = None,
+    periodicity: Periodicity | None = None,
+) -> npt.NDArray[np.float64] | xr.DataArray:
+    """Compute Percentage of Normal Precipitation (PNP).
+
+    This function accepts both NumPy arrays and xarray DataArrays. Type checkers
+    will narrow the return type based on the input type.
+
+    For NumPy inputs, all temporal parameters are required.
+    For xarray inputs, temporal parameters are optional and will be inferred from
+    coordinate attributes if not provided.
+
+    .. warning:: **Beta Feature (xarray path only)** -- When called with an
+       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
+       The xarray interface (parameter inference, metadata handling, coordinate
+       preservation) may change in future minor releases. The NumPy array interface
+       is stable.
+
+    Args:
+        values: 1-D numpy array or xarray DataArray of precipitation values.
+        scale: Number of time steps over which the normal is computed.
+        data_start_year: Initial year of the input dataset (required for NumPy,
+            optional for xarray).
+        calibration_start_year: Initial year of calibration period (required
+            for NumPy, optional for xarray).
+        calibration_end_year: Final year of calibration period (required for
+            NumPy, optional for xarray).
+        periodicity: Time series periodicity ('monthly' or 'daily'). Required
+            for NumPy, optional for xarray.
+
+    Returns:
+        PNP values as numpy.ndarray or xarray.DataArray (matches input type).
+    """
+    # filter out None kwargs before passing to wrapped function
+    kwargs: dict[str, Any] = {
+        "scale": scale,
+    }
+    if data_start_year is not None:
+        kwargs["data_start_year"] = data_start_year
+    if calibration_start_year is not None:
+        kwargs["calibration_start_year"] = calibration_start_year
+    if calibration_end_year is not None:
+        kwargs["calibration_end_year"] = calibration_end_year
+    if periodicity is not None:
+        kwargs["periodicity"] = periodicity
+
+    return _wrapped_percentage_of_normal(values, **kwargs)
