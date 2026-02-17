@@ -637,3 +637,317 @@ class TestFAO56Example18:
             gamma=self.GAMMA,
         )
         assert total == pytest.approx(float(eto), abs=MATH_ABS_TOL)
+
+
+# ===================================================================
+# Tests for Story 2.6: PM-ET xarray Adapter
+# ===================================================================
+
+
+class TestEtoPenmanMonteithXarrayAdapter:
+    """Tests for eto_penman_monteith() xarray adapter in xarray_adapter.py.
+
+    Validates the xarray DataArray path including:
+    - NumPy passthrough equivalence
+    - xarray 1-D equivalence with NumPy (tolerance 1e-8)
+    - CF metadata and provenance attributes
+    - Coordinate preservation
+    - Multi-dimensional (gridded) input support
+    - Dask lazy evaluation
+    - Mixed input type rejection
+    """
+
+    # FAO-56 Example 18 values for consistent test data
+    RN = 13.28
+    G = 0.14
+    T = 16.9
+    U2 = 2.078
+    ES = 1.997
+    EA = 1.409
+    DELTA = 0.122
+    GAMMA = 0.0666
+
+    @staticmethod
+    def _make_numpy_inputs(n: int = 30) -> dict[str, np.ndarray]:
+        """Create numpy array inputs of length n using FAO-56 Example 18 values."""
+        return {
+            "net_radiation": np.full(n, 13.28),
+            "soil_heat_flux": np.full(n, 0.14),
+            "temperature_celsius": np.full(n, 16.9),
+            "wind_speed_2m": np.full(n, 2.078),
+            "saturation_vp": np.full(n, 1.997),
+            "actual_vp": np.full(n, 1.409),
+            "delta": np.full(n, 0.122),
+            "gamma": np.full(n, 0.0666),
+        }
+
+    @staticmethod
+    def _make_xarray_inputs(
+        n: int = 30,
+        start_date: str = "2020-01-01",
+    ) -> dict[str, "xr.DataArray"]:
+        """Create xarray DataArray inputs with daily time coordinate."""
+        import pandas as pd
+        import xarray as xr
+
+        time = pd.date_range(start_date, periods=n, freq="D")
+        base = {
+            "net_radiation": 13.28,
+            "soil_heat_flux": 0.14,
+            "temperature_celsius": 16.9,
+            "wind_speed_2m": 2.078,
+            "saturation_vp": 1.997,
+            "actual_vp": 1.409,
+            "delta": 0.122,
+            "gamma": 0.0666,
+        }
+        return {
+            name: xr.DataArray(
+                np.full(n, val),
+                coords={"time": time},
+                dims=["time"],
+            )
+            for name, val in base.items()
+        }
+
+    def test_numpy_passthrough(self) -> None:
+        """NumPy inputs should pass through to pm_eto.pm_eto unchanged."""
+        from climate_indices.xarray_adapter import eto_penman_monteith
+
+        np_inputs = self._make_numpy_inputs(10)
+        result = eto_penman_monteith(**np_inputs)
+
+        assert isinstance(result, np.ndarray)
+        assert result.shape == (10,)
+
+        # compare against direct pm_eto call
+        expected = pm_eto(**np_inputs)
+        np.testing.assert_array_equal(result, expected)
+
+    def test_xarray_1d_equivalence(self) -> None:
+        """1-D xarray result should match NumPy result within tolerance 1e-8."""
+        from climate_indices.xarray_adapter import eto_penman_monteith
+
+        import xarray as xr
+
+        n = 30
+        np_inputs = self._make_numpy_inputs(n)
+        xa_inputs = self._make_xarray_inputs(n)
+
+        numpy_result = pm_eto(**np_inputs)
+        xarray_result = eto_penman_monteith(**xa_inputs)
+
+        assert isinstance(xarray_result, xr.DataArray)
+        np.testing.assert_allclose(
+            xarray_result.values,
+            numpy_result,
+            atol=1e-8,
+            rtol=1e-8,
+            err_msg="PM-ETo differs between NumPy and xarray paths",
+        )
+
+    def test_xarray_cf_metadata(self) -> None:
+        """xarray output should have correct CF metadata attributes."""
+        from climate_indices.xarray_adapter import eto_penman_monteith
+
+        import xarray as xr
+
+        xa_inputs = self._make_xarray_inputs(10)
+        result = eto_penman_monteith(**xa_inputs)
+
+        assert isinstance(result, xr.DataArray)
+
+        # check required CF metadata
+        assert result.attrs["long_name"] == "Reference Evapotranspiration (Penman-Monteith FAO56)"
+        assert result.attrs["units"] == "mm day-1"
+        assert "Allen" in result.attrs["references"]
+        assert "FAO" in result.attrs["references"]
+
+        # check provenance
+        assert "climate_indices_version" in result.attrs
+        assert "history" in result.attrs
+        assert "Penman-Monteith" in result.attrs["history"]
+
+    def test_xarray_coordinate_preservation(self) -> None:
+        """xarray output should preserve time coordinates from input."""
+        from climate_indices.xarray_adapter import eto_penman_monteith
+
+        import pandas as pd
+        import xarray as xr
+
+        n = 15
+        time = pd.date_range("2021-07-01", periods=n, freq="D")
+        xa_inputs = self._make_xarray_inputs(n, start_date="2021-07-01")
+
+        result = eto_penman_monteith(**xa_inputs)
+
+        assert isinstance(result, xr.DataArray)
+        assert "time" in result.dims
+        assert len(result.coords["time"]) == n
+        # time values should be identical
+        pd.testing.assert_index_equal(
+            pd.DatetimeIndex(result.coords["time"].values),
+            time,
+        )
+
+    def test_xarray_gridded_input(self) -> None:
+        """Multi-dimensional (time, lat, lon) input should produce correct output."""
+        from climate_indices.xarray_adapter import eto_penman_monteith
+
+        import pandas as pd
+        import xarray as xr
+
+        nt, nlat, nlon = 30, 3, 4
+        time = pd.date_range("2020-01-01", periods=nt, freq="D")
+        lats = [30.0, 35.0, 40.0]
+        lons = [-120.0, -110.0, -100.0, -90.0]
+
+        base_vals = {
+            "net_radiation": 13.28,
+            "soil_heat_flux": 0.14,
+            "temperature_celsius": 16.9,
+            "wind_speed_2m": 2.078,
+            "saturation_vp": 1.997,
+            "actual_vp": 1.409,
+            "delta": 0.122,
+            "gamma": 0.0666,
+        }
+
+        gridded_inputs = {}
+        for name, val in base_vals.items():
+            gridded_inputs[name] = xr.DataArray(
+                np.full((nt, nlat, nlon), val),
+                coords={"time": time, "lat": lats, "lon": lons},
+                dims=["time", "lat", "lon"],
+            )
+
+        result = eto_penman_monteith(**gridded_inputs)
+
+        assert isinstance(result, xr.DataArray)
+        assert result.shape == (nt, nlat, nlon)
+        assert set(result.dims) == {"time", "lat", "lon"}
+        # all values should be the same since input is uniform
+        assert np.allclose(result.values, result.values.flat[0])
+
+    def test_xarray_dask_lazy(self) -> None:
+        """Dask-backed xarray inputs should remain lazy until .compute()."""
+        from climate_indices.xarray_adapter import eto_penman_monteith
+
+        import dask.array as da
+        import pandas as pd
+        import xarray as xr
+
+        n = 30
+        time = pd.date_range("2020-01-01", periods=n, freq="D")
+
+        base_vals = {
+            "net_radiation": 13.28,
+            "soil_heat_flux": 0.14,
+            "temperature_celsius": 16.9,
+            "wind_speed_2m": 2.078,
+            "saturation_vp": 1.997,
+            "actual_vp": 1.409,
+            "delta": 0.122,
+            "gamma": 0.0666,
+        }
+
+        dask_inputs = {}
+        for name, val in base_vals.items():
+            dask_arr = da.from_array(np.full(n, val), chunks=n)
+            dask_inputs[name] = xr.DataArray(
+                dask_arr,
+                coords={"time": time},
+                dims=["time"],
+            )
+
+        result = eto_penman_monteith(**dask_inputs)
+
+        assert isinstance(result, xr.DataArray)
+        # should still be lazy (backed by dask)
+        assert result.chunks is not None
+
+        # when computed, should match numpy result
+        computed = result.compute()
+        expected = pm_eto(**self._make_numpy_inputs(n))
+        np.testing.assert_allclose(
+            computed.values,
+            expected,
+            atol=1e-8,
+            rtol=1e-8,
+        )
+
+    def test_mixed_input_types_rejected(self) -> None:
+        """Mixing numpy and xarray inputs should raise TypeError."""
+        from climate_indices.xarray_adapter import eto_penman_monteith
+
+        import pandas as pd
+        import xarray as xr
+
+        n = 10
+        time = pd.date_range("2020-01-01", periods=n, freq="D")
+
+        # net_radiation as xarray, rest as numpy
+        xa_rn = xr.DataArray(np.full(n, 13.28), coords={"time": time}, dims=["time"])
+        np_inputs = self._make_numpy_inputs(n)
+
+        with pytest.raises(TypeError, match="All inputs must be the same type"):
+            eto_penman_monteith(
+                net_radiation=xa_rn,
+                soil_heat_flux=np_inputs["soil_heat_flux"],
+                temperature_celsius=np_inputs["temperature_celsius"],
+                wind_speed_2m=np_inputs["wind_speed_2m"],
+                saturation_vp=np_inputs["saturation_vp"],
+                actual_vp=np_inputs["actual_vp"],
+                delta=np_inputs["delta"],
+                gamma=np_inputs["gamma"],
+            )
+
+    def test_xarray_input_alignment_warning(self) -> None:
+        """Misaligned time coordinates should trigger InputAlignmentWarning."""
+        from climate_indices.exceptions import InputAlignmentWarning
+        from climate_indices.xarray_adapter import eto_penman_monteith
+
+        import pandas as pd
+        import xarray as xr
+
+        # primary input: 30 days starting Jan 1
+        time_a = pd.date_range("2020-01-01", periods=30, freq="D")
+        # one input offset by 10 days: only 20 overlap
+        time_b = pd.date_range("2020-01-11", periods=30, freq="D")
+
+        base_val = {
+            "net_radiation": 13.28,
+            "soil_heat_flux": 0.14,
+            "temperature_celsius": 16.9,
+            "wind_speed_2m": 2.078,
+            "saturation_vp": 1.997,
+            "actual_vp": 1.409,
+            "delta": 0.122,
+            "gamma": 0.0666,
+        }
+
+        inputs = {}
+        for name, val in base_val.items():
+            # use offset time for gamma to create misalignment
+            t = time_b if name == "gamma" else time_a
+            inputs[name] = xr.DataArray(
+                np.full(30, val),
+                coords={"time": t},
+                dims=["time"],
+            )
+
+        with pytest.warns(InputAlignmentWarning):
+            result = eto_penman_monteith(**inputs)
+
+        # should have 20 timesteps after inner join
+        assert len(result.coords["time"]) == 20
+
+    def test_typed_public_api_delegates(self) -> None:
+        """typed_public_api.eto_penman_monteith should produce same result."""
+        from climate_indices.typed_public_api import eto_penman_monteith as typed_eto_pm
+
+        np_inputs = self._make_numpy_inputs(10)
+        result = typed_eto_pm(**np_inputs)
+
+        expected = pm_eto(**np_inputs)
+        np.testing.assert_array_equal(result, expected)
