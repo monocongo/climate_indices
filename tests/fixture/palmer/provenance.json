@@ -1,0 +1,14 @@
+{
+  "source": "climate_indices library reference output",
+  "url": "https://github.com/monocongo/climate_indices",
+  "download_date": "2024-01-01",
+  "subset_description": "Pre-computed Palmer drought index outputs (PDSI, PHDI, PMDI, Z-Index) for 344 US climate divisions, used as regression test fixtures. Generated from the library's own Palmer implementation against NCEI nClimDiv input data.",
+  "checksum_sha256": "21f55dbbf949a9f814e6dd16a014fb6ca246aecef64d1357e4e2f3b3e21e2590",
+  "fixture_version": "1.0.0",
+  "validation_tolerance": {
+    "rtol": 1e-8,
+    "atol": 1e-8
+  },
+  "citation": "Palmer, W. C., 1965: Meteorological Drought. U.S. Weather Bureau Research Paper No. 45, 58 pp.",
+  "notes": "Checksum computed from division 0101 only (cat $(ls *.npy | sort) | shasum -a 256). Full fixture contains 344 divisions. This provenance was added retroactively in v2.4.0."
+}

@@ -50,8 +50,11 @@ class TestEddiValidation:
         """All-NaN input should return all-NaN output without error."""
         pet = np.full(120, np.nan)
         result = indices.eddi(
-            pet, scale=1, data_start_year=2000,
-            calibration_year_initial=2000, calibration_year_final=2009,
+            pet,
+            scale=1,
+            data_start_year=2000,
+            calibration_year_initial=2000,
+            calibration_year_final=2009,
             periodicity=compute.Periodicity.monthly,
         )
         assert result.shape == pet.shape
@@ -64,19 +67,25 @@ class TestEddiValidation:
         # ensure some negatives exist
         assert np.any(pet < 0)
         result = indices.eddi(
-            pet, scale=1, data_start_year=1990,
-            calibration_year_initial=1990, calibration_year_final=2019,
+            pet,
+            scale=1,
+            data_start_year=1990,
+            calibration_year_initial=1990,
+            calibration_year_final=2019,
             periodicity=compute.Periodicity.monthly,
         )
         assert result.shape == pet.shape
 
     def test_invalid_array_shape_raises_datashapeerror(self) -> None:
-        """2-D input should raise DataShapeError, not a generic error."""
-        pet_2d = np.ones((10, 12))
-        with pytest.raises(DataShapeError, match="1-D"):
+        """3-D+ input should raise DataShapeError (2-D is flattened)."""
+        pet_3d = np.ones((2, 5, 12))
+        with pytest.raises(DataShapeError, match="only 1-D and 2-D"):
             indices.eddi(
-                pet_2d, scale=1, data_start_year=2000,
-                calibration_year_initial=2000, calibration_year_final=2009,
+                pet_3d,
+                scale=1,
+                data_start_year=2000,
+                calibration_year_initial=2000,
+                calibration_year_final=2009,
                 periodicity=compute.Periodicity.monthly,
             )
 
@@ -85,38 +94,50 @@ class TestEddiValidation:
         pet = np.ones(120)
         with pytest.raises(InvalidArgumentError, match="periodicity"):
             indices.eddi(
-                pet, scale=1, data_start_year=2000,
-                calibration_year_initial=2000, calibration_year_final=2009,
+                pet,
+                scale=1,
+                data_start_year=2000,
+                calibration_year_initial=2000,
+                calibration_year_final=2009,
                 periodicity="monthly",  # type: ignore[arg-type]
             )
 
     def test_calibration_start_before_data(self) -> None:
         """calibration_year_initial before data_start_year should raise."""
         pet = np.ones(120)
-        with pytest.raises(InvalidArgumentError, match="Calibration start year"):
+        with pytest.raises(InvalidArgumentError, match="calibration start year"):
             indices.eddi(
-                pet, scale=1, data_start_year=2000,
-                calibration_year_initial=1999, calibration_year_final=2009,
+                pet,
+                scale=1,
+                data_start_year=2000,
+                calibration_year_initial=1999,
+                calibration_year_final=2009,
                 periodicity=compute.Periodicity.monthly,
             )
 
     def test_calibration_end_after_data(self) -> None:
         """calibration_year_final beyond data extent should raise."""
         pet = np.ones(120)
-        with pytest.raises(InvalidArgumentError, match="Calibration end year"):
+        with pytest.raises(InvalidArgumentError, match="calibration end year"):
             indices.eddi(
-                pet, scale=1, data_start_year=2000,
-                calibration_year_initial=2000, calibration_year_final=2020,
+                pet,
+                scale=1,
+                data_start_year=2000,
+                calibration_year_initial=2000,
+                calibration_year_final=2020,
                 periodicity=compute.Periodicity.monthly,
             )
 
     def test_calibration_start_after_end(self) -> None:
         """calibration start > end should raise."""
         pet = np.ones(120)
-        with pytest.raises(InvalidArgumentError, match="Calibration start year"):
+        with pytest.raises(InvalidArgumentError, match="initial year"):
             indices.eddi(
-                pet, scale=1, data_start_year=2000,
-                calibration_year_initial=2009, calibration_year_final=2000,
+                pet,
+                scale=1,
+                data_start_year=2000,
+                calibration_year_initial=2009,
+                calibration_year_final=2000,
                 periodicity=compute.Periodicity.monthly,
             )
 
@@ -143,8 +164,11 @@ class TestEddiComputation:
     def test_basic_computation_scale1(self, synthetic_pet: np.ndarray) -> None:
         """EDDI at scale=1 should return valid z-scores."""
         result = indices.eddi(
-            synthetic_pet, scale=1, data_start_year=1990,
-            calibration_year_initial=1990, calibration_year_final=2019,
+            synthetic_pet,
+            scale=1,
+            data_start_year=1990,
+            calibration_year_initial=1990,
+            calibration_year_final=2019,
             periodicity=compute.Periodicity.monthly,
         )
         assert result.shape == synthetic_pet.shape
@@ -156,13 +180,19 @@ class TestEddiComputation:
     def test_basic_computation_scale6(self, synthetic_pet: np.ndarray) -> None:
         """EDDI at scale=6 should have more NaNs at the start (from sum_to_scale)."""
         result_1 = indices.eddi(
-            synthetic_pet, scale=1, data_start_year=1990,
-            calibration_year_initial=1990, calibration_year_final=2019,
+            synthetic_pet,
+            scale=1,
+            data_start_year=1990,
+            calibration_year_initial=1990,
+            calibration_year_final=2019,
             periodicity=compute.Periodicity.monthly,
         )
         result_6 = indices.eddi(
-            synthetic_pet, scale=6, data_start_year=1990,
-            calibration_year_initial=1990, calibration_year_final=2019,
+            synthetic_pet,
+            scale=6,
+            data_start_year=1990,
+            calibration_year_initial=1990,
+            calibration_year_final=2019,
             periodicity=compute.Periodicity.monthly,
         )
         # scale=6 should have more leading NaNs
@@ -180,8 +210,11 @@ class TestEddiComputation:
                 pet[yr * 12 + month] = float(yr + 1)
 
         result = indices.eddi(
-            pet, scale=1, data_start_year=1990,
-            calibration_year_initial=1990, calibration_year_final=2019,
+            pet,
+            scale=1,
+            data_start_year=1990,
+            calibration_year_initial=1990,
+            calibration_year_final=2019,
             periodicity=compute.Periodicity.monthly,
         )
 
@@ -191,9 +224,7 @@ class TestEddiComputation:
             valid = ~np.isnan(month_values)
             valid_z = month_values[valid]
             if len(valid_z) > 1:
-                assert np.all(np.diff(valid_z) >= -1e-10), (
-                    f"Month {month}: z-scores not monotonic: {valid_z}"
-                )
+                assert np.all(np.diff(valid_z) >= -1e-10), f"Month {month}: z-scores not monotonic: {valid_z}"
 
     def test_daily_periodicity(self) -> None:
         """EDDI should work with daily periodicity (366 steps/year)."""
@@ -201,22 +232,28 @@ class TestEddiComputation:
         # 5 years of daily data
         pet = rng.uniform(1.0, 10.0, size=5 * 366)
         result = indices.eddi(
-            pet, scale=1, data_start_year=2015,
-            calibration_year_initial=2015, calibration_year_final=2019,
+            pet,
+            scale=1,
+            data_start_year=2015,
+            calibration_year_initial=2015,
+            calibration_year_final=2019,
             periodicity=compute.Periodicity.daily,
         )
         assert result.shape == pet.shape
 
     def test_insufficient_climatology(self) -> None:
-        """With < 3 valid calibration values per step, output should be NaN."""
-        # only 2 years of data -- less than 3 valid values per month
-        pet = np.ones(24)
+        """With < 2 valid calibration values per step, output should be NaN."""
+        # only 1 year of data -- less than 2 valid values per month
+        pet = np.ones(12)
         result = indices.eddi(
-            pet, scale=1, data_start_year=2000,
-            calibration_year_initial=2000, calibration_year_final=2001,
+            pet,
+            scale=1,
+            data_start_year=2000,
+            calibration_year_initial=2000,
+            calibration_year_final=2000,
             periodicity=compute.Periodicity.monthly,
         )
-        # all should be NaN because we only have 2 years
+        # all should be NaN because we only have 1 year (< 2 threshold)
         assert np.all(np.isnan(result))
 
     def test_mixed_nan_positions(self) -> None:
@@ -228,8 +265,11 @@ class TestEddiComputation:
         pet[nan_idx] = np.nan
 
         result = indices.eddi(
-            pet, scale=1, data_start_year=1990,
-            calibration_year_initial=1990, calibration_year_final=2019,
+            pet,
+            scale=1,
+            data_start_year=1990,
+            calibration_year_initial=1990,
+            calibration_year_final=2019,
             periodicity=compute.Periodicity.monthly,
         )
         assert result.shape == pet.shape
