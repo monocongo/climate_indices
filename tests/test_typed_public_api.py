@@ -6,6 +6,7 @@ from collections.abc import Callable
 from typing import Any
 
 import numpy as np
+import pytest
 import xarray as xr
 
 from climate_indices import spei, spi
@@ -331,19 +332,151 @@ class TestSPEIOverloads:
         )
 
 
+class TestPDSIOverloads:
+    """Test Palmer PDSI function overloads for NumPy and xarray inputs."""
+
+    def test_pdsi_numpy_returns_tuple(self) -> None:
+        """NumPy input should return tuple of (pdsi, phdi, pmdi, z_index, params)."""
+        from climate_indices import pdsi
+
+        rng = np.random.default_rng(42)
+        n_months = 240
+        months = np.arange(n_months) % 12
+        precip = 2.5 + 1.5 * np.sin(2 * np.pi * months / 12) + rng.normal(0, 0.5, n_months)
+        precip = np.clip(precip, 0.0, None)
+        pet = 3.0 + 2.0 * np.sin(2 * np.pi * (months - 3) / 12) + rng.normal(0, 0.3, n_months)
+        pet = np.clip(pet, 0.1, None)
+
+        result = pdsi(
+            precips=precip,
+            pet=pet,
+            awc=5.0,
+            data_start_year=2000,
+            calibration_year_initial=2000,
+            calibration_year_final=2019,
+        )
+
+        assert isinstance(result, tuple)
+        assert len(result) == 5
+        pdsi_arr, phdi_arr, pmdi_arr, z_arr, params = result
+        assert isinstance(pdsi_arr, np.ndarray)
+        assert isinstance(phdi_arr, np.ndarray)
+        assert isinstance(pmdi_arr, np.ndarray)
+        assert isinstance(z_arr, np.ndarray)
+        assert pdsi_arr.shape == precip.shape
+
+    def test_pdsi_xarray_returns_dataset(self) -> None:
+        """xarray input should return xr.Dataset."""
+        import pandas as pd
+
+        from climate_indices import pdsi
+
+        rng = np.random.default_rng(42)
+        n_months = 240
+        time_coord = pd.date_range("2000-01", periods=n_months, freq="MS")
+        months = np.arange(n_months) % 12
+
+        precip = 2.5 + 1.5 * np.sin(2 * np.pi * months / 12) + rng.normal(0, 0.5, n_months)
+        precip = np.clip(precip, 0.0, None)
+        pet = 3.0 + 2.0 * np.sin(2 * np.pi * (months - 3) / 12) + rng.normal(0, 0.3, n_months)
+        pet = np.clip(pet, 0.1, None)
+
+        precip_da = xr.DataArray(precip, coords={"time": time_coord}, dims=["time"])
+        pet_da = xr.DataArray(pet, coords={"time": time_coord}, dims=["time"])
+
+        result = pdsi(
+            precips=precip_da,
+            pet=pet_da,
+            awc=5.0,
+        )
+
+        assert isinstance(result, xr.Dataset)
+        assert set(result.data_vars) == {"pdsi", "phdi", "pmdi", "z_index"}
+
+    def test_pdsi_xarray_temporal_params_optional(self) -> None:
+        """xarray inputs can omit temporal params (inferred from coordinates)."""
+        import pandas as pd
+
+        from climate_indices import pdsi
+
+        rng = np.random.default_rng(42)
+        n_months = 240
+        time_coord = pd.date_range("2000-01", periods=n_months, freq="MS")
+        months = np.arange(n_months) % 12
+
+        precip = 2.5 + 1.5 * np.sin(2 * np.pi * months / 12) + rng.normal(0, 0.3, n_months)
+        precip = np.clip(precip, 0.0, None)
+        pet = 3.0 + 2.0 * np.sin(2 * np.pi * (months - 3) / 12) + rng.normal(0, 0.2, n_months)
+        pet = np.clip(pet, 0.1, None)
+
+        precip_da = xr.DataArray(precip, coords={"time": time_coord}, dims=["time"])
+        pet_da = xr.DataArray(pet, coords={"time": time_coord}, dims=["time"])
+
+        result = pdsi(precips=precip_da, pet=pet_da, awc=5.0)
+        assert isinstance(result, xr.Dataset)
+        assert len(result.data_vars) == 4
+
+    def test_pdsi_numpy_missing_temporal_params_raises(self) -> None:
+        """NumPy inputs without temporal params should raise TypeError."""
+        from climate_indices import pdsi
+
+        rng = np.random.default_rng(42)
+        precip = rng.uniform(0, 5, 240)
+        pet = rng.uniform(1, 4, 240)
+
+        with pytest.raises(TypeError, match="required for NumPy"):
+            pdsi(precips=precip, pet=pet, awc=5.0)
+
+    def test_pdsi_numpy_matches_palmer_module(self) -> None:
+        """Results for NumPy inputs should match palmer.pdsi."""
+        from climate_indices import pdsi
+        from climate_indices.palmer import pdsi as palmer_pdsi
+
+        rng = np.random.default_rng(42)
+        n_months = 240
+        months = np.arange(n_months) % 12
+        precip = 2.5 + 1.5 * np.sin(2 * np.pi * months / 12) + rng.normal(0, 0.5, n_months)
+        precip = np.clip(precip, 0.0, None)
+        pet = 3.0 + 2.0 * np.sin(2 * np.pi * (months - 3) / 12) + rng.normal(0, 0.3, n_months)
+        pet = np.clip(pet, 0.1, None)
+
+        result_typed = pdsi(
+            precips=precip,
+            pet=pet,
+            awc=5.0,
+            data_start_year=2000,
+            calibration_year_initial=2000,
+            calibration_year_final=2019,
+        )
+
+        result_original = palmer_pdsi(
+            precips=precip,
+            pet=pet,
+            awc=5.0,
+            data_start_year=2000,
+            calibration_year_initial=2000,
+            calibration_year_final=2019,
+        )
+
+        for i in range(4):
+            np.testing.assert_array_equal(result_typed[i], result_original[i])
+
+
 class TestModuleExports:
     """Test that functions are properly exported from the main module."""
 
     def test_import_from_main_module(self) -> None:
-        """Should be able to import spi and spei from climate_indices."""
-        from climate_indices import spei, spi
+        """Should be able to import spi, spei, and pdsi from climate_indices."""
+        from climate_indices import pdsi, spei, spi
 
         assert callable(spi)
         assert callable(spei)
+        assert callable(pdsi)
 
     def test_module_all_contains_exports(self) -> None:
-        """__all__ should contain spi and spei."""
+        """__all__ should contain spi, spei, and pdsi."""
         import climate_indices
 
         assert "spi" in climate_indices.__all__
         assert "spei" in climate_indices.__all__
+        assert "pdsi" in climate_indices.__all__
