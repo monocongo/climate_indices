@@ -27,16 +27,33 @@ class TestExceptionHierarchy:
         assert issubclass(exceptions.PeriodicityError, ClimateIndicesError)
         assert issubclass(exceptions.DataShapeError, ClimateIndicesError)
 
-    def test_distribution_fitting_subtypes(self) -> None:
-        """Distribution fitting errors should have correct parent classes."""
-        assert issubclass(exceptions.InsufficientDataError, exceptions.DistributionFittingError)
+    def test_computation_error_subtypes(self) -> None:
+        """ComputationError should be parent of DistributionFittingError and ConvergenceError."""
+        assert issubclass(exceptions.DistributionFittingError, exceptions.ComputationError)
+        assert issubclass(exceptions.ConvergenceError, exceptions.ComputationError)
         assert issubclass(exceptions.PearsonFittingError, exceptions.DistributionFittingError)
-        assert issubclass(exceptions.ConvergenceError, exceptions.DistributionFittingError)
+        assert issubclass(exceptions.PearsonFittingError, exceptions.ComputationError)
 
-    def test_convergence_error_is_distribution_fitting_subtype(self) -> None:
-        """ConvergenceError should be under DistributionFittingError for fitting-specific convergence."""
-        assert issubclass(exceptions.ConvergenceError, exceptions.DistributionFittingError)
+    def test_convergence_is_sibling_not_child_of_distribution_fitting(self) -> None:
+        """ConvergenceError should NOT be a subclass of DistributionFittingError."""
+        assert not issubclass(exceptions.ConvergenceError, exceptions.DistributionFittingError)
         assert issubclass(exceptions.ConvergenceError, ClimateIndicesError)
+
+    def test_insufficient_data_is_direct_child_of_base(self) -> None:
+        """InsufficientDataError should inherit from ClimateIndicesError, not ComputationError."""
+        assert issubclass(exceptions.InsufficientDataError, ClimateIndicesError)
+        assert not issubclass(exceptions.InsufficientDataError, exceptions.ComputationError)
+        assert not issubclass(exceptions.InsufficientDataError, exceptions.DistributionFittingError)
+
+    def test_insufficient_data_subtypes(self) -> None:
+        """InsufficientDataError subclasses should inherit correctly."""
+        assert issubclass(exceptions.ShortCalibrationPeriodError, exceptions.InsufficientDataError)
+        assert issubclass(exceptions.InsufficientNonZeroValuesError, exceptions.InsufficientDataError)
+
+    def test_invalid_argument_subtypes(self) -> None:
+        """InvalidArgumentError subtypes should inherit correctly."""
+        assert issubclass(exceptions.InvalidDistributionError, exceptions.InvalidArgumentError)
+        assert issubclass(exceptions.InvalidScaleError, exceptions.InvalidArgumentError)
 
     def test_periodicity_error_is_invalid_argument_subtype(self) -> None:
         """PeriodicityError should be under InvalidArgumentError."""
@@ -152,9 +169,9 @@ class TestExceptionCatchAll:
         with pytest.raises(ClimateIndicesError):
             raise exceptions.ConvergenceError("test error")
 
-    def test_catch_convergence_error_via_distribution_fitting(self) -> None:
-        """DistributionFittingError should catch ConvergenceError."""
-        with pytest.raises(exceptions.DistributionFittingError):
+    def test_catch_convergence_error_via_computation_error(self) -> None:
+        """ComputationError should catch ConvergenceError."""
+        with pytest.raises(exceptions.ComputationError):
             raise exceptions.ConvergenceError("test error")
 
     def test_catch_invalid_argument_error(self) -> None:
@@ -487,7 +504,6 @@ class TestBackwardCompatibility:
 
         # verify with exceptions module import
         assert isinstance(exc, exceptions.InsufficientDataError)
-        assert isinstance(exc, exceptions.DistributionFittingError)
         assert isinstance(exc, ClimateIndicesError)
 
     def test_raise_and_catch_via_compute(self) -> None:
@@ -515,16 +531,21 @@ class TestAllExports:
         """__all__ should contain all documented exception and warning classes plus helpers."""
         expected_names = {
             "ClimateIndicesError",
+            "ComputationError",
             "ConvergenceError",
+            "CoordinateValidationError",
             "DataShapeError",
+            "DimensionMismatchError",
             "DistributionFittingError",
             "InsufficientDataError",
-            "PearsonFittingError",
-            "PeriodicityError",
-            "DimensionMismatchError",
-            "CoordinateValidationError",
+            "InsufficientNonZeroValuesError",
             "InputTypeError",
             "InvalidArgumentError",
+            "InvalidDistributionError",
+            "InvalidScaleError",
+            "PearsonFittingError",
+            "PeriodicityError",
+            "ShortCalibrationPeriodError",
             "ClimateIndicesWarning",
             "MissingDataWarning",
             "ShortCalibrationWarning",
