@@ -90,8 +90,8 @@ def _validate_args(args: argparse.Namespace) -> InputType:
         ("division",),
     ]
 
-    # all indices except PET require a precipitation file
-    if args.index != "pet":
+    # all indices except PET and EDDI require a precipitation file
+    if args.index not in ("pet", "eddi"):
         # make sure a precipitation file was specified
         if args.netcdf_precip is None:
             msg = "Missing the required precipitation file"
@@ -140,6 +140,45 @@ def _validate_args(args: argparse.Namespace) -> InputType:
             elif input_type == InputType.divisions:
                 divisions_precip = dataset_precip["division"].values[:]
             times_precip = dataset_precip["time"].values[:]
+
+    elif args.index == "eddi":
+        # EDDI requires a PET file (not temperature or precipitation)
+        if args.netcdf_pet is None:
+            msg = "Missing the required PET file for EDDI computation"
+            _logger.error(msg)
+            raise ValueError(msg)
+
+        if args.var_name_pet is None:
+            msg = "Missing PET variable name for EDDI computation"
+            _logger.error(msg)
+            raise ValueError(msg)
+
+        # validate the PET file
+        with xr.open_dataset(args.netcdf_pet) as dataset_pet:
+            if args.var_name_pet not in dataset_pet.variables:
+                msg = (
+                    f"Invalid PET variable name: '{args.var_name_pet}' "
+                    + f"does not exist in PET file '{args.netcdf_pet}'"
+                )
+                _logger.error(msg)
+                raise ValueError(msg)
+
+            # verify that the PET variable's dimensions are in the expected order
+            dimensions = dataset_pet[args.var_name_pet].dims
+            if dimensions in expected_dimensions_grid:
+                input_type = InputType.grid
+            elif dimensions in expected_dimensions_divisions:
+                input_type = InputType.divisions
+            elif dimensions in expected_dimensions_timeseries:
+                input_type = InputType.timeseries
+            else:
+                msg = (
+                    "Invalid dimensions of the PET variable: "
+                    + f"{dimensions}\nValid dimension names and "
+                    + f"order: {expected_dimensions_grid + expected_dimensions_divisions}"
+                )
+                _logger.error(msg)
+                raise ValueError(msg)
 
     else:
         # PET requires a temperature file
@@ -429,10 +468,10 @@ def _validate_args(args: argparse.Namespace) -> InputType:
                     _logger.error(msg)
                     raise ValueError(msg)
 
-    if args.index in ["spi", "spei", "scaled", "pnp"]:
+    if args.index in ["spi", "spei", "scaled", "pnp", "eddi"]:
         if args.scales is None:
             msg = (
-                "Scaled indices (SPI, SPEI, and/or PNP) specified without "
+                "Scaled indices (SPI, SPEI, PNP, and/or EDDI) specified without "
                 + "including one or more time scales (missing --scales argument)"
             )
             _logger.error(msg)
@@ -507,6 +546,12 @@ def _build_arguments(keyword_args: dict[str, Any]) -> dict[str, Any]:
         function_arguments["calibration_end_year"] = keyword_args["calibration_end_year"]
         function_arguments["periodicity"] = keyword_args["periodicity"]
 
+    elif keyword_args["index"] == "eddi":
+        function_arguments["scale"] = keyword_args["scale"]
+        function_arguments["calibration_year_initial"] = keyword_args["calibration_start_year"]
+        function_arguments["calibration_year_final"] = keyword_args["calibration_end_year"]
+        function_arguments["periodicity"] = keyword_args["periodicity"]
+
     elif keyword_args["index"] == "palmers":
         function_arguments["calibration_start_year"] = keyword_args["calibration_start_year"]
         function_arguments["calibration_end_year"] = keyword_args["calibration_end_year"]
@@ -538,6 +583,13 @@ def _get_variable_attributes(args_dict: dict[str, Any]) -> tuple[str, dict[str, 
         )
         attrs = {"long_name": long_name, "valid_min": -1000.0, "valid_max": 1000.0}
         var_name = "pnp_" + str(args_dict["scale"]).zfill(2)
+
+    elif args_dict["index"] == "eddi":
+        long_name = "Evaporative Demand Drought Index, " + "{scale}-{increment}".format(
+            scale=args_dict["scale"], increment=_get_scale_increment(args_dict)
+        )
+        attrs = {"long_name": long_name, "valid_min": -3.09, "valid_max": 3.09}
+        var_name = "eddi_" + str(args_dict["scale"]).zfill(2)
 
     elif args_dict["index"] == "pet":
         long_name = "Potential Evapotranspiration (Thornthwaite)"
@@ -747,9 +799,11 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
         output_dims = dataset[keyword_arguments["var_name_precip"]].dims
     elif "var_name_temp" in keyword_arguments:
         output_dims = dataset[keyword_arguments["var_name_temp"]].dims
+    elif "var_name_pet" in keyword_arguments:
+        output_dims = dataset[keyword_arguments["var_name_pet"]].dims
     else:
         raise ValueError(
-            "Unable to determine output dimensions, no precipitation or temperature variable name was specified."
+            "Unable to determine output dimensions, no precipitation, temperature, or PET variable name was specified."
         )
 
     # convert data into the appropriate units, if necessary
@@ -1010,6 +1064,17 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
                 args=args,
             )
 
+        elif keyword_arguments["index"] == "eddi":
+            # apply the EDDI function along the time axis
+            _parallel_process(
+                keyword_arguments["index"],
+                _global_shared_arrays,
+                {"var_name_pet": keyword_arguments["var_name_pet"]},
+                _KEY_RESULT,
+                input_type=input_type,
+                args=args,
+            )
+
         elif keyword_arguments["index"] == "spei":
             # apply the SPEI function along the time axis (axis=2)
             _parallel_process(
@@ -1141,6 +1206,17 @@ def _pnp(precips: np.ndarray, parameters: dict[str, Any]) -> np.ndarray:
     )
 
 
+def _eddi(pet_values: np.ndarray, parameters: dict[str, Any]) -> np.ndarray:
+    return indices.eddi(
+        pet_values=pet_values,
+        scale=parameters["scale"],
+        data_start_year=parameters["data_start_year"],
+        calibration_year_initial=parameters["calibration_year_initial"],
+        calibration_year_final=parameters["calibration_year_final"],
+        periodicity=parameters["periodicity"],
+    )
+
+
 def _init_worker(shared_arrays_dict: dict[str, Any]) -> None:
     global _global_shared_arrays
     _global_shared_arrays = shared_arrays_dict
@@ -1179,11 +1255,19 @@ def _parallel_process(
 
     # build a list of parameters for each application of the function to an array chunk
     chunk_params = []
-    if index in ["spi", "pnp"]:
+    if index in ["spi", "pnp", "eddi"]:
         if index == "spi":
             func1d = _spi
+        elif index == "eddi":
+            func1d = _eddi
         else:
             func1d = _pnp
+
+        # determine the input variable name key
+        if index == "eddi":
+            input_var_key = input_var_names["var_name_pet"]
+        else:
+            input_var_key = input_var_names["var_name_precip"]
 
         # we have a single input array, create parameter dictionary objects
         # appropriate to the _apply_along_axis function, one per worker process
@@ -1191,7 +1275,7 @@ def _parallel_process(
             params = {
                 "index": index,
                 "func1d": func1d,
-                "input_var_name": input_var_names["var_name_precip"],
+                "input_var_name": input_var_key,
                 "output_var_name": output_var_name,
                 "sub_array_start": split_indices[i],
                 "input_type": input_type,
@@ -1496,6 +1580,17 @@ def main() -> None:
     --netcdf_precip example_data/nclimgrid_prcp_lowres.nc
     --var_name_precip prcp
     --output_file_base ~/data/test/spi/nclimgrid_lowres
+
+    Example command line arguments for EDDI using monthly PET input:
+
+    --index eddi
+    --periodicity monthly
+    --scales 1 3 6 9 12
+    --calibration_start_year 1980
+    --calibration_end_year 2010
+    --netcdf_pet example_data/pet_fao56.nc
+    --var_name_pet pet
+    --output_file_base ~/data/test/eddi/output
     """
     # # ==========================================================================
     # # UNCOMMENT THE BELOW FOR PROFILING
@@ -1521,7 +1616,7 @@ def main() -> None:
         parser.add_argument(
             "--index",
             help="Indices to compute",
-            choices=["spi", "spei", "pnp", "scaled", "pet", "palmers", "all"],
+            choices=["spi", "spei", "pnp", "scaled", "pet", "palmers", "eddi", "all"],
             required=True,
         )
         parser.add_argument(
@@ -1758,6 +1853,33 @@ def process_climate_indices(
             # remove temporary precipitation file if one was created
             if netcdf_precip != arguments.netcdf_precip:
                 os.remove(netcdf_precip)
+
+        if arguments.index in ["eddi"]:
+            # prepare PET NetCDF in case dimensions not (lat, lon, time) or if any coordinates are descending
+            netcdf_pet = _prepare_file(arguments.netcdf_pet, arguments.var_name_pet)
+
+            # run EDDI computations for each scale in turn
+            for scale in arguments.scales:
+                # keyword arguments used for the EDDI function
+                kwrgs = {
+                    "index": "eddi",
+                    "netcdf_pet": netcdf_pet,
+                    "var_name_pet": arguments.var_name_pet,
+                    "input_type": input_type,
+                    "scale": scale,
+                    "periodicity": arguments.periodicity,
+                    "calibration_start_year": arguments.calibration_start_year,
+                    "calibration_end_year": arguments.calibration_end_year,
+                    "output_file_base": arguments.output_file_base,
+                    "chunksizes": arguments.chunksizes,
+                }
+
+                # compute and write EDDI
+                _compute_write_index(kwrgs)
+
+            # remove temporary file if one was created
+            if netcdf_pet != arguments.netcdf_pet:
+                os.remove(netcdf_pet)
 
         if arguments.index in ["palmers", "all"]:
             # prepare NetCDFs in case dimensions not (lat, lon, time)
