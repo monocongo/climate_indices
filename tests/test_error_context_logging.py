@@ -12,6 +12,7 @@ import pytest
 
 from climate_indices import compute, indices
 from climate_indices.eto import eto_hargreaves
+from climate_indices.exceptions import InvalidArgumentError
 from climate_indices.logging_config import _reset_logging_for_testing, configure_logging
 
 
@@ -285,7 +286,7 @@ class TestPercentageOfNormalErrorContextLogging:
         """Invalid calibration period emits calculation_failed."""
         values = np.random.rand(240)
 
-        with pytest.raises(ValueError, match="calibration start year is before the data start year"):
+        with pytest.raises(InvalidArgumentError, match="calibration start year"):
             indices.percentage_of_normal(
                 values=values,
                 scale=6,
@@ -303,7 +304,7 @@ class TestPercentageOfNormalErrorContextLogging:
         assert failed["index_type"] == "percentage_of_normal"
         assert failed["scale"] == 6
         assert "distribution" not in failed
-        assert failed["error_type"] == "ValueError"
+        assert failed["error_type"] == "InvalidArgumentError"
         assert failed["calibration_period"] == "2000-2019"
 
 
@@ -342,7 +343,7 @@ class TestPCIErrorContextLogging:
         # array with 100 days (invalid, must be 365 or 366)
         rainfall = np.random.rand(100)
 
-        with pytest.raises(ValueError, match="total days should be 366 or 365"):
+        with pytest.raises(InvalidArgumentError, match="365 or 366"):
             indices.pci(rainfall_mm=rainfall)
 
         events = parse_log_events(log_capture)
@@ -354,7 +355,7 @@ class TestPCIErrorContextLogging:
         assert "scale" not in failed
         assert "distribution" not in failed
         assert "calibration_period" not in failed
-        assert failed["error_type"] == "ValueError"
+        assert failed["error_type"] == "InvalidArgumentError"
 
 
 class TestEtoHargreavesErrorContextLogging:
