@@ -6,6 +6,8 @@ correct Dataset structure with preserved coordinates and provenance.
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -144,6 +146,128 @@ class TestPalmerXarraySmoke:
         ds = palmer_xarray(precip_da, pet_da, awc=_AWC)
         for param_name in ("palmer_alpha", "palmer_beta", "palmer_gamma", "palmer_delta"):
             assert param_name in ds.attrs, f"Missing {param_name} in Dataset attrs"
+
+
+# ---------------------------------------------------------------------------
+# Multi-output Dataset construction tests (Story 4.5)
+# ---------------------------------------------------------------------------
+
+
+class TestPalmerXarrayDataset:
+    """Tests for multi-output Dataset construction (Story 4.5)."""
+
+    def test_each_variable_accessible_by_name(self) -> None:
+        """Each variable is accessible via ds['variable_name']."""
+        precip_da, pet_da = _make_palmer_dataarrays()
+        ds = palmer_xarray(precip_da, pet_da, awc=_AWC)
+        for var_name in ("pdsi", "phdi", "pmdi", "z_index"):
+            var = ds[var_name]
+            assert isinstance(var, xr.DataArray)
+            assert var.name == var_name
+
+    def test_each_variable_has_independent_cf_metadata(self) -> None:
+        """Each variable has its own distinct long_name from the CF registry."""
+        precip_da, pet_da = _make_palmer_dataarrays()
+        ds = palmer_xarray(precip_da, pet_da, awc=_AWC)
+        long_names = {ds[v].attrs["long_name"] for v in ds.data_vars}
+        # all 4 long_names should be distinct
+        assert len(long_names) == 4
+
+    def test_netcdf_round_trip(self, tmp_path) -> None:
+        """Dataset survives NetCDF write/read round-trip with structure preserved."""
+        precip_da, pet_da = _make_palmer_dataarrays()
+        ds = palmer_xarray(precip_da, pet_da, awc=_AWC)
+
+        nc_path = tmp_path / "palmer_test.nc"
+        ds.to_netcdf(nc_path, engine="scipy")
+
+        ds_loaded = xr.open_dataset(nc_path, engine="scipy")
+        assert set(ds_loaded.data_vars) == {"pdsi", "phdi", "pmdi", "z_index"}
+        for var_name in ("pdsi", "phdi", "pmdi", "z_index"):
+            xr.testing.assert_equal(ds[var_name], ds_loaded[var_name])
+            assert ds_loaded[var_name].attrs["long_name"] == ds[var_name].attrs["long_name"]
+        ds_loaded.close()
+
+    def test_netcdf_round_trip_preserves_time_coords(self, tmp_path) -> None:
+        """NetCDF round-trip preserves time coordinate values."""
+        precip_da, pet_da = _make_palmer_dataarrays()
+        ds = palmer_xarray(precip_da, pet_da, awc=_AWC)
+
+        nc_path = tmp_path / "palmer_time_test.nc"
+        ds.to_netcdf(nc_path, engine="scipy")
+
+        ds_loaded = xr.open_dataset(nc_path, engine="scipy")
+        xr.testing.assert_equal(ds.coords["time"], ds_loaded.coords["time"])
+        ds_loaded.close()
+
+    def test_dimensions_correctly_aligned(self) -> None:
+        """All output variables share the same dimensions."""
+        precip_da, pet_da = _make_palmer_dataarrays()
+        ds = palmer_xarray(precip_da, pet_da, awc=_AWC)
+        for var_name in ("pdsi", "phdi", "pmdi", "z_index"):
+            assert ds[var_name].dims == precip_da.dims
+
+
+# ---------------------------------------------------------------------------
+# params_dict JSON serialization tests (Story 4.6)
+# ---------------------------------------------------------------------------
+
+
+class TestPalmerXarrayParamsJSON:
+    """Tests for params_dict JSON serialization (Story 4.6)."""
+
+    def test_palmer_params_json_attr_exists(self) -> None:
+        """Dataset attrs include palmer_params JSON string."""
+        precip_da, pet_da = _make_palmer_dataarrays()
+        ds = palmer_xarray(precip_da, pet_da, awc=_AWC)
+        assert "palmer_params" in ds.attrs
+        assert isinstance(ds.attrs["palmer_params"], str)
+
+    def test_palmer_params_json_parseable(self) -> None:
+        """palmer_params attr is valid JSON."""
+        precip_da, pet_da = _make_palmer_dataarrays()
+        ds = palmer_xarray(precip_da, pet_da, awc=_AWC)
+        params = json.loads(ds.attrs["palmer_params"])
+        assert isinstance(params, dict)
+
+    def test_palmer_params_json_has_all_keys(self) -> None:
+        """JSON contains alpha, beta, gamma, delta keys."""
+        precip_da, pet_da = _make_palmer_dataarrays()
+        ds = palmer_xarray(precip_da, pet_da, awc=_AWC)
+        params = json.loads(ds.attrs["palmer_params"])
+        for key in ("alpha", "beta", "gamma", "delta"):
+            assert key in params, f"Missing '{key}' in palmer_params JSON"
+
+    def test_json_round_trip_matches_individual_attrs(self) -> None:
+        """JSON round-trip values match individual palmer_* attrs."""
+        precip_da, pet_da = _make_palmer_dataarrays()
+        ds = palmer_xarray(precip_da, pet_da, awc=_AWC)
+        params = json.loads(ds.attrs["palmer_params"])
+        for key in ("alpha", "beta", "gamma", "delta"):
+            assert params[key] == ds.attrs[f"palmer_{key}"], f"JSON '{key}' != individual attr 'palmer_{key}'"
+
+    def test_params_values_are_12_element_lists(self) -> None:
+        """Each calibration parameter is a 12-element list (monthly)."""
+        precip_da, pet_da = _make_palmer_dataarrays()
+        ds = palmer_xarray(precip_da, pet_da, awc=_AWC)
+        params = json.loads(ds.attrs["palmer_params"])
+        for key in ("alpha", "beta", "gamma", "delta"):
+            assert isinstance(params[key], list), f"'{key}' is not a list"
+            assert len(params[key]) == 12, f"'{key}' has {len(params[key])} elements, expected 12"
+
+    def test_netcdf_round_trip_preserves_json_params(self, tmp_path) -> None:
+        """JSON params survive NetCDF write/read round-trip."""
+        precip_da, pet_da = _make_palmer_dataarrays()
+        ds = palmer_xarray(precip_da, pet_da, awc=_AWC)
+
+        nc_path = tmp_path / "palmer_params_test.nc"
+        ds.to_netcdf(nc_path, engine="scipy")
+
+        ds_loaded = xr.open_dataset(nc_path, engine="scipy")
+        params_original = json.loads(ds.attrs["palmer_params"])
+        params_loaded = json.loads(ds_loaded.attrs["palmer_params"])
+        assert params_original == params_loaded
+        ds_loaded.close()
 
 
 # ---------------------------------------------------------------------------

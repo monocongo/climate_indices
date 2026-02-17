@@ -12,6 +12,7 @@ xr.Dataset, which is incompatible with the single-output decorator design.
 from __future__ import annotations
 
 import copy
+import json
 import time
 import warnings
 from typing import Any
@@ -1226,11 +1227,17 @@ def palmer_xarray(
 
         ds.attrs["climate_indices_version"] = __version__
 
-        # store calibration parameters (basic -- full JSON serialization in Story 4.6)
+        # store calibration parameters with dual-access pattern:
+        # 1. JSON string in ds.attrs["palmer_params"] for full dict round-trip
+        # 2. Individual attrs ds.attrs["palmer_alpha"] etc. for convenience
         if params_dict is not None:
+            serializable_params = {}
             for param_name in ("alpha", "beta", "gamma", "delta"):
                 if param_name in params_dict:
-                    ds.attrs[f"palmer_{param_name}"] = params_dict[param_name].tolist()
+                    param_list = params_dict[param_name].tolist()
+                    ds.attrs[f"palmer_{param_name}"] = param_list
+                    serializable_params[param_name] = param_list
+            ds.attrs["palmer_params"] = json.dumps(serializable_params)
 
         # describe AWC in history (scalar value or "spatial DataArray")
         awc_history_val = awc if isinstance(awc, (int, float)) else "spatial_DataArray"
