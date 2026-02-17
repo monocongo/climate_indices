@@ -104,4 +104,42 @@ CF_METADATA: dict[str, CFAttributes] = {
             "U.S. Army Corps of Engineers."
         ),
     },
+    "pdsi": {
+        "long_name": "Palmer Drought Severity Index",
+        "units": "",
+        "references": (
+            "Palmer, W. C. (1965). "
+            "Meteorological Drought. Research Paper No. 45, "
+            "U.S. Department of Commerce Weather Bureau, Washington, D.C."
+        ),
+    },
+    "phdi": {
+        "long_name": "Palmer Hydrological Drought Index",
+        "units": "",
+        "references": (
+            "Palmer, W. C. (1965). "
+            "Meteorological Drought. Research Paper No. 45, "
+            "U.S. Department of Commerce Weather Bureau, Washington, D.C."
+        ),
+    },
+    "pmdi": {
+        "long_name": "Palmer Modified Drought Index",
+        "units": "",
+        "references": (
+            "Heddinghaus, T. R., & Sabol, P. (1991). "
+            "A review of the Palmer Drought Severity Index and where do we go from here? "
+            "Proceedings of the 7th Conference on Applied Climatology, "
+            "10-13 September, Salt Lake City, UT. "
+            "American Meteorological Society, Boston, MA, 242-246."
+        ),
+    },
+    "z_index": {
+        "long_name": "Palmer Z-Index",
+        "units": "",
+        "references": (
+            "Palmer, W. C. (1965). "
+            "Meteorological Drought. Research Paper No. 45, "
+            "U.S. Department of Commerce Weather Bureau, Washington, D.C."
+        ),
+    },
 }

@@ -10,7 +10,6 @@ import pytest
 
 from climate_indices.cf_metadata_registry import CF_METADATA
 
-
 # expected registry keys
 EXPECTED_KEYS = {
     "spi",
@@ -20,6 +19,10 @@ EXPECTED_KEYS = {
     "percentage_of_normal",
     "pci",
     "pnp",
+    "pdsi",
+    "phdi",
+    "pmdi",
+    "z_index",
 }
 
 REQUIRED_FIELDS = {"long_name", "units", "references"}
@@ -33,8 +36,8 @@ class TestRegistryStructure:
         assert set(CF_METADATA.keys()) == EXPECTED_KEYS
 
     def test_registry_entry_count(self) -> None:
-        """Registry has exactly 7 entries."""
-        assert len(CF_METADATA) == 7
+        """Registry has exactly 11 entries."""
+        assert len(CF_METADATA) == 11
 
     @pytest.mark.parametrize("index_name", sorted(EXPECTED_KEYS))
     def test_entry_has_required_fields(self, index_name: str) -> None:
@@ -135,3 +138,93 @@ class TestBackwardCompatibility:
         from climate_indices.xarray_adapter import CF_METADATA as xa_cf_metadata
 
         assert xa_cf_metadata is CF_METADATA
+
+
+class TestPDSIEntry:
+    """Validate PDSI registry entry."""
+
+    def test_long_name(self) -> None:
+        assert CF_METADATA["pdsi"]["long_name"] == "Palmer Drought Severity Index"
+
+    def test_units(self) -> None:
+        assert CF_METADATA["pdsi"]["units"] == ""
+
+    def test_references_contains_palmer(self) -> None:
+        references = CF_METADATA["pdsi"]["references"]
+        assert "Palmer" in references
+        assert "1965" in references
+
+    def test_references_contains_research_paper(self) -> None:
+        references = CF_METADATA["pdsi"]["references"]
+        assert "Meteorological Drought" in references
+
+
+class TestPHDIEntry:
+    """Validate PHDI registry entry."""
+
+    def test_long_name(self) -> None:
+        assert CF_METADATA["phdi"]["long_name"] == "Palmer Hydrological Drought Index"
+
+    def test_units(self) -> None:
+        assert CF_METADATA["phdi"]["units"] == ""
+
+    def test_references_contains_palmer(self) -> None:
+        references = CF_METADATA["phdi"]["references"]
+        assert "Palmer" in references
+        assert "1965" in references
+
+
+class TestPMDIEntry:
+    """Validate PMDI registry entry."""
+
+    def test_long_name(self) -> None:
+        assert CF_METADATA["pmdi"]["long_name"] == "Palmer Modified Drought Index"
+
+    def test_units(self) -> None:
+        assert CF_METADATA["pmdi"]["units"] == ""
+
+    def test_references_contains_heddinghaus(self) -> None:
+        """PMDI uses Heddinghaus & Sabol (1991) as primary reference."""
+        references = CF_METADATA["pmdi"]["references"]
+        assert "Heddinghaus" in references
+        assert "1991" in references
+
+    def test_references_contains_sabol(self) -> None:
+        references = CF_METADATA["pmdi"]["references"]
+        assert "Sabol" in references
+
+
+class TestZIndexEntry:
+    """Validate Z-Index registry entry."""
+
+    def test_long_name(self) -> None:
+        assert CF_METADATA["z_index"]["long_name"] == "Palmer Z-Index"
+
+    def test_units(self) -> None:
+        assert CF_METADATA["z_index"]["units"] == ""
+
+    def test_references_contains_palmer(self) -> None:
+        references = CF_METADATA["z_index"]["references"]
+        assert "Palmer" in references
+        assert "1965" in references
+
+
+class TestPalmerEntriesCommon:
+    """Cross-cutting tests for all Palmer registry entries."""
+
+    @pytest.mark.parametrize("var_name", ["pdsi", "phdi", "pmdi", "z_index"])
+    def test_palmer_entries_are_dimensionless(self, var_name: str) -> None:
+        """All Palmer indices are dimensionless (empty string units)."""
+        assert CF_METADATA[var_name]["units"] == ""
+
+    @pytest.mark.parametrize("var_name", ["pdsi", "phdi", "z_index"])
+    def test_palmer_1965_entries_share_reference(self, var_name: str) -> None:
+        """PDSI, PHDI, and Z-Index all cite Palmer (1965)."""
+        references = CF_METADATA[var_name]["references"]
+        assert "Palmer, W. C. (1965)" in references
+
+    def test_pmdi_has_different_reference(self) -> None:
+        """PMDI cites Heddinghaus & Sabol, not Palmer (1965)."""
+        references = CF_METADATA["pmdi"]["references"]
+        assert "Palmer, W. C. (1965)" not in references
+        assert "Heddinghaus" in references

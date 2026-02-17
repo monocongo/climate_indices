@@ -130,6 +130,14 @@ class TestPalmerXarraySmoke:
         for var_name in ("pdsi", "phdi", "pmdi", "z_index"):
             assert "long_name" in ds[var_name].attrs, f"{var_name} missing long_name"
 
+    def test_variable_attrs_have_references(self) -> None:
+        """Each variable has a references attribute from the CF metadata registry."""
+        precip_da, pet_da = _make_palmer_dataarrays()
+        ds = palmer_xarray(precip_da, pet_da, awc=_AWC)
+        for var_name in ("pdsi", "phdi", "pmdi", "z_index"):
+            assert "references" in ds[var_name].attrs, f"{var_name} missing references"
+            assert len(ds[var_name].attrs["references"]) > 0, f"{var_name} references is empty"
+
     def test_calibration_params_in_attrs(self) -> None:
         """Dataset attrs include Palmer calibration parameters."""
         precip_da, pet_da = _make_palmer_dataarrays()

@@ -20,6 +20,7 @@ import numpy as np
 import xarray as xr
 
 from climate_indices import utils
+from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.exceptions import CoordinateValidationError, InputAlignmentWarning
 from climate_indices.logging_config import get_logger
 from climate_indices.xarray_adapter import (
@@ -976,27 +977,6 @@ def pdsi(
 # variable names for the 4 Palmer output arrays
 _PALMER_VARIABLE_NAMES = ("pdsi", "phdi", "pmdi", "z_index")
 
-# placeholder CF-style metadata for each variable
-# will be replaced by CF metadata registry entries in Story 4.5
-_PALMER_VARIABLE_ATTRS: dict[str, dict[str, str]] = {
-    "pdsi": {
-        "long_name": "Palmer Drought Severity Index",
-        "units": "",
-    },
-    "phdi": {
-        "long_name": "Palmer Hydrological Drought Index",
-        "units": "",
-    },
-    "pmdi": {
-        "long_name": "Palmer Modified Drought Index",
-        "units": "",
-    },
-    "z_index": {
-        "long_name": "Palmer Z-Index",
-        "units": "",
-    },
-}
-
 
 def palmer_xarray(
     precip_da: xr.DataArray,
@@ -1170,8 +1150,8 @@ def palmer_xarray(
 
         data_vars: dict[str, xr.DataArray] = {}
         for var_name in _PALMER_VARIABLE_NAMES:
-            # build per-variable attrs from placeholder metadata
-            var_attrs = copy.deepcopy(_PALMER_VARIABLE_ATTRS[var_name])
+            # build per-variable attrs from CF metadata registry
+            var_attrs = copy.deepcopy(CF_METADATA[var_name])
             da = xr.DataArray(
                 output_arrays[var_name],
                 coords=precip_aligned.coords,
