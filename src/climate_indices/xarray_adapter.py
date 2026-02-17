@@ -119,6 +119,18 @@ CF_METADATA: dict[str, CFAttributes] = {
             "https://doi.org/10.13031/2013.26773"
         ),
     },
+    "eddi": {
+        "long_name": "Evaporative Demand Drought Index",
+        "units": "",
+        "standard_name": "atmosphere_water_vapor_evaporative_demand_anomaly",
+        "references": (
+            "Hobbins, M. T., Wood, A., McEvoy, D., Huntington, J., Morton, C., "
+            "Anderson, M., & Hain, C. (2016). The Evaporative Demand Drought Index. "
+            "Part I: Linking Drought Evolution to Variations in Evaporative Demand. "
+            "Journal of Hydrometeorology, 17(6), 1745-1761. "
+            "https://doi.org/10.1175/JHM-D-15-0121.1"
+        ),
+    },
 }
 
 # types that can be safely coerced to np.ndarray by the existing numpy functions

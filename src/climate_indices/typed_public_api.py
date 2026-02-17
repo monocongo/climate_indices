@@ -1,4 +1,4 @@
-"""Typed public API for SPI and SPEI with NumPy/xarray overloads.
+"""Typed public API for SPI, SPEI, and EDDI with NumPy/xarray overloads.
 
 This module provides statically-typed wrappers around the xarray-adapted index
 functions. The @overload signatures enable IDE autocomplete and mypy --strict
@@ -223,6 +223,95 @@ def spei(
         kwargs["calibration_year_final"] = calibration_year_final
 
     return _wrapped_spei(precips_mm, pet_mm, **kwargs)
+
+
+# pre-build decorated EDDI function at module level
+_wrapped_eddi = xarray_adapter(
+    cf_metadata=CF_METADATA["eddi"],  # type: ignore[arg-type]
+    index_display_name="EDDI",
+    calculation_metadata_keys=["scale", "calibration_year_initial", "calibration_year_final"],
+)(indices.eddi)
+
+
+# EDDI overloads
+@overload
+def eddi(
+    pet_values: npt.NDArray[np.float64],
+    scale: int,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: Periodicity,
+) -> npt.NDArray[np.float64]: ...
+
+
+@overload
+def eddi(
+    pet_values: xr.DataArray,
+    scale: int,
+    data_start_year: int | None = None,
+    calibration_year_initial: int | None = None,
+    calibration_year_final: int | None = None,
+    periodicity: Periodicity | None = None,
+) -> xr.DataArray: ...
+
+
+def eddi(
+    pet_values: npt.NDArray[np.float64] | xr.DataArray,
+    scale: int,
+    data_start_year: int | None = None,
+    calibration_year_initial: int | None = None,
+    calibration_year_final: int | None = None,
+    periodicity: Periodicity | None = None,
+) -> npt.NDArray[np.float64] | xr.DataArray:
+    """Compute EDDI (Evaporative Demand Drought Index).
+
+    This function accepts both NumPy arrays and xarray DataArrays. Type checkers
+    will narrow the return type based on the input type.
+
+    For NumPy inputs, all temporal parameters are required.
+    For xarray inputs, temporal parameters are optional and will be inferred from
+    coordinate attributes if not provided.
+
+    .. warning:: **Beta Feature (xarray path only)** -- When called with an
+       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
+       The xarray interface (parameter inference, metadata handling, coordinate
+       preservation) may change in future minor releases. The NumPy array interface
+       is stable.
+
+    .. note::
+       **PET method matters.** EDDI is most accurate when using
+       Penman-Monteith FAO56 reference evapotranspiration (ETo) as the
+       PET input. See the ``eddi()`` docstring in ``indices.py`` for details.
+
+    Args:
+        pet_values: 1-D numpy array or xarray DataArray of PET values.
+        scale: Number of time steps over which PET values are accumulated.
+        data_start_year: First year of the input PET dataset (required for
+            NumPy, optional for xarray).
+        calibration_year_initial: First year of calibration period (required
+            for NumPy, optional for xarray).
+        calibration_year_final: Last year of calibration period (required for
+            NumPy, optional for xarray).
+        periodicity: Temporal resolution ('monthly' or 'daily'). Required
+            for NumPy, optional for xarray.
+
+    Returns:
+        EDDI values as numpy.ndarray or xarray.DataArray (matches input type).
+    """
+    kwargs: dict[str, Any] = {
+        "scale": scale,
+    }
+    if data_start_year is not None:
+        kwargs["data_start_year"] = data_start_year
+    if calibration_year_initial is not None:
+        kwargs["calibration_year_initial"] = calibration_year_initial
+    if calibration_year_final is not None:
+        kwargs["calibration_year_final"] = calibration_year_final
+    if periodicity is not None:
+        kwargs["periodicity"] = periodicity
+
+    return _wrapped_eddi(pet_values, **kwargs)
 
 
 # scPDSI overloads (stub — not yet implemented)
