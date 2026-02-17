@@ -7,7 +7,10 @@ from climate_indices.exceptions import (
     ClimateIndicesDeprecationWarning,
     ClimateIndicesError,
     ClimateIndicesWarning,
+    ComputationError,
+    InsufficientDataError,
     InputAlignmentWarning,
+    InvalidArgumentError,
     emit_deprecation_warning,
 )
 from climate_indices.logging_config import configure_logging
@@ -35,9 +38,12 @@ __all__ = [
     "ClimateIndicesDeprecationWarning",
     "ClimateIndicesError",
     "ClimateIndicesWarning",
+    "ComputationError",
     "configure_logging",
+    "InsufficientDataError",
     "InputAlignmentWarning",
     "InputType",
+    "InvalidArgumentError",
     "detect_input_type",
     "emit_deprecation_warning",
     "pet_hargreaves",

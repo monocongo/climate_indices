@@ -19,15 +19,35 @@ class TestExceptionHierarchy:
         assert issubclass(exceptions.DistributionFittingError, ClimateIndicesError)
         assert issubclass(exceptions.InsufficientDataError, ClimateIndicesError)
         assert issubclass(exceptions.PearsonFittingError, ClimateIndicesError)
+        assert issubclass(exceptions.ConvergenceError, ClimateIndicesError)
         assert issubclass(exceptions.DimensionMismatchError, ClimateIndicesError)
         assert issubclass(exceptions.CoordinateValidationError, ClimateIndicesError)
         assert issubclass(exceptions.InputTypeError, ClimateIndicesError)
         assert issubclass(exceptions.InvalidArgumentError, ClimateIndicesError)
+        assert issubclass(exceptions.PeriodicityError, ClimateIndicesError)
+        assert issubclass(exceptions.DataShapeError, ClimateIndicesError)
 
     def test_distribution_fitting_subtypes(self) -> None:
         """Distribution fitting errors should have correct parent classes."""
         assert issubclass(exceptions.InsufficientDataError, exceptions.DistributionFittingError)
         assert issubclass(exceptions.PearsonFittingError, exceptions.DistributionFittingError)
+        assert issubclass(exceptions.ConvergenceError, exceptions.DistributionFittingError)
+
+    def test_convergence_error_is_distribution_fitting_subtype(self) -> None:
+        """ConvergenceError should be under DistributionFittingError for fitting-specific convergence."""
+        assert issubclass(exceptions.ConvergenceError, exceptions.DistributionFittingError)
+        assert issubclass(exceptions.ConvergenceError, ClimateIndicesError)
+
+    def test_periodicity_error_is_invalid_argument_subtype(self) -> None:
+        """PeriodicityError should be under InvalidArgumentError."""
+        assert issubclass(exceptions.PeriodicityError, exceptions.InvalidArgumentError)
+        assert issubclass(exceptions.PeriodicityError, ClimateIndicesError)
+
+    def test_data_shape_error_is_direct_child(self) -> None:
+        """DataShapeError should be a direct child of ClimateIndicesError."""
+        assert issubclass(exceptions.DataShapeError, ClimateIndicesError)
+        assert not issubclass(exceptions.DataShapeError, exceptions.DistributionFittingError)
+        assert not issubclass(exceptions.DataShapeError, exceptions.InvalidArgumentError)
 
     def test_new_exceptions_not_under_distribution_fitting(self) -> None:
         """New exception types should be direct children of ClimateIndicesError."""
@@ -127,10 +147,35 @@ class TestExceptionCatchAll:
         with pytest.raises(ClimateIndicesError):
             raise exceptions.InputTypeError("test error")
 
+    def test_catch_convergence_error(self) -> None:
+        """ClimateIndicesError should catch ConvergenceError."""
+        with pytest.raises(ClimateIndicesError):
+            raise exceptions.ConvergenceError("test error")
+
+    def test_catch_convergence_error_via_distribution_fitting(self) -> None:
+        """DistributionFittingError should catch ConvergenceError."""
+        with pytest.raises(exceptions.DistributionFittingError):
+            raise exceptions.ConvergenceError("test error")
+
     def test_catch_invalid_argument_error(self) -> None:
         """ClimateIndicesError should catch InvalidArgumentError."""
         with pytest.raises(ClimateIndicesError):
             raise exceptions.InvalidArgumentError("test error")
+
+    def test_catch_periodicity_error(self) -> None:
+        """ClimateIndicesError should catch PeriodicityError."""
+        with pytest.raises(ClimateIndicesError):
+            raise exceptions.PeriodicityError("test error")
+
+    def test_catch_periodicity_error_via_invalid_argument(self) -> None:
+        """InvalidArgumentError should catch PeriodicityError."""
+        with pytest.raises(exceptions.InvalidArgumentError):
+            raise exceptions.PeriodicityError("test error")
+
+    def test_catch_data_shape_error(self) -> None:
+        """ClimateIndicesError should catch DataShapeError."""
+        with pytest.raises(ClimateIndicesError):
+            raise exceptions.DataShapeError("test error")
 
 
 class TestWarningCatchAll:
@@ -250,6 +295,30 @@ class TestExceptionContextAttributes:
         exc = exceptions.PearsonFittingError("Fitting failed")
         assert exc.underlying_error is None
 
+    def test_convergence_error_attributes(self) -> None:
+        """ConvergenceError should store algorithm, iterations, and parent attrs."""
+        underlying = RuntimeError("numerical instability")
+        exc = exceptions.ConvergenceError(
+            "L-moments did not converge",
+            algorithm="l-moments",
+            iterations=50,
+            distribution_name="pearson3",
+            underlying_error=underlying,
+        )
+        assert exc.algorithm == "l-moments"
+        assert exc.iterations == 50
+        assert exc.distribution_name == "pearson3"
+        assert exc.underlying_error is underlying
+        assert str(exc) == "L-moments did not converge"
+
+    def test_convergence_error_defaults(self) -> None:
+        """ConvergenceError attributes should default to None."""
+        exc = exceptions.ConvergenceError("Did not converge")
+        assert exc.algorithm is None
+        assert exc.iterations is None
+        assert exc.distribution_name is None
+        assert exc.underlying_error is None
+
     def test_dimension_mismatch_error_attributes(self) -> None:
         """DimensionMismatchError should store expected_dims and actual_dims."""
         exc = exceptions.DimensionMismatchError("Shape mismatch", expected_dims=(10, 20), actual_dims=(10, 15))
@@ -313,6 +382,43 @@ class TestExceptionContextAttributes:
         assert exc.argument_value is None
         assert exc.valid_values is None
 
+    def test_periodicity_error_attributes(self) -> None:
+        """PeriodicityError should store periodicity_value and set parent attrs."""
+        exc = exceptions.PeriodicityError(
+            "Invalid periodicity: weekly",
+            periodicity_value="weekly",
+        )
+        assert exc.periodicity_value == "weekly"
+        assert exc.argument_name == "periodicity"
+        assert exc.argument_value == "weekly"
+        assert exc.valid_values == "Periodicity.monthly, Periodicity.daily"
+        assert str(exc) == "Invalid periodicity: weekly"
+
+    def test_periodicity_error_defaults(self) -> None:
+        """PeriodicityError attributes should default to None where applicable."""
+        exc = exceptions.PeriodicityError("Bad periodicity")
+        assert exc.periodicity_value is None
+        assert exc.argument_name == "periodicity"
+        assert exc.argument_value is None
+        assert exc.valid_values == "Periodicity.monthly, Periodicity.daily"
+
+    def test_data_shape_error_attributes(self) -> None:
+        """DataShapeError should store expected_shape and actual_shape."""
+        exc = exceptions.DataShapeError(
+            "Cannot reshape array",
+            expected_shape="(years, 12)",
+            actual_shape=(100,),
+        )
+        assert exc.expected_shape == "(years, 12)"
+        assert exc.actual_shape == (100,)
+        assert str(exc) == "Cannot reshape array"
+
+    def test_data_shape_error_defaults(self) -> None:
+        """DataShapeError attributes should default to None."""
+        exc = exceptions.DataShapeError("Bad shape")
+        assert exc.expected_shape is None
+        assert exc.actual_shape is None
+
     def test_distribution_fitting_error_attributes(self) -> None:
         """DistributionFittingError should store all structured attributes."""
         params = {"alpha": "0.5", "beta": "1.0"}
@@ -349,6 +455,9 @@ class TestKeywordOnlyEnforcement:
         "exception_class,positional_args",
         [
             (exceptions.InvalidArgumentError, ("message", "scale")),
+            (exceptions.ConvergenceError, ("message", "l-moments")),
+            (exceptions.PeriodicityError, ("message", "weekly")),
+            (exceptions.DataShapeError, ("message", "(years, 12)")),
             (exceptions.MissingDataWarning, ("message", 0.15)),
             (exceptions.ShortCalibrationWarning, ("message", 25)),
             (exceptions.GoodnessOfFitWarning, ("message", "gamma")),
@@ -406,9 +515,12 @@ class TestAllExports:
         """__all__ should contain all documented exception and warning classes plus helpers."""
         expected_names = {
             "ClimateIndicesError",
+            "ConvergenceError",
+            "DataShapeError",
             "DistributionFittingError",
             "InsufficientDataError",
             "PearsonFittingError",
+            "PeriodicityError",
             "DimensionMismatchError",
             "CoordinateValidationError",
             "InputTypeError",
@@ -447,6 +559,11 @@ class TestExceptionPickling:
             (exceptions.InsufficientDataError, ("not enough data",), {"non_zero_count": 5, "required_count": 10}),
             (exceptions.PearsonFittingError, ("pearson failed",), {}),
             (
+                exceptions.ConvergenceError,
+                ("did not converge",),
+                {"algorithm": "l-moments", "iterations": 50, "distribution_name": "pearson3"},
+            ),
+            (
                 exceptions.DimensionMismatchError,
                 ("dims don't match",),
                 {"expected_dims": (10, 20), "actual_dims": (10, 30)},
@@ -461,6 +578,16 @@ class TestExceptionPickling:
                 exceptions.InvalidArgumentError,
                 ("bad arg",),
                 {"argument_name": "scale", "argument_value": "-1", "valid_values": "positive integers"},
+            ),
+            (
+                exceptions.PeriodicityError,
+                ("bad periodicity",),
+                {"periodicity_value": "weekly"},
+            ),
+            (
+                exceptions.DataShapeError,
+                ("bad shape",),
+                {"expected_shape": "(years, 12)", "actual_shape": (100,)},
             ),
         ],
     )
