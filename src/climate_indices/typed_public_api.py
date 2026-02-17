@@ -26,6 +26,7 @@ from climate_indices import indices
 from climate_indices.compute import Periodicity
 from climate_indices.indices import Distribution
 from climate_indices.xarray_adapter import CF_METADATA, xarray_adapter
+from climate_indices.xarray_adapter import eto_penman_monteith as _eto_pm
 
 if TYPE_CHECKING:
     pass
@@ -223,3 +224,75 @@ def spei(
         kwargs["calibration_year_final"] = calibration_year_final
 
     return _wrapped_spei(precips_mm, pet_mm, **kwargs)
+
+
+# Penman-Monteith ETo overloads
+@overload
+def eto_penman_monteith(
+    net_radiation: npt.NDArray[np.float64],
+    soil_heat_flux: npt.NDArray[np.float64],
+    temperature_celsius: npt.NDArray[np.float64],
+    wind_speed_2m: npt.NDArray[np.float64],
+    saturation_vp: npt.NDArray[np.float64],
+    actual_vp: npt.NDArray[np.float64],
+    delta: npt.NDArray[np.float64],
+    gamma: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]: ...
+
+
+@overload
+def eto_penman_monteith(
+    net_radiation: xr.DataArray,
+    soil_heat_flux: xr.DataArray,
+    temperature_celsius: xr.DataArray,
+    wind_speed_2m: xr.DataArray,
+    saturation_vp: xr.DataArray,
+    actual_vp: xr.DataArray,
+    delta: xr.DataArray,
+    gamma: xr.DataArray,
+) -> xr.DataArray: ...
+
+
+def eto_penman_monteith(
+    net_radiation: npt.NDArray[np.float64] | xr.DataArray,
+    soil_heat_flux: npt.NDArray[np.float64] | xr.DataArray,
+    temperature_celsius: npt.NDArray[np.float64] | xr.DataArray,
+    wind_speed_2m: npt.NDArray[np.float64] | xr.DataArray,
+    saturation_vp: npt.NDArray[np.float64] | xr.DataArray,
+    actual_vp: npt.NDArray[np.float64] | xr.DataArray,
+    delta: npt.NDArray[np.float64] | xr.DataArray,
+    gamma: npt.NDArray[np.float64] | xr.DataArray,
+) -> npt.NDArray[np.float64] | xr.DataArray:
+    """Compute Penman-Monteith FAO-56 reference evapotranspiration (ETo).
+
+    This function accepts both NumPy arrays and xarray DataArrays. Type
+    checkers will narrow the return type based on the input type.
+
+    .. warning:: **Beta Feature (xarray path only)** -- When called with
+       ``xr.DataArray`` inputs, this function uses the beta xarray adapter
+       layer. The NumPy array interface is stable.
+
+    Args:
+        net_radiation: Net radiation at crop surface [MJ m-2 day-1].
+        soil_heat_flux: Soil heat flux density [MJ m-2 day-1].
+        temperature_celsius: Mean daily air temperature at 2 m [degC].
+        wind_speed_2m: Wind speed at 2 m height [m s-1].
+        saturation_vp: Saturation vapor pressure [kPa].
+        actual_vp: Actual vapor pressure [kPa].
+        delta: Slope of saturation vapor pressure curve [kPa degC-1].
+        gamma: Psychrometric constant [kPa degC-1].
+
+    Returns:
+        ETo values in mm/day as numpy.ndarray or xarray.DataArray
+        (matches input type).
+    """
+    return _eto_pm(
+        net_radiation=net_radiation,
+        soil_heat_flux=soil_heat_flux,
+        temperature_celsius=temperature_celsius,
+        wind_speed_2m=wind_speed_2m,
+        saturation_vp=saturation_vp,
+        actual_vp=actual_vp,
+        delta=delta,
+        gamma=gamma,
+    )

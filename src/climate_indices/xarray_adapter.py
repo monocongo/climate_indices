@@ -36,7 +36,7 @@ import pandas as pd
 import structlog.stdlib
 import xarray as xr
 
-from climate_indices import compute, eto, indices
+from climate_indices import compute, eto, indices, pm_eto
 from climate_indices.compute import MIN_CALIBRATION_YEARS
 from climate_indices.exceptions import (
     CoordinateValidationError,
@@ -117,6 +117,16 @@ CF_METADATA: dict[str, CFAttributes] = {
             "Reference crop evapotranspiration from temperature. "
             "Applied Engineering in Agriculture, 1(2), 96-99. "
             "https://doi.org/10.13031/2013.26773"
+        ),
+    },
+    "pet_penman_monteith": {
+        "long_name": "Reference Evapotranspiration (Penman-Monteith FAO56)",
+        "units": "mm day-1",
+        "references": (
+            "Allen, R.G., Pereira, L.S., Raes, D. and Smith, M. (1998). "
+            "Crop evapotranspiration - Guidelines for computing crop water requirements. "
+            "FAO Irrigation and Drainage Paper 56. Rome, FAO. "
+            "ISBN 92-5-104219-5"
         ),
     },
 }
@@ -2135,3 +2145,193 @@ def pet_hargreaves(
 
     result_array: xr.DataArray = result
     return result_array
+
+
+def eto_penman_monteith(
+    net_radiation: np.ndarray | xr.DataArray,
+    soil_heat_flux: np.ndarray | xr.DataArray,
+    temperature_celsius: np.ndarray | xr.DataArray,
+    wind_speed_2m: np.ndarray | xr.DataArray,
+    saturation_vp: np.ndarray | xr.DataArray,
+    actual_vp: np.ndarray | xr.DataArray,
+    delta: np.ndarray | xr.DataArray,
+    gamma: np.ndarray | xr.DataArray,
+    time_dim: str = "time",
+) -> np.ndarray | xr.DataArray:
+    """Compute Penman-Monteith FAO-56 reference evapotranspiration (ETo).
+
+    This function provides xarray DataArray support for the Penman-Monteith
+    ETo calculation (FAO-56 Equation 6). It accepts both NumPy arrays and
+    xarray DataArrays, routing to the appropriate computation path.
+
+    For xarray inputs, all DataArray arguments are aligned using inner join
+    before computation, and the result is annotated with CF metadata and
+    provenance attributes.
+
+    .. warning:: **Beta Feature (xarray path)** -- When called with
+       ``xr.DataArray`` inputs, this function uses the beta xarray adapter
+       layer. The NumPy array interface and underlying computation are stable.
+
+    Args:
+        net_radiation: Net radiation at the crop surface [MJ m-2 day-1].
+        soil_heat_flux: Soil heat flux density [MJ m-2 day-1].
+        temperature_celsius: Mean daily air temperature at 2 m height [degC].
+        wind_speed_2m: Wind speed at 2 m height [m s-1].
+        saturation_vp: Saturation vapor pressure [kPa] (e_s, from Eq 12).
+        actual_vp: Actual vapor pressure [kPa] (e_a, from Eq 14-19).
+        delta: Slope of saturation vapor pressure curve [kPa degC-1] (Eq 13).
+        gamma: Psychrometric constant [kPa degC-1] (Eq 8).
+        time_dim: Name of the time dimension (default: "time"). Only used for
+            xarray inputs.
+
+    Returns:
+        Reference evapotranspiration ETo in mm/day, same type as inputs:
+        - numpy input -> numpy array output
+        - xarray input -> xarray DataArray output with CF metadata
+
+    Raises:
+        InputTypeError: If inputs are not numpy-coercible or xr.DataArray.
+        TypeError: If inputs are a mix of numpy and xarray types.
+        CoordinateValidationError: If time dimension is missing or invalid
+            (xarray path).
+
+    Examples:
+        >>> import numpy as np
+        >>> eto = eto_penman_monteith(
+        ...     net_radiation=np.array([13.28]),
+        ...     soil_heat_flux=np.array([0.14]),
+        ...     temperature_celsius=np.array([16.9]),
+        ...     wind_speed_2m=np.array([2.078]),
+        ...     saturation_vp=np.array([1.997]),
+        ...     actual_vp=np.array([1.409]),
+        ...     delta=np.array([0.122]),
+        ...     gamma=np.array([0.0666]),
+        ... )
+    """
+    # detect input type from primary input (net_radiation)
+    input_type = detect_input_type(net_radiation)
+
+    # validate all inputs are the same type
+    all_inputs = {
+        "soil_heat_flux": soil_heat_flux,
+        "temperature_celsius": temperature_celsius,
+        "wind_speed_2m": wind_speed_2m,
+        "saturation_vp": saturation_vp,
+        "actual_vp": actual_vp,
+        "delta": delta,
+        "gamma": gamma,
+    }
+    for name, value in all_inputs.items():
+        other_type = detect_input_type(value)
+        if other_type != input_type:
+            raise TypeError(
+                f"All inputs must be the same type. "
+                f"net_radiation is {input_type.name} but {name} is {other_type.name}. "
+                f"Convert all inputs to the same type (all numpy or all xr.DataArray)."
+            )
+
+    # numpy passthrough
+    if input_type == InputType.NUMPY:
+        return pm_eto.pm_eto(
+            net_radiation=net_radiation,
+            soil_heat_flux=soil_heat_flux,
+            temperature_celsius=temperature_celsius,
+            wind_speed_2m=wind_speed_2m,
+            saturation_vp=saturation_vp,
+            actual_vp=actual_vp,
+            delta=delta,
+            gamma=gamma,
+        )
+
+    # xarray path: validate -> align -> compute -> rewrap
+    assert isinstance(net_radiation, xr.DataArray)
+    rn_da = net_radiation
+    g_da: xr.DataArray = soil_heat_flux  # type: ignore[assignment]
+    t_da: xr.DataArray = temperature_celsius  # type: ignore[assignment]
+    u2_da: xr.DataArray = wind_speed_2m  # type: ignore[assignment]
+    es_da: xr.DataArray = saturation_vp  # type: ignore[assignment]
+    ea_da: xr.DataArray = actual_vp  # type: ignore[assignment]
+    delta_da: xr.DataArray = delta  # type: ignore[assignment]
+    gamma_da: xr.DataArray = gamma  # type: ignore[assignment]
+
+    # validate time dimension on all inputs
+    da_inputs = [rn_da, g_da, t_da, u2_da, es_da, ea_da, delta_da, gamma_da]
+    for da in da_inputs:
+        _validate_time_dimension(da, time_dim)
+        _validate_time_monotonicity(da.coords[time_dim])
+
+    # align all inputs along time dimension (inner join)
+    aligned = xr.align(*da_inputs, join="inner")
+    rn_al, g_al, t_al, u2_al, es_al, ea_al, delta_al, gamma_al = aligned
+
+    # warn if alignment dropped timesteps
+    original_len = len(rn_da.coords[time_dim])
+    aligned_len = len(rn_al.coords[time_dim])
+    if aligned_len < original_len:
+        warnings.warn(
+            f"Input alignment: primary input had {original_len} timesteps. "
+            f"After inner join across all 8 inputs, {aligned_len} timesteps remain. "
+            f"Non-overlapping timesteps were dropped.",
+            InputAlignmentWarning,
+            stacklevel=2,
+        )
+
+    if aligned_len == 0:
+        raise CoordinateValidationError(
+            f"No overlapping timesteps found across inputs along '{time_dim}' dimension. "
+            f"Cannot proceed with PM-ETo calculation."
+        )
+
+    # compute using xr.apply_ufunc
+    result = xr.apply_ufunc(
+        pm_eto.pm_eto,
+        rn_al,
+        g_al,
+        t_al,
+        u2_al,
+        es_al,
+        ea_al,
+        delta_al,
+        gamma_al,
+        input_core_dims=[[time_dim]] * 8,
+        output_core_dims=[[time_dim]],
+        vectorize=True,
+        dask="parallelized",
+        dask_gufunc_kwargs={"allow_rechunk": True},
+        output_dtypes=[float],
+    )
+
+    # restore original dimension order
+    desired_dims = list(rn_al.dims) + [d for d in result.dims if d not in rn_al.dims]
+    result = result.transpose(*desired_dims)
+
+    # apply CF metadata
+    cf_attrs = CF_METADATA["pet_penman_monteith"]
+    result.attrs.update(cf_attrs)
+
+    # copy non-conflicting attributes from primary input
+    for key, value in rn_al.attrs.items():
+        if key not in result.attrs:
+            result.attrs[key] = value
+
+    # add version attribute
+    from climate_indices import __version__
+
+    result.attrs["climate_indices_version"] = __version__
+
+    # build and append history entry
+    history_entry = _build_history_entry(
+        "ETo Penman-Monteith FAO56",
+        __version__,
+        {},
+    )
+    result.attrs["history"] = _append_history(rn_al.attrs, history_entry)
+
+    _log().info(
+        "eto_penman_monteith_completed",
+        input_shape=rn_al.shape,
+        output_shape=result.shape,
+    )
+
+    pm_result: xr.DataArray = result
+    return pm_result
