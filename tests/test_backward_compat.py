@@ -643,11 +643,11 @@ class TestErrorHierarchyDocumented:
         data_year_start_monthly,
         data_year_end_monthly,
     ) -> None:
-        """Dimension mismatch errors still raise ValueError (unchanged behavior)."""
-        # 3-D array should raise ValueError
+        """Dimension mismatch errors raise InvalidArgumentError (v2.4.0 migration)."""
+        # 3-D array should raise InvalidArgumentError (migrated from ValueError in v2.4.0)
         three_d_array = np.zeros((4, 4, 8))
 
-        with pytest.raises(ValueError):
+        with pytest.raises(InvalidArgumentError):
             indices.spi(
                 three_d_array,
                 6,

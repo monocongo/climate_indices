@@ -43,14 +43,14 @@ def test_pet(
     )
 
     # confirm that a missing/None latitude value raises an error
-    np.testing.assert_raises(ValueError, indices.pet, temps_celsius, None, data_year_start_monthly)
+    np.testing.assert_raises(InvalidArgumentError, indices.pet, temps_celsius, None, data_year_start_monthly)
 
-    # confirm that a missing/None latitude value raises an error
-    np.testing.assert_raises(ValueError, indices.pet, temps_celsius, np.nan, data_year_start_monthly)
+    # confirm that a NaN latitude value raises an error
+    np.testing.assert_raises(InvalidArgumentError, indices.pet, temps_celsius, np.nan, data_year_start_monthly)
 
     # confirm that an invalid latitude value raises an error
     pytest.raises(
-        ValueError,
+        InvalidArgumentError,
         indices.pet,
         temps_celsius,
         91.0,  # latitude > 90 is invalid
@@ -59,7 +59,7 @@ def test_pet(
 
     # confirm that an invalid latitude value raises an error
     np.testing.assert_raises(
-        ValueError,
+        InvalidArgumentError,
         indices.pet,
         temps_celsius,
         -91.0,  # latitude < -90 is invalid
@@ -86,8 +86,8 @@ def test_pet(
         err_msg="1-element array latitude should produce identical results to scalar latitude",
     )
 
-    # confirm that an empty latitude array raises a controlled ValueError
-    with pytest.raises(ValueError, match="empty latitude array"):
+    # confirm that an empty latitude array raises a controlled error
+    with pytest.raises(InvalidArgumentError, match="empty latitude array"):
         indices.pet(temps_celsius, np.array([]), data_year_start_monthly)
 
 
@@ -311,9 +311,9 @@ def test_spi(
             compute.Periodicity.monthly,
         )
 
-    # input array argument that's neither 1-D nor 2-D should raise a ValueError
+    # input array argument that's neither 1-D nor 2-D should raise InvalidArgumentError
     np.testing.assert_raises(
-        ValueError,
+        InvalidArgumentError,
         indices.spi,
         np.array(np.zeros((4, 4, 8))),
         6,
@@ -576,9 +576,9 @@ def test_spei(
         )
 
     # having both precipitation and PET input array arguments
-    # with incongruent dimensions should raise a ValueError
+    # with incongruent dimensions should raise InvalidArgumentError
     np.testing.assert_raises(
-        ValueError,
+        InvalidArgumentError,
         indices.spei,
         precips_mm_monthly,
         np.array((200, 200), dtype=float),

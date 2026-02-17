@@ -193,7 +193,7 @@ class TestSPIErrorContextLogging:
         # create 3-D array (invalid)
         invalid_array = np.random.rand(10, 12, 5)
 
-        with pytest.raises(ValueError, match="Invalid shape"):
+        with pytest.raises(InvalidArgumentError, match="Invalid shape"):
             indices.spi(
                 values=invalid_array,
                 scale=3,
@@ -209,7 +209,7 @@ class TestSPIErrorContextLogging:
         assert len(failed_events) == 1
 
         failed = failed_events[0]
-        assert failed["error_type"] == "ValueError"
+        assert failed["error_type"] == "InvalidArgumentError"
         assert "Invalid shape" in failed["error_message"]
 
 
@@ -262,7 +262,7 @@ class TestSPEIErrorContextLogging:
         precips = np.random.rand(240)
         pet = np.random.rand(120)
 
-        with pytest.raises(ValueError, match="Incompatible"):
+        with pytest.raises(InvalidArgumentError, match="Incompatible"):
             indices.spei(
                 precips_mm=precips,
                 pet_mm=pet,
@@ -315,7 +315,7 @@ class TestPETErrorContextLogging:
         """PET with invalid latitude emits calculation_failed."""
         temps = np.random.rand(240)
 
-        with pytest.raises(ValueError, match="Invalid latitude"):
+        with pytest.raises(InvalidArgumentError, match="Invalid latitude"):
             indices.pet(
                 temperature_celsius=temps,
                 latitude_degrees=100.0,
@@ -331,7 +331,7 @@ class TestPETErrorContextLogging:
         assert "scale" not in failed
         assert "distribution" not in failed
         assert "calibration_period" not in failed
-        assert failed["error_type"] == "ValueError"
+        assert failed["error_type"] == "InvalidArgumentError"
         assert "Invalid latitude" in failed["error_message"]
 
 

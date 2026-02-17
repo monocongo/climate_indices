@@ -12,6 +12,7 @@ import pytest
 
 from climate_indices import compute, indices
 from climate_indices.eto import eto_hargreaves
+from climate_indices.exceptions import InvalidArgumentError
 from climate_indices.logging_config import _reset_logging_for_testing, configure_logging
 from climate_indices.performance import (
     LARGE_ARRAY_THRESHOLD_BYTES,
@@ -376,7 +377,7 @@ class TestInputElementsInLogs:
         # trigger failure with unsupported array shape (3D array)
         # this error occurs after logger is bound, inside the try block
         invalid_3d_array = np.zeros((10, 10, 10))
-        with pytest.raises(ValueError, match="Invalid shape"):
+        with pytest.raises(InvalidArgumentError, match="Invalid shape"):
             indices.spi(
                 values=invalid_3d_array,
                 scale=6,

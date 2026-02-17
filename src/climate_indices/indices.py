@@ -210,7 +210,12 @@ def spi(
         elif len(shape) != 1:
             message = f"Invalid shape of input array: {shape} -- only 1-D and 2-D arrays are supported"
             _logger.error(message)
-            raise ValueError(message)
+            raise InvalidArgumentError(
+                message,
+                argument_name="values",
+                argument_value=str(shape),
+                valid_values="1-D or 2-D array",
+            )
 
         # if we're passed all missing values then we can't compute
         # anything, so we return the same array of missing values
@@ -415,9 +420,17 @@ def spei(
 
         # validate that the two input arrays are compatible
         if precips_mm.size != pet_mm.size:
-            message = "Incompatible precipitation and PET arrays"
+            message = (
+                f"Incompatible precipitation ({precips_mm.size} elements) "
+                f"and PET ({pet_mm.size} elements) arrays"
+            )
             _logger.error(message)
-            raise ValueError(message)
+            raise InvalidArgumentError(
+                message,
+                argument_name="pet_mm",
+                argument_value=str(pet_mm.size),
+                valid_values=f"same size as precips_mm ({precips_mm.size})",
+            )
 
         # clip any negative values to zero
         if np.amin(precips_mm) < 0.0:
@@ -718,7 +731,12 @@ def pet(
             if latitude_degrees.size == 0:
                 message = "Invalid latitude value: empty latitude array (must contain at least one value)"
                 _logger.error(message)
-                raise ValueError(message)
+                raise InvalidArgumentError(
+                    message,
+                    argument_name="latitude_degrees",
+                    argument_value="empty array",
+                    valid_values="non-empty array or scalar in [-90.0, 90.0]",
+                )
             latitude_degrees = cast(float, latitude_degrees.flat[0])
 
         # make sure we're not dealing with a NaN or out-of-range latitude value
@@ -744,7 +762,12 @@ def pet(
             + "90.0 inclusive)"
         )
         _logger.error(message)
-        raise ValueError(message)
+        raise InvalidArgumentError(
+            message,
+            argument_name="latitude_degrees",
+            argument_value=str(latitude_degrees),
+            valid_values="float in range [-90.0, 90.0]",
+        )
     except Exception as exc:
         log.error(
             "calculation_failed",
