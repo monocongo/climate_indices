@@ -185,12 +185,14 @@ class TestCFMetadataRegistry:
                 f"Entry '{index_name}' missing required keys: {required_keys - actual_keys}"
             )
 
-    def test_all_values_are_non_empty_strings(self):
-        """All metadata values are non-empty strings."""
+    def test_all_values_are_strings(self):
+        """All metadata values are strings (units may be empty for dimensionless indices)."""
         for index_name, metadata in CF_METADATA.items():
             for key, value in metadata.items():
                 assert isinstance(value, str), f"Entry '{index_name}', key '{key}' is not a string"
-                assert value.strip(), f"Entry '{index_name}', key '{key}' is empty or whitespace"
+                # units can be empty string for dimensionless indices like PCI
+                if key != "units":
+                    assert value.strip(), f"Entry '{index_name}', key '{key}' is empty or whitespace"
 
 
 class TestXarrayAdapterCFMetadata:
