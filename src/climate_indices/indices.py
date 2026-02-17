@@ -14,7 +14,7 @@ from climate_indices.logging_config import get_logger
 from climate_indices.performance import check_large_array_memory
 
 # declare the function names that should be included in the public API for this module
-__all__ = ["eddi", "percentage_of_normal", "pci", "pet", "spei", "spi"]
+__all__ = ["eddi", "percentage_of_normal", "pci", "pet", "scpdsi", "spei", "spi"]
 
 
 class Distribution(Enum):
@@ -259,9 +259,7 @@ def eddi(
 
         # if we're passed all missing values then we can't compute
         # anything, so we return the same array of missing values
-        if (isinstance(pet_values, np.ma.MaskedArray) and pet_values.mask.all()) or np.all(
-            np.isnan(pet_values)
-        ):
+        if (isinstance(pet_values, np.ma.MaskedArray) and pet_values.mask.all()) or np.all(np.isnan(pet_values)):
             duration_ms = (time.perf_counter() - t0) * 1000.0
             log.info(
                 "calculation_completed",
@@ -345,9 +343,7 @@ def eddi(
             period_values = pet_values[:, period_index]
 
             # extract climatology values (calibration period only)
-            climatology = period_values[
-                calibration_start_year_index : calibration_end_year_index + 1
-            ]
+            climatology = period_values[calibration_start_year_index : calibration_end_year_index + 1]
 
             # remove NaN values from climatology
             climatology_valid = climatology[~np.isnan(climatology)]
@@ -376,14 +372,10 @@ def eddi(
                 p = np.clip(p, 1e-10, 1.0 - 1e-10)
 
                 # apply Hastings inverse normal approximation
-                eddi_values[year_index, period_index] = _hastings_inverse_normal(
-                    np.array([p])
-                )[0]
+                eddi_values[year_index, period_index] = _hastings_inverse_normal(np.array([p]))[0]
 
         # clip values to within the valid range, reshape the array back to 1-D
-        eddi_values = np.clip(
-            eddi_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX
-        ).flatten()
+        eddi_values = np.clip(eddi_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
 
         # return the original size array
         result = eddi_values[0:original_length]
@@ -1105,3 +1097,52 @@ def pci(
             error_message=str(exc),
         )
         raise
+
+
+def scpdsi(
+    precip_values: np.ndarray,
+    pet_values: np.ndarray,
+    awc: float,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: compute.Periodicity,
+) -> np.ndarray:
+    """Compute the self-calibrating Palmer Drought Severity Index (scPDSI).
+
+    The scPDSI is a variant of the Palmer Drought Severity Index (PDSI)
+    that automatically calibrates the behavior of the index for any
+    location by replacing empirical constants in the original Palmer
+    model with values derived from the local climate data. This makes
+    the scPDSI comparable across different climate regimes, unlike the
+    original PDSI which was calibrated for the central United States.
+
+    Reference:
+        Wells, N., S. Goddard, and M. J. Hayes, 2004: A Self-Calibrating
+        Palmer Drought Severity Index. J. Climate, 17, 2335-2351,
+        doi:10.1175/1520-0442(2004)017<2335:ASPDSI>2.0.CO;2
+
+    Args:
+        precip_values: 1-D numpy array of precipitation values (mm).
+        pet_values: 1-D numpy array of potential evapotranspiration
+            values (mm), same length as ``precip_values``.
+        awc: Available water capacity of the soil (mm). A single scalar
+            value representing the location's soil moisture storage.
+        data_start_year: First year of the input datasets.
+        calibration_year_initial: First year of the calibration period.
+        calibration_year_final: Last year of the calibration period.
+        periodicity: Temporal resolution of the input data. Use
+            ``compute.Periodicity.monthly`` (12 values/year).
+
+    Returns:
+        1-D numpy array of scPDSI values (unitless), same length as
+        the input arrays.
+
+    Raises:
+        NotImplementedError: Always. scPDSI is not yet implemented.
+    """
+    raise NotImplementedError(
+        "scPDSI implementation planned for future release. "
+        "See Wells et al. (2004) for methodology: "
+        "doi:10.1175/1520-0442(2004)017<2335:ASPDSI>2.0.CO;2"
+    )

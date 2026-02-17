@@ -223,3 +223,79 @@ def spei(
         kwargs["calibration_year_final"] = calibration_year_final
 
     return _wrapped_spei(precips_mm, pet_mm, **kwargs)
+
+
+# scPDSI overloads (stub — not yet implemented)
+@overload
+def scpdsi(
+    precip_values: npt.NDArray[np.float64],
+    pet_values: npt.NDArray[np.float64],
+    awc: float,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: Periodicity,
+) -> npt.NDArray[np.float64]: ...
+
+
+@overload
+def scpdsi(
+    precip_values: xr.DataArray,
+    pet_values: xr.DataArray,
+    awc: float,
+    data_start_year: int | None = None,
+    calibration_year_initial: int | None = None,
+    calibration_year_final: int | None = None,
+    periodicity: Periodicity | None = None,
+) -> xr.Dataset: ...
+
+
+def scpdsi(
+    precip_values: npt.NDArray[np.float64] | xr.DataArray,
+    pet_values: npt.NDArray[np.float64] | xr.DataArray,
+    awc: float,
+    data_start_year: int | None = None,
+    calibration_year_initial: int | None = None,
+    calibration_year_final: int | None = None,
+    periodicity: Periodicity | None = None,
+) -> npt.NDArray[np.float64] | xr.Dataset:
+    """Compute the self-calibrating Palmer Drought Severity Index (scPDSI).
+
+    .. warning:: **Not Yet Implemented** -- This function stub defines the
+       future interface for scPDSI. Calling it will raise
+       ``NotImplementedError``.
+
+    The scPDSI is a variant of the Palmer Drought Severity Index that
+    automatically calibrates using local climate data, making it comparable
+    across different climate regimes.
+
+    Reference:
+        Wells, N., S. Goddard, and M. J. Hayes, 2004: A Self-Calibrating
+        Palmer Drought Severity Index. J. Climate, 17, 2335-2351.
+
+    Args:
+        precip_values: 1-D precipitation values (mm) as numpy array or
+            xarray DataArray.
+        pet_values: 1-D potential evapotranspiration values (mm), same
+            length as ``precip_values``.
+        awc: Available water capacity of the soil (mm).
+        data_start_year: First year of the input datasets (required for
+            NumPy, optional for xarray).
+        calibration_year_initial: First year of calibration period
+            (required for NumPy, optional for xarray).
+        calibration_year_final: Last year of calibration period (required
+            for NumPy, optional for xarray).
+        periodicity: Temporal resolution ('monthly'). Required for NumPy,
+            optional for xarray.
+
+    Returns:
+        scPDSI values as numpy.ndarray or xarray.Dataset (matches input type).
+
+    Raises:
+        NotImplementedError: Always. scPDSI is planned for a future release.
+    """
+    raise NotImplementedError(
+        "scPDSI implementation planned for future release. "
+        "See Wells et al. (2004) for methodology: "
+        "doi:10.1175/1520-0442(2004)017<2335:ASPDSI>2.0.CO;2"
+    )
