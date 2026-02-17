@@ -568,7 +568,12 @@ def percentage_of_normal(
         elif periodicity == compute.Periodicity.daily:
             period_length = 366
         else:
-            raise ValueError(f"Unsupported periodicity: {periodicity}")
+            raise InvalidArgumentError(
+                f"Unsupported periodicity: {periodicity}. Must be 'monthly' or 'daily'.",
+                argument_name="periodicity",
+                argument_value=str(periodicity),
+                valid_values="Periodicity.monthly or Periodicity.daily",
+            )
 
         # bypass processing if all values are masked
         if isinstance(values, np.ma.MaskedArray) and values.mask.all():
@@ -583,13 +588,22 @@ def percentage_of_normal(
 
         # make sure we've been provided with sane calibration limits
         if data_start_year > calibration_start_year:
-            raise ValueError(
-                "Invalid start year arguments (data and/or calibration): "
-                "calibration start year is before the data start year",
+            raise InvalidArgumentError(
+                "Invalid start year arguments: calibration start year "
+                f"({calibration_start_year}) is before the data start year ({data_start_year}).",
+                argument_name="calibration_start_year",
+                argument_value=str(calibration_start_year),
+                valid_values=f">= data_start_year ({data_start_year})",
             )
         if ((calibration_end_year - calibration_start_year + 1) * 12) > values.size:
-            raise ValueError(
-                "Invalid calibration period specified: total calibration years exceeds the actual number of years of data",
+            raise InvalidArgumentError(
+                "Invalid calibration period: total calibration years exceeds the "
+                "actual number of years of data. "
+                f"Calibration period: {calibration_start_year}-{calibration_end_year}, "
+                f"data size: {values.size} values.",
+                argument_name="calibration_end_year",
+                argument_value=str(calibration_end_year),
+                valid_values=f"calibration period must fit within {values.size} data values",
             )
 
         # get an array containing a sliding sum on the specified time step
@@ -833,11 +847,16 @@ def pci(
             return result
 
         message = (
-            "NaN values exist in the time-series or the total number of days not "
-            "in the year is not available, total days should be 366 or 365"
+            "NaN values exist in the time-series or the total number of days "
+            "in the year is not 365 or 366."
         )
         _logger.error(message)
-        raise ValueError(message)
+        raise InvalidArgumentError(
+            message,
+            argument_name="rainfall_mm",
+            argument_value=f"array with {len(rainfall_mm)} elements",
+            valid_values="array length must be a multiple of 365 or 366",
+        )
     except Exception as exc:
         log.error(
             "calculation_failed",

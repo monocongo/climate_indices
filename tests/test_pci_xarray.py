@@ -12,6 +12,7 @@ import pytest
 import xarray as xr
 
 from climate_indices import pci
+from climate_indices.exceptions import InvalidArgumentError
 from climate_indices.indices import pci as numpy_pci
 
 
@@ -143,7 +144,7 @@ class TestPCINumpyPassthrough:
         assert result.shape == (1,)
 
     def test_invalid_length_raises(self) -> None:
-        """Input with wrong number of days should raise ValueError."""
+        """Input with wrong number of days should raise InvalidArgumentError."""
         values = np.ones(300)
-        with pytest.raises(ValueError, match="366 or 365"):
+        with pytest.raises(InvalidArgumentError, match="365 or 366"):
             pci(rainfall_mm=values)
