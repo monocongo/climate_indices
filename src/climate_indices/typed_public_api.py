@@ -30,7 +30,13 @@ from climate_indices import indices
 from climate_indices.compute import Periodicity
 from climate_indices.indices import Distribution
 from climate_indices.cf_metadata_registry import CF_METADATA
-from climate_indices.xarray_adapter import InputType, detect_input_type, xarray_adapter
+from climate_indices.xarray_adapter import (
+    InputType,
+    detect_input_type,
+    pet_hargreaves as _pet_hargreaves_impl,
+    pet_thornthwaite as _pet_thornthwaite_impl,
+    xarray_adapter,
+)
 
 if TYPE_CHECKING:
     pass
@@ -375,4 +381,122 @@ def pci(
     return xr.DataArray(
         result_values[0],
         attrs=output_attrs,
+    )
+
+
+# ETo Thornthwaite overloads
+@overload
+def pet_thornthwaite(
+    temperature: npt.NDArray[np.float64],
+    latitude: float,
+    data_start_year: int,
+    time_dim: str = "time",
+) -> npt.NDArray[np.float64]: ...
+
+
+@overload
+def pet_thornthwaite(
+    temperature: xr.DataArray,
+    latitude: float | np.floating | xr.DataArray,
+    data_start_year: int | None = None,
+    time_dim: str = "time",
+) -> xr.DataArray: ...
+
+
+def pet_thornthwaite(
+    temperature: npt.NDArray[np.float64] | xr.DataArray,
+    latitude: float | np.floating | xr.DataArray,
+    data_start_year: int | None = None,
+    time_dim: str = "time",
+) -> npt.NDArray[np.float64] | xr.DataArray:
+    """Compute potential evapotranspiration using Thornthwaite method.
+
+    This function accepts both NumPy arrays and xarray DataArrays. Type checkers
+    will narrow the return type based on the input type.
+
+    For NumPy inputs, ``data_start_year`` and scalar ``latitude`` are required.
+    For xarray inputs, ``data_start_year`` is inferred from the time coordinate
+    if not provided, and ``latitude`` may be a scalar or DataArray for spatial
+    broadcasting.
+
+    .. warning:: **Beta Feature (xarray path only)** -- When called with an
+       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
+       The xarray interface may change in future minor releases. The NumPy array
+       interface is stable.
+
+    Args:
+        temperature: Monthly average temperature values in degrees Celsius.
+            For numpy: 1-D array of monthly temperatures.
+            For xarray: DataArray with time dimension (may have spatial dims).
+        latitude: Latitude in degrees north (range: -90 to 90).
+            For numpy: scalar float.
+            For xarray: scalar float or DataArray(lat,) for spatial broadcasting.
+        data_start_year: Initial year of the input dataset (required for NumPy,
+            optional for xarray where it is inferred from the time coordinate).
+        time_dim: Name of the time dimension in the input DataArray.
+
+    Returns:
+        PET values in mm/month as numpy.ndarray or xarray.DataArray.
+    """
+    return _pet_thornthwaite_impl(
+        temperature, latitude, data_start_year=data_start_year, time_dim=time_dim
+    )
+
+
+# ETo Hargreaves overloads
+@overload
+def pet_hargreaves(
+    daily_tmin_celsius: npt.NDArray[np.float64],
+    daily_tmax_celsius: npt.NDArray[np.float64],
+    latitude: float,
+    time_dim: str = "time",
+) -> npt.NDArray[np.float64]: ...
+
+
+@overload
+def pet_hargreaves(
+    daily_tmin_celsius: xr.DataArray,
+    daily_tmax_celsius: xr.DataArray,
+    latitude: float | np.floating | xr.DataArray,
+    time_dim: str = "time",
+) -> xr.DataArray: ...
+
+
+def pet_hargreaves(
+    daily_tmin_celsius: npt.NDArray[np.float64] | xr.DataArray,
+    daily_tmax_celsius: npt.NDArray[np.float64] | xr.DataArray,
+    latitude: float | np.floating | xr.DataArray,
+    time_dim: str = "time",
+) -> npt.NDArray[np.float64] | xr.DataArray:
+    """Compute potential evapotranspiration using Hargreaves method.
+
+    This function accepts both NumPy arrays and xarray DataArrays. Type checkers
+    will narrow the return type based on the input type.
+
+    For NumPy inputs, scalar ``latitude`` is required.
+    For xarray inputs, ``latitude`` may be a scalar or DataArray for spatial
+    broadcasting.
+
+    .. warning:: **Beta Feature (xarray path only)** -- When called with an
+       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
+       The xarray interface may change in future minor releases. The NumPy array
+       interface is stable.
+
+    Args:
+        daily_tmin_celsius: Daily minimum temperature values in degrees Celsius.
+            For numpy: 1-D array of daily temperatures.
+            For xarray: DataArray with time dimension (may have spatial dims).
+        daily_tmax_celsius: Daily maximum temperature values in degrees Celsius.
+            For numpy: 1-D array of daily temperatures.
+            For xarray: DataArray with time dimension (may have spatial dims).
+        latitude: Latitude in degrees north (range: -90 to 90).
+            For numpy: scalar float.
+            For xarray: scalar float or DataArray(lat,) for spatial broadcasting.
+        time_dim: Name of the time dimension in the input DataArray.
+
+    Returns:
+        PET values in mm/day as numpy.ndarray or xarray.DataArray.
+    """
+    return _pet_hargreaves_impl(
+        daily_tmin_celsius, daily_tmax_celsius, latitude, time_dim=time_dim
     )
