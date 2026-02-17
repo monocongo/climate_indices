@@ -14,7 +14,7 @@ from climate_indices.exceptions import (
     emit_deprecation_warning,
 )
 from climate_indices.logging_config import configure_logging
-from climate_indices.typed_public_api import percentage_of_normal, spei, spi
+from climate_indices.typed_public_api import pci, percentage_of_normal, spei, spi
 from climate_indices.cf_metadata_registry import CF_METADATA, CFAttributes
 from climate_indices.xarray_adapter import (
     InputType,
@@ -45,6 +45,7 @@ __all__ = [
     "InvalidArgumentError",
     "detect_input_type",
     "emit_deprecation_warning",
+    "pci",
     "percentage_of_normal",
     "pet_hargreaves",
     "pet_thornthwaite",

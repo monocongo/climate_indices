@@ -1,4 +1,4 @@
-"""Typed public API for SPI and SPEI with NumPy/xarray overloads.
+"""Typed public API for SPI, SPEI, PNP, and PCI with NumPy/xarray overloads.
 
 This module provides statically-typed wrappers around the xarray-adapted index
 functions. The @overload signatures enable IDE autocomplete and mypy --strict
@@ -10,12 +10,16 @@ correctness by narrowing return types based on input types:
 Design: Pre-build decorated functions at module level for performance. The public
 functions filter None kwargs and delegate to the pre-built wrapped functions.
 
+PCI uses a manual wrapper instead of @xarray_adapter because its output shape
+(scalar) differs from input shape (365/366 daily values).
+
 .. warning:: **Beta Feature (xarray path)** — The xarray DataArray overloads in
    this module are beta. The NumPy overloads are stable.
 """
 
 from __future__ import annotations
 
+import datetime
 from typing import TYPE_CHECKING, Any, overload
 
 import numpy as np
@@ -26,7 +30,7 @@ from climate_indices import indices
 from climate_indices.compute import Periodicity
 from climate_indices.indices import Distribution
 from climate_indices.cf_metadata_registry import CF_METADATA
-from climate_indices.xarray_adapter import xarray_adapter
+from climate_indices.xarray_adapter import InputType, detect_input_type, xarray_adapter
 
 if TYPE_CHECKING:
     pass
@@ -308,3 +312,67 @@ def percentage_of_normal(
         kwargs["periodicity"] = periodicity
 
     return _wrapped_percentage_of_normal(values, **kwargs)
+
+
+# PCI (Precipitation Concentration Index) overloads
+# PCI uses a manual wrapper because output shape (scalar) differs from input (365/366 days)
+@overload
+def pci(
+    rainfall_mm: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]: ...
+
+
+@overload
+def pci(
+    rainfall_mm: xr.DataArray,
+) -> xr.DataArray: ...
+
+
+def pci(
+    rainfall_mm: npt.NDArray[np.float64] | xr.DataArray,
+) -> npt.NDArray[np.float64] | xr.DataArray:
+    """Compute Precipitation Concentration Index (PCI).
+
+    This function accepts both NumPy arrays and xarray DataArrays. Type checkers
+    will narrow the return type based on the input type.
+
+    PCI requires exactly 365 or 366 daily rainfall values representing a single
+    year. The output is a single scalar value.
+
+    .. warning:: **Beta Feature (xarray path only)** -- When called with an
+       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
+       The xarray interface (metadata handling) may change in future minor
+       releases. The NumPy array interface is stable.
+
+    Args:
+        rainfall_mm: 1-D array or DataArray of daily rainfall values in mm.
+            Must contain exactly 365 or 366 values (one full year).
+
+    Returns:
+        PCI value as numpy.ndarray (shape (1,)) or scalar xarray.DataArray.
+    """
+    input_type = detect_input_type(rainfall_mm)
+
+    if input_type == InputType.NUMPY:
+        assert isinstance(rainfall_mm, np.ndarray)
+        return indices.pci(rainfall_mm)
+
+    # xarray path: extract values, compute, rewrap with CF metadata
+    assert isinstance(rainfall_mm, xr.DataArray)
+    result_values = indices.pci(rainfall_mm.values)
+
+    # build CF metadata attributes for the scalar output
+    cf_meta = CF_METADATA["pci"]
+    from climate_indices import __version__
+
+    output_attrs: dict[str, Any] = {}
+    output_attrs.update(cf_meta)
+    output_attrs["climate_indices_version"] = __version__
+    timestamp = datetime.datetime.now(tz=datetime.timezone.utc).isoformat(timespec="seconds")
+    output_attrs["history"] = f"{timestamp} PCI computed by climate_indices {__version__}"
+
+    # PCI output is a scalar (shape (1,)), return as 0-D DataArray
+    return xr.DataArray(
+        result_values[0],
+        attrs=output_attrs,
+    )
