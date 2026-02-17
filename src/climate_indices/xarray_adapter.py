@@ -29,7 +29,7 @@ import json
 import warnings
 from collections.abc import Callable
 from enum import Enum, auto
-from typing import Any, TypedDict
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -37,6 +37,7 @@ import structlog.stdlib
 import xarray as xr
 
 from climate_indices import compute, eto, indices, pm_eto
+from climate_indices.cf_metadata_registry import CF_METADATA, CFAttributes
 from climate_indices.compute import MIN_CALIBRATION_YEARS
 from climate_indices.exceptions import (
     CoordinateValidationError,
@@ -56,80 +57,6 @@ def _log() -> structlog.stdlib.BoundLogger:
     return get_logger(__name__)
 
 
-class _CFAttributesRequired(TypedDict):
-    """Required CF Convention metadata attributes."""
-
-    long_name: str
-    units: str
-    references: str
-
-
-class CFAttributes(_CFAttributesRequired, total=False):
-    """CF Convention metadata attributes for a climate index.
-
-    Required keys: long_name, units, references.
-    Optional keys: standard_name (only when officially defined in CF conventions).
-
-    .. note:: Part of the beta xarray adapter layer. See :doc:`xarray_migration`.
-    """
-
-    standard_name: str
-
-
-CF_METADATA: dict[str, CFAttributes] = {
-    "spi": {
-        "long_name": "Standardized Precipitation Index",
-        "units": "dimensionless",
-        "references": (
-            "McKee, T. B., Doesken, N. J., & Kleist, J. (1993). "
-            "The relationship of drought frequency and duration to time scales. "
-            "Proceedings of the 8th Conference on Applied Climatology, "
-            "17-22 January, Anaheim, CA. "
-            "American Meteorological Society, Boston, MA, 179-184."
-        ),
-    },
-    "spei": {
-        "long_name": "Standardized Precipitation Evapotranspiration Index",
-        "units": "dimensionless",
-        "references": (
-            "Vicente-Serrano, S. M., Begueria, S., & Lopez-Moreno, J. I. (2010). "
-            "A Multiscalar Drought Index Sensitive to Global Warming: "
-            "The Standardized Precipitation Evapotranspiration Index. "
-            "Journal of Climate, 23(7), 1696-1718. "
-            "https://doi.org/10.1175/2009JCLI2909.1"
-        ),
-    },
-    "pet_thornthwaite": {
-        "long_name": "Potential Evapotranspiration (Thornthwaite method)",
-        "units": "mm/month",
-        "references": (
-            "Thornthwaite, C. W. (1948). "
-            "An approach toward a rational classification of climate. "
-            "Geographical Review, 38(1), 55-94. "
-            "https://doi.org/10.2307/210739"
-        ),
-    },
-    "pet_hargreaves": {
-        "long_name": "Potential Evapotranspiration (Hargreaves method)",
-        "units": "mm/day",
-        "references": (
-            "Hargreaves, G. H., & Samani, Z. A. (1985). "
-            "Reference crop evapotranspiration from temperature. "
-            "Applied Engineering in Agriculture, 1(2), 96-99. "
-            "https://doi.org/10.13031/2013.26773"
-        ),
-    },
-    "pet_penman_monteith": {
-        "long_name": "Reference Evapotranspiration (Penman-Monteith FAO56)",
-        "units": "mm day-1",
-        "references": (
-            "Allen, R.G., Pereira, L.S., Raes, D. and Smith, M. (1998). "
-            "Crop evapotranspiration - Guidelines for computing crop water requirements. "
-            "FAO Irrigation and Drainage Paper 56. Rome, FAO. "
-            "ISBN 92-5-104219-5"
-        ),
-    },
-}
 
 # types that can be safely coerced to np.ndarray by the existing numpy functions
 # includes scalar types that numpy operations naturally handle

@@ -15,9 +15,8 @@ from climate_indices.exceptions import (
 )
 from climate_indices.logging_config import configure_logging
 from climate_indices.typed_public_api import spei, spi
+from climate_indices.cf_metadata_registry import CF_METADATA, CFAttributes
 from climate_indices.xarray_adapter import (
-    CF_METADATA,
-    CFAttributes,
     InputType,
     detect_input_type,
     eto_penman_monteith,

@@ -25,7 +25,8 @@ import xarray as xr
 from climate_indices import indices
 from climate_indices.compute import Periodicity
 from climate_indices.indices import Distribution
-from climate_indices.xarray_adapter import CF_METADATA, xarray_adapter
+from climate_indices.cf_metadata_registry import CF_METADATA
+from climate_indices.xarray_adapter import xarray_adapter
 from climate_indices.xarray_adapter import eto_penman_monteith as _eto_pm
 
 if TYPE_CHECKING:
