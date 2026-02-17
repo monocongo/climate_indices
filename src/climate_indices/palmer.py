@@ -981,7 +981,7 @@ _PALMER_VARIABLE_NAMES = ("pdsi", "phdi", "pmdi", "z_index")
 def palmer_xarray(
     precip_da: xr.DataArray,
     pet_da: xr.DataArray,
-    awc: float,
+    awc: float | xr.DataArray,
     data_start_year: int | None = None,
     calibration_year_initial: int | None = None,
     calibration_year_final: int | None = None,
@@ -1008,8 +1008,10 @@ def palmer_xarray(
             with a time dimension.
         pet_da: Monthly potential evapotranspiration values in inches as
             xr.DataArray with a time dimension. Must align with precip_da.
-        awc: Available water capacity (soil constant) in inches. Scalar float
-            for uniform AWC. Spatial DataArray support added in Story 4.4.
+        awc: Available water capacity (soil constant) in inches. Accepts
+            a scalar float for uniform AWC or an ``xr.DataArray`` with
+            spatial dimensions only (e.g. lat, lon). AWC is a soil property
+            and must not contain a time dimension.
         data_start_year: Initial year of the input datasets. If None, inferred
             from the first timestamp in the time coordinate.
         calibration_year_initial: Initial year of the calibration period.
@@ -1029,7 +1031,8 @@ def palmer_xarray(
     Raises:
         CoordinateValidationError: If time dimension is missing, not monotonic,
             or inputs have no overlapping time steps.
-        ValueError: If precip and PET arrays are incompatible sizes.
+        ValueError: If AWC has a time dimension or if precip and PET arrays
+            are incompatible sizes.
 
     Examples:
         >>> import xarray as xr
@@ -1050,9 +1053,11 @@ def palmer_xarray(
         >>> list(ds.data_vars)
         ['pdsi', 'phdi', 'pmdi', 'z_index']
     """
+    # describe AWC shape for logging (scalar vs DataArray)
+    awc_log_val = awc if isinstance(awc, (int, float)) else f"DataArray{awc.shape}"
     log = _logger.bind(
         index_type="palmer_xarray",
-        awc=awc,
+        awc=awc_log_val,
         time_dim=time_dim,
         precip_shape=precip_da.shape,
         pet_shape=pet_da.shape,
@@ -1061,6 +1066,14 @@ def palmer_xarray(
     t0 = time.perf_counter()
 
     try:
+        # -- validate AWC parameter --
+        if isinstance(awc, xr.DataArray) and time_dim in awc.dims:
+            raise ValueError(
+                f"AWC must not have time dimension '{time_dim}'. "
+                f"AWC is a soil property (spatially varying only). "
+                f"Got awc_dims={awc.dims}."
+            )
+
         # -- validate time dimension on both inputs --
         _validate_time_dimension(precip_da, time_dim)
         _validate_time_dimension(pet_da, time_dim)
@@ -1125,32 +1138,77 @@ def palmer_xarray(
             calibration_year_final=calibration_year_final,
         )
 
-        # -- extract numpy arrays --
-        precip_values = precip_aligned.values
-        pet_values = pet_aligned.values
+        # -- determine spatial dimensions (everything except time) --
+        spatial_dims = [d for d in precip_aligned.dims if d != time_dim]
+        is_spatial = len(spatial_dims) > 0
 
-        # -- call existing NumPy core function --
-        pdsi_arr, phdi_arr, pmdi_arr, z_arr, params_dict = pdsi(
-            precips=precip_values,
-            pet=pet_values,
-            awc=float(awc),
-            data_start_year=data_start_year,
-            calibration_year_initial=calibration_year_initial,
-            calibration_year_final=calibration_year_final,
-            fitting_params=fitting_params,
-        )
+        # -- compute Palmer indices --
+        if not is_spatial or not isinstance(awc, xr.DataArray):
+            # scalar AWC path: single call to pdsi() for 1D time series
+            # (or multi-dim with uniform AWC treated pixel-by-pixel below)
+            awc_scalar = float(awc) if not isinstance(awc, xr.DataArray) else float(awc.values)
+            precip_values = precip_aligned.values
+            pet_values = pet_aligned.values
+
+            pdsi_arr, phdi_arr, pmdi_arr, z_arr, params_dict = pdsi(
+                precips=precip_values,
+                pet=pet_values,
+                awc=awc_scalar,
+                data_start_year=data_start_year,
+                calibration_year_initial=calibration_year_initial,
+                calibration_year_final=calibration_year_final,
+                fitting_params=fitting_params,
+            )
+
+            output_arrays = {
+                "pdsi": pdsi_arr,
+                "phdi": phdi_arr,
+                "pmdi": pmdi_arr,
+                "z_index": z_arr,
+            }
+        else:
+            # spatial DataArray AWC path: iterate over spatial pixels
+            # pdsi() only accepts scalar AWC + 1D time series
+            n_time = len(precip_aligned[time_dim])
+            spatial_shape = tuple(precip_aligned.sizes[d] for d in spatial_dims)
+
+            # pre-allocate output arrays: shape = (*spatial_dims, time)
+            result_arrays = {name: np.full((*spatial_shape, n_time), np.nan) for name in _PALMER_VARIABLE_NAMES}
+            params_dict = None
+
+            # iterate over all spatial grid points
+            for idx in np.ndindex(*spatial_shape):
+                # build selection dict for spatial dims
+                sel = {dim: precip_aligned[dim].values[i] for dim, i in zip(spatial_dims, idx, strict=True)}
+
+                precip_pixel = precip_aligned.sel(sel).values
+                pet_pixel = pet_aligned.sel(sel).values
+                awc_pixel = float(awc.sel(sel).values)
+
+                p_arr, h_arr, m_arr, z_arr_px, px_params = pdsi(
+                    precips=precip_pixel,
+                    pet=pet_pixel,
+                    awc=awc_pixel,
+                    data_start_year=data_start_year,
+                    calibration_year_initial=calibration_year_initial,
+                    calibration_year_final=calibration_year_final,
+                    fitting_params=fitting_params,
+                )
+
+                result_arrays["pdsi"][idx] = p_arr
+                result_arrays["phdi"][idx] = h_arr
+                result_arrays["pmdi"][idx] = m_arr
+                result_arrays["z_index"][idx] = z_arr_px
+
+                # keep the last params_dict (all pixels get the same calibration)
+                if params_dict is None:
+                    params_dict = px_params
+
+            output_arrays = result_arrays
 
         # -- build output Dataset --
-        output_arrays = {
-            "pdsi": pdsi_arr,
-            "phdi": phdi_arr,
-            "pmdi": pmdi_arr,
-            "z_index": z_arr,
-        }
-
         data_vars: dict[str, xr.DataArray] = {}
         for var_name in _PALMER_VARIABLE_NAMES:
-            # build per-variable attrs from CF metadata registry
             var_attrs = copy.deepcopy(CF_METADATA[var_name])
             da = xr.DataArray(
                 output_arrays[var_name],
@@ -1174,12 +1232,13 @@ def palmer_xarray(
                 if param_name in params_dict:
                     ds.attrs[f"palmer_{param_name}"] = params_dict[param_name].tolist()
 
-        # add provenance history
+        # describe AWC in history (scalar value or "spatial DataArray")
+        awc_history_val = awc if isinstance(awc, (int, float)) else "spatial_DataArray"
         history_entry = _build_history_entry(
             "Palmer",
             __version__,
             {
-                "awc": awc,
+                "awc": awc_history_val,
                 "calibration_year_initial": calibration_year_initial,
                 "calibration_year_final": calibration_year_final,
             },
@@ -1196,7 +1255,7 @@ def palmer_xarray(
             "calculation_completed",
             duration_ms=round(duration_ms, 2),
             output_variables=list(_PALMER_VARIABLE_NAMES),
-            output_shape=pdsi_arr.shape,
+            output_shape=list(ds.dims.values()),
         )
 
         return ds

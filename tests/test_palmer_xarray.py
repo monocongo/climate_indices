@@ -254,3 +254,131 @@ class TestPalmerXarrayAlignment:
 
         with pytest.raises(CoordinateValidationError, match="No overlapping"):
             palmer_xarray(precip_da, pet_da, awc=_AWC)
+
+
+# ---------------------------------------------------------------------------
+# AWC spatial parameter tests (Story 4.4)
+# ---------------------------------------------------------------------------
+
+_N_MONTHS_SHORT = 120  # 10 years, faster for spatial tests
+
+
+def _make_spatial_dataarrays(
+    n_lat: int = 2,
+    n_lon: int = 2,
+    n_months: int = _N_MONTHS_SHORT,
+) -> tuple[xr.DataArray, xr.DataArray]:
+    """Generate 3D (lat, lon, time) precipitation and PET DataArrays.
+
+    Args:
+        n_lat: Number of latitude points.
+        n_lon: Number of longitude points.
+        n_months: Number of monthly values.
+
+    Returns:
+        Tuple of (precipitation, PET) DataArrays with shape (lat, lon, time).
+    """
+    time_coord = _make_time_coord(periods=n_months)
+    lat = np.linspace(30.0, 35.0, n_lat)
+    lon = np.linspace(-100.0, -95.0, n_lon)
+    months = np.arange(n_months) % 12
+
+    # create seasonal pattern with spatial variation
+    precip_base = 2.5 + 1.5 * np.sin(2 * np.pi * months / 12)
+    pet_base = 3.0 + 2.0 * np.sin(2 * np.pi * (months - 3) / 12)
+
+    precip_3d = np.empty((n_lat, n_lon, n_months))
+    pet_3d = np.empty((n_lat, n_lon, n_months))
+    for i in range(n_lat):
+        for j in range(n_lon):
+            precip_3d[i, j, :] = precip_base + _RNG.normal(0, 0.3, n_months)
+            pet_3d[i, j, :] = pet_base + _RNG.normal(0, 0.2, n_months)
+
+    precip_3d = np.clip(precip_3d, 0.0, None)
+    pet_3d = np.clip(pet_3d, 0.1, None)
+
+    precip_da = xr.DataArray(
+        precip_3d,
+        coords={"lat": lat, "lon": lon, "time": time_coord},
+        dims=["lat", "lon", "time"],
+        name="precip",
+    )
+    pet_da = xr.DataArray(
+        pet_3d,
+        coords={"lat": lat, "lon": lon, "time": time_coord},
+        dims=["lat", "lon", "time"],
+        name="pet",
+    )
+    return precip_da, pet_da
+
+
+class TestPalmerXarrayAWC:
+    """Tests for AWC spatial parameter handling (Story 4.4)."""
+
+    def test_scalar_awc_produces_valid_output(self) -> None:
+        """Scalar float AWC produces valid Dataset (baseline behavior)."""
+        precip_da, pet_da = _make_palmer_dataarrays()
+        ds = palmer_xarray(precip_da, pet_da, awc=5.0)
+        assert isinstance(ds, xr.Dataset)
+        assert set(ds.data_vars) == {"pdsi", "phdi", "pmdi", "z_index"}
+
+    def test_spatial_awc_produces_valid_output(self) -> None:
+        """DataArray AWC with (lat, lon) spatial dims produces valid Dataset."""
+        precip_da, pet_da = _make_spatial_dataarrays(n_lat=2, n_lon=2)
+        awc_da = xr.DataArray(
+            _RNG.uniform(3.0, 8.0, (2, 2)),
+            coords={"lat": precip_da.lat, "lon": precip_da.lon},
+            dims=["lat", "lon"],
+        )
+        ds = palmer_xarray(precip_da, pet_da, awc=awc_da)
+        assert isinstance(ds, xr.Dataset)
+        assert set(ds.data_vars) == {"pdsi", "phdi", "pmdi", "z_index"}
+
+    def test_spatial_awc_output_shape_matches_input(self) -> None:
+        """Output shape matches 3D input when spatial AWC is provided."""
+        precip_da, pet_da = _make_spatial_dataarrays(n_lat=2, n_lon=2)
+        awc_da = xr.DataArray(
+            _RNG.uniform(3.0, 8.0, (2, 2)),
+            coords={"lat": precip_da.lat, "lon": precip_da.lon},
+            dims=["lat", "lon"],
+        )
+        ds = palmer_xarray(precip_da, pet_da, awc=awc_da)
+        for var_name in ("pdsi", "phdi", "pmdi", "z_index"):
+            assert ds[var_name].shape == precip_da.shape, (
+                f"{var_name} shape {ds[var_name].shape} != input shape {precip_da.shape}"
+            )
+
+    def test_spatial_awc_coordinates_preserved(self) -> None:
+        """Spatial and time coordinates are preserved from input to output."""
+        precip_da, pet_da = _make_spatial_dataarrays(n_lat=2, n_lon=2)
+        awc_da = xr.DataArray(
+            _RNG.uniform(3.0, 8.0, (2, 2)),
+            coords={"lat": precip_da.lat, "lon": precip_da.lon},
+            dims=["lat", "lon"],
+        )
+        ds = palmer_xarray(precip_da, pet_da, awc=awc_da)
+        xr.testing.assert_equal(ds.coords["time"], precip_da.coords["time"])
+        xr.testing.assert_equal(ds.coords["lat"], precip_da.coords["lat"])
+        xr.testing.assert_equal(ds.coords["lon"], precip_da.coords["lon"])
+
+    def test_awc_with_time_dimension_raises(self) -> None:
+        """Raises ValueError if AWC DataArray has a time dimension."""
+        precip_da, pet_da = _make_palmer_dataarrays()
+        awc_with_time = xr.DataArray(
+            np.full(len(precip_da.time), 5.0),
+            coords={"time": precip_da.time},
+            dims=["time"],
+        )
+        with pytest.raises(ValueError, match="AWC must not have time dimension"):
+            palmer_xarray(precip_da, pet_da, awc=awc_with_time)
+
+    def test_awc_with_time_error_includes_dims(self) -> None:
+        """ValueError message includes the AWC dimensions."""
+        precip_da, pet_da = _make_palmer_dataarrays()
+        awc_with_time = xr.DataArray(
+            np.full(len(precip_da.time), 5.0),
+            coords={"time": precip_da.time},
+            dims=["time"],
+        )
+        with pytest.raises(ValueError, match="awc_dims="):
+            palmer_xarray(precip_da, pet_da, awc=awc_with_time)
