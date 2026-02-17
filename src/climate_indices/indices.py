@@ -204,6 +204,15 @@ def eddi(
     using the Tukey plotting position and then transformed to z-scores via the
     Hastings inverse-normal approximation.
 
+    .. note::
+       **PET method matters.** EDDI is most accurate when using
+       Penman-Monteith FAO56 reference evapotranspiration (ETo) as the
+       PET input. Using simplified methods like Thornthwaite may produce
+       inaccurate drought signals, particularly in arid regions and under
+       climate change scenarios where temperature-based PET diverges from
+       energy-balance PET. See Hobbins et al. (2016) for a detailed
+       sensitivity analysis.
+
     Args:
         pet_values: 1-D numpy array of PET (potential evapotranspiration) values.
             The first value corresponds to January of ``data_start_year`` for
@@ -227,6 +236,18 @@ def eddi(
         DataShapeError: If the input array has more than 2 dimensions.
         InvalidArgumentError: If scale, periodicity, or calibration years
             are invalid.
+
+    See Also:
+        pet: Compute PET using Thornthwaite's equation (temperature-based).
+        eto.eto_thornthwaite: Thornthwaite PET (simplified, temperature-only).
+        eto.eto_hargreaves: Hargreaves PET (temperature + extraterrestrial radiation).
+
+    References:
+        Hobbins, M. T., A. Wood, D. McEvoy, J. Huntington, C. Morton,
+        M. Anderson, and C. Hain, 2016: The Evaporative Demand Drought
+        Index. Part I: Linking Drought Evolution to Variations in
+        Evaporative Demand. J. Hydrometeor., 17, 1745-1761,
+        doi:10.1175/JHM-D-15-0121.1.
     """
     # validate arguments
     _validate_scale(scale)

@@ -466,6 +466,168 @@ The Palmer drought indices use a two-layer soil moisture accounting model:
    preferred for global applications due to their simpler data requirements and
    multi-scalar nature.
 
+Evaporative Demand Drought Index (EDDI)
+=======================================
+
+Overview
+--------
+
+The Evaporative Demand Drought Index (EDDI) is a drought monitoring tool
+developed by the NOAA Physical Sciences Laboratory (PSL) that uses
+atmospheric evaporative demand as its sole input. Unlike precipitation-based
+indices (SPI, SPEI), EDDI detects drought onset by measuring the "thirst of
+the atmosphere" -- increases in evaporative demand that precede soil moisture
+depletion and reduced streamflow.
+
+EDDI was designed to provide early warning of agricultural and hydrological
+drought, often signaling drought conditions weeks to months before
+precipitation-based indicators.
+
+Algorithm Description
+---------------------
+
+The EDDI computation follows these steps:
+
+1. **Input validation and preprocessing**
+
+   - Accept 1-D or 2-D arrays of PET (potential evapotranspiration) values
+   - Clip negative PET values to zero
+   - Handle missing data (NaN propagation)
+
+2. **Temporal aggregation**
+
+   - Compute sliding sums over the specified timescale (e.g., 1, 2, 3, 6, 12 months)
+   - For monthly data: reshape to (years, 12)
+   - For daily data: reshape to (years, 366)
+
+3. **Empirical ranking (non-parametric)**
+
+   Unlike SPI/SPEI which fit parametric distributions, EDDI uses empirical
+   ranking within each calendar period (month or day-of-year):
+
+   - For each time step, rank the current PET value against the calibration
+     climatology for that calendar period
+   - Ranking uses ``rank = 1 + count(current > climatology)`` matching the
+     NOAA Fortran implementation
+
+4. **Tukey plotting position**
+
+   Convert ranks to cumulative probabilities:
+
+   .. math::
+
+      P = \frac{\text{rank} - 0.33}{N + 0.33}
+
+   Where *N* is the number of valid climatology values. The Tukey plotting
+   position is unbiased for a wide range of distributions.
+
+5. **Hastings inverse-normal approximation**
+
+   Transform probabilities to z-scores using the Abramowitz & Stegun (1964)
+   rational approximation (equation 26.2.23):
+
+   .. math::
+
+      z = \text{sign}(P - 0.5) \left( t - \frac{c_0 + c_1 t + c_2 t^2}{1 + d_1 t + d_2 t^2 + d_3 t^3} \right)
+
+   Where :math:`t = \sqrt{-2 \ln(\min(P, 1-P))}` and the constants are:
+
+   - :math:`c_0 = 2.515517`, :math:`c_1 = 0.802853`, :math:`c_2 = 0.010328`
+   - :math:`d_1 = 1.432788`, :math:`d_2 = 0.189269`, :math:`d_3 = 0.001308`
+
+   This approximation achieves accuracy within :math:`4.5 \times 10^{-4}` of
+   the exact inverse normal CDF.
+
+6. **Output clipping**
+
+   - Final z-scores are clipped to [-3.09, 3.09]
+   - Minimum climatology requirement: 2 valid values per calendar period
+
+PET Method Sensitivity
+----------------------
+
+.. important::
+   **EDDI is most accurate when using Penman-Monteith FAO56 reference
+   evapotranspiration (ETo) as the PET input.**
+
+The choice of PET estimation method significantly affects EDDI's drought
+detection accuracy. Hobbins et al. (2016) demonstrated that:
+
+- **Penman-Monteith FAO56** (recommended): Uses radiation, temperature,
+  humidity, and wind speed. Captures the full energy balance driving
+  evaporative demand. Produces the most physically consistent EDDI signals.
+
+- **Hargreaves**: Uses temperature and extraterrestrial radiation. Acceptable
+  when full meteorological data is unavailable, but misses humidity and wind
+  contributions to evaporative demand.
+
+- **Thornthwaite** (not recommended for EDDI): Uses temperature only. May
+  produce misleading drought signals because temperature alone is a poor
+  proxy for evaporative demand, particularly in:
+
+  - Arid regions where advection dominates
+  - Climate change scenarios where temperature trends diverge from
+    energy-balance trends
+  - Continental interiors with strong seasonal wind patterns
+
+**Recommendation:** When computing EDDI for operational drought monitoring,
+always use Penman-Monteith FAO56 PET. If the required meteorological
+variables (radiation, humidity, wind) are unavailable, consider using
+Hargreaves as a fallback, but document this limitation in any analysis.
+
+Interpretation
+--------------
+
+EDDI values are standardized z-scores with the following interpretation:
+
+.. list-table:: EDDI Drought Categories
+   :header-rows: 1
+   :widths: 25 25 50
+
+   * - EDDI Range
+     - Category
+     - Interpretation
+   * - EDDI >= 2.0
+     - ED4 (Exceptional)
+     - Extremely high evaporative demand
+   * - 1.6 <= EDDI < 2.0
+     - ED3 (Extreme)
+     - Very high evaporative demand
+   * - 1.3 <= EDDI < 1.6
+     - ED2 (Severe)
+     - High evaporative demand
+   * - 0.8 <= EDDI < 1.3
+     - ED1 (Moderate)
+     - Moderately high evaporative demand
+   * - -0.5 <= EDDI < 0.8
+     - Normal
+     - Near-normal evaporative demand
+   * - EDDI < -0.5
+     - Wet signal
+     - Below-normal evaporative demand
+
+.. note::
+   Positive EDDI indicates higher-than-normal atmospheric drying potential,
+   which is associated with drought conditions. This is the opposite sign
+   convention from SPI/SPEI, where negative values indicate drought.
+
+References
+----------
+
+- Hobbins, M. T., A. Wood, D. McEvoy, J. Huntington, C. Morton, M. Anderson,
+  and C. Hain, 2016: The Evaporative Demand Drought Index. Part I: Linking
+  Drought Evolution to Variations in Evaporative Demand. *J. Hydrometeor.*,
+  **17**, 1745-1761. https://doi.org/10.1175/JHM-D-15-0121.1
+
+- McEvoy, D. J., J. Huntington, M. T. Hobbins, A. Wood, C. Morton,
+  M. Anderson, and C. Hain, 2016: The Evaporative Demand Drought Index.
+  Part II: CONUS-Wide Assessment Against Common Drought Indicators.
+  *J. Hydrometeor.*, **17**, 1763-1779.
+  https://doi.org/10.1175/JHM-D-15-0122.1
+
+- Abramowitz, M. and I. A. Stegun, 1964: *Handbook of Mathematical
+  Functions*. National Bureau of Standards Applied Mathematics Series, 55.
+
 Additional Indices
 ==================
 
@@ -706,6 +868,12 @@ Complete Bibliography
 - McKee, T. B., Doesken, N. J., & Kleist, J. (1993). The relationship of drought frequency and duration to time scales. *Proceedings of the 8th Conference on Applied Climatology*, 17-22 January, Anaheim, CA. American Meteorological Society, Boston, MA, 179-184.
 
 - Vicente-Serrano, S. M., Begueria, S., & Lopez-Moreno, J. I. (2010). A Multiscalar Drought Index Sensitive to Global Warming: The Standardized Precipitation Evapotranspiration Index. *Journal of Climate*, 23(7), 1696-1718. https://doi.org/10.1175/2009JCLI2909.1
+
+**EDDI (Evaporative Demand Drought Index):**
+
+- Hobbins, M. T., Wood, A., McEvoy, D., Huntington, J., Morton, C., Anderson, M., & Hain, C. (2016). The Evaporative Demand Drought Index. Part I: Linking Drought Evolution to Variations in Evaporative Demand. *Journal of Hydrometeorology*, 17(6), 1745-1761. https://doi.org/10.1175/JHM-D-15-0121.1
+
+- McEvoy, D. J., Huntington, J., Hobbins, M. T., Wood, A., Morton, C., Anderson, M., & Hain, C. (2016). The Evaporative Demand Drought Index. Part II: CONUS-Wide Assessment Against Common Drought Indicators. *Journal of Hydrometeorology*, 17(6), 1763-1779. https://doi.org/10.1175/JHM-D-15-0122.1
 
 **Potential Evapotranspiration:**
 
