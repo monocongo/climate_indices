@@ -16,13 +16,15 @@ from climate_indices.exceptions import InvalidArgumentError
 @pytest.fixture
 def valid_precip_data():
     """Provide a minimal valid precipitation array for testing."""
-    return np.random.rand(12 * 10) * 100
+    rng = np.random.default_rng(seed=42)
+    return rng.random(12 * 10) * 100
 
 
 @pytest.fixture
 def valid_pet_data():
     """Provide a minimal valid PET array for testing."""
-    return np.random.rand(12 * 10) * 50
+    rng = np.random.default_rng(seed=43)
+    return rng.random(12 * 10) * 50
 
 
 class TestScaleValidation:

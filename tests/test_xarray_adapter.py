@@ -738,7 +738,7 @@ class TestXarrayAdapterLogging:
         assert "input_shape" in log_output
         assert "output_shape" in log_output
 
-    def test_logs_inferred_parameter_values(self, sample_monthly_precip_da, caplog):
+    def test_logs_inferred_parameter_values(self, sample_monthly_precip_da, caplog, capsys):
         """Logs parameters_inferred event with actual inferred values."""
 
         @xarray_adapter(infer_params=True)
@@ -753,14 +753,13 @@ class TestXarrayAdapterLogging:
             _ = needs_params(sample_monthly_precip_da)
 
         # verify parameters_inferred event appears
-        log_messages = [record.message for record in caplog.records]
-        assert any("parameters_inferred" in msg for msg in log_messages)
+        log_output = self._combined_log_output(caplog, capsys)
+        assert "parameters_inferred" in log_output
 
         # verify actual inferred values are logged
         # sample_monthly_precip_da is 1980-2019 monthly
-        inferred_log = [record for record in caplog.records if "parameters_inferred" in record.message][0]
-        assert "data_start_year" in str(inferred_log.message) or hasattr(inferred_log, "data_start_year")
-        assert "periodicity" in str(inferred_log.message) or hasattr(inferred_log, "periodicity")
+        assert "data_start_year" in log_output
+        assert "periodicity" in log_output
 
 
 class TestXarrayAdapterIntegration:
