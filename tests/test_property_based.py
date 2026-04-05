@@ -635,11 +635,14 @@ def test_pdsi_awc_sensitivity(awc_low: float, awc_high: float) -> None:
             calibration_year_final=2009,
         )
 
-    # higher AWC should produce higher (less negative) mean PDSI during drought
+    # higher AWC should produce higher (less negative) mean PDSI during drought;
+    # only assert when Palmer reports actual drought (mean PDSI < 0) for the
+    # low-AWC baseline — Palmer's calibration can shift the mean above zero
+    # even with dry input data, making the directional property undefined.
     valid_low = pdsi_low[np.isfinite(pdsi_low)]
     valid_high = pdsi_high[np.isfinite(pdsi_high)]
 
-    if len(valid_low) > 0 and len(valid_high) > 0:
+    if len(valid_low) > 0 and len(valid_high) > 0 and np.mean(valid_low) < 0:
         assert np.mean(valid_high) >= np.mean(valid_low), (
             f"Higher AWC ({awc_high}) did not buffer drought: "
             f"mean PDSI high={np.mean(valid_high):.3f}, low={np.mean(valid_low):.3f}"

@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **NFR-PATTERN-COVERAGE**: 42/42 compliance points achieved — all 7 indices (SPI, SPEI,
+  PET Thornthwaite, PET Hargreaves, PNP, PCI, Palmer) satisfy all 6 canonical patterns
+  (CF metadata, typed public API overloads, xarray adapter, structlog lifecycle,
+  structured exceptions, property-based tests). Validated by `tests/test_pattern_compliance.py`.
 - **xarray DataArray API (Beta)**: Native xarray support for `spi()`, `spei()`,
   `pet_thornthwaite()`, and `pet_hargreaves()` — marked as beta/experimental.
   The xarray interface (parameter inference, metadata, coordinate handling) may

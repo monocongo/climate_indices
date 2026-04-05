@@ -406,9 +406,12 @@ class TestAllExports:
         """__all__ should contain all documented exception and warning classes plus helpers."""
         expected_names = {
             "ClimateIndicesError",
+            "ConvergenceError",
+            "DataShapeError",
             "DistributionFittingError",
             "InsufficientDataError",
             "PearsonFittingError",
+            "PeriodicityError",
             "DimensionMismatchError",
             "CoordinateValidationError",
             "InputTypeError",
