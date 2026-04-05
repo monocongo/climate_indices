@@ -9,12 +9,12 @@ from typing import Any, cast
 import numpy as np
 
 from climate_indices import compute, eto, utils
-from climate_indices.exceptions import InvalidArgumentError
+from climate_indices.exceptions import DataShapeError, InvalidArgumentError
 from climate_indices.logging_config import get_logger
 from climate_indices.performance import check_large_array_memory
 
 # declare the function names that should be included in the public API for this module
-__all__ = ["percentage_of_normal", "pci", "pet", "spei", "spi"]
+__all__ = ["eddi", "percentage_of_normal", "pci", "pet", "spei", "spi"]
 
 
 class Distribution(Enum):
@@ -36,6 +36,15 @@ _FITTED_INDEX_VALID_MAX = 3.09
 # valid range for scale parameter
 SCALE_MIN = 1
 SCALE_MAX = 72
+
+# Hastings inverse normal approximation constants (Abramowitz & Stegun 26.2.23)
+# used by EDDI for converting empirical probabilities to z-scores
+_HASTINGS_C0 = 2.515517
+_HASTINGS_C1 = 0.802853
+_HASTINGS_C2 = 0.010328
+_HASTINGS_D1 = 1.432788
+_HASTINGS_D2 = 0.189269
+_HASTINGS_D3 = 0.001308
 
 # Import fallback strategy for consistent behavior
 _fallback_strategy = compute.DistributionFallbackStrategy()
@@ -146,6 +155,256 @@ def _validate_periodicity(periodicity: compute.Periodicity) -> None:
             argument_value=str(periodicity),
             valid_values="monthly, daily",
         )
+
+
+def _hastings_inverse_normal(probability: np.ndarray) -> np.ndarray:
+    """Convert cumulative probabilities to z-scores using the Hastings approximation.
+
+    Implements the rational approximation from Abramowitz & Stegun (1965),
+    equation 26.2.23. This matches the NOAA PSL Fortran reference implementation
+    used in the original EDDI code.
+
+    Args:
+        probability: Array of cumulative probabilities in (0, 1). Values
+            at the boundaries are clipped to avoid infinities.
+
+    Returns:
+        Array of z-scores (standard normal deviates).
+    """
+    # clip to avoid log(0) or division-by-zero at boundaries
+    p = np.clip(probability, 1e-10, 1.0 - 1e-10)
+
+    # work in the lower tail; flip if p > 0.5
+    sign = np.where(p <= 0.5, -1.0, 1.0)
+    p_lower = np.where(p <= 0.5, p, 1.0 - p)
+
+    # Hastings rational approximation
+    t = np.sqrt(-2.0 * np.log(p_lower))
+    numerator = _HASTINGS_C0 + t * (_HASTINGS_C1 + t * _HASTINGS_C2)
+    denominator = 1.0 + t * (_HASTINGS_D1 + t * (_HASTINGS_D2 + t * _HASTINGS_D3))
+    z = sign * (t - numerator / denominator)
+
+    return z
+
+
+def eddi(
+    pet_values: np.ndarray,
+    scale: int,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: compute.Periodicity,
+) -> np.ndarray:
+    """Compute the Evaporative Demand Drought Index (EDDI).
+
+    EDDI uses a non-parametric empirical ranking approach following the NOAA
+    Physical Sciences Laboratory (PSL) methodology. PET values are accumulated
+    over the specified time scale, then ranked within each calendar period of
+    the calibration window. Ranks are converted to cumulative probabilities
+    using the Tukey plotting position and then transformed to z-scores via the
+    Hastings inverse-normal approximation.
+
+    Args:
+        pet_values: 1-D numpy array of PET (potential evapotranspiration) values.
+            The first value corresponds to January of ``data_start_year`` for
+            monthly data or January 1st for daily data. 2-D arrays are accepted
+            and will be flattened automatically.
+        scale: Number of time steps over which PET values are accumulated
+            before ranking. Must be in [1, 72].
+        data_start_year: First year of the input PET dataset.
+        calibration_year_initial: First year of the calibration period used
+            for empirical ranking.
+        calibration_year_final: Last year of the calibration period.
+        periodicity: Temporal resolution of the input data. Use
+            ``compute.Periodicity.monthly`` (12 values/year) or
+            ``compute.Periodicity.daily`` (366 values/year).
+
+    Returns:
+        1-D numpy array of EDDI values (unitless z-scores), same length as
+        the input. Values are clipped to [-3.09, 3.09].
+
+    Raises:
+        DataShapeError: If the input array has more than 2 dimensions.
+        InvalidArgumentError: If scale, periodicity, or calibration years
+            are invalid.
+    """
+    # validate arguments
+    _validate_scale(scale)
+    _validate_periodicity(periodicity)
+
+    # bind structured logging context
+    log = _logger.bind(
+        index_type="eddi",
+        scale=scale,
+        input_shape=pet_values.shape,
+        input_elements=pet_values.size,
+    )
+    log.info("calculation_started")
+    t0 = time.perf_counter()
+    memory_metrics = check_large_array_memory(pet_values)
+
+    try:
+        # accept 1-D or 2-D arrays (flatten 2-D), reject 3-D+
+        shape = pet_values.shape
+        if len(shape) == 2:
+            pet_values = pet_values.flatten()
+        elif len(shape) != 1:
+            message = f"Invalid shape of input array: {shape} -- only 1-D and 2-D arrays are supported"
+            _logger.error(message)
+            raise DataShapeError(
+                message,
+                expected_shape="(N,) or (years, periods)",
+                actual_shape=shape,
+            )
+
+        # if we're passed all missing values then we can't compute
+        # anything, so we return the same array of missing values
+        if (isinstance(pet_values, np.ma.MaskedArray) and pet_values.mask.all()) or np.all(
+            np.isnan(pet_values)
+        ):
+            duration_ms = (time.perf_counter() - t0) * 1000.0
+            log.info(
+                "calculation_completed",
+                duration_ms=round(duration_ms, 2),
+                output_shape=pet_values.shape,
+                **(memory_metrics or {}),
+            )
+            return pet_values
+
+        # clip any negative values to zero
+        if np.amin(pet_values) < 0.0:
+            _logger.warning("Input contains negative values -- all negatives clipped to zero")
+            pet_values = np.clip(pet_values, a_min=0.0, a_max=None)
+
+        # remember the original length of the array
+        original_length = pet_values.size
+
+        # get a sliding sums array, with each time step's value scaled
+        # by the specified number of time steps
+        pet_values = compute.sum_to_scale(pet_values, scale)
+
+        # reshape PET values to (years, periods)
+        if periodicity == compute.Periodicity.monthly:
+            pet_values = utils.reshape_to_2d(pet_values, 12)
+            num_periods = 12
+        elif periodicity == compute.Periodicity.daily:
+            pet_values = utils.reshape_to_2d(pet_values, 366)
+            num_periods = 366
+
+        # compute data dimensions for validation
+        num_years = pet_values.shape[0]
+        data_end_year = data_start_year + num_years - 1
+
+        # validate calibration period
+        if calibration_year_initial > calibration_year_final:
+            message = (
+                f"Invalid calibration year arguments: initial year "
+                f"({calibration_year_initial}) is after final year ({calibration_year_final})"
+            )
+            _logger.error(message)
+            raise InvalidArgumentError(
+                message,
+                argument_name="calibration_year_initial",
+                argument_value=str(calibration_year_initial),
+            )
+
+        if calibration_year_initial < data_start_year:
+            message = (
+                f"Invalid calibration year arguments: calibration start year "
+                f"({calibration_year_initial}) is before data start year ({data_start_year})"
+            )
+            _logger.error(message)
+            raise InvalidArgumentError(
+                message,
+                argument_name="calibration_year_initial",
+                argument_value=str(calibration_year_initial),
+            )
+
+        if calibration_year_final > data_end_year:
+            message = (
+                f"Invalid calibration year arguments: calibration end year "
+                f"({calibration_year_final}) is after data end year ({data_end_year})"
+            )
+            _logger.error(message)
+            raise InvalidArgumentError(
+                message,
+                argument_name="calibration_year_final",
+                argument_value=str(calibration_year_final),
+            )
+
+        # determine calibration period indices
+        calibration_start_year_index = calibration_year_initial - data_start_year
+        calibration_end_year_index = calibration_year_final - data_start_year
+
+        # initialize output array
+        eddi_values = np.full((num_years, num_periods), np.nan)
+
+        # for each period (month or day of year)
+        for period_index in range(num_periods):
+            # extract all values for this period across all years
+            period_values = pet_values[:, period_index]
+
+            # extract climatology values (calibration period only)
+            climatology = period_values[
+                calibration_start_year_index : calibration_end_year_index + 1
+            ]
+
+            # remove NaN values from climatology
+            climatology_valid = climatology[~np.isnan(climatology)]
+
+            # skip if insufficient climatology data
+            if len(climatology_valid) < 2:
+                continue
+
+            # for each year, rank against climatology
+            for year_index in range(num_years):
+                current_value = period_values[year_index]
+
+                # skip NaN values
+                if np.isnan(current_value):
+                    continue
+
+                # count how many climatology values are less than current value
+                # (rank starts at 1, matching NOAA Fortran implementation)
+                rank = 1 + np.sum(current_value > climatology_valid)
+
+                # Tukey plotting position
+                n = len(climatology_valid)
+                p = (rank - 0.33) / (n + 0.33)
+
+                # clip probability to valid range to avoid log(0)
+                p = np.clip(p, 1e-10, 1.0 - 1e-10)
+
+                # apply Hastings inverse normal approximation
+                eddi_values[year_index, period_index] = _hastings_inverse_normal(
+                    np.array([p])
+                )[0]
+
+        # clip values to within the valid range, reshape the array back to 1-D
+        eddi_values = np.clip(
+            eddi_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX
+        ).flatten()
+
+        # return the original size array
+        result = eddi_values[0:original_length]
+        duration_ms = (time.perf_counter() - t0) * 1000.0
+        log.info(
+            "calculation_completed",
+            duration_ms=round(duration_ms, 2),
+            output_shape=result.shape,
+            **(memory_metrics or {}),
+        )
+        return result
+
+    except Exception as exc:
+        log.error(
+            "calculation_failed",
+            exc_info=True,
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+            calibration_period=f"{calibration_year_initial}-{calibration_year_final}",
+        )
+        raise
 
 
 def spi(
