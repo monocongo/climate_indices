@@ -92,9 +92,9 @@ development_status:
   4-9-palmer-performance-validation: done
   epic-4-retrospective: optional
 
-  # Epic 5: Cross-Cutting Validation (3 stories) — IN PROGRESS
-  epic-5: in-progress
+  # Epic 5: Cross-Cutting Validation (3 stories) — COMPLETED
+  epic-5: done
   5-1-pattern-compliance-audit: done
   5-2-reference-validation-final-check: done
-  5-3-final-v240-validation: backlog
+  5-3-final-v240-validation: done
   epic-5-retrospective: optional
