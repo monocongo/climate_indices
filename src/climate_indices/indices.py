@@ -184,7 +184,7 @@ def _hastings_inverse_normal(probability: np.ndarray) -> np.ndarray:
     denominator = 1.0 + t * (_HASTINGS_D1 + t * (_HASTINGS_D2 + t * _HASTINGS_D3))
     z = sign * (t - numerator / denominator)
 
-    return z
+    return cast(np.ndarray, z)
 
 
 def eddi(
@@ -259,9 +259,7 @@ def eddi(
 
         # if we're passed all missing values then we can't compute
         # anything, so we return the same array of missing values
-        if (isinstance(pet_values, np.ma.MaskedArray) and pet_values.mask.all()) or np.all(
-            np.isnan(pet_values)
-        ):
+        if (isinstance(pet_values, np.ma.MaskedArray) and pet_values.mask.all()) or np.all(np.isnan(pet_values)):
             duration_ms = (time.perf_counter() - t0) * 1000.0
             log.info(
                 "calculation_completed",
@@ -345,9 +343,7 @@ def eddi(
             period_values = pet_values[:, period_index]
 
             # extract climatology values (calibration period only)
-            climatology = period_values[
-                calibration_start_year_index : calibration_end_year_index + 1
-            ]
+            climatology = period_values[calibration_start_year_index : calibration_end_year_index + 1]
 
             # remove NaN values from climatology
             climatology_valid = climatology[~np.isnan(climatology)]
@@ -376,17 +372,13 @@ def eddi(
                 p = np.clip(p, 1e-10, 1.0 - 1e-10)
 
                 # apply Hastings inverse normal approximation
-                eddi_values[year_index, period_index] = _hastings_inverse_normal(
-                    np.array([p])
-                )[0]
+                eddi_values[year_index, period_index] = _hastings_inverse_normal(np.array([p]))[0]
 
         # clip values to within the valid range, reshape the array back to 1-D
-        eddi_values = np.clip(
-            eddi_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX
-        ).flatten()
+        eddi_values = np.clip(eddi_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
 
         # return the original size array
-        result = eddi_values[0:original_length]
+        result = cast(np.ndarray, eddi_values[0:original_length])
         duration_ms = (time.perf_counter() - t0) * 1000.0
         log.info(
             "calculation_completed",
@@ -1105,10 +1097,7 @@ def pci(
             )
             return result
 
-        message = (
-            "NaN values exist in the time-series or the total number of days "
-            "in the year is not 365 or 366."
-        )
+        message = "NaN values exist in the time-series or the total number of days in the year is not 365 or 366."
         _logger.error(message)
         raise InvalidArgumentError(
             message,

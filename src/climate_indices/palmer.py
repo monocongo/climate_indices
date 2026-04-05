@@ -940,3 +940,7 @@ def pdsi(
         duration_ms = (time.perf_counter() - t0) * 1000.0
         log.error("calculation_failed", duration_ms=round(duration_ms, 2))
         raise
+
+
+# TODO(v2.5.0): implement palmer_xarray() wrapper using Pattern C
+# (stack/unpack workaround for xarray Issue #1815, see architecture.md)

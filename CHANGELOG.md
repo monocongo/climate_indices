@@ -5,9 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.4.0] - 2026-04-05
 
 ### Added
+
+- **Penman-Monteith ETo (FAO-56)**: New module `src/climate_indices/pm_eto.py` implementing
+  the full FAO-56 reference evapotranspiration equation with atmospheric, vapor pressure, and
+  humidity pathway helpers. Validated against FAO-56 worked examples (±0.05 mm/day tolerance).
+- **EDDI public API**: `eddi()` now exported from `climate_indices` with `@overload` signatures
+  in `typed_public_api.py` for both NumPy and xarray DataArray inputs (beta xarray path).
+- **CF metadata registry expansion**: Added entries for `eddi`, `pdsi`, `phdi`, `pmdi`, and
+  `z_index` to `cf_metadata_registry.py` (registry now has 12 entries).
 
 - **NFR-PATTERN-COVERAGE**: 42/42 compliance points achieved — all 7 indices (SPI, SPEI,
   PET Thornthwaite, PET Hargreaves, PNP, PCI, Palmer) satisfy all 6 canonical patterns
@@ -48,6 +56,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - **`.pypirc`**: Removed from repository (should be user-specific in `~/.pypirc`)
+
+### Notes
+
+- **Palmer xarray wrapper deferred**: `palmer_xarray()` is planned for v2.5.0 using Pattern C
+  (stack/unpack workaround for xarray Issue #1815, see `architecture.md`).
+- **NOAA EDDI reference fixtures**: Require manual download; see `tests/fixture/README.md`.
+  The `test_noaa_eddi_reference.py` suite skips gracefully when fixtures are absent.
 
 ## [2.2.0] - 2025-08-03
 

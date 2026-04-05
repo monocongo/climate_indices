@@ -22,15 +22,13 @@ Allen, R.G., Pereira, L.S., Raes, D. and Smith, M. (1998)
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Union
+from typing import Any, Union
 
 import numpy as np
-
-if TYPE_CHECKING:
-    import numpy.typing as npt
+import numpy.typing as npt
 
 # union type for function signatures
-FloatOrArray = Union[float, "npt.NDArray[np.floating]"]
+FloatOrArray = Union[float, npt.NDArray[np.floating[Any]]]
 
 # ---------------------------------------------------------------------------
 # Physical constants (FAO-56, Chapter 2)
@@ -302,7 +300,7 @@ def actual_vapor_pressure_from_rhmin_rhmax(
         >>> actual_vapor_pressure_from_rhmin_rhmax(1.705, 3.168, 54.0, 82.0)
         1.557...
     """
-    return (np.asarray(e_tmin) * np.asarray(rh_max) / 100.0 + np.asarray(e_tmax) * np.asarray(rh_min) / 100.0) / 2.0
+    return (np.asarray(e_tmin) * np.asarray(rh_max) / 100.0 + np.asarray(e_tmax) * np.asarray(rh_min) / 100.0) / 2.0  # type: ignore[no-any-return]
 
 
 def actual_vapor_pressure_from_rhmax(
@@ -330,7 +328,7 @@ def actual_vapor_pressure_from_rhmax(
         >>> actual_vapor_pressure_from_rhmax(1.705, 82.0)
         1.398...
     """
-    return np.asarray(e_tmin) * np.asarray(rh_max) / 100.0
+    return np.asarray(e_tmin) * np.asarray(rh_max) / 100.0  # type: ignore[no-any-return]
 
 
 def actual_vapor_pressure_from_rhmean(
@@ -357,7 +355,7 @@ def actual_vapor_pressure_from_rhmean(
         >>> actual_vapor_pressure_from_rhmean(2.437, 68.0)
         1.657...
     """
-    return np.asarray(e_s) * np.asarray(rh_mean) / 100.0
+    return np.asarray(e_s) * np.asarray(rh_mean) / 100.0  # type: ignore[no-any-return]
 
 
 def actual_vapor_pressure_from_tmin(
@@ -464,4 +462,4 @@ def pm_eto(
     # denominator
     denominator = d + gam * (1.0 + 0.34 * u2)
 
-    return numerator / denominator
+    return numerator / denominator  # type: ignore[no-any-return]
