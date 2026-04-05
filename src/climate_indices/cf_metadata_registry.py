@@ -104,4 +104,29 @@ CF_METADATA: dict[str, CFAttributes] = {
             "U.S. Army Corps of Engineers."
         ),
     },
+    "eddi": {
+        "long_name": "Evaporative Demand Drought Index",
+        "units": "",
+        "references": "Hobbins et al. (2016), DOI: 10.1175/JHM-D-15-0121.1",
+    },
+    "pdsi": {
+        "long_name": "Palmer Drought Severity Index",
+        "units": "",
+        "references": "Palmer (1965), U.S. Department of Commerce, Weather Bureau",
+    },
+    "phdi": {
+        "long_name": "Palmer Hydrological Drought Index",
+        "units": "",
+        "references": "Palmer (1965), U.S. Department of Commerce, Weather Bureau",
+    },
+    "pmdi": {
+        "long_name": "Palmer Modified Drought Index",
+        "units": "",
+        "references": "Heddinghaus & Sabol (1991), Preprints, 7th Conf. Applied Climatology",
+    },
+    "z_index": {
+        "long_name": "Palmer Z-Index",
+        "units": "",
+        "references": "Palmer (1965), U.S. Department of Commerce, Weather Bureau",
+    },
 }

@@ -10,7 +10,6 @@ import pytest
 
 from climate_indices.cf_metadata_registry import CF_METADATA
 
-
 # expected registry keys
 EXPECTED_KEYS = {
     "spi",
@@ -20,6 +19,11 @@ EXPECTED_KEYS = {
     "percentage_of_normal",
     "pci",
     "pnp",
+    "eddi",
+    "pdsi",
+    "phdi",
+    "pmdi",
+    "z_index",
 }
 
 REQUIRED_FIELDS = {"long_name", "units", "references"}
@@ -33,8 +37,8 @@ class TestRegistryStructure:
         assert set(CF_METADATA.keys()) == EXPECTED_KEYS
 
     def test_registry_entry_count(self) -> None:
-        """Registry has exactly 7 entries."""
-        assert len(CF_METADATA) == 7
+        """Registry has exactly 12 entries."""
+        assert len(CF_METADATA) == 12
 
     @pytest.mark.parametrize("index_name", sorted(EXPECTED_KEYS))
     def test_entry_has_required_fields(self, index_name: str) -> None:
