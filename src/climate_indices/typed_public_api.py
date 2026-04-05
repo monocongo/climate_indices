@@ -27,15 +27,19 @@ import numpy.typing as npt
 import xarray as xr
 
 from climate_indices import indices
+from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.compute import Periodicity
 from climate_indices.indices import Distribution
-from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.xarray_adapter import (
     InputType,
     detect_input_type,
-    pet_hargreaves as _pet_hargreaves_impl,
-    pet_thornthwaite as _pet_thornthwaite_impl,
     xarray_adapter,
+)
+from climate_indices.xarray_adapter import (
+    pet_hargreaves as _pet_hargreaves_impl,
+)
+from climate_indices.xarray_adapter import (
+    pet_thornthwaite as _pet_thornthwaite_impl,
 )
 
 if TYPE_CHECKING:
@@ -54,6 +58,12 @@ _wrapped_spei = xarray_adapter(
     calculation_metadata_keys=["scale", "distribution", "calibration_year_initial", "calibration_year_final"],
     additional_input_names=["pet_mm"],
 )(indices.spei)
+
+_wrapped_eddi = xarray_adapter(
+    cf_metadata=CF_METADATA["eddi"],  # type: ignore[arg-type]
+    index_display_name="EDDI",
+    calculation_metadata_keys=["scale", "calibration_year_initial", "calibration_year_final"],
+)(indices.eddi)
 
 
 # SPI overloads
@@ -438,9 +448,7 @@ def pet_thornthwaite(
     Returns:
         PET values in mm/month as numpy.ndarray or xarray.DataArray.
     """
-    return _pet_thornthwaite_impl(
-        temperature, latitude, data_start_year=data_start_year, time_dim=time_dim
-    )
+    return _pet_thornthwaite_impl(temperature, latitude, data_start_year=data_start_year, time_dim=time_dim)
 
 
 # ETo Hargreaves overloads
@@ -497,6 +505,76 @@ def pet_hargreaves(
     Returns:
         PET values in mm/day as numpy.ndarray or xarray.DataArray.
     """
-    return _pet_hargreaves_impl(
-        daily_tmin_celsius, daily_tmax_celsius, latitude, time_dim=time_dim
-    )
+    return _pet_hargreaves_impl(daily_tmin_celsius, daily_tmax_celsius, latitude, time_dim=time_dim)
+
+
+# EDDI overloads
+@overload
+def eddi(
+    pet_values: npt.NDArray[np.float64],
+    scale: int,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: Periodicity,
+) -> npt.NDArray[np.float64]: ...
+
+
+@overload
+def eddi(
+    pet_values: xr.DataArray,
+    scale: int,
+    data_start_year: int | None = None,
+    calibration_year_initial: int | None = None,
+    calibration_year_final: int | None = None,
+    periodicity: Periodicity | None = None,
+) -> xr.DataArray: ...
+
+
+def eddi(
+    pet_values: npt.NDArray[np.float64] | xr.DataArray,
+    scale: int,
+    data_start_year: int | None = None,
+    calibration_year_initial: int | None = None,
+    calibration_year_final: int | None = None,
+    periodicity: Periodicity | None = None,
+) -> npt.NDArray[np.float64] | xr.DataArray:
+    """Compute EDDI (Evaporative Demand Drought Index).
+
+    Accepts both NumPy arrays and xarray DataArrays. Type checkers narrow the
+    return type based on the input type.
+
+    For NumPy inputs, all temporal parameters are required.
+    For xarray inputs, temporal parameters are optional and inferred from
+    coordinate attributes if not provided.
+
+    .. warning:: **Beta Feature (xarray path only)** — When called with an
+       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
+       The xarray interface may change in future minor releases. The NumPy array
+       interface is stable.
+
+    Args:
+        pet_values: 1-D numpy array or xarray DataArray of PET values.
+        scale: Number of time steps over which values should be scaled.
+        data_start_year: Initial year of the input dataset (required for NumPy,
+            optional for xarray).
+        calibration_year_initial: Initial year of calibration period (required
+            for NumPy, optional for xarray).
+        calibration_year_final: Final year of calibration period (required for
+            NumPy, optional for xarray).
+        periodicity: Time series periodicity ('monthly' or 'daily'). Required
+            for NumPy, optional for xarray.
+
+    Returns:
+        EDDI values as numpy.ndarray or xarray.DataArray (matches input type).
+    """
+    kwargs: dict[str, Any] = {"scale": scale}
+    if data_start_year is not None:
+        kwargs["data_start_year"] = data_start_year
+    if calibration_year_initial is not None:
+        kwargs["calibration_year_initial"] = calibration_year_initial
+    if calibration_year_final is not None:
+        kwargs["calibration_year_final"] = calibration_year_final
+    if periodicity is not None:
+        kwargs["periodicity"] = periodicity
+    return _wrapped_eddi(pet_values, **kwargs)

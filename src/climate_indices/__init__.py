@@ -2,6 +2,7 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
+from climate_indices.cf_metadata_registry import CF_METADATA, CFAttributes
 from climate_indices.exceptions import (
     BetaFeatureWarning,
     ClimateIndicesDeprecationWarning,
@@ -12,6 +13,7 @@ from climate_indices.exceptions import (
 )
 from climate_indices.logging_config import configure_logging
 from climate_indices.typed_public_api import (
+    eddi,
     pci,
     percentage_of_normal,
     pet_hargreaves,
@@ -19,7 +21,6 @@ from climate_indices.typed_public_api import (
     spei,
     spi,
 )
-from climate_indices.cf_metadata_registry import CF_METADATA, CFAttributes
 from climate_indices.xarray_adapter import (
     InputType,
     detect_input_type,
@@ -43,6 +44,7 @@ __all__ = [
     "InputAlignmentWarning",
     "InputType",
     "detect_input_type",
+    "eddi",
     "emit_deprecation_warning",
     "pci",
     "percentage_of_normal",
