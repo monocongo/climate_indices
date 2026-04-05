@@ -24,8 +24,10 @@ def test_pdsi(
     calibration_year_end_palmer,
     palmer_awcs,
 ):
-    # Run test for each climate division
+    # Run test for each climate division (skip non-numeric entries like provenance.json)
     for testpath in glob(os.path.join(os.path.split(__file__)[0], "fixture", "palmer", "*")):
+        if not os.path.basename(testpath).isdigit():
+            continue
         test_id = testpath[-4:]
         awc = palmer_awcs[test_id]
         precips = np.load(f"{testpath}/precips.npy")
