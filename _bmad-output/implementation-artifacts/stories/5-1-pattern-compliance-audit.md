@@ -1,6 +1,6 @@
 # Story 5.1: Pattern Compliance Audit
 
-Status: review
+Status: done
 
 ## Story
 
@@ -19,7 +19,7 @@ so that NFR-PATTERN-COVERAGE is satisfied before the v2.4.0 release.
    - **Structured exceptions:** 7/7 functions raise `InvalidArgumentError` (not bare `ValueError`)
    - **Property-based tests:** 7/7 indices have Hypothesis test classes
 3. `uv run pytest tests/test_pattern_compliance.py -v` exits 0 with 42/42 points (80 assertions)
-4. CI workflow `.github/workflows/ci.yml` includes compliance check step on every PR
+4. CI workflow `.github/workflows/unit-tests-workflow.yml` includes compliance check step on every PR (note: `ci.yml` does not exist; compliance step added to `unit-tests-workflow.yml` which is the active CI workflow)
 5. `CHANGELOG.md` updated to record NFR-PATTERN-COVERAGE achieved (42/42)
 
 ## Tasks / Subtasks
@@ -140,6 +140,8 @@ claude-sonnet-4-6 (us.anthropic.claude-sonnet-4-6)
 - tests/test_property_based.py (cherry-pick c594034 + AWC sensitivity fix)
 - tests/test_exceptions.py (updated expected_names for ConvergenceError, DataShapeError, PeriodicityError)
 - tests/test_xarray_adapter.py (cherry-pick e1e1981)
+- src/climate_indices/exceptions.py (added ConvergenceError, PeriodicityError, DataShapeError — pre-existing unstaged changes committed during audit)
+- tests/test_exceptions.py (updated expected __all__ set; comprehensive tests added in code review)
 - .github/workflows/unit-tests-workflow.yml (added compliance check step)
 - CHANGELOG.md (added NFR-PATTERN-COVERAGE entry)
-- _bmad-output/implementation-artifacts/sprint-status.yaml (updated to review)
+- _bmad-output/implementation-artifacts/sprint-status.yaml (updated to review → done)

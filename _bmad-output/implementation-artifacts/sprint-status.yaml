@@ -94,7 +94,7 @@ development_status:
 
   # Epic 5: Cross-Cutting Validation (3 stories) — IN PROGRESS
   epic-5: in-progress
-  5-1-pattern-compliance-audit: review
+  5-1-pattern-compliance-audit: done
   5-2-reference-validation-final-check: backlog
   5-3-final-v240-validation: backlog
   epic-5-retrospective: optional
