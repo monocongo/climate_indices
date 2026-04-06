@@ -3,12 +3,11 @@ title: 'v2.3.0 → v2.4.0 Release Sequencing Fix'
 slug: 'v23-v24-release-sequence-fix'
 created: '2026-04-06'
 status: 'in-progress'
-stepsCompleted: [1]
+stepsCompleted: [1, 2]
 tech_stack: ['git', 'GitHub Actions', 'PyPI OIDC trusted publishing', 'hatchling']
 files_to_modify:
-  - src/climate_indices/  # pr-614 branch only (CHANGELOG fix)
-  - CHANGELOG.md
-  - pyproject.toml
+  - CHANGELOG.md  # pr-614 branch: change [Unreleased] → [2.3.0] - 2026-02-11
+  - pyproject.toml  # pr-623 branch only: keep version = '2.4.0' during conflict resolution
 code_patterns: []
 test_patterns: []
 ---
@@ -76,9 +75,11 @@ Correct the release sequence end-to-end:
 | File | Purpose |
 | ---- | ------- |
 | `.github/workflows/release.yml` | Release pipeline — tag trigger, version validation, PyPI publish |
-| `pyproject.toml` | Version source of truth |
-| `CHANGELOG.md` | Release history — needs `[Unreleased]` fixed in pr-614 |
-| `docs/pypi_release_guide.md` | Step-by-step release guide (existing docs) |
+| `pyproject.toml` | Version source of truth (`version = 'X.Y.Z'` under `[project]`) |
+| `CHANGELOG.md` | Release history — header fix required in pr-614 branch |
+| `RELEASE_NOTES.md` | Full v2.3.0 release notes already written — reference for CHANGELOG content |
+| `docs/pypi_release_guide.md` | Step-by-step release guide (existing maintainer docs) |
+| `.worktrees/pr614-merge-fix/` | Existing worktree already checked out on `pr-614` branch |
 
 ### Technical Decisions
 
@@ -95,6 +96,16 @@ Correct the release sequence end-to-end:
   - Repository: `climate_indices`
   - Workflow filename: `release.yml`
   - Environment name: `release`
+- **Release workflow gate ordering**: The `release` job in `.github/workflows/release.yml`
+  requires `needs: [test, security-audit]` and `environment: release` (manual approval). The
+  version-consistency check (`TAG_VERSION == PYPROJECT_VERSION`) runs **inside** the `release`
+  job — meaning it runs AFTER the approval is granted. Run the local pre-check (Task 11a) before
+  pushing the tag to avoid burning an approval on a version mismatch.
+- **`RELEASE_NOTES.md` pre-exists**: The `pr-614` branch already contains a detailed
+  `RELEASE_NOTES.md` with all v2.3.0 content. The CHANGELOG fix in Task 2 is a one-line header
+  change only — no content authoring required.
+- **Existing worktree**: `.worktrees/pr614-merge-fix/` is already checked out on `pr-614`. Work
+  on the CHANGELOG fix there directly instead of creating a new checkout.
 
 ---
 
@@ -104,9 +115,10 @@ Correct the release sequence end-to-end:
 
 **Phase 1 — Fix PR #614**
 
-1. Check out the `pr-614` branch locally.
+1. The worktree `.worktrees/pr614-merge-fix/` is already checked out on `pr-614`. Work there
+   directly — no `git checkout` needed:
    ```
-   git checkout pr-614
+   cd .worktrees/pr614-merge-fix
    ```
 
 2. In `CHANGELOG.md`, change the header from:
@@ -158,31 +170,43 @@ Correct the release sequence end-to-end:
     both are verified** — pushing the tag with `[Unreleased]` in the CHANGELOG will publish
     incorrect release notes to PyPI.
 
-11. Push the release tag:
+11. Run local pre-tag version consistency check before pushing:
+    ```
+    python -c "
+    import tomllib
+    v = tomllib.load(open('pyproject.toml', 'rb'))['project']['version']
+    assert v == '2.3.0', f'Version mismatch: pyproject.toml has {v}'
+    print(f'OK: pyproject.toml version = {v}')
+    "
+    ```
+    Only proceed to Task 12 if this prints `OK`. This mirrors the CI check and avoids wasting
+    a manual approval on a mismatch (the CI validates version AFTER the approval gate).
+
+12. Push the release tag:
     ```
     git tag v2.3.0
     git push origin v2.3.0
     ```
 
-12. In GitHub Actions → the triggered `release` workflow — approve the publish step when prompted.
+13. In GitHub Actions → the triggered `release` workflow — approve the publish step when prompted.
 
-13. Verify on https://pypi.org/project/climate-indices/ that version `2.3.0` is now listed.
+14. Verify on https://pypi.org/project/climate-indices/ that version `2.3.0` is now listed.
 
 **Phase 4 — Resolve conflicts in PR #623 and release v2.4.0**
 
-14. Check out the `feature/v2.4.0-planning` branch:
+15. Check out the `feature/v2.4.0-planning` branch:
     ```
     git checkout feature/v2.4.0-planning
     ```
 
-15. Merge `master` into the branch to surface conflicts:
+16. Merge `master` into the branch to surface conflicts:
     ```
     git merge master
     ```
 
-16. Resolve `pyproject.toml` conflict: keep `version = '2.4.0'`.
+17. Resolve `pyproject.toml` conflict: keep `version = '2.4.0'`.
 
-17. Resolve `CHANGELOG.md` conflict: ensure the file contains BOTH release blocks in
+18. Resolve `CHANGELOG.md` conflict: ensure the file contains BOTH release blocks in
     newest-first order:
     ```
     ## [2.4.0] - 2026-04-05
@@ -195,41 +219,52 @@ Correct the release sequence end-to-end:
     ... (existing older content) ...
     ```
 
-18. Complete the merge commit:
+19. Complete the merge commit:
     ```
     git add pyproject.toml CHANGELOG.md
     git merge --continue
     ```
     (commit message: `chore: merge master post-v2.3.0 release into v2.4.0 branch`)
 
-19. Force-push the resolved branch:
+20. Force-push the resolved branch:
     ```
     git push --force-with-lease origin feature/v2.4.0-planning
     ```
 
-20. On GitHub, confirm PR #623 shows no conflicts and CI passes.
+21. On GitHub, confirm PR #623 shows no conflicts and CI passes.
 
-21. Approve and **merge commit** (not squash) PR #623 to `master` — preserves the full
+22. Approve and **merge commit** (not squash) PR #623 to `master` — preserves the full
     feature branch history for the 30+ commits that make up v2.4.0.
 
-22. Pull updated `master`:
+23. Pull updated `master`:
     ```
     git checkout master
     git pull origin master
     ```
 
-23. Confirm `pyproject.toml` shows `version = '2.4.0'` and `CHANGELOG.md` shows both v2.4.0 and
+24. Confirm `pyproject.toml` shows `version = '2.4.0'` and `CHANGELOG.md` shows both v2.4.0 and
     v2.3.0 entries.
 
-24. Push the release tag:
+25. Run local pre-tag version consistency check:
+    ```
+    python -c "
+    import tomllib
+    v = tomllib.load(open('pyproject.toml', 'rb'))['project']['version']
+    assert v == '2.4.0', f'Version mismatch: pyproject.toml has {v}'
+    print(f'OK: pyproject.toml version = {v}')
+    "
+    ```
+    Only proceed to Task 26 if this prints `OK`.
+
+26. Push the release tag:
     ```
     git tag v2.4.0
     git push origin v2.4.0
     ```
 
-25. Approve the publish step in GitHub Actions.
+27. Approve the publish step in GitHub Actions.
 
-26. Verify on https://pypi.org/project/climate-indices/ that version `2.4.0` is now the latest.
+28. Verify on https://pypi.org/project/climate-indices/ that version `2.4.0` is now the latest.
 
 ### Acceptance Criteria
 
