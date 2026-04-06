@@ -96,7 +96,7 @@ Present this content (mostly autonomous, clear and educational):
 TEA is a comprehensive test architecture framework that provides:
 
 - **9 Workflows:** Teach Me Testing, Framework, Test Design, ATDD, Automate, Test Review, Trace, NFR Assessment, CI
-- **34 Knowledge Fragments:** Distilled expertise on patterns, best practices, Playwright Utils
+- **35 Knowledge Fragments:** Distilled expertise on patterns, best practices, Playwright Utils
 - **Quality Standards:** Definition of Done with execution limits (no flaky tests, no hard waits, etc.)
 - **Risk-Based Testing:** P0-P3 matrix for prioritizing test coverage
 
@@ -175,7 +175,7 @@ Present this content:
 
 **4. Engagement models:** Choose how much TEA you need (Lite → Solo → Integrated → Enterprise → Brownfield)
 
-**5. Knowledge fragments:** 34 fragments for deep-dive topics when you need them
+**5. Knowledge fragments:** 35 fragments for deep-dive topics when you need them
 
 - Testing patterns (fixtures, network-first, data factories)
 - Playwright Utils (api-request, network-recorder, recurse)
@@ -308,7 +308,7 @@ duration: '30 min'
 
 ## Key Concepts Covered
 
-1. **TEA Framework:** 9 workflows + 34 knowledge fragments + quality standards
+1. **TEA Framework:** 9 workflows + 35 knowledge fragments + quality standards
 2. **Risk-Based Testing:** P0-P3 prioritization matrix
 3. **Quality Standards:** Definition of Done (no flaky tests, no hard waits, stateless, self-cleaning)
 4. **Engagement Models:** Lite, Solo, Integrated, Enterprise, Brownfield
@@ -366,7 +366,7 @@ duration: '30 min'
 **Session 2 or 3** - Review concepts or dive into architecture patterns
 
 {If experience_level == 'experienced':}
-**Session 7: Advanced Patterns** - Explore 34 knowledge fragments
+**Session 7: Advanced Patterns** - Explore 35 knowledge fragments
 
 ---
 

@@ -34,10 +34,17 @@ This workflow uses **step-file architecture** for disciplined execution:
 
 From `workflow.yaml`, resolve:
 
-- `config_source`, `output_folder`, `user_name`, `communication_language`, `document_output_language`, `date`
+- `config_source`, `test_artifacts`, `user_name`, `communication_language`, `document_output_language`, `date`
 - `test_dir`, `source_dir`, `coverage_target`, `standalone_mode`
 
 ### 2. First Step
 
 Load, read completely, and execute:
 `{project-root}/_bmad/tea/workflows/testarch/automate/steps-c/step-01-preflight-and-context.md`
+
+### 3. Resume Support
+
+If the user selects **Resume** mode, load, read completely, and execute:
+`{project-root}/_bmad/tea/workflows/testarch/automate/steps-c/step-01b-resume.md`
+
+This checks the output document for progress tracking frontmatter and routes to the next incomplete step.

@@ -15,6 +15,6 @@
   - step-02-apply-edit.md
 
   ## Outputs
-  - {output_folder}/automation-summary.md
+  - {test_artifacts}/automation-summary.md
 
 - Test files under {project-root}/tests

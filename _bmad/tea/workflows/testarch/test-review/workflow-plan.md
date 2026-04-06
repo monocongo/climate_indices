@@ -15,4 +15,4 @@
   - step-02-apply-edit.md
 
   ## Outputs
-  - {output_folder}/test-review.md
+  - {test_artifacts}/test-review.md

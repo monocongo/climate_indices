@@ -1,6 +1,7 @@
 ---
 name: 'step-01-preflight-and-context'
 description: 'Verify prerequisites and load story, framework, and knowledge base'
+outputFile: '{test_artifacts}/atdd-checklist-{story_id}.md'
 nextStepFile: './step-02-generation-mode.md'
 knowledgeIndex: '{project-root}/_bmad/tea/testarch/tea-index.csv'
 ---
@@ -64,7 +65,7 @@ If any are missing: **HALT** and notify the user.
 From `{config_source}`:
 
 - `tea_use_playwright_utils`
-- `tea_use_mcp_enhancements`
+- `tea_browser_automation`
 
 ---
 
@@ -85,6 +86,14 @@ Use `{knowledgeIndex}` to load:
 
 - `overview.md`, `api-request.md`, `network-recorder.md`, `auth-session.md`, `intercept-network-call.md`, `recurse.md`, `log.md`, `file-utils.md`, `network-error-monitor.md`, `fixtures-composition.md`
 
+**Playwright CLI (if tea_browser_automation is "cli" or "auto"):**
+
+- `playwright-cli.md`
+
+**MCP Patterns (if tea_browser_automation is "mcp" or "auto"):**
+
+- (existing MCP-related fragments, if any are added in future)
+
 **Traditional Patterns (if utils disabled):**
 
 - `fixture-architecture.md`
@@ -95,6 +104,30 @@ Use `{knowledgeIndex}` to load:
 ## 5. Confirm Inputs
 
 Summarize loaded inputs and confirm with the user. Then proceed.
+
+---
+
+## 6. Save Progress
+
+**Save this step's accumulated work to `{outputFile}`.**
+
+- **If `{outputFile}` does not exist** (first save), create it with YAML frontmatter:
+
+  ```yaml
+  ---
+  stepsCompleted: ['step-01-preflight-and-context']
+  lastStep: 'step-01-preflight-and-context'
+  lastSaved: '{date}'
+  ---
+  ```
+
+  Then write this step's output below the frontmatter.
+
+- **If `{outputFile}` already exists**, update:
+  - Add `'step-01-preflight-and-context'` to `stepsCompleted` array (only if not already present)
+  - Set `lastStep: 'step-01-preflight-and-context'`
+  - Set `lastSaved: '{date}'`
+  - Append this step's output to the appropriate section.
 
 Load next step: `{nextStepFile}`
 

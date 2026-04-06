@@ -3,6 +3,7 @@ name: 'step-01-load-context'
 description: 'Load knowledge base, determine scope, and gather context'
 nextStepFile: './step-02-discover-tests.md'
 knowledgeIndex: '{project-root}/_bmad/tea/testarch/tea-index.csv'
+outputFile: '{test_artifacts}/test-review.md'
 ---
 
 # Step 1: Load Context & Knowledge Base
@@ -51,7 +52,7 @@ If unclear, ask the user.
 
 From `{knowledgeIndex}` load:
 
-Read `{config_source}` and check `tea_use_playwright_utils` to select the correct fragment set.
+Read `{config_source}` and check `tea_use_playwright_utils` and `tea_browser_automation` to select the correct fragment set.
 
 **Core:**
 
@@ -75,6 +76,14 @@ Read `{config_source}` and check `tea_use_playwright_utils` to select the correc
 - `component-tdd.md`
 - `ci-burn-in.md`
 
+**Playwright CLI (if `tea_browser_automation` is "cli" or "auto"):**
+
+- `playwright-cli.md`
+
+**MCP Patterns (if `tea_browser_automation` is "mcp" or "auto"):**
+
+- (existing MCP-related fragments, if any are added in future)
+
 ---
 
 ## 3. Gather Context Artifacts
@@ -86,6 +95,30 @@ If available:
 - Framework config
 
 Summarize what was found.
+
+---
+
+## 4. Save Progress
+
+**Save this step's accumulated work to `{outputFile}`.**
+
+- **If `{outputFile}` does not exist** (first save), create it using the workflow template (if available) with YAML frontmatter:
+
+  ```yaml
+  ---
+  stepsCompleted: ['step-01-load-context']
+  lastStep: 'step-01-load-context'
+  lastSaved: '{date}'
+  ---
+  ```
+
+  Then write this step's output below the frontmatter.
+
+- **If `{outputFile}` already exists**, update:
+  - Add `'step-01-load-context'` to `stepsCompleted` array (only if not already present)
+  - Set `lastStep: 'step-01-load-context'`
+  - Set `lastSaved: '{date}'`
+  - Append this step's output to the appropriate section of the document.
 
 Load next step: `{nextStepFile}`
 

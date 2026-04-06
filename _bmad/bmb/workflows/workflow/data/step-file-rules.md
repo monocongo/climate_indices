@@ -1,6 +1,6 @@
 # Step File Rules
 
-**Purpose:** Quick reference for step file structure and compliance. See linked data files for detailed standards.
+**Purpose:** Quick reference for step structure and compliance. See linked data files for detailed standards.
 
 ---
 
@@ -11,7 +11,7 @@
 | Recommended | < 200 lines |
 | Absolute Maximum | 250 lines |
 
-**If exceeded:** Split into multiple steps or extract content to `/data/` files.
+**If exceeded:** Split into multiple steps or extract to `/data/` files.
 
 ---
 
@@ -23,7 +23,7 @@ name: 'step-[N]-[name]'
 description: '[what this step does]'
 
 # File References (ONLY variables used in this step!)
-[file references in {variable} format]
+[file references in {variable} format
 ---
 
 # Step [N]: [Name]
@@ -33,26 +33,26 @@ description: '[what this step does]'
 
 ## MANDATORY EXECUTION RULES (READ FIRST):
 ### Universal Rules:
-- 🛑 NEVER generate content without user input
-- 📖 CRITICAL: Read the complete step file before taking any action
-- 🔄 CRITICAL: When loading next step with 'C', ensure entire file is read
-- 📋 YOU ARE A FACILITATOR, not a content generator
+- NEVER generate content without user input
+- CRITICAL: Read complete step file before taking action
+- CRITICAL: When loading next step with 'C', ensure entire file is read
+- YOU ARE A FACILITATOR, not a content generator
 
 ### Role Reinforcement:
-- ✅ You are a [specific role]
-- ✅ We engage in collaborative dialogue, not command-response
-- ✅ You bring [expertise], user brings [theirs]
-- ✅ Together we produce something better
+- You are a [specific role]
+- We engage in collaborative dialogue, not command-response
+- You bring [expertise], user brings [theirs]
+- Together we produce something better
 
 ### Step-Specific Rules:
-- 🎯 Focus only on [specific task]
-- 🚫 FORBIDDEN to [prohibited action]
-- 💬 Approach: [how to engage]
+- Focus only on [specific task]
+- FORBIDDEN to [prohibited action]
+- Approach: [how to engage]
 
 ## EXECUTION PROTOCOLS:
-- 🎯 [Protocol 1]
-- 💾 [Protocol 2 - save/update]
-- 📖 [Protocol 3 - tracking]
+- [Protocol 1]
+- [Protocol 2 - save/update]
+- [Protocol 3 - tracking]
 
 ## CONTEXT BOUNDARIES:
 - Available context: [what's available]
@@ -67,10 +67,10 @@ description: '[what this step does]'
 ### N. Present MENU OPTIONS
 [Menu section - see menu-handling-standards.md]
 
-## 🚨 SYSTEM SUCCESS/FAILURE METRICS:
-### ✅ SUCCESS:
+## SYSTEM SUCCESS/FAILURE METRICS:
+### SUCCESS:
 [Success criteria]
-### ❌ SYSTEM FAILURE:
+### SYSTEM FAILURE:
 [Failure criteria]
 **Master Rule:** Skipping steps is FORBIDDEN.
 ```
@@ -80,55 +80,55 @@ description: '[what this step does]'
 ## Critical Rules (Quick Reference)
 
 ### Frontmatter
-- ✅ Only variables USED in the step body
-- ✅ All file references use `{variable}` format
-- ✅ Relative paths within workflow folder
+- Only variables USED in step body
+- All file references use `{variable}` format
+- Relative paths within workflow folder
 - See: `frontmatter-standards.md`
 
 ### Menus
-- ✅ Handler section MUST follow display
-- ✅ "Halt and wait" in execution rules
-- ✅ A/P options only when appropriate
-- ✅ Non-C options redisplay menu
+- Handler section MUST follow display
+- "Halt and wait" in execution rules
+- A/P options only when appropriate
+- Non-C options redisplay menu
 - See: `menu-handling-standards.md`
 
 ### Progressive Disclosure
-- ✅ Only load next step when user selects 'C'
-- ✅ Read entire step file before execution
-- ✅ Don't create mental todos from future steps
+- Only load next step when user selects 'C'
+- Read entire step file before execution
+- Don't create mental todos from future steps
 
 ### Continuable Workflows
-- ✅ Append step number to `stepsCompleted`
-- ✅ Don't hardcode full array
+- Append step number to `stepsCompleted`
+- Don't hardcode full array
 - See: `workflow-type-criteria.md`
 
 ---
 
 ## Data Files Reference
 
-| File                    | Purpose                                       |
-| ----------------------- | --------------------------------------------- |
-| `frontmatter-standards.md` | Variables, paths, frontmatter rules        |
-| `menu-handling-standards.md` | Menu patterns, handler requirements        |
-| `output-format-standards.md` | Document output, template types           |
+| File | Purpose |
+| --- | --- |
+| `frontmatter-standards.md` | Variables, paths, frontmatter rules |
+| `menu-handling-standards.md` | Menu patterns, handler requirements |
+| `output-format-standards.md` | Document output, template types |
 | `workflow-type-criteria.md` | Continuable, module, tri-modal decisions |
 | `step-type-patterns.md` | Templates for init/middle/final/branch steps |
-| `trimodal-workflow-structure.md` | Create/Edit/Validate folder structure   |
+| `trimodal-workflow-structure.md` | Create/Edit/Validate folder structure |
 
 ---
 
 ## Step Type Reference
 
-| Step Type           | Template/Reference                          |
-| ------------------- | ------------------------------------------- |
-| Init (non-continuable) | Auto-proceed, no continuation logic      |
-| Init (continuable)  | `step-01-init-continuable-template.md`      |
-| Continuation (01b)  | `step-1b-template.md`                        |
-| Middle (standard)   | A/P/C menu, collaborative content           |
-| Middle (simple)     | C only menu, no A/P                         |
-| Branch/Conditional  | Custom menu options, routing to different steps |
-| Validation sequence | Auto-proceed through checks                 |
-| Final               | No next step, completion message            |
+| Step Type | Template/Reference |
+| --- | --- |
+| Init (non-continuable) | Auto-proceed, no continuation logic |
+| Init (continuable) | `step-01-init-continuable-template.md` |
+| Continuation (01b) | `step-1b-template.md` |
+| Middle (standard) | A/P/C menu, collaborative content |
+| Middle (simple) | C only menu, no A/P |
+| Branch/Conditional | Custom menu options, routing to different steps |
+| Validation sequence | Auto-proceed through checks |
+| Final | No next step, completion message |
 
 See: `step-type-patterns.md`
 
@@ -196,16 +196,16 @@ Display: "**Select:** [A] [action A] [P] [action P] [C] Continue"
 
 ## Common Violations
 
-| ❌ Violation                           | ✅ Fix                                         |
-| ------------------------------------- | ---------------------------------------------- |
-| Unused variable in frontmatter        | Remove unused variables                        |
-| Hardcoded file path                   | Use `{variable}` format                        |
-| A/P menu in step 1                    | Remove A/P (inappropriate for init)            |
-| Missing handler section               | Add handler after menu display                 |
-| No "halt and wait" instruction        | Add to EXECUTION RULES                         |
-| Hardcoded `stepsCompleted: [1,2,3]`   | Append: "update stepsCompleted to add this step" |
-| File > 250 lines                      | Split into multiple steps or extract to /data/ |
-| Absolute path for same-folder ref     | Use relative path or `{workflow_path}`         |
+| Violation | Fix |
+| --- | --- |
+| Unused variable in frontmatter | Remove unused variables |
+| Hardcoded file path | Use `{variable}` format |
+| A/P menu in step 1 | Remove A/P (inappropriate for init) |
+| Missing handler section | Add handler after menu display |
+| No "halt and wait" instruction | Add to EXECUTION RULES |
+| Hardcoded `stepsCompleted: [1,2,3]` | Append: "update stepsCompleted to add this step" |
+| File > 250 lines | Split into multiple steps or extract to /data/ |
+| Absolute path for same-folder ref | Use relative path or `{workflow_path}` |
 
 ---
 

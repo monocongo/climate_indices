@@ -1,6 +1,7 @@
 ---
 name: 'step-05-validate-and-complete'
 description: 'Validate ATDD outputs and summarize'
+outputFile: '{test_artifacts}/atdd-checklist-{story_id}.md'
 ---
 
 # Step 5: Validate & Complete
@@ -42,6 +43,8 @@ Use `checklist.md` to validate:
 - Test files created correctly
 - Checklist matches acceptance criteria
 - Tests are designed to fail before implementation
+- [ ] CLI sessions cleaned up (no orphaned browsers)
+- [ ] Temp artifacts stored in `{test_artifacts}/` not random locations
 
 Fix any gaps before completion.
 
@@ -55,6 +58,30 @@ Report:
 - Checklist output path
 - Key risks or assumptions
 - Next recommended workflow (e.g., implementation or `automate`)
+
+---
+
+## 3. Save Progress
+
+**Save this step's accumulated work to `{outputFile}`.**
+
+- **If `{outputFile}` does not exist** (first save), create it with YAML frontmatter:
+
+  ```yaml
+  ---
+  stepsCompleted: ['step-05-validate-and-complete']
+  lastStep: 'step-05-validate-and-complete'
+  lastSaved: '{date}'
+  ---
+  ```
+
+  Then write this step's output below the frontmatter.
+
+- **If `{outputFile}` already exists**, update:
+  - Add `'step-05-validate-and-complete'` to `stepsCompleted` array (only if not already present)
+  - Set `lastStep: 'step-05-validate-and-complete'`
+  - Set `lastSaved: '{date}'`
+  - Append this step's output to the appropriate section.
 
 ## 🚨 SYSTEM SUCCESS/FAILURE METRICS:
 

@@ -1,6 +1,7 @@
 ---
 name: 'step-04-validate-and-summary'
 description: 'Validate pipeline and summarize'
+outputFile: '{test_artifacts}/ci-pipeline-progress.md'
 ---
 
 # Step 4: Validate & Summarize
@@ -54,6 +55,30 @@ Report:
 - Key stages enabled
 - Artifacts and notifications
 - Next steps (set secrets, run pipeline)
+
+---
+
+### 3. Save Progress
+
+**Save this step's accumulated work to `{outputFile}`.**
+
+- **If `{outputFile}` does not exist** (first save), create it with YAML frontmatter:
+
+  ```yaml
+  ---
+  stepsCompleted: ['step-04-validate-and-summary']
+  lastStep: 'step-04-validate-and-summary'
+  lastSaved: '{date}'
+  ---
+  ```
+
+  Then write this step's output below the frontmatter.
+
+- **If `{outputFile}` already exists**, update:
+  - Add `'step-04-validate-and-summary'` to `stepsCompleted` array (only if not already present)
+  - Set `lastStep: 'step-04-validate-and-summary'`
+  - Set `lastSaved: '{date}'`
+  - Append this step's output to the appropriate section of the document.
 
 ## 🚨 SYSTEM SUCCESS/FAILURE METRICS:
 

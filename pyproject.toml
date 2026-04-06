@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "climate_indices"
-version = '2.3.0'
+version = '2.4.0'
 description = 'Reference implementations of various climate indices typically used for drought monitoring'
 authors = [{name = "James Adams", email = "monocongo@gmail.com"}]
 readme = 'README.md'
@@ -148,6 +148,7 @@ filterwarnings = [
 markers = [
     "benchmark: performance benchmark tests (deselect with '-m \"not benchmark\"')",
     "slow: slow tests that may be skipped in CI (deselect with '-m \"not slow\"')",
+    "release: pre-release integrity checks — run before pushing a release tag with '-m release'",
 ]
 addopts = "-m 'not benchmark'"
 

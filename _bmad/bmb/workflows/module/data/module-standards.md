@@ -10,7 +10,6 @@ A **BMAD module** is a self-contained package of functionality that extends the 
 - **Agents** — AI personas with specialized expertise and menu-driven commands
 - **Workflows** — Structured processes for accomplishing complex tasks
 - **Configuration** — module.yaml for user customization
-- **Installation** — Optional installer.js for setup logic
 
 ---
 
@@ -143,12 +142,6 @@ Affects the entire BMAD framework and all modules.
 ├── workflows/                  # Workflow definitions (if any)
 │   └── {workflow-name}/
 │       └── workflow.md
-├── _module-installer/          # Installation logic (optional)
-│   ├── installer.js
-│   └── platform-specifics/
-│       ├── claude-code.js
-│       ├── windsurf.js
-│       └── ...
 └── {other folders}             # Tasks, templates, data as needed
 ```
 
@@ -209,16 +202,6 @@ Workflows are structured processes with:
 
 ---
 
-### _module-installer/
-
-Optional installation logic for:
-- Creating directories
-- Copying assets
-- IDE-specific configuration
-- Platform-specific setup
-
-See: `module-installer-standards.md` for patterns.
-
 ---
 
 ## Module Type Decision Tree
@@ -264,7 +247,7 @@ START: Creating a module
 Modules can depend on:
 - **Core BMAD** — Always available
 - **Other modules** — Specify in module.yaml as `dependencies:`
-- **External tools** — Document in README, handle in installer
+- **External tools** — Document in README
 
 ---
 
@@ -277,4 +260,4 @@ Modules can depend on:
 | What's required? | module.yaml, README.md |
 | Where do modules live? | `src/modules/{code}/` |
 | How do agents work? | Menu triggers → workflow/exec |
-| How does installation work? | module.yaml prompts + optional installer.js |
+| How does installation work? | module.yaml prompts |

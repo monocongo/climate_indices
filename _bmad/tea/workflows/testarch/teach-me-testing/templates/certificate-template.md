@@ -54,7 +54,7 @@ average_score: { { average_score } }
 - ✅ **Test Design:** Risk assessment, coverage planning, P0-P3 prioritization
 - ✅ **Test Development:** ATDD red-green approach, test automation
 - ✅ **Quality Assurance:** Test review, traceability, NFR assessment
-- ✅ **Advanced Techniques:** 34 knowledge fragments explored
+- ✅ **Advanced Techniques:** 35 knowledge fragments explored
 
 ---
 

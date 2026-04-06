@@ -1,3 +1,9 @@
+---
+stepsCompleted: []
+lastStep: ''
+lastSaved: ''
+---
+
 # Test Design for QA: {Feature Name}
 
 **Purpose:** Test execution recipe for QA team. Defines what to test, how to test it, and what QA needs from other teams.
@@ -27,6 +33,18 @@
 - P2 tests: ~{N} (edge cases, regression)
 - P3 tests: ~{N} (exploratory, benchmarks)
 - **Total**: ~{N} tests (~{X}-{Y} weeks with 1 QA)
+
+---
+
+## Not in Scope
+
+**Components or systems explicitly excluded from this test plan:**
+
+| Item       | Reasoning                   | Mitigation                                                                      |
+| ---------- | --------------------------- | ------------------------------------------------------------------------------- |
+| **{Item}** | {Why excluded from testing} | {How risk is mitigated, e.g., "validated manually", "covered by upstream team"} |
+
+**Note:** Items listed here have been reviewed and accepted as out-of-scope by QA, Dev, and PM.
 
 ---
 
@@ -97,6 +115,43 @@ test('example test @p0', async ({ apiRequest }) => {
 | Risk ID | Category | Description         | Score   | QA Test Coverage             |
 | ------- | -------- | ------------------- | ------- | ---------------------------- |
 | {R-ID}  | {CAT}    | {Brief description} | {Score} | {How QA validates this risk} |
+
+---
+
+## Entry Criteria
+
+**QA testing cannot begin until ALL of the following are met:**
+
+- [ ] All requirements and assumptions agreed upon by QA, Dev, PM
+- [ ] Test environments provisioned and accessible
+- [ ] Test data factories ready or seed data available
+- [ ] Sprint 0 blockers resolved (see Dependencies section)
+- [ ] Feature deployed to test environment
+- [ ] {Additional project-specific entry criteria}
+
+## Exit Criteria
+
+**Testing phase is complete when ALL of the following are met:**
+
+- [ ] All P0 tests passing
+- [ ] All P1 tests passing (or failures triaged and accepted)
+- [ ] No open high-priority / high-severity bugs
+- [ ] Test coverage agreed as sufficient by QA Lead and Dev Lead
+- [ ] Performance baselines met (if applicable)
+- [ ] {Additional project-specific exit criteria}
+
+---
+
+## Project Team (Optional)
+
+**Include only if roles/names are known or responsibility mapping is needed; otherwise omit.**
+
+| Name   | Role      | Testing Responsibilities                                      |
+| ------ | --------- | ------------------------------------------------------------- |
+| {Name} | QA Lead   | Test strategy, E2E/API test implementation, test review       |
+| {Name} | Dev Lead  | Unit tests, integration test support, testability hooks       |
+| {Name} | PM        | Requirements clarification, acceptance criteria, UAT sign-off |
+| {Name} | Architect | Testability review, NFR guidance, environment provisioning    |
 
 ---
 
@@ -218,6 +273,49 @@ test('example test @p0', async ({ apiRequest }) => {
 **Dependencies from other teams:**
 
 - See "Dependencies & Test Blockers" section for what QA needs from Backend, DevOps, Data Eng
+
+---
+
+## Sprint Planning Handoff (Optional)
+
+**Include only if this test design produces implementation tasks that must be scheduled.**
+
+**Use this to inform sprint planning; if no dedicated QA, assign to Dev owners.**
+
+| Work Item   | Owner        | Target Sprint (Optional) | Dependencies/Notes |
+| ----------- | ------------ | ------------------------ | ------------------ |
+| {Work item} | {QA/Dev/etc} | {Sprint or date}         | {Notes}            |
+| {Work item} | {QA/Dev/etc} | {Sprint or date}         | {Notes}            |
+
+---
+
+## Tooling & Access
+
+**Include only if non-standard tools or access requests are required.**
+
+| Tool or Service   | Purpose   | Access Required | Status            |
+| ----------------- | --------- | --------------- | ----------------- |
+| {Tool or Service} | {Purpose} | {Access needed} | {Ready / Pending} |
+| {Tool or Service} | {Purpose} | {Access needed} | {Ready / Pending} |
+
+**Access requests needed (if any):**
+
+- [ ] {Access to request}
+
+---
+
+## Interworking & Regression
+
+**Services and components impacted by this feature:**
+
+| Service/Component | Impact              | Regression Scope                | Validation Steps              |
+| ----------------- | ------------------- | ------------------------------- | ----------------------------- |
+| **{Service}**     | {How it's affected} | {What existing tests must pass} | {How to verify no regression} |
+
+**Regression test strategy:**
+
+- {Describe which existing test suites must pass before release}
+- {Note any cross-team coordination needed for regression validation}
 
 ---
 

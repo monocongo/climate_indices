@@ -1,14 +1,17 @@
-"""Typed public API for SPI and SPEI with NumPy/xarray overloads.
+"""Typed public API for climate indices with NumPy/xarray overloads.
 
 This module provides statically-typed wrappers around the xarray-adapted index
 functions. The @overload signatures enable IDE autocomplete and mypy --strict
 correctness by narrowing return types based on input types:
 
-- spi(np.ndarray, ...) -> np.ndarray
-- spi(xr.DataArray, ...) -> xr.DataArray
+- spi(np.ndarray, ...) -> np.ndarray      (and likewise for spei, eddi, pnp, pci)
+- spi(xr.DataArray, ...) -> xr.DataArray  (and pet_thornthwaite, pet_hargreaves)
 
 Design: Pre-build decorated functions at module level for performance. The public
 functions filter None kwargs and delegate to the pre-built wrapped functions.
+
+PCI uses a manual wrapper instead of @xarray_adapter because its output shape
+(scalar) differs from input shape (365/366 daily values).
 
 .. warning:: **Beta Feature (xarray path)** — The xarray DataArray overloads in
    this module are beta. The NumPy overloads are stable.
@@ -16,19 +19,28 @@ functions filter None kwargs and delegate to the pre-built wrapped functions.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, overload
+import datetime
+from typing import Any, overload
 
 import numpy as np
 import numpy.typing as npt
 import xarray as xr
 
 from climate_indices import indices
+from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.compute import Periodicity
 from climate_indices.indices import Distribution
-from climate_indices.xarray_adapter import CF_METADATA, xarray_adapter
-
-if TYPE_CHECKING:
-    pass
+from climate_indices.xarray_adapter import (
+    InputType,
+    detect_input_type,
+    xarray_adapter,
+)
+from climate_indices.xarray_adapter import (
+    pet_hargreaves as _pet_hargreaves_impl,
+)
+from climate_indices.xarray_adapter import (
+    pet_thornthwaite as _pet_thornthwaite_impl,
+)
 
 # pre-build decorated functions at module level for performance
 _wrapped_spi = xarray_adapter(
@@ -43,6 +55,12 @@ _wrapped_spei = xarray_adapter(
     calculation_metadata_keys=["scale", "distribution", "calibration_year_initial", "calibration_year_final"],
     additional_input_names=["pet_mm"],
 )(indices.spei)
+
+_wrapped_eddi = xarray_adapter(
+    cf_metadata=CF_METADATA["eddi"],  # type: ignore[arg-type]
+    index_display_name="EDDI",
+    calculation_metadata_keys=["scale", "calibration_year_initial", "calibration_year_final"],
+)(indices.eddi)
 
 
 # SPI overloads
@@ -223,3 +241,337 @@ def spei(
         kwargs["calibration_year_final"] = calibration_year_final
 
     return _wrapped_spei(precips_mm, pet_mm, **kwargs)
+
+
+# Percentage of Normal (PNP) overloads
+_wrapped_percentage_of_normal = xarray_adapter(
+    cf_metadata=CF_METADATA["percentage_of_normal"],  # type: ignore[arg-type]
+    index_display_name="PNP",
+    calculation_metadata_keys=["scale", "calibration_start_year", "calibration_end_year"],
+)(indices.percentage_of_normal)
+
+
+@overload
+def percentage_of_normal(
+    values: npt.NDArray[np.float64],
+    scale: int,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
+) -> npt.NDArray[np.float64]: ...
+
+
+@overload
+def percentage_of_normal(
+    values: xr.DataArray,
+    scale: int,
+    data_start_year: int | None = None,
+    calibration_start_year: int | None = None,
+    calibration_end_year: int | None = None,
+    periodicity: Periodicity | None = None,
+) -> xr.DataArray: ...
+
+
+def percentage_of_normal(
+    values: npt.NDArray[np.float64] | xr.DataArray,
+    scale: int,
+    data_start_year: int | None = None,
+    calibration_start_year: int | None = None,
+    calibration_end_year: int | None = None,
+    periodicity: Periodicity | None = None,
+) -> npt.NDArray[np.float64] | xr.DataArray:
+    """Compute Percentage of Normal Precipitation (PNP).
+
+    This function accepts both NumPy arrays and xarray DataArrays. Type checkers
+    will narrow the return type based on the input type.
+
+    For NumPy inputs, all temporal parameters are required.
+    For xarray inputs, temporal parameters are optional and will be inferred from
+    coordinate attributes if not provided.
+
+    .. warning:: **Beta Feature (xarray path only)** -- When called with an
+       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
+       The xarray interface (parameter inference, metadata handling, coordinate
+       preservation) may change in future minor releases. The NumPy array interface
+       is stable.
+
+    Args:
+        values: 1-D numpy array or xarray DataArray of precipitation values.
+        scale: Number of time steps over which the normal is computed.
+        data_start_year: Initial year of the input dataset (required for NumPy,
+            optional for xarray).
+        calibration_start_year: Initial year of calibration period (required
+            for NumPy, optional for xarray).
+        calibration_end_year: Final year of calibration period (required for
+            NumPy, optional for xarray).
+        periodicity: Time series periodicity ('monthly' or 'daily'). Required
+            for NumPy, optional for xarray.
+
+    Returns:
+        PNP values as numpy.ndarray or xarray.DataArray (matches input type).
+    """
+    # filter out None kwargs before passing to wrapped function
+    kwargs: dict[str, Any] = {
+        "scale": scale,
+    }
+    if data_start_year is not None:
+        kwargs["data_start_year"] = data_start_year
+    if calibration_start_year is not None:
+        kwargs["calibration_start_year"] = calibration_start_year
+    if calibration_end_year is not None:
+        kwargs["calibration_end_year"] = calibration_end_year
+    if periodicity is not None:
+        kwargs["periodicity"] = periodicity
+
+    return _wrapped_percentage_of_normal(values, **kwargs)
+
+
+# PCI (Precipitation Concentration Index) overloads
+# PCI uses a manual wrapper because output shape (scalar) differs from input (365/366 days)
+@overload
+def pci(
+    rainfall_mm: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]: ...
+
+
+@overload
+def pci(
+    rainfall_mm: xr.DataArray,
+) -> xr.DataArray: ...
+
+
+def pci(
+    rainfall_mm: npt.NDArray[np.float64] | xr.DataArray,
+) -> npt.NDArray[np.float64] | xr.DataArray:
+    """Compute Precipitation Concentration Index (PCI).
+
+    This function accepts both NumPy arrays and xarray DataArrays. Type checkers
+    will narrow the return type based on the input type.
+
+    PCI requires exactly 365 or 366 daily rainfall values representing a single
+    year. The output is a single scalar value.
+
+    .. warning:: **Beta Feature (xarray path only)** -- When called with an
+       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
+       The xarray interface (metadata handling) may change in future minor
+       releases. The NumPy array interface is stable.
+
+    Args:
+        rainfall_mm: 1-D array or DataArray of daily rainfall values in mm.
+            Must contain exactly 365 or 366 values (one full year).
+
+    Returns:
+        PCI value as numpy.ndarray (shape (1,)) or scalar xarray.DataArray.
+    """
+    input_type = detect_input_type(rainfall_mm)
+
+    if input_type == InputType.NUMPY:
+        assert isinstance(rainfall_mm, np.ndarray)
+        return indices.pci(rainfall_mm)
+
+    # xarray path: extract values, compute, rewrap with CF metadata
+    assert isinstance(rainfall_mm, xr.DataArray)
+    result_values = indices.pci(rainfall_mm.values)
+
+    # build CF metadata attributes for the scalar output
+    cf_meta = CF_METADATA["pci"]
+    from climate_indices import __version__
+
+    output_attrs: dict[str, Any] = {}
+    output_attrs.update(cf_meta)
+    output_attrs["climate_indices_version"] = __version__
+    timestamp = datetime.datetime.now(tz=datetime.timezone.utc).isoformat(timespec="seconds")
+    output_attrs["history"] = f"{timestamp} PCI computed by climate_indices {__version__}"
+
+    # PCI output is a scalar (shape (1,)), return as 0-D DataArray
+    return xr.DataArray(
+        result_values[0],
+        attrs=output_attrs,
+    )
+
+
+# ETo Thornthwaite overloads
+@overload
+def pet_thornthwaite(
+    temperature: npt.NDArray[np.float64],
+    latitude: float,
+    data_start_year: int,
+    time_dim: str = "time",
+) -> npt.NDArray[np.float64]: ...
+
+
+@overload
+def pet_thornthwaite(
+    temperature: xr.DataArray,
+    latitude: float | np.floating | xr.DataArray,
+    data_start_year: int | None = None,
+    time_dim: str = "time",
+) -> xr.DataArray: ...
+
+
+def pet_thornthwaite(
+    temperature: npt.NDArray[np.float64] | xr.DataArray,
+    latitude: float | np.floating | xr.DataArray,
+    data_start_year: int | None = None,
+    time_dim: str = "time",
+) -> npt.NDArray[np.float64] | xr.DataArray:
+    """Compute potential evapotranspiration using Thornthwaite method.
+
+    This function accepts both NumPy arrays and xarray DataArrays. Type checkers
+    will narrow the return type based on the input type.
+
+    For NumPy inputs, ``data_start_year`` and scalar ``latitude`` are required.
+    For xarray inputs, ``data_start_year`` is inferred from the time coordinate
+    if not provided, and ``latitude`` may be a scalar or DataArray for spatial
+    broadcasting.
+
+    .. warning:: **Beta Feature (xarray path only)** -- When called with an
+       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
+       The xarray interface may change in future minor releases. The NumPy array
+       interface is stable.
+
+    Args:
+        temperature: Monthly average temperature values in degrees Celsius.
+            For numpy: 1-D array of monthly temperatures.
+            For xarray: DataArray with time dimension (may have spatial dims).
+        latitude: Latitude in degrees north (range: -90 to 90).
+            For numpy: scalar float.
+            For xarray: scalar float or DataArray(lat,) for spatial broadcasting.
+        data_start_year: Initial year of the input dataset (required for NumPy,
+            optional for xarray where it is inferred from the time coordinate).
+        time_dim: Name of the time dimension in the input DataArray.
+
+    Returns:
+        PET values in mm/month as numpy.ndarray or xarray.DataArray.
+    """
+    return _pet_thornthwaite_impl(temperature, latitude, data_start_year=data_start_year, time_dim=time_dim)
+
+
+# ETo Hargreaves overloads
+@overload
+def pet_hargreaves(
+    daily_tmin_celsius: npt.NDArray[np.float64],
+    daily_tmax_celsius: npt.NDArray[np.float64],
+    latitude: float,
+    time_dim: str = "time",
+) -> npt.NDArray[np.float64]: ...
+
+
+@overload
+def pet_hargreaves(
+    daily_tmin_celsius: xr.DataArray,
+    daily_tmax_celsius: xr.DataArray,
+    latitude: float | np.floating | xr.DataArray,
+    time_dim: str = "time",
+) -> xr.DataArray: ...
+
+
+def pet_hargreaves(
+    daily_tmin_celsius: npt.NDArray[np.float64] | xr.DataArray,
+    daily_tmax_celsius: npt.NDArray[np.float64] | xr.DataArray,
+    latitude: float | np.floating | xr.DataArray,
+    time_dim: str = "time",
+) -> npt.NDArray[np.float64] | xr.DataArray:
+    """Compute potential evapotranspiration using Hargreaves method.
+
+    This function accepts both NumPy arrays and xarray DataArrays. Type checkers
+    will narrow the return type based on the input type.
+
+    For NumPy inputs, scalar ``latitude`` is required.
+    For xarray inputs, ``latitude`` may be a scalar or DataArray for spatial
+    broadcasting.
+
+    .. warning:: **Beta Feature (xarray path only)** -- When called with an
+       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
+       The xarray interface may change in future minor releases. The NumPy array
+       interface is stable.
+
+    Args:
+        daily_tmin_celsius: Daily minimum temperature values in degrees Celsius.
+            For numpy: 1-D array of daily temperatures.
+            For xarray: DataArray with time dimension (may have spatial dims).
+        daily_tmax_celsius: Daily maximum temperature values in degrees Celsius.
+            For numpy: 1-D array of daily temperatures.
+            For xarray: DataArray with time dimension (may have spatial dims).
+        latitude: Latitude in degrees north (range: -90 to 90).
+            For numpy: scalar float.
+            For xarray: scalar float or DataArray(lat,) for spatial broadcasting.
+        time_dim: Name of the time dimension in the input DataArray.
+
+    Returns:
+        PET values in mm/day as numpy.ndarray or xarray.DataArray.
+    """
+    return _pet_hargreaves_impl(daily_tmin_celsius, daily_tmax_celsius, latitude, time_dim=time_dim)
+
+
+# EDDI overloads
+@overload
+def eddi(
+    pet_values: npt.NDArray[np.float64],
+    scale: int,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: Periodicity,
+) -> npt.NDArray[np.float64]: ...
+
+
+@overload
+def eddi(
+    pet_values: xr.DataArray,
+    scale: int,
+    data_start_year: int | None = None,
+    calibration_year_initial: int | None = None,
+    calibration_year_final: int | None = None,
+    periodicity: Periodicity | None = None,
+) -> xr.DataArray: ...
+
+
+def eddi(
+    pet_values: npt.NDArray[np.float64] | xr.DataArray,
+    scale: int,
+    data_start_year: int | None = None,
+    calibration_year_initial: int | None = None,
+    calibration_year_final: int | None = None,
+    periodicity: Periodicity | None = None,
+) -> npt.NDArray[np.float64] | xr.DataArray:
+    """Compute EDDI (Evaporative Demand Drought Index).
+
+    Accepts both NumPy arrays and xarray DataArrays. Type checkers narrow the
+    return type based on the input type.
+
+    For NumPy inputs, all temporal parameters are required.
+    For xarray inputs, temporal parameters are optional and inferred from
+    coordinate attributes if not provided.
+
+    .. warning:: **Beta Feature (xarray path only)** — When called with an
+       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
+       The xarray interface may change in future minor releases. The NumPy array
+       interface is stable.
+
+    Args:
+        pet_values: 1-D numpy array or xarray DataArray of PET values.
+        scale: Number of time steps over which values should be scaled.
+        data_start_year: Initial year of the input dataset (required for NumPy,
+            optional for xarray).
+        calibration_year_initial: Initial year of calibration period (required
+            for NumPy, optional for xarray).
+        calibration_year_final: Final year of calibration period (required for
+            NumPy, optional for xarray).
+        periodicity: Time series periodicity ('monthly' or 'daily'). Required
+            for NumPy, optional for xarray.
+
+    Returns:
+        EDDI values as numpy.ndarray or xarray.DataArray (matches input type).
+    """
+    kwargs: dict[str, Any] = {"scale": scale}
+    if data_start_year is not None:
+        kwargs["data_start_year"] = data_start_year
+    if calibration_year_initial is not None:
+        kwargs["calibration_year_initial"] = calibration_year_initial
+    if calibration_year_final is not None:
+        kwargs["calibration_year_final"] = calibration_year_final
+    if periodicity is not None:
+        kwargs["periodicity"] = periodicity
+    return _wrapped_eddi(pet_values, **kwargs)

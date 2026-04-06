@@ -16,4 +16,4 @@
   - step-02-apply-edit.md
 
   ## Outputs
-  - {output_folder}/nfr-assessment.md
+  - {test_artifacts}/nfr-assessment.md

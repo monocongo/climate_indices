@@ -4,7 +4,7 @@ description: 'Load and analyze existing agent for editing'
 
 # File References
 thisStepFile: ./e-01-load-existing.md
-workflowFile: ../workflow.md
+workflowFile: ../workflow-edit-agent.md
 nextStepFile: './e-02-discover-edits.md'
 editPlan: '{bmb_creations_output_folder}/edit-plan-{agent-name}.md'
 agentMetadata: ../data/agent-metadata.md

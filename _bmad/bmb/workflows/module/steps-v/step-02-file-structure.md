@@ -3,7 +3,7 @@ name: 'step-02-file-structure'
 description: 'Validate file structure compliance'
 
 nextStepFile: './step-03-module-yaml.md'
-moduleStandardsFile: '../../data/module-standards.md'
+moduleStandardsFile: '../data/module-standards.md'
 validationReportOutput: '{validation_report_output}'
 ---
 
@@ -40,7 +40,6 @@ Check based on target type:
 - [ ] README.md exists
 - [ ] agents/ folder exists (if agents specified)
 - [ ] workflows/ folder exists (if workflows specified)
-- [ ] _module-installer/ folder (if installer specified)
 
 **For Briefs:**
 - [ ] Brief file exists

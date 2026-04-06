@@ -3,7 +3,7 @@ name: 'step-01-load-target'
 description: 'Load target for editing'
 
 nextStepFile: './step-02-select-edit.md'
-moduleStandardsFile: '../../data/module-standards.md'
+moduleStandardsFile: '../data/module-standards.md'
 ---
 
 # Step 1: Load Target (Edit Mode)

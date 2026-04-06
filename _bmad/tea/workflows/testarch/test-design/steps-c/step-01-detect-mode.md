@@ -2,6 +2,7 @@
 name: 'step-01-detect-mode'
 description: 'Determine system-level vs epic-level mode and validate prerequisites'
 nextStepFile: './step-02-load-context.md'
+outputFile: '{test_artifacts}/test-design-progress.md'
 ---
 
 # Step 1: Detect Mode & Prerequisites
@@ -94,6 +95,30 @@ If required inputs are missing **and** the user cannot provide them:
 ## 3. Confirm Mode
 
 State which mode you will use and why. Then proceed.
+
+---
+
+### 4. Save Progress
+
+**Save this step's accumulated work to `{outputFile}`.**
+
+- **If `{outputFile}` does not exist** (first save), create it with YAML frontmatter:
+
+  ```yaml
+  ---
+  stepsCompleted: ['step-01-detect-mode']
+  lastStep: 'step-01-detect-mode'
+  lastSaved: '{date}'
+  ---
+  ```
+
+  Then write this step's output below the frontmatter.
+
+- **If `{outputFile}` already exists**, update:
+  - Add `'step-01-detect-mode'` to `stepsCompleted` array (only if not already present)
+  - Set `lastStep: 'step-01-detect-mode'`
+  - Set `lastSaved: '{date}'`
+  - Append this step's output to the appropriate section of the document.
 
 Load next step: `{nextStepFile}`
 

@@ -1,3 +1,9 @@
+---
+stepsCompleted: []
+lastStep: ''
+lastSaved: ''
+---
+
 # Test Quality Review: {test_filename}
 
 **Quality Score**: {score}/100 ({grade} - {assessment})

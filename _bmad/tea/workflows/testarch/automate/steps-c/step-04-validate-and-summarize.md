@@ -1,7 +1,7 @@
 ---
 name: 'step-04-validate-and-summarize'
 description: 'Validate outputs and produce automation summary'
-outputFile: '{output_folder}/automation-summary.md'
+outputFile: '{test_artifacts}/automation-summary.md'
 ---
 
 # Step 4: Validate & Summarize
@@ -43,6 +43,8 @@ Use `checklist.md` to validate:
 - Coverage mapping
 - Test quality and structure
 - Fixtures, factories, helpers
+- [ ] CLI sessions cleaned up (no orphaned browsers)
+- [ ] Temp artifacts stored in `{test_artifacts}/` not random locations
 
 Fix gaps before proceeding.
 
@@ -56,6 +58,30 @@ Write `{outputFile}` including:
 - Files created/updated
 - Key assumptions and risks
 - Next recommended workflow (e.g., `test-review` or `trace`)
+
+---
+
+## 3. Save Progress
+
+**Save this step's accumulated work to `{outputFile}`.**
+
+- **If `{outputFile}` does not exist** (first save), create it with YAML frontmatter:
+
+  ```yaml
+  ---
+  stepsCompleted: ['step-04-validate-and-summarize']
+  lastStep: 'step-04-validate-and-summarize'
+  lastSaved: '{date}'
+  ---
+  ```
+
+  Then write this step's output below the frontmatter.
+
+- **If `{outputFile}` already exists**, update:
+  - Add `'step-04-validate-and-summarize'` to `stepsCompleted` array (only if not already present)
+  - Set `lastStep: 'step-04-validate-and-summarize'`
+  - Set `lastSaved: '{date}'`
+  - Append this step's output to the appropriate section.
 
 ## 🚨 SYSTEM SUCCESS/FAILURE METRICS:
 

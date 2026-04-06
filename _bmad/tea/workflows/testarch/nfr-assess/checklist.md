@@ -227,7 +227,7 @@ Note: `nfr-assess` evaluates existing evidence; it does not run tests or CI work
 
 ### NFR Assessment Report
 
-- [ ] File created at `{output_folder}/nfr-assessment.md`
+- [ ] File created at `{test_artifacts}/nfr-assessment.md`
 - [ ] Template from `nfr-report-template.md` used
 - [ ] Executive summary included (overall status, critical issues)
 - [ ] Assessment by category included (performance, security, reliability, maintainability)

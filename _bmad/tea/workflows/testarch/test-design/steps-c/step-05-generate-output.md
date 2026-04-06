@@ -1,7 +1,8 @@
 ---
 name: 'step-05-generate-output'
 description: 'Generate output documents and validate against checklist'
-outputFile: '{output_folder}/test-design-epic-{epic_num}.md'
+outputFile: '{test_artifacts}/test-design-epic-{epic_num}.md'
+progressFile: '{test_artifacts}/test-design-progress.md'
 ---
 
 # Step 5: Generate Outputs & Validate
@@ -41,8 +42,8 @@ Write the final test-design document(s) using the correct template(s), then vali
 
 Generate **two** documents:
 
-- `{output_folder}/test-design-architecture.md` using `test-design-architecture-template.md`
-- `{output_folder}/test-design-qa.md` using `test-design-qa-template.md`
+- `{test_artifacts}/test-design-architecture.md` using `test-design-architecture-template.md`
+- `{test_artifacts}/test-design-qa.md` using `test-design-qa-template.md`
 
 ### Epic-Level Mode (Phase 4)
 
@@ -71,6 +72,8 @@ Ensure the outputs include:
 Validate the output(s) against:
 
 - `checklist.md` in this workflow folder
+- [ ] CLI sessions cleaned up (no orphaned browsers)
+- [ ] Temp artifacts stored in `{test_artifacts}/` not random locations
 
 If any checklist criteria are missing, fix before completion.
 
@@ -84,6 +87,30 @@ Summarize:
 - Output file paths
 - Key risks and gate thresholds
 - Any open assumptions
+
+---
+
+### 5. Save Progress
+
+**Save this step's accumulated work to `{progressFile}`.**
+
+- **If `{progressFile}` does not exist** (first save), create it with YAML frontmatter:
+
+  ```yaml
+  ---
+  stepsCompleted: ['step-05-generate-output']
+  lastStep: 'step-05-generate-output'
+  lastSaved: '{date}'
+  ---
+  ```
+
+  Then write this step's output below the frontmatter.
+
+- **If `{progressFile}` already exists**, update:
+  - Add `'step-05-generate-output'` to `stepsCompleted` array (only if not already present)
+  - Set `lastStep: 'step-05-generate-output'`
+  - Set `lastSaved: '{date}'`
+  - Append this step's output to the appropriate section of the document.
 
 ## 🚨 SYSTEM SUCCESS/FAILURE METRICS:
 

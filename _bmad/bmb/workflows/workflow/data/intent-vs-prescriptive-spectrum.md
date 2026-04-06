@@ -2,8 +2,6 @@
 
 **Principle:** Workflows lean toward **intent** (goals) not **prescription** (exact wording). The more intent-based, the more adaptive and creative the LLM can be.
 
----
-
 ## When to Use Each
 
 ### Intent-Based (Default)
@@ -15,8 +13,6 @@
 **Use for:** Compliance, safety, legal, medical, regulated industries
 **Step instruction:** "Say exactly: 'Do you currently experience fever, cough, or fatigue?' Wait for response. Then ask exactly: 'When did symptoms begin?'"
 **LLM follows:** Exact script, specific order, no deviation
-
----
 
 ## Examples
 
@@ -36,8 +32,6 @@ Probe to understand preferences, restrictions, goals."
 3. 'Have you traveled recently in the last 14 days?'
 Follow sequence precisely. Do not deviate."
 ```
-
----
 
 ## Step Writing Tips
 

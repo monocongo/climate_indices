@@ -1,7 +1,7 @@
 ---
 name: 'step-04-generate-report'
 description: 'Create test-review report and validate'
-outputFile: '{output_folder}/test-review.md'
+outputFile: '{test_artifacts}/test-review.md'
 ---
 
 # Step 4: Generate Report & Validate
@@ -49,9 +49,36 @@ Use `test-review-template.md` to produce `{outputFile}` including:
 
 Validate against `checklist.md` and fix any gaps.
 
+- [ ] CLI sessions cleaned up (no orphaned browsers)
+- [ ] Temp artifacts stored in `{test_artifacts}/` not random locations
+
 ---
 
-## 3. Completion Summary
+## 3. Save Progress
+
+**Save this step's accumulated work to `{outputFile}`.**
+
+- **If `{outputFile}` does not exist** (first save), create it using the workflow template (if available) with YAML frontmatter:
+
+  ```yaml
+  ---
+  stepsCompleted: ['step-04-generate-report']
+  lastStep: 'step-04-generate-report'
+  lastSaved: '{date}'
+  ---
+  ```
+
+  Then write this step's output below the frontmatter.
+
+- **If `{outputFile}` already exists**, update:
+  - Add `'step-04-generate-report'` to `stepsCompleted` array (only if not already present)
+  - Set `lastStep: 'step-04-generate-report'`
+  - Set `lastSaved: '{date}'`
+  - Append this step's output to the appropriate section of the document.
+
+---
+
+## 4. Completion Summary
 
 Report:
 

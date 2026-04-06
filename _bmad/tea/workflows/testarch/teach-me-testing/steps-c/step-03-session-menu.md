@@ -120,7 +120,7 @@ Display:
 {if in-progress: Started: {started_date}}
 
 **Session 7: Advanced Patterns (ongoing)**
-{status_indicator} Menu-driven knowledge fragment exploration (34 fragments)
+{status_indicator} Menu-driven knowledge fragment exploration (35 fragments)
 {if completed: Score: {score}/100 | Completed: {completed_date}}
 {if in-progress: Started: {started_date}}
 

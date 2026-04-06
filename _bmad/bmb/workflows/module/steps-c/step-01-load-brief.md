@@ -4,10 +4,10 @@ description: 'Load brief or user write-up, validate completeness'
 
 nextStepFile: './step-02-structure.md'
 continueFile: './step-01b-continue.md'
-agentSpecTemplate: '../../templates/agent-spec-template.md'
-workflowSpecTemplate: '../../templates/workflow-spec-template.md'
-moduleStandardsFile: '../../data/module-standards.md'
-moduleYamlConventionsFile: '../../data/module-yaml-conventions.md'
+agentSpecTemplate: '../data/agent-spec-template.md'
+workflowSpecTemplate: '../templates/workflow-spec-template.md'
+moduleStandardsFile: '../data/module-standards.md'
+moduleYamlConventionsFile: '../data/module-yaml-conventions.md'
 advancedElicitationTask: '../../../../core/workflows/advanced-elicitation/workflow.xml'
 partyModeWorkflow: '../../../../core/workflows/party-mode/workflow.md'
 ---
@@ -135,10 +135,10 @@ status: IN_PROGRESS
 
 1. Directory structure (based on module type)
 2. module.yaml with install configuration
-3. _module-installer/ folder (if needed)
-4. Agent placeholder/spec files
-5. Workflow placeholder/spec files
-6. README.md and TODO.md
+3. Agent placeholder/spec files
+4. Workflow placeholder/spec files
+5. README.md and TODO.md
+6. module-help.csv (generated from specs)
 
 "**Ready to start building?**"
 

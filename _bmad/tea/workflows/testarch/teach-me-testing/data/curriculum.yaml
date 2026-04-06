@@ -78,7 +78,7 @@ sessions:
     duration: "ongoing"
     difficulty: advanced
     objective: "Deep-dive into specific knowledge fragments"
-    description: "Menu-driven exploration of 34 knowledge fragments organized by category"
+    description: "Menu-driven exploration of 35 knowledge fragments organized by category"
     recommended_for:
       - experienced
     prerequisites: []

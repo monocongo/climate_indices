@@ -5,6 +5,65 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-04-05
+
+### Added
+
+- **Penman-Monteith ETo (FAO-56)**: New module `src/climate_indices/pm_eto.py` implementing
+  the full FAO-56 reference evapotranspiration equation with atmospheric, vapor pressure, and
+  humidity pathway helpers. Validated against FAO-56 worked examples (±0.05 mm/day tolerance).
+- **EDDI public API**: `eddi()` now exported from `climate_indices` with `@overload` signatures
+  in `typed_public_api.py` for both NumPy and xarray DataArray inputs (beta xarray path).
+- **CF metadata registry expansion**: Added entries for `eddi`, `pdsi`, `phdi`, `pmdi`, and
+  `z_index` to `cf_metadata_registry.py` (registry now has 12 entries).
+
+- **NFR-PATTERN-COVERAGE**: 42/42 compliance points achieved — all 7 indices (SPI, SPEI,
+  PET Thornthwaite, PET Hargreaves, PNP, PCI, Palmer) satisfy all 6 canonical patterns
+  (CF metadata, typed public API overloads, xarray adapter, structlog lifecycle,
+  structured exceptions, property-based tests). Validated by `tests/test_pattern_compliance.py`.
+- **xarray DataArray API (Beta)**: Native xarray support for `spi()`, `spei()`,
+  `pet_thornthwaite()`, and `pet_hargreaves()` — marked as beta/experimental.
+  The xarray interface (parameter inference, metadata, coordinate handling) may
+  change in future minor releases. Computation results are identical to the
+  stable NumPy API. No breaking changes within minor versions.
+- **`BetaFeatureWarning`**: New warning class for beta/experimental features
+  (subclass of `ClimateIndicesWarning`)
+- **`ClimateIndicesDeprecationWarning`**: New warning class for deprecated features with dual
+  inheritance from both `ClimateIndicesWarning` and `DeprecationWarning`, enabling
+  filterability by either category. Includes context attributes for deprecation version,
+  removal version, alternative, and migration URL
+- **`emit_deprecation_warning()`**: Helper function for standardized deprecation messages with
+  automatic URL construction and consistent formatting
+- **Docker Support**: Dockerfile for containerized deployment (#586)
+- **`.dockerignore`**: Optimized Docker builds by excluding unnecessary files
+- **PyPI Release Guide**: Comprehensive release documentation (`docs/pypi_release_guide.md`, `docs/pypi_release.rst`)
+- **Floating Point Best Practices Guide**: Documentation for safe numerical comparisons (`docs/floating_point_best_practices.md`)
+- **Test Fixture Management Guide**: Documentation for test data management (`docs/test_fixture_management.md`)
+- **Visualization Notebook**: New notebook for precipitation/SPI visualization (`notebooks/visualize_precip_spi.ipynb`)
+- **Lock File**: Added `uv.lock` for reproducible dependency resolution
+- **Documentation**: Supported Python versions table and deprecation policy in README
+
+### Changed
+
+- **CI/CD**: Enhanced test matrix with Python 3.10-3.13 on Linux and macOS
+- **CI/CD**: Added minimum dependency version testing (`--resolution lowest-direct`)
+- **CI/CD**: Added ruff and mypy checks as CI lint job
+- **CI/CD**: Modernized all GitHub Actions to v4/v5 versions
+- **GitHub Actions**: Updated unit tests workflow with improved configuration
+- **Documentation Index**: Reorganized Sphinx documentation structure
+- **Notebooks**: Improved examples in existing Jupyter notebooks
+
+### Removed
+
+- **`.pypirc`**: Removed from repository (should be user-specific in `~/.pypirc`)
+
+### Notes
+
+- **Palmer xarray wrapper deferred**: `palmer_xarray()` is planned for v2.5.0 using Pattern C
+  (stack/unpack workaround for xarray Issue #1815, see `architecture.md`).
+- **NOAA EDDI reference fixtures**: Require manual download; see `tests/fixture/README.md`.
+  The `test_noaa_eddi_reference.py` suite skips gracefully when fixtures are absent.
+
 ## [2.3.0] - 2026-02-11
 
 ### Added

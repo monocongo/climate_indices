@@ -1,7 +1,7 @@
 ---
 name: 'step-01-validate'
 description: 'Validate workflow outputs against checklist'
-outputFile: '{output_folder}/framework-validation-report.md'
+outputFile: '{test_artifacts}/framework-validation-report.md'
 validationChecklist: '../checklist.md'
 ---
 

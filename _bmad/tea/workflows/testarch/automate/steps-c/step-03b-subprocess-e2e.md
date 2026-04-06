@@ -45,7 +45,39 @@ From the coverage plan (Step 2 output), identify:
 - UI interactions required
 - Expected visual states
 
-### 2. Generate E2E Test Files
+### 2. Browser Interaction (Selector Verification)
+
+**Automation mode:** `config.tea_browser_automation`
+
+If `auto` (fall back to MCP if CLI unavailable; if neither available, generate from best practices):
+
+- Open the target page first, then verify selectors with a snapshot:
+  `playwright-cli -s=tea-automate-{{timestamp}} open <target_url>`
+  `playwright-cli -s=tea-automate-{{timestamp}} snapshot` → map refs to Playwright locators
+  - ref `{role: "button", name: "Submit"}` → `page.getByRole('button', { name: 'Submit' })`
+  - ref `{role: "textbox", name: "Email"}` → `page.getByRole('textbox', { name: 'Email' })`
+- `playwright-cli -s=tea-automate-{{timestamp}} close` when done
+
+If `cli` (CLI only — do NOT fall back to MCP; generate from best practices if CLI unavailable):
+
+- Open the target page first, then verify selectors with a snapshot:
+  `playwright-cli -s=tea-automate-{{timestamp}} open <target_url>`
+  `playwright-cli -s=tea-automate-{{timestamp}} snapshot` → map refs to Playwright locators
+  - ref `{role: "button", name: "Submit"}` → `page.getByRole('button', { name: 'Submit' })`
+  - ref `{role: "textbox", name: "Email"}` → `page.getByRole('textbox', { name: 'Email' })`
+- `playwright-cli -s=tea-automate-{{timestamp}} close` when done
+
+> **Session Hygiene:** Always close sessions using `playwright-cli -s=tea-automate-{{timestamp}} close`. Do NOT use `close-all` — it kills every session on the machine and breaks parallel execution.
+
+If `mcp`:
+
+- Use MCP tools for selector verification (current behavior)
+
+If `none`:
+
+- Generate selectors from best practices without browser verification
+
+### 3. Generate E2E Test Files
 
 For each user journey, create test file in `tests/e2e/[feature].spec.ts`:
 
@@ -82,7 +114,7 @@ test.describe('[Feature] E2E User Journey', () => {
 - ✅ Use proper TypeScript types
 - ✅ Deterministic waits (no hard sleeps, use expect().toBeVisible())
 
-### 3. Track Fixture Needs
+### 4. Track Fixture Needs
 
 Identify fixtures needed for E2E tests:
 

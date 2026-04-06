@@ -1,6 +1,7 @@
 ---
 name: 'step-04c-aggregate'
 description: 'Aggregate subprocess outputs and complete ATDD test infrastructure'
+outputFile: '{test_artifacts}/atdd-checklist-{story_id}.md'
 nextStepFile: './step-05-validate-and-complete.md'
 ---
 
@@ -303,6 +304,30 @@ Proceed to Step 5 when:
 - ✅ ATDD checklist generated
 - ✅ Summary statistics calculated and saved
 - ✅ Output displayed to user
+
+---
+
+### 8. Save Progress
+
+**Save this step's accumulated work to `{outputFile}`.**
+
+- **If `{outputFile}` does not exist** (first save), create it with YAML frontmatter:
+
+  ```yaml
+  ---
+  stepsCompleted: ['step-04c-aggregate']
+  lastStep: 'step-04c-aggregate'
+  lastSaved: '{date}'
+  ---
+  ```
+
+  Then write this step's output below the frontmatter.
+
+- **If `{outputFile}` already exists**, update:
+  - Add `'step-04c-aggregate'` to `stepsCompleted` array (only if not already present)
+  - Set `lastStep: 'step-04c-aggregate'`
+  - Set `lastSaved: '{date}'`
+  - Append this step's output to the appropriate section.
 
 Load next step: `{nextStepFile}`
 

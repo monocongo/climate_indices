@@ -11,9 +11,12 @@ from typing import Any
 
 __all__ = [
     "ClimateIndicesError",
+    "ConvergenceError",
+    "DataShapeError",
     "DistributionFittingError",
     "InsufficientDataError",
     "PearsonFittingError",
+    "PeriodicityError",
     "DimensionMismatchError",
     "CoordinateValidationError",
     "InputTypeError",
@@ -114,6 +117,36 @@ class PearsonFittingError(DistributionFittingError):
         self.underlying_error = underlying_error
 
 
+class ConvergenceError(DistributionFittingError):
+    """Raised when a numerical fitting algorithm fails to converge.
+
+    This exception is raised when iterative algorithms (e.g., L-moments
+    estimation, maximum likelihood fitting) do not converge within the
+    allowed number of iterations or produce numerically unstable results.
+
+    Attributes:
+        algorithm: Name of the algorithm that failed to converge
+        iterations: Number of iterations attempted before failure
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        algorithm: str | None = None,
+        iterations: int | None = None,
+        distribution_name: str | None = None,
+        underlying_error: Exception | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            distribution_name=distribution_name,
+            underlying_error=underlying_error,
+        )
+        self.algorithm = algorithm
+        self.iterations = iterations
+
+
 class DimensionMismatchError(ClimateIndicesError):
     """Raised when array dimensions don't match expected structure.
 
@@ -204,6 +237,58 @@ class InvalidArgumentError(ClimateIndicesError):
         self.argument_name = argument_name
         self.argument_value = argument_value
         self.valid_values = valid_values
+
+
+class PeriodicityError(InvalidArgumentError):
+    """Raised when an invalid or unsupported periodicity value is provided.
+
+    This is a specialization of InvalidArgumentError for the common case
+    of periodicity validation failures across compute, indices, and CLI
+    modules. The periodicity argument must be a valid Periodicity enum
+    member (monthly or daily).
+
+    Attributes:
+        periodicity_value: The invalid periodicity value that was provided
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        periodicity_value: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            argument_name="periodicity",
+            argument_value=periodicity_value,
+            valid_values="Periodicity.monthly, Periodicity.daily",
+        )
+        self.periodicity_value = periodicity_value
+
+
+class DataShapeError(ClimateIndicesError):
+    """Raised when input array shape does not match expected structure.
+
+    This exception is raised when NumPy arrays have shapes that cannot
+    be reshaped or processed for the given computation. Unlike
+    DimensionMismatchError (which applies to xarray named dimensions),
+    this applies to raw array shape validation.
+
+    Attributes:
+        expected_shape: Description of the expected shape (e.g., "(years, 12)")
+        actual_shape: The actual shape of the input array
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        expected_shape: str | None = None,
+        actual_shape: tuple[int, ...] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.expected_shape = expected_shape
+        self.actual_shape = actual_shape
 
 
 # Warning Classes

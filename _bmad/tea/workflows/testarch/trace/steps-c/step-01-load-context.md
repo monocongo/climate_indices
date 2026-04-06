@@ -3,6 +3,7 @@ name: 'step-01-load-context'
 description: 'Load requirements, knowledge base, and related artifacts'
 nextStepFile: './step-02-discover-tests.md'
 knowledgeIndex: '{project-root}/_bmad/tea/testarch/tea-index.csv'
+outputFile: '{test_artifacts}/traceability-report.md'
 ---
 
 # Step 1: Load Context & Knowledge Base
@@ -65,6 +66,30 @@ If available:
 - Tech spec / PRD
 
 Summarize what was found.
+
+---
+
+### 4. Save Progress
+
+**Save this step's accumulated work to `{outputFile}`.**
+
+- **If `{outputFile}` does not exist** (first save), create it using the workflow template (if available) with YAML frontmatter:
+
+  ```yaml
+  ---
+  stepsCompleted: ['step-01-load-context']
+  lastStep: 'step-01-load-context'
+  lastSaved: '{date}'
+  ---
+  ```
+
+  Then write this step's output below the frontmatter.
+
+- **If `{outputFile}` already exists**, update:
+  - Add `'step-01-load-context'` to `stepsCompleted` array (only if not already present)
+  - Set `lastStep: 'step-01-load-context'`
+  - Set `lastSaved: '{date}'`
+  - Append this step's output to the appropriate section of the document.
 
 Load next step: `{nextStepFile}`
 

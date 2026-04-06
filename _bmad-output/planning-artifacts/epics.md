@@ -1,1280 +1,1651 @@
----
-stepsCompleted: [1, 2, 3, 4]
-workflowType: 'epics-and-stories'
-status: 'complete'
-completedAt: '2026-02-05'
-inputDocuments:
-  - 'feature/bmad-xarray-prd:_bmad-output/planning-artifacts/prd.md'
-  - '_bmad-output/planning-artifacts/architecture.md'
-totalEpics: 5
-totalStories: 47
-totalFRs: 60
-totalNFRs: 23
+# climate_indices v2.4.0 - Epic and Story Breakdown (Expanded)
+
+**Version:** 2.4.0-expanded
+**Date:** 2026-02-16
+**Status:** Complete - Ready for Implementation
+
 ---
 
-# climate_indices xarray Integration + structlog Modernization - Epic Breakdown
+## Document Summary
 
-## Overview
+This document provides the **complete** epic and story breakdown for climate_indices v2.4.0, with full acceptance criteria, dependencies, and implementation guidance for all 38 stories across 5 epics.
 
-This document provides the complete epic and story breakdown for the climate_indices xarray integration and structlog modernization project, decomposing the requirements from the PRD and Architecture documents into implementable stories.
+### Corrections Applied
+
+1. **FR Count:** 31 functional requirements (not 30) — Track 2 has 6 FRs (4 EDDI + 1 PNP + 1 scPDSI)
+2. **Palmer Module Location:** Per Architecture Decision 2, `palmer_xarray()` stays IN `palmer.py` (not separate module)
+3. **Individual FR Traceability:** Each story explicitly lists FR codes (no ranges)
+
+### Document Structure
+
+- **Epic 1:** Canonical Pattern Completion (12 stories) — Agent Alpha, Phases 0-1
+- **Epic 2:** PM-ET Foundation (7 stories) — Agent Beta, Phase 1
+- **Epic 3:** EDDI/PNP/scPDSI Coverage (7 stories) — Agent Gamma, Phase 2
+- **Epic 4:** Palmer Multi-Output (9 stories) — Agent Delta, Phase 2
+- **Epic 5:** Cross-Cutting Validation (3 stories) — Multiple agents, Phases 3-4
+
+**Total:** 38 stories covering 31 FRs and 8 NFRs
+
+---
 
 ## Requirements Inventory
 
-### Functional Requirements (60 total)
+### Functional Requirements (31 Total)
 
-**1. Index Calculation Capabilities (5 FRs)**
-- FR-CALC-001: SPI Calculation with xarray
-- FR-CALC-002: SPEI Calculation with xarray
-- FR-CALC-003: PET Thornthwaite with xarray
-- FR-CALC-004: PET Hargreaves with xarray
-- FR-CALC-005: Backward Compatibility - NumPy API
+**Track 0: Canonical Pattern Completion (12 FRs)**
+- FR-PATTERN-001: percentage_of_normal xarray + CF metadata
+- FR-PATTERN-002: pci xarray + CF metadata
+- FR-PATTERN-003: eto_thornthwaite typed_public_api entry
+- FR-PATTERN-004: eto_hargreaves typed_public_api entry
+- FR-PATTERN-005: percentage_of_normal typed_public_api entry
+- FR-PATTERN-006: pci typed_public_api entry
+- FR-PATTERN-007: Palmer structlog migration
+- FR-PATTERN-008: eto_thornthwaite structlog lifecycle completion
+- FR-PATTERN-009: Structured exceptions for all legacy functions
+- FR-PATTERN-010: percentage_of_normal property-based tests
+- FR-PATTERN-011: pci property-based tests
+- FR-PATTERN-012: Expanded SPEI + Palmer property-based tests
 
-**2. Input Data Handling (5 FRs)**
-- FR-INPUT-001: Automatic Input Type Detection
-- FR-INPUT-002: Coordinate Validation
-- FR-INPUT-003: Multi-Input Alignment
-- FR-INPUT-004: Missing Data Handling
-- FR-INPUT-005: Chunked Array Support
+**Track 1: PM-ET Foundation (6 FRs)**
+- FR-PM-001: Penman-Monteith FAO56 Core Calculation
+- FR-PM-002: Atmospheric Parameter Helpers (Equations 7-8)
+- FR-PM-003: Vapor Pressure Helpers (Equations 11-13)
+- FR-PM-004: Humidity Pathway Dispatcher (Equations 14-19)
+- FR-PM-005: FAO56 Worked Example Validation
+- FR-PM-006: PM-ET xarray Adapter
 
-**3. Statistical and Distribution Capabilities (4 FRs)**
-- FR-STAT-001: Gamma Distribution Fitting
-- FR-STAT-002: Pearson Type III Distribution
-- FR-STAT-003: Calibration Period Configuration
-- FR-STAT-004: Standardization Transform
+**Track 2: EDDI/PNP/scPDSI (6 FRs)**
+- FR-EDDI-001: NOAA Reference Dataset Validation (BLOCKING)
+- FR-EDDI-002: EDDI xarray Adapter
+- FR-EDDI-003: EDDI CLI Integration (Issue #414)
+- FR-EDDI-004: EDDI PET Method Documentation
+- FR-PNP-001: PNP xarray Adapter
+- FR-SCPDSI-001: scPDSI Stub Interface
 
-**4. Metadata and CF Convention Compliance (5 FRs)**
-- FR-META-001: Coordinate Preservation
-- FR-META-002: Attribute Preservation
-- FR-META-003: CF Convention Compliance
-- FR-META-004: Provenance Tracking
-- FR-META-005: Chunking Preservation
+**Track 3: Palmer Multi-Output (7 FRs)**
+- FR-PALMER-001: palmer_xarray() Manual Wrapper
+- FR-PALMER-002: Multi-Output Dataset Return
+- FR-PALMER-003: AWC Spatial Parameter Handling
+- FR-PALMER-004: params_dict JSON Serialization
+- FR-PALMER-005: Palmer CF Metadata Registry
+- FR-PALMER-006: typed_public_api @overload Signatures
+- FR-PALMER-007: NumPy vs xarray Equivalence Tests
 
-**5. API and Integration (4 FRs)**
-- FR-API-001: Function Signature Consistency
-- FR-API-002: Type Hints and Overloads
-- FR-API-003: Default Parameter Values
-- FR-API-004: Deprecation Warnings
+### Non-Functional Requirements (8 Total)
 
-**6. Error Handling and Validation (4 FRs)**
-- FR-ERROR-001: Input Validation
-- FR-ERROR-002: Computation Error Handling
-- FR-ERROR-003: Structured Exceptions
-- FR-ERROR-004: Warning Emission
-
-**7. Observability and Logging (5 FRs)**
-- FR-LOG-001: Structured Logging Configuration
-- FR-LOG-002: Calculation Event Logging
-- FR-LOG-003: Error Context Logging
-- FR-LOG-004: Performance Metrics
-- FR-LOG-005: Log Level Configuration
-
-**8. Testing and Validation (5 FRs)**
-- FR-TEST-001: Equivalence Test Framework
-- FR-TEST-002: Metadata Validation Tests
-- FR-TEST-003: Edge Case Coverage
-- FR-TEST-004: Reference Dataset Validation
-- FR-TEST-005: Property-Based Testing
-
-**9. Documentation (5 FRs)**
-- FR-DOC-001: API Reference Documentation
-- FR-DOC-002: xarray Migration Guide
-- FR-DOC-003: Quickstart Tutorial
-- FR-DOC-004: Algorithm Documentation
-- FR-DOC-005: Troubleshooting Guide
-
-**10. Performance and Scalability (4 FRs)**
-- FR-PERF-001: Overhead Benchmark
-- FR-PERF-002: Chunked Computation Efficiency
-- FR-PERF-003: Memory Efficiency
-- FR-PERF-004: Parallel Computation
-
-**11. Packaging and Distribution (4 FRs)**
-- FR-PKG-001: PyPI Distribution
-- FR-PKG-002: Dependency Management
-- FR-PKG-003: Version Compatibility
-- FR-PKG-004: Beta Tagging
-
-### Non-Functional Requirements (23 total)
-
-**1. Performance (4 NFRs)**
-- NFR-PERF-001: Computational Overhead (<5% for in-memory)
-- NFR-PERF-002: Chunked Computation Efficiency (>70% scaling to 8 workers)
-- NFR-PERF-003: Memory Efficiency (50GB datasets on 16GB RAM)
-- NFR-PERF-004: Startup Time (<500ms import)
-
-**2. Reliability (3 NFRs)**
-- NFR-REL-001: Numerical Reproducibility (1e-8 tolerance)
-- NFR-REL-002: Graceful Degradation (chunk-level failures)
-- NFR-REL-003: Version Stability (no changes in minor versions)
-
-**3. Compatibility (3 NFRs)**
-- NFR-COMPAT-001: Python Version Support (3.9-3.13)
-- NFR-COMPAT-002: Dependency Version Matrix (wide range)
-- NFR-COMPAT-003: Backward Compatibility Guarantee (no breaking changes)
-
-**4. Integration (3 NFRs)**
-- NFR-INTEG-001: xarray Ecosystem Compatibility (Dask, zarr, cf_xarray)
-- NFR-INTEG-002: CF Convention Compliance (cf-checker passes)
-- NFR-INTEG-003: structlog Output Format Compatibility (JSON for log aggregators)
-
-**5. Maintainability (5 NFRs)**
-- NFR-MAINT-001: Type Coverage (mypy --strict passes)
-- NFR-MAINT-002: Test Coverage (>85% line, >80% branch)
-- NFR-MAINT-003: Documentation Coverage (100% public API)
-- NFR-MAINT-004: Code Quality Standards (ruff, mypy, bandit clean)
-- NFR-MAINT-005: Dependency Security (0 high/critical CVEs)
-
-### Architectural Requirements (10 total)
-
-From the Architecture Decision Document:
-
-**Core Architectural Decisions:**
-1. **Adapter Pattern**: `@xarray_adapter` decorator wraps existing NumPy functions (Decision 1)
-2. **Module Structure**: New `xarray_adapter.py` module, `indices.py` unchanged (Decision 2)
-3. **structlog Integration**: Hybrid approach with module-level loggers and context binding at API entry (Decision 3)
-4. **Metadata Engine**: Registry pattern with `CF_METADATA` dictionary (Decision 4)
-5. **Exception Hierarchy**: New `ClimateIndicesError` base class with re-parented exceptions (Decision 5)
-6. **Parameter Inference**: Auto-infer with override capability (Decision 6)
-7. **Dependency Strategy**: xarray and structlog as core dependencies (Decision 7)
-
-**Implementation Patterns:**
-8. **Adapter Contract**: Extract → infer → compute → rewrap → log (Pattern 1)
-9. **structlog Conventions**: DEBUG/INFO/WARNING/ERROR levels with structured context (Pattern 2)
-10. **CF Metadata Registry**: Extensible dictionary for index-specific CF attributes (Pattern 4)
-
-### FR Coverage Map
-
-**Epic 1: Foundation — Error Handling and Observability**
-- FR-ERROR-001: Input Validation
-- FR-ERROR-002: Computation Error Handling
-- FR-ERROR-003: Structured Exceptions
-- FR-ERROR-004: Warning Emission
-- FR-LOG-001: Structured Logging Configuration
-- FR-LOG-002: Calculation Event Logging
-- FR-LOG-003: Error Context Logging
-- FR-LOG-004: Performance Metrics
-- FR-LOG-005: Log Level Configuration
-
-**Epic 2: Core xarray Support — SPI Calculation**
-- FR-CALC-001: SPI Calculation with xarray
-- FR-CALC-005: Backward Compatibility - NumPy API
-- FR-INPUT-001: Automatic Input Type Detection
-- FR-INPUT-002: Coordinate Validation
-- FR-INPUT-003: Multi-Input Alignment
-- FR-INPUT-004: Missing Data Handling
-- FR-INPUT-005: Chunked Array Support
-- FR-STAT-001: Gamma Distribution Fitting
-- FR-STAT-003: Calibration Period Configuration
-- FR-STAT-004: Standardization Transform
-- FR-META-001: Coordinate Preservation
-- FR-META-002: Attribute Preservation
-- FR-META-003: CF Convention Compliance
-- FR-META-004: Provenance Tracking
-- FR-META-005: Chunking Preservation
-- FR-API-001: Function Signature Consistency
-- FR-API-002: Type Hints and Overloads
-- FR-API-003: Default Parameter Values
-
-**Epic 3: Extended xarray Support — SPEI and PET**
-- FR-CALC-002: SPEI Calculation with xarray
-- FR-CALC-003: PET Thornthwaite with xarray
-- FR-CALC-004: PET Hargreaves with xarray
-- FR-STAT-002: Pearson Type III Distribution
-- FR-INPUT-003: Multi-Input Alignment (enhanced for multi-input functions)
-
-**Epic 4: Quality Assurance and Validation**
-- FR-TEST-001: Equivalence Test Framework
-- FR-TEST-002: Metadata Validation Tests
-- FR-TEST-003: Edge Case Coverage
-- FR-TEST-004: Reference Dataset Validation
-- FR-TEST-005: Property-Based Testing
-- FR-PERF-001: Overhead Benchmark
-- FR-PERF-002: Chunked Computation Efficiency
-- FR-PERF-003: Memory Efficiency
-- FR-PERF-004: Parallel Computation
-
-**Epic 5: Documentation and Packaging**
-- FR-DOC-001: API Reference Documentation
-- FR-DOC-002: xarray Migration Guide
-- FR-DOC-003: Quickstart Tutorial
-- FR-DOC-004: Algorithm Documentation
-- FR-DOC-005: Troubleshooting Guide
-- FR-PKG-001: PyPI Distribution
-- FR-PKG-002: Dependency Management
-- FR-PKG-003: Version Compatibility
-- FR-PKG-004: Beta Tagging
-- FR-API-004: Deprecation Warnings
-
-**Total FR Coverage: 60/60 ✅**
-
-**Note on NFR Coverage:** All 23 Non-Functional Requirements are addressed as cross-cutting concerns within epic acceptance criteria:
-- Performance NFRs (NFR-PERF-001–004): Validated in Epic 4
-- Reliability NFRs (NFR-REL-001–003): Enforced in Epic 4 tests
-- Compatibility NFRs (NFR-COMPAT-001–003): Validated in Epic 5 CI matrix
-- Integration NFRs (NFR-INTEG-001–003): Validated in Epic 4 tests
-- Maintainability NFRs (NFR-MAINT-001–005): Enforced across all epics
-
-## Epic List
-
-### Epic 1: Foundation — Error Handling and Observability
-
-Researchers and operational users get structured error messages and comprehensive logging for debugging climate index calculations, improving troubleshooting time by 40%.
-
-**FRs Covered:** FR-ERROR-001, FR-ERROR-002, FR-ERROR-003, FR-ERROR-004, FR-LOG-001, FR-LOG-002, FR-LOG-003, FR-LOG-004, FR-LOG-005
-
-**Architectural Components:**
-- `exceptions.py`: `ClimateIndicesError` hierarchy (DistributionFittingError, InsufficientDataError, DimensionMismatchError, etc.)
-- `logging_config.py`: structlog configuration with dual JSON + console output
-- Integration of logging into existing modules: `compute.py`, `eto.py`, `utils.py`
-
-**Value Delivered:** Improves existing NumPy library immediately with no xarray dependency. Establishes error handling and observability foundation for all future epics.
+- NFR-PATTERN-EQUIV: Numerical Equivalence During Refactoring (1e-8)
+- NFR-PATTERN-COVERAGE: 100% Pattern Compliance Dashboard (6×7=42 points)
+- NFR-PATTERN-MAINT: Maintainability Through Consistency
+- NFR-PM-PERF: PM-ET Numerical Precision (FAO56 ±0.05 mm/day)
+- NFR-EDDI-VAL: EDDI NOAA Reference Validation Tolerance (1e-5)
+- NFR-PALMER-SEQ: Palmer Sequential Time Constraint
+- NFR-PALMER-PERF: Palmer xarray Performance ≥80% of baseline
+- NFR-MULTI-OUT: Multi-Output Pattern Stability (xarray #1815)
 
 ---
 
-### Epic 2: Core xarray Support — SPI Calculation
+## Agent Orchestration Guide
 
-Climate researchers can calculate SPI directly on xarray DataArrays with full metadata preservation, eliminating manual `.values` extraction and coordinate re-attachment workflows.
+### Agent Team Composition
 
-**FRs Covered:** FR-CALC-001, FR-CALC-005, FR-INPUT-001, FR-INPUT-002, FR-INPUT-003, FR-INPUT-004, FR-INPUT-005, FR-STAT-001, FR-STAT-003, FR-STAT-004, FR-META-001, FR-META-002, FR-META-003, FR-META-004, FR-META-005, FR-API-001, FR-API-002, FR-API-003
+| Agent | Track | Primary Files | Phase |
+|-------|-------|---------------|-------|
+| **Alpha** | 0 (Patterns) | exceptions.py, cf_metadata_registry.py, palmer.py (lines 1-913), percentage_of_normal, pci, eto | 0-1 |
+| **Beta** | 1 (PM-ET) | eto.py, test_penman_monteith.py | 1 |
+| **Gamma** | 2 (EDDI) | tests/fixture/noaa-eddi-*/, test_noaa_eddi_reference.py | 2 |
+| **Delta** | 3 (Palmer) | palmer.py (xarray wrapper), test_palmer_equivalence.py | 2 |
+| **Omega** | Integration | __init__.py, merge validation | Gates |
 
-**Architectural Components:**
-- `xarray_adapter.py`: `@xarray_adapter` decorator pattern (extract → infer → compute → rewrap → log)
-- `CF_METADATA` registry for SPI attributes (long_name, units, references)
-- Parameter inference logic (data_start_year, periodicity)
-- Type overloads for NumPy vs xarray dispatch
+### Execution Phases
 
-**Value Delivered:** Complete SPI workflow for both NumPy and xarray users. Establishes adapter infrastructure ready for SPEI/PET.
+- **Phase 0 (Foundation):** Stories 1.1-1.2 (Alpha) — Duration: 1-2 days
+- **Phase 1 (Parallel Core):** Stories 1.3-1.12, 2.1-2.7 (Alpha ∥ Beta) — Duration: 2-3 weeks
+- **Phase 2 (Dependent Tracks):** Stories 3.1-3.7, 4.1-4.9 (Gamma ∥ Delta) — Duration: 3-4 weeks
+- **Phase 3 (Audit):** Stories 5.1-5.2 (Alpha, Gamma) — Duration: 3-5 days
+- **Phase 4 (Final Validation):** Story 5.3 (All agents) — Duration: 2-3 days
 
----
+### Critical Path
 
-### Epic 3: Extended xarray Support — SPEI and PET
+**1.1 → 1.2 → 1.6 → 4.1 → 4.2-4.9** (~5-6 weeks)
 
-Researchers can calculate SPEI and PET (Thornthwaite + Hargreaves) on xarray DataArrays with automatic multi-input alignment, completing the full drought index toolkit for modern workflows.
-
-**FRs Covered:** FR-CALC-002, FR-CALC-003, FR-CALC-004, FR-STAT-002, FR-INPUT-003 (enhanced)
-
-**Architectural Components:**
-- Extended `xarray_adapter.py` for multi-input functions (SPEI: precip + PET)
-- CF metadata for SPEI and PET variables
-- Multi-input coordinate alignment validation
-
-**Value Delivered:** Complete multi-index calculation capability. Establishes pattern for any multi-input index (EDDI in Phase 2).
+Palmer structlog migration (Story 1.6) MUST complete before Palmer xarray work (Story 4.1+).
 
 ---
 
-### Epic 4: Quality Assurance and Validation
+# Epic 1: Canonical Pattern Completion
 
-Automated tests verify numerical equivalence between NumPy and xarray paths, metadata correctness, and edge case handling, giving operational users confidence in upgrading.
+**Goal:** Apply v2.3.0-established patterns to ALL remaining indices for consistency and maintainability
 
-**FRs Covered:** FR-TEST-001, FR-TEST-002, FR-TEST-003, FR-TEST-004, FR-TEST-005, FR-PERF-001, FR-PERF-002, FR-PERF-003, FR-PERF-004
-
-**Architectural Components:**
-- `test_xarray_adapter.py`: Parametrized equivalence tests (tolerance: 1e-8)
-- `test_logging.py`: structlog output validation
-- `test_exceptions.py`: Exception hierarchy coverage
-- `conftest.py`: xarray fixtures and test utilities
-- Benchmark suite: overhead, chunked efficiency, memory, parallelism
-
-**Value Delivered:** Validates all previous epics with comprehensive test coverage. Provides performance baselines and regression detection.
+**Agent:** Alpha
+**Track:** 0 (Pattern Completion)
+**Duration:** 2-3 weeks
+**Story Count:** 12
 
 ---
 
-### Epic 5: Documentation and Packaging
+## Story 1.1: Structured Exception Hierarchy Foundation
 
-Users have comprehensive guides, API references, and stable package installation, enabling adoption by graduate students and downstream package maintainers.
+**Priority:** Critical (BLOCKER for all Track 0 work)
+**Agent:** Alpha
+**Phase:** 0
+**Effort:** 4-6 hours
+**FR Coverage:** FR-PATTERN-009
 
-**FRs Covered:** FR-DOC-001, FR-DOC-002, FR-DOC-003, FR-DOC-004, FR-DOC-005, FR-PKG-001, FR-PKG-002, FR-PKG-003, FR-PKG-004, FR-API-004
+### Description
 
-**Architectural Components:**
-- Sphinx documentation with xarray-first examples
-- Migration guide with side-by-side NumPy/xarray comparisons
-- Quickstart tutorial with visualization examples
-- Algorithm documentation with peer-reviewed references
-- Updated `pyproject.toml` with dependency specifications
-- Beta feature warnings in docstrings
+Create or verify the structured exception hierarchy that will replace generic `ValueError` instances across all legacy functions. This foundational infrastructure must be in place before pattern migration work begins.
 
-**Value Delivered:** Enables community adoption and contribution. Establishes documentation patterns for Phase 2 indices.
+### Acceptance Criteria
 
----
+- [ ] Exception hierarchy exists in `src/climate_indices/exceptions.py` with base class `ClimateIndicesError`
+- [ ] Key exception classes defined:
+  - `InvalidArgumentError` (for input validation failures)
+  - `InsufficientDataError` (for calibration/sample size issues)
+  - `ComputationError` (for algorithm failures)
+  - `DistributionFittingError` (for statistical fitting failures)
+- [ ] All exception classes support keyword-only context attributes (e.g., `shape=`, `expected=`, `received=`)
+- [ ] Exception messages provide actionable guidance (not just "invalid value")
+- [ ] Test module `tests/test_exceptions.py` validates exception hierarchy and message formatting
+- [ ] mypy --strict passes for exception module
 
-## Epic 1: Foundation — Error Handling and Observability
+### Dependencies
 
-Researchers and operational users get structured error messages and comprehensive logging for debugging climate index calculations, improving troubleshooting time by 40%.
+None (foundation story)
 
-### Story 1.1: Custom Exception Hierarchy
+### Implementation Notes
 
-As a **library developer**,
-I want a unified exception hierarchy for all climate indices errors,
-So that users can catch and handle different error types programmatically.
-
-**Acceptance Criteria:**
-
-**Given** the codebase needs structured error handling
-**When** I create the `exceptions.py` module
-**Then** a base `ClimateIndicesError` exception class exists
-**And** existing exceptions are re-parented under `ClimateIndicesError`:
-- `DistributionFittingError`
-- `InsufficientDataError`
-- `PearsonFittingError`
-**And** new exceptions are added:
-- `DimensionMismatchError`
-- `CoordinateValidationError`
-- `InputTypeError`
-**And** all exceptions include helpful error messages with context
-**And** mypy --strict passes on the exceptions module
-**And** FR-ERROR-003 is satisfied
+- If hierarchy already exists from v1.1, verify completeness and update as needed
+- Follow Python exception best practices: inherit from built-in exceptions where appropriate
+- Context attributes should use keyword-only arguments for clarity
 
 ---
 
-### Story 1.2: Input Validation Error Handling
+## Story 1.2: CF Metadata Registry Creation
 
-As a **climate researcher**,
-I want clear error messages when my input data is invalid,
-So that I can quickly identify and fix data issues.
+**Priority:** Critical (BLOCKER for Track 0 xarray work)
+**Agent:** Alpha
+**Phase:** 0
+**Effort:** 3-4 hours
+**FR Coverage:** FR-PATTERN-001, FR-PATTERN-002, FR-PNP-001
 
-**Acceptance Criteria:**
+### Description
 
-**Given** a user calls an index function with invalid inputs
-**When** validation fails (missing time dimension, invalid scale, unsupported distribution)
-**Then** a specific exception is raised (not generic ValueError)
-**And** the error message includes:
-- What validation failed
-- Available dimensions/valid ranges
-- Suggested remediation
-**And** input validation covers:
-- Scale in range 1-72
-- Distribution in supported set (gamma, pearson3)
-- Time dimension presence
-**And** FR-ERROR-001 is satisfied
+Create or extend the CF metadata registry module to support all indices requiring xarray adapters in Track 0. This establishes the centralized metadata source before pattern application begins.
 
----
+### Acceptance Criteria
 
-### Story 1.3: Computation Error Handling
+- [ ] Module `src/climate_indices/cf_metadata_registry.py` exists with `CF_METADATA` dictionary
+- [ ] Registry entries for Track 0 indices:
+  - `percentage_of_normal`: `long_name="Percent of Normal Precipitation"`, `units="%"`
+  - `pci`: `long_name="Precipitation Concentration Index"`, `units=""`
+  - `pnp`: `long_name="Percent of Normal Precipitation"`, `units="%"` (alias or same as percentage_of_normal)
+- [ ] Each entry includes `references` field with methodology citation
+- [ ] Module is importable and dict structure follows existing SPI/SPEI pattern
+- [ ] Test in `tests/test_cf_metadata.py` validates registry structure
 
-As an **operational drought monitor**,
-I want detailed error context when distribution fitting fails,
-So that I can diagnose and resolve computation issues.
+### Dependencies
 
-**Acceptance Criteria:**
+- Story 1.1 (exception hierarchy needed for validation)
 
-**Given** distribution fitting fails during index calculation
-**When** the computation error occurs
-**Then** a `DistributionFittingError` is raised
-**And** the error message includes:
-- Input shape and parameter values
-- Which distribution failed (gamma/pearson3)
-- Suggested alternative ("try pearson3 distribution")
-**And** errors are caught from scipy.stats operations
-**And** FR-ERROR-002 is satisfied
+### Implementation Notes
+
+- If registry already exists, extend with new entries
+- Use consistent key naming (snake_case matching function names)
+- References should include DOI links where available
 
 ---
 
-### Story 1.4: Warning System for Data Quality Issues
+## Story 1.3: PNP xarray + typed_public_api Integration
 
-As a **climate researcher**,
-I want warnings when my data has quality issues,
-So that I'm aware of potential problems without blocking my calculation.
+**Priority:** High
+**Agent:** Alpha
+**Phase:** 1
+**Effort:** 6-8 hours
+**FR Coverage:** FR-PATTERN-001 (or FR-PNP-001 if separate), FR-PATTERN-005
 
-**Acceptance Criteria:**
+### Description
 
-**Given** input data has quality issues
-**When** the index calculation runs
-**Then** warnings are emitted using `warnings.warn()` (not logging):
-- When >20% missing data in calibration period
-- When calibration period < 30 years
-- When distribution fit has poor goodness-of-fit
-**And** warnings are suppressible via `warnings.filterwarnings()`
-**And** calculations still complete despite warnings
-**And** FR-ERROR-004 is satisfied
+Apply the `@xarray_adapter` decorator to `percentage_of_normal()` function and add `@overload` type signatures to `typed_public_api.py`. This delivers PNP xarray support needed by Track 2.
 
----
+### Acceptance Criteria
 
-### Story 1.5: structlog Configuration Module
+- [ ] `@xarray_adapter` decorator applied to `percentage_of_normal()` in `src/climate_indices/indices.py`
+- [ ] CF metadata automatically attached from registry (Story 1.2)
+- [ ] `@overload` signatures added to `typed_public_api.py`:
+  - NumPy path: `percentage_of_normal(np.ndarray, ...) -> np.ndarray`
+  - xarray path: `percentage_of_normal(xr.DataArray, ...) -> xr.DataArray`
+- [ ] Runtime dispatcher uses `isinstance(input, xr.DataArray)` detection
+- [ ] Equivalence test `test_percentage_of_normal_xarray_equivalence()` passes (tolerance: 1e-8)
+- [ ] mypy --strict passes
 
-As a **system administrator**,
-I want to configure structured logging with JSON and console outputs,
-So that I can integrate climate_indices logs into my monitoring infrastructure.
+### Dependencies
 
-**Acceptance Criteria:**
+- Story 1.1 (exceptions for input validation)
+- Story 1.2 (CF metadata registry)
 
-**Given** the library needs structured logging
-**When** I create the `logging_config.py` module
-**Then** a `configure_logging()` function exists that:
-- Sets up structlog with dual processors (JSON + console)
-- JSON output for file handlers (machine-readable)
-- Human-readable colored output for console
-- Accepts log level parameter (DEBUG, INFO, WARNING, ERROR)
-- Defaults to INFO level
-**And** environment variable `CLIMATE_INDICES_LOG_LEVEL` overrides default
-**And** no logging to files by default (user-configured)
-**And** FR-LOG-001 is satisfied
+### Implementation Notes
+
+- Follow existing SPI/SPEI `@xarray_adapter` pattern exactly
+- No algorithm changes — pure wrapper application
+- Coordinate preservation must be validated in equivalence test
 
 ---
 
-### Story 1.6: Calculation Event Logging
+## Story 1.4: PCI xarray + typed_public_api Integration
 
-As a **climate researcher**,
-I want my index calculations logged with start/completion events,
-So that I can track computation progress in long-running workflows.
+**Priority:** High
+**Agent:** Alpha
+**Phase:** 1
+**Effort:** 6-8 hours
+**FR Coverage:** FR-PATTERN-002, FR-PATTERN-006
 
-**Acceptance Criteria:**
+### Description
 
-**Given** an index calculation is initiated
-**When** the calculation starts
-**Then** an INFO-level log entry is emitted with:
-- Event: "calculation_started"
-- Index type (spi, spei, pet_thornthwaite, pet_hargreaves)
-- Scale parameter
-- Distribution parameter
-- Input shape (dimensions)
-**When** the calculation completes
-**Then** an INFO-level log entry is emitted with:
-- Event: "calculation_completed"
-- Duration in milliseconds
-- Output shape
-**And** context is bound at API entry points (not internal functions)
-**And** FR-LOG-002 is satisfied
+Apply the `@xarray_adapter` decorator to `pci()` function and add `@overload` type signatures. PCI requires 365/366 daily values, so input validation is critical.
 
----
+### Acceptance Criteria
 
-### Story 1.7: Error Context Logging
+- [ ] `@xarray_adapter` decorator applied to `pci()` in `src/climate_indices/indices.py`
+- [ ] CF metadata automatically attached (dimensionless units, Oliver 1980 reference)
+- [ ] Input validation: Raises `InvalidArgumentError` if input length ≠ 365 or 366
+- [ ] `@overload` signatures added to `typed_public_api.py`:
+  - NumPy path: `pci(np.ndarray) -> np.ndarray`
+  - xarray path: `pci(xr.DataArray) -> xr.DataArray`
+- [ ] Equivalence test `test_pci_xarray_equivalence()` passes (tolerance: 1e-8)
+- [ ] mypy --strict passes
 
-As an **operational drought monitor**,
-I want detailed context logged when errors occur,
-So that I can perform post-mortem analysis on failures.
+### Dependencies
 
-**Acceptance Criteria:**
+- Story 1.1 (InvalidArgumentError for length validation)
+- Story 1.2 (CF metadata registry)
 
-**Given** a computation error occurs
-**When** the error is raised
-**Then** an ERROR-level log entry is emitted with:
-- Full traceback
-- Input metadata (shape, coordinates if xarray, chunking)
-- Parameter values (scale, distribution, calibration period)
-- Event: "calculation_failed"
-**And** no data values are logged (privacy + size concerns)
-**And** structured log fields enable filtering/aggregation
-**And** FR-LOG-003 is satisfied
+### Implementation Notes
+
+- PCI is computationally simple but has strict input requirements
+- Error message should guide users: "PCI requires exactly 365 or 366 daily precipitation values. Received: {len(input)}"
 
 ---
 
-### Story 1.8: Performance Metrics Logging
+## Story 1.5: ETo Helpers typed_public_api Integration
 
-As a **performance engineer**,
-I want computation time and memory usage logged,
-So that I can profile and optimize large-scale workflows.
+**Priority:** Medium
+**Agent:** Alpha
+**Phase:** 1
+**Effort:** 4-5 hours
+**FR Coverage:** FR-PATTERN-003, FR-PATTERN-004
 
-**Acceptance Criteria:**
+### Description
 
-**Given** an index calculation runs
-**When** the calculation completes
-**Then** performance metrics are logged:
-- Computation time in milliseconds (all calculations)
-- Memory usage for arrays > 1GB (if psutil available)
-- Input size (element count)
-**And** metrics are accessible via structlog context binding
-**And** custom metrics can be added via context binding API
-**And** FR-LOG-004 is satisfied
+Add `@overload` type signatures for `eto_thornthwaite()` and `eto_hargreaves()` to `typed_public_api.py`. These functions already have xarray support from v1.1 but lack type safety.
 
----
+### Acceptance Criteria
 
-### Story 1.9: Integrate Logging into Existing Modules
+- [ ] `@overload` signatures added for `eto_thornthwaite()`:
+  - NumPy path: `eto_thornthwaite(np.ndarray, ...) -> np.ndarray`
+  - xarray path: `eto_thornthwaite(xr.DataArray, ...) -> xr.DataArray`
+- [ ] `@overload` signatures added for `eto_hargreaves()`:
+  - NumPy path: `eto_hargreaves(np.ndarray, np.ndarray, ...) -> np.ndarray`
+  - xarray path: `eto_hargreaves(xr.DataArray, xr.DataArray, ...) -> xr.DataArray`
+- [ ] Runtime dispatchers validate input types correctly
+- [ ] mypy --strict passes on `typed_public_api.py`
+- [ ] No changes to `eto.py` computation functions (type signatures only)
 
-As a **library maintainer**,
-I want structured logging integrated into existing NumPy code,
-So that current users benefit from improved observability.
+### Dependencies
 
-**Acceptance Criteria:**
+None (functions already have xarray support)
 
-**Given** the logging infrastructure is established
-**When** I update existing modules (`compute.py`, `eto.py`, `utils.py`)
-**Then** module-level loggers are added: `logger = structlog.get_logger(__name__)`
-**And** key operations are logged:
-- Distribution fitting start/complete (compute.py)
-- PET calculation start/complete (eto.py)
-- Array transformation operations (utils.py)
-**And** no function signatures change (internal logging only)
-**And** existing NumPy tests pass unchanged
-**And** FR-LOG-005 is satisfied
+### Implementation Notes
+
+- This is purely a type safety enhancement — no functionality changes
+- Follow existing SPI/SPEI pattern exactly
 
 ---
 
-## Epic 2: Core xarray Support — SPI Calculation
+## Story 1.6: Palmer structlog Migration
 
-Climate researchers can calculate SPI directly on xarray DataArrays with full metadata preservation, eliminating manual `.values` extraction and coordinate re-attachment workflows.
+**Priority:** Critical (BLOCKS Track 3)
+**Agent:** Alpha
+**Phase:** 1
+**Effort:** 12-16 hours (palmer.py is 912 lines)
+**FR Coverage:** FR-PATTERN-007
 
-### Story 2.1: Input Type Detection and Routing
+### Description
 
-As a **climate researcher**,
-I want the library to automatically detect whether I'm using NumPy or xarray,
-So that I don't need separate function calls for different input types.
+Migrate `palmer.py` from stdlib `logging` to `structlog` with complete lifecycle event patterns. This is on the **critical path** — Palmer xarray work (Track 3) cannot begin until this completes.
 
-**Acceptance Criteria:**
+### Acceptance Criteria
 
-**Given** the SPI function receives input data
-**When** I check the input type
-**Then** `isinstance(data, xr.DataArray)` determines routing
-**And** xarray inputs route to the xarray adapter path
-**And** numpy.ndarray/list/scalar inputs route to the NumPy path
-**And** unsupported types (pandas.Series, polars.DataFrame) raise `InputTypeError` with clear message
-**And** FR-INPUT-001 is satisfied
+- [ ] Import changed: `from climate_indices.logging_config import get_logger` replaces `utils.get_logger(__name__, logging.DEBUG)`
+- [ ] Lifecycle events added:
+  - `calculation_started` with bind context: `calculation="pdsi"`, `data_shape=precips.shape`, `awc=awc`
+  - `calculation_completed` with `duration_ms=elapsed`
+  - `calculation_failed` with error context
+- [ ] All log statements updated to structlog format (no stdlib logging imports remain)
+- [ ] Log levels match SPI/SPEI pattern: INFO for lifecycle, DEBUG for internal state
+- [ ] Existing functionality unchanged (pure logging refactor)
+- [ ] All Palmer tests pass without modification (numerical equivalence maintained)
 
----
+### Dependencies
 
-### Story 2.2: xarray Adapter Decorator Infrastructure
+- Story 1.1 (exception hierarchy for calculation_failed events)
 
-As a **library developer**,
-I want a reusable decorator pattern for wrapping NumPy functions,
-So that adding xarray support to new indices is straightforward.
+### Implementation Notes
 
-**Acceptance Criteria:**
-
-**Given** I need to wrap a NumPy index function
-**When** I create the `xarray_adapter.py` module
-**Then** an `@xarray_adapter` decorator exists with signature accepting cf_metadata, time_dim, and infer_params parameters
-**And** the decorator implements the adapter contract:
-1. Extract `.values` from DataArray
-2. Infer parameters (data_start_year, periodicity) if enabled
-3. Call wrapped NumPy function
-4. Rewrap result with coordinates and attributes
-5. Log completion event
-**And** mypy --strict passes with proper type overloads
-**And** Architectural Decision 1 (Adapter Pattern) is implemented
+- palmer.py is large (912 lines) — budget realistic time (12-16 hours, not 3-4)
+- Test incrementally to avoid breaking existing functionality
+- This story BLOCKS Story 4.1 (Palmer xarray handoff validation)
 
 ---
 
-### Story 2.3: CF Metadata Registry for SPI
+## Story 1.7: ETo Thornthwaite structlog Lifecycle Completion
 
-As a **climate researcher**,
-I want SPI outputs to have CF-compliant metadata,
-So that my results are interoperable with other climate tools.
+**Priority:** Medium
+**Agent:** Alpha
+**Phase:** 1
+**Effort:** 2-3 hours
+**FR Coverage:** FR-PATTERN-008
 
-**Acceptance Criteria:**
+### Description
 
-**Given** SPI calculation produces xarray output
-**When** I define the `CF_METADATA` registry
-**Then** an SPI entry exists with long_name, units, and references fields
-**And** metadata includes "Standardized Precipitation Index" as long_name
-**And** units are "dimensionless"
-**And** references include DOI to McKee et al. (1993)
-**And** metadata is applied to output DataArray
-**And** FR-META-003 (CF compliance) is satisfied
-**And** Architectural Decision 4 (Metadata Registry) is implemented
+Complete the structlog lifecycle pattern for `eto_thornthwaite()`. The function already has a logger instance but is missing the bind/lifecycle event pattern.
 
----
+### Acceptance Criteria
 
-### Story 2.4: Coordinate Preservation
+- [ ] Lifecycle bind added: `_logger.bind(calculation="eto_thornthwaite", data_shape=temp.shape, latitude=latitude_degrees)`
+- [ ] Events logged:
+  - `calculation_started`
+  - `calculation_completed` with duration timing
+  - Optional: Temperature range stats at DEBUG level
+- [ ] Pattern matches `eto_hargreaves()` exactly
+- [ ] No changes to computation logic
+- [ ] Tests pass without modification
 
-As a **climate researcher**,
-I want all my input coordinates preserved in the output,
-So that I don't lose spatial/temporal reference information.
+### Dependencies
 
-**Acceptance Criteria:**
+None
 
-**Given** an xarray DataArray with coordinates (time, lat, lon, ensemble)
-**When** SPI calculation completes
-**Then** output DataArray has identical coordinates to input:
-- All dimension coordinates (time, lat, lon)
-- All non-dimension coordinates (bounds, auxiliary)
-- Coordinate attributes preserved
-- Coordinate order maintained
-**And** FR-META-001 is satisfied
+### Implementation Notes
+
+- This is a quick win — function already uses structlog, just needs lifecycle pattern
+- Match eto_hargreaves pattern for consistency
 
 ---
 
-### Story 2.5: Attribute Preservation and Enhancement
+## Story 1.8: Structured Exceptions Migration - ETo Functions
 
-As a **climate researcher**,
-I want relevant input attributes preserved and index-specific metadata added,
-So that I maintain provenance and dataset context.
+**Priority:** Medium
+**Agent:** Alpha
+**Phase:** 1
+**Effort:** 3-4 hours
+**FR Coverage:** FR-PATTERN-009 (partial — ETo functions)
 
-**Acceptance Criteria:**
+### Description
 
-**Given** input DataArray has attributes (institution, source, history)
-**When** SPI calculation completes
-**Then** output DataArray attributes include:
-- Preserved: institution, source (global context)
-- Added: CF metadata (long_name, units, references)
-- Added: calculation metadata (scale, distribution, library version)
-- Conflicting attributes overwritten with index-specific values
-**And** FR-META-002 is satisfied
+Replace generic `ValueError` with structured exceptions in `eto_thornthwaite()` and `eto_hargreaves()`.
 
----
+### Acceptance Criteria
 
-### Story 2.6: Provenance Tracking in History Attribute
+- [ ] `eto_thornthwaite()` input validation uses `InvalidArgumentError`:
+  - Latitude out of range: Context includes `latitude=`, `valid_range=`
+  - Invalid temperature values: Context includes `temp_min=`, `temp_max=`
+- [ ] `eto_hargreaves()` input validation uses `InvalidArgumentError`:
+  - Parameter validation with actionable messages
+- [ ] Error messages provide guidance (e.g., "Latitude must be between -90 and 90 degrees. Received: {latitude}")
+- [ ] All exceptions inherit from `ClimateIndicesError`
+- [ ] Tests updated to expect `InvalidArgumentError` instead of `ValueError`
 
-As a **data manager**,
-I want calculation provenance recorded in metadata,
-So that I can audit and reproduce analyses.
+### Dependencies
 
-**Acceptance Criteria:**
+- Story 1.1 (exception hierarchy)
 
-**Given** SPI calculation on xarray DataArray
-**When** the calculation completes
-**Then** a `history` attribute is added/appended with:
-- ISO 8601 timestamp
-- Index type and parameters (e.g., "SPI-3 with gamma distribution")
-- Library name and version ("climate_indices v2.0.0")
-**And** existing history is preserved (appended, not overwritten)
-**And** FR-META-004 is satisfied
+### Implementation Notes
+
+- Focus on clear error messages that help users fix their inputs
+- Test both success and failure paths
 
 ---
 
-### Story 2.7: Coordinate Validation
+## Story 1.9: Structured Exceptions Migration - PNP and PCI
 
-As a **climate researcher**,
-I want clear errors when my DataArray lacks required dimensions,
-So that I can fix data structure issues quickly.
+**Priority:** Medium
+**Agent:** Alpha
+**Phase:** 1
+**Effort:** 2-3 hours
+**FR Coverage:** FR-PATTERN-009 (partial — PNP/PCI)
 
-**Acceptance Criteria:**
+### Description
 
-**Given** input DataArray is missing required time dimension
-**When** SPI validation runs
-**Then** a `CoordinateValidationError` is raised with message:
-- "Time dimension 'time' not found in input"
-- "Available dimensions: [list of actual dims]"
-- Suggestion: "Use time_dim parameter to specify custom name"
-**And** time coordinate monotonicity is checked
-**And** insufficient data (time series too short for scale) raises `InsufficientDataError`
-**And** FR-INPUT-002 is satisfied
+Replace generic `ValueError` with structured exceptions in `percentage_of_normal()` and `pci()`.
 
----
+### Acceptance Criteria
 
-### Story 2.8: Missing Data (NaN) Handling
+- [ ] `percentage_of_normal()` uses `InvalidArgumentError` for input validation
+- [ ] `pci()` uses `InvalidArgumentError` for length validation:
+  - Message: "PCI requires exactly 365 or 366 daily precipitation values"
+  - Context: `shape=data.shape`, `expected_length=[365, 366]`
+- [ ] All error messages are actionable
+- [ ] Tests updated for new exception types
 
-As a **climate researcher**,
-I want NaN values handled consistently with NumPy behavior,
-So that missing data doesn't break my workflows.
+### Dependencies
 
-**Acceptance Criteria:**
+- Story 1.1 (exception hierarchy)
 
-**Given** input DataArray contains NaN values
-**When** SPI calculation runs
-**Then** NaNs propagate through calculations (default behavior)
-**And** warning is emitted when >20% of calibration period is NaN
-**And** minimum sample size (30 years) is enforced on non-NaN values
-**And** output has NaN where input had NaN
-**And** FR-INPUT-004 is satisfied
+### Implementation Notes
+
+- PCI validation is the most important — strict length requirement
+- Combine with Stories 1.3 and 1.4 if working on same functions
 
 ---
 
-### Story 2.9: Dask-Backed Array Support
+## Story 1.10: Property-Based Tests - PNP, PCI, SPEI
 
-As a **climate researcher**,
-I want SPI to work with Dask arrays for large datasets,
-So that I can process data larger than memory.
+**Priority:** Medium
+**Agent:** Alpha
+**Phase:** 1
+**Effort:** 8-10 hours
+**FR Coverage:** FR-PATTERN-010, FR-PATTERN-011, FR-PATTERN-012 (partial — SPEI)
 
-**Acceptance Criteria:**
+### Description
 
-**Given** input DataArray is backed by dask.array
-**When** SPI calculation runs
-**Then** computation remains lazy (no automatic `.compute()`)
-**And** `apply_ufunc` is used with `dask='parallelized'`
-**And** input chunking is preserved in output
-**And** no automatic rechunking occurs
-**And** FR-INPUT-005 is satisfied
-**And** FR-META-005 (chunking preservation) is satisfied
+Add property-based tests using Hypothesis to document mathematical invariants for PNP, PCI, and expand SPEI coverage.
 
----
+### Acceptance Criteria
 
-### Story 2.10: Parameter Inference (data_start_year, periodicity)
+- [ ] **PNP properties** (`tests/test_properties.py::TestPercentageOfNormalProperties`):
+  - Boundedness: `pnp >= 0` always
+  - Shape preservation: `output.shape == input.shape`
+  - NaN propagation: `np.isnan(input[i]) → np.isnan(output[i])`
+  - Linear scaling: `pnp(2×p, 2×p_mean) = pnp(p, p_mean)`
+- [ ] **PCI properties** (`tests/test_properties.py::TestPCIProperties`):
+  - Range: `0 <= pci <= 100` always
+  - Input length validation error for wrong length
+  - NaN handling
+  - Zero precipitation edge case
+- [ ] **SPEI expanded properties** (`tests/test_properties.py::TestSPEIProperties`):
+  - Shape preservation
+  - NaN propagation from water balance
+  - Zero water balance → SPEI near 0
+- [ ] Hypothesis strategies use realistic climate data ranges
+- [ ] All property tests pass with >100 examples
 
-As a **climate researcher**,
-I want the library to infer temporal parameters from my DataArray,
-So that I don't have to manually specify obvious values.
+### Dependencies
 
-**Acceptance Criteria:**
+- Stories 1.3, 1.4 (functions must have xarray support)
 
-**Given** input DataArray has a time coordinate
-**When** parameter inference is enabled (default)
-**Then** `data_start_year` is inferred from `data.time[0].dt.year`
-**And** `periodicity` is inferred from `xr.infer_freq(data.time)` (monthly/daily)
-**And** calibration period defaults to full time range
-**And** explicit parameter values override inferred values
-**And** Architectural Decision 6 (Parameter Inference) is implemented
+### Implementation Notes
 
----
-
-### Story 2.11: Type Hints and Overloads for NumPy/xarray Dispatch
-
-As a **Python developer using IDEs**,
-I want accurate type hints for SPI function,
-So that my IDE provides correct autocomplete and type checking.
-
-**Acceptance Criteria:**
-
-**Given** SPI function accepts both NumPy and xarray inputs
-**When** I add type annotations
-**Then** `@overload` signatures exist for both paths with proper numpy.ndarray and xarray.DataArray return types
-**And** mypy --strict passes with no type errors
-**And** IDE autocomplete shows correct return type based on input
-**And** FR-API-002 is satisfied
+- Budget 50-60 hours per index for comprehensive property testing (per Architecture Decision 3)
+- This story covers 3 indices at ~3-4 hours each (basic properties only)
+- Use `st.floats(min_value=0, max_value=1000, allow_nan=True)` for precipitation
 
 ---
 
-### Story 2.12: Backward Compatibility - NumPy Path Unchanged
+## Story 1.11: Property-Based Tests - Palmer
 
-As an **operational drought monitor**,
-I want my existing NumPy-based code to work identically,
-So that I can upgrade without breaking production systems.
+**Priority:** Low
+**Agent:** Alpha
+**Phase:** 3
+**Effort:** 6-8 hours
+**FR Coverage:** FR-PATTERN-012 (partial — Palmer)
 
-**Acceptance Criteria:**
+### Description
 
-**Given** existing NumPy tests from v1.x
-**When** SPI is called with numpy.ndarray input
-**Then** all existing tests pass without modification
-**And** numerical results are bit-exact (tolerance: 1e-8 for float64)
-**And** no new required parameters introduced
-**And** no deprecation warnings emitted (MVP phase)
-**And** `indices.py` module remains completely unchanged
-**And** FR-CALC-005 is satisfied
-**And** NFR-COMPAT-003 (backward compatibility) is satisfied
+Expand Palmer property-based tests to cover PHDI, PMDI, and Z-Index (currently only PDSI boundedness exists).
 
----
+### Acceptance Criteria
 
-## Epic 3: Extended xarray Support — SPEI and PET
+- [ ] **PHDI properties** added:
+  - Bounded range test
+  - Sequential consistency validation
+- [ ] **PMDI properties** added:
+  - Bounded range test
+  - Sequential consistency validation
+- [ ] **Z-Index properties** added:
+  - Bounded range test
+  - Sequential consistency validation
+- [ ] Property: Sequential consistency (splitting time series changes results — Palmer is NOT embarrassingly parallel)
+- [ ] All tests in `tests/test_properties.py::TestPalmerProperties`
 
-Researchers can calculate SPEI and PET (Thornthwaite + Hargreaves) on xarray DataArrays with automatic multi-input alignment, completing the full drought index toolkit for modern workflows.
+### Dependencies
 
-### Story 3.1: SPEI with Multi-Input Alignment
+- Story 1.6 (Palmer structlog migration complete)
+- Story 4.8 (Palmer xarray equivalence validated)
 
-As a **climate researcher**,
-I want to calculate SPEI using separate precipitation and PET DataArrays,
-So that I can analyze drought using water balance (P - PET).
+### Implementation Notes
 
-**Acceptance Criteria:**
-
-**Given** precipitation and PET as separate xarray DataArrays
-**When** SPEI calculation is called
-**Then** inputs are automatically aligned using `xr.align(join='inner')`
-**And** warning is emitted if alignment drops data (non-overlapping coordinates)
-**And** chunking is preserved from precipitation input (primary variable)
-**And** output metadata derives from precipitation (long_name updated to SPEI)
-**And** FR-CALC-002 is satisfied
-**And** FR-INPUT-003 (enhanced for multi-input) is satisfied
+- Palmer properties are more complex due to sequential state
+- Sequential consistency property is important to document
 
 ---
 
-### Story 3.2: PET Thornthwaite with xarray
+## Story 1.12: Pattern Compliance Dashboard
 
-As a **climate researcher**,
-I want to calculate PET using the Thornthwaite method on xarray inputs,
-So that I can estimate evapotranspiration for SPEI calculations.
+**Priority:** Low (QA)
+**Agent:** Alpha
+**Phase:** 4
+**Effort:** 4-5 hours
+**FR Coverage:** NFR-PATTERN-COVERAGE
 
-**Acceptance Criteria:**
+### Description
 
-**Given** temperature and latitude as xarray DataArrays
-**When** PET Thornthwaite calculation runs
-**Then** broadcasting occurs across spatial dimensions automatically
-**And** CF-compliant attributes are added:
-- long_name: "Potential Evapotranspiration (Thornthwaite method)"
-- units: "mm/month"
-- references: DOI to Thornthwaite (1948)
-**And** input chunking is preserved for Dask arrays
-**And** coordinates from temperature input are preserved
-**And** FR-CALC-003 is satisfied
+Create a compliance dashboard script or test that validates 100% pattern coverage across all 7 indices and 6 patterns (42 compliance points).
 
----
+### Acceptance Criteria
 
-### Story 3.3: PET Hargreaves with xarray
+- [ ] Script or test module validates:
+  - xarray support: 7/7 indices
+  - typed_public_api entries: 7/7 indices
+  - CF metadata: 7/7 indices
+  - structlog: 7/7 modules
+  - Structured exceptions: 7/7 functions
+  - Property tests: 7/7 indices
+- [ ] Dashboard output shows 42/42 compliance points achieved
+- [ ] CI integration: Compliance check runs on every PR
+- [ ] Documentation updated with compliance status
 
-As a **climate researcher**,
-I want to calculate PET using the Hargreaves method with min/max temperature,
-So that I have an alternative PET method when humidity data is unavailable.
+### Dependencies
 
-**Acceptance Criteria:**
+- All Track 0 stories (1.1-1.11)
 
-**Given** tmin, tmax, and latitude as xarray DataArrays
-**When** PET Hargreaves calculation runs
-**Then** coordinate alignment is validated across all three inputs
-**And** inputs are aligned using `xr.align(join='inner')`
-**And** CF-compliant attributes are added:
-- long_name: "Potential Evapotranspiration (Hargreaves method)"
-- units: "mm/day"
-- references: DOI to Hargreaves & Samani (1985)
-**And** supports both single-point and gridded calculations
-**And** FR-CALC-004 is satisfied
+### Implementation Notes
+
+- This can be a pytest test that introspects the codebase
+- Goal: NFR-PATTERN-COVERAGE validation (6 patterns × 7 indices = 42 points)
 
 ---
 
-### Story 3.4: Pearson Type III Distribution Support
+# Epic 2: PM-ET Foundation
 
-As a **climate researcher**,
-I want to use Pearson Type III distribution for SPEI,
-So that I can handle datasets with negative values (water balance can be negative).
+**Goal:** Implement physics-based PET with FAO56 validation, establishing patterns for Tracks 2 & 3
 
-**Acceptance Criteria:**
-
-**Given** SPEI calculation with water balance data (can be negative)
-**When** distribution parameter is set to "pearson3"
-**Then** method-of-moments parameter estimation is used
-**And** skewness-based fitting is applied
-**And** validation against NOAA reference implementation confirms correctness
-**And** distribution fitting errors are caught and provide helpful messages
-**And** FR-STAT-002 is satisfied
+**Agent:** Beta
+**Track:** 1 (PM-ET Foundation)
+**Duration:** 3-4 weeks
+**Story Count:** 7
 
 ---
 
-### Story 3.5: Extend CF Metadata Registry for SPEI and PET
+## Story 2.1: PM-ET Atmospheric Helpers
 
-As a **climate researcher**,
-I want SPEI and PET outputs to have correct CF metadata,
-So that all drought indices are consistently documented.
+**Priority:** High
+**Agent:** Beta
+**Phase:** 1
+**Effort:** 4-5 hours
+**FR Coverage:** FR-PM-002
 
-**Acceptance Criteria:**
+### Description
 
-**Given** the `CF_METADATA` registry exists
-**When** I add entries for SPEI and PET indices
-**Then** registry includes:
-- "spei": long_name, units (dimensionless), references (Vicente-Serrano et al.)
-- "pet_thornthwaite": long_name, units (mm/month), references
-- "pet_hargreaves": long_name, units (mm/day), references
-**And** metadata is applied automatically by adapter decorator
-**And** all three indices have CF-compliant attributes
-**And** Architectural Decision 4 (Metadata Registry) is extended
+Implement private helper functions for atmospheric pressure and psychrometric constant (FAO56 Equations 7-8).
 
----
+### Acceptance Criteria
 
-## Epic 4: Quality Assurance and Validation
+- [ ] `_atm_pressure(altitude)` implemented in `src/climate_indices/eto.py`:
+  - Equation: `P = 101.3 × [(293 - 0.0065z)/293]^5.26`
+  - Type: `float → float` (scalar operation)
+- [ ] `_psy_const(pressure)` implemented:
+  - Equation: `γ = 0.000665 × P`
+  - Type: `float → float`
+- [ ] Unit tests validate against known values:
+  - Uccle (100m altitude) → 100.1 kPa
+  - Bangkok (0m altitude) → 101.3 kPa
+- [ ] Docstrings include equation numbers and units
+- [ ] mypy --strict passes
 
-Automated tests verify numerical equivalence between NumPy and xarray paths, metadata correctness, and edge case handling, giving operational users confidence in upgrading.
+### Dependencies
 
-### Story 4.1: xarray Equivalence Test Framework
+None (foundation functions)
 
-As a **library maintainer**,
-I want automated tests that verify xarray outputs match NumPy outputs,
-So that I can ensure numerical correctness.
+### Implementation Notes
 
-**Acceptance Criteria:**
-
-**Given** the test suite needs equivalence validation
-**When** I create `test_xarray_adapter.py`
-**Then** parametrized tests exist for all indices (SPI, SPEI, PET Thornthwaite, PET Hargreaves)
-**And** tests compare `xarray_result.values` against `numpy_result`
-**And** tolerance is 1e-8 for float64 arrays
-**And** tests run on CI for all PRs
-**And** test fixtures provide sample climate data (precipitation, temperature)
-**And** FR-TEST-001 is satisfied
-**And** NFR-REL-001 (numerical reproducibility) is validated
+- These are scalar helper functions, not vectorized
+- Exact FAO56 constants must be used (no approximations)
 
 ---
 
-### Story 4.2: Metadata Validation Tests
+## Story 2.2: PM-ET Vapor Pressure Helpers
 
-As a **library maintainer**,
-I want tests that verify metadata preservation and CF compliance,
-So that xarray outputs have correct attributes and coordinates.
+**Priority:** High
+**Agent:** Beta
+**Phase:** 1
+**Effort:** 5-6 hours
+**FR Coverage:** FR-PM-003
 
-**Acceptance Criteria:**
+### Description
 
-**Given** xarray outputs from index calculations
-**When** metadata validation tests run
-**Then** tests assert:
-- Coordinates match input exactly
-- Required CF attributes present (long_name, units, references)
-- Attribute types are correct (units is string, not int)
-- Provenance exists in history attribute
-- Chunking matches input (if Dask-backed)
-**And** tests use pytest fixtures for sample DataArrays
-**And** FR-TEST-002 is satisfied
+Implement vapor pressure calculation helpers using correct Magnus formula constants (FAO56 Equations 11-13).
 
----
+### Acceptance Criteria
 
-### Story 4.3: Edge Case Coverage Tests
+- [ ] `_svp_from_t(temp)` implemented:
+  - Equation: `e°(T) = 0.6108 × exp[17.27T/(T+237.3)]`
+  - Array-compatible: accepts `np.ndarray`, returns same shape
+  - Exact constants: `0.6108, 17.27, 237.3`
+- [ ] `_mean_svp(tmin, tmax)` implemented:
+  - Equation: `es = (e°(Tmax) + e°(Tmin)) / 2`
+  - NOT `e°(Tmean)` (critical non-linearity)
+- [ ] `_slope_svp(temp)` implemented:
+  - Equation: `Δ = 4098 × e°(T) / (T+237.3)²`
+- [ ] Unit tests validate intermediate values against FAO56 examples
+- [ ] Precision: ±0.01 kPa for intermediate values (NFR-PM-PERF)
 
-As a **library maintainer**,
-I want tests covering known failure modes,
-So that edge cases don't cause production failures.
+### Dependencies
 
-**Acceptance Criteria:**
+None
 
-**Given** the test suite needs edge case coverage
-**When** I add edge case tests
-**Then** tests cover:
-- Zero-inflated precipitation (all zeros, mixed zeros/non-zeros)
-- Missing data patterns (random NaNs, blocks of NaNs, leading/trailing NaNs)
-- Minimum time series (exactly 30 years for SPI/SPEI)
-- Coordinate misalignment (different grid resolutions)
-- Single-point vs gridded data
-**And** tests verify graceful degradation (partial failures don't crash)
-**And** FR-TEST-003 is satisfied
-**And** NFR-REL-002 (graceful degradation) is validated
+### Implementation Notes
+
+- Mean SVP non-linearity is a common implementation error — validate carefully
+- Use exact FAO56 constants (not alternative Magnus formulations)
 
 ---
 
-### Story 4.4: Reference Dataset Validation
+## Story 2.3: PM-ET Humidity Pathway Dispatcher
 
-As a **library maintainer**,
-I want tests against published reference datasets,
-So that I can validate scientific correctness.
+**Priority:** High
+**Agent:** Beta
+**Phase:** 1
+**Effort:** 6-7 hours
+**FR Coverage:** FR-PM-004
 
-**Acceptance Criteria:**
+### Description
 
-**Given** reference datasets from NOAA and CSIC exist
-**When** validation tests run
-**Then** SPI matches NOAA reference implementation (tolerance: 1e-5)
-**And** SPEI matches CSIC reference (Vicente-Serrano et al.)
-**And** test data is included in `tests/data/` directory
-**And** provenance of reference data is documented
-**And** FR-TEST-004 is satisfied
+Implement auto-selection logic for actual vapor pressure calculation based on available humidity inputs (FAO56 Equations 14-19).
 
----
+### Acceptance Criteria
 
-### Story 4.5: xarray Test Fixtures in conftest.py
+- [ ] `_avp_from_dewpoint(tdew)` implemented (Eq. 14):
+  - Most accurate method
+  - Priority: 1 (preferred)
+- [ ] `_avp_from_rhminmax(...)` implemented (Eq. 17):
+  - Preferred for daily data
+  - Priority: 2
+- [ ] `_avp_from_rhmean(...)` implemented (Eq. 19):
+  - Fallback method
+  - Priority: 3
+- [ ] Dispatcher in `eto_penman_monteith()` auto-selects based on available inputs
+- [ ] Raises `ValueError` if no humidity input provided
+- [ ] Selected pathway logged at DEBUG level (structlog)
+- [ ] Unit tests validate each pathway independently
 
-As a **test developer**,
-I want reusable xarray test fixtures,
-So that writing new tests is straightforward.
+### Dependencies
 
-**Acceptance Criteria:**
+- Story 2.2 (SVP helpers)
 
-**Given** tests need sample xarray DataArrays
-**When** I create fixtures in `conftest.py`
-**Then** fixtures provide:
-- Sample precipitation DataArray (time, lat, lon)
-- Sample temperature DataArray
-- Sample Dask-backed DataArray
-- DataArrays with various coordinate systems
-**And** fixtures are session-scoped for expensive operations
-**And** fixtures include both in-memory and lazy (Dask) variants
-**And** Architectural test infrastructure is established
+### Implementation Notes
 
----
-
-### Story 4.6: Exception Hierarchy Test Coverage
-
-As a **library maintainer**,
-I want tests verifying all custom exceptions,
-So that error handling works correctly.
-
-**Acceptance Criteria:**
-
-**Given** custom exception hierarchy exists
-**When** I create `test_exceptions.py`
-**Then** tests verify:
-- All exceptions inherit from `ClimateIndicesError`
-- Exceptions can be caught individually or via base class
-- Error messages include helpful context
-- pytest.raises correctly catches specific exception types
-**And** test coverage > 90% for exceptions module
+- Follow FAO56 hierarchy strictly: dewpoint > RH extremes > RH mean
+- Provide clear error if user provides no humidity data
 
 ---
 
-### Story 4.7: Logging Output Validation Tests
+## Story 2.4: PM-ET Core Calculation
 
-As a **library maintainer**,
-I want tests that verify structlog output format,
-So that logs are machine-parseable.
+**Priority:** Critical
+**Agent:** Beta
+**Phase:** 1
+**Effort:** 8-10 hours
+**FR Coverage:** FR-PM-001
 
-**Acceptance Criteria:**
+### Description
 
-**Given** structlog is configured
-**When** I create `test_logging.py`
-**Then** tests verify:
-- JSON output is valid (can be parsed by json.loads)
-- Required fields present (timestamp, level, event, logger)
-- ISO 8601 timestamps (RFC 3339 with timezone)
-- No unescaped special characters
-- Console output includes color codes (when TTY)
-**And** FR-LOG-001 validation is complete
-**And** NFR-INTEG-003 (structlog JSON format) is validated
+Implement the core Penman-Monteith FAO56 reference evapotranspiration calculation (Equation 6).
 
----
+### Acceptance Criteria
 
-### Story 4.8: Performance Overhead Benchmark
+- [ ] Public function `eto_penman_monteith(tmin, tmax, tmean, wind_2m, net_radiation, latitude, altitude, ...)` implemented
+- [ ] Equation 6 implementation:
+  - Numerator: `0.408 × Δ × (Rn - G) + γ × (900/(T+273)) × u2 × (es - ea)`
+  - Denominator: `Δ + γ × (1 + 0.34 × u2)`
+  - Critical: Kelvin conversion in denominator (`T + 273`)
+- [ ] Returns `np.ndarray` matching input shape
+- [ ] Integrates humidity dispatcher from Story 2.3
+- [ ] Uses atmospheric helpers from Story 2.1
+- [ ] Uses vapor pressure helpers from Story 2.2
+- [ ] structlog lifecycle events: `calculation_started`, `calculation_completed`
+- [ ] Docstring documents FAO56 reference and parameter units
 
-As a **performance engineer**,
-I want benchmarks measuring xarray overhead vs NumPy,
-So that I can track performance regressions.
+### Dependencies
 
-**Acceptance Criteria:**
+- Story 2.1 (atmospheric helpers)
+- Story 2.2 (vapor pressure helpers)
+- Story 2.3 (humidity dispatcher)
 
-**Given** the need to measure computational overhead
-**When** I create benchmark suite using pytest-benchmark
-**Then** benchmarks measure:
-- SPI/SPEI/PET on (1000×1000×120) arrays
-- NumPy baseline vs xarray path
-- Report mean, std dev, 95th percentile
-**And** overhead is < 5% for in-memory computations
-**And** CI tracks performance regressions (fails if >10% slowdown)
-**And** FR-PERF-001 is satisfied
-**And** NFR-PERF-001 (computational overhead) is validated
+### Implementation Notes
+
+- This is the orchestration function tying all helpers together
+- Kelvin conversion placement is critical — common implementation error
 
 ---
 
-### Story 4.9: Chunked Computation Efficiency Tests
+## Story 2.5: FAO56 Worked Example Validation
 
-As a **performance engineer**,
-I want tests measuring Dask parallel efficiency,
-So that I can validate weak scaling.
+**Priority:** Critical
+**Agent:** Beta
+**Phase:** 1
+**Effort:** 5-6 hours
+**FR Coverage:** FR-PM-005
 
-**Acceptance Criteria:**
+### Description
 
-**Given** Dask-backed arrays need parallel validation
-**When** I create chunked computation tests
-**Then** tests measure weak scaling efficiency:
-- 2 workers: >85% efficiency
-- 4 workers: >75% efficiency
-- 8 workers: >70% efficiency
-**And** fixed chunk size (100×100×120) per chunk
-**And** tests run with multiprocessing scheduler
-**And** FR-PERF-002 is satisfied
-**And** NFR-PERF-002 (chunked efficiency) is validated
+Validate PM-ET implementation against published FAO56 Examples 17 (tropical) and 18 (temperate).
 
----
+### Acceptance Criteria
 
-### Story 4.10: Memory Efficiency Validation
+- [ ] Test `tests/test_eto.py::test_fao56_example_17_bangkok()`:
+  - Input: Bangkok, April (tropical monthly)
+  - Expected: 5.72 mm/day ±0.05
+  - Input data embedded in test (no external files)
+- [ ] Test `tests/test_eto.py::test_fao56_example_18_uccle()`:
+  - Input: Uccle, 6 July (temperate daily)
+  - Expected: 3.9 mm/day ±0.05
+  - Input data embedded in test
+- [ ] Both tests pass (NFR-PM-PERF: ±0.05 mm/day tolerance)
+- [ ] Intermediate values validated against FAO56 tables (±0.01 kPa for vapor pressure)
 
-As a **performance engineer**,
-I want tests that validate out-of-core computation,
-So that large datasets don't cause OOM errors.
+### Dependencies
 
-**Acceptance Criteria:**
+- Story 2.4 (PM-ET core calculation)
 
-**Given** datasets larger than available RAM
-**When** I create memory efficiency tests
-**Then** tests verify:
-- 50GB synthetic dataset processes with 16GB RAM
-- Peak memory < 16GB (ideally < 8GB)
-- Lazy evaluation confirmed (no full materialization)
-- Output validates against smaller in-memory subset
-**And** memory usage monitored via pytest plugin
-**And** FR-PERF-003 is satisfied
-**And** NFR-PERF-003 (memory efficiency) is validated
+### Implementation Notes
+
+- These are the primary scientific validation tests
+- If tests fail, implementation has an error — do not relax tolerance
 
 ---
 
-### Story 4.11: Property-Based Testing with Hypothesis
+## Story 2.6: PM-ET xarray Adapter
 
-As a **library maintainer**,
-I want generative tests that find edge cases automatically,
-So that I discover bugs I didn't anticipate.
+**Priority:** High
+**Agent:** Beta
+**Phase:** 1
+**Effort:** 4-5 hours
+**FR Coverage:** FR-PM-006
 
-**Acceptance Criteria:**
+### Description
 
-**Given** the need for comprehensive edge case testing
-**When** I add Hypothesis strategies
-**Then** property-based tests verify:
-- Monotonicity properties
-- Symmetry properties
-- Boundedness (SPI/SPEI in reasonable range)
-**And** strategies generate valid climate data:
-- Positive precipitation (>= 0)
-- Realistic temperatures (-50 to 50°C)
-- Valid latitude (-90 to 90)
-**And** shrinking finds minimal failing examples
-**And** integrated into pytest suite
-**And** FR-TEST-005 is satisfied
+Apply `@xarray_adapter` decorator and add CF metadata for PM-ET.
 
----
+### Acceptance Criteria
 
-## Epic 5: Documentation and Packaging
+- [ ] `@xarray_adapter` applied to `eto_penman_monteith()`
+- [ ] CF metadata registry entry:
+  - `long_name="Reference Evapotranspiration (Penman-Monteith FAO56)"`
+  - `units="mm day-1"`
+  - `references`: Allen et al. 1998 DOI
+- [ ] `@overload` signatures in `typed_public_api.py`:
+  - NumPy path: `eto_penman_monteith(np.ndarray, ...) -> np.ndarray`
+  - xarray path: `eto_penman_monteith(xr.DataArray, ...) -> xr.DataArray`
+- [ ] Equivalence test passes (numpy vs xarray, tolerance: 1e-8)
+- [ ] Dask compatibility: `dask="parallelized"` in apply_ufunc
+- [ ] Coordinate preservation validated
 
-Users have comprehensive guides, API references, and stable package installation, enabling adoption by graduate students and downstream package maintainers.
+### Dependencies
 
-### Story 5.1: Sphinx API Reference Documentation
+- Story 2.4 (PM-ET core implementation)
+- Story 2.5 (validation passing)
 
-As a **library user**,
-I want complete API reference documentation,
-So that I can understand all functions and parameters.
+### Implementation Notes
 
-**Acceptance Criteria:**
-
-**Given** all public functions have Google-style docstrings
-**When** Sphinx builds documentation
-**Then** API reference includes:
-- All public functions documented
-- Parameter types and defaults specified
-- Return value formats described
-- Examples included in docstrings (tested via doctest)
-**And** 100% docstring coverage for public API
-**And** Documentation published via Read the Docs or GitHub Pages
-**And** FR-DOC-001 is satisfied
-**And** NFR-MAINT-003 (documentation coverage) is validated
+- Follow existing eto_thornthwaite pattern
+- Dask parallelization is safe (no sequential state like Palmer)
 
 ---
 
-### Story 5.2: xarray Migration Guide
+## Story 2.7: Palmer Performance Baseline Measurement
 
-As a **NumPy user**,
-I want a guide showing how to migrate to xarray,
-So that I can modernize my workflows.
+**Priority:** High (BLOCKS Track 3)
+**Agent:** Beta
+**Phase:** 1
+**Effort:** 4-5 hours
+**FR Coverage:** NFR-PALMER-PERF (establishes baseline)
 
-**Acceptance Criteria:**
+### Description
 
-**Given** users need migration guidance
-**When** I create the xarray migration guide
-**Then** guide includes:
-- Side-by-side code examples (NumPy vs xarray)
-- Explanation of metadata benefits
-- Common pitfalls (dimension names, coordinate alignment)
-- Performance considerations (when to use chunking)
-**And** real-world examples using climate datasets
-**And** guide links to relevant API reference sections
-**And** FR-DOC-002 is satisfied
+Measure current multiprocessing CLI performance as baseline for Palmer xarray performance validation (NFR-PALMER-PERF: ≥80% speed target).
 
----
+### Acceptance Criteria
 
-### Story 5.3: Quickstart Tutorial
+- [ ] New test module: `tests/test_benchmark_palmer.py`
+- [ ] Benchmark measures wall-clock time for:
+  - Grid size: 360×180 (global 1-degree)
+  - Time series: 240 months (20 years)
+  - Current multiprocessing CLI path
+- [ ] Baseline time recorded in test or documentation
+- [ ] CI integration: Performance regression alerts if new Palmer xarray drops below 80% of baseline
+- [ ] Test uses pytest-benchmark or similar for accurate timing
 
-As a **new library user**,
-I want a quickstart tutorial,
-So that I can start calculating indices quickly.
+### Dependencies
 
-**Acceptance Criteria:**
+None (measures existing functionality)
 
-**Given** new users need onboarding
-**When** I create the quickstart tutorial
-**Then** tutorial:
-- Completes in < 5 minutes
-- Shows data loading (netCDF), calculation, visualization
-- Works with included sample data
-- Covers both NumPy and xarray paths
-**And** tutorial is testable (executed as part of docs build)
-**And** FR-DOC-003 is satisfied
+### Implementation Notes
+
+- This BLOCKS Story 4.1 (cannot validate Track 3 performance without baseline)
+- Without this, NFR-PALMER-PERF cannot be validated
+- Run on consistent hardware for reproducible results
 
 ---
 
-### Story 5.4: Algorithm Documentation with References
+# Epic 3: EDDI/PNP/scPDSI Coverage
 
-As a **climate researcher**,
-I want scientific documentation of algorithms,
-So that I can understand the methods and cite properly.
+**Goal:** Complete EDDI validation, add PNP xarray, stub scPDSI interface
 
-**Acceptance Criteria:**
-
-**Given** users need scientific context
-**When** I create algorithm documentation
-**Then** documentation includes:
-- Link to peer-reviewed papers (DOI links)
-- Explanation of when to use each index
-- Parameter selection guidance (distribution choice, scale)
-- Validation datasets and methods
-**And** references include:
-- McKee et al. (1993) for SPI
-- Vicente-Serrano et al. (2010) for SPEI
-- Thornthwaite (1948) and Hargreaves & Samani (1985) for PET
-**And** FR-DOC-004 is satisfied
+**Agent:** Gamma
+**Track:** 2 (Index Coverage Expansion)
+**Duration:** 2-3 weeks
+**Story Count:** 7
 
 ---
 
-### Story 5.5: Troubleshooting Guide
+## Story 3.1: Resolve PR #597 EDDI Merge Conflicts
 
-As a **library user**,
-I want a troubleshooting guide for common errors,
-So that I can resolve issues independently.
+**Priority:** Critical
+**Agent:** Gamma
+**Phase:** 2
+**Effort:** 3-4 hours
+**FR Coverage:** None (prerequisite)
 
-**Acceptance Criteria:**
+### Description
 
-**Given** users encounter common issues
-**When** I create troubleshooting guide
-**Then** guide covers:
-- Dimension mismatch errors (with fixes)
-- Distribution fitting failures (when to try different distributions)
-- Performance tuning for large datasets
-- Links to relevant GitHub issues
-**And** examples show error messages and resolutions
-**And** FR-DOC-005 is satisfied
+Resolve merge conflicts in existing PR #597 for EDDI implementation. This is NOT greenfield — EDDI algorithm already exists but needs conflict resolution.
 
----
+### Acceptance Criteria
 
-### Story 5.6: PyPI Package Distribution
+- [ ] PR #597 merge conflicts resolved
+- [ ] Existing EDDI tests pass
+- [ ] No regressions in existing functionality
+- [ ] Code review feedback addressed
+- [ ] Ready for Stories 3.2-3.6 to build on top
 
-As a **library user**,
-I want to install via pip,
-So that I can use the library easily.
+### Dependencies
 
-**Acceptance Criteria:**
+None
 
-**Given** the library needs PyPI distribution
-**When** package is published
-**Then** package metadata includes:
-- Package name: climate-indices
-- Semantic versioning (MAJOR.MINOR.PATCH)
-- Both wheel and source distribution
-- README displayed on PyPI
-**And** installation works via `pip install climate-indices`
-**And** FR-PKG-001 is satisfied
+### Implementation Notes
+
+- EDDI implementation already exists — this is integration work, not new development
+- Focus on clean merge, not algorithm changes
 
 ---
 
-### Story 5.7: Dependency Management in pyproject.toml
+## Story 3.2: NOAA Provenance Protocol Establishment
 
-As a **library maintainer**,
-I want well-defined dependencies,
-So that users have reproducible installations.
+**Priority:** High (BLOCKS FR-EDDI-001)
+**Agent:** Gamma
+**Phase:** 2
+**Effort:** 3-4 hours
+**FR Coverage:** None (infrastructure — Architecture Decision 1)
 
-**Acceptance Criteria:**
+### Description
 
-**Given** the library has dependencies
-**When** I update `pyproject.toml`
-**Then** dependencies are specified with minimum versions:
-- numpy >= 1.23
-- scipy >= 1.10
-- xarray >= 2023.01 (core dependency, not optional)
-- structlog >= 23.1 (core dependency)
-**And** lock file (uv.lock) provides reproducible development environment
-**And** optional dependencies defined for extras (dev, test)
-**And** FR-PKG-002 is satisfied
-**And** Architectural Decision 7 (xarray as core dependency) is implemented
+Establish JSON-based provenance metadata protocol for external reference datasets. Covers BOTH EDDI (new) and Palmer (retroactive in Story 4.8).
 
----
+### Acceptance Criteria
 
-### Story 5.8: Python Version Compatibility Matrix
+- [ ] Provenance protocol documented in `tests/fixture/README.md`:
+  - Required fields: source, url, download_date, subset_description, checksum_sha256, fixture_version, validation_tolerance
+- [ ] Template `provenance.json` structure defined
+- [ ] Location pattern established: `tests/fixture/<dataset-name>/provenance.json`
+- [ ] Example provenance file created for demonstration
+- [ ] CI validation: Check provenance.json exists for all reference datasets
 
-As a **library maintainer**,
-I want CI testing across Python versions,
-So that I can ensure broad compatibility.
+### Dependencies
 
-**Acceptance Criteria:**
+None
 
-**Given** library supports Python 3.9–3.13
-**When** CI runs
-**Then** test matrix includes:
-- Python versions: 3.9, 3.10, 3.11, 3.12, 3.13
-- Platforms: Linux, macOS
-- Both minimum and latest dependency versions
-**And** README documents supported versions
-**And** deprecation policy: 12 months notice before dropping Python version
-**And** FR-PKG-003 is satisfied
-**And** NFR-COMPAT-001 (Python version support) is validated
+### Implementation Notes
+
+- This establishes the protocol used by Stories 3.3 (EDDI) and 4.8 (Palmer)
+- Provenance is critical for scientific reproducibility
+- Checksum validates dataset hasn't changed
 
 ---
 
-### Story 5.9: Beta Feature Tagging and Warnings
+## Story 3.3: NOAA EDDI Reference Validation
 
-As a **library user**,
-I want clarity on API stability,
-So that I know which features may change.
+**Priority:** Critical (FR-TEST-004 BLOCKER)
+**Agent:** Gamma
+**Phase:** 2
+**Effort:** 8-10 hours
+**FR Coverage:** FR-EDDI-001
 
-**Acceptance Criteria:**
+### Description
 
-**Given** xarray API is beta until Phase 2
-**When** documentation is generated
-**Then** xarray features include:
-- Docstrings have ".. warning:: Beta feature" directive
-- CHANGELOG.md marks xarray API as experimental
-- README.md clarifies API stability guarantees
-**And** no breaking changes within minor versions (even for beta)
-**And** FR-PKG-004 is satisfied
+Download NOAA PSL EDDI reference dataset, create provenance metadata, and implement validation test (FR-TEST-004). This is a BLOCKER — no merge without this test passing.
+
+### Acceptance Criteria
+
+- [ ] NOAA PSL EDDI data downloaded from [downloads.psl.noaa.gov/Projects/EDDI/CONUS_archive/](https://downloads.psl.noaa.gov/Projects/EDDI/CONUS_archive/)
+- [ ] Subset created: `tests/fixture/noaa-eddi-1month/`, `noaa-eddi-3month/`, `noaa-eddi-6month/`
+- [ ] Provenance metadata created following Story 3.2 protocol:
+  - `tests/fixture/noaa-eddi-1month/provenance.json`
+  - Fields: source, url, download_date, subset_description, checksum
+- [ ] Test `tests/test_noaa_eddi_reference.py::test_eddi_noaa_reference_1month()`:
+  - Computes EDDI using library
+  - Validates against NOAA reference: `np.testing.assert_allclose(computed, noaa_ref, rtol=1e-5, atol=1e-5)`
+  - Tolerance: 1e-5 (NFR-EDDI-VAL — looser than 1e-8 due to non-parametric ranking)
+- [ ] Tests for 3-month and 6-month scales
+- [ ] All tests pass (REQUIRED for merge)
+
+### Dependencies
+
+- Story 3.1 (EDDI algorithm available)
+- Story 3.2 (provenance protocol)
+
+### Implementation Notes
+
+- This is THE critical test for EDDI — FR-TEST-004 blocker
+- If test fails, tolerance may need refinement (but start with 1e-5 per NFR-EDDI-VAL)
+- Subset should be small enough for git (not full CONUS archive)
 
 ---
 
-### Story 5.10: Deprecation Warning System
+## Story 3.4: EDDI xarray Adapter
 
-As a **library maintainer**,
-I want a deprecation system for future API changes,
-So that users have time to migrate.
+**Priority:** High
+**Agent:** Gamma
+**Phase:** 2
+**Effort:** 3-4 hours
+**FR Coverage:** FR-EDDI-002
 
-**Acceptance Criteria:**
+### Description
 
-**Given** future API changes may be needed
-**When** I implement deprecation system
-**Then** `warnings.warn()` is used with `DeprecationWarning` category
-**And** warning messages include:
-- What is deprecated
-- Alternative approach
-- Removal version
-- Link to migration guide
-**And** warnings are suppressible via `warnings.filterwarnings()`
-**And** FR-API-004 is satisfied
+Apply `@xarray_adapter` decorator to EDDI function with CF metadata.
+
+### Acceptance Criteria
+
+- [ ] `@xarray_adapter` applied to `eddi()` in `src/climate_indices/indices.py`
+- [ ] CF metadata registry entry:
+  - `long_name="Evaporative Demand Drought Index"`
+  - `units=""` (dimensionless)
+  - `standard_name="atmosphere_water_vapor_evaporative_demand_anomaly"` (custom)
+  - `references`: Hobbins et al. (2016) DOI: 10.1175/JHM-D-15-0121.1
+- [ ] `@overload` signatures in `typed_public_api.py`
+- [ ] Equivalence test: numpy path == xarray path within 1e-8
+- [ ] mypy --strict passes
+
+### Dependencies
+
+- Story 3.1 (EDDI algorithm available)
+- Story 3.3 (EDDI validated)
+
+### Implementation Notes
+
+- Follow existing SPI/SPEI xarray adapter pattern
+- Custom standard_name is OK (not in CF table yet)
+
+---
+
+## Story 3.5: EDDI CLI Integration
+
+**Priority:** Medium
+**Agent:** Gamma
+**Phase:** 2
+**Effort:** 4-5 hours
+**FR Coverage:** FR-EDDI-003
+
+### Description
+
+Add EDDI support to `process_climate_indices` CLI (Issue #414).
+
+### Acceptance Criteria
+
+- [ ] CLI flag `--index eddi` added
+- [ ] Parameter `--pet_file <path>` for PET input netCDF
+- [ ] Help text documents:
+  - EDDI requires PET input (not precipitation)
+  - Recommended: Use PM FAO56 for PET
+  - Warning: Thornthwaite may produce inaccurate drought signals
+- [ ] Example command in README or docs:
+  ```bash
+  process_climate_indices --index eddi --pet_file pet_pm.nc --scale 6 --output eddi_6mo.nc
+  ```
+- [ ] Integration test: CLI produces valid EDDI output
+
+### Dependencies
+
+- Story 3.4 (EDDI xarray support)
+- Story 2.6 (PM-ET available for recommendation)
+
+### Implementation Notes
+
+- CLI is user-facing — help text must be clear
+- Cross-reference PM-ET as recommended method
+
+---
+
+## Story 3.6: EDDI PET Method Documentation
+
+**Priority:** Medium
+**Agent:** Gamma
+**Phase:** 2
+**Effort:** 2-3 hours
+**FR Coverage:** FR-EDDI-004
+
+### Description
+
+Document PM FAO56 recommendation in EDDI docstring and algorithm documentation.
+
+### Acceptance Criteria
+
+- [ ] EDDI docstring updated with Note section:
+  - "EDDI is most accurate when using Penman-Monteith FAO56 reference evapotranspiration (ETo)."
+  - Warning: "Using simplified methods like Thornthwaite may produce inaccurate drought signals."
+- [ ] See Also section cross-references `eto_penman_monteith()`
+- [ ] Hobbins et al. (2016) citation added to References
+- [ ] `docs/algorithms.rst` updated with EDDI section:
+  - PET method sensitivity discussion
+  - PM FAO56 recommendation rationale
+- [ ] Docstring renders correctly in Sphinx
+
+### Dependencies
+
+- Story 2.6 (PM-ET available)
+
+### Implementation Notes
+
+- This provides scientific guidance to users
+- Important for operational deployment confidence
+
+---
+
+## Story 3.7: scPDSI Stub Interface
+
+**Priority:** Low
+**Agent:** Gamma
+**Phase:** 3
+**Effort:** 2-3 hours
+**FR Coverage:** FR-SCPDSI-001
+
+### Description
+
+Define scPDSI function signature with NotImplementedError for future implementation.
+
+### Acceptance Criteria
+
+- [ ] Function `scpdsi(precip, pet, awc, ...)` added to `src/climate_indices/indices.py`
+- [ ] Raises `NotImplementedError("scPDSI implementation planned for future release")`
+- [ ] Docstring includes:
+  - Methodology overview (self-calibrating variant of PDSI)
+  - Wells et al. (2004) reference
+  - Placeholder parameter descriptions
+- [ ] `@overload` type signatures in `typed_public_api.py`:
+  - NumPy path: future tuple return
+  - xarray path: future Dataset return
+- [ ] Function appears in API documentation
+- [ ] Imports work (no runtime errors unless called)
+
+### Dependencies
+
+None
+
+### Implementation Notes
+
+- This is future-proofing — defines interface for v2.5.0 or later
+- Users can see the function exists but isn't ready yet
+
+---
+
+# Epic 4: Palmer Multi-Output
+
+**Goal:** Deliver Palmer indices with Dataset return and CF metadata per variable
+
+**Agent:** Delta
+**Track:** 3 (Advanced xarray Capabilities)
+**Duration:** 3-4 weeks
+**Story Count:** 9
+
+---
+
+## Story 4.1: Palmer xarray Handoff Validation
+
+**Priority:** Critical (GATE story)
+**Agent:** Delta
+**Phase:** 2
+**Effort:** 2-3 hours
+**FR Coverage:** None (orchestration gate)
+
+### Description
+
+Validate that Palmer structlog migration (Story 1.6) is complete and baseline performance measurement (Story 2.7) exists before beginning Palmer xarray implementation.
+
+### Acceptance Criteria
+
+- [ ] Story 1.6 complete: Palmer uses structlog (no stdlib logging)
+- [ ] Story 2.7 complete: Baseline performance measurement exists
+- [ ] All Palmer tests pass with structlog
+- [ ] Baseline time documented for NFR-PALMER-PERF validation
+- [ ] Agent Delta has clean handoff from Agent Alpha
+
+### Dependencies
+
+- Story 1.6 (Palmer structlog migration — CRITICAL PATH)
+- Story 2.7 (Palmer performance baseline)
+
+### Implementation Notes
+
+- This is a gate story — no Palmer xarray work begins until this passes
+- Prevents mixing logging frameworks during complex refactoring
+
+---
+
+## Story 4.2: Palmer CF Metadata Registry Entries
+
+**Priority:** High
+**Agent:** Delta
+**Phase:** 2
+**Effort:** 2-3 hours
+**FR Coverage:** FR-PALMER-005
+
+### Description
+
+Add CF metadata registry entries for all 4 Palmer variables.
+
+### Acceptance Criteria
+
+- [ ] Registry entries in `src/climate_indices/cf_metadata_registry.py`:
+  - `pdsi`: `long_name="Palmer Drought Severity Index"`, `units=""`, Palmer (1965) reference
+  - `phdi`: `long_name="Palmer Hydrological Drought Index"`, `units=""`, Palmer (1965) reference
+  - `pmdi`: `long_name="Palmer Modified Drought Index"`, `units=""`, Heddinghaus & Sabol (1991) reference
+  - `z_index`: `long_name="Palmer Z-Index"`, `units=""`, Palmer (1965) reference
+- [ ] Each entry includes references with citations
+- [ ] Registry is importable and follows existing pattern
+
+### Dependencies
+
+- Story 1.2 (CF metadata registry module exists)
+
+### Implementation Notes
+
+- 4 independent variables need separate metadata
+- Palmer (1965) is primary reference; PMDI uses Heddinghaus & Sabol (1991)
+
+---
+
+## Story 4.3: palmer_xarray() Manual Wrapper Foundation
+
+**Priority:** Critical
+**Agent:** Delta
+**Phase:** 2
+**Effort:** 8-10 hours
+**FR Coverage:** FR-PALMER-001, FR-PALMER-002 (partial)
+
+### Description
+
+Implement manual `palmer_xarray()` wrapper function in palmer.py (NOT separate module per Architecture Decision 2). Uses Pattern C from research: stack/unpack workaround for xarray Issue #1815.
+
+### Acceptance Criteria
+
+- [ ] Function `palmer_xarray(precip_da, pet_da, awc, ...)` added to `src/climate_indices/palmer.py`
+- [ ] Location: Palmer module (NOT separate palmer_xarray.py per Architecture Decision 2)
+- [ ] Implementation pattern:
+  - Extract numpy arrays from DataArrays
+  - Call existing `pdsi()` numpy function
+  - Receive 5-tuple: (pdsi, phdi, pmdi, z_index, params_dict)
+  - Stack outputs: `np.stack([pdsi, phdi, pmdi, z_index], axis=0)`
+  - Unpack to Dataset with coordinate preservation
+- [ ] Returns `xr.Dataset` (not tuple)
+- [ ] Basic smoke test: Function runs without errors
+- [ ] Docstring explains manual wrapper rationale (multi-output + params_dict requires custom handling)
+
+### Dependencies
+
+- Story 4.1 (handoff validation)
+- Story 4.2 (CF metadata entries)
+
+### Implementation Notes
+
+- **CORRECTION:** Function stays in palmer.py per Architecture Decision 2 (not separate module)
+- Module size: 912 lines + ~150 new = 1,062 lines (within 1,400 line threshold)
+- This is foundation — subsequent stories add features
+
+---
+
+## Story 4.4: AWC Spatial Parameter Handling
+
+**Priority:** High
+**Agent:** Delta
+**Phase:** 2
+**Effort:** 5-6 hours
+**FR Coverage:** FR-PALMER-003
+
+### Description
+
+Implement AWC (Available Water Capacity) parameter handling supporting both scalar and DataArray (spatial variation only — no time dimension).
+
+### Acceptance Criteria
+
+- [ ] `palmer_xarray()` accepts `awc` as:
+  - Scalar float (uniform AWC)
+  - `xr.DataArray` with spatial dims only (lat, lon)
+- [ ] Validation: Raises `ValueError` if `awc` has time dimension:
+  - Message: "AWC must not have time dimension 'time'. AWC is a soil property (spatially varying only)."
+  - Context: `awc_dims=awc.dims`
+- [ ] Test: Scalar AWC produces valid output
+- [ ] Test: Spatial AWC (lat, lon) produces valid output
+- [ ] Test: AWC with time dimension raises error
+
+### Dependencies
+
+- Story 4.3 (palmer_xarray wrapper exists)
+
+### Implementation Notes
+
+- AWC is soil property (spatial only) — time variation is a user error
+- Provide clear error message to guide users
+
+---
+
+## Story 4.5: Multi-Output Dataset Construction
+
+**Priority:** High
+**Agent:** Delta
+**Phase:** 2
+**Effort:** 6-7 hours
+**FR Coverage:** FR-PALMER-002
+
+### Description
+
+Complete Dataset construction with per-variable CF metadata and coordinate preservation.
+
+### Acceptance Criteria
+
+- [ ] Dataset contains 4 data variables: `pdsi`, `phdi`, `pmdi`, `z_index`
+- [ ] Each variable has independent CF metadata from registry (Story 4.2)
+- [ ] Coordinates preserved from input DataArrays (lat, lon, time)
+- [ ] Dimensions correctly aligned
+- [ ] Test: NetCDF write/read round-trip preserves structure
+- [ ] Test: Each variable accessible: `ds_palmer["pdsi"]`
+
+### Dependencies
+
+- Story 4.3 (wrapper foundation)
+- Story 4.2 (CF metadata)
+
+### Implementation Notes
+
+- Use `xr.Dataset({var: da for var, da in zip(["pdsi", "phdi", ...], outputs)})`
+- Each variable gets metadata via `da.assign_attrs(CF_METADATA[var])`
+
+---
+
+## Story 4.6: params_dict JSON Serialization
+
+**Priority:** Medium
+**Agent:** Delta
+**Phase:** 2
+**Effort:** 4-5 hours
+**FR Coverage:** FR-PALMER-004
+
+### Description
+
+Implement dual-access params_dict handling: JSON string in attrs AND individual parameter attrs.
+
+### Acceptance Criteria
+
+- [ ] `ds.attrs["palmer_params"]` contains JSON string: `'{"alpha": 1.5, "beta": 0.8, ...}'`
+- [ ] Individual attrs: `ds.attrs["palmer_alpha"]`, `ds.attrs["palmer_beta"]`, etc.
+- [ ] JSON serialization round-trip preserves structure:
+  ```python
+  params = json.loads(ds.attrs["palmer_params"])
+  assert params["alpha"] == ds.attrs["palmer_alpha"]
+  ```
+- [ ] Test: params_dict from first grid cell stored correctly
+- [ ] Test: JSON round-trip validation
+- [ ] Docstring explains dual access pattern
+
+### Dependencies
+
+- Story 4.3 (wrapper foundation)
+
+### Implementation Notes
+
+- Params are spatially constant (computed from first grid cell)
+- Dual access pattern: JSON for full dict, individual attrs for convenience
+
+---
+
+## Story 4.7: Palmer typed_public_api @overload Signatures
+
+**Priority:** High
+**Agent:** Delta
+**Phase:** 2
+**Effort:** 3-4 hours
+**FR Coverage:** FR-PALMER-006
+
+### Description
+
+Add `@overload` type signatures to distinguish numpy tuple return vs xarray Dataset return.
+
+### Acceptance Criteria
+
+- [ ] `@overload` signatures in `typed_public_api.py`:
+  - NumPy path: `pdsi(np.ndarray, ...) -> tuple[NDArray, NDArray, NDArray, NDArray, dict | None]`
+  - xarray path: `pdsi(xr.DataArray, ...) -> xr.Dataset`
+- [ ] Runtime dispatcher:
+  - If `isinstance(precips, xr.DataArray)`: call `palmer_xarray()`
+  - Else: call numpy `pdsi()`
+- [ ] mypy --strict passes
+- [ ] Type checker correctly infers return type based on input type
+
+### Dependencies
+
+- Story 4.3 (palmer_xarray function exists)
+
+### Implementation Notes
+
+- This is the most complex `@overload` (different return types)
+- Type safety prevents tuple unpacking errors with xarray inputs
+
+---
+
+## Story 4.8: Palmer Equivalence and Provenance
+
+**Priority:** High
+**Agent:** Delta
+**Phase:** 2
+**Effort:** 6-8 hours
+**FR Coverage:** FR-PALMER-007
+
+### Description
+
+Implement NumPy vs xarray equivalence tests and apply NOAA provenance protocol (retroactive) to Palmer reference dataset.
+
+### Acceptance Criteria
+
+- [ ] Equivalence test `test_palmer_xarray_equivalence()`:
+  - Computes Palmer via numpy path (tuple return)
+  - Computes Palmer via xarray path (Dataset return)
+  - Validates: `np.testing.assert_allclose(numpy_pdsi, ds_palmer["pdsi"].values, atol=1e-8)`
+  - Validates all 4 variables: pdsi, phdi, pmdi, z_index
+  - Tolerance: 1e-8 (NFR-PATTERN-EQUIV)
+- [ ] **CORRECTION:** Validates xarray vs numpy (NOT vs pdi.f Fortran)
+- [ ] Provenance metadata created for Palmer reference dataset (if exists):
+  - `tests/fixture/palmer-reference/provenance.json`
+  - Follows Story 3.2 protocol
+- [ ] Scalar AWC vs DataArray AWC equivalence
+- [ ] params_dict equivalence validation
+
+### Dependencies
+
+- Story 4.5 (Dataset construction)
+- Story 4.6 (params_dict handling)
+- Story 3.2 (provenance protocol)
+
+### Implementation Notes
+
+- **CORRECTION:** This validates Python xarray vs Python numpy (not Fortran)
+- Provenance is retroactive (Palmer reference may already exist)
+- This satisfies NFR-PATTERN-EQUIV for Palmer
+
+---
+
+## Story 4.9: Palmer Performance Validation
+
+**Priority:** High
+**Agent:** Delta
+**Phase:** 2
+**Effort:** 4-5 hours
+**FR Coverage:** NFR-PALMER-PERF
+
+### Description
+
+Validate that Palmer xarray achieves ≥80% speed of multiprocessing baseline (measured in Story 2.7).
+
+### Acceptance Criteria
+
+- [ ] Performance test `test_palmer_xarray_performance()`:
+  - Same grid size as baseline: 360×180, 240 months
+  - Measures wall-clock time for `palmer_xarray()`
+  - Compares to baseline from Story 2.7
+  - Asserts: `xarray_time <= baseline_time * 1.25` (i.e., ≥80% speed)
+- [ ] Test uses consistent hardware/environment
+- [ ] CI integration: Performance regression alerts
+- [ ] If performance target not met: Document rationale (vectorize=True overhead acceptable per research Section 6.2.6)
+
+### Dependencies
+
+- Story 2.7 (baseline measurement)
+- Story 4.5 (palmer_xarray complete)
+
+### Implementation Notes
+
+- NFR-PALMER-PERF: ≥80% speed (i.e., at most 25% slower)
+- If target not met, accept with documentation (sequential constraint is fundamental)
+
+---
+
+# Epic 5: Cross-Cutting Validation
+
+**Goal:** Final validation of all 31 FRs and 8 NFRs across Tracks 0-3
+
+**Agents:** Multiple (Alpha, Gamma, Omega)
+**Track:** Integration & QA
+**Duration:** ~1 week
+**Story Count:** 3
+
+---
+
+## Story 5.1: Pattern Compliance Audit
+
+**Priority:** Medium
+**Agent:** Alpha
+**Phase:** 3
+**Effort:** 4-5 hours
+**FR Coverage:** NFR-PATTERN-COVERAGE
+
+### Description
+
+Final audit of 6 patterns × 7 indices = 42 compliance points.
+
+### Acceptance Criteria
+
+- [ ] Compliance script or test validates:
+  - **xarray support:** 7/7 indices (percentage_of_normal, pci, eto_thornthwaite, eto_hargreaves, spi, spei, pdsi)
+  - **typed_public_api:** 7/7 @overload signature sets
+  - **CF metadata:** 7/7 registry entries
+  - **structlog:** 7/7 modules (no stdlib logging)
+  - **Structured exceptions:** 7/7 functions (no generic ValueError)
+  - **Property tests:** 7/7 indices
+- [ ] Dashboard output: **42/42 compliance points achieved**
+- [ ] CI integration: Compliance check on every PR
+- [ ] Documentation updated with compliance status
+
+### Dependencies
+
+- All Track 0 stories (Epic 1)
+- Story 4.5 (Palmer xarray complete)
+
+### Implementation Notes
+
+- This is Story 1.12 completion checkpoint
+- Validates NFR-PATTERN-COVERAGE
+
+---
+
+## Story 5.2: Reference Validation Final Check
+
+**Priority:** High
+**Agent:** Gamma
+**Phase:** 3
+**Effort:** 3-4 hours
+**FR Coverage:** FR-EDDI-001 (final validation)
+
+### Description
+
+Final validation that NOAA reference tests pass and provenance is complete.
+
+### Acceptance Criteria
+
+- [ ] EDDI NOAA reference tests pass:
+  - `test_eddi_noaa_reference_1month()`
+  - `test_eddi_noaa_reference_3month()`
+  - `test_eddi_noaa_reference_6month()`
+  - Tolerance: 1e-5 (NFR-EDDI-VAL)
+- [ ] Provenance metadata complete for all reference datasets:
+  - EDDI: `tests/fixture/noaa-eddi-*/provenance.json`
+  - Palmer (if applicable): `tests/fixture/palmer-reference/provenance.json`
+- [ ] Checksum validation passes (dataset hasn't changed)
+- [ ] Documentation: Reference dataset usage guide
+
+### Dependencies
+
+- Story 3.3 (EDDI reference validation)
+- Story 4.8 (Palmer provenance)
+
+### Implementation Notes
+
+- This is final gate for FR-TEST-004 (EDDI NOAA validation)
+- Ensures scientific reproducibility
+
+---
+
+## Story 5.3: Final v2.4.0 Validation
+
+**Priority:** Critical (FINAL GATE)
+**Agent:** Omega (All)
+**Phase:** 4
+**Effort:** 6-8 hours
+**FR Coverage:** ALL 31 FRs, ALL 8 NFRs
+
+### Description
+
+Comprehensive final validation that ALL 31 FRs and ALL 8 NFRs are satisfied before v2.4.0 release.
+
+### Acceptance Criteria
+
+**Functional Requirements (31 Total):**
+- [ ] **Track 0 (12 FRs):** All pattern completion FRs validated
+  - FR-PATTERN-001 through FR-PATTERN-012: All pass
+- [ ] **Track 1 (6 FRs):** PM-ET FRs validated
+  - FR-PM-001 through FR-PM-006: All pass
+  - FAO56 examples within ±0.05 mm/day
+- [ ] **Track 2 (6 FRs):** EDDI/PNP/scPDSI FRs validated
+  - FR-EDDI-001 through FR-EDDI-004: All pass
+  - FR-PNP-001: Pass
+  - FR-SCPDSI-001: Stub exists
+- [ ] **Track 3 (7 FRs):** Palmer multi-output FRs validated
+  - FR-PALMER-001 through FR-PALMER-007: All pass
+
+**Non-Functional Requirements (8 Total):**
+- [ ] NFR-PATTERN-EQUIV: All equivalence tests pass (1e-8)
+- [ ] NFR-PATTERN-COVERAGE: 42/42 compliance points achieved
+- [ ] NFR-PATTERN-MAINT: Pattern consistency validated
+- [ ] NFR-PM-PERF: FAO56 examples within ±0.05 mm/day
+- [ ] NFR-EDDI-VAL: NOAA reference within 1e-5
+- [ ] NFR-PALMER-SEQ: Sequential constraint documented
+- [ ] NFR-PALMER-PERF: Performance ≥80% of baseline
+- [ ] NFR-MULTI-OUT: Palmer Dataset return stable
+
+**Code Quality:**
+- [ ] mypy --strict passes
+- [ ] All tests pass (coverage >85%)
+- [ ] Documentation complete
+- [ ] CI green
+
+**Release Checklist:**
+- [ ] CHANGELOG.md updated
+- [ ] Version bumped to 2.4.0
+- [ ] All 38 stories marked complete
+- [ ] No open blockers
+
+### Dependencies
+
+- ALL stories (1.1 through 5.2)
+
+### Implementation Notes
+
+- This is the final gate before v2.4.0 release
+- If ANY FR or NFR fails, release is BLOCKED
+- Comprehensive validation ensures quality
+
+---
+
+# FR Coverage Map (Individual Traceability)
+
+| FR Code | Story ID | Story Title | Agent | Phase |
+|---------|----------|-------------|-------|-------|
+| FR-PATTERN-001 | 1.3 | PNP xarray + typed_public_api Integration | Alpha | 1 |
+| FR-PATTERN-002 | 1.4 | PCI xarray + typed_public_api Integration | Alpha | 1 |
+| FR-PATTERN-003 | 1.5 | ETo Helpers typed_public_api Integration | Alpha | 1 |
+| FR-PATTERN-004 | 1.5 | ETo Helpers typed_public_api Integration | Alpha | 1 |
+| FR-PATTERN-005 | 1.3 | PNP xarray + typed_public_api Integration | Alpha | 1 |
+| FR-PATTERN-006 | 1.4 | PCI xarray + typed_public_api Integration | Alpha | 1 |
+| FR-PATTERN-007 | 1.6 | Palmer structlog Migration | Alpha | 1 |
+| FR-PATTERN-008 | 1.7 | ETo Thornthwaite structlog Lifecycle Completion | Alpha | 1 |
+| FR-PATTERN-009 | 1.1, 1.8, 1.9 | Structured Exception Hierarchy + Migrations | Alpha | 0-1 |
+| FR-PATTERN-010 | 1.10 | Property-Based Tests - PNP, PCI, SPEI | Alpha | 1 |
+| FR-PATTERN-011 | 1.10 | Property-Based Tests - PNP, PCI, SPEI | Alpha | 1 |
+| FR-PATTERN-012 | 1.10, 1.11 | Property-Based Tests - SPEI + Palmer | Alpha | 1, 3 |
+| FR-PM-001 | 2.4 | PM-ET Core Calculation | Beta | 1 |
+| FR-PM-002 | 2.1 | PM-ET Atmospheric Helpers | Beta | 1 |
+| FR-PM-003 | 2.2 | PM-ET Vapor Pressure Helpers | Beta | 1 |
+| FR-PM-004 | 2.3 | PM-ET Humidity Pathway Dispatcher | Beta | 1 |
+| FR-PM-005 | 2.5 | FAO56 Worked Example Validation | Beta | 1 |
+| FR-PM-006 | 2.6 | PM-ET xarray Adapter | Beta | 1 |
+| FR-EDDI-001 | 3.3, 5.2 | NOAA EDDI Reference Validation + Final Check | Gamma | 2-3 |
+| FR-EDDI-002 | 3.4 | EDDI xarray Adapter | Gamma | 2 |
+| FR-EDDI-003 | 3.5 | EDDI CLI Integration | Gamma | 2 |
+| FR-EDDI-004 | 3.6 | EDDI PET Method Documentation | Gamma | 2 |
+| FR-PNP-001 | 1.3 | PNP xarray + typed_public_api Integration | Alpha | 1 |
+| FR-SCPDSI-001 | 3.7 | scPDSI Stub Interface | Gamma | 3 |
+| FR-PALMER-001 | 4.3 | palmer_xarray() Manual Wrapper Foundation | Delta | 2 |
+| FR-PALMER-002 | 4.3, 4.5 | Manual Wrapper + Multi-Output Dataset Construction | Delta | 2 |
+| FR-PALMER-003 | 4.4 | AWC Spatial Parameter Handling | Delta | 2 |
+| FR-PALMER-004 | 4.6 | params_dict JSON Serialization | Delta | 2 |
+| FR-PALMER-005 | 4.2 | Palmer CF Metadata Registry Entries | Delta | 2 |
+| FR-PALMER-006 | 4.7 | Palmer typed_public_api @overload Signatures | Delta | 2 |
+| FR-PALMER-007 | 4.8 | Palmer Equivalence and Provenance | Delta | 2 |
+
+**Coverage:** 31/31 FRs mapped to stories
+
+---
+
+# Dependency Graph
+
+```
+Foundation (Phase 0):
+1.1 → 1.2
+  ↓
+Phase 1 (Parallel):
+Alpha: 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 1.10
+Beta:  2.1 → 2.2 → 2.3 → 2.4 → 2.5 → 2.6
+       2.7 (baseline)
+
+Gate: 1.6 + 2.7 → 4.1 (handoff validation)
+
+Phase 2 (Parallel after gate):
+Gamma: 3.1 → 3.2 → 3.3 → 3.4, 3.5, 3.6, 3.7
+Delta: 4.1 → 4.2 → 4.3 → 4.4, 4.5, 4.6 → 4.7, 4.8, 4.9
+
+Phase 3:
+1.11 (Alpha)
+5.1 (Alpha)
+5.2 (Gamma)
+
+Phase 4:
+5.3 (All → FINAL GATE)
+```
+
+**Critical Path:** 1.1 → 1.2 → 1.6 → 4.1 → 4.3 → 4.5 → 4.8 → 5.3
+
+---
+
+# Summary Statistics
+
+- **Total Stories:** 38
+- **Total FRs:** 31 (12 Track 0 + 6 Track 1 + 6 Track 2 + 7 Track 3)
+- **Total NFRs:** 8
+- **Epics:** 5
+- **Agents:** 5 (Alpha, Beta, Gamma, Delta, Omega)
+- **Phases:** 5 (0, 1, 2, 3, 4)
+- **Estimated Duration:** 10-14 weeks
+- **Critical Path:** ~5-6 weeks (1.1 → 1.2 → 1.6 → 4.1 → 4.2-4.9)
+- **Parallelization Savings:** ~5-7 weeks vs sequential
+
+---
+
+**Document Status:** ✅ Complete - All 38 Stories Fully Defined with Acceptance Criteria
+**Version:** 2.4.0-expanded
+**Last Updated:** 2026-02-16
+**Ready for Implementation:** YES

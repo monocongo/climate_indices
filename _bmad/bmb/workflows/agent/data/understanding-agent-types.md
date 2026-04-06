@@ -1,222 +1,126 @@
-# Understanding Agent Types: Simple VS Expert VS Module
+# Understanding Agent Types
 
-> **For the LLM running this workflow:** Load and review the example files referenced below when helping users choose an agent type.
-> - Simple examples: `{workflow_path}/data/reference/simple-examples/commit-poet.agent.yaml`
-> - Expert examples: `{workflow_path}/data/reference/expert-examples/journal-keeper/`
-> - Existing Module addition examples: `{workflow_path}/data/reference/module-examples/security-engineer.agent.yaml`
-
----
-
-## What ALL Agent Types Can Do
-
-All three types have equal capability. The difference is **architecture and integration**, NOT power.
-
-- Read, write, and update files
-- Execute commands and invoke tools
-- Load and use module variables
-- Optionally restrict file access (privacy/security)
-- Use core module features: party-mode, agent chat, advanced elicitation, brainstorming, document sharding
+> **LLM Instructions:** Load example files when helping users:
+> - Without sidecar: `{workflow_path}/data/reference/without-sidecar/commit-poet.agent.yaml`
+> - With sidecar: `{workflow_path}/data/reference/with-sidecar/journal-keeper/`
 
 ---
 
-## Quick Reference Decision Tree
-
-**Step 1: Single Agent or Multiple Agents?**
+## Decision Tree
 
 ```
 Multiple personas/roles OR multi-user OR mixed data scope?
-├── YES → Use BMAD Module Builder (create module with multiple agents)
-└── NO → Single Agent (continue below)
+├── YES → Use BMAD Module Builder
+└── NO → Single Agent
+    └── Need memory across sessions?
+        ├── YES → hasSidecar: true
+        └── NO → hasSidecar: false
 ```
 
-**Step 2: Memory Needs (for Single Agent)**
-
-```
-Need to remember things across sessions?
-├── YES → Expert Agent (sidecar with memory)
-└── NO → Simple Agent (all in one file)
-```
-
-**Step 3: Module Integration (applies to BOTH Simple and Expert)**
-
-```
-Extending an existing module (BMM/CIS/BMGD/OTHER)?
-├── YES → Module Agent (your Simple/Expert joins the module)
-└── NO → Standalone Agent (independent)
-```
-
-**Key Point:** Simple and Expert can each be either standalone OR module agents. Memory and module integration are independent decisions.
+**Key:** All agents have equal capability. Difference is memory/state management only.
 
 ---
 
-## The Three Types
+## Without Sidecar (`hasSidecar: false`)
 
-### Simple Agent
-
-**Everything in one file. No external dependencies. No memory.**
+**Single file, stateless, ~250 lines max**
 
 ```
-agent-name.agent.yaml (~250 lines max)
-├── metadata
+agent-name.agent.yaml
+├── metadata.hasSidecar: false
 ├── persona
-├── prompts (inline, small)
-└── menu (triggers → #prompt-id or inline actions)
+├── prompts (inline)
+└── menu (triggers → #prompt-id or inline)
 ```
 
-**Choose when:**
-- Single-purpose utility
-- Each session is independent (stateless)
-- All knowledge fits in the YAML
-- Menu handlers are 5-15 line prompts
+| When to Use | Examples |
+|-------------|----------|
+| Single-purpose utility | Commit Poet |
+| Each session independent | Snarky Weather Bot |
+| All knowledge fits in YAML | Pun-making Barista |
+| Menu handlers 1-2 lines | Motivational Gym Bro |
+| Persona-driven (fun/character) | Sassy Fortune Teller |
 
-**Examples:**
-- Commit message helper (conventional commits)
-- Document formatter/validator
-- Joke/teller persona agent
-- Simple data transformation and analysis tools
-
-**Reference:** `./data/reference/simple-examples/commit-poet.agent.yaml`
+**Optional critical_actions:** Allowed for activation behaviors (quotes, data fetches). Must NOT reference sidecar files.
 
 ---
 
-### Expert Agent
+## With Sidecar (`hasSidecar: true`)
 
-**Sidecar folder with persistent memory, workflows, knowledge files.**
+**Persistent memory, knowledge, workflows**
 
 ```
 agent-name.agent.yaml
 └── agent-name-sidecar/
-    ├── memories.md           # User profile, session history, patterns
-    ├── instructions.md       # Protocols, boundaries, startup behavior
-    ├── [custom-files].md     # Breakthroughs, goals, tracking, etc.
-    ├── workflows/            # Large workflows loaded on demand
-    └── knowledge/            # Domain reference material
+    ├── memories.md           # User profile, session history
+    ├── instructions.md       # Protocols, boundaries
+    ├── [custom-files].md     # Tracking, goals, etc.
+    ├── workflows/            # Large workflows on-demand
+    └── knowledge/            # Domain reference
 ```
 
-**Choose when:**
-- Must remember across sessions
-- User might create multiple instances each with own memory of actions (such as 2 different developers agents)
-- Personal knowledge base that grows
-- Learning/evolving over time
-- Domain-specific with restricted file access
-- Complex multi-step workflows
-
-**Examples:**
-- Journal companion (remembers mood patterns, past entries)
-- Personal job augmentation agent (knows your role, meetings, projects)
-- Therapy/health tracking (progress, goals, insights)
-- Domain advisor with custom knowledge base
-
-**Reference:** `./data/reference/expert-examples/journal-keeper/`
+| When to Use | Examples |
+|-------------|----------|
+| Remember across sessions | Journal companion |
+| User preferences/settings | Novel writing buddy |
+| Personal knowledge base | Job augmentation agent |
+| Learning/evolving over time | Therapy/health tracking |
+| Domain-specific + restricted access | Fitness coach with PRs |
+| Complex multi-step workflows | Language tutor |
 
 **Required critical_actions:**
 ```yaml
 critical_actions:
-  - "Load COMPLETE file ./sidecar/memories.md"
-  - "Load COMPLETE file ./sidecar/instructions.md"
-  - "ONLY read/write files in ./sidecar/ - private space"
+  - "Load COMPLETE file {project-root}/_bmad/_memory/{sidecar-folder}/memories.md"
+  - "Load COMPLETE file {project-root}/_bmad/_memory/{sidecar-folder}/instructions.md"
+  - "ONLY read/write files in {project-root}/_bmad/_memory/{sidecar-folder}/"
 ```
 
 ---
 
-### Module Agent
+## Comparison
 
-Two distinct purposes:
-
-#### 1. Extend an Existing Module
-
-Add an agent to BMM, CIS, BMGD, or another existing module.
-
-**Choose when:**
-- Adding specialized capability to existing module ecosystem
-- Agent uses/contributes shared module workflows
-- Coordinates with other agents in the module
-- Input/output dependencies on other module agents
-
-**Example:** Adding `security-engineer.agent.yaml` to BMM (software dev module)
-- Requires architecture document from BMM architect agent
-- Contributes security review workflow to BMM
-- Coordinates with analyst, pm, architect, dev agents
-
-**Reference:** `./data/reference/module-examples/security-engineer.agent.yaml`
-
-#### 2. Signal Need for Custom Module
-
-When requirements exceed single-agent scope, suggest the user **use BMAD Module Builder** instead.
-
-**Signals:**
-- "I need an HR agent, sales agent, F&I agent, and training coach..."
-- "Some info is global/shared across users, some is private per user..."
-- "Many workflows, skills, tools, and platform integrations..."
-
-**Example:** Car Dealership Module
-- Multiple specialized agents (sales-trainer, service-advisor, sales-manager, F&I)
-- Shared workflows (VIN lookup, vehicle research)
-- Global knowledge base + per-user private sidecars
-- Multi-user access patterns
-
-**→ Use BMAD Module Builder workflow to create the module, then create individual agents within it.**
-
----
-
-## Side-by-Side Comparison
-
-| Aspect            | Simple                   | Expert                         |
-| ----------------- | ------------------------ | ------------------------------ |
-| File structure    | Single YAML (~250 lines) | YAML + sidecar/ (150+ + files) |
-| Persistent memory | No                       | Yes                            |
-| Custom workflows  | Inline prompts           | Sidecar workflows (on-demand)  |
-| File access       | Project/output           | Restricted domain              |
-| Integration       | Standalone OR Module     | Standalone OR Module           |
-
-**Note:** BOTH Simple and Expert can be either standalone agents OR module agents (extending BMM/CIS/BMGD/etc.). Module integration is independent of memory needs.
+| Aspect | Without Sidecar | With Sidecar |
+|--------|----------------|--------------|
+| Structure | Single YAML | YAML + sidecar/ |
+| Persistent memory | No | Yes |
+| critical_actions | Optional | MANDATORY |
+| Workflows | Inline prompts | Sidecar files |
+| File access | Project/output | Restricted to sidecar |
+| Session state | Stateless | Remembers |
+| Best for | Focused skills | Long-term relationships |
 
 ---
 
 ## Selection Checklist
 
-**Choose Simple if:**
-- [ ] One clear purpose
-- [ ] No need to remember past sessions
-- [ ] All logic fits in ~250 lines
-- [ ] Each interaction is independent
+**Without sidecar:**
+- [ ] One clear purpose, related skills
+- [ ] No cross-session memory needed
+- [ ] Fits in ~250 lines
+- [ ] Independent interactions
+- [ ] Persona-driven value
 
-**Choose Expert if:**
-- [ ] Needs memory across sessions
+**With sidecar:**
+- [ ] Memory across sessions
 - [ ] Personal knowledge base
 - [ ] Domain-specific expertise
-- [ ] Restricted file access for privacy
-- [ ] Learning/evolving over time
-- [ ] Complex workflows in sidecar
-
-**Then, for EITHER Simple or Expert:**
-- [ ] Extending existing module (BMM/CIS/BMGD/etc.) → Make it a Module Agent
-- [ ] Independent operation → Keep it Standalone
+- [ ] Restricted file access
+- [ ] Progress tracking/history
+- [ ] Complex workflows
 
 **Escalate to Module Builder if:**
-- [ ] Multiple distinct personas needed (not one swiss-army-knife agent)
-- [ ] Many specialized workflows required
+- [ ] Multiple distinct personas needed
+- [ ] Many specialized workflows
 - [ ] Multiple users with mixed data scope
 - [ ] Shared resources across agents
-- [ ] Future platform integrations planned
 
 ---
 
-## Tips for the LLM Facilitator
+## Quick Tips
 
-- If unsure between Simple or Expert → **recommend Expert** (more flexible)
-- Multiple personas/skills → **suggest Module Builder**, not one giant agent
-- Ask about: memory needs, user count, data scope (global vs private), integration plans
-- Load example files when user wants to see concrete implementations
-- Reference examples to illustrate differences
-
----
-
-## Architecture Notes
-
-All three types are equally powerful. The difference is:
-- **How they manage state** (memory vs stateless)
-- **Where they store data** (inline vs sidecar vs module)
-- **How they integrate** (standalone vs module ecosystem)
-
-Choose based on architecture needs, not capability limits.
+- Unsure? Ask about **memory needs first**
+- Multiple personas → Module Builder, not one giant agent
+- Ask: memory needs, user count, data scope, integration plans
+- Personality agents → usually without sidecar
+- Relationship/coaching agents → usually with sidecar

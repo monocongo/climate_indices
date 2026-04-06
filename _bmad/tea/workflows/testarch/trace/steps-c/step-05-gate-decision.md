@@ -1,7 +1,7 @@
 ---
 name: 'step-05-gate-decision'
 description: 'Phase 2: Apply gate decision logic and generate outputs'
-outputFile: '{output_folder}/traceability-report.md'
+outputFile: '{test_artifacts}/traceability-report.md'
 ---
 
 # Step 5: Phase 2 - Gate Decision
@@ -198,6 +198,20 @@ fs.writeFileSync('{outputFile}', reportContent, 'utf8');
 ✅ GATE: PASS - Release approved, coverage meets standards
 {endif}
 ```
+
+---
+
+### 6. Save Progress
+
+**Update the YAML frontmatter in `{outputFile}` to mark this final step complete.**
+
+Since step 4 (Generate Traceability Report) already wrote the report content to `{outputFile}`, do NOT overwrite it. Instead, update only the frontmatter at the top of the existing file:
+
+- Add `'step-05-gate-decision'` to `stepsCompleted` array (only if not already present)
+- Set `lastStep: 'step-05-gate-decision'`
+- Set `lastSaved: '{date}'`
+
+Then append the gate decision summary (from section 5 above) to the end of the existing report content.
 
 ---
 

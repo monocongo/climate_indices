@@ -1,3 +1,9 @@
+---
+stepsCompleted: []
+lastStep: ''
+lastSaved: ''
+---
+
 # NFR Assessment - {FEATURE_NAME}
 
 **Date:** {DATE}

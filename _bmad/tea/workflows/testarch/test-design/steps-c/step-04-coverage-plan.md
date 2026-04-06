@@ -2,6 +2,7 @@
 name: 'step-04-coverage-plan'
 description: 'Design test coverage, priorities, execution strategy, and estimates'
 nextStepFile: './step-05-generate-output.md'
+outputFile: '{test_artifacts}/test-design-progress.md'
 ---
 
 # Step 4: Coverage Plan & Execution Strategy
@@ -83,6 +84,30 @@ Define thresholds:
 - P1 pass rate ≥ 95%
 - High-risk mitigations complete before release
 - Coverage target ≥ 80% (adjust if justified)
+
+---
+
+### 5. Save Progress
+
+**Save this step's accumulated work to `{outputFile}`.**
+
+- **If `{outputFile}` does not exist** (first save), create it with YAML frontmatter:
+
+  ```yaml
+  ---
+  stepsCompleted: ['step-04-coverage-plan']
+  lastStep: 'step-04-coverage-plan'
+  lastSaved: '{date}'
+  ---
+  ```
+
+  Then write this step's output below the frontmatter.
+
+- **If `{outputFile}` already exists**, update:
+  - Add `'step-04-coverage-plan'` to `stepsCompleted` array (only if not already present)
+  - Set `lastStep: 'step-04-coverage-plan'`
+  - Set `lastSaved: '{date}'`
+  - Append this step's output to the appropriate section of the document.
 
 Load next step: `{nextStepFile}`
 

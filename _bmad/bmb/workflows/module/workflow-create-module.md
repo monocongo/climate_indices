@@ -80,7 +80,7 @@ This workflow references:
 **Create mode produces:**
 - Module directory structure
 - `module.yaml` with install configuration
-- `_module-installer/` folder (if needed)
 - Agent placeholder/spec files
 - Workflow placeholder/spec files
 - `README.md` and `TODO.md`
+- `module-help.csv` (generated from specs)

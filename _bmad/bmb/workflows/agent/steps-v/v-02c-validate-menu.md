@@ -52,61 +52,41 @@ Perform these checks systematically - validate EVERY rule specified in agentMenu
    - [ ] Menu section exists and is properly formatted
    - [ ] At least one menu item defined (unless intentionally tool-less)
    - [ ] Menu items follow proper YAML structure
-   - [ ] Each item has required fields (name, description, pattern)
+   - [ ] Each item has required fields (trigger, description, action)
 
 2. **Menu Item Requirements**
    For each menu item:
-   - [ ] name: Present, unique, uses kebab-case
-   - [ ] description: Clear and concise
-   - [ ] pattern: Valid regex pattern or tool reference
-   - [ ] scope: Appropriate scope defined (if applicable)
+   - [ ] trigger: Present, follows `XX or fuzzy match on command` format
+   - [ ] description: Clear and concise, starts with `[XX]` code
+   - [ ] action: Prompt reference (#id) or inline instruction
 
-3. **Pattern Quality**
-   - [ ] Patterns are valid and testable
-   - [ ] Patterns are specific enough to match intended inputs
-   - [ ] Patterns are not overly restrictive
-   - [ ] Patterns use appropriate regex syntax
+3. **Trigger Format Validation**
+   - [ ] Format: `XX or fuzzy match on command-name` (XX = 2-letter code)
+   - [ ] Codes are unique within agent
+   - [ ] No reserved codes used: MH, CH, PM, DA
 
-4. **Description Quality**
-   - [ ] Each item has clear description
-   - [ ] Descriptions explain what the item does
-   - [ ] Descriptions are consistent in style
-   - [ ] Descriptions help users understand when to use
+4. **Description Format Validation**
+   - [ ] Descriptions start with `[XX]` code
+   - [ ] Code in description matches trigger code
+   - [ ] Descriptions are clear and descriptive
 
-5. **Alignment Checks**
+5. **Action Handler Validation**
+   - [ ] If `action: '#prompt-id'`, corresponding prompt exists
+   - [ ] If `action: 'inline text'`, instruction is complete and clear
+
+6. **Alignment Checks**
    - [ ] Menu items align with agent's role/purpose
-   - [ ] Menu items are supported by agent's expertise
-   - [ ] Menu items fit within agent's constraints
    - [ ] Menu items are appropriate for target users
-
-6. **Completeness**
-   - [ ] Core capabilities for this role are covered
-   - [ ] No obvious missing functionality
    - [ ] Menu scope is appropriate (not too sparse/overloaded)
-   - [ ] Related functionality is grouped logically
 
-7. **Standards Compliance**
-   - [ ] No prohibited patterns or commands
-   - [ ] No security vulnerabilities in patterns
-   - [ ] No ambiguous or conflicting items
-   - [ ] Consistent naming conventions
-
-8. **Menu Link Validation (Agent Type Specific)**
-   - [ ] Determine agent type from metadata:
-     - Simple: module property is 'stand-alone' AND hasSidecar is false/absent
-     - Expert: hasSidecar is true
-     - Module: module property is a module code (e.g., 'bmm', 'bmb', 'bmgd', 'bmad')
-   - [ ] For Expert agents (hasSidecar: true):
-     - Menu handlers SHOULD reference external sidecar files (e.g., `./{agent-name}-sidecar/...`)
-     - OR have inline prompts defined directly in the handler
-   - [ ] For Module agents (module property is a module code):
-     - Menu handlers SHOULD reference external module files under the module path
-     - Exec paths must start with `{project-root}/_bmad/{module}/...`
-     - Verify referenced files exist under the module directory
-   - [ ] For Simple agents (stand-alone, no sidecar):
-     - Menu handlers MUST NOT have external file links
-     - Menu handlers SHOULD only use relative links within the same file (e.g., `#section-name`)
-     - OR have inline prompts defined directly in the handler
+7. **Configuration Specific Menu Handler Validation**
+   - [ ] Determine hasSidecar from metadata
+   - [ ] For hasSidecar: true:
+     - [ ] Menu handlers MAY reference sidecar files using correct path format
+     - [ ] Sidecar references use: `{project-root}/_bmad/_memory/{sidecar-folder}/...`
+   - [ ] For hasSidecar: false:
+     - [ ] Menu handlers MUST NOT have sidecar file links
+     - [ ] Menu handlers use only internal references (#) or inline prompts
 
 ### 3. Append Findings to Report
 
@@ -117,12 +97,14 @@ Append to `{validationReport}`:
 
 **Status:** {✅ PASS / ⚠️ WARNING / ❌ FAIL}
 
+**hasSidecar:** {true|false}
+
 **Checks:**
-- [ ] A/P/C convention followed
-- [ ] Command names clear and descriptive
-- [ ] Command descriptions specific and actionable
-- [ ] Menu handling logic properly specified
-- [ ] Agent type appropriate menu links verified
+- [ ] Triggers follow `XX or fuzzy match on command` format
+- [ ] Descriptions start with `[XX]` code
+- [ ] No reserved codes (MH, CH, PM, DA)
+- [ ] Action handlers valid (#prompt-id or inline)
+- [ ] Configuration appropriate menu links
 
 **Detailed Findings:**
 

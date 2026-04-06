@@ -628,4 +628,4 @@ def test_pci(
     indices.pci(rain_mm_365[0])
 
     # confirm that an invalid number of days raises an error
-    np.testing.assert_raises(ValueError, indices.pci, np.array(list(range(300))))
+    np.testing.assert_raises(InvalidArgumentError, indices.pci, np.array(list(range(300))))

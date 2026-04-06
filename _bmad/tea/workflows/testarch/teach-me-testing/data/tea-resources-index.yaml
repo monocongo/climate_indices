@@ -57,9 +57,9 @@ documentation:
         workflow: nfr-assess
 
     customization:
-      - name: "Enable TEA MCP Enhancements"
-        local: "/docs/how-to/customization/enable-tea-mcp-enhancements.md"
-        online: "/how-to/customization/enable-tea-mcp-enhancements/"
+      - name: "Configure Browser Automation"
+        local: "/docs/how-to/customization/configure-browser-automation.md"
+        online: "/how-to/customization/configure-browser-automation/"
 
       - name: "Integrate Playwright Utils with TEA"
         local: "/docs/how-to/customization/integrate-playwright-utils.md"
@@ -103,7 +103,7 @@ documentation:
     - name: "Knowledge Base System"
       local: "/docs/explanation/knowledge-base-system.md"
       online: "/explanation/knowledge-base-system/"
-      topics: ["Fragment management", "34 fragments"]
+      topics: ["Fragment management", "35 fragments"]
 
     - name: "Network-First Patterns"
       local: "/docs/explanation/network-first-patterns.md"
@@ -348,7 +348,7 @@ session_to_resources:
 
   session-07:
     primary_docs: []
-    fragments: [] # All 34 fragments available via menu-driven exploration
+    fragments: [] # All 35 fragments available via menu-driven exploration
 
 # Web-Browsing Fallback Strategy
 fallback_urls:

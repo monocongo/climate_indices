@@ -28,9 +28,13 @@ class TestExceptionHierarchy:
         """Distribution fitting errors should have correct parent classes."""
         assert issubclass(exceptions.InsufficientDataError, exceptions.DistributionFittingError)
         assert issubclass(exceptions.PearsonFittingError, exceptions.DistributionFittingError)
+        # ConvergenceError is intentionally a DistributionFittingError subtype —
+        # it covers iterative fitting algorithm failures (L-moments, MLE), not
+        # general convergence outside of the fitting domain.
+        assert issubclass(exceptions.ConvergenceError, exceptions.DistributionFittingError)
 
     def test_new_exceptions_not_under_distribution_fitting(self) -> None:
-        """New exception types should be direct children of ClimateIndicesError."""
+        """Exception types outside the fitting domain are direct children of ClimateIndicesError."""
         assert issubclass(exceptions.DimensionMismatchError, ClimateIndicesError)
         assert not issubclass(exceptions.DimensionMismatchError, exceptions.DistributionFittingError)
 
@@ -42,6 +46,15 @@ class TestExceptionHierarchy:
 
         assert issubclass(exceptions.InvalidArgumentError, ClimateIndicesError)
         assert not issubclass(exceptions.InvalidArgumentError, exceptions.DistributionFittingError)
+
+        assert issubclass(exceptions.DataShapeError, ClimateIndicesError)
+        assert not issubclass(exceptions.DataShapeError, exceptions.DistributionFittingError)
+        assert not issubclass(exceptions.DataShapeError, exceptions.DimensionMismatchError)
+
+    def test_periodicity_error_hierarchy(self) -> None:
+        """PeriodicityError should be a specialization of InvalidArgumentError."""
+        assert issubclass(exceptions.PeriodicityError, exceptions.InvalidArgumentError)
+        assert issubclass(exceptions.PeriodicityError, ClimateIndicesError)
 
     def test_base_inherits_from_exception(self) -> None:
         """ClimateIndicesError should inherit from Exception."""
@@ -131,6 +144,21 @@ class TestExceptionCatchAll:
         """ClimateIndicesError should catch InvalidArgumentError."""
         with pytest.raises(ClimateIndicesError):
             raise exceptions.InvalidArgumentError("test error")
+
+    def test_catch_convergence_error(self) -> None:
+        """ClimateIndicesError should catch ConvergenceError."""
+        with pytest.raises(ClimateIndicesError):
+            raise exceptions.ConvergenceError("test error")
+
+    def test_catch_periodicity_error(self) -> None:
+        """ClimateIndicesError should catch PeriodicityError."""
+        with pytest.raises(ClimateIndicesError):
+            raise exceptions.PeriodicityError("test error")
+
+    def test_catch_data_shape_error(self) -> None:
+        """ClimateIndicesError should catch DataShapeError."""
+        with pytest.raises(ClimateIndicesError):
+            raise exceptions.DataShapeError("test error")
 
 
 class TestWarningCatchAll:
@@ -341,6 +369,66 @@ class TestExceptionContextAttributes:
         assert exc.suggestion is None
         assert exc.underlying_error is None
 
+    def test_convergence_error_attributes(self) -> None:
+        """ConvergenceError should store algorithm and iterations context."""
+        underlying = ValueError("numerical overflow")
+        exc = exceptions.ConvergenceError(
+            "L-moments failed to converge",
+            algorithm="L-moments",
+            iterations=50,
+            distribution_name="gamma",
+            underlying_error=underlying,
+        )
+        assert exc.algorithm == "L-moments"
+        assert exc.iterations == 50
+        assert exc.distribution_name == "gamma"
+        assert exc.underlying_error is underlying
+        assert str(exc) == "L-moments failed to converge"
+
+    def test_convergence_error_defaults(self) -> None:
+        """ConvergenceError attributes should default to None."""
+        exc = exceptions.ConvergenceError("Convergence failed")
+        assert exc.algorithm is None
+        assert exc.iterations is None
+        assert exc.distribution_name is None
+        assert exc.underlying_error is None
+
+    def test_periodicity_error_attributes(self) -> None:
+        """PeriodicityError should store periodicity_value and sync to parent's argument_value."""
+        exc = exceptions.PeriodicityError("Invalid periodicity", periodicity_value="weekly")
+        assert exc.periodicity_value == "weekly"
+        # PeriodicityError forwards periodicity_value to InvalidArgumentError.argument_value
+        assert exc.argument_name == "periodicity"
+        assert exc.argument_value == "weekly"
+        assert exc.valid_values == "Periodicity.monthly, Periodicity.daily"
+        assert str(exc) == "Invalid periodicity"
+
+    def test_periodicity_error_defaults(self) -> None:
+        """PeriodicityError attributes should default to None."""
+        exc = exceptions.PeriodicityError("Invalid periodicity")
+        assert exc.periodicity_value is None
+        assert exc.argument_value is None
+        # argument_name and valid_values are always set by PeriodicityError
+        assert exc.argument_name == "periodicity"
+        assert exc.valid_values == "Periodicity.monthly, Periodicity.daily"
+
+    def test_data_shape_error_attributes(self) -> None:
+        """DataShapeError should store expected_shape and actual_shape."""
+        exc = exceptions.DataShapeError(
+            "Array shape mismatch",
+            expected_shape="(years, 12)",
+            actual_shape=(100, 13),
+        )
+        assert exc.expected_shape == "(years, 12)"
+        assert exc.actual_shape == (100, 13)
+        assert str(exc) == "Array shape mismatch"
+
+    def test_data_shape_error_defaults(self) -> None:
+        """DataShapeError attributes should default to None."""
+        exc = exceptions.DataShapeError("Shape error")
+        assert exc.expected_shape is None
+        assert exc.actual_shape is None
+
 
 class TestKeywordOnlyEnforcement:
     """Verify that context attributes must be passed as keywords."""
@@ -349,6 +437,9 @@ class TestKeywordOnlyEnforcement:
         "exception_class,positional_args",
         [
             (exceptions.InvalidArgumentError, ("message", "scale")),
+            (exceptions.ConvergenceError, ("message", "L-moments")),
+            (exceptions.PeriodicityError, ("message", "weekly")),
+            (exceptions.DataShapeError, ("message", "(years, 12)")),
             (exceptions.MissingDataWarning, ("message", 0.15)),
             (exceptions.ShortCalibrationWarning, ("message", 25)),
             (exceptions.GoodnessOfFitWarning, ("message", "gamma")),
@@ -406,9 +497,12 @@ class TestAllExports:
         """__all__ should contain all documented exception and warning classes plus helpers."""
         expected_names = {
             "ClimateIndicesError",
+            "ConvergenceError",
+            "DataShapeError",
             "DistributionFittingError",
             "InsufficientDataError",
             "PearsonFittingError",
+            "PeriodicityError",
             "DimensionMismatchError",
             "CoordinateValidationError",
             "InputTypeError",
@@ -462,8 +556,24 @@ class TestExceptionPickling:
                 ("bad arg",),
                 {"argument_name": "scale", "argument_value": "-1", "valid_values": "positive integers"},
             ),
+            (
+                exceptions.ConvergenceError,
+                ("convergence failed",),
+                {"algorithm": "L-moments", "iterations": 100, "distribution_name": "gamma"},
+            ),
+            (
+                exceptions.PeriodicityError,
+                ("invalid periodicity",),
+                {"periodicity_value": "weekly"},
+            ),
+            (
+                exceptions.DataShapeError,
+                ("wrong shape",),
+                {"expected_shape": "(years, 12)", "actual_shape": (100, 13)},
+            ),
         ],
     )
+    # pickle is used here intentionally — Dask serializes exceptions across workers
     def test_exception_pickle_roundtrip(self, exception_class, init_args, init_kwargs) -> None:
         """All exception classes should survive pickle roundtrip with attributes intact."""
         # create exception

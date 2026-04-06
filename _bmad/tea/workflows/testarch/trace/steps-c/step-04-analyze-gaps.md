@@ -2,7 +2,8 @@
 name: 'step-04-analyze-gaps'
 description: 'Complete Phase 1: Generate coverage matrix with gap analysis'
 nextStepFile: './step-05-gate-decision.md'
-outputFile: '/tmp/tea-trace-coverage-matrix-{{timestamp}}.json'
+outputFile: '{test_artifacts}/traceability-report.md'
+tempOutputFile: '/tmp/tea-trace-coverage-matrix-{{timestamp}}.json'
 ---
 
 # Step 4: Complete Phase 1 - Coverage Matrix Generation
@@ -172,7 +173,7 @@ const coverageMatrix = {
 **Write to temp file for Phase 2:**
 
 ```javascript
-const outputPath = '/tmp/tea-trace-coverage-matrix-{{timestamp}}.json';
+const outputPath = '{tempOutputFile}';
 fs.writeFileSync(outputPath, JSON.stringify(coverageMatrix, null, 2), 'utf8');
 
 console.log(`✅ Phase 1 Complete: Coverage matrix saved to ${outputPath}`);
@@ -221,6 +222,30 @@ console.log(`✅ Phase 1 Complete: Coverage matrix saved to ${outputPath}`);
 - ✅ Summary displayed
 
 **Proceed to Phase 2 (Step 5: Gate Decision)**
+
+---
+
+### 7. Save Progress
+
+**Save this step's accumulated work to `{outputFile}`.**
+
+- **If `{outputFile}` does not exist** (first save), create it using the workflow template (if available) with YAML frontmatter:
+
+  ```yaml
+  ---
+  stepsCompleted: ['step-04-analyze-gaps']
+  lastStep: 'step-04-analyze-gaps'
+  lastSaved: '{date}'
+  ---
+  ```
+
+  Then write this step's output below the frontmatter.
+
+- **If `{outputFile}` already exists**, update:
+  - Add `'step-04-analyze-gaps'` to `stepsCompleted` array (only if not already present)
+  - Set `lastStep: 'step-04-analyze-gaps'`
+  - Set `lastSaved: '{date}'`
+  - Append this step's output to the appropriate section of the document.
 
 Load next step: `{nextStepFile}`
 

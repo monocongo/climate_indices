@@ -152,7 +152,7 @@ Knowledge fragments referenced:
 
 ### Traceability Matrix Markdown
 
-- [ ] File created at `{output_folder}/traceability-matrix.md`
+- [ ] File created at `{test_artifacts}/traceability-matrix.md`
 - [ ] Template from `trace-template.md` used
 - [ ] Full mapping table included
 - [ ] Coverage status section included
@@ -392,7 +392,7 @@ Knowledge fragments referenced:
 **Outputs Saved:**
 
 - [ ] Gate decision document saved to `{output_file}`
-- [ ] Gate YAML saved to `{output_folder}/gate-decision-{target}.yaml`
+- [ ] Gate YAML saved to `{test_artifacts}/gate-decision-{target}.yaml`
 - [ ] All outputs are valid and readable
 
 ---
