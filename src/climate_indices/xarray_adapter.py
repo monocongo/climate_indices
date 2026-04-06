@@ -37,7 +37,7 @@ import structlog.stdlib
 import xarray as xr
 
 from climate_indices import compute, eto, indices
-from climate_indices.cf_metadata_registry import CF_METADATA, CFAttributes
+from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.compute import MIN_CALIBRATION_YEARS
 from climate_indices.exceptions import (
     CoordinateValidationError,

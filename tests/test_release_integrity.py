@@ -76,7 +76,7 @@ def test_core_public_api_importable() -> None:
     Addresses: F9 (Murat) — catches a broken __init__.py or missing transitive
     dependency that lets the package install but fail on first use.
     """
-    from climate_indices import pet_hargreaves, pet_thornthwaite, spi, spei
+    from climate_indices import pet_hargreaves, pet_thornthwaite, spei, spi
 
     assert callable(spi)
     assert callable(spei)

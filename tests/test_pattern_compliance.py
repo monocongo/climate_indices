@@ -22,12 +22,10 @@ from __future__ import annotations
 import ast
 import importlib
 import inspect
-import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -146,9 +144,7 @@ class TestTypedPublicAPICompliance:
         from climate_indices import typed_public_api
 
         api_name = INDICES[index_name]["typed_api_name"]
-        assert hasattr(typed_public_api, api_name), (
-            f"typed_public_api missing function '{api_name}'"
-        )
+        assert hasattr(typed_public_api, api_name), f"typed_public_api missing function '{api_name}'"
         func = getattr(typed_public_api, api_name)
         assert callable(func), f"typed_public_api.{api_name} is not callable"
 
@@ -173,8 +169,7 @@ class TestTypedPublicAPICompliance:
                         overload_count += 1
 
         assert overload_count >= 2, (
-            f"typed_public_api.{api_name} should have at least 2 @overload signatures, "
-            f"found {overload_count}"
+            f"typed_public_api.{api_name} should have at least 2 @overload signatures, found {overload_count}"
         )
 
     @pytest.mark.parametrize(
@@ -187,9 +182,7 @@ class TestTypedPublicAPICompliance:
         import climate_indices
 
         api_name = INDICES[index_name]["typed_api_name"]
-        assert hasattr(climate_indices, api_name), (
-            f"climate_indices.__init__ missing re-export of '{api_name}'"
-        )
+        assert hasattr(climate_indices, api_name), f"climate_indices.__init__ missing re-export of '{api_name}'"
 
     def test_palmer_has_typed_api_or_wrapper(self) -> None:
         """Palmer has xarray support via manual wrapper (Epic 4)."""
@@ -222,18 +215,14 @@ class TestXarrayAdapterCompliance:
         api_name = INDICES[index_name]["typed_api_name"]
         func = getattr(typed_public_api, api_name)
 
-        # check that function signature accepts xr.DataArray type hints
-        sig = inspect.signature(func)
+        # check that function source references xr.DataArray type hints
         source = inspect.getsource(func)
 
         # verify function body references xarray or InputType or xarray_adapter
         has_xarray_support = any(
-            keyword in source
-            for keyword in ["DataArray", "InputType", "xarray_adapter", "_wrapped_"]
+            keyword in source for keyword in ["DataArray", "InputType", "xarray_adapter", "_wrapped_"]
         )
-        assert has_xarray_support, (
-            f"typed_public_api.{api_name} does not appear to have xarray support"
-        )
+        assert has_xarray_support, f"typed_public_api.{api_name} does not appear to have xarray support"
 
     def test_palmer_xarray_support(self) -> None:
         """Palmer has xarray support (via manual wrapper in Epic 4 worktree)."""
@@ -243,9 +232,7 @@ class TestXarrayAdapterCompliance:
         from climate_indices import palmer
 
         source = inspect.getsource(palmer.pdsi)
-        assert "calculation_started" in source, (
-            "palmer.pdsi missing structlog lifecycle (prerequisite for xarray)"
-        )
+        assert "calculation_started" in source, "palmer.pdsi missing structlog lifecycle (prerequisite for xarray)"
 
 
 # ============================================================================
@@ -278,27 +265,21 @@ class TestStructlogLifecycleCompliance:
         """Each index function emits 'calculation_started' event."""
         label, source = self._get_lifecycle_source(index_name)
 
-        assert "calculation_started" in source, (
-            f"{label} missing 'calculation_started' event"
-        )
+        assert "calculation_started" in source, f"{label} missing 'calculation_started' event"
 
     @pytest.mark.parametrize("index_name", list(INDICES.keys()))
     def test_has_calculation_completed(self, index_name: str) -> None:
         """Each index function emits 'calculation_completed' event."""
         label, source = self._get_lifecycle_source(index_name)
 
-        assert "calculation_completed" in source, (
-            f"{label} missing 'calculation_completed' event"
-        )
+        assert "calculation_completed" in source, f"{label} missing 'calculation_completed' event"
 
     @pytest.mark.parametrize("index_name", list(INDICES.keys()))
     def test_has_calculation_failed(self, index_name: str) -> None:
         """Each index function emits 'calculation_failed' event."""
         label, source = self._get_lifecycle_source(index_name)
 
-        assert "calculation_failed" in source, (
-            f"{label} missing 'calculation_failed' event"
-        )
+        assert "calculation_failed" in source, f"{label} missing 'calculation_failed' event"
 
     @pytest.mark.parametrize("index_name", list(INDICES.keys()))
     def test_uses_structlog_not_stdlib(self, index_name: str) -> None:
@@ -308,9 +289,7 @@ class TestStructlogLifecycleCompliance:
         source = mod_path.read_text()
 
         # should use structlog-based logger, not stdlib logging.getLogger
-        assert "get_logger" in source, (
-            f"{info['module']}.py should use get_logger() for structlog"
-        )
+        assert "get_logger" in source, f"{info['module']}.py should use get_logger() for structlog"
 
 
 # ============================================================================
@@ -362,9 +341,7 @@ class TestStructuredExceptionsCompliance:
     def test_palmer_uses_structlog_error_context(self) -> None:
         """Palmer module logs structured error context on failure."""
         source = (_SRC_ROOT / "palmer.py").read_text()
-        assert "calculation_failed" in source, (
-            "palmer.py should log 'calculation_failed' with error context"
-        )
+        assert "calculation_failed" in source, "palmer.py should log 'calculation_failed' with error context"
 
 
 # ============================================================================
@@ -396,8 +373,7 @@ class TestPropertyBasedTestCompliance:
         """Each index has at least one property-based test using Hypothesis."""
         source = self._get_property_test_source()
         assert search_term in source, (
-            f"No property-based test found for '{index_name}' "
-            f"(searched for '{search_term}' in test_property_based.py)"
+            f"No property-based test found for '{index_name}' (searched for '{search_term}' in test_property_based.py)"
         )
 
     def test_uses_hypothesis(self) -> None:
