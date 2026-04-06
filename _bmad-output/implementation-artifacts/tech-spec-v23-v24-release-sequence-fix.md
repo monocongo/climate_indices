@@ -210,20 +210,28 @@ Correct the release sequence end-to-end:
 
 15. Verify on https://pypi.org/project/climate-indices/ that version `2.3.0` is now listed.
 
+16. Clean up the pr-614 worktree now that the branch is merged and the remote ref will be
+    deleted:
+    ```
+    git worktree remove .worktrees/pr614-merge-fix
+    ```
+    If git refuses (untracked or modified files remain), inspect and resolve before removing.
+    Confirm with `git worktree list` — `.worktrees/pr614-merge-fix` should no longer appear.
+
 **Phase 4 — Resolve conflicts in PR #623 and release v2.4.0**
 
-16. Return to repo root if needed, then check out `feature/v2.4.0-planning`:
+17. Return to repo root if needed, then check out `feature/v2.4.0-planning`:
     ```
     cd /path/to/climate_indices   # ensure you are at repo root, not inside a worktree
     git checkout feature/v2.4.0-planning
     ```
 
-17. Merge `master` into the branch to surface conflicts:
+18. Merge `master` into the branch to surface conflicts:
     ```
     git merge master
     ```
 
-18. Resolve `pyproject.toml` conflict: keep `version = '2.4.0'`.
+19. Resolve `pyproject.toml` conflict: keep `version = '2.4.0'`.
 
 19. Resolve `CHANGELOG.md` conflict: ensure the file contains BOTH release blocks in
     newest-first order:
@@ -237,36 +245,39 @@ Correct the release sequence end-to-end:
     ## [2.2.0] - 2025-08-03
     ... (existing older content) ...
     ```
+    The v2.3.0 block content (the `### Added`, `### Changed`, `### Removed` sections) is in
+    `.worktrees/pr614-merge-fix/CHANGELOG.md` lines 8–46 — copy it verbatim into the resolved
+    file. Do not paraphrase or reconstruct it from memory.
     If any conflicts appear in files other than `pyproject.toml` and `CHANGELOG.md`, stop and
     investigate — they are unexpected given that `pr-614` only touched docs and config.
 
-20. Complete the merge commit:
+21. Complete the merge commit:
     ```
     git add pyproject.toml CHANGELOG.md
     git merge --continue
     ```
     (commit message: `chore: merge master post-v2.3.0 release into v2.4.0 branch`)
 
-21. Force-push the resolved branch:
+22. Force-push the resolved branch:
     ```
     git push --force-with-lease origin feature/v2.4.0-planning
     ```
 
-22. On GitHub, confirm PR #623 shows no conflicts and CI passes.
+23. On GitHub, confirm PR #623 shows no conflicts and CI passes.
 
-23. Approve and **merge commit** (not squash) PR #623 to `master` — preserves the full
+24. Approve and **merge commit** (not squash) PR #623 to `master` — preserves the full
     feature branch history for the 30+ commits that make up v2.4.0.
 
-24. Pull updated `master`:
+25. Pull updated `master`:
     ```
     git checkout master
     git pull origin master
     ```
 
-25. Confirm `pyproject.toml` shows `version = '2.4.0'` and `CHANGELOG.md` shows both v2.4.0 and
+26. Confirm `pyproject.toml` shows `version = '2.4.0'` and `CHANGELOG.md` shows both v2.4.0 and
     v2.3.0 entries.
 
-26. Run local pre-tag version consistency check:
+27. Run local pre-tag version consistency check:
     ```
     python -c "
     import tomllib
@@ -275,22 +286,22 @@ Correct the release sequence end-to-end:
     print(f'OK: pyproject.toml version = {v}')
     "
     ```
-    Only proceed to Task 27 if this prints `OK: pyproject.toml version = 2.4.0`.
+    Only proceed to Task 28 if this prints `OK: pyproject.toml version = 2.4.0`.
 
-27. Push the release tag:
+28. Push the release tag:
     ```
     git tag v2.4.0
     git push origin v2.4.0
     ```
 
-28. Approve the publish step in GitHub Actions:
+29. Approve the publish step in GitHub Actions:
     - Go to the repo **Actions** tab
     - Click the `Release to PyPI` workflow run triggered by the `v2.4.0` tag
     - Wait for `test` and `security-audit` jobs to pass (green)
     - Click **"Review deployments"** on the `release` job
     - Check the `release` environment and click **"Approve and deploy"**
 
-29. Verify on https://pypi.org/project/climate-indices/ that version `2.4.0` is now the latest.
+30. Verify on https://pypi.org/project/climate-indices/ that version `2.4.0` is now the latest.
 
 ### Acceptance Criteria
 
@@ -328,7 +339,7 @@ Correct the release sequence end-to-end:
 
 **AC-4b — Pre-tag local check passes for v2.4.0**
 - Given: `master` is checked out at repo root after merging PR #623
-- When: the Task 26 python one-liner is run
+- When: the Task 27 python one-liner is run
 - Then: output is exactly `OK: pyproject.toml version = 2.4.0` with exit code 0
 
 **AC-5 — v2.4.0 on PyPI**
@@ -352,8 +363,12 @@ Correct the release sequence end-to-end:
   ```
   pip install climate-indices==2.3.0
   python -c "import climate_indices; print(climate_indices.__version__)"
+  python -c "from climate_indices import spi; print('SPI import OK')"
   ```
-  (repeat for `2.4.0`)
+  (repeat for `2.4.0`, additionally verifying `from climate_indices import eddi` for the new
+  v2.4.0 public API export)
+  The second import check catches a broken `__init__.py` or missing transitive dependency that
+  would let the package install but fail on first use.
 - Allow ~60 seconds after the GitHub Actions publish step completes before running the
   `pip install` verification — PyPI CDN propagation means the version may 404 briefly.
 - Confirm GitHub Actions workflow run shows all steps green including the publish step.
