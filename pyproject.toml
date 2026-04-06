@@ -148,6 +148,7 @@ filterwarnings = [
 markers = [
     "benchmark: performance benchmark tests (deselect with '-m \"not benchmark\"')",
     "slow: slow tests that may be skipped in CI (deselect with '-m \"not slow\"')",
+    "release: pre-release integrity checks — run before pushing a release tag with '-m release'",
 ]
 addopts = "-m 'not benchmark'"
 

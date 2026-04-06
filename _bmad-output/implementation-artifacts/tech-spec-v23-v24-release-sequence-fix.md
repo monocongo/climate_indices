@@ -8,6 +8,7 @@ tech_stack: ['git', 'GitHub Actions', 'PyPI OIDC trusted publishing', 'hatchling
 files_to_modify:
   - CHANGELOG.md  # pr-614 branch: change [Unreleased] → [2.3.0] - 2026-02-11
   - pyproject.toml  # pr-623 branch only: keep version = '2.4.0' during conflict resolution
+  - tests/test_release_integrity.py  # new — release integrity guardrails
 code_patterns: []
 test_patterns: []
 ---
@@ -111,6 +112,27 @@ Correct the release sequence end-to-end:
 
 ## Implementation Plan
 
+### Prerequisites
+
+**Before starting any phase**, confirm the following. Failure to verify these upfront will cause
+cryptic errors mid-release with no clean rollback path.
+
+- **Authentication**: You must be logged in as `monocongo` on both GitHub and PyPI. Tasks 9, 14,
+  and 29 require GitHub repo admin access; Tasks 5–7 require PyPI project owner access. A
+  collaborator without admin cannot approve the `release` environment deployment.
+- **Branch protection**: Check that `master` does not have status-check requirements that would
+  block the merges in Tasks 9 and 24. Go to **Settings → Branches → master** and confirm the
+  branch protection rules. If required status checks are listed, ensure all relevant CI jobs pass
+  on each PR before merging. If protection requires a second approver and you are the sole
+  maintainer, you may need to temporarily adjust the rule.
+- **Python 3.11+ available locally**: Tasks 12 and 27 use `tomllib` (stdlib since 3.11). Confirm
+  with `python --version` before running those checks.
+- **Release integrity tests pass**: Run the always-on guardrails before touching any branch:
+  ```
+  uv run pytest tests/test_release_integrity.py -m "not release" -v
+  ```
+  All 4 tests must pass. If they fail, fix the underlying issue before proceeding.
+
 ### Tasks
 
 **Phase 1 — Fix PR #614**
@@ -167,7 +189,10 @@ Correct the release sequence end-to-end:
 
 **Phase 3 — Merge PR #614 and release v2.3.0**
 
-9. On GitHub, approve and **squash merge** PR #614 — keeps `master` history clean for a
+9. Before merging, confirm all CI checks are green on the `pr-614` branch. Go to the PR on
+   GitHub and verify the status checks section shows all jobs passing. If any job is failing,
+   resolve it before merging — do not proceed with a failing-CI PR.
+   Then approve and **squash merge** PR #614 — keeps `master` history clean for a
    single-purpose release-prep branch.
 
 10. Return to the repo root (not the worktree) and pull `master`:
@@ -194,6 +219,10 @@ Correct the release sequence end-to-end:
     Only proceed to Task 13 if this prints `OK: pyproject.toml version = 2.3.0`. This mirrors
     the CI check and avoids burning a manual approval on a version mismatch (the CI validates
     version AFTER the approval gate fires).
+    **If the check fails**: do NOT push the tag. Run `grep ^version pyproject.toml` to confirm
+    the actual value. If the squash merge introduced the wrong version, make a fixup commit on
+    master: `git commit -am "fix: correct pyproject.toml version to 2.3.0"` then re-run the
+    check. Do not push the tag until the check prints `OK`.
 
 13. Push the release tag:
     ```
@@ -233,7 +262,7 @@ Correct the release sequence end-to-end:
 
 19. Resolve `pyproject.toml` conflict: keep `version = '2.4.0'`.
 
-19. Resolve `CHANGELOG.md` conflict: ensure the file contains BOTH release blocks in
+20. Resolve `CHANGELOG.md` conflict: ensure the file contains BOTH release blocks in
     newest-first order:
     ```
     ## [2.4.0] - 2026-04-05
@@ -245,9 +274,11 @@ Correct the release sequence end-to-end:
     ## [2.2.0] - 2025-08-03
     ... (existing older content) ...
     ```
-    The v2.3.0 block content (the `### Added`, `### Changed`, `### Removed` sections) is in
-    `.worktrees/pr614-merge-fix/CHANGELOG.md` lines 8–46 — copy it verbatim into the resolved
-    file. Do not paraphrase or reconstruct it from memory.
+    The v2.3.0 block content begins immediately after the `## [2.3.0] - 2026-02-11` header and
+    spans the `### Added`, `### Changed`, and `### Removed` subsections. The authoritative source
+    is the `pr-614` branch CHANGELOG — locate this content by searching for the `## [2.3.0]`
+    header in `.worktrees/pr614-merge-fix/CHANGELOG.md` (or `git show pr-614:CHANGELOG.md`)
+    and copy it verbatim. Do not paraphrase or reconstruct from memory; use the source directly.
     If any conflicts appear in files other than `pyproject.toml` and `CHANGELOG.md`, stop and
     investigate — they are unexpected given that `pr-614` only touched docs and config.
 
@@ -262,6 +293,13 @@ Correct the release sequence end-to-end:
     ```
     git push --force-with-lease origin feature/v2.4.0-planning
     ```
+    Verify the push succeeded by confirming the conflict resolution commit is now on the remote:
+    ```
+    git log --oneline origin/feature/v2.4.0-planning -3
+    ```
+    The merge commit (`chore: merge master post-v2.3.0 release into v2.4.0 branch`) must be
+    the top entry. If `--force-with-lease` rejected the push, run `git fetch origin` to sync
+    the remote ref, then retry.
 
 23. On GitHub, confirm PR #623 shows no conflicts and CI passes.
 
@@ -287,6 +325,10 @@ Correct the release sequence end-to-end:
     "
     ```
     Only proceed to Task 28 if this prints `OK: pyproject.toml version = 2.4.0`.
+    **If the check fails**: do NOT push the tag. Run `grep ^version pyproject.toml` to confirm.
+    If the conflict resolution in Task 19 accidentally kept `version = '2.3.0'`, fix it with a
+    direct commit on master: `git commit -am "fix: correct pyproject.toml version to 2.4.0"`
+    then re-run the check.
 
 28. Push the release tag:
     ```
@@ -305,11 +347,17 @@ Correct the release sequence end-to-end:
 
 ### Acceptance Criteria
 
-**AC-0 — Pre-tag gate: CHANGELOG verified on master before any tag is pushed**
-- Given: PR #614 has been merged to `master`
-- When: `CHANGELOG.md` is inspected on `master`
-- Then: the first release block reads `## [2.3.0] - 2026-02-11` (not `[Unreleased]`);
-  if this check fails, do not push the tag — fix the CHANGELOG and amend the merge
+**AC-0 — Pre-tag gate: CHANGELOG and workflow verified before any tag is pushed**
+- Given: PR #614 has been merged to `master` and Phase 2 tasks (5–8) are complete
+- When: the following guardrail commands are run from repo root on `master`:
+  ```
+  uv run pytest tests/test_release_integrity.py -m "not release" -v
+  uv run pytest tests/test_release_integrity.py -m release -v
+  ```
+- Then: all tests pass; if `test_changelog_has_no_unreleased_block` or
+  `test_changelog_top_entry_matches_pyproject_version` fail, fix the CHANGELOG before proceeding;
+  if `test_release_workflow_uses_oidc_not_token` or `test_release_workflow_has_environment_gate`
+  fail, fix the workflow or PyPI/GitHub environment config before pushing any tag
 
 **AC-1 — v2.3.0 CHANGELOG header fixed**
 - Given: the `pr-614` worktree (`.worktrees/pr614-merge-fix/`) is the working directory
@@ -359,25 +407,62 @@ Correct the release sequence end-to-end:
 
 ### Testing Strategy
 
-- After each PyPI publish, run in a clean virtualenv (Python 3.11 as reference):
-  ```
-  pip install climate-indices==2.3.0
-  python -c "import climate_indices; print(climate_indices.__version__)"
-  python -c "from climate_indices import spi; print('SPI import OK')"
-  ```
-  (repeat for `2.4.0`, additionally verifying `from climate_indices import eddi` for the new
-  v2.4.0 public API export)
-  The second import check catches a broken `__init__.py` or missing transitive dependency that
-  would let the package install but fail on first use.
-- Allow ~60 seconds after the GitHub Actions publish step completes before running the
-  `pip install` verification — PyPI CDN propagation means the version may 404 briefly.
-- Confirm GitHub Actions workflow run shows all steps green including the publish step.
+**Pre-release (run before pushing each tag):**
+```
+uv run pytest tests/test_release_integrity.py -m release -v
+```
+All 4 release-time tests must pass. Fix any failures before tagging.
+
+**Post-publish (run after each GitHub Actions release workflow completes):**
+
+Create a clean virtualenv to avoid interference from the local editable install:
+```
+python3.11 -m venv /tmp/climate-release-verify
+source /tmp/climate-release-verify/bin/activate
+```
+
+Then verify v2.3.0:
+```
+pip install climate-indices==2.3.0
+python -c "import climate_indices; print(climate_indices.__version__)"
+python -c "from climate_indices import spi; print('SPI import OK')"
+deactivate && rm -rf /tmp/climate-release-verify
+```
+
+Repeat for v2.4.0, adding the EDDI check:
+```
+python3.11 -m venv /tmp/climate-release-verify
+source /tmp/climate-release-verify/bin/activate
+pip install climate-indices==2.4.0
+python -c "import climate_indices; print(climate_indices.__version__)"
+python -c "from climate_indices import spi, eddi; print('v2.4.0 API OK')"
+deactivate && rm -rf /tmp/climate-release-verify
+```
+
+**PyPI propagation**: wait ~60 seconds after the GitHub Actions publish step shows "success"
+before running `pip install` — the PyPI CDN may 404 briefly. If the first attempt fails with
+"No matching distribution found", wait 30 seconds and retry up to 3 times before treating it
+as a real failure. After 3 failed retries, check the PyPI release page directly at
+https://pypi.org/project/climate-indices/#history to confirm the release was uploaded.
 
 ### Notes
 
 - `--force-with-lease` is preferred over `--force` for the PR #623 push — it will fail-safe if
   anyone else has pushed to the branch since your last fetch. If `--force-with-lease` rejects the
   push, run `git fetch origin` to sync the remote ref, then retry the push.
-- If the OIDC publisher is not yet set up on PyPI, you can use a PyPI API token as a fallback:
-  add it as a GitHub Actions secret `PYPI_API_TOKEN` and adjust the publish step to use
-  `password: ${{ secrets.PYPI_API_TOKEN }}`. However, OIDC is preferred (no token rotation needed).
+- **PyPI publish failure rollback**: If the GitHub Actions publish step fails after manual
+  approval was already granted:
+  1. Check the Actions log for the specific error (auth failure, upload error, version conflict).
+  2. If the upload partially succeeded (check https://pypi.org/project/climate-indices/#history),
+     contact PyPI support at https://pypi.org/help/#admin before re-uploading — you cannot
+     re-upload a file for the same version.
+  3. If no upload occurred, delete the tag locally and on the remote, fix the root cause, then
+     re-tag and push: `git tag -d v2.3.0 && git push origin :refs/tags/v2.3.0`
+  4. Re-push the corrected tag to re-trigger the pipeline.
+- **Worktree cleanup (Task 16)**: If `git worktree remove` refuses due to untracked files, decide
+  whether they are ephemeral (delete them) or important (move them out first). Stashing does not
+  apply to untracked files — use `git clean -n` to preview what would be removed, then
+  `git clean -fd` to remove them, before retrying `git worktree remove`.
+- If OIDC trusted publishing is not available as a fallback, add a PyPI API token as GitHub
+  Actions secret `PYPI_API_TOKEN` and adjust the publish step to use
+  `password: ${{ secrets.PYPI_API_TOKEN }}`. OIDC is strongly preferred (no token rotation needed).
