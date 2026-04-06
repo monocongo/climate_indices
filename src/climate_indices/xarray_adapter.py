@@ -56,6 +56,7 @@ def _log() -> structlog.stdlib.BoundLogger:
     """
     return get_logger(__name__)
 
+
 # types that can be safely coerced to np.ndarray by the existing numpy functions
 # includes scalar types that numpy operations naturally handle
 _NUMPY_COERCIBLE_TYPES = (
@@ -944,9 +945,7 @@ def _infer_temporal_parameters(
             inferred["calibration_year_final"] = cal_end
 
     # PNP uses calibration_start_year/calibration_end_year
-    needs_cal_start = (
-        "calibration_start_year" in sig.parameters and "calibration_start_year" not in provided_params
-    )
+    needs_cal_start = "calibration_start_year" in sig.parameters and "calibration_start_year" not in provided_params
     needs_cal_end = "calibration_end_year" in sig.parameters and "calibration_end_year" not in provided_params
 
     if needs_cal_start or needs_cal_end:

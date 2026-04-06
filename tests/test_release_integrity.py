@@ -65,8 +65,7 @@ def test_release_workflow_has_environment_gate() -> None:
     """
     workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
     assert "environment: release" in workflow, (
-        "release.yml missing 'environment: release' — "
-        "the manual approval gate before PyPI publish has been removed"
+        "release.yml missing 'environment: release' — the manual approval gate before PyPI publish has been removed"
     )
 
 
@@ -123,8 +122,7 @@ def test_changelog_has_no_unreleased_block() -> None:
     """
     changelog = (ROOT / "CHANGELOG.md").read_text()
     assert "## [Unreleased]" not in changelog, (
-        "CHANGELOG.md contains '## [Unreleased]' — change the header to "
-        "'## [X.Y.Z] - YYYY-MM-DD' before releasing"
+        "CHANGELOG.md contains '## [Unreleased]' — change the header to '## [X.Y.Z] - YYYY-MM-DD' before releasing"
     )
 
 
@@ -137,9 +135,7 @@ def test_changelog_top_entry_matches_pyproject_version() -> None:
     pyproject_version = _read_pyproject_version()
     changelog = (ROOT / "CHANGELOG.md").read_text()
     match = re.search(r"^## \[(\d+\.\d+\.\d+)\]", changelog, re.MULTILINE)
-    assert match is not None, (
-        "No versioned release block (## [X.Y.Z]) found in CHANGELOG.md"
-    )
+    assert match is not None, "No versioned release block (## [X.Y.Z]) found in CHANGELOG.md"
     changelog_version = match.group(1)
     assert changelog_version == pyproject_version, (
         f"CHANGELOG.md top entry [{changelog_version}] does not match "

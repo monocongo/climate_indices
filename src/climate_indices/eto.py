@@ -150,8 +150,7 @@ def _daylight_hours(
     # see http://mypages.iit.edu/~maslanka/SolarGeo.pdf
     if not 0.0 <= sunset_hour_angle_radians <= math.pi:
         raise InvalidArgumentError(
-            f"Sunset hour angle outside valid range [0.0 to {math.pi}]. "
-            f"Received: {sunset_hour_angle_radians}",
+            f"Sunset hour angle outside valid range [0.0 to {math.pi}]. Received: {sunset_hour_angle_radians}",
             argument_name="sunset_hour_angle_radians",
             argument_value=str(sunset_hour_angle_radians),
             valid_values=f"[0.0, {math.pi}]",
