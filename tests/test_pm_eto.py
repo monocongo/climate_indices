@@ -13,8 +13,13 @@ Allen, R.G., Pereira, L.S., Raes, D. and Smith, M. (1998)
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 import pytest
+
+if TYPE_CHECKING:
+    import xarray as xr
 
 from climate_indices.pm_eto import (
     ATMOSPHERIC_PRESSURE_SEA_LEVEL,
@@ -685,7 +690,7 @@ class TestEtoPenmanMonteithXarrayAdapter:
     def _make_xarray_inputs(
         n: int = 30,
         start_date: str = "2020-01-01",
-    ) -> dict[str, "xr.DataArray"]:
+    ) -> dict[str, xr.DataArray]:
         """Create xarray DataArray inputs with daily time coordinate."""
         import pandas as pd
         import xarray as xr
@@ -726,9 +731,9 @@ class TestEtoPenmanMonteithXarrayAdapter:
 
     def test_xarray_1d_equivalence(self) -> None:
         """1-D xarray result should match NumPy result within tolerance 1e-8."""
-        from climate_indices.xarray_adapter import eto_penman_monteith
-
         import xarray as xr
+
+        from climate_indices.xarray_adapter import eto_penman_monteith
 
         n = 30
         np_inputs = self._make_numpy_inputs(n)
@@ -748,9 +753,9 @@ class TestEtoPenmanMonteithXarrayAdapter:
 
     def test_xarray_cf_metadata(self) -> None:
         """xarray output should have correct CF metadata attributes."""
-        from climate_indices.xarray_adapter import eto_penman_monteith
-
         import xarray as xr
+
+        from climate_indices.xarray_adapter import eto_penman_monteith
 
         xa_inputs = self._make_xarray_inputs(10)
         result = eto_penman_monteith(**xa_inputs)
@@ -770,10 +775,10 @@ class TestEtoPenmanMonteithXarrayAdapter:
 
     def test_xarray_coordinate_preservation(self) -> None:
         """xarray output should preserve time coordinates from input."""
-        from climate_indices.xarray_adapter import eto_penman_monteith
-
         import pandas as pd
         import xarray as xr
+
+        from climate_indices.xarray_adapter import eto_penman_monteith
 
         n = 15
         time = pd.date_range("2021-07-01", periods=n, freq="D")
@@ -792,10 +797,10 @@ class TestEtoPenmanMonteithXarrayAdapter:
 
     def test_xarray_gridded_input(self) -> None:
         """Multi-dimensional (time, lat, lon) input should produce correct output."""
-        from climate_indices.xarray_adapter import eto_penman_monteith
-
         import pandas as pd
         import xarray as xr
+
+        from climate_indices.xarray_adapter import eto_penman_monteith
 
         nt, nlat, nlon = 30, 3, 4
         time = pd.date_range("2020-01-01", periods=nt, freq="D")
@@ -831,11 +836,11 @@ class TestEtoPenmanMonteithXarrayAdapter:
 
     def test_xarray_dask_lazy(self) -> None:
         """Dask-backed xarray inputs should remain lazy until .compute()."""
-        from climate_indices.xarray_adapter import eto_penman_monteith
-
         import dask.array as da
         import pandas as pd
         import xarray as xr
+
+        from climate_indices.xarray_adapter import eto_penman_monteith
 
         n = 30
         time = pd.date_range("2020-01-01", periods=n, freq="D")
@@ -878,10 +883,10 @@ class TestEtoPenmanMonteithXarrayAdapter:
 
     def test_mixed_input_types_rejected(self) -> None:
         """Mixing numpy and xarray inputs should raise TypeError."""
-        from climate_indices.xarray_adapter import eto_penman_monteith
-
         import pandas as pd
         import xarray as xr
+
+        from climate_indices.xarray_adapter import eto_penman_monteith
 
         n = 10
         time = pd.date_range("2020-01-01", periods=n, freq="D")
@@ -904,11 +909,11 @@ class TestEtoPenmanMonteithXarrayAdapter:
 
     def test_xarray_input_alignment_warning(self) -> None:
         """Misaligned time coordinates should trigger InputAlignmentWarning."""
-        from climate_indices.exceptions import InputAlignmentWarning
-        from climate_indices.xarray_adapter import eto_penman_monteith
-
         import pandas as pd
         import xarray as xr
+
+        from climate_indices.exceptions import InputAlignmentWarning
+        from climate_indices.xarray_adapter import eto_penman_monteith
 
         # primary input: 30 days starting Jan 1
         time_a = pd.date_range("2020-01-01", periods=30, freq="D")
