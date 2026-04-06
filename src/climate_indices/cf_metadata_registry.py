@@ -106,27 +106,52 @@ CF_METADATA: dict[str, CFAttributes] = {
     },
     "eddi": {
         "long_name": "Evaporative Demand Drought Index",
-        "units": "",
-        "references": "Hobbins et al. (2016), DOI: 10.1175/JHM-D-15-0121.1",
+        "units": "dimensionless",
+        "references": (
+            "Hobbins, M. T., Wood, A., McEvoy, D. J., Huntington, J. L., Morton, C., "
+            "Anderson, M., & Hain, C. (2016). "
+            "The Evaporative Demand Drought Index. Part I: Linking Drought Evolution "
+            "to Variations in Evaporative Demand. "
+            "Journal of Hydrometeorology, 17(6), 1745-1761. "
+            "https://doi.org/10.1175/JHM-D-15-0121.1"
+        ),
     },
     "pdsi": {
         "long_name": "Palmer Drought Severity Index",
-        "units": "",
-        "references": "Palmer (1965), U.S. Department of Commerce, Weather Bureau",
+        "units": "dimensionless",
+        "references": (
+            "Palmer, W. C. (1965). "
+            "Meteorological Drought. Research Paper No. 45. "
+            "U.S. Department of Commerce, Weather Bureau, Washington, D.C."
+        ),
     },
     "phdi": {
         "long_name": "Palmer Hydrological Drought Index",
-        "units": "",
-        "references": "Palmer (1965), U.S. Department of Commerce, Weather Bureau",
+        "units": "dimensionless",
+        "references": (
+            "Palmer, W. C. (1965). "
+            "Meteorological Drought. Research Paper No. 45. "
+            "U.S. Department of Commerce, Weather Bureau, Washington, D.C."
+        ),
     },
     "pmdi": {
         "long_name": "Palmer Modified Drought Index",
-        "units": "",
-        "references": "Heddinghaus & Sabol (1991), Preprints, 7th Conf. Applied Climatology",
+        "units": "dimensionless",
+        "references": (
+            "Heddinghaus, T. R., & Sabol, P. (1991). "
+            "A review of the Palmer Drought Severity Index and where do we go from here? "
+            "Preprints, 7th Conference on Applied Climatology, "
+            "September 10-13, Salt Lake City, UT. "
+            "American Meteorological Society, Boston, MA, 242-246."
+        ),
     },
     "z_index": {
         "long_name": "Palmer Z-Index",
-        "units": "",
-        "references": "Palmer (1965), U.S. Department of Commerce, Weather Bureau",
+        "units": "dimensionless",
+        "references": (
+            "Palmer, W. C. (1965). "
+            "Meteorological Drought. Research Paper No. 45. "
+            "U.S. Department of Commerce, Weather Bureau, Washington, D.C."
+        ),
     },
 }

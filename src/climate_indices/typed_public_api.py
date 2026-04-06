@@ -1,11 +1,11 @@
-"""Typed public API for SPI, SPEI, PNP, and PCI with NumPy/xarray overloads.
+"""Typed public API for climate indices with NumPy/xarray overloads.
 
 This module provides statically-typed wrappers around the xarray-adapted index
 functions. The @overload signatures enable IDE autocomplete and mypy --strict
 correctness by narrowing return types based on input types:
 
-- spi(np.ndarray, ...) -> np.ndarray
-- spi(xr.DataArray, ...) -> xr.DataArray
+- spi(np.ndarray, ...) -> np.ndarray      (and likewise for spei, eddi, pnp, pci)
+- spi(xr.DataArray, ...) -> xr.DataArray  (and pet_thornthwaite, pet_hargreaves)
 
 Design: Pre-build decorated functions at module level for performance. The public
 functions filter None kwargs and delegate to the pre-built wrapped functions.
@@ -20,7 +20,7 @@ PCI uses a manual wrapper instead of @xarray_adapter because its output shape
 from __future__ import annotations
 
 import datetime
-from typing import TYPE_CHECKING, Any, overload
+from typing import Any, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -41,9 +41,6 @@ from climate_indices.xarray_adapter import (
 from climate_indices.xarray_adapter import (
     pet_thornthwaite as _pet_thornthwaite_impl,
 )
-
-if TYPE_CHECKING:
-    pass
 
 # pre-build decorated functions at module level for performance
 _wrapped_spi = xarray_adapter(

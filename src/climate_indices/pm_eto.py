@@ -22,13 +22,13 @@ Allen, R.G., Pereira, L.S., Raes, D. and Smith, M. (1998)
 
 from __future__ import annotations
 
-from typing import Any, Union
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 
 # union type for function signatures
-FloatOrArray = Union[float, npt.NDArray[np.floating[Any]]]
+FloatOrArray = float | npt.NDArray[np.floating[Any]]
 
 # ---------------------------------------------------------------------------
 # Physical constants (FAO-56, Chapter 2)

@@ -107,6 +107,81 @@ class TestPNPEntry:
         assert pnp["references"] == pon["references"]
 
 
+class TestEDDIEntry:
+    """Validate EDDI registry entry."""
+
+    def test_long_name(self) -> None:
+        assert CF_METADATA["eddi"]["long_name"] == "Evaporative Demand Drought Index"
+
+    def test_units(self) -> None:
+        assert CF_METADATA["eddi"]["units"] == "dimensionless"
+
+    def test_references_contains_hobbins(self) -> None:
+        references = CF_METADATA["eddi"]["references"]
+        assert "Hobbins" in references
+        assert "2016" in references
+
+
+class TestPDSIEntry:
+    """Validate PDSI registry entry."""
+
+    def test_long_name(self) -> None:
+        assert CF_METADATA["pdsi"]["long_name"] == "Palmer Drought Severity Index"
+
+    def test_units(self) -> None:
+        assert CF_METADATA["pdsi"]["units"] == "dimensionless"
+
+    def test_references_contains_palmer(self) -> None:
+        references = CF_METADATA["pdsi"]["references"]
+        assert "Palmer" in references
+        assert "1965" in references
+
+
+class TestPHDIEntry:
+    """Validate PHDI registry entry."""
+
+    def test_long_name(self) -> None:
+        assert CF_METADATA["phdi"]["long_name"] == "Palmer Hydrological Drought Index"
+
+    def test_units(self) -> None:
+        assert CF_METADATA["phdi"]["units"] == "dimensionless"
+
+    def test_references_contains_palmer(self) -> None:
+        references = CF_METADATA["phdi"]["references"]
+        assert "Palmer" in references
+        assert "1965" in references
+
+
+class TestPMDIEntry:
+    """Validate PMDI registry entry."""
+
+    def test_long_name(self) -> None:
+        assert CF_METADATA["pmdi"]["long_name"] == "Palmer Modified Drought Index"
+
+    def test_units(self) -> None:
+        assert CF_METADATA["pmdi"]["units"] == "dimensionless"
+
+    def test_references_contains_heddinghaus(self) -> None:
+        references = CF_METADATA["pmdi"]["references"]
+        assert "Heddinghaus" in references
+        assert "1991" in references
+
+
+class TestZIndexEntry:
+    """Validate Z-Index registry entry."""
+
+    def test_long_name(self) -> None:
+        assert CF_METADATA["z_index"]["long_name"] == "Palmer Z-Index"
+
+    def test_units(self) -> None:
+        assert CF_METADATA["z_index"]["units"] == "dimensionless"
+
+    def test_references_contains_palmer(self) -> None:
+        references = CF_METADATA["z_index"]["references"]
+        assert "Palmer" in references
+        assert "1965" in references
+
+
 class TestBackwardCompatibility:
     """Verify existing SPI/SPEI/PET entries unchanged after extraction."""
 
