@@ -144,8 +144,8 @@ Correct the release sequence end-to-end:
 
 **Phase 3 — Merge PR #614 and release v2.3.0**
 
-8. On GitHub, approve and merge PR #614 (merge commit or squash — squash preferred to keep
-   `master` history clean).
+8. On GitHub, approve and **squash merge** PR #614 — keeps `master` history clean for a
+   single-purpose release-prep branch.
 
 9. Pull the updated `master` locally:
    ```
@@ -154,7 +154,9 @@ Correct the release sequence end-to-end:
    ```
 
 10. Confirm `pyproject.toml` on `master` shows `version = '2.3.0'` and `CHANGELOG.md` shows
-    `## [2.3.0] - 2026-02-11` as the top release entry.
+    `## [2.3.0] - 2026-02-11` as the top release entry. **Do not proceed to Task 11 until
+    both are verified** — pushing the tag with `[Unreleased]` in the CHANGELOG will publish
+    incorrect release notes to PyPI.
 
 11. Push the release tag:
     ```
@@ -207,7 +209,8 @@ Correct the release sequence end-to-end:
 
 20. On GitHub, confirm PR #623 shows no conflicts and CI passes.
 
-21. Approve and merge PR #623 to `master`.
+21. Approve and **merge commit** (not squash) PR #623 to `master` — preserves the full
+    feature branch history for the 30+ commits that make up v2.4.0.
 
 22. Pull updated `master`:
     ```
@@ -229,6 +232,12 @@ Correct the release sequence end-to-end:
 26. Verify on https://pypi.org/project/climate-indices/ that version `2.4.0` is now the latest.
 
 ### Acceptance Criteria
+
+**AC-0 — Pre-tag gate: CHANGELOG verified on master before any tag is pushed**
+- Given: PR #614 has been merged to `master`
+- When: `CHANGELOG.md` is inspected on `master`
+- Then: the first release block reads `## [2.3.0] - 2026-02-11` (not `[Unreleased]`);
+  if this check fails, do not push the tag — fix the CHANGELOG and amend the merge
 
 **AC-1 — v2.3.0 CHANGELOG header fixed**
 - Given: the `pr-614` branch is checked out
@@ -268,18 +277,21 @@ Correct the release sequence end-to-end:
 
 ### Testing Strategy
 
-- After each PyPI publish, run in a clean virtualenv:
+- After each PyPI publish, run in a clean virtualenv (Python 3.11 as reference):
   ```
   pip install climate-indices==2.3.0
   python -c "import climate_indices; print(climate_indices.__version__)"
   ```
   (repeat for `2.4.0`)
+- Allow ~60 seconds after the GitHub Actions publish step completes before running the
+  `pip install` verification — PyPI CDN propagation means the version may 404 briefly.
 - Confirm GitHub Actions workflow run shows all steps green including the publish step.
 
 ### Notes
 
 - `--force-with-lease` is preferred over `--force` for the PR #623 push — it will fail-safe if
-  anyone else has pushed to the branch since your last fetch.
+  anyone else has pushed to the branch since your last fetch. If `--force-with-lease` rejects the
+  push, run `git fetch origin` to sync the remote ref, then retry the push.
 - The `release` GitHub environment may require a reviewer approval. Since you are the sole
   maintainer, you can approve your own deployment (confirm this in repo Settings → Environments).
 - If the OIDC publisher is not yet set up on PyPI, you can use a PyPI API token as a fallback:
