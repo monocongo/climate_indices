@@ -82,8 +82,10 @@ venv.bak/
 # BMAD framework (keep only project-specific artifacts in _bmad-output/)
 _bmad/
 
-# Claude Code session data
-.claude/
+# Claude Code session data (scoped: allow project-layer config files to be committed)
+.claude/CLAUDE.local.md
+.claude/handovers/
+.claude/settings.local.json
 .codex/
 
 # Git worktrees
