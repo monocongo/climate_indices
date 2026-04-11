@@ -149,6 +149,34 @@ if np.isclose(values, 0.0, atol=1e-8):
 - Follows scientific computing best practices for floating point arithmetic
 - See `docs/floating_point_best_practices.md` for comprehensive guidelines
 
+## Contributing
+
+Contributions are welcome. Please open an issue or pull request on GitHub.
+
+### Development tooling
+
+The project uses [uv](https://docs.astral.sh/uv/) for package management and
+[ruff](https://docs.astral.sh/ruff/) + [mypy](https://mypy.readthedocs.io/) for
+linting and type-checking. Install development dependencies with:
+
+```bash
+uv sync --dev
+```
+
+**BMAD spec-driven workflow:** Some features are developed using the
+[BMAD method](https://docs.bmad-method.org). The BMAD framework (`_bmad/`) is
+**not included in the repository** — it is a local development tool that not
+every contributor needs. Install it locally if you plan to use the spec-driven
+approach:
+
+```
+/plugin install bmad@claude-plugins-official   # inside a Claude Code session
+```
+
+When BMAD is used for a feature, its planning and implementation artifacts are
+committed under `_bmad-output/` so the record is preserved in version history.
+The `_bmad/` framework directory itself remains local-only.
+
 #### Citation
 You can cite `climate_indices` in your projects and research papers via the BibTeX 
 entry below.

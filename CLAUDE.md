@@ -6,16 +6,24 @@ Scientific computing stack: NumPy, xarray/dask, scipy, structlog.
 Repository: https://github.com/monocongo/climate_indices
 
 ## Current state
-v2.3.0 (PR #614) merged — introduced xarray adapters, exception hierarchy,
-structlog logging for SPI/SPEI/PET as a proof of concept. Three new workstreams
-are now planned via BMAD v6 to extend this work across the full library.
+v2.4.0 — all planned epics complete. xarray adapters, exception hierarchy,
+structlog logging, PM-ET, EDDI/PNP/scPDSI coverage, and Palmer multi-output
+are fully implemented and tested.
 
-## BMAD planning artifacts
-All planning is complete (Phases 1–3). Read these before starting any work:
-- PRD: _bmad-output/planning-artifacts/prd.md
-- Architecture: _bmad-output/planning-artifacts/architecture.md
-- Epics & Stories: _bmad-output/planning-artifacts/epics.md
-- Sprint Status: _bmad-output/implementation-artifacts/sprint-status.yaml
+## BMAD development tooling
+
+The BMAD spec-driven workflow (`_bmad/`) is **not included in the repository**
+because not all contributors need it. Install it locally if you plan to use
+the spec-driven approach for new features:
+
+```
+# Install BMAD framework locally (Claude Code plugin)
+/plugin install bmad@claude-plugins-official
+```
+
+When BMAD is used for a feature, commit its output artifacts under `_bmad-output/`
+so the planning record is preserved in version history. The `_bmad/` framework
+directory itself remains local-only and gitignored.
 
 ## Coding conventions (from v2.3.0 — follow these exactly)
 - Exception hierarchy rooted at ClimateIndicesError (see src/climate_indices/exceptions.py)
@@ -26,31 +34,17 @@ All planning is complete (Phases 1–3). Read these before starting any work:
 - Tests in tests/ using pytest, reference data in tests/fixtures/
 - Conventional commits: feat:, fix:, test:, docs:
 
-## BMAD Phase 4 — Story implementation cycle
-For EACH story in your assigned epic, follow this cycle in order:
+## BMAD story implementation cycle (when BMAD is in use)
 
-  1. CS (Create Story): run /bmad-bmm-create-story
-     Prepares the next story from the sprint plan for development.
+For each story, follow this cycle:
 
-  2. VS (Validate Story — optional but recommended): run /bmad-bmm-create-story
-     in validate mode to confirm the story is ready for development.
+  1. CS (Create Story): `/bmad-bmm-create-story`
+  2. VS (Validate Story — optional): confirm story is ready
+  3. DS (Dev Story): `/bmad-bmm-dev-story` — implement and write tests
+  4. CR (Code Review): `/bmad-bmm-code-review` — loop back to DS if issues found
+  5. Commit with a conventional commit message, then start the next CS
 
-  3. DS (Dev Story): run /bmad-bmm-dev-story
-     Execute the story implementation tasks and write tests.
+  Cycle: CS → VS → DS → CR → commit → next CS → …
 
-  4. CR (Code Review): run /bmad-bmm-code-review
-     Self-review the implemented code. If issues found, loop back to DS.
-
-  5. Commit with a conventional commit message, then start over at CS
-     for the next story.
-
-  The cycle is: CS → VS → DS → CR → commit → next CS → ...
-
-## Rules for Agent Team members
-- Do NOT modify files outside your assigned workstream/epic without lead approval
-- Run pytest on your changes before marking any task complete
-- If you need a file owned by another teammate, message the lead — do not edit it yourself
-- Commit after each completed story, not after each individual file change
-- If you get stuck on an algorithm, message the lead with specifics
-- Use /bmad-bmm-sprint-status to check overall sprint progress at any time
+  Output artifacts (stories, sprint status, planning docs) go in `_bmad-output/` and are committed.
 
