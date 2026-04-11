@@ -5,6 +5,7 @@ stepsCompleted:
   - step-02b-vision
   - step-02c-executive-summary
   - step-03-success
+  - step-04-journeys
 inputDocuments:
   - _bmad-output/v25-release-brief.md
   - _bmad-output/project-context.md
@@ -178,3 +179,131 @@ Defer if P0/P1 are at risk:
 - Epic 3 (docs): full Diátaxis restructure, example gallery PNGs, `llms-full.txt`/`llms.txt`.
 - Provenance-in-data: computation metadata (formula version, calibration window, literature citation) embedded directly in xarray output CF attributes.
 - Full NOAA CPC fixture validation for EDDI and Palmer once fixtures are received.
+
+---
+
+## User Journeys
+
+### Journey 1 — Dr. Maya Chen, NOAA/NCEI Research Scientist (Primary — Citation Success Path)
+
+**Situation:** Maya is preparing a drought attribution study for submission to *Journal of Climate*. She needs to compute 12-month PDSI over CONUS from 1950–2020 and cite her drought index implementation in the methods section. Her advisor pushed back on her previous draft: "you can't cite 'a Python script' as your drought index methodology."
+
+**Opening Scene:** Maya finds `climate_indices` on PyPI while searching for "Palmer drought index Python citable." She notes PDSI listed in the README with a validation-status column marked `literature-only`, and follows the link to `VALIDATION.md`.
+
+**Rising Action:**
+1. She reads `VALIDATION.md` — it maps PDSI to specific tables in Palmer (1965) with `atol=1e-2` and a justification. She understands what "literature-only" means before she writes a line of code.
+2. She installs the package and runs the getting-started notebook via `nbconvert --execute`. SPI output from an `xarray.Dataset` in under 20 minutes.
+3. She extends to PDSI. The function returns CF-compliant xarray output — `standard_name`, `long_name`, `valid_min`, `valid_max` already set from `cf_metadata_registry.py`. She pastes these directly into her methods table.
+4. She opens `docs/algorithm_refs/palmer.md`, finds the implementation variant note for moisture anomaly weighting (Eq. 12 vs. Alley 1984), and copies the Zenodo DOI into her reference manager.
+5. She follows the README's dual-citation guidance: she cites Hobbins et al. (2016) for the algorithm and `climate_indices` v2.5.0 (Zenodo DOI) for the implementation. The README explains this distinction explicitly.
+
+**Climax:** Peer review. Reviewer 2 asks which variant of the moisture anomaly weighting was used and demands a reference. Maya opens `docs/algorithm_refs/palmer.md` directly — the doc is self-contained, no maintainer intervention needed. She pastes the section URL into her response.
+
+**Resolution:** Paper accepted. The Zenodo DOI pins the exact library version. `VALIDATION.md` discloses the known CPC fixture gap. The algorithm reference doc is the audit trail. Maya recommends the library to her lab.
+
+**Capabilities revealed:** `CITATION.cff` + Zenodo DOI; README dual-citation guidance (library + algorithm papers); `VALIDATION.md` with proactive tolerance disclosure; CF-compliant output from `cf_metadata_registry.py`; `docs/algorithm_refs/palmer.md` self-sufficient under peer review; README validation-status table; getting-started notebook executable without intervention.
+
+---
+
+### Journey 2 — Prof. Reza Ahmadi, Academic Climate Scientist (Primary — Discrepancy Debugging)
+
+**Situation:** Reza is replicating a published EDDI analysis for a methods comparison paper. He runs `compute_eddi` on the same input data as Hobbins et al. (2016) Table 3 and gets values that differ by 0.08 at one station.
+
+**Opening Scene:** Reza stares at two columns of numbers. 0.08 is small enough to ignore, large enough to demand explanation. He doesn't know if it's a bug in the library, a rounding convention in the paper, a difference in which PET formulation he's using, or a mistake in his own code. The uncertainty is the worst part.
+
+**Rising Action:**
+1. He doesn't immediately read `VALIDATION.md`. He first tries to reproduce the table value himself in a notebook — isolating his input data handling.
+2. He opens `docs/algorithm_refs/eddi.md` and finds the "Implementation Notes — Reference ET source" section, which identifies that the library follows Hobbins et al. Eq. 4 using Hargreaves PET. His reference ET matches.
+3. He locates the EDDI literature fixture at `tests/fixtures/eddi_literature/hobbins_2016_table3.csv`. The JSON sidecar documents `equation_ref`, `table_ref`, and — critically — intermediate computational checkpoints: the plotting-position values and the gamma fit parameters before the final transformation. He compares his intermediate values to the fixture's intermediate values. They match.
+4. He runs `pytest -m validation`. It passes. He now reads `VALIDATION.md`: tolerance for this fixture is `atol=1e-2`, derived from the 2-decimal rounding in the published table. His 0.08 is within tolerance.
+
+**Climax:** Reza closes the investigation. The discrepancy was rounding in the published table — not a library bug. He can cite this conclusion because the fixture chain (input → intermediate checkpoints → output) gave him the evidence to localize the divergence at the right algorithmic boundary.
+
+**Resolution:** Reza adds a footnote: "EDDI values were verified against `climate_indices` v2.5.0 (Zenodo DOI), which documents Hobbins et al. (2016) Table 3 tolerance in `VALIDATION.md`." The library was trustworthy *because he could debug it to the equation level*, not because it told him everything was fine.
+
+**Capabilities revealed:** `docs/algorithm_refs/eddi.md` with implementation-variant notes; `tests/fixtures/eddi_literature/` fixtures with intermediate computational checkpoints in JSON sidecar; `pytest -m validation` runner; `VALIDATION.md` with equation-level tolerance justification; `ClimateIndicesError` with descriptive messages.
+
+---
+
+### Journey 3 — Dr. Kenji Okafor, Reproducer (Primary — Prior-Study Replication)
+
+**Situation:** Kenji is writing a methods comparison paper. He wants to reproduce the PDSI values from a 2021 paper by a different research group that also used `climate_indices`, but an older version (v2.2). His values differ from theirs by 0.15 at some stations.
+
+**Opening Scene:** Kenji opens the 2021 paper's methods section. It says "PDSI was computed using climate_indices." Version unspecified. No link. Kenji installs v2.5.0 and runs it. The 0.15 difference could be a version change, a calibration window choice, a different reference period, or different PET inputs. He has no way to tell.
+
+**Rising Action:**
+1. He checks `CHANGELOG.md` for the `[2.5.0]` and earlier sections. He finds a note: "Palmer computation: fixed moisture loss calculation in months with PET > precipitation — previously underestimated by ~0.12 in arid months. Introduced in v2.4.1." This is likely the source.
+2. He opens `docs/algorithm_refs/palmer.md` — it documents which variant of each Palmer equation the library implements, with version annotations for when each variant was adopted.
+3. He cannot reproduce the exact 2021 values without the original team's data and version, but he can now *document the discrepancy's cause* — which is sufficient for his paper's methods section.
+
+**Climax:** Kenji emails the original authors. They respond: "we used v2.2, which had the moisture loss bug." Kenji's methods section notes this explicitly. Both papers are now more useful to future researchers.
+
+**Resolution:** The library's detailed `CHANGELOG.md` and algorithm reference docs turned what could have been an unresolvable discrepancy into a documented, traceable version difference. Kenji cites `climate_indices` v2.5.0 and pins his own version explicitly.
+
+**Capabilities revealed:** `CHANGELOG.md` with numerical-output-level change documentation (not just API changes); version annotations in `docs/algorithm_refs/palmer.md`; `VALIDATION.md` as audit trail; semantic versioning with numerical stability guarantees.
+
+---
+
+### Journey 4 — Ben Torres, Hydrology Practitioner at a Water Utility (Secondary — Dask Pipeline Upgrade)
+
+**Situation:** Ben maintains an automated weekly drought monitoring report on a Dask cluster. He needs to add SPEI-6 and EDDI-3 alongside the existing SPI pipeline. He is not a climate scientist.
+
+**Opening Scene:** Ben upgrades from v2.4 to v2.5. His first instinct is to check whether the upgrade broke his archived SPI values — a decade of weekly outputs the utility has stored. API breaks he can catch with tests; silent numerical regressions he cannot.
+
+**Rising Action:**
+1. He reads `CHANGELOG.md` under `[2.5.0]`. No Palmer or SPI compute changes — only xarray attribute improvements and the new EDDI/SPEI CF metadata. His archived values are safe.
+2. He checks `docs/xarray_compatibility.md` — SPEI and EDDI both accept Dask-chunked input, with a note: "chunk along the time axis only; rolling-window computations do not compose correctly with spatial chunks." He adjusts his chunk schema.
+3. He adds `compute_spei` and `compute_eddi` calls. Both return CF-compliant `xarray.DataArray` output with `units`, `standard_name`, and `valid_min`/`valid_max`. He doesn't need to look up what the attributes mean.
+4. He runs a dry-run on a single Dask worker to verify chunk boundaries don't truncate the calibration period. It passes.
+
+**Climax:** Ben ships SPEI-6 and EDDI-3 in the next weekly report. The board asks what the new indices mean. He sends them the README's validation-status table and the algorithm reference links.
+
+**Resolution:** Ben has a stable pipeline. The `CHANGELOG.md` gave him the confidence to upgrade without re-validating everything. The compatibility matrix prevented the chunk-boundary bug before it happened.
+
+**Capabilities revealed:** `CHANGELOG.md` with numerical-output-level change documentation; `docs/xarray_compatibility.md` with Dask chunk constraints; CF-compliant output from `cf_metadata_registry.py`; backward-compatible API upgrade; Dask support via `xr.apply_ufunc`.
+
+---
+
+### Journey 5 — Anika Patel, Data Engineer (API Consumer — REST Integration Evaluation)
+
+**Situation:** Anika is wrapping `climate_indices` into REST endpoints at a geospatial SaaS company. She has one afternoon to evaluate whether the library is safe to depend on.
+
+**Opening Scene:** Anika opens a terminal. She installs the library. She imports `compute_spi` in a Python REPL and immediately asks: is this function safe to call concurrently across HTTP requests? She's seen libraries with module-level state that corrupts under load.
+
+**Rising Action:**
+1. She checks the source of `compute_spi` and finds no module-level mutable state — the function is stateless and can be called concurrently. She verifies this holds for SPEI and EDDI via the same inspection pattern.
+2. She checks `typed_public_api.py` — the public surface is small and explicit. `mypy --strict` passes on her wrapper code.
+3. She calls `compute_spi` with a custom-named coordinate (`lat/lon` instead of `latitude/longitude`) and discovers the function returns an xarray output that drops the non-standard coordinate name silently. She files a mental note: her wrapper must re-attach coordinates explicitly.
+4. She runs the getting-started notebook via `nbconvert --execute` to verify the output shape matches what she expects for a 480-month timeseries.
+5. She reads the `ClimateIndicesError` hierarchy to map library exceptions to HTTP status codes. The error messages include the offending parameter name and valid range — she can surface these directly to API consumers.
+
+**Climax:** Anika presents to her tech lead. He asks about API stability. She shows `typed_public_api.py`, the deprecation policy in `CHANGELOG.md`, and `mypy --strict` compliance. He approves.
+
+**Resolution:** Anika ships PDSI REST endpoints within the week. Her wrapper explicitly re-attaches coordinates. She opens a GitHub issue flagging the silent coordinate-drop behavior as a potential footgun for downstream users.
+
+**Capabilities revealed:** Stateless, concurrency-safe public functions; `typed_public_api.py` stable surface; `mypy --strict` compliance; `ClimateIndicesError` hierarchy with parameter-level error messages; xarray coordinate preservation documented or explicitly flagged; getting-started notebook executable without intervention; `CHANGELOG.md` deprecation policy.
+
+---
+
+### Journey Requirements Summary
+
+| Capability | Journeys that reveal it | Priority |
+|---|---|---|
+| `CITATION.cff` + Zenodo DOI | Maya, Kenji | P0 |
+| README dual-citation guidance (library + algorithm papers) | Maya | P0 |
+| `VALIDATION.md` with proactive tolerance disclosure and equation-level justification | Maya, Reza | P0 |
+| `docs/algorithm_refs/eddi.md` and `palmer.md` — self-sufficient under peer review, version-annotated | Maya, Reza, Kenji | P0 |
+| Fixture files with intermediate computational checkpoints in JSON sidecar | Reza | P0 |
+| `pytest -m validation` runner | Reza | P0 |
+| `CHANGELOG.md` with numerical-output-level change documentation | Kenji, Ben | P1 |
+| Version annotations in algorithm reference docs | Kenji | P1 |
+| CF-compliant output attributes from `cf_metadata_registry.py` | Maya, Ben, Anika | P1 |
+| `docs/xarray_compatibility.md` with Dask chunk constraints documented | Ben | P1 |
+| Dask support via `xr.apply_ufunc` with chunk-boundary safety | Ben | P1 |
+| Backward-compatible API upgrade from v2.4 | Ben | P1 |
+| README validation-status table (library + per-index) | Maya, Ben | P1 |
+| Stateless, concurrency-safe public functions | Anika | P1 |
+| `typed_public_api.py` stable surface + `mypy --strict` | Anika | P0 |
+| `ClimateIndicesError` hierarchy with parameter-level messages | Reza, Anika | P0 |
+| Getting-started notebook executable without intervention | Maya, Anika | P1 |
+| xarray coordinate preservation (or explicit documentation of drop behavior) | Anika | P1 |
