@@ -6,6 +6,11 @@ stepsCompleted:
   - step-02c-executive-summary
   - step-03-success
   - step-04-journeys
+  - step-05-domain
+  - step-06-innovation
+  - step-07-project-type
+  - step-08-scoping
+  - step-09-functional
 inputDocuments:
   - _bmad-output/v25-release-brief.md
   - _bmad-output/project-context.md
@@ -307,3 +312,186 @@ Defer if P0/P1 are at risk:
 | `ClimateIndicesError` hierarchy with parameter-level messages | Reza, Anika | P0 |
 | Getting-started notebook executable without intervention | Maya, Anika | P1 |
 | xarray coordinate preservation (or explicit documentation of drop behavior) | Anika | P1 |
+
+---
+
+## Developer Tool Specific Requirements
+
+### Project-Type Overview
+
+`climate_indices` is a scientific Python package distributed via PyPI. The stable public API is importable from `climate_indices.typed_public_api`; v2.5 extends that surface with CF-compliant xarray output, validation infrastructure, and Jupyter notebook examples.
+
+### Language & Version Matrix
+
+| Python Version | Support Status | CI-Tested |
+|---|---|---|
+| 3.10 | Supported (minimum) | Yes — Linux and macOS |
+| 3.11 | Supported | No (expected to work) |
+| 3.12 | Supported | Yes — Linux and macOS |
+| 3.13 | Supported | No (expected to work) |
+| 3.14 | Supported | No (expected to work) |
+
+CI explicitly tests the minimum (3.10) and current stable (3.12) versions on both Linux and macOS. Versions 3.11, 3.13, and 3.14 are within the supported range and are expected to work but are not included in the CI matrix for v2.5.
+
+Dependency version floors are defined in `pyproject.toml`. The xarray compatibility matrix (`docs/xarray_compatibility.md`) documents the minimum xarray, NumPy, and SciPy versions tested.
+
+### Installation Methods
+
+Primary distribution channel: PyPI.
+
+```bash
+pip install climate-indices   # user install
+uv sync                       # development environment
+```
+
+Conda-forge packaging, Binder, and Docker notebook environments are out of scope for v2.5.
+
+### API Surface
+
+The stable public API is `climate_indices.typed_public_api`. Functions in `climate_indices.compute` are accessible to advanced users but carry no backward-compatibility guarantee beyond what is re-exported through `typed_public_api`.
+
+- All exports from `typed_public_api.py` are covered by the v2.4 → v2.5 backward-compatibility guarantee
+- `mypy --strict` passes on `typed_public_api.py` in CI
+- No breaking changes without a deprecation entry in `CHANGELOG.md` and an in-function `DeprecationWarning`
+
+### Code Examples
+
+Two complementary channels:
+
+1. **Jupyter Notebooks** (Epic 2): three end-to-end notebooks demonstrating SPI/SPEI, Palmer, and EDDI via the xarray API. Each notebook is executable via `nbconvert --execute` in CI and asserts ≥ 1 computed index value against a reference from `tests/fixtures/tolerance.yaml`.
+
+2. **Docstring Examples**: all new and modified public functions in v2.5 must include a Google-style `Examples:` section with at least one short, self-contained usage example. Docstring examples are the inline discoverable reference for API consumers.
+
+### Migration Guide
+
+v2.5 is backward-compatible with v2.4. No migration steps are required for users of `typed_public_api.py`.
+
+Documentation note for `CHANGELOG.md`: EDDI and Palmer xarray outputs gain CF-compliant attributes (`standard_name`, `long_name`, `units`, `valid_min`, `valid_max`) in v2.5 where previously absent. Downstream code that constructs attribute dicts manually may need to remove now-redundant assignments.
+
+### Implementation Considerations
+
+- `uv` is the canonical development environment manager; `pip` is the user-facing install path
+- `ruff check` and `ruff format --check` enforced in CI on all new and modified files
+- `structlog` required throughout; no bare `import logging` in library code
+- Type hints and Google-style docstrings with `Args`, `Returns`, and `Examples` sections required on all new and modified public functions
+
+---
+
+## Project Scoping & Phased Development
+
+### MVP Strategy & Philosophy
+
+**MVP Approach:** Release validation — the library already works; v2.5 establishes scientific credibility, citability, and discoverability.
+
+**Resource:** Solo maintainer. All scope decisions assume single-person bandwidth. No parallel story execution; Epic sequencing is Epic 1 → Epic 2 → Epic 3.
+
+### MVP Feature Set (Phase 1 — P0)
+
+**Core User Journeys Supported:**
+- Dr. Maya Chen (citation success path) — `CITATION.cff`, `VALIDATION.md`, algorithm ref docs, one executable notebook at minimum
+- Prof. Reza Ahmadi (discrepancy debugging) — fixtures with intermediate computational checkpoints, validation tests, `VALIDATION.md` tolerance documentation
+
+**Must-Have Capabilities:**
+- `scripts/create_github_issues.py` — pre-work, merged before any epic story begins
+- `tests/fixtures/benchmark_baseline_v240.json` — committed before any compute changes
+- `docs/algorithm_refs/eddi.md` and `docs/algorithm_refs/palmer.md`
+- `tests/fixtures/eddi_literature/` and `tests/fixtures/palmer_literature/` with JSON provenance sidecars
+- Parametrized validation tests for EDDI and Palmer (`pytest -m validation`)
+- `VALIDATION.md` with per-index tolerance documentation and paper citations
+- CI validation job (separate GitHub Actions workflow; skips non-blocking)
+- `CITATION.cff` valid per `cff-validator` in CI
+- `mypy --strict` on `typed_public_api.py` in CI; no breaking API changes
+- `ruff` and `structlog` compliance across all new and modified code
+
+### Post-MVP Features
+
+**Phase 2 — P1 (ship within v2.5 if bandwidth allows):**
+- Epic 2: xarray gap fixes, CF-compliant output attributes, Dask support, three Jupyter notebooks executable in CI
+- README and PyPI landing page updated with EDDI/Palmer and validation-status table
+- `docs/xarray_compatibility.md`
+- Zenodo DOI registered; git tag `v2.5.0`; `CHANGELOG.md [2.5.0]` section
+- Backward-compatibility test module for all `typed_public_api.py` exports
+
+**Phase 3 — P2 (v2.5.x or v2.6+):**
+- Epic 3: Diátaxis docs restructure, example gallery PNGs, `llms-full.txt`/`llms.txt`
+- Full EDDI validation against NOAA CPC fixtures (pending data receipt)
+
+### Risk Mitigation Strategy
+
+**Technical Risks:**
+
+- *Palmer implementation correctness* — the highest-priority technical risk. Palmer index computation (PDSI, PHDI, PMDI, scPDSI) involves multi-step numerical procedures that have been difficult to validate manually in prior attempts. The Palmer validation story (Story 1.5) **must be executed with Claude Opus** to maximize reasoning depth on numerical implementation. Story scope requires explicit comparison of each formula variant in `docs/algorithm_refs/palmer.md` against the library's implementation; any discrepancy is treated as a potential bug until traced to a deliberate implementation choice.
+
+- *EDDI fixture availability* — NOAA CPC fixtures are not expected before v2.5 ships. EDDI validation ships with literature-only fixtures and `pytest.mark.skip` stubs. This is a documented gap, not a blocker. Palmer fixtures from Cook et al., Dai et al., and similar published datasets are expected to be locatable before v2.5 ships.
+
+**Resource Risks:**
+- Solo maintainer: if bandwidth is constrained, P1 features are deferred before any P0 feature is cut. The release ships when all P0 stories are resolved, regardless of P1/P2 status.
+
+**Market Risks:**
+- Minimal — v2.5 is an improvement release for an established library with an active user base. The primary discovery risk (EDDI and Palmer not surfaced in README) is addressed by P1 README/PyPI updates.
+
+---
+
+## Functional Requirements
+
+> This section is the capability contract for all downstream work. UX designers, architects, and epic breakdown will only implement what is listed here.
+
+### Index Computation
+
+- FR1: A user can compute SPI, SPEI, EDDI, PDSI, PHDI, PMDI, Z-Index, scPDSI, and PNP from array inputs
+- FR2: A user can compute any index using xarray DataArray or Dataset inputs in addition to NumPy arrays
+- FR3: A user can pass Dask-chunked xarray inputs to public index computation functions and receive Dask-backed output
+
+### Validation Infrastructure
+
+- FR4: A researcher can run the validation test suite independently from unit and integration tests
+- FR5: A researcher can verify EDDI validation tests against literature-extracted numerical examples
+- FR6: A researcher can verify Palmer validation tests against literature-extracted numerical examples
+- FR7: A researcher can access intermediate computational values at each algorithmic stage in a fixture to localize a numerical discrepancy without running the full pipeline
+- FR8: A researcher can find the tolerance bound for each index in a single reference document, where each tolerance value is grounded in error propagation analysis for that index rather than calibrated to pass tests
+- FR9: A researcher can inspect the provenance of each fixture file, including source paper, DOI, equation reference, table reference, extraction method, and the dependency environment versions (NumPy, SciPy, xarray) used to generate the fixture
+- FR10: A maintainer can verify that Palmer intermediate computational values (water balance terms, soil moisture stage variables) match staged reference values independently of whether the final output falls within the final tolerance band
+
+### Scientific Traceability & Citation
+
+- FR11: A researcher can cite the library in a publication using a persistent DOI
+- FR12: A researcher citing a specific library version can access a version-specific DOI that permanently resolves to that exact release, distinct from any concept DOI
+- FR13: A researcher can follow dual-citation guidance from the README covering both the library (implementation) and the originating algorithm paper
+- FR14: A researcher can read a self-contained algorithm reference document for EDDI that maps each major implementation choice to its source paper citation
+- FR15: A researcher can read a self-contained algorithm reference document for the Palmer family that maps each implementation choice to its source paper, with version annotations for when each variant was adopted
+- FR16: A researcher can determine the validation status of each index (validated / literature-only / pending-CPC-fixtures) from the README without navigating away
+- FR17: A researcher can trace a numerical discrepancy to the equation level using fixture intermediate values, VALIDATION.md tolerance documentation, and the algorithm reference doc for that index
+
+### xarray & Pipeline Integration
+
+- FR18: A user can receive CF-compliant output attributes (standard_name, long_name, units, valid_min, valid_max) automatically on the result of any public index computation without manual attribute assignment
+- FR19: A user can compose EDDI, Palmer, and SPI/SPEI outputs into xarray/Dask pipelines using the standard xarray API
+- FR20: A user can consult a compatibility matrix that documents which public functions support Dask-chunked input, what chunking constraints apply, and which Palmer variants require eager evaluation at which pipeline stages
+- FR21: A user can upgrade from v2.4 to v2.5 and run existing SPI, SPEI, and EDDI pipelines without behavioral changes; Palmer numerical outputs may differ from v2.4 per the documented moisture anomaly correction in CHANGELOG.md
+- FR22: A developer can instrument any public index computation to capture named intermediate values at each algorithmic stage without modifying production code paths
+
+### Developer Experience
+
+- FR23: A user can install the library from PyPI using pip
+- FR24: A user can import all public index functions from a single stable module
+- FR25: A user can receive an exception from the ClimateIndicesError hierarchy that carries both the offending parameter name and its invalid value as structured attributes, in addition to a human-readable message
+- FR26: A developer can read a short, self-contained usage example in the docstring of any new or modified public function
+- FR27: A user can call any public index function concurrently from multiple threads or processes; the library guarantees no shared mutable module-level state
+- FR28: A user can determine the required input shape, dtype, units, and time axis convention for any index function from the function's docstring or a single reference document, without reading source code
+
+### Documentation & Discoverability
+
+- FR29: A new user can execute the getting-started notebook end-to-end without manual intervention to produce xarray SPI output from a sample dataset
+- FR30: A user can execute all three reference notebooks (SPI/SPEI, Palmer, EDDI) end-to-end without manual intervention
+- FR31: A user can find EDDI and Palmer in the README and PyPI landing page with their validation status clearly indicated
+- FR32: A researcher can access VALIDATION.md from the README and docs Reference section to review validation status, tolerance criteria, and known discrepancies
+- FR33: A researcher can access algorithm reference docs for EDDI and Palmer from the docs Reference section
+- FR34: A developer can find a record of all numerical output changes between versions in CHANGELOG.md
+- FR35: A user upgrading from v2.4 to v2.5 who calls any Palmer index function receives a runtime notification informing them that Palmer numerical outputs may differ from v2.4 and directing them to the relevant CHANGELOG entry
+
+### Project Infrastructure
+
+- FR36: A maintainer can have CI verify that all fixture provenance sidecar files contain the required fields without manual inspection
+
+---
+*Note: mypy --strict enforcement, separate CI jobs, and performance regression gate are captured as Non-Functional Requirements (step 10). The GitHub issue generation script (pre-epic infrastructure) is tracked in sprint-status.yaml, not as a product FR.*
