@@ -13,6 +13,7 @@ stepsCompleted:
   - step-09-functional
   - step-10-nonfunctional
   - step-11-polish
+  - step-12-complete
 inputDocuments:
   - _bmad-output/v25-release-brief.md
   - _bmad-output/project-context.md
@@ -33,14 +34,15 @@ classification:
   complexity: medium
   projectContext: brownfield
 workflowType: 'prd'
-prdVersion: '2.5.0-wip'
+prdVersion: '2.5.0'
+completedAt: '2026-04-12'
 ---
 
 # Product Requirements Document - climate_indices v2.5
 
 **Author:** James Adams
 **Date:** 2026-04-11
-**Status:** In Progress (Steps 1–10 complete — final polish in progress)
+**Status:** Complete
 
 ---
 
