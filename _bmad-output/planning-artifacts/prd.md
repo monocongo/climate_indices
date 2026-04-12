@@ -85,6 +85,8 @@ Positioning for v2.5: **literature-faithful implementation**. Where NOAA CPC fix
 
 The combination of drought-domain depth, algorithmic lineage from NOAA documentation, scientific traceability, and production-grade Python tooling (xarray, Dask, CF conventions, stable public API) distinguishes `climate_indices` from both research codebases that lack engineering rigor and from general-purpose climate libraries (xclim, MetPy) that lack drought-domain depth.
 
+**Long-term platform direction — algorithm research and selection:** A secondary strategic goal, explicit from v2.5 onward, is to evolve `climate_indices` into a platform that supports comparison and selection across competing algorithm implementations of the same drought index. Palmer indices in particular have multiple published variants (original Palmer 1965, Alley 1984 moisture-loss correction, Wells et al. 2004 scPDSI, among others) that produce meaningfully different results on the same input. Rather than arbitrarily fixing one variant as canonical, the library's architecture is designed to support parameterized algorithm dispatch — a caller can select `algorithm="original_1965"` or `algorithm="alley_1984"` — and the validation fixture structure is organized by (index, algorithm variant, dataset source) tuple. This supports future research on algorithm selection criteria, implementation efficiency, and cross-dataset reproducibility. In v2.5 only one implementation per index is registered; the dispatch parameter and fixture directory structure are established now to avoid a breaking API change when a second variant is added. Full multi-implementation comparison tooling is deferred to v3.x.
+
 ---
 
 ## Project Classification
@@ -311,6 +313,18 @@ The following table maps capabilities to the journeys that depend on them. Use i
 
 ---
 
+### Journey 6 — Dr. Fatima Al-Rashid, Algorithm Comparison Researcher *(v3.x target — out of scope for v2.5)*
+
+**Situation:** Fatima is a hydrology researcher evaluating which Palmer variant best reproduces observed streamflow anomalies in semi-arid basins. She needs to run the same input data through `original_1965`, `alley_1984`, and `wells_2004` Palmer implementations side-by-side and compare their outputs against observed drought records.
+
+**Why documented here:** This persona is out of scope for v2.5 but drives two architectural decisions made in v2.5: (1) the `algorithm` dispatch parameter on Palmer and EDDI functions, established now to avoid a breaking API change later; (2) the per-(index, algorithm variant, dataset source) fixture directory structure. Fatima's journey is the design target for v3.x multi-implementation comparison tooling.
+
+**v2.5 supports:** Running one registered algorithm variant per index. Fatima can use `climate_indices` v2.5 but cannot yet switch between variants programmatically or access a comparison framework.
+
+**v3.x will support:** Multiple registered implementations per index, parameterized dispatch, cross-dataset comparison fixtures, and tooling for selection criteria research.
+
+---
+
 ## Platform & API Requirements
 
 ### Project-Type Overview
@@ -370,6 +384,9 @@ Documentation note for `CHANGELOG.md`: EDDI and Palmer xarray outputs gain CF-co
 - `ruff check` and `ruff format --check` enforced in CI on all new and modified files
 - `structlog` required throughout; no bare `import logging` in library code
 - Type hints and Google-style docstrings with `Args`, `Returns`, and `Examples` sections required on all new and modified public functions
+- **Algorithm dispatch parameter:** Palmer and EDDI public functions accept an `algorithm: str` keyword argument (default `"original_1965"` for Palmer, `"hobbins_2016"` for EDDI) that dispatches to a registered implementation. In v2.5 only one implementation is registered per index; the parameter is established now to avoid a breaking API change when additional variants are added. Unrecognized `algorithm` values raise `InvalidArgumentError` with valid options listed.
+- **Fixture directory structure:** Validation fixtures are organized by `tests/fixtures/{index}/{algorithm_variant}/{dataset_source}/` to support per-(index, variant, dataset) tolerance bands. This structure is adopted in v2.5 even when only one variant exists per index.
+- **Regression baseline generation:** `scripts/generate_baselines.py` generates v2.4.0 reference outputs for NFR-REPR-4 baseline comparisons. It must be run against the v2.4.0 tag before any v2.5 compute changes are made, with outputs committed to `tests/fixtures/regression/v2.4.0/`.
 
 ---
 
@@ -383,11 +400,7 @@ Documentation note for `CHANGELOG.md`: EDDI and Palmer xarray outputs gain CF-co
 
 ### MVP Feature Set (P0)
 
-**Core User Journeys Supported:**
-- Dr. Maya Chen (citation success path) — `CITATION.cff`, `VALIDATION.md`, algorithm ref docs, one executable notebook at minimum
-- Prof. Reza Ahmadi (discrepancy debugging) — fixtures with intermediate computational checkpoints, validation tests, `VALIDATION.md` tolerance documentation
-
-For the complete P0 feature list, see [MVP — Minimum Viable Product (P0)](#mvp--minimum-viable-product-p0) in the Product Scope section above.
+For the complete P0 feature list and supported user journeys, see [MVP — Minimum Viable Product (P0)](#mvp--minimum-viable-product-p0) in the Product Scope section above.
 
 ### Risk Mitigation
 
@@ -395,7 +408,7 @@ For the complete P0 feature list, see [MVP — Minimum Viable Product (P0)](#mvp
 
 - *Palmer implementation correctness* — the highest-priority technical risk. Palmer index computation (PDSI, PHDI, PMDI, scPDSI) involves multi-step numerical procedures that have been difficult to validate manually in prior attempts. The Palmer validation story (Story 1.5) **must be executed with Claude Opus** to maximize reasoning depth on numerical implementation. Story scope requires explicit comparison of each formula variant in `docs/algorithm_refs/palmer.md` against the library's implementation; any discrepancy is treated as a potential bug until traced to a deliberate implementation choice.
 
-- *EDDI fixture availability* — NOAA CPC fixtures are not expected before v2.5 ships. EDDI validation ships with literature-only fixtures that capture algorithm-step intermediate values (plotting-position values, gamma fit parameters) rather than station-calibrated operational outputs. This approach is taken because published EDDI literature does not provide station-specific numerical outputs for independent verification; the gap is disclosed in `VALIDATION.md` and the README validation-status table. If NOAA CPC fixture data becomes available during the v2.5 cycle, fixtures are incorporated under `tests/fixtures/eddi_literature/` and `pytest.mark.skip` stubs are removed. Palmer fixtures from Cook et al., Dai et al., and similar published datasets are expected to be locatable before v2.5 ships; any acquired fixtures are committed as small representative subsets.
+- *EDDI fixture availability* — NOAA CPC fixtures are not expected before v2.5 ships. The maintainer is in active contact with the EDDI algorithm author (Hobbins) and NOAA CPC; reference fixtures are expected within approximately six months of the v2.5.0 release, which scopes this gap to a v2.5.x or v2.6 story. EDDI validation ships in v2.5 with literature-only fixtures that capture algorithm-step intermediate values (plotting-position values, gamma fit parameters) rather than station-calibrated operational outputs, because published EDDI literature does not provide station-specific numerical outputs for independent verification; the gap is disclosed in `VALIDATION.md` and the README validation-status table. Validation tests blocked on CPC fixtures are marked `@pytest.mark.fixture_pending` with a linked GitHub issue assigned to the `v2.5-fixture-delivery` milestone; they are distinct from generic `@pytest.mark.skip` usage and are tracked separately in CI. If NOAA CPC fixture data becomes available during the v2.5 cycle, fixtures are incorporated under `tests/fixtures/eddi_literature/` and `fixture_pending` stubs are removed. Palmer fixtures from Cook et al., Dai et al., and similar published datasets are expected to be locatable before v2.5 ships; any acquired fixtures are committed as small representative subsets.
 
 - *Xarray deferral cost* — Epic 2 (full xarray integration) is P1. Users who require Dask support or CF-compliant output attributes for Palmer and EDDI will not receive these until Epic 2 ships. This is a known cost of the Epic 1→2→3 sequencing decision; it is mitigated by the P0 xarray compatibility audit (bug fixes for incorrect output on xarray inputs) which ensures existing xarray usage continues to work correctly.
 
@@ -422,10 +435,10 @@ For the complete P0 feature list, see [MVP — Minimum Viable Product (P0)](#mvp
 - FR4: A researcher can run the validation test suite independently from unit and integration tests
 - FR5: A researcher can verify EDDI validation tests against literature-extracted numerical examples
 - FR6: A researcher can verify Palmer validation tests against literature-extracted numerical examples
-- FR7: A researcher can access intermediate computational values at each algorithmic stage in a fixture to localize a numerical discrepancy without running the full pipeline
+- FR7: A researcher can access intermediate computational values at each algorithmic stage in a fixture to localize a numerical discrepancy without running the full pipeline. Mechanism: public index functions accept a `diagnostics: bool = False` keyword argument; when `True`, the function returns `(output, diagnostics_dict)` where the dict contains named intermediate values at each computational stage.
 - FR8: A researcher can find the tolerance bound for each index in a single reference document, where each tolerance value is grounded in error propagation analysis for that index rather than calibrated to pass tests
 - FR9: A researcher can inspect the provenance of each fixture file, including source paper, DOI, equation reference, table reference, extraction method, and the dependency environment versions (NumPy, SciPy, xarray) used to generate the fixture
-- FR10: A maintainer can verify that Palmer intermediate computational values (water balance terms, soil moisture stage variables) match staged reference values independently of whether the final output falls within the final tolerance band
+- FR10: A maintainer can verify that Palmer intermediate computational values (water balance terms, soil moisture stage variables) match staged reference values independently of whether the final output falls within the final tolerance band. Mechanism: Palmer functions support the `diagnostics: bool = False` keyword argument (see FR7); the returned `diagnostics_dict` includes water balance terms and soil moisture stage variables at each computational step.
 
 ### Scientific Traceability & Citation
 
@@ -443,7 +456,7 @@ For the complete P0 feature list, see [MVP — Minimum Viable Product (P0)](#mvp
 - FR19: A user can compose EDDI, Palmer, and SPI/SPEI outputs into xarray/Dask pipelines using the standard xarray API
 - FR20: A user can consult a compatibility matrix that documents which public functions support Dask-chunked input, what chunking constraints apply, and which Palmer variants require eager evaluation at which pipeline stages
 - FR21: A user can upgrade from v2.4 to v2.5 and run existing SPI, SPEI, and EDDI pipelines without behavioral changes; Palmer numerical outputs may differ from v2.4 per the documented moisture anomaly correction in `CHANGELOG.md`
-- FR22: A developer can instrument any public index computation to capture named intermediate values at each algorithmic stage without modifying production code paths
+- FR22: A developer can instrument any public index computation to capture named intermediate values at each algorithmic stage without modifying production code paths. Mechanism: the `diagnostics: bool = False` keyword argument (see FR7) is the sole instrumentation surface; no monkey-patching, subclassing, or source modification is required.
 - FR37: A user can read computation parameters (scale, distribution type, calibration period start and end year) directly from xarray output attributes without re-inspecting the calling code *(see NFR-OBS-1)*
 
 ### Developer Experience
@@ -451,7 +464,7 @@ For the complete P0 feature list, see [MVP — Minimum Viable Product (P0)](#mvp
 - FR23: A user can install the library from PyPI using pip
 - FR24: A user can import all public index functions from a single stable module
 - FR25: A user can receive an exception from the `ClimateIndicesError` hierarchy that carries both the offending parameter name and its invalid value as structured attributes, in addition to a human-readable message
-- FR26: A developer can read a short, self-contained usage example in the docstring of any new or modified public function
+- FR26: A developer can read a self-contained usage example (5 lines or fewer) in the docstring of any new or modified public function
 - FR27: A user can call any public index function concurrently from multiple threads or processes; the library guarantees no shared mutable module-level state
 - FR28: A user can determine the required input shape, dtype, units, and time axis convention for any index function from the function's docstring or a single reference document, without reading source code
 
@@ -459,7 +472,7 @@ For the complete P0 feature list, see [MVP — Minimum Viable Product (P0)](#mvp
 
 - FR29: A new user can execute the getting-started notebook end-to-end without manual intervention to produce xarray SPI output from a sample dataset *(P1 — Epic 2)*
 - FR30: A user can execute all three reference notebooks (SPI/SPEI, Palmer, EDDI) end-to-end without manual intervention *(P1 — Epic 2)*
-- FR31: A user can find EDDI and Palmer in the README and PyPI landing page with their validation status clearly indicated
+- FR31: A user can find EDDI and Palmer in the README and PyPI landing page with their validation status shown in the README index table (a validation-status column per index, linking to `VALIDATION.md`)
 - FR32: A researcher can access `VALIDATION.md` from the README and docs Reference section to review validation status, tolerance criteria, and known discrepancies
 - FR33: A researcher can access algorithm reference docs for EDDI and Palmer from the docs Reference section
 - FR34: A developer can find a record of all numerical output changes between versions in `CHANGELOG.md`
@@ -482,7 +495,7 @@ For the complete P0 feature list, see [MVP — Minimum Viable Product (P0)](#mvp
 - NFR-REPR-1: All index computations must produce identical results (within documented `atol`/`rtol` from `tests/fixtures/tolerance.yaml`) on Python 3.10 and Python 3.12 on both Linux and macOS CI runners. Windows is explicitly out of scope for CI in v2.5. Any platform-specific numerical difference outside tolerance bounds on the in-scope platforms is treated as a bug.
 - NFR-REPR-2: Tolerance values in `tolerance.yaml` must be derived from source paper precision and error propagation analysis — not tuned to pass tests. Each entry requires a human-reviewed scientific justification field. This is a maintainer gate, not CI.
 - NFR-REPR-3: The v2.5 Palmer numerical output change relative to v2.4 (due to moisture anomaly correction) is documented in `CHANGELOG.md` with the affected function names and a before/after numerical example showing the magnitude under representative conditions. A minimal entry covering this change is created as part of Epic 1 (P0); the full `[2.5.0]` section is completed at P1.
-- NFR-REPR-4: All index computations except those listed in `CHANGELOG.md` under "Known Output Changes" must produce v2.4.0-identical results (within `tolerance.yaml` bounds) on the same input. This affirmative longitudinal reproducibility guarantee is verified by the backward-compatibility test module (`tests/test_backward_compat.py`).
+- NFR-REPR-4: All index computations except those listed in `CHANGELOG.md` under "Known Output Changes" must produce v2.4.0-identical results on the same input. Verification method: stored reference outputs generated by running v2.4.0 against a canonical input corpus (committed to `tests/fixtures/regression/v2.4.0/` as `.npy` or NetCDF files via `scripts/generate_baselines.py`) are compared against v2.5 outputs using `np.testing.assert_allclose`. Tolerance is configurable per-index in `tests/fixtures/regression/tolerance.yaml`; the default tolerance matches the corresponding entry in `tests/fixtures/tolerance.yaml` unless a specific regression tolerance is justified. The baseline corpus is defined and version-pinned by `scripts/generate_baselines.py`; intentional divergence requires a PR updating both the baseline files and `CHANGELOG.md`. This affirmative longitudinal reproducibility guarantee supersedes the `tests/test_backward_compat.py` module for numerical output verification (the compat module remains for API signature verification per NFR-API-2).
 
 ### Code Quality
 
