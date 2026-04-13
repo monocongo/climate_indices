@@ -1,5 +1,5 @@
 ---
-stepsCompleted: [1, 2, 3, 4, 5, 6, 7]
+stepsCompleted: [1, 2, 3, 4, 5, 6, 7, 8]
 inputDocuments:
   - _bmad-output/planning-artifacts/prd.md
   - _bmad-output/project-context.md
@@ -13,6 +13,9 @@ workflowType: 'architecture'
 project_name: 'climate_indices'
 user_name: 'James'
 date: '2026-04-12'
+lastStep: 8
+status: 'complete'
+completedAt: '2026-04-12'
 ---
 
 # Architecture Decision Document
