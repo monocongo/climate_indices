@@ -82,8 +82,7 @@ venv.bak/
 # BMAD framework (keep only project-specific artifacts in _bmad-output/)
 _bmad/
 
-# Claude Code session data
-.claude/
+# Codex session data
 .codex/
 
 # Git worktrees
