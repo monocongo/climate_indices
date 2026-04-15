@@ -9,8 +9,6 @@ For project coding conventions, architecture, and sprint context see `../CLAUDE.
 |---|---|
 | `rules/architecture.md` | Module boundaries, hard prohibitions, preferred patterns |
 | `rules/testing.md` | pytest conventions, TDD policy, numerical assertions |
-| `rules/api.md` | REST conventions — path-scoped to `src/api/**` (placeholder) |
-| `rules/database.md` | ORM conventions — path-scoped to `src/models/**` (placeholder) |
 | `agents/code-reviewer.md` | Subagent: code review against project standards |
 | `agents/test-writer.md` | Subagent: TDD-first test writing |
 | `commands/review.md` | `/review` — invoke code-reviewer on current diff |
