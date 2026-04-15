@@ -1,10 +1,12 @@
+# Security Scan
+
 Perform a security-focused review of: $ARGUMENTS
 
 If no arguments are given, scan all Python files in `src/` and `tests/`.
 
 ## Automated checks
 
-Run: `uv run ruff check --select S src/` (bandit-equivalent security rules)
+Run: `uv run ruff check --select S src/ tests/` (bandit-equivalent security rules)
 
 ## Manual review checklist
 
