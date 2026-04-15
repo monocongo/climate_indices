@@ -85,6 +85,11 @@ _bmad/
 # Codex session data
 .codex/
 
+# Claude Code personal overrides and session data
+.claude/CLAUDE.local.md
+.claude/handovers/
+.claude/settings.local.json
+
 # Git worktrees
 .worktrees/
 
