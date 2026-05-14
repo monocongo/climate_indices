@@ -149,8 +149,9 @@ markers = [
     "benchmark: performance benchmark tests (deselect with '-m \"not benchmark\"')",
     "slow: slow tests that may be skipped in CI (deselect with '-m \"not slow\"')",
     "release: pre-release integrity checks — run before pushing a release tag with '-m release'",
+    "validation: external or release-gate scientific validation tests (run with '-m validation')",
 ]
-addopts = "-m 'not benchmark'"
+addopts = "-m 'not benchmark and not validation'"
 
 [tool.pytest-benchmark]
 min_rounds = 5

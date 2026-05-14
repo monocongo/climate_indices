@@ -66,8 +66,11 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
-      - name: Run tests
-        run: uv run pytest
+      - name: Run core tests
+        run: uv run pytest -m "not benchmark and not validation"
+
+      - name: Run validation tests
+        run: uv run pytest -m validation
 
       - name: Pattern compliance check
         run: uv run pytest tests/test_pattern_compliance.py -v
@@ -91,8 +94,37 @@ jobs:
       - name: Install minimum dependencies
         run: uv sync --no-dev --group test --resolution lowest-direct
 
-      - name: Run tests with minimum dependencies
-        run: uv run pytest
+      - name: Run core tests with minimum dependencies
+        run: uv run pytest -m "not benchmark and not validation"
+
+      - name: Run validation tests with minimum dependencies
+        run: uv run pytest -m validation
+
+  notebooks:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081  # v5
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Execute v2.5 notebooks
+        run: >
+          uv run jupyter nbconvert --execute --to notebook --inplace
+          notebooks/xarray_getting_started.ipynb
+          notebooks/palmer_indices_xarray.ipynb
+          notebooks/eddi_xarray.ipynb
 
   security-audit:
     permissions:

@@ -82,6 +82,19 @@ This documentation set is optimized for AI agents and provides comprehensive tec
    - Pull request workflow
    - Code review process
 
+8. **[xarray_compatibility.md](./xarray_compatibility.md)** 🟢 STANDARD
+   - Public xarray support matrix
+   - Dask and metadata behavior
+   - Notebook execution command
+
+9. **[algorithm_refs/eddi.md](./algorithm_refs/eddi.md)** and **[algorithm_refs/palmer.md](./algorithm_refs/palmer.md)** 🟡 HIGH PRIORITY
+   - v2.5 EDDI and Palmer algorithm references
+   - Validation status and authoritative-reference gaps
+
+10. **[../VALIDATION.md](../VALIDATION.md)** 🟡 HIGH PRIORITY
+   - Per-index validation evidence
+   - Validation tolerances and skipped-fixture policy
+
 ### Sphinx Documentation (Human-Readable, ReadTheDocs)
 
 Comprehensive end-user documentation hosted on ReadTheDocs:

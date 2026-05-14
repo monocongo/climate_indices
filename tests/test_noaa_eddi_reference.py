@@ -36,6 +36,8 @@ _ATOL = 1e-5
 FIXTURE_DIR = Path(__file__).parent / "fixture"
 _EDDI_SCALES = [1, 3, 6]
 
+pytestmark = pytest.mark.validation
+
 
 def _fixture_dir_for_scale(scale: int) -> Path:
     """Return the fixture directory for a given EDDI time scale."""

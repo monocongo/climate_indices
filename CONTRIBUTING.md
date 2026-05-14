@@ -68,9 +68,25 @@ Follow these rules and you should succeed without a problem.
 ### Run the tests
 Before you submit a pull request, please run the entire test suite via:
 
-`$ uv run pytest`
+`$ uv run pytest -m "not benchmark and not validation"`
+
+Release candidates should also run the scientific validation suite:
+
+`$ uv run pytest -m validation`
+
+Validation tests may require external reference fixtures. When a validation
+fixture is intentionally absent, the test must skip with a clear data-preparation
+message and the reason must be documented in `VALIDATION.md`.
 
 The first thing the core committers will do is run this command. Any pull request that fails this test suite will be rejected.
+
+### Creating release story issues
+Release planning can be synced to GitHub issues with:
+
+`$ uv run scripts/create_github_issues.py --dry-run`
+
+Remove `--dry-run` only after confirming the generated issue titles, labels, and
+milestone. The script is idempotent and matches existing issues by story slug.
 
 ### If you add code you need to add tests
 We’ve learned the hard way that code without tests is undependable. If your pull request reduces our test coverage because it lacks tests then it will be rejected.
