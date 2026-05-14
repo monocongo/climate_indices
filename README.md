@@ -58,9 +58,10 @@ See [drought.gov](https://www.drought.gov/drought/python-climate-indices).
 | 3.10 | Supported | Minimum supported version |
 | 3.11 | Supported | |
 | 3.12 | Supported | |
-| 3.13 | Supported | Latest supported version |
+| 3.13 | Supported | |
+| 3.14 | Supported | Latest supported version |
 
-All versions are tested on Linux (ubuntu-latest). Python 3.10 and 3.13 are additionally
+All versions are tested on Linux (ubuntu-latest). Python 3.10 and 3.14 are additionally
 tested on macOS. Both latest and minimum declared dependency versions are tested in CI.
 
 ### Version Support Policy

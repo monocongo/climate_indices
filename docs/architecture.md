@@ -23,7 +23,7 @@ The **climate_indices** library implements a **layered library architecture** op
 ### Core Dependencies
 | Dependency | Version | Purpose |
 |------------|---------|---------|
-| **Python** | 3.10-3.13 | Language runtime |
+| **Python** | 3.10-3.14 | Language runtime |
 | **scipy** | >=1.15.3 | Statistical distributions, numerical optimization |
 | **xarray** | >=2025.6.1 | Labeled multi-dimensional arrays, CF metadata |
 | **dask** | >=2025.7.0 | Parallel computation, lazy evaluation |
@@ -46,7 +46,7 @@ The **climate_indices** library implements a **layered library architecture** op
 - **Build Backend**: Hatchling (PEP 517 compliant)
 - **Package Manager**: uv (modern resolver, lockfile support)
 - **CI/CD**: GitHub Actions (3 workflows: unit tests, releases, benchmarks)
-- **Container**: Docker with Python 3.11-slim base image
+- **Container**: Docker with Python 3.14-slim base image
 - **Documentation**: Sphinx with ReadTheDocs hosting
 
 ## Layered Architecture Pattern
@@ -264,7 +264,7 @@ climate_indices/
 │   └── *.md                      # AI-readable docs (BMAD format, NEW)
 │
 ├── .github/workflows/            # CI/CD pipelines
-│   ├── unit-tests-workflow.yml   # Test matrix (Python 3.10-3.13)
+│   ├── unit-tests-workflow.yml   # Test matrix (Python 3.10-3.14)
 │   ├── release.yml               # Automated PyPI releases
 │   └── benchmarks.yml            # Performance tracking (NEW in 2.2.0)
 │
@@ -461,7 +461,7 @@ uv run pytest tests/test_property_based.py
 ```yaml
 Matrix:
   - OS: ubuntu-latest
-  - Python: [3.10, 3.11, 3.12, 3.13]
+  - Python: [3.10, 3.11, 3.12, 3.13, 3.14]
 Steps:
   1. Checkout code
   2. Setup Python + uv
@@ -493,19 +493,21 @@ Steps:
 
 ### Docker Container
 
-**Base Image**: `python:3.11-slim`
+**Base Image**: `python:3.14-slim`
 **Build Strategy**: Multi-stage (builder + production)
 
 ```dockerfile
 # Builder stage: Install dependencies
-FROM python:3.11-slim AS builder
+FROM python:3.14-slim AS builder
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
+COPY README.md LICENSE ./
+COPY src/ ./src/
 RUN uv sync --frozen --no-dev
 
 # Production stage: Copy venv + source
-FROM python:3.11-slim
+FROM python:3.14-slim
 RUN apt-get update && apt-get install -y \
     libhdf5-dev libnetcdf-dev
 COPY --from=builder /app/.venv /app/.venv

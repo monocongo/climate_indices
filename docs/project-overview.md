@@ -7,7 +7,7 @@
 ### Project Status
 - **Maturity**: Production/Stable (Development Status 5)
 - **Current Version**: 2.2.0
-- **Python Support**: 3.10, 3.11, 3.12, 3.13
+- **Python Support**: 3.10, 3.11, 3.12, 3.13, 3.14
 - **License**: BSD 3-Clause
 - **Documentation**: [ReadTheDocs](https://climate-indices.readthedocs.io/)
 - **Repository**: [GitHub](https://github.com/monocongo/climate_indices)
@@ -61,7 +61,7 @@ The library provides three CLI entry points for processing NetCDF datasets:
 | **Linting/Formatting** | ruff |
 | **Build** | Hatchling (PEP 517) |
 | **CI/CD** | GitHub Actions (3 workflows) |
-| **Containerization** | Docker (Python 3.11-slim base) |
+| **Containerization** | Docker (Python 3.14-slim base) |
 | **Documentation** | Sphinx with ReadTheDocs hosting |
 
 ## Quick Reference
@@ -202,7 +202,7 @@ uv run pytest -m benchmark
 
 ### Dependencies and Constraints
 - **Core dependencies**: scipy>=1.15.3, xarray>=2025.6.1, dask>=2025.7.0, structlog>=24.1.0
-- **Python version**: Must support Python 3.10-3.13 (no features from 3.14+)
+- **Python version**: Must support Python 3.10-3.14 (no features from 3.14+)
 - **Line length**: 120 characters (ruff configuration)
 - **Import order**: stdlib → third-party → local (enforced by ruff)
 - **Test markers**: Use `@pytest.mark.benchmark` for performance tests, `@pytest.mark.slow` for long-running tests
