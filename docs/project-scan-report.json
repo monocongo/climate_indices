@@ -11,7 +11,7 @@
     "repository_type": "monolith",
     "project_type": "library",
     "primary_language": "python",
-    "python_versions": ["3.10", "3.11", "3.12", "3.13"],
+    "python_versions": ["3.10", "3.11", "3.12", "3.13", "3.14"],
     "architecture_pattern": "layered_library",
     "build_system": "hatchling",
     "package_manager": "uv",
@@ -184,7 +184,7 @@
     "unit_tests": {
       "file": ".github/workflows/unit-tests-workflow.yml",
       "trigger": "push, pull_request",
-      "matrix": "python-3.10-3.13 x ubuntu-latest"
+      "matrix": "python-3.10-3.14 x ubuntu-latest"
     },
     "release": {
       "file": ".github/workflows/release.yml",
