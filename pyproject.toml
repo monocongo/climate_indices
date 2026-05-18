@@ -226,3 +226,14 @@ security = [
     "cryptography>=46.0.5",
     "pip-audit>=2.9.0",
 ]
+
+# pip-audit policy.
+# Only runtime CVEs (packages in [project] dependencies) are in scope.
+# The security-audit CI job exports a runtime-only requirements file via
+# `uv export --no-dev --no-emit-project` and runs
+# `pip-audit --requirement runtime-requirements.txt --disable-pip`,
+# so dev/notebook/sphinx tooling and pip-audit's own toolchain are excluded.
+# Each entry in `ignore-vulns` must include: the advisory ID, a one-line
+# justification, and a review-by date in YYYY-MM-DD form. Empty by design.
+[tool.pip-audit]
+ignore-vulns = []

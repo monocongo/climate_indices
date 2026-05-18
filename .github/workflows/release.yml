@@ -64,10 +64,13 @@ jobs:
         uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081  # v5
 
       - name: Install dependencies
-        run: uv sync --frozen --group security
+        run: uv sync --frozen --only-group security
+
+      - name: Export runtime requirements
+        run: uv export --frozen --no-dev --no-emit-project --format requirements.txt --output-file runtime-requirements.txt
 
       - name: Run pip-audit
-        run: uv run pip-audit
+        run: uv run --no-sync pip-audit --requirement runtime-requirements.txt --disable-pip
 
   # Build and publish to PyPI
   release:
