@@ -34,6 +34,21 @@ _SRC_ROOT = Path(__file__).resolve().parent.parent / "src" / "climate_indices"
 _TEST_ROOT = Path(__file__).resolve().parent
 
 
+class TestSecurityPatternCompliance:
+    """Verify source code avoids security-sensitive runtime patterns."""
+
+    def test_source_runtime_code_has_no_assert_statements(self) -> None:
+        """Runtime validation should use explicit exceptions, not assert."""
+        assert_locations: list[str] = []
+        for source_file in _SRC_ROOT.glob("*.py"):
+            tree = ast.parse(source_file.read_text())
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Assert):
+                    assert_locations.append(f"{source_file.name}:{node.lineno}")
+
+        assert not assert_locations, "Source files contain runtime assert statements: " + ", ".join(assert_locations)
+
+
 # ---------------------------------------------------------------------------
 # The 7 indices and their mapping to source modules + functions
 # ---------------------------------------------------------------------------

@@ -1728,13 +1728,22 @@ def pet_thornthwaite(
         # delegate to indices.pet with explicit data_start_year requirement
         if data_start_year is None:
             raise ValueError("data_start_year is required for numpy inputs")
-        # narrow type for mypy
-        assert isinstance(temperature, np.ndarray)
+        if not isinstance(temperature, np.ndarray):
+            raise InputTypeError(
+                "PET Thornthwaite NumPy path requires temperature to be a numpy.ndarray",
+                expected_type=np.ndarray,
+                actual_type=type(temperature),
+            )
         return indices.pet(temperature, lat_float, data_start_year)
 
     # xarray path: validate → infer → compute → rewrap
     # at this point temperature must be an xr.DataArray (numpy path returned above)
-    assert isinstance(temperature, xr.DataArray)
+    if not isinstance(temperature, xr.DataArray):
+        raise InputTypeError(
+            "PET Thornthwaite xarray path requires temperature to be an xarray.DataArray",
+            expected_type=xr.DataArray,
+            actual_type=type(temperature),
+        )
     temp_da = temperature
 
     # validate time dimension
@@ -1748,7 +1757,8 @@ def pet_thornthwaite(
         _log().debug(
             "pet_data_start_year_inferred",
             inferred_year=data_start_year,
-            time_coord_first=str(time_coord.values[0]),
+            time_coord_length=len(time_coord),
+            time_coord_dtype=str(time_coord.dtype),
         )
 
     # normalize latitude for xr.apply_ufunc
@@ -1958,17 +1968,36 @@ def pet_hargreaves(
         # convert latitude to float if it's a numpy scalar
         lat_float = float(latitude) if isinstance(latitude, np.floating) else latitude
         # auto-derive tmean as per Hargreaves standard approach
-        # narrow types for mypy
-        assert isinstance(daily_tmin_celsius, np.ndarray)
-        assert isinstance(daily_tmax_celsius, np.ndarray)
+        if not isinstance(daily_tmin_celsius, np.ndarray):
+            raise InputTypeError(
+                "PET Hargreaves NumPy path requires daily_tmin_celsius to be a numpy.ndarray",
+                expected_type=np.ndarray,
+                actual_type=type(daily_tmin_celsius),
+            )
+        if not isinstance(daily_tmax_celsius, np.ndarray):
+            raise InputTypeError(
+                "PET Hargreaves NumPy path requires daily_tmax_celsius to be a numpy.ndarray",
+                expected_type=np.ndarray,
+                actual_type=type(daily_tmax_celsius),
+            )
         tmean = (daily_tmin_celsius + daily_tmax_celsius) / 2.0
         # delegate to eto.eto_hargreaves
         return eto.eto_hargreaves(daily_tmin_celsius, daily_tmax_celsius, tmean, lat_float)
 
     # xarray path: validate → align → compute → rewrap
     # at this point both inputs must be xr.DataArray (numpy path returned above)
-    assert isinstance(daily_tmin_celsius, xr.DataArray)
-    assert isinstance(daily_tmax_celsius, xr.DataArray)
+    if not isinstance(daily_tmin_celsius, xr.DataArray):
+        raise InputTypeError(
+            "PET Hargreaves xarray path requires daily_tmin_celsius to be an xarray.DataArray",
+            expected_type=xr.DataArray,
+            actual_type=type(daily_tmin_celsius),
+        )
+    if not isinstance(daily_tmax_celsius, xr.DataArray):
+        raise InputTypeError(
+            "PET Hargreaves xarray path requires daily_tmax_celsius to be an xarray.DataArray",
+            expected_type=xr.DataArray,
+            actual_type=type(daily_tmax_celsius),
+        )
     tmin_da = daily_tmin_celsius
     tmax_da = daily_tmax_celsius
 

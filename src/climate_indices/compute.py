@@ -835,11 +835,8 @@ def transform_fitted_pearson(
             periodicity,
         )
 
-    # mypy narrowing: at this point parameters are guaranteed to be non-None
-    assert probabilities_of_zero is not None
-    assert locs is not None
-    assert scales is not None
-    assert skews is not None
+    if probabilities_of_zero is None or locs is None or scales is None or skews is None:
+        raise PearsonFittingError("Pearson Type III fitting parameters could not be resolved")
 
     # fit each value to the Pearson Type III distribution
     values = _pearson_fit(values, probabilities_of_zero, skews, locs, scales)
@@ -937,8 +934,13 @@ def _check_goodness_of_fit_gamma(
                 )
                 if p_value < GOODNESS_OF_FIT_P_VALUE_THRESHOLD:
                     poor_fit_steps.append((time_step_index, p_value))
-            except Exception:
-                # ignore fitting errors during goodness-of-fit check
+            except (ArithmeticError, TypeError, ValueError) as exc:
+                _logger.debug(
+                    "goodness_of_fit_check_skipped",
+                    distribution="gamma",
+                    time_step_index=time_step_index,
+                    error_type=type(exc).__name__,
+                )
                 continue
 
     if poor_fit_steps:
@@ -993,7 +995,7 @@ def _check_goodness_of_fit_pearson(
         skew = skews[time_step_index]
 
         # skip time steps where fitting failed (all parameters are zero)
-        if loc == 0 and scale == 0 and skew == 0:
+        if np.isclose(loc, 0.0) and np.isclose(scale, 0.0) and np.isclose(skew, 0.0):
             continue
 
         # filter out NaN and zero values for non-zero distribution
@@ -1012,8 +1014,13 @@ def _check_goodness_of_fit_pearson(
                 )
                 if p_value < GOODNESS_OF_FIT_P_VALUE_THRESHOLD:
                     poor_fit_steps.append((time_step_index, p_value))
-            except Exception:
-                # ignore fitting errors during goodness-of-fit check
+            except (ArithmeticError, TypeError, ValueError) as exc:
+                _logger.debug(
+                    "goodness_of_fit_check_skipped",
+                    distribution="pearson3",
+                    time_step_index=time_step_index,
+                    error_type=type(exc).__name__,
+                )
                 continue
 
     if poor_fit_steps:

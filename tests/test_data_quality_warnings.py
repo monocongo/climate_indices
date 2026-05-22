@@ -298,6 +298,45 @@ class TestShortCalibrationWarning:
 class TestGoodnessOfFitWarning:
     """Test GoodnessOfFitWarning emission when distribution fit is poor."""
 
+    @pytest.mark.parametrize("distribution", ["gamma", "pearson3"])
+    def test_goodness_of_fit_logs_skipped_ks_errors_without_data_values(self, monkeypatch, distribution: str) -> None:
+        """Skipped goodness-of-fit checks should log metadata, not exception text."""
+        events: list[tuple[str, dict[str, object]]] = []
+
+        class FakeLogger:
+            def debug(self, event: str, **kwargs: object) -> None:
+                events.append((event, kwargs))
+
+        def failing_kstest(*args: object, **kwargs: object) -> tuple[float, float]:
+            raise ValueError("sensitive input value 1980-01-01")
+
+        monkeypatch.setattr(compute, "_logger", FakeLogger())
+        monkeypatch.setattr(compute.scipy.stats, "kstest", failing_kstest)
+
+        calibration_values = np.array([[1.0], [2.0], [3.0]])
+        if distribution == "gamma":
+            compute._check_goodness_of_fit_gamma(
+                calibration_values,
+                alphas=np.array([1.0]),
+                betas=np.array([1.0]),
+            )
+        else:
+            compute._check_goodness_of_fit_pearson(
+                calibration_values,
+                probabilities_of_zero=np.array([0.0]),
+                locs=np.array([1.0]),
+                scales=np.array([1.0]),
+                skews=np.array([0.5]),
+            )
+
+        assert events == [
+            (
+                "goodness_of_fit_check_skipped",
+                {"distribution": distribution, "time_step_index": 0, "error_type": "ValueError"},
+            )
+        ]
+        assert "sensitive input value" not in repr(events)
+
     def test_gamma_parameters_warns_on_poor_fit(self) -> None:
         """gamma_parameters should warn when KS test indicates poor gamma fit."""
         # create data that poorly fits gamma (uniform distribution mixed with gamma)

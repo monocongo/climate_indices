@@ -13,6 +13,7 @@ import scipy.constants
 import xarray as xr
 
 from climate_indices import compute, indices, utils
+from climate_indices.exceptions import ClimateIndicesError, DataShapeError
 
 # the number of worker processes we'll use for process pools
 _NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count() - 1
@@ -619,7 +620,11 @@ def _drop_data_into_shared_arrays_grid(
         # drop the variable from the dataset (we're assuming this frees the memory)
         dataset = dataset.drop_vars(names=[var_name])
 
-    assert output_shape is not None, "No variables processed; output shape is unknown"
+    if output_shape is None:
+        raise DataShapeError(
+            "No variables processed; output shape is unknown",
+            expected_shape="one or more processed variables",
+        )
     return output_shape
 
 
@@ -672,7 +677,11 @@ def _drop_data_into_shared_arrays_divisions(
         # drop the variable from the dataset (we're assuming this frees the memory)
         dataset = dataset.drop_vars(names=[var_name])
 
-    assert output_shape is not None, "No variables processed; output shape is unknown"
+    if output_shape is None:
+        raise DataShapeError(
+            "No variables processed; output shape is unknown",
+            expected_shape="one or more processed variables with 2-D output",
+        )
     return output_shape
 
 
@@ -1691,7 +1700,8 @@ def process_climate_indices(
 
                 # run PET computation, getting the PET file and corresponding variable name for later use
                 result = _compute_write_index(kwargs)
-                assert result is not None, "PET computation should return file and variable name"
+                if result is None:
+                    raise ClimateIndicesError("PET computation should return file and variable name")
                 arguments.netcdf_pet, arguments.var_name_pet = result
 
                 # remove temporary file
