@@ -40,7 +40,7 @@ class TestSecurityPatternCompliance:
     def test_source_runtime_code_has_no_assert_statements(self) -> None:
         """Runtime validation should use explicit exceptions, not assert."""
         assert_locations: list[str] = []
-        for source_file in _SRC_ROOT.glob("*.py"):
+        for source_file in _SRC_ROOT.glob("**/*.py"):
             tree = ast.parse(source_file.read_text())
             for node in ast.walk(tree):
                 if isinstance(node, ast.Assert):

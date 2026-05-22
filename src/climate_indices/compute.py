@@ -835,6 +835,8 @@ def transform_fitted_pearson(
             periodicity,
         )
 
+    # Keep this as an explicit runtime check rather than an assert so optimized
+    # Python cannot skip validation if future changes break the guarantee above.
     if probabilities_of_zero is None or locs is None or scales is None or skews is None:
         raise PearsonFittingError("Pearson Type III fitting parameters could not be resolved")
 
@@ -934,7 +936,7 @@ def _check_goodness_of_fit_gamma(
                 )
                 if p_value < GOODNESS_OF_FIT_P_VALUE_THRESHOLD:
                     poor_fit_steps.append((time_step_index, p_value))
-            except (ArithmeticError, TypeError, ValueError) as exc:
+            except Exception as exc:
                 _logger.debug(
                     "goodness_of_fit_check_skipped",
                     distribution="gamma",
@@ -995,7 +997,8 @@ def _check_goodness_of_fit_pearson(
         skew = skews[time_step_index]
 
         # skip time steps where fitting failed (all parameters are zero)
-        if np.isclose(loc, 0.0) and np.isclose(scale, 0.0) and np.isclose(skew, 0.0):
+        # Pearson fitting failures are encoded by exact zero sentinels.
+        if np.array_equal(np.array([loc, scale, skew]), np.zeros(3)):
             continue
 
         # filter out NaN and zero values for non-zero distribution
@@ -1014,7 +1017,7 @@ def _check_goodness_of_fit_pearson(
                 )
                 if p_value < GOODNESS_OF_FIT_P_VALUE_THRESHOLD:
                     poor_fit_steps.append((time_step_index, p_value))
-            except (ArithmeticError, TypeError, ValueError) as exc:
+            except Exception as exc:
                 _logger.debug(
                     "goodness_of_fit_check_skipped",
                     distribution="pearson3",
