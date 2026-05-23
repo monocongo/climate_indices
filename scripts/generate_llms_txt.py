@@ -28,7 +28,14 @@ FULL_FILES = [
 
 def _read(path: str) -> str:
     """Read a UTF-8 documentation file relative to the repository root."""
-    text = (ROOT / path).read_text(encoding="utf-8").strip()
+    file_path = ROOT / path
+    try:
+        text = file_path.read_text(encoding="utf-8").strip()
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(
+            f"Source document not found: {path}. "
+            "Check SUMMARY_FILES and FULL_FILES in scripts/generate_llms_txt.py."
+        ) from exc
     return "\n".join(line.rstrip() for line in text.splitlines())
 
 

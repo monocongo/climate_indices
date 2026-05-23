@@ -90,6 +90,15 @@ to GitHub issues with:
 Remove `--dry-run` only after confirming the generated issue titles, labels, and
 milestone. The script is idempotent and matches existing issues by story slug.
 
+### Inspecting runtime audit dependencies
+
+The security audit CI job regenerates `runtime-requirements.txt` with:
+
+`$ uv export --frozen --no-dev --no-emit-project --format requirements.txt --output-file runtime-requirements.txt`
+
+This file is intentionally ignored by git. It is the runtime-only dependency
+snapshot that `pip-audit` checks, excluding development and notebook tooling.
+
 ### If you add code you need to add tests
 We’ve learned the hard way that code without tests is undependable. If your pull request reduces our test coverage because it lacks tests then it will be rejected.
 

@@ -143,10 +143,12 @@ def get_issue_labels(issue_number: int, *, dry_run: bool = False) -> set[str]:
         return set()
     try:
         out = run_gh(["issue", "view", str(issue_number), "--json", "labels"])
-        labels = json.loads(out).get("labels", [])
+        labels = json.loads(out)["labels"]
         return {label["name"] for label in labels}
-    except (subprocess.CalledProcessError, json.JSONDecodeError, KeyError):
-        return set()
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(f"Failed to fetch labels for issue #{issue_number}") from exc
+    except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as exc:
+        raise RuntimeError(f"Invalid label payload for issue #{issue_number}") from exc
 
 
 def build_issue_body(story: dict, epic: dict, release: str) -> str:
@@ -189,7 +191,11 @@ def build_issue_body(story: dict, epic: dict, release: str) -> str:
 def get_labels(story: dict) -> list[str]:
     """Build the managed label list for a story."""
     labels = list(story.get("labels", []))
-    status_label = STATUS_LABELS.get(story.get("status", "pending"))
+    status = story.get("status", "pending")
+    if status not in STATUS_LABELS:
+        slug = story.get("slug", "<unknown>")
+        raise ValueError(f"Unsupported story status {status!r} for story {slug!r}")
+    status_label = STATUS_LABELS[status]
     if status_label:
         labels.append(status_label)
     return list(dict.fromkeys(labels))
