@@ -81,9 +81,11 @@ message and the reason must be documented in `VALIDATION.md`.
 The first thing the core committers will do is run this command. Any pull request that fails this test suite will be rejected.
 
 ### Creating release story issues
-Release planning can be synced to GitHub issues with:
 
-`$ uv run scripts/create_github_issues.py --dry-run`
+After release planning has generated a sprint status YAML file, it can be synced
+to GitHub issues with:
+
+`$ uv run scripts/create_github_issues.py --dry-run --yaml _bmad-output/sprint-status.yaml`
 
 Remove `--dry-run` only after confirming the generated issue titles, labels, and
 milestone. The script is idempotent and matches existing issues by story slug.

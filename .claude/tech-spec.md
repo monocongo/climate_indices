@@ -1,7 +1,7 @@
 # Claude Code DX Environment — Technical Specification
 
-**Branch:** `chore/dx-claude-env-config`  
-**Date:** 2026-04-11  
+**Branch:** `chore/dx-claude-env-config`
+**Date:** 2026-04-11
 **Approach:** Direct implementation (no BMAD workflow)
 
 ---

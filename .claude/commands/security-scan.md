@@ -1,3 +1,5 @@
+# Security Scan
+
 Perform a security-focused review of: $ARGUMENTS
 
 If no arguments are given, scan all Python files in `src/` and `tests/`.

@@ -13,7 +13,7 @@ Red → green → refactor. Never skip the red phase.
 
 **Class grouping:** Use `class TestSPICalculation:` for related tests. Module-level functions for standalone tests.
 
-**Reference data:** Store in `tests/fixture/` — never generate reference arrays inline.
+**Reference data:** Store in `tests/fixtures/` — never generate reference arrays inline.
 
 **Shared fixtures:** Module-scoped expensive fixtures (`.npy` data loading) go in `tests/conftest.py`.
 

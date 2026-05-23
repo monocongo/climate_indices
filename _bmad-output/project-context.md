@@ -133,16 +133,19 @@ logging.info(f"Computing SPI at scale {scale} with shape {values.shape}")
 | `validation`  | Compares outputs against authoritative reference datasets; may be skipped pending fixture availability |
 
 Run unit tests only:
+
 ```bash
 uv run pytest -m "unit"
 ```
 
 Run everything except validation (safe for CI on PRs):
+
 ```bash
 uv run pytest -m "not validation"
 ```
 
 Run validation suite separately:
+
 ```bash
 uv run pytest -m "validation"
 ```
@@ -198,7 +201,7 @@ def test_eddi_noaa_cpc():
 
 ### Topology
 
-```
+```text
 main
 └── release/v2.5                    ← integration target for all v2.5 work
     └── feature/e{epic}-{slug}      ← one short-lived branch per story

@@ -120,6 +120,7 @@ jobs:
         run: uv sync --dev
 
       - name: Execute v2.5 notebooks
+        timeout-minutes: 10
         run: >
           uv run jupyter nbconvert --execute --to notebook --inplace
           notebooks/xarray_getting_started.ipynb

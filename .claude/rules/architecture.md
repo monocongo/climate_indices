@@ -27,6 +27,7 @@
 3. Add `@overload` signatures to `typed_public_api.py`
 
 **Logging:**
+
 ```python
 from climate_indices.logging_config import get_logger
 logger = get_logger(__name__)
@@ -35,6 +36,7 @@ logger.bind(periodicity=periodicity, calibration_year_initial=calibration_year_i
 ```
 
 **Exception raising:**
+
 ```python
 from climate_indices.exceptions import InvalidArgumentError
 raise InvalidArgumentError(
@@ -50,7 +52,7 @@ raise InvalidArgumentError(
 
 ## Dependency graph (simplified)
 
-```
+```text
 indices.py (legacy, read-only)
 compute.py
     ├── exceptions.py

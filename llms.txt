@@ -55,7 +55,7 @@ with the following goals in mind:
   best practices
 
 
-This is a developmental/forked version of code that was originally developed by NIDIS/NCEI/NOAA. 
+This is a developmental/forked version of code that was originally developed by NIDIS/NCEI/NOAA.
 See [drought.gov](https://www.drought.gov/drought/python-climate-indices).
 
 - [__Documentation__](https://climate-indices.readthedocs.io/en/latest/)
@@ -174,7 +174,7 @@ if np.isclose(values, 0.0, atol=1e-8):
 - See `docs/floating_point_best_practices.md` for comprehensive guidelines
 
 #### Citation
-You can cite `climate_indices` in your projects and research papers via the BibTeX 
+You can cite `climate_indices` in your projects and research papers via the BibTeX
 entry below.
 ```
 @misc {climate_indices,

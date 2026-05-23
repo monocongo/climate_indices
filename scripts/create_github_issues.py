@@ -13,11 +13,11 @@ Reads story definitions from ``_bmad-output/sprint-status.yaml`` and creates
 duplicates, using the story slug embedded in the issue title as a match key.
 
 Usage:
-    uv run scripts/create_github_issues.py [--dry-run] [--yaml PATH]
+    uv run scripts/create_github_issues.py --yaml PATH [--dry-run]
 
 Options:
     --dry-run   Print the gh commands that would be executed without running them.
-    --yaml      Path to sprint-status.yaml (default: _bmad-output/sprint-status.yaml).
+    --yaml      Path to the generated sprint-status.yaml.
 
 Expected YAML schema
 --------------------
@@ -54,11 +54,10 @@ import argparse
 import json
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
-
-DEFAULT_YAML = Path("_bmad-output/sprint-status.yaml")
 
 STATUS_LABELS = {
     "pending": None,
@@ -66,8 +65,20 @@ STATUS_LABELS = {
     "in-review": "status:in-review",
     "done": None,
     "skipped": None,
-    "blocked": "status:pending-data",
+    "blocked": "status:blocked",
 }
+
+MANAGED_STATUS_LABELS = {label for label in STATUS_LABELS.values() if label}
+
+
+@dataclass(frozen=True)
+class IssuePayload:
+    """GitHub issue fields derived from one story."""
+
+    title: str
+    body: str
+    labels: list[str]
+    milestone: str | None
 
 
 def run_gh(args: list[str], *, dry_run: bool = False) -> str:
@@ -101,13 +112,20 @@ def find_existing_issue(slug: str, *, dry_run: bool = False) -> int | None:
     if dry_run:
         return None
     try:
-        out = run_gh([
-            "issue", "list",
-            "--state", "open",
-            "--search", f"[{slug}] in:title",
-            "--json", "number,title",
-            "--limit", "50",
-        ])
+        out = run_gh(
+            [
+                "issue",
+                "list",
+                "--state",
+                "open",
+                "--search",
+                f"[{slug}] in:title",
+                "--json",
+                "number,title",
+                "--limit",
+                "50",
+            ]
+        )
         if not out:
             return None
         issues = json.loads(out)
@@ -117,6 +135,18 @@ def find_existing_issue(slug: str, *, dry_run: bool = False) -> int | None:
     except (subprocess.CalledProcessError, json.JSONDecodeError):
         pass
     return None
+
+
+def get_issue_labels(issue_number: int, *, dry_run: bool = False) -> set[str]:
+    """Return the current labels on an issue."""
+    if dry_run:
+        return set()
+    try:
+        out = run_gh(["issue", "view", str(issue_number), "--json", "labels"])
+        labels = json.loads(out).get("labels", [])
+        return {label["name"] for label in labels}
+    except (subprocess.CalledProcessError, json.JSONDecodeError, KeyError):
+        return set()
 
 
 def build_issue_body(story: dict, epic: dict, release: str) -> str:
@@ -152,8 +182,62 @@ def build_issue_body(story: dict, epic: dict, release: str) -> str:
         lines.append("")
 
     lines.append("---")
-    lines.append(f"_Generated from `sprint-status.yaml` by `scripts/create_github_issues.py`_")
+    lines.append("_Generated from `sprint-status.yaml` by `scripts/create_github_issues.py`_")
     return "\n".join(lines)
+
+
+def get_labels(story: dict) -> list[str]:
+    """Build the managed label list for a story."""
+    labels = list(story.get("labels", []))
+    status_label = STATUS_LABELS.get(story.get("status", "pending"))
+    if status_label:
+        labels.append(status_label)
+    return list(dict.fromkeys(labels))
+
+
+def build_issue_payload(
+    story: dict,
+    epic: dict,
+    release: str,
+    labels: list[str],
+    milestone: str | None,
+) -> IssuePayload:
+    """Build the issue fields for one story."""
+    return IssuePayload(
+        title=f"[{story['slug']}] {story['title']}",
+        body=build_issue_body(story, epic, release),
+        labels=labels,
+        milestone=milestone,
+    )
+
+
+def apply_issue(
+    existing: int | None,
+    payload: IssuePayload,
+    *,
+    dry_run: bool = False,
+) -> tuple[str, str]:
+    """Create or update an issue and return an action plus issue reference."""
+    if existing:
+        edit_args = ["issue", "edit", str(existing), "--title", payload.title, "--body", payload.body]
+        current_labels = get_issue_labels(existing, dry_run=dry_run)
+        stale_status_labels = sorted((current_labels & MANAGED_STATUS_LABELS) - set(payload.labels))
+        if stale_status_labels:
+            edit_args.extend(["--remove-label", ",".join(stale_status_labels)])
+        if payload.labels:
+            edit_args.extend(["--add-label", ",".join(payload.labels)])
+        if payload.milestone:
+            edit_args.extend(["--milestone", payload.milestone])
+        run_gh(edit_args, dry_run=dry_run)
+        return "updated", f"#{existing}"
+
+    create_args = ["issue", "create", "--title", payload.title, "--body", payload.body]
+    if payload.labels:
+        create_args.extend(["--label", ",".join(payload.labels)])
+    if payload.milestone:
+        create_args.extend(["--milestone", payload.milestone])
+    out = run_gh(create_args, dry_run=dry_run)
+    return "created", out or "[dry-run]"
 
 
 def process_stories(config: dict, *, dry_run: bool = False) -> None:
@@ -173,36 +257,14 @@ def process_stories(config: dict, *, dry_run: bool = False) -> None:
     for epic in config.get("epics", []):
         for story in epic.get("stories", []):
             slug = story["slug"]
-            title = f"[{slug}] {story['title']}"
-            body = build_issue_body(story, epic, release)
-
-            labels = list(story.get("labels", []))
-            status_label = STATUS_LABELS.get(story.get("status", "pending"))
-            if status_label:
-                labels.append(status_label)
-
+            payload = build_issue_payload(story, epic, release, get_labels(story), milestone)
             existing = find_existing_issue(slug, dry_run=dry_run)
-
-            if existing:
-                # Update existing issue
-                edit_args = ["issue", "edit", str(existing), "--title", title, "--body", body]
-                if labels:
-                    edit_args.extend(["--add-label", ",".join(labels)])
-                run_gh(edit_args, dry_run=dry_run)
-                print(f"  updated #{existing}: {title}")
+            action, issue_ref = apply_issue(existing, payload, dry_run=dry_run)
+            if action == "updated":
+                print(f"  updated {issue_ref}: {payload.title}")
                 updated += 1
             else:
-                # Create new issue
-                create_args = ["issue", "create", "--title", title, "--body", body]
-                if labels:
-                    create_args.extend(["--label", ",".join(labels)])
-                if milestone:
-                    create_args.extend(["--milestone", milestone])
-                out = run_gh(create_args, dry_run=dry_run)
-                if out:
-                    print(f"  created {out}: {title}")
-                else:
-                    print(f"  [dry-run] would create: {title}")
+                print(f"  created {issue_ref}: {payload.title}")
                 created += 1
 
     print(f"\nDone: {created} created, {updated} updated, {skipped} skipped")
@@ -221,8 +283,8 @@ def main() -> None:
     parser.add_argument(
         "--yaml",
         type=Path,
-        default=DEFAULT_YAML,
-        help=f"Path to sprint-status.yaml (default: {DEFAULT_YAML})",
+        required=True,
+        help="Path to generated sprint-status.yaml.",
     )
     args = parser.parse_args()
 

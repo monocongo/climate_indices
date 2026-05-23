@@ -440,7 +440,7 @@ postValidationFixes:
    FR26: replace "short" with "executable in 5 lines or fewer." FR31: replace "clearly indicated" with "with a validation-status column in the README index table, each entry linking to VALIDATION.md." Eliminates the only at-threshold SMART scores.
 
 3. **Consolidate MVP duplication**
-   "Project Scoping & Phased Development → MVP Feature Set (P0)" partially duplicates "Product Scope → MVP (P0)." Replace the Scoping section's MVP bullet list with a forward reference: *"See [MVP — Minimum Viable Product (P0)](#mvp--minimum-viable-product-p0) in Product Scope."*
+   "Project Scoping & Phased Development → MVP Feature Set (P0)" partially duplicates "Product Scope → MVP (P0)." Replace the Scoping section's MVP bullet list with a forward reference: *"See MVP — Minimum Viable Product (P0) in Product Scope."*
 
 ### Summary
 

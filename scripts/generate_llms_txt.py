@@ -28,7 +28,8 @@ FULL_FILES = [
 
 def _read(path: str) -> str:
     """Read a UTF-8 documentation file relative to the repository root."""
-    return (ROOT / path).read_text(encoding="utf-8").strip()
+    text = (ROOT / path).read_text(encoding="utf-8").strip()
+    return "\n".join(line.rstrip() for line in text.splitlines())
 
 
 def _section(path: str) -> str:

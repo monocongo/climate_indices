@@ -221,7 +221,7 @@ and fails if any cell raises an unhandled exception.
 machine-optimized single-file context document for AI tooling.
 
 Reference format for the AI context document:
-`https://docs.bmad-method.org//llms-full.txt`
+`https://docs.bmad-method.org/llms-full.txt`
 
 ### Story 3.1 — README & PyPI Landing Page Update
 
@@ -264,7 +264,7 @@ gallery images in the docs and the README gallery strip.
 
 Produce `llms-full.txt` (and companion `llms.txt` summary) as a single
 plain-text file following the format at
-`https://docs.bmad-method.org//llms-full.txt`: YAML-like frontmatter followed
+`https://docs.bmad-method.org/llms-full.txt`: YAML-like frontmatter followed
 by document sections in `<document path="...">` tags.
 
 Content must cover:
