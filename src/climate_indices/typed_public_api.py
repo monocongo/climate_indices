@@ -29,6 +29,7 @@ import xarray as xr
 from climate_indices import indices
 from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.compute import Periodicity
+from climate_indices.exceptions import InputTypeError
 from climate_indices.indices import Distribution
 from climate_indices.xarray_adapter import (
     InputType,
@@ -367,11 +368,21 @@ def pci(
     input_type = detect_input_type(rainfall_mm)
 
     if input_type == InputType.NUMPY:
-        assert isinstance(rainfall_mm, np.ndarray)
+        if not isinstance(rainfall_mm, np.ndarray):
+            raise InputTypeError(
+                "PCI NumPy path requires rainfall_mm to be a numpy.ndarray",
+                expected_type=np.ndarray,
+                actual_type=type(rainfall_mm),
+            )
         return indices.pci(rainfall_mm)
 
     # xarray path: extract values, compute, rewrap with CF metadata
-    assert isinstance(rainfall_mm, xr.DataArray)
+    if not isinstance(rainfall_mm, xr.DataArray):
+        raise InputTypeError(
+            "PCI xarray path requires rainfall_mm to be an xarray.DataArray",
+            expected_type=xr.DataArray,
+            actual_type=type(rainfall_mm),
+        )
     result_values = indices.pci(rainfall_mm.values)
 
     # build CF metadata attributes for the scalar output
