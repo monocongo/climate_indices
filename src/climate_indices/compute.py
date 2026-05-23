@@ -998,7 +998,7 @@ def _check_goodness_of_fit_pearson(
 
         # skip time steps where fitting failed (all parameters are zero)
         # Pearson fitting failures are encoded by exact zero sentinels.
-        if np.array_equal(np.array([loc, scale, skew]), np.zeros(3)):
+        if loc == 0 and scale == 0 and skew == 0:
             continue
 
         # filter out NaN and zero values for non-zero distribution

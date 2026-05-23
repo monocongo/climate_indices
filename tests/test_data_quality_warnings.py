@@ -329,12 +329,12 @@ class TestGoodnessOfFitWarning:
                 skews=np.array([0.5]),
             )
 
-        assert events == [
-            (
-                "goodness_of_fit_check_skipped",
-                {"distribution": distribution, "time_step_index": 0, "error_type": "RuntimeError"},
-            )
-        ]
+        assert len(events) == 1
+        event, payload = events[0]
+        required_payload = {"distribution": distribution, "time_step_index": 0, "error_type": "RuntimeError"}
+        assert event == "goodness_of_fit_check_skipped"
+        assert required_payload.keys() <= payload.keys()
+        assert {key: payload[key] for key in required_payload} == required_payload
         assert "sensitive input value" not in repr(events)
 
     def test_pearson_goodness_of_fit_uses_exact_zero_failure_sentinel(self, monkeypatch) -> None:

@@ -44,7 +44,8 @@ class TestSecurityPatternCompliance:
             tree = ast.parse(source_file.read_text())
             for node in ast.walk(tree):
                 if isinstance(node, ast.Assert):
-                    assert_locations.append(f"{source_file.name}:{node.lineno}")
+                    relative_path = source_file.relative_to(_SRC_ROOT.parent.parent).as_posix()
+                    assert_locations.append(f"{relative_path}:{node.lineno}")
 
         assert not assert_locations, "Source files contain runtime assert statements: " + ", ".join(assert_locations)
 
