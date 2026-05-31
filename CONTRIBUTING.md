@@ -68,11 +68,7 @@ Follow these rules and you should succeed without a problem.
 ### Run the tests
 Before you submit a pull request, please run the entire test suite via:
 
-`$ uv run pytest -m "not benchmark and not validation"`
-
-Release candidates should also run the scientific validation suite:
-
-`$ uv run pytest -m validation`
+`$ uv run pytest`
 
 Validation tests may require external reference fixtures. When a validation
 fixture is intentionally absent, the test must skip with a clear data-preparation

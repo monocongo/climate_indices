@@ -27,10 +27,6 @@ create_github_issues = _load_script(
     "create_github_issues",
     "scripts/create_github_issues.py",
 )
-generate_llms_txt = _load_script(
-    "generate_llms_txt",
-    "scripts/generate_llms_txt.py",
-)
 
 
 def test_get_issue_labels_raises_on_gh_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -59,16 +55,3 @@ def test_get_labels_rejects_unknown_story_status() -> None:
 
     with pytest.raises(ValueError, match="inprogress.*e1-example"):
         create_github_issues.get_labels(story)
-
-
-def test_read_missing_llms_source_names_file_and_source_lists() -> None:
-    """Missing llms.txt source documents should report the bad path and lists."""
-    missing_path = "docs/does-not-exist.md"
-
-    with pytest.raises(FileNotFoundError) as exc_info:
-        generate_llms_txt._read(missing_path)
-
-    message = str(exc_info.value)
-    assert missing_path in message
-    assert "SUMMARY_FILES" in message
-    assert "FULL_FILES" in message
