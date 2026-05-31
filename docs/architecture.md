@@ -480,7 +480,7 @@ Steps:
 ```
 
 #### 3. benchmarks.yml (NEW in 2.2.0)
-**Trigger**: Pull request to `master`, manual dispatch
+**Trigger**: Pull request to `main`, manual dispatch
 ```yaml
 Steps:
   1. Checkout code

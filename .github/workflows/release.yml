@@ -3,14 +3,25 @@ name: Release to PyPI
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*.*.*'
 
 permissions:
   contents: read
 
 jobs:
+  validate-release-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate SemVer tag
+        run: |
+          if [[ ! "${GITHUB_REF}" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Release tags must match vX.Y.Z exactly; got ${GITHUB_REF#refs/tags/}"
+            exit 1
+          fi
+
   # Run tests before releasing
   test:
+    needs: validate-release-tag
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -20,6 +31,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      with:
+        ref: ${{ github.ref }}
 
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
@@ -32,10 +45,23 @@ jobs:
     - name: Install dependencies
       run: uv sync --dev
 
+    - name: Run ruff linter
+      run: uv run ruff check src/ tests/
+
+    - name: Check ruff formatting
+      run: uv run ruff format --check src/ tests/
+
+    - name: Run mypy type checker
+      run: uv run mypy src/
+
     - name: Run tests
       run: uv run pytest
 
+    - name: Run release integrity tests
+      run: uv run pytest tests/test_release_integrity.py
+
   security-audit:
+    needs: validate-release-tag
     permissions:
       contents: read
       actions: none
@@ -54,6 +80,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: ${{ github.ref }}
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
@@ -75,12 +103,21 @@ jobs:
     runs-on: ubuntu-latest
     environment: release  # Requires manual approval
     permissions:
-      contents: read
+      contents: write  # Required to create the GitHub Release
       id-token: write  # Required for trusted publishing
 
     steps:
     - name: Checkout code
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      with:
+        ref: ${{ github.ref }}
+
+    - name: Validate SemVer tag
+      run: |
+        if [[ ! "${GITHUB_REF}" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "::error::Release tags must match vX.Y.Z exactly; got ${GITHUB_REF#refs/tags/}"
+          exit 1
+        fi
 
     - name: Validate version consistency
       run: |
@@ -118,3 +155,8 @@ jobs:
     - name: Upload to PyPI
       uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b  # pinned from release/v1
       # Uses trusted publishing - no token needed when configured
+
+    - name: Create GitHub Release
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: gh release create "${GITHUB_REF_NAME}" dist/* --title "${GITHUB_REF_NAME}" --generate-notes

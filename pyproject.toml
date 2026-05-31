@@ -78,7 +78,7 @@ spi = "climate_indices.__spi__:main"
 'Documentation' = 'https://climate-indices.readthedocs.io/en/latest/'
 'Repository' = 'https://github.com/monocongo/climate_indices'
 'Bug Tracker' = 'https://github.com/monocongo/climate_indices/issues'
-'Changelog' = 'https://github.com/monocongo/climate_indices/blob/master/CHANGELOG.md'
+'Changelog' = 'https://github.com/monocongo/climate_indices/blob/main/CHANGELOG.md'
 
 [tool.ruff]
 target-version = "py310"

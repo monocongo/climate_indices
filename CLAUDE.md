@@ -1,5 +1,9 @@
 # climate_indices — Development Context
 
+`AGENTS.md` is the canonical agent-facing workflow file for this repository.
+Use it for trunk, validation, and release rules; this file keeps Claude-specific
+project context.
+
 ## Project overview
 Python library for climate drought index computation (SPI, SPEI, PET, and more).
 Scientific computing stack: NumPy, xarray/dask, scipy, structlog.

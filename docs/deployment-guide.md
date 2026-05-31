@@ -67,33 +67,39 @@ strategy:
 **Trigger**: Git tag push (vX.Y.Z)
 
 **Steps**:
-1. Checkout code
-2. Setup Python and build tools
-3. Build distribution: `python -m build`
+1. Checkout the tagged commit
+2. Validate exact `vX.Y.Z` tag format
+3. Run linting, formatting checks, type checking, tests, release integrity
+   tests, and security audit
+4. Validate the tag version matches `pyproject.toml`
+5. Build distribution: `python -m build`
    - Wheel: `climate_indices-X.Y.Z-py3-none-any.whl`
    - Source dist: `climate_indices-X.Y.Z.tar.gz`
-4. Validate package metadata: `twine check dist/*`
-5. Publish to PyPI using trusted publishing (OIDC, no `PYPI_API_TOKEN`)
-6. `release` environment requires manual approval before publish
+6. Validate package metadata: `twine check dist/*`
+7. Publish to PyPI using trusted publishing (OIDC, no `PYPI_API_TOKEN`)
+8. Create the GitHub Release
+9. `release` environment requires manual approval before publish
 
 **Release Process**:
 ```bash
-# 1. Update version in pyproject.toml
-# 2. Commit and tag
-git add pyproject.toml
-git commit -m "Release v2.2.0"
-git tag v2.2.0
-git push origin master --tags
+# 1. Merge a release PR that updates pyproject.toml and CHANGELOG.md
+# 2. After approval, tag from main
+git switch main
+git pull --ff-only origin main
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
+git push origin vX.Y.Z
 
 # 3. GitHub Actions automatically:
+#    - Runs validation
 #    - Builds packages
 #    - Runs twine checks
 #    - Uploads to PyPI (trusted publishing)
+#    - Creates the GitHub Release
 ```
 
 ### 3. Benchmarks Workflow (`benchmarks.yml`)
 
-**Trigger**: Pull requests targeting `master`, manual dispatch
+**Trigger**: Pull requests targeting `main`, manual dispatch
 
 **Steps**:
 1. Checkout code
@@ -157,7 +163,7 @@ exclude = ["tests/", "docs/", "notebooks/", ...]
 ### Documentation Hosting
 - **URL**: [https://climate-indices.readthedocs.io/](https://climate-indices.readthedocs.io/)
 - **Source**: `docs/*.rst` (Sphinx)
-- **Build**: Automatic on push to `master`
+- **Build**: Automatic on push to `main`
 - **Versions**: Tracks git tags
 
 ### Build Configuration

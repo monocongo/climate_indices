@@ -9,8 +9,8 @@
 
 .. |Build| image:: https://github.com/monocongo/climate_indices/workflows/tests/badge.svg
    :target: https://github.com/monocongo/climate_indices/actions
-.. |Coverage| image:: https://coveralls.io/repos/github/monocongo/climate_indices/badge.svg?branch=master
-   :target: https://coveralls.io/github/monocongo/climate_indices?branch=master
+.. |Coverage| image:: https://coveralls.io/repos/github/monocongo/climate_indices/badge.svg?branch=main
+   :target: https://coveralls.io/github/monocongo/climate_indices?branch=main
 .. |Quality| image:: https://api.codacy.com/project/badge/Grade/48563cbc37504fc6aa72100370e71f58
    :target: https://www.codacy.com/app/monocongo/climate_indices?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=monocongo/climate_indices&amp;utm_campaign=Badge_Grade
 .. |License| image:: https://img.shields.io/badge/license-BSD%203--Clause-green.svg
@@ -428,7 +428,7 @@ criteria) in order to determine best-of-breed? Please fork the code and
 have at it, and/or contact us to see if we can help.
 
 -  Read our `contributing
-   guidelines <https://github.com/monocongo/climate_indices/blob/master/CONTRIBUTING.md>`__
+   guidelines <https://github.com/monocongo/climate_indices/blob/main/CONTRIBUTING.md>`__
 -  File an
    `issue <https://github.com/monocongo/climate_indices/issues>`__, or
    submit a `pull request <https://github.com/monocongo/climate_indices/pulls>`_

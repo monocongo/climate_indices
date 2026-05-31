@@ -384,7 +384,7 @@ docs/
 │   └── Purpose: Streamline release process
 │
 └── benchmarks.yml               🟢 NEW IN 2.2.0 - Performance tracking
-    ├── Trigger: PR to master, manual dispatch
+    ├── Trigger: PR to main, manual dispatch
     ├── Steps: uv sync --group dev → pytest -m benchmark --benchmark-enable → artifact → optional compare
     └── Purpose: Detect performance regressions
 ```

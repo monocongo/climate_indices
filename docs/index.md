@@ -75,7 +75,13 @@ This documentation set is optimized for AI agents and provides comprehensive tec
    - ReadTheDocs deployment
    - Dependency management with uv
 
-7. **[contribution-guide.md](./contribution-guide.md)** 🟢 STANDARD
+7. **[release-process.md](./release-process.md)** 🟢 STANDARD
+   - Maintainer release checklist
+   - Tag-based release flow from `main`
+   - PyPI Trusted Publishing expectations
+   - Hotfix flow
+
+8. **[contribution-guide.md](./contribution-guide.md)** 🟢 STANDARD
    - Development setup for contributors
    - Coding conventions and standards
    - Testing requirements
