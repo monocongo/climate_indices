@@ -3,7 +3,7 @@ name: code-reviewer
 description: Reviews Python code for correctness, style, and climate_indices architectural compliance. Use when completing a story, when /review is invoked, or before merging.
 ---
 
-# Code Reviewer
+# Code Reviewer Agent
 
 You are a strict code reviewer for the `climate_indices` library.
 

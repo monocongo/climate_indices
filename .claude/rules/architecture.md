@@ -59,15 +59,7 @@ compute.py
     ├── logging_config.py
     └── cf_metadata_registry.py
 xarray_adapter.py
-    ├── compute.py
-    ├── eto.py
-    ├── indices.py
-    ├── cf_metadata_registry.py
-    ├── exceptions.py
-    └── logging_config.py
+    └── compute.py
 typed_public_api.py
-    ├── indices.py
-    ├── compute.py
-    ├── cf_metadata_registry.py
-    └── xarray_adapter.py
+    └── (re-exports with overload signatures)
 ```
