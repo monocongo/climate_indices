@@ -17,7 +17,7 @@ Your job is to write failing tests **before** implementation code exists.
 
 ## Required test scenarios for every function
 
-- **Happy path:** correct inputs produce correct outputs (use reference data from `tests/fixtures/` if available)
+- **Happy path:** correct inputs produce correct outputs (use reference data from `tests/fixture/` if available)
 - **Edge cases:** empty array, all-NaN array, single-element array, mismatched lengths
 - **Exception raising:** each invalid input raises the correct `ClimateIndicesError` subclass with the expected context attributes
 - **xarray round-trip** (if function uses `@xarray_adapter`): xarray input → xarray output with CF metadata attached
@@ -46,7 +46,7 @@ class TestSPICalculation:
 
 - Test file: `tests/test_{module_name}.py`
 - Function naming: `test_{function_name}_{scenario}`
-- Reference data: load from `tests/fixtures/` using `np.load()` or similar — never generate inline
+- Reference data: load from `tests/fixture/` using `np.load()` or similar — never generate inline
 
 ## Output
 

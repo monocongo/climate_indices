@@ -199,9 +199,10 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Atmospheric Science",
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.15"
 dependencies = [
     "numpy>=1.21.0",
     "scipy>=1.7.0",

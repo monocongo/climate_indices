@@ -23,11 +23,15 @@ docker run -v $(pwd)/data:/data climate_indices:2.2.0 \
 ### Dockerfile Overview
 ```dockerfile
 # Multi-stage build
-FROM python:3.11-slim AS builder
+FROM python:3.14-slim AS builder
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+COPY README.md LICENSE ./
+COPY src/ ./src/
 RUN uv sync --frozen --no-dev
 
-FROM python:3.11-slim
+FROM python:3.14-slim
 RUN apt-get update && apt-get install -y libhdf5-dev libnetcdf-dev
 COPY --from=builder /app/.venv /app/.venv
 COPY src/ ./src/
@@ -42,7 +46,7 @@ ENTRYPOINT ["python", "-m", "climate_indices"]
 **Trigger**: Push to any branch, pull requests
 
 **Matrix**:
-- Python versions: 3.10, 3.11, 3.12, 3.13
+- Python versions: 3.10, 3.11, 3.12, 3.13, 3.14
 - OS: ubuntu-latest
 
 **Steps**:
@@ -55,7 +59,7 @@ ENTRYPOINT ["python", "-m", "climate_indices"]
 ```yaml
 strategy:
   matrix:
-    python-version: ['3.10', '3.11', '3.12', '3.13']
+    python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
 ```
 
 ### 2. Release Workflow (`release.yml`)
@@ -110,7 +114,7 @@ git push origin master --tags
 - **Name**: `climate_indices`
 - **Version**: Defined in `pyproject.toml`
 - **License**: BSD 3-Clause
-- **Python**: >=3.10,<3.14
+- **Python**: >=3.10,<3.15
 
 ### Installation
 ```bash

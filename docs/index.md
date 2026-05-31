@@ -10,7 +10,7 @@
 | **Version** | 2.2.0 |
 | **Type** | Python Library (Scientific Computing) |
 | **Architecture** | Layered Monolith |
-| **Python Support** | 3.10, 3.11, 3.12, 3.13 |
+| **Python Support** | 3.10, 3.11, 3.12, 3.13, 3.14 |
 | **License** | BSD 3-Clause |
 | **Repository** | [github.com/monocongo/climate_indices](https://github.com/monocongo/climate_indices) |
 | **Documentation** | [ReadTheDocs](https://climate-indices.readthedocs.io/) |
@@ -196,7 +196,7 @@ uv run pytest
 
 ## CI/CD Pipelines
 
-1. **Unit Tests** (`unit-tests-workflow.yml`): Python 3.10-3.13 matrix on ubuntu-latest
+1. **Unit Tests** (`unit-tests-workflow.yml`): Python 3.10-3.14 matrix on ubuntu-latest
 2. **Releases** (`release.yml`): Automated PyPI publishing on git tags
 3. **Benchmarks** (`benchmarks.yml`, NEW 2.2.0): Performance regression tracking
 
