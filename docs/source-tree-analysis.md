@@ -39,9 +39,6 @@ climate_indices/
 ├── 🖼️  Assets
 │   └── assets/                  ← Images, reference data
 │
-├── 🔧 BMAD Workflow (AI Development Support)
-│   └── _bmad/                   ← BMAD configuration and workflows
-│
 └── 🚀 CI/CD
     └── .github/workflows/       ← GitHub Actions (unit tests, releases, benchmarks)
 ```
@@ -356,7 +353,7 @@ docs/
 │       ├── modules.rst
 │       └── tests.rst
 │
-└── 📝 AI-Readable Documentation (BMAD Format, NEW)
+└── 📝 AI-Readable Documentation
     ├── index.md                 🔴 Master index (this will be generated)
     ├── project-overview.md      🔴 Executive summary, classification
     ├── architecture.md          🔴 Technical architecture
@@ -408,26 +405,10 @@ assets/
 └── EDDI_code_GMU/               🟢 Reference EDDI implementation
 ```
 
-### BMAD Workflows (`_bmad/`)
-```
-_bmad/                           🟢 AI development support (NEW)
-├── _config/                     ← BMAD configuration
-│   ├── manifest.yaml            ← Project manifest
-│   ├── agent-manifest.csv       ← Agent definitions
-│   ├── files-manifest.csv       ← File inventory
-│   ├── task-manifest.csv        ← Task definitions
-│   └── workflow-manifest.csv    ← Workflow definitions
-│
-├── _memory/                     ← Memory for AI agents
-│   ├── storyteller-sidecar/     ← Story context
-│   └── tech-writer-sidecar/     ← Documentation context
-│
-├── core/                        ← Core BMAD workflows
-├── bmb/                         ← BMB module workflows
-├── bmm/                         ← BMM module workflows
-├── cis/                         ← CIS module workflows
-└── tea/                         ← Test architecture workflows
-```
+### AI planning artifacts
+
+Generated planning artifacts should live on short-lived feature branches or in
+local worktrees. They are intentionally not retained on `main`.
 
 ## Module Dependency Graph
 

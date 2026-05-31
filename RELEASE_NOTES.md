@@ -227,7 +227,7 @@ Expanded test coverage with advanced validation techniques (#607):
 - **Eliminated fixture shadowing** across test modules
 - **Shared test data** for consistent validation
 
-### BMAD Planning Artifacts
+### Planning Artifacts
 
 Comprehensive architectural documentation for development planning (#599):
 
@@ -236,7 +236,8 @@ Comprehensive architectural documentation for development planning (#599):
 - **Epic breakdown**: 47 stories with acceptance criteria
 - **Implementation readiness reports**: Pre-implementation validation
 
-**Artifacts location:** `_bmad-output/planning-artifacts/` (excluded from distribution)
+These artifacts were produced during short-lived planning branches and are not
+retained on `main`.
 
 ### Dependency Bumps
 
@@ -303,7 +304,7 @@ All dependencies bumped to latest stable versions. See CHANGELOG.md for full ver
 - #601: Fix CI test ImportError
 
 **Infrastructure:**
-- #599: BMAD planning artifacts
+- #599: Planning artifacts
 - #609: Dependency security hardening and CI follow-up fixes
 - #613: Documentation architecture and contribution guide updates
 
