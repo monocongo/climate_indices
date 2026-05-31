@@ -1,7 +1,7 @@
 # Claude Code — `.claude/` Configuration Directory
 
 This directory contains Claude Code project-layer configuration for `climate_indices`.
-For project coding conventions, architecture, and sprint context see `../CLAUDE.md` (root).
+For canonical agent workflow, validation, and release rules see `../AGENTS.md`.
 
 ## Directory map
 

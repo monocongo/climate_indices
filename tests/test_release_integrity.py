@@ -69,6 +69,19 @@ def test_release_workflow_has_environment_gate() -> None:
     )
 
 
+def test_release_workflow_requires_exact_semver_tags() -> None:
+    """release.yml must trigger and publish only for exact vX.Y.Z tags."""
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+    assert "v*.*.*" in workflow, "release.yml should only trigger on v*.*.* release tag candidates"
+    assert r"^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$" in workflow, "release.yml missing explicit exact SemVer tag guard"
+
+
+def test_release_workflow_creates_github_release() -> None:
+    """release.yml must create the GitHub Release after PyPI publish."""
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+    assert "gh release create" in workflow, "release.yml must create a GitHub Release for the published tag"
+
+
 def test_core_public_api_importable() -> None:
     """Core public API symbols must be importable from the installed package.
 

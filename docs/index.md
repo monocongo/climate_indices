@@ -31,7 +31,7 @@ The **climate_indices** library provides reference implementations of climate in
 
 ## Documentation Structure
 
-### AI-Readable Documentation (BMAD Format)
+### AI-Readable Documentation
 
 This documentation set is optimized for AI agents and provides comprehensive technical context:
 
@@ -75,7 +75,13 @@ This documentation set is optimized for AI agents and provides comprehensive tec
    - ReadTheDocs deployment
    - Dependency management with uv
 
-7. **[contribution-guide.md](./contribution-guide.md)** 🟢 STANDARD
+7. **[release-process.md](./release-process.md)** 🟢 STANDARD
+   - Maintainer release checklist
+   - Tag-based release flow from `main`
+   - PyPI Trusted Publishing expectations
+   - Hotfix flow
+
+8. **[contribution-guide.md](./contribution-guide.md)** 🟢 STANDARD
    - Development setup for contributors
    - Coding conventions and standards
    - Testing requirements
@@ -239,6 +245,6 @@ BSD 3-Clause License. See [LICENSE](../LICENSE) for details.
 
 **For AI Assistance**: This index is the starting point. Begin with [project-overview.md](./project-overview.md) for context, then navigate to specific guides based on your task.
 
-**Last Updated**: 2026-02-11 (BMAD workflow execution)
-**Documentation Version**: 1.0 (initial BMAD documentation)
+**Last Updated**: 2026-02-11
+**Documentation Version**: 1.0
 **Project Version**: 2.2.0

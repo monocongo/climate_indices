@@ -1350,5 +1350,5 @@ If this guide doesn't resolve your issue:
 
 **Contributing:**
 
-- Contributing guidelines: https://github.com/monocongo/climate_indices/blob/master/CONTRIBUTING.md
+- Contributing guidelines: https://github.com/monocongo/climate_indices/blob/main/CONTRIBUTING.md
 - Pull requests welcome for bug fixes and documentation improvements

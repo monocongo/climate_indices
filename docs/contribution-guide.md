@@ -145,9 +145,9 @@ mypy src/
 
 ### 1. Create Feature Branch
 ```bash
-git checkout master
-git pull upstream master
-git checkout -b fix-bug-description
+git switch main
+git pull --ff-only upstream main
+git switch -c fix/bug-description
 # Use descriptive branch names:
 # - feature/add-new-index
 # - fix/handle-nan-values
@@ -184,14 +184,14 @@ Add Hargreaves PET method
 ### 4. Pull Upstream Changes Regularly
 ```bash
 git fetch upstream
-git merge upstream/master
+git merge upstream/main
 # Or rebase if preferred:
-git rebase upstream/master
+git rebase upstream/main
 ```
 
 ### 5. Push and Create Pull Request
 ```bash
-git push origin fix-bug-description
+git push origin fix/bug-description
 ```
 
 Then on GitHub:

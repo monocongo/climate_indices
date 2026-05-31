@@ -79,8 +79,10 @@ venv.bak/
 .DS_Store
 /.settings/
 
-# BMAD framework (keep only project-specific artifacts in _bmad-output/)
+# BMAD framework and generated artifacts belong on short-lived feature branches,
+# not on main.
 _bmad/
+_bmad-output/
 
 # Codex session data
 .codex/
@@ -89,6 +91,10 @@ _bmad/
 .claude/CLAUDE.local.md
 .claude/handovers/
 .claude/settings.local.json
+.claude/skills/
+
+# Codex local skill installation state
+skills-lock.json
 
 # Git worktrees
 .worktrees/

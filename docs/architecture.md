@@ -261,7 +261,7 @@ climate_indices/
 │   ├── pypi_release.rst          # PyPI release guide
 │   ├── source/modules.rst        # Package module docs (autodoc)
 │   ├── source/tests.rst          # Test module docs (autodoc)
-│   └── *.md                      # AI-readable docs (BMAD format, NEW)
+│   └── *.md                      # AI-readable project docs
 │
 ├── .github/workflows/            # CI/CD pipelines
 │   ├── unit-tests-workflow.yml   # Test matrix (Python 3.10-3.14)
@@ -278,7 +278,7 @@ climate_indices/
 ### Critical Directories
 - **`src/climate_indices/`**: All production code (14 modules)
 - **`tests/`**: 26 test files + fixture data (>90% coverage)
-- **`docs/`**: Sphinx RST + BMAD Markdown documentation
+- **`docs/`**: Sphinx RST + Markdown project documentation
 - **`.github/workflows/`**: CI/CD automation (3 workflows)
 
 ## Data Flow and Computation Patterns
@@ -480,7 +480,7 @@ Steps:
 ```
 
 #### 3. benchmarks.yml (NEW in 2.2.0)
-**Trigger**: Pull request to `master`, manual dispatch
+**Trigger**: Pull request to `main`, manual dispatch
 ```yaml
 Steps:
   1. Checkout code

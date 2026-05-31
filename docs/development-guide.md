@@ -187,7 +187,7 @@ from climate_indices import compute, exceptions
 - **Markers**: Use `@pytest.mark.benchmark` for performance tests
 
 ### Git Workflow
-1. Create feature branch from `master`
+1. Create feature branch from `main`
 2. Make changes with descriptive commits
 3. Run tests locally (`uv run pytest`)
 4. Push and create pull request

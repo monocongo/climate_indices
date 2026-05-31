@@ -1,8 +1,8 @@
-![Banner Image](https://raw.githubusercontent.com/monocongo/climate_indices/master/assets/Global_Monthly_SPI.jpg)
+![Banner Image](https://raw.githubusercontent.com/monocongo/climate_indices/main/assets/Global_Monthly_SPI.jpg)
 
 # climate_indices
 
-[//]: # ([![Coverage Status]&#40;https://coveralls.io/repos/github/monocongo/climate_indices/badge.svg?branch=master&#41;]&#40;https://coveralls.io/github/monocongo/climate_indices?branch=master&#41;)
+[//]: # ([![Coverage Status]&#40;https://coveralls.io/repos/github/monocongo/climate_indices/badge.svg?branch=main&#41;]&#40;https://coveralls.io/github/monocongo/climate_indices?branch=main&#41;)
 [//]: # ([![Codacy Status]&#40;https://api.codacy.com/project/badge/Grade/48563cbc37504fc6aa72100370e71f58&#41;]&#40;https://www.codacy.com/app/monocongo/climate_indices?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=monocongo/climate_indices&amp;utm_campaign=Badge_Grade&#41;)
 [![Actions Status](https://github.com/monocongo/climate_indices/workflows/tests/badge.svg)](https://github.com/monocongo/climate_indices/actions)
 [![License](https://img.shields.io/badge/License-BSD%203--Clause-green.svg)](https://opensource.org/licenses/BSD-3-Clause)
@@ -51,8 +51,78 @@ This is a developmental/forked version of code that was originally developed by 
 See [drought.gov](https://www.drought.gov/drought/python-climate-indices).
 
 - [__Documentation__](https://climate-indices.readthedocs.io/en/latest/)
-- [__License__](https://github.com/monocongo/climate_indices/blob/master/LICENSE)
-- [__Disclaimer__](https://github.com/monocongo/climate_indices/blob/master/DISCLAIMER)
+- [__License__](https://github.com/monocongo/climate_indices/blob/main/LICENSE)
+- [__Disclaimer__](https://github.com/monocongo/climate_indices/blob/main/DISCLAIMER)
+
+## Developer Workflow
+
+This project uses trunk-based development. `main` is the trunk and should always
+be releasable.
+
+1. Start from current trunk:
+   `git switch main && git pull --ff-only origin main`
+2. Create a short-lived branch:
+   `git switch -c feature/<short-topic>`
+3. Make focused changes with tests.
+4. Run validation:
+   `uv run ruff check src/ tests/`
+   `uv run ruff format --check src/ tests/`
+   `uv run mypy src/`
+   `uv run pytest`
+5. Open a PR into `main`.
+6. Merge only after CI passes.
+
+Use `feature/<topic>`, `fix/<topic>`, `docs/<topic>`, `chore/<topic>`, or
+`hotfix/<topic>` branch names. Release branches are avoided; use maintenance
+branches only for approved older-version support.
+
+## Release Recipe
+
+Releases are tag-based. The Git tag, package version, GitHub Release, and PyPI
+version must match.
+
+- Git tag: `v1.2.3`
+- Package version: `1.2.3`
+- GitHub Release: `v1.2.3`
+- PyPI release: `1.2.3`
+
+1. Prepare and merge a release PR that updates `pyproject.toml`, `CHANGELOG.md`,
+   and release notes/docs.
+2. Confirm `main` is green.
+3. Create an annotated tag from `main`.
+4. Push the tag. The release workflow builds, validates, publishes to PyPI, and
+   creates the GitHub Release.
+
+Tag creation and publishing require maintainer approval. See
+[`docs/release-process.md`](docs/release-process.md) for the full checklist.
+
+### Maintainer Quick Commands
+
+Read-only preflight:
+
+```bash
+git status --short
+git branch --show-current
+git log --oneline --decorate -5
+uv run pytest tests/test_release_integrity.py
+```
+
+Safe PR branch setup:
+
+```bash
+git switch main
+git pull --ff-only origin main
+git switch -c chore/issue-667-release-docs
+```
+
+Approval-required release tag commands:
+
+```bash
+git switch main
+git pull --ff-only origin main
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
+git push origin vX.Y.Z
+```
 
 ## Supported Python Versions
 
