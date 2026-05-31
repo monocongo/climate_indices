@@ -1,225 +1,322 @@
----
-title: climate_indices Project Context
-generated: 2026-02-07
-status: complete
-workflow: BMAD generate-project-context
----
+# Project Context — climate_indices
 
-# climate_indices Project Context
-
-> **Purpose**: Critical rules and patterns for AI agents implementing code in this project.
-> Focus: Non-obvious details that require reminders, not general knowledge.
+> Place this file at `_bmad-output/project-context.md` before running any BMAD
+> workflow. Every agent in every fresh chat will inherit these conventions
+> automatically.
 
 ---
 
-## 1. Technology Stack & Versions
+## Project Identity
 
-**Core Environment:**
-- Python >=3.10,<3.14 (ruff/mypy target: py310)
-- Build: Hatchling + uv package manager
-- CI: GitHub Actions matrix testing [3.10, 3.11, 3.12, 3.13]
-
-**Critical Dependencies:**
-- scipy>=1.15.3, xarray>=2025.6.1, dask>=2025.7.0
-- structlog>=24.1.0 (structured logging)
-- cftime>=1.6.4, h5netcdf>=1.6.3 (NetCDF/CF support)
-- pytest>=8.4.1, ruff>=0.12.7, mypy (near-strict)
+- **Package name:** `climate_indices`
+- **Repository:** https://github.com/monocongo/climate_indices
+- **PyPI:** https://pypi.org/project/climate-indices/
+- **License:** BSD 3-Clause
+- **Primary maintainer:** James Adams (@monocongo)
+- **Current stable release:** 2.x
+- **Active development target:** v2.5
 
 ---
 
-## 2. Language-Specific Rules (Python)
+## Tech Stack & Tooling
 
-**Mandatory in New Files:**
+| Tool          | Purpose                                      | Notes                              |
+|---------------|----------------------------------------------|------------------------------------|
+| `uv`          | Package and virtual environment management   | Use for all installs and script runs (`uv run`, `uv sync`) |
+| `ruff`        | Linting and formatting                       | Single tool replacing flake8/isort/black |
+| `structlog`   | Structured logging                           | See logging conventions below      |
+| `pytest`      | Test runner                                  | See testing conventions below      |
+| `xarray`      | Primary array/dataset abstraction for users  | See xarray conventions below       |
+| `numpy`       | Internal array operations                    |                                    |
+| `cartopy`     | Geospatial plotting                          | Used in gallery scripts and notebooks |
+| `matplotlib`  | Plotting                                     |                                    |
+| `nbconvert`   | Notebook CI execution                        | `nbconvert --execute`              |
+| `gh` CLI      | GitHub issue and PR management               | Must be authenticated before use   |
+| `sqlalchemy`  | Database interaction where applicable        |                                    |
+
+---
+
+## Coding Conventions
+
+### General
+
+- All public functions must have complete type hints on all arguments and return
+  values.
+- Use Google-style docstrings on all functions with `Args` and `Returns`
+  sections.
+- Docstring descriptions and inline comments are capitalized only if they form a
+  complete sentence.
+- Maximum line length follows `ruff` project configuration (do not hardcode a
+  value here; defer to `pyproject.toml`).
+- Prefer explicit over implicit; avoid clever one-liners that reduce readability.
+
+### Docstring Format
+
 ```python
-from __future__ import annotations
-from typing import TYPE_CHECKING
+def compute_spi(
+    values: np.ndarray,
+    scale: int,
+    periodicity: str,
+) -> np.ndarray:
+    """Compute the Standardized Precipitation Index.
 
-if TYPE_CHECKING:
-    # Type-only imports here
+    Args:
+        values: array of precipitation values, chronologically ordered.
+        scale: number of time steps over which to compute accumulation.
+        periodicity: temporal periodicity of the input data, e.g. 'monthly'.
+
+    Returns:
+        array of SPI values with the same shape as the input.
+    """
 ```
 
-**Type Annotations:**
-- All function params + returns must be type-annotated
-- Union syntax: `str | None` (not `Optional[str]`)
-- Use `pathlib.Path` for file paths, never strings
+### Imports
 
-**Naming Conventions:**
-- Constants: `UPPER_SNAKE_CASE` (public) / `_UPPER_SNAKE_CASE` (private)
-- Module-level `__all__` declaration required
+- Standard library → third-party → internal; separated by blank lines.
+- No wildcard imports.
 
-**Float Comparison:**
-- NEVER use `==` with computed float values
-- ALWAYS use `np.isclose()` or `np.testing.assert_allclose()`
+### Error Handling
+
+- Raise specific, descriptive exception types (not bare `Exception`).
+- Functions should raise rather than return `None` on failure.
 
 ---
 
-## 3. Framework/Library-Specific Rules
+## Structured Logging Conventions
 
-**xarray Adapter Pattern (Epic 2):**
-- Use `@xarray_adapter` decorator to wrap NumPy functions
-- **NEVER modify `indices.py` computation functions directly**
-- Decorator handles input detection, conversion, and CF metadata attachment
+- Use `structlog` exclusively. Do not use `loguru`, the stdlib `logging` module
+  directly, or `print` statements for diagnostic output in library code.
+- Bind contextual fields to the logger rather than interpolating them into
+  message strings.
+- Canonical context fields for this package:
 
-**structlog Logging:**
-- New modules: `from climate_indices.logging_config import get_logger`
-- Legacy modules: `from climate_indices import utils` → `utils.get_logger()`
-- **NEVER mix logging patterns** — use module-appropriate import
-- **NEVER log data values** — only shapes, types, parameters, metadata
+| Field         | Type    | Example value         |
+|---------------|---------|-----------------------|
+| `index`       | `str`   | `"spi"`, `"pdsi"`    |
+| `timescale`   | `int`   | `3`, `6`, `12`        |
+| `periodicity` | `str`   | `"monthly"`           |
+| `input_shape` | `tuple` | `(480, 120)`          |
+| `data_var`    | `str`   | `"precip"`            |
 
-**Calculation Event Pattern:**
+**Correct pattern:**
+
 ```python
-_logger.bind(calculation="spi", data_shape=shape, param=value)
-_logger.info("calculation_started")
-result = compute()
-_logger.info("calculation_completed", duration_ms=elapsed)
+import structlog
+
+log = structlog.get_logger()
+
+log.info(
+    "computing index",
+    index="spi",
+    timescale=scale,
+    input_shape=values.shape,
+)
 ```
 
-**Exception Hierarchy:**
-- All new exceptions inherit `ClimateIndicesError`
-- Use keyword-only context attributes (e.g., `shape=`, `expected=`)
+**Incorrect — do not do this:**
 
-**CF Metadata:**
-- ALWAYS use `CF_METADATA` registry dict from `xarray_adapter`
-- NEVER hard-code CF attributes inline
-- Registry entry example: `"spi": {"standard_name": "standardized_precipitation_index", ...}`
-
----
-
-## 4. Testing Rules
-
-**Pytest Patterns:**
-- Class-based grouping: `class TestSPICalculation` for related tests
-- Module-level functions for simple/standalone tests
-- Module-scoped fixtures for expensive `.npy` data loading (see `conftest.py`)
-
-**Numerical Assertions:**
 ```python
-np.testing.assert_allclose(actual, expected, atol=1e-8)  # float64
-np.testing.assert_allclose(actual, expected, atol=1e-5)  # float32
+import logging
+logging.info(f"Computing SPI at scale {scale} with shape {values.shape}")
 ```
 
-**Test Isolation:**
-- Use `_reset_logging_for_testing()` / `_reset_psutil_cache()` when needed
-- Reset shared state between test classes
-
-**Exception Testing:**
-```python
-with pytest.raises(InvalidDatasetError) as exc_info:
-    function_call()
-assert exc_info.value.shape == expected_shape
-```
-
-**Test Naming:**
-- Format: `test_<what>_<behavior>` (e.g., `test_spi_invalid_distribution_raises`)
-
 ---
 
-## 5. Code Quality & Style Rules
+## Testing Conventions
 
-**Ruff Configuration:**
-- Line length: 120 characters
-- Rule sets: E/W/F/I/B/C4/UP
-- Commands: `ruff check --fix`, `ruff format`
+### Pytest Markers
 
-**mypy Configuration:**
-- Near-strict mode (disallow_untyped_defs, strict_equality, etc.)
-- Command: `uv run mypy src/ --strict`
+| Marker        | Meaning                                                            |
+|---------------|--------------------------------------------------------------------|
+| `unit`        | Fast, no I/O, no network, no large fixtures                        |
+| `integration` | May touch filesystem or external data; slower                      |
+| `validation`  | Compares outputs against authoritative reference datasets; may be skipped pending fixture availability |
 
-**Docstrings:**
-- Google-style for **new code only**
-- Legacy code uses Sphinx/reST — **don't convert existing docstrings**
+Run unit tests only:
 
-**Code Organization:**
-- Import order: stdlib → third-party → local
-- Each module declares `__all__`
-- `__init__.py` re-exports public API symbols
-- Functions: <25 lines, single responsibility
-
----
-
-## 6. Development Workflow Rules
-
-**Branch Naming:**
-- Feature: `feature/epic-<N>-<description>` or `feature/<description>`
-- Bugfix: `fix/<description>`
-- Current active: `feature/epic-2-xarray-spi`
-
-**Conventional Commits:**
-- Prefixes: `feat:`, `fix:`, `refactor:`, `chore:`, `docs:`
-- Optional scope: `feat(xarray): add SPI adapter support`
-- **NEVER include Claude attribution** (no "Generated with Claude Code", no "Co-Authored-By: Claude")
-
-**uv Execution:**
-- ALWAYS use `uv run <command>` (not raw `python` or `python3`)
-- Examples: `uv run pytest`, `uv run mypy src/ --strict`
-
-**Verification Commands:**
 ```bash
-uv run pytest                    # Run tests
-uv run mypy src/ --strict       # Type checking
-ruff check                       # Linting
-ruff format --check             # Format verification
+uv run pytest -m "unit"
 ```
+
+Run everything except validation (safe for CI on PRs):
+
+```bash
+uv run pytest -m "not validation"
+```
+
+Run validation suite separately:
+
+```bash
+uv run pytest -m "validation"
+```
+
+### Fixture Locations
+
+| Type                          | Location                                 |
+|-------------------------------|------------------------------------------|
+| General test fixtures         | `tests/fixtures/`                        |
+| EDDI literature examples      | `tests/fixtures/eddi_literature/`        |
+| Palmer literature examples    | `tests/fixtures/palmer_literature/`      |
+| Notebook sample data          | `notebooks/data/`                        |
+
+### Fixture Size Limits
+
+- Committed fixtures: prefer NetCDF or CSV, under 5 MB each.
+- Larger reference datasets: downloaded on-demand in CI; never committed to the
+  repo directly.
+- For fixtures pending receipt from external sources (e.g., NOAA CPC), stub the
+  test with:
+
+```python
+@pytest.mark.skip(reason="awaiting NOAA CPC fixtures — see VALIDATION.md")
+@pytest.mark.validation
+def test_eddi_noaa_cpc():
+    ...
+```
+
+### Numerical Tolerance
+
+- Default tolerance for validation tests: `atol=1e-3` unless the reference
+  dataset or literature specifies otherwise.
+- Document the chosen tolerance and its justification in the test module
+  docstring, with a citation.
 
 ---
 
-## 7. Critical Don't-Miss Rules
+## xarray Conventions
 
-**Architecture Constraints:**
-- ❌ **NEVER modify `indices.py` computation functions** — wrap via `@xarray_adapter` only
-- ❌ **NEVER log data values** — only shapes, types, parameters, metadata
-- ❌ **NEVER use bare `ValueError`** — use `ClimateIndicesError` subclasses
-- ❌ **NEVER hard-code CF attributes** — use `CF_METADATA` registry
-- ❌ **NEVER use `==` with computed floats** — use `np.isclose()`
-
-**Known Inconsistencies (follow existing patterns):**
-- `Distribution.gamma` (lowercase) vs `InputType.NUMPY` (uppercase) enum members
-- New modules: `logging_config.get_logger()` / Legacy: `utils.get_logger()`
-- New docstrings: Google-style / Legacy: Sphinx/reST
-
-**Warnings Pattern:**
-```python
-warnings.warn("message", CustomWarningClass, stacklevel=3)
-```
-
-**Active Development Context:**
-- Epic 2 (xarray support): Stories 2.1-2.3 complete
-- Current branch: `feature/epic-2-xarray-spi`
-- Next: Story 2.4+ (additional index adapters)
+- Public API functions should accept `xarray.DataArray` and `xarray.Dataset`
+  where applicable, in addition to `numpy.ndarray`.
+- Preserve coordinate metadata and attributes on outputs.
+- Follow CF conventions for output variable attributes (`units`, `long_name`,
+  `standard_name`, `valid_min`, `valid_max`).
+- Use `xr.apply_ufunc` with `dask='parallelized'` for Dask-chunked array
+  support where the underlying computation is element-wise or reducible.
+- The xarray compatibility matrix lives at `docs/xarray_compatibility.md` and
+  must be kept current when adding or modifying public functions.
 
 ---
 
-## Quick Reference: Common Tasks
+## Branching Strategy
 
-**Add xarray support for new index:**
-1. Register CF metadata in `CF_METADATA` dict
-2. Apply `@xarray_adapter` decorator to wrapper function
-3. Add tests with xarray inputs (use `_reset_logging_for_testing()`)
-4. Verify CF attributes on output DataArray
+### Topology
 
-**Add new exception:**
-```python
-class NewError(ClimateIndicesError):
-    """Docstring."""
-    def __init__(self, *, context_param: str) -> None:  # keyword-only
-        super().__init__(f"Message: {context_param}")
-        self.context_param = context_param
+```text
+main
+└── release/v2.5                    ← integration target for all v2.5 work
+    └── feature/e{epic}-{slug}      ← one short-lived branch per story
 ```
 
-**Add structured logging to new module:**
-```python
-from climate_indices.logging_config import get_logger
+- `release/v2.5` is branched from `main` before any story work begins.
+- It is merged back to `main` as a single PR when the milestone is complete and
+  CI is green. That final PR is the canonical v2.5 release artifact.
+- `feature/e{epic}-{slug}` branches are short-lived, one per story, merged via
+  PR into `release/v2.5`, then deleted.
 
-_logger = get_logger(__name__)
+### Branch Naming
 
-# In function:
-_logger = _logger.bind(calculation="index_name", param=value)
-_logger.info("calculation_started")
-# ... compute ...
-_logger.info("calculation_completed", duration_ms=elapsed)
+Story branches follow the pattern `feature/e{epic_number}-{short-slug}`,
+mirroring the `epic:*` label taxonomy:
+
+- Epic 1 (validation): `feature/e1-{slug}`
+- Epic 2 (xarray): `feature/e2-{slug}`
+- Epic 3 (docs): `feature/e3-{slug}`
+- Infrastructure: `feature/s0-{slug}`
+
+### Worktrees
+
+Use one git worktree per active Claude Code session to allow parallel story
+work without context bleed. Keep no more than 3–4 worktrees active at once.
+
+```bash
+git worktree add ../climate-indices-{slug} -b {branch_name} release/v2.5
 ```
+
+### Branch Protection Rules
+
+- **`main`:** require PR, require CI green, require at least one review,
+  restrict direct push to maintainers.
+- **`release/v2.5`:** require CI green on PRs; allow maintainer direct push for
+  trivial fixes.
+- **`feature/*`:** no protection; delete automatically on merge.
+
+### Pending-Data Branches
+
+Stories blocked on external data (e.g., NOAA CPC fixtures) should have their
+branch opened immediately with stub test files committed, then parked. Do not
+open a PR until the data arrives. Apply `status:pending-data` to the issue.
 
 ---
 
-**Document Version:** 2026-02-07
-**Last Updated By:** BMAD workflow (generate-project-context)
+## GitHub Tracking Conventions
+
+- **`_bmad-output/sprint-status.yaml` is the authoritative source of truth**
+  for all epics, stories, and status.
+- GitHub Issues are the public-facing tracking surface. They are generated
+  programmatically from `sprint-status.yaml` via
+  `scripts/create_github_issues.py` and are **not created or edited manually
+  in bulk**.
+- One-off issues for bugs or unplanned work outside v2.5 epics are still
+  created manually in GitHub as normal.
+
+### Required Fields in Each `sprint-status.yaml` Story Entry
+
+| Field           | Description                                                        |
+|-----------------|--------------------------------------------------------------------|
+| `epic_label`    | one of `epic:validation`, `epic:xarray`, `epic:docs`              |
+| `type_label`    | one of `type:literature`, `type:testing`, `type:notebook`, `type:infrastructure` |
+| `branch_name`   | e.g. `feature/e1-eddi-literature`                                  |
+| `blocked_on`    | optional; triggers `status:pending-data` label if set              |
+| `github_issue`  | empty at creation; populated by `create_github_issues.py`          |
+
+### Status Label Transitions
+
+Status labels are applied manually by the contributor via `gh issue edit`
+during the story workflow — they are not automated.
+
+| Label                  | Applied when                                    |
+|------------------------|-------------------------------------------------|
+| `status:in-progress`   | Worktree opened, work begun                     |
+| `status:in-review`     | PR opened against `release/v2.5`                |
+| `status:pending-data`  | Story blocked on external data                  |
+| `status:blocked`       | Blocked on a dependency other than data         |
+
+### PR Convention
+
+- PR title: `{conventional-commit-type}: {story title} (#{github_issue})`
+- PR body must include `Closes #{github_issue}` to auto-close on merge.
+- PRs target `release/v2.5`, not `main`.
+
+### `create_github_issues.py` Script
+
+This script is Story 0 of the build cycle — it is implemented before any epic
+story begins and must be merged to `release/v2.5` before issue generation runs.
+It is idempotent (skips stories where `github_issue` is already set) and
+supports `--dry-run` and `--story {slug}` flags.
+
+---
+
+## CI Platform
+
+- **GitHub Actions**
+- Three test suites run as separate jobs:
+  1. `unit` — runs on every PR to `release/v2.5` and `main`
+  2. `integration` — runs on every PR to `release/v2.5` and `main`
+  3. `validation` — runs as a separate workflow; skipped tests are reported but
+     do not fail the job
+- Notebooks are executed via `nbconvert --execute` in a dedicated CI job; any
+  unhandled cell exception fails the job.
+- `ruff check` and `ruff format --check` run on every PR.
+
+---
+
+## Key Reference Documents (created during v2.5)
+
+| Document                          | Purpose                                               |
+|-----------------------------------|-------------------------------------------------------|
+| `VALIDATION.md`                   | Per-index validation status, tolerance criteria, known discrepancies |
+| `docs/algorithm_refs/eddi.md`     | Citable algorithm spec for EDDI derived from literature |
+| `docs/algorithm_refs/palmer.md`   | Citable algorithm spec for Palmer indices derived from literature |
+| `docs/xarray_compatibility.md`    | xarray compatibility matrix for all public functions  |
+| `llms-full.txt`                   | Machine-optimized single-file context document for AI tools |
+| `llms.txt`                        | Companion summary; registered at site root            |

@@ -1,0 +1,109 @@
+cff-version: 1.2.0
+message: >-
+  If you use this software in your research, please cite it using
+  the metadata in this file. A Zenodo DOI will be registered at the
+  v2.5.0 release and added here — check the repository for the
+  current persistent identifier.
+title: climate_indices
+version: 2.5.0
+date-released: 2026-04-11
+abstract: >-
+  Reference implementations of climate drought indices commonly used
+  in drought monitoring and climate research, including the
+  Standardized Precipitation Index (SPI), Standardized
+  Precipitation-Evapotranspiration Index (SPEI), Evaporative Demand
+  Drought Index (EDDI), and the Palmer family of indices (PDSI,
+  PHDI, PMDI, Palmer Z-Index, scPDSI). Originally developed and
+  deployed at NOAA/NCEI for operational drought monitoring.
+  Algorithms are literature-faithful: every major implementation
+  choice is traceable to a primary source citation, and known
+  validation gaps are disclosed in VALIDATION.md.
+authors:
+  - family-names: Adams
+    given-names: James
+    email: monocongo@gmail.com
+    alias: monocongo
+    orcid: https://orcid.org/0000-0002-3456-8867
+repository-code: https://github.com/monocongo/climate_indices
+url: https://climate-indices.readthedocs.io/en/latest/
+license: BSD-3-Clause
+keywords:
+  - climate
+  - drought
+  - meteorology
+  - SPI
+  - SPEI
+  - EDDI
+  - Palmer
+  - PDSI
+  - PET
+  - evapotranspiration
+  - precipitation
+  - xarray
+  - drought-monitoring
+  - NOAA
+  - climate-indices
+references:
+  - type: article
+    title: "Meteorological Drought"
+    authors:
+      - family-names: Palmer
+        given-names: Wayne C.
+    journal: "U.S. Weather Bureau Research Paper"
+    volume: 45
+    year: 1965
+    notes: "Defines the Palmer Drought Severity Index (PDSI) and Z-Index"
+  - type: conference-paper
+    title: >-
+      Standardized Precipitation Index for Characterizing and
+      Predicting Drought
+    authors:
+      - family-names: McKee
+        given-names: Thomas B.
+      - family-names: Doesken
+        given-names: Nolan J.
+      - family-names: Kleist
+        given-names: John
+    collection-title: >-
+      Preprints, 8th Conference on Applied Climatology
+    year: 1993
+    notes: "Defines the Standardized Precipitation Index (SPI)"
+  - type: article
+    title: >-
+      The Evaporative Demand Drought Index. Part I: Linking Drought
+      Evolution to Variations in Evaporative Demand
+    authors:
+      - family-names: Hobbins
+        given-names: Mike T.
+      - family-names: Wood
+        given-names: Andrew
+      - family-names: McEvoy
+        given-names: Daniel J.
+      - family-names: Huntington
+        given-names: Justin L.
+      - family-names: Morton
+        given-names: Charles
+      - family-names: Anderson
+        given-names: Martha
+      - family-names: Hain
+        given-names: Christopher
+    journal: "Journal of Hydrometeorology"
+    volume: 17
+    year: 2016
+    doi: 10.1175/JHM-D-15-0121.1
+    notes: "Defines the Evaporative Demand Drought Index (EDDI)"
+  - type: article
+    title: >-
+      The Self-Calibrating Palmer Drought Severity Index
+    authors:
+      - family-names: Wells
+        given-names: Nicholas
+      - family-names: Goddard
+        given-names: Simon
+      - family-names: Hayes
+        given-names: Michael J.
+    journal: "Journal of Climate"
+    volume: 17
+    year: 2004
+    doi: 10.1175/1520-0442(2004)017<2335:TSPDSI>2.0.CO;2
+    notes: "Defines the self-calibrating Palmer Drought Severity Index (scPDSI)"

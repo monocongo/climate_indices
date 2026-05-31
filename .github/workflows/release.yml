@@ -32,8 +32,11 @@ jobs:
     - name: Install dependencies
       run: uv sync --dev
 
-    - name: Run tests
-      run: uv run pytest
+    - name: Run core tests
+      run: uv run pytest -m "not benchmark and not validation"
+
+    - name: Run validation tests
+      run: uv run pytest -m validation
 
   security-audit:
     permissions:
@@ -64,10 +67,13 @@ jobs:
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
 
       - name: Install dependencies
-        run: uv sync --frozen --group security
+        run: uv sync --frozen --only-group security
+
+      - name: Export runtime requirements
+        run: uv export --frozen --no-dev --no-emit-project --format requirements.txt --output-file runtime-requirements.txt
 
       - name: Run pip-audit
-        run: uv run pip-audit
+        run: uv run --no-sync pip-audit --requirement runtime-requirements.txt --disable-pip
 
   # Build and publish to PyPI
   release:

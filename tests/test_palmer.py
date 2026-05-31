@@ -10,6 +10,8 @@ from climate_indices import palmer
 ATOL = 5e-5
 RTOL = 0
 
+pytestmark = pytest.mark.validation
+
 
 # ---------------------------------------------------------------------------------------
 @pytest.mark.usefixtures(
