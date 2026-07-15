@@ -77,10 +77,10 @@ def test_read_missing_llms_source_names_file_and_source_lists() -> None:
 @pytest.mark.parametrize(
     ("output", "sources"),
     [
-        ("llms.txt", generate_llms_txt.SUMMARY_FILES),
-        ("llms-full.txt", generate_llms_txt.FULL_FILES),
+        (Path("llms.txt"), generate_llms_txt.SUMMARY_FILES),
+        (Path("llms-full.txt"), generate_llms_txt.FULL_FILES),
     ],
 )
-def test_llms_bundle_matches_configured_sources(output: str, sources: list[str]) -> None:
+def test_llms_bundle_matches_configured_sources(output: Path, sources: list[str]) -> None:
     """Committed llms bundles should exactly match their configured sources."""
     assert (ROOT / output).read_text(encoding="utf-8") == generate_llms_txt._render(sources)
