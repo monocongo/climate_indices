@@ -129,13 +129,18 @@ After the workflow completes:
 
 1. Confirm the GitHub Release exists as `vX.Y.Z`.
 2. Confirm PyPI has `climate-indices` version `X.Y.Z`.
-3. Install from PyPI in a clean environment if extra verification is needed:
+3. On the live PyPI release page, confirm `Requires-Python` matches the constraint
+   in `pyproject.toml` and every supported Python minor appears in the classifiers.
+4. Confirm the Python support badge renders the same minimum and maximum versions
+   listed in the release's classifiers:
+   `https://img.shields.io/badge/Python-3.10--3.14-blue?logo=python`.
+5. Install from PyPI in a clean environment if extra verification is needed:
    ```bash
    uv venv /tmp/climate-indices-release-check
    /tmp/climate-indices-release-check/bin/python -m pip install climate-indices==X.Y.Z
    /tmp/climate-indices-release-check/bin/python -c "import climate_indices; print(climate_indices.__version__)"
    ```
-4. Open a follow-up PR for any next-cycle changelog preparation if needed.
+6. Open a follow-up PR for any next-cycle changelog preparation if needed.
 
 ## Hotfix flow
 

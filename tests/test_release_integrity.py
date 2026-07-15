@@ -22,10 +22,57 @@ from __future__ import annotations
 import re
 from importlib.metadata import version as get_pkg_version
 from pathlib import Path
+from typing import Any
 
 import pytest
+from packaging.specifiers import SpecifierSet
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - exercised only on Python 3.10
+    import tomli as tomllib
 
 ROOT = Path(__file__).parent.parent
+PYTHON_CLASSIFIER_PREFIX = "Programming Language :: Python :: "
+
+
+def _read_toml(relative_path: str) -> dict[str, Any]:
+    """Read a TOML file relative to the repository root."""
+    with (ROOT / relative_path).open("rb") as file:
+        return tomllib.load(file)
+
+
+def _declared_python_versions() -> list[str]:
+    """Return supported Python minors from package classifiers."""
+    classifiers = _read_toml("pyproject.toml")["project"]["classifiers"]
+    return [
+        classifier.removeprefix(PYTHON_CLASSIFIER_PREFIX)
+        for classifier in classifiers
+        if re.fullmatch(rf"{re.escape(PYTHON_CLASSIFIER_PREFIX)}\d+\.\d+", classifier)
+    ]
+
+
+def _expected_python_constraint() -> SpecifierSet:
+    """Derive the exact supported range from the first and last classifiers."""
+    versions = _declared_python_versions()
+    minimum_major, minimum_minor = map(int, versions[0].split("."))
+    maximum_major, maximum_minor = map(int, versions[-1].split("."))
+    assert minimum_major == maximum_major, "Python classifiers must remain within one major version"
+    return SpecifierSet(f">={minimum_major}.{minimum_minor},<{maximum_major}.{maximum_minor + 1}")
+
+
+def _workflow_python_matrix(relative_path: str) -> list[str]:
+    """Extract the single inline Python test matrix from a workflow."""
+    workflow = (ROOT / relative_path).read_text()
+    matches = re.findall(r"^\s+python-version:\s*\[([^]]+)]", workflow, re.MULTILINE)
+    assert len(matches) == 1, f"Expected one Python matrix in {relative_path}, found {len(matches)}"
+    return re.findall(r"['\"](\d+\.\d+)['\"]", matches[0])
+
+
+def _expected_badge_url() -> str:
+    """Derive the static Shields badge URL from package classifiers."""
+    versions = _declared_python_versions()
+    return f"https://img.shields.io/badge/Python-{versions[0]}--{versions[-1]}-blue?logo=python"
 
 
 def _read_pyproject_version() -> str:
@@ -40,6 +87,78 @@ def _read_pyproject_version() -> str:
 # ---------------------------------------------------------------------------
 # Always-on guardrails
 # ---------------------------------------------------------------------------
+
+
+def test_python_classifiers_are_contiguous_and_match_requires_python() -> None:
+    """Classifiers are the source of truth for a contiguous supported range."""
+    versions = _declared_python_versions()
+    assert versions, "pyproject.toml must declare at least one Python minor classifier"
+
+    parsed = [tuple(map(int, version.split("."))) for version in versions]
+    major_versions = {major for major, _minor in parsed}
+    assert len(major_versions) == 1, "Python classifiers must remain within one major version"
+    major = parsed[0][0]
+    expected_versions = [f"{major}.{minor}" for minor in range(parsed[0][1], parsed[-1][1] + 1)]
+    assert versions == expected_versions, "Python classifiers must be ordered and contiguous"
+
+    requires_python = _read_toml("pyproject.toml")["project"]["requires-python"]
+    assert SpecifierSet(requires_python) == _expected_python_constraint(), (
+        "project.requires-python must exactly span the classified Python minors"
+    )
+
+
+def test_uv_lock_matches_declared_python_constraint() -> None:
+    """The lockfile must use the same normalized Python constraint as metadata."""
+    locked_constraint = _read_toml("uv.lock")["requires-python"]
+    assert SpecifierSet(locked_constraint) == _expected_python_constraint()
+
+
+@pytest.mark.parametrize(
+    "workflow",
+    [
+        ".github/workflows/unit-tests-workflow.yml",
+        ".github/workflows/release.yml",
+    ],
+)
+def test_workflow_python_matrix_matches_classifiers(workflow: str) -> None:
+    """Unit-test and release matrices must cover exactly the supported minors."""
+    assert _workflow_python_matrix(workflow) == _declared_python_versions()
+
+
+def test_macos_covers_minimum_and_maximum_python() -> None:
+    """The unit-test workflow must exercise both support boundaries on macOS."""
+    workflow = (ROOT / ".github" / "workflows" / "unit-tests-workflow.yml").read_text()
+    macos_versions = re.findall(
+        r"- python-version:\s*['\"](\d+\.\d+)['\"]\s+os:\s*macos-latest",
+        workflow,
+    )
+    versions = _declared_python_versions()
+    assert macos_versions == [versions[0], versions[-1]]
+
+
+def test_docker_uses_latest_supported_python() -> None:
+    """Every Docker build stage must use the latest classified Python minor."""
+    dockerfile = (ROOT / "Dockerfile").read_text()
+    base_versions = re.findall(r"^FROM python:(\d+\.\d+)-slim", dockerfile, re.MULTILINE)
+    assert base_versions, "Dockerfile must use an official python:<minor>-slim base image"
+    assert set(base_versions) == {_declared_python_versions()[-1]}
+
+
+def test_front_page_python_support_matches_classifiers() -> None:
+    """README rows, latest marker, and front-page badges must match metadata."""
+    versions = _declared_python_versions()
+    badge_url = _expected_badge_url()
+    readme = (ROOT / "README.md").read_text()
+    docs_index = (ROOT / "docs" / "index.rst").read_text()
+
+    support_rows = re.findall(r"^\| (\d+\.\d+) \| Supported \|([^|]*)\|$", readme, re.MULTILINE)
+    assert [version for version, _notes in support_rows] == versions
+    assert support_rows[0][1].strip() == "Minimum supported version"
+    assert support_rows[-1][1].strip() == "Latest supported version"
+
+    badge_label = f"Python | {versions[0]}-{versions[-1]}"
+    assert f"[![{badge_label}]({badge_url})](#supported-python-versions)" in readme
+    assert f".. |Python| image:: {badge_url}" in docs_index
 
 
 def test_release_workflow_uses_oidc_not_token() -> None:
