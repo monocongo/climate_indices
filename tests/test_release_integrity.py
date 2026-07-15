@@ -36,7 +36,7 @@ ROOT = Path(__file__).parent.parent
 PYTHON_CLASSIFIER_PREFIX = "Programming Language :: Python :: "
 
 
-def _read_toml(relative_path: str) -> dict[str, Any]:
+def _read_toml(relative_path: Path) -> dict[str, Any]:
     """Read a TOML file relative to the repository root."""
     with (ROOT / relative_path).open("rb") as file:
         return tomllib.load(file)
@@ -44,7 +44,7 @@ def _read_toml(relative_path: str) -> dict[str, Any]:
 
 def _declared_python_versions() -> list[str]:
     """Return supported Python minors from package classifiers."""
-    classifiers = _read_toml("pyproject.toml")["project"]["classifiers"]
+    classifiers = _read_toml(Path("pyproject.toml"))["project"]["classifiers"]
     return [
         classifier.removeprefix(PYTHON_CLASSIFIER_PREFIX)
         for classifier in classifiers
@@ -61,7 +61,7 @@ def _expected_python_constraint() -> SpecifierSet:
     return SpecifierSet(f">={minimum_major}.{minimum_minor},<{maximum_major}.{maximum_minor + 1}")
 
 
-def _workflow_python_matrix(relative_path: str) -> list[str]:
+def _workflow_python_matrix(relative_path: Path) -> list[str]:
     """Extract the single inline Python test matrix from a workflow."""
     workflow = (ROOT / relative_path).read_text()
     matches = re.findall(r"^\s+python-version:\s*\[([^]]+)]", workflow, re.MULTILINE)
@@ -101,7 +101,7 @@ def test_python_classifiers_are_contiguous_and_match_requires_python() -> None:
     expected_versions = [f"{major}.{minor}" for minor in range(parsed[0][1], parsed[-1][1] + 1)]
     assert versions == expected_versions, "Python classifiers must be ordered and contiguous"
 
-    requires_python = _read_toml("pyproject.toml")["project"]["requires-python"]
+    requires_python = _read_toml(Path("pyproject.toml"))["project"]["requires-python"]
     assert SpecifierSet(requires_python) == _expected_python_constraint(), (
         "project.requires-python must exactly span the classified Python minors"
     )
@@ -109,18 +109,18 @@ def test_python_classifiers_are_contiguous_and_match_requires_python() -> None:
 
 def test_uv_lock_matches_declared_python_constraint() -> None:
     """The lockfile must use the same normalized Python constraint as metadata."""
-    locked_constraint = _read_toml("uv.lock")["requires-python"]
+    locked_constraint = _read_toml(Path("uv.lock"))["requires-python"]
     assert SpecifierSet(locked_constraint) == _expected_python_constraint()
 
 
 @pytest.mark.parametrize(
     "workflow",
     [
-        ".github/workflows/unit-tests-workflow.yml",
-        ".github/workflows/release.yml",
+        Path(".github/workflows/unit-tests-workflow.yml"),
+        Path(".github/workflows/release.yml"),
     ],
 )
-def test_workflow_python_matrix_matches_classifiers(workflow: str) -> None:
+def test_workflow_python_matrix_matches_classifiers(workflow: Path) -> None:
     """Unit-test and release matrices must cover exactly the supported minors."""
     assert _workflow_python_matrix(workflow) == _declared_python_versions()
 
@@ -150,6 +150,7 @@ def test_front_page_python_support_matches_classifiers() -> None:
     badge_url = _expected_badge_url()
     readme = (ROOT / "README.md").read_text()
     docs_index = (ROOT / "docs" / "index.rst").read_text()
+    release_process = (ROOT / "docs" / "release-process.md").read_text()
 
     support_rows = re.findall(r"^\| (\d+\.\d+) \| Supported \|([^|]*)\|$", readme, re.MULTILINE)
     assert [version for version, _notes in support_rows] == versions
@@ -159,6 +160,7 @@ def test_front_page_python_support_matches_classifiers() -> None:
     badge_label = f"Python | {versions[0]}-{versions[-1]}"
     assert f"[![{badge_label}]({badge_url})](#supported-python-versions)" in readme
     assert f".. |Python| image:: {badge_url}" in docs_index
+    assert badge_url in release_process
 
 
 def test_release_workflow_uses_oidc_not_token() -> None:
