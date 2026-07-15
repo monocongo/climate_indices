@@ -151,7 +151,7 @@ def test_workflow_python_matrix_extracts_quoted_versions_in_order(tmp_path: Path
     """A single inline matrix must yield versions in file order, regardless of quote style."""
     workflow = tmp_path / "workflow.yml"
     workflow.write_text(
-        "jobs:\n  a:\n    strategy:\n      matrix:\n        python-version: [\"3.11\", '3.10', \"3.12\"]\n",
+        'jobs:\n  a:\n    strategy:\n      matrix:\n        python-version: ["3.11", \'3.10\', "3.12"]\n',
         encoding="utf-8",
     )
 
@@ -243,8 +243,7 @@ def test_release_process_documents_pypi_metadata_verification() -> None:
     """
     release_process = (ROOT / "docs" / "release-process.md").read_text()
     assert "Requires-Python" in release_process, (
-        "docs/release-process.md must instruct maintainers to verify the live "
-        "PyPI Requires-Python metadata"
+        "docs/release-process.md must instruct maintainers to verify the live PyPI Requires-Python metadata"
     )
     assert "every supported Python minor appears in the classifiers" in release_process
     assert _expected_badge_url() in release_process
