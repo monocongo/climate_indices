@@ -163,6 +163,34 @@ def test_front_page_python_support_matches_classifiers() -> None:
     assert badge_url in release_process
 
 
+def test_release_process_documents_pypi_metadata_verification() -> None:
+    """Post-release checklist must direct maintainers to verify PyPI Requires-Python
+    and classifiers, and to cross-check the badge against them.
+    """
+    release_process = (ROOT / "docs" / "release-process.md").read_text()
+    assert "Requires-Python" in release_process, (
+        "docs/release-process.md must instruct maintainers to verify the live "
+        "PyPI Requires-Python metadata"
+    )
+    assert "every supported Python minor appears in the classifiers" in release_process
+    assert _expected_badge_url() in release_process
+
+
+def test_llms_bundles_reference_main_branch_not_master() -> None:
+    """Generated llms bundles must not reference the renamed default branch."""
+    for relative_path in (Path("llms.txt"), Path("llms-full.txt")):
+        content = (ROOT / relative_path).read_text(encoding="utf-8")
+        assert "master" not in content, f"{relative_path} still references the old 'master' branch name"
+
+
+def test_llms_bundles_contain_python_support_badge() -> None:
+    """Generated llms bundles must mirror the front-page Python support badge."""
+    badge_url = _expected_badge_url()
+    for relative_path in (Path("llms.txt"), Path("llms-full.txt")):
+        content = (ROOT / relative_path).read_text(encoding="utf-8")
+        assert badge_url in content, f"{relative_path} is missing the Python support badge URL"
+
+
 def test_release_workflow_uses_oidc_not_token() -> None:
     """release.yml must use OIDC trusted publishing, not a stored PyPI API token.
 
