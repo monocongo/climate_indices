@@ -33,8 +33,7 @@ def _read(path: str) -> str:
         text = file_path.read_text(encoding="utf-8").strip()
     except FileNotFoundError as exc:
         raise FileNotFoundError(
-            f"Source document not found: {path}. "
-            "Check SUMMARY_FILES and FULL_FILES in scripts/generate_llms_txt.py."
+            f"Source document not found: {path}. Check SUMMARY_FILES and FULL_FILES in scripts/generate_llms_txt.py."
         ) from exc
     return "\n".join(line.rstrip() for line in text.splitlines())
 
@@ -44,8 +43,8 @@ def _section(path: str) -> str:
     return f"## {path}\n\n{_read(path)}\n"
 
 
-def _write(output: str, sources: list[str]) -> None:
-    """Write an llms text file from the selected source files."""
+def _render(sources: list[str]) -> str:
+    """Render an llms text bundle from the selected source files."""
     body = [
         "# climate_indices",
         "",
@@ -55,7 +54,12 @@ def _write(output: str, sources: list[str]) -> None:
         "",
         *(_section(path) for path in sources),
     ]
-    (ROOT / output).write_text("\n".join(body).rstrip() + "\n", encoding="utf-8")
+    return "\n".join(body).rstrip() + "\n"
+
+
+def _write(output: str, sources: list[str]) -> None:
+    """Write an llms text file from the selected source files."""
+    (ROOT / output).write_text(_render(sources), encoding="utf-8")
 
 
 def main() -> None:

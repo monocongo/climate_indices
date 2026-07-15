@@ -6,7 +6,7 @@
 [//]: # ([![Codacy Status]&#40;https://api.codacy.com/project/badge/Grade/48563cbc37504fc6aa72100370e71f58&#41;]&#40;https://www.codacy.com/app/monocongo/climate_indices?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=monocongo/climate_indices&amp;utm_campaign=Badge_Grade&#41;)
 [![Actions Status](https://github.com/monocongo/climate_indices/workflows/tests/badge.svg)](https://github.com/monocongo/climate_indices/actions)
 [![License](https://img.shields.io/badge/License-BSD%203--Clause-green.svg)](https://opensource.org/licenses/BSD-3-Clause)
-![PyPI - Python Version](https://img.shields.io/pypi/pyversions/climate-indices)
+[![Python | 3.10-3.14](https://img.shields.io/badge/Python-3.10--3.14-blue?logo=python)](#supported-python-versions)
 
 #### Python library of indices useful for climate monitoring
 

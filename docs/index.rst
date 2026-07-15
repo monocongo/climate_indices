@@ -15,7 +15,7 @@
    :target: https://www.codacy.com/app/monocongo/climate_indices?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=monocongo/climate_indices&amp;utm_campaign=Badge_Grade
 .. |License| image:: https://img.shields.io/badge/license-BSD%203--Clause-green.svg
    :target: https://opensource.org/licenses/BSD-3-Clause
-.. |Python| image:: https://img.shields.io/pypi/pyversions/climate-indices
+.. |Python| image:: https://img.shields.io/badge/Python-3.10--3.14-blue?logo=python
 
 |Build| |Coverage| |Quality| |License| |Python|
 
