@@ -122,6 +122,30 @@ def test_render_strips_trailing_blank_lines_and_whitespace(
     assert not result.endswith("\n\n")
 
 
+def test_render_preserves_internal_blank_lines_between_sections(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """_render must preserve blank lines inside a source file, not just strip trailing ones."""
+    monkeypatch.setattr(generate_llms_txt, "ROOT", tmp_path)
+    (tmp_path / "doc.md").write_text("Para one.\n\nPara two.\n", encoding="utf-8")
+
+    result = generate_llms_txt._render(["doc.md"])
+
+    assert "## doc.md\n\nPara one.\n\nPara two.\n" in result
+
+
+def test_render_repeats_section_for_duplicate_source_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """_render must not deduplicate sources; each entry renders its own section."""
+    monkeypatch.setattr(generate_llms_txt, "ROOT", tmp_path)
+    (tmp_path / "doc.md").write_text("Body.\n", encoding="utf-8")
+
+    result = generate_llms_txt._render(["doc.md", "doc.md"])
+
+    assert result.count("## doc.md") == 2
+
+
 def test_render_with_no_sources_returns_only_preamble(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """An empty source list should still render the fixed preamble with no sections."""
     monkeypatch.setattr(generate_llms_txt, "ROOT", tmp_path)

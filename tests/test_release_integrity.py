@@ -20,6 +20,7 @@ Two tiers of tests:
 from __future__ import annotations
 
 import re
+import sys
 from importlib.metadata import version as get_pkg_version
 from pathlib import Path
 from typing import Any
@@ -111,6 +112,79 @@ def test_uv_lock_matches_declared_python_constraint() -> None:
     """The lockfile must use the same normalized Python constraint as metadata."""
     locked_constraint = _read_toml(Path("uv.lock"))["requires-python"]
     assert SpecifierSet(locked_constraint) == _expected_python_constraint()
+
+
+def test_declared_python_versions_ignores_non_minor_classifiers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bare-major or 'X :: Only' classifiers must not be mistaken for supported minors."""
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "_read_toml",
+        lambda relative_path: {  # noqa: ARG005 - signature must match _read_toml
+            "project": {
+                "classifiers": [
+                    "Programming Language :: Python :: 3",
+                    "Programming Language :: Python :: 3 :: Only",
+                    "Programming Language :: Python :: 3.10",
+                    "Programming Language :: Python :: 3.11",
+                ]
+            }
+        },
+    )
+
+    assert _declared_python_versions() == ["3.10", "3.11"]
+
+
+def test_expected_python_constraint_excludes_adjacent_minors() -> None:
+    """The derived constraint must admit only the declared minor range, not its neighbors."""
+    versions = _declared_python_versions()
+    minimum_major, minimum_minor = map(int, versions[0].split("."))
+    maximum_major, maximum_minor = map(int, versions[-1].split("."))
+    constraint = _expected_python_constraint()
+
+    assert f"{minimum_major}.{minimum_minor}.0" in constraint
+    assert f"{maximum_major}.{maximum_minor}.99" in constraint
+    assert f"{minimum_major}.{minimum_minor - 1}.9" not in constraint
+    assert f"{maximum_major}.{maximum_minor + 1}.0" not in constraint
+
+
+def test_workflow_python_matrix_extracts_quoted_versions_in_order(tmp_path: Path) -> None:
+    """A single inline matrix must yield versions in file order, regardless of quote style."""
+    workflow = tmp_path / "workflow.yml"
+    workflow.write_text(
+        "jobs:\n  a:\n    strategy:\n      matrix:\n        python-version: [\"3.11\", '3.10', \"3.12\"]\n",
+        encoding="utf-8",
+    )
+
+    assert _workflow_python_matrix(workflow) == ["3.11", "3.10", "3.12"]
+
+
+def test_workflow_python_matrix_rejects_missing_matrix(tmp_path: Path) -> None:
+    """A workflow with no inline python-version matrix must fail fast, not silently pass."""
+    workflow = tmp_path / "workflow.yml"
+    workflow.write_text("jobs:\n  a:\n    steps: []\n", encoding="utf-8")
+
+    with pytest.raises(AssertionError, match="Expected one Python matrix"):
+        _workflow_python_matrix(workflow)
+
+
+def test_workflow_python_matrix_rejects_multiple_matrices(tmp_path: Path) -> None:
+    """A workflow with more than one inline python-version matrix must fail fast."""
+    workflow = tmp_path / "workflow.yml"
+    workflow.write_text(
+        "jobs:\n"
+        "  a:\n"
+        "    strategy:\n"
+        "      matrix:\n"
+        "        python-version: ['3.10', '3.11']\n"
+        "  b:\n"
+        "    strategy:\n"
+        "      matrix:\n"
+        "        python-version: ['3.12']\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(AssertionError, match="Expected one Python matrix"):
+        _workflow_python_matrix(workflow)
 
 
 @pytest.mark.parametrize(
