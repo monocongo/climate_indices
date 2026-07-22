@@ -152,7 +152,7 @@ jobs:
         retention-days: 30
 
     - name: Upload to PyPI
-      uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b  # pinned from release/v1
+      uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247  # pinned from release/v1
       # Uses trusted publishing - no token needed when configured
 
   create-release:
