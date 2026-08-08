@@ -525,7 +525,10 @@ def _statement_200(data: dict[str, Any]) -> None:
     """
     year = data["year"]
     month = data["month"]
-    data["px1"][year, month] = max(0, 0.897 * data["x1"] + data["z"][year, month] / 3.0)
+    wetm, wetb = data["wetm"], data["wetb"]
+    data["px1"][year, month] = max(
+        0, _duration_factor_c(wetm, wetb) * data["x1"] + data["z"][year, month] / (wetm + wetb)
+    )
 
     # if no existing wet spell or drought
     # x1 becomes the new x3
@@ -538,7 +541,10 @@ def _statement_200(data: dict[str, Any]) -> None:
         _statement_220(data)
         return
 
-    data["px2"][year, month] = min(0.0, 0.897 * data["x2"] + data["z"][year, month] / 3.0)
+    drym, dryb = data["drym"], data["dryb"]
+    data["px2"][year, month] = min(
+        0.0, _duration_factor_c(drym, dryb) * data["x2"] + data["z"][year, month] / (drym + dryb)
+    )
 
     # if no existing wet spell or drought x2 becomes the new x3
     if (data["px2"][year, month] <= -1) and (data["px3"][year, month] == 0):

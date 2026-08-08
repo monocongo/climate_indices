@@ -120,3 +120,39 @@ def test_statement_190_px3_selects_wet_factors_when_x3_positive():
     palmer._statement_190(data)
 
     assert data["px3"][0, 0] == pytest.approx(expected_px3)
+
+
+def test_statement_200_px1_always_uses_wet_factors_px2_always_dry():
+    data = _blank_data()
+    data["wetm"], data["wetb"] = 1.0, 3.0
+    data["drym"], data["dryb"] = 2.0, 2.0
+
+    data["year"], data["month"] = 0, 0
+    data["x1"], data["x2"] = 1.0, -1.0
+    data["z"][0, 0] = 0.4
+    # a nonzero px3 prevents the early-return "new spell begins" branches,
+    # so both px1 and px2 get computed and asserted on
+    data["px3"][0, 0] = 5.0
+    # this code path falls through to the final bookkeeping section, which
+    # unconditionally calls _statement_220 (needs pv/ppr present)
+    data["pv"] = 0.0
+    data["ppr"][0, 0] = 0.0
+
+    # Calculate expected values before calling _statement_200, which (on
+    # this code path) unconditionally calls _statement_220, overwriting
+    # data["x1"] and data["x2"] with the freshly computed px1/px2.
+    x1_original, x2_original = data["x1"], data["x2"]
+    wetm, wetb = data["wetm"], data["wetb"]
+    drym, dryb = data["drym"], data["dryb"]
+    z = data["z"][0, 0]
+
+    c_wet = palmer._duration_factor_c(wetm, wetb)
+    expected_px1 = max(0.0, c_wet * x1_original + z / (wetm + wetb))
+
+    c_dry = palmer._duration_factor_c(drym, dryb)
+    expected_px2 = min(0.0, c_dry * x2_original + z / (drym + dryb))
+
+    palmer._statement_200(data)
+
+    assert data["px1"][0, 0] == pytest.approx(expected_px1)
+    assert data["px2"][0, 0] == pytest.approx(expected_px2)
