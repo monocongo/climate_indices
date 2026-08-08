@@ -33,7 +33,7 @@ Traced directly from the Wells, Goddard & Hayes reference C++ implementation (`S
 
 The reference `CalcOneX` reformulates the recursion in terms of duration-factor slope/intercept (`m`, `b`) and `c = 1 - m/(m+b)`:
 
-```
+```text
 newX3 = c·X3 + Z/(m+b)
 ZE    = (m+b)·(wd·0.5 - c·X3)
 ```
