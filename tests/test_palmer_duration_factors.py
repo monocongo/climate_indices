@@ -53,3 +53,24 @@ def test_statement_180_ze_uses_custom_dry_duration_factors():
     palmer._statement_180(data)
 
     assert data["ze"] == pytest.approx(expected_ze)
+
+
+def test_statement_170_ze_uses_custom_wet_duration_factors():
+    data = _blank_data()
+    data["wetm"], data["wetb"] = 3.0, 5.0  # non-default, to prove they're used
+
+    data["year"], data["month"] = 0, 0
+    data["x3"] = 2.0  # an established wet spell
+    data["v"] = 0.0
+    # z chosen so that pv = (z - 0.15) + min(v, 0) < 0, falling into the
+    # branch that actually computes ze
+    data["z"][0, 0] = -0.5
+
+    # Calculate expected value before calling _statement_170 (which may modify x3)
+    m, b = data["wetm"], data["wetb"]
+    x3_original = data["x3"]
+    expected_ze = -b * x3_original + 0.5 * (m + b)
+
+    palmer._statement_170(data)
+
+    assert data["ze"] == pytest.approx(expected_ze)
