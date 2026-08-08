@@ -152,7 +152,7 @@ spi = "climate_indices.__spi__:main"
   - PHDI (Palmer Hydrological Drought Index)
   - PMDI (Palmer Modified Drought Index)
   - ZINDEX (Palmer Z-Index)
-  - Self-calibrated Palmer (scPDSI)
+  - scPDSI (Self-calibrated Palmer Drought Severity Index) — **not implemented**; tracked in [issue #716](https://github.com/monocongo/climate_indices/issues/716)
 
 **Key Algorithms**:
 1. **SPI/SPEI Computation**:
