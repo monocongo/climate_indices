@@ -20,7 +20,7 @@ Traced directly from the Wells, Goddard & Hayes reference C++ implementation (`S
      - Wet side: the largest rolling sum that is not an outlier — specifically, excluding sums whose ratio to the 98th-percentile rolling sum exceeds 1.25 (a "freak anomaly" filter). This wet/dry asymmetry is a real feature of the reference implementation, not a bug to normalize away — we're porting it faithfully for numeric parity.
    - Fit a line (window length vs. extreme sum) via least squares, but adaptively: if the correlation coefficient is below 0.85, drop the longest-window point and refit, repeating down to a minimum of 4 points.
    - Adjust the intercept so the line passes through the most extreme (sign-weighted) residual point among those used in the final fit.
-   - Normalize: `slope /= (sign×4)`, `intercept /= (sign×4)` — this anchors the fitted line to represent a PDSI value of ±4, which is what turns it into a duration-factor slope/intercept pair (`wetm`/`wetb`, `drym`/`drym`) usable in the same recursion formula as Palmer's fixed constants.
+   - Normalize: `slope /= (sign×4)`, `intercept /= (sign×4)` — this anchors the fitted line to represent a PDSI value of ±4, which is what turns it into a duration-factor slope/intercept pair (`wetm`/`wetb`, `drym`/`dryb`) usable in the same recursion formula as Palmer's fixed constants.
 5. **Recursion**: run the existing PDSI state-machine recursion once, fed `Z_raw` and the fitted duration factors, producing an *uncalibrated* scPDSI.
 6. **Iterative percentile rescaling** (run exactly 3 times):
    - Restrict the current PDSI values to the calibration-period window.
@@ -33,7 +33,7 @@ Traced directly from the Wells, Goddard & Hayes reference C++ implementation (`S
 
 The reference `CalcOneX` reformulates the recursion in terms of duration-factor slope/intercept (`m`, `b`) and `c = 1 - m/(m+b)`:
 
-```
+```text
 newX3 = c·X3 + Z/(m+b)
 ZE    = (m+b)·(wd·0.5 - c·X3)
 ```

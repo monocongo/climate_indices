@@ -407,8 +407,8 @@ The Palmer Drought Severity Index (PDSI) and related indices were developed by W
 - **PHDI**: Palmer Hydrological Drought Index (groundwater, reservoir levels)
 - **PMDI**: Palmer Modified Drought Index (short-term agricultural drought)
 - **Z-Index**: Palmer Z-Index (monthly moisture anomaly)
-- **SCPDSI**: Self-Calibrating PDSI (Wells et al., 2004) - improved spatial comparability.
-  **Not yet implemented in this library** -- see `issue #716
+- **scPDSI (not implemented)**: Self-Calibrated PDSI (Wells et al., 2004) is
+  planned as future work to improve spatial comparability; see `issue #716
   <https://github.com/monocongo/climate_indices/issues/716>`_.
 
 These indices are based on a water balance model that accounts for precipitation, evapotranspiration, soil moisture, and runoff.
