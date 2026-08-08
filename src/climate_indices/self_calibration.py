@@ -29,6 +29,7 @@ __all__ = [
     "WET_SIGN",
     "extreme_z_sum",
     "kth_smallest",
+    "least_squares_fit",
     "nan_safe_percentile",
 ]
 
@@ -43,6 +44,11 @@ DRY_SIGN = -1
 # reaches this tolerance.
 _EXTREME_PERCENTILE = 0.98
 _REASONABLE_TOLERANCE = 1.25
+
+# The duration-factor regression drops trailing points until the sign-weighted
+# correlation clears this tolerance, down to a floor of four retained points.
+_CORRELATION_TOLERANCE = 0.85
+_MIN_REGRESSION_POINTS = 4
 
 
 def _validate_sign(sign: int) -> None:
@@ -228,3 +234,100 @@ def extreme_z_sum(z_values: np.ndarray, window_length: int, sign: int) -> float:
     if sign == DRY_SIGN:
         return extreme
     return _highest_reasonable(sums, sign)
+
+
+def least_squares_fit(x: np.ndarray, y: np.ndarray, sign: int) -> tuple[float, float]:
+    """Fit a line by the reference implementation's adaptive least squares.
+
+    Ports ``LeastSquares()``, which differs from textbook OLS in two ways. It
+    trims trailing points until the sign-weighted correlation clears 0.85 (down
+    to a floor of four retained points), and it anchors the intercept on the
+    retained point with the most extreme sign-weighted residual rather than on
+    the sample means. Both are deliberate properties of the published
+    self-calibration procedure.
+
+    Args:
+        x: The independent variable (window lengths, in the duration-factor fit).
+        y: The dependent variable (extreme Z-index sums), same length as x.
+        sign: WET_SIGN or DRY_SIGN, selecting the direction of "most extreme".
+
+    Returns:
+        A tuple of (slope, intercept) for the fitted line.
+
+    Raises:
+        InvalidArgumentError: If sign is invalid, the inputs differ in length,
+            or fewer than four points were supplied.
+    """
+    _validate_sign(sign)
+
+    abscissa = np.asarray(x, dtype=float)
+    ordinate = np.asarray(y, dtype=float)
+    if abscissa.size != ordinate.size:
+        raise InvalidArgumentError(
+            f"mismatched input lengths: {abscissa.size} and {ordinate.size}",
+            argument_name="y",
+            argument_value=str(ordinate.size),
+            valid_values=f"an array of length {abscissa.size}, matching x",
+        )
+    if abscissa.size < _MIN_REGRESSION_POINTS:
+        raise InvalidArgumentError(
+            f"too few points to fit: {abscissa.size}",
+            argument_name="x",
+            argument_value=str(abscissa.size),
+            valid_values=f"at least {_MIN_REGRESSION_POINTS} points",
+        )
+
+    # accumulate sequentially rather than via ndarray.sum(), whose pairwise
+    # summation would reassociate the additions and perturb the low-order bits
+    count = abscissa.size
+    sum_x = sum_y = sum_x2 = sum_y2 = sum_xy = 0.0
+    for index in range(count):
+        this_x = float(abscissa[index])
+        this_y = float(ordinate[index])
+        sum_x += this_x
+        sum_y += this_y
+        sum_x2 += this_x * this_x
+        sum_y2 += this_y * this_y
+        sum_xy += this_x * this_y
+
+    ss_x = sum_x2 - (sum_x * sum_x) / count
+    ss_y = sum_y2 - (sum_y * sum_y) / count
+    ss_xy = sum_xy - (sum_x * sum_y) / count
+    correlation = ss_xy / (math.sqrt(ss_x) * math.sqrt(ss_y))
+
+    # drop points from the end until the fit correlates well enough, or until
+    # only the minimum number of points is left
+    last = count - 1
+    while sign * correlation < _CORRELATION_TOLERANCE and last > _MIN_REGRESSION_POINTS - 1:
+        this_x = float(abscissa[last])
+        this_y = float(ordinate[last])
+        sum_x -= this_x
+        sum_y -= this_y
+        sum_x2 -= this_x * this_x
+        sum_y2 -= this_y * this_y
+        sum_xy -= this_x * this_y
+
+        ss_x = sum_x2 - (sum_x * sum_x) / last
+        ss_y = sum_y2 - (sum_y * sum_y) / last
+        ss_xy = sum_xy - (sum_x * sum_y) / last
+        correlation = ss_xy / (math.sqrt(ss_x) * math.sqrt(ss_y))
+        last -= 1
+
+    slope = ss_xy / ss_x
+
+    # translate the line through the retained point whose sign-weighted residual
+    # is most extreme. The initial anchor of (x[0], 0.0) is the reference's, and
+    # survives whenever no residual is strictly more extreme than zero -- which
+    # happens for retained points that are collinear through the origin.
+    retained = last + 1
+    max_residual = 0.0
+    anchor_x = float(abscissa[0])
+    anchor_y = 0.0
+    for index in range(retained):
+        residual = float(ordinate[index]) - slope * float(abscissa[index])
+        if sign * residual > sign * max_residual:
+            max_residual = residual
+            anchor_x = float(abscissa[index])
+            anchor_y = float(ordinate[index])
+
+    return float(slope), float(anchor_y - slope * anchor_x)

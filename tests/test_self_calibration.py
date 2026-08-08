@@ -131,3 +131,78 @@ class TestExtremeZSum:
     def test_rejects_a_nonpositive_window_length(self):
         with pytest.raises(InvalidArgumentError):
             self_calibration.extreme_z_sum(np.arange(10.0), 0, self_calibration.WET_SIGN)
+
+
+class TestLeastSquaresFit:
+    def test_recovers_an_exact_dry_line_without_trimming(self):
+        x = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        y = np.array([-11.0, -12.0, -13.0, -14.0, -15.0])
+
+        slope, intercept = self_calibration.least_squares_fit(x, y, self_calibration.DRY_SIGN)
+
+        # correlation is -1, so sign * correlation = 1 >= 0.85 and nothing is
+        # trimmed. SSXY / SSX = -10 / 10 = -1. Every residual is -10, ties go to
+        # the earliest point, so intercept = y[0] - slope * x[0] = -11 + 1 = -10.
+        assert slope == pytest.approx(-1.0)
+        assert intercept == pytest.approx(-10.0)
+
+    def test_recovers_an_exact_wet_line_without_trimming(self):
+        x = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        y = np.array([11.0, 12.0, 13.0, 14.0, 15.0])
+
+        slope, intercept = self_calibration.least_squares_fit(x, y, self_calibration.WET_SIGN)
+
+        assert slope == pytest.approx(1.0)
+        assert intercept == pytest.approx(10.0)
+
+    def test_intercept_is_anchored_on_the_most_extreme_residual(self):
+        x = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        y = np.array([11.0, 12.0, 15.0, 14.0, 15.0])
+
+        slope, intercept = self_calibration.least_squares_fit(x, y, self_calibration.WET_SIGN)
+
+        # SSX = 10, SSXY = 10 -> slope = 1.0. Correlation is 0.8704 >= 0.85, so
+        # no trimming. Residuals y - slope*x are 10, 10, 12, 10, 10; index 2 is
+        # the most extreme, so intercept = y[2] - slope*x[2] = 15 - 3 = 12.
+        # A textbook OLS intercept would be ybar - slope*xbar = 13.4 - 3 = 10.4.
+        assert slope == pytest.approx(1.0)
+        assert intercept == pytest.approx(12.0)
+
+    def test_trims_trailing_points_until_the_correlation_clears_the_tolerance(self):
+        x = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        y = np.array([-11.0, -12.0, -13.0, -14.0, -25.0])
+
+        slope, intercept = self_calibration.least_squares_fit(x, y, self_calibration.DRY_SIGN)
+
+        # Over all five points the correlation is -0.8321, so sign*correlation
+        # = 0.8321 < 0.85 and the last point is dropped. The remaining four are
+        # perfectly collinear (correlation -1), giving slope = -5/5 = -1 -- not
+        # the -3 the untrimmed five-point fit would have produced. Residuals are
+        # all -10, so intercept = y[0] - slope*x[0] = -11 + 1 = -10.
+        assert slope == pytest.approx(-1.0)
+        assert intercept == pytest.approx(-10.0)
+
+    def test_trimming_stops_at_four_retained_points(self):
+        x = np.arange(1.0, 11.0)
+        y = np.array([-11.0, -12.0, -13.0, -14.0, 50.0, -60.0, 70.0, -80.0, 90.0, -100.0])
+
+        slope, intercept = self_calibration.least_squares_fit(x, y, self_calibration.DRY_SIGN)
+
+        # The trailing six points are pure noise, so the correlation never
+        # clears the tolerance and trimming runs to its floor. The four points
+        # that survive are the collinear leading ones, giving exactly the fit
+        # they define on their own.
+        assert slope == pytest.approx(-1.0)
+        assert intercept == pytest.approx(-10.0)
+
+    def test_rejects_an_invalid_sign(self):
+        with pytest.raises(InvalidArgumentError):
+            self_calibration.least_squares_fit(np.arange(5.0), np.arange(5.0), 0)
+
+    def test_rejects_mismatched_input_lengths(self):
+        with pytest.raises(InvalidArgumentError):
+            self_calibration.least_squares_fit(np.arange(5.0), np.arange(4.0), self_calibration.WET_SIGN)
+
+    def test_rejects_fewer_points_than_the_trimming_floor(self):
+        with pytest.raises(InvalidArgumentError):
+            self_calibration.least_squares_fit(np.arange(3.0), np.arange(3.0), self_calibration.WET_SIGN)
