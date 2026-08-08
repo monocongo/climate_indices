@@ -4,4 +4,4 @@
 
 ## Consequences
 
-New index computations must be added to `compute.py` and wired into both layers (numpy signature in `indices.py`, `@xarray_adapter`-wrapped entry point in `xarray_adapter.py`) rather than picking just one API to extend.
+New non-Palmer index computations must be added to `compute.py` and wired into both layers (numpy signature in `indices.py`, `@xarray_adapter`-wrapped entry point in `xarray_adapter.py`) rather than picking just one API to extend. Palmer-family computations are the established exception: they live in `palmer.py` and currently expose only their numpy API. Adding xarray support for Palmer indices requires a separate, explicit architecture decision rather than unsupported wiring through `indices.py` or `xarray_adapter.py`.
