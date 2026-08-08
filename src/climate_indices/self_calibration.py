@@ -26,7 +26,9 @@ from climate_indices.exceptions import InvalidArgumentError
 
 __all__ = [
     "DRY_SIGN",
+    "DURATION_FACTOR_WINDOW_LENGTHS",
     "WET_SIGN",
+    "duration_factors",
     "extreme_z_sum",
     "kth_smallest",
     "least_squares_fit",
@@ -49,6 +51,16 @@ _REASONABLE_TOLERANCE = 1.25
 # correlation clears this tolerance, down to a floor of four retained points.
 _CORRELATION_TOLERANCE = 0.85
 _MIN_REGRESSION_POINTS = 4
+
+# Spell durations, in months, sampled by the duration-factor regression. The
+# reference implementation also carries weekly sets; Palmer indices here are
+# monthly-only, so only the monthly set is ported.
+DURATION_FACTOR_WINDOW_LENGTHS: tuple[int, ...] = (3, 6, 9, 12, 18, 24, 30, 36, 42, 48)
+
+# The fitted duration-factor line represents a PDSI value of +/-4, the
+# conventional extreme threshold; normalizing by it rescales the regression into
+# the slope/intercept pair the PDSI recursion consumes.
+_PDSI_ANCHOR = 4.0
 
 
 def _validate_sign(sign: int) -> None:
@@ -331,3 +343,39 @@ def least_squares_fit(x: np.ndarray, y: np.ndarray, sign: int) -> tuple[float, f
             anchor_y = float(ordinate[index])
 
     return float(slope), float(anchor_y - slope * anchor_x)
+
+
+def duration_factors(z_values: np.ndarray, sign: int) -> tuple[float, float]:
+    """Fit the wet or dry duration factors for one location's Z-index series.
+
+    Ports ``CalcDurFact()``, the self-calibration step that replaces Palmer's
+    (1965) fixed national duration-factor constants with values fitted to the
+    location at hand. One representative extreme rolling Z sum is taken per
+    spell duration, a line is fitted through those ten points, and the result is
+    normalized against a PDSI value of +/-4.
+
+    Callers are responsible for restricting ``z_values`` to the calibration
+    period before calling.
+
+    Args:
+        z_values: The raw Z-index series for the calibration period, in
+            chronological order; NaN means missing.
+        sign: WET_SIGN to fit wet-spell factors, DRY_SIGN for dry-spell factors.
+
+    Returns:
+        A tuple of (m, b) -- the duration-factor slope and intercept, in the
+        form the PDSI recursion consumes as wetm/wetb or drym/dryb.
+
+    Raises:
+        InvalidArgumentError: If sign is invalid.
+    """
+    _validate_sign(sign)
+
+    series = np.asarray(z_values, dtype=float)
+    window_lengths = np.array(DURATION_FACTOR_WINDOW_LENGTHS, dtype=float)
+    extreme_sums = np.array([extreme_z_sum(series, length, sign) for length in DURATION_FACTOR_WINDOW_LENGTHS])
+
+    slope, intercept = least_squares_fit(window_lengths, extreme_sums, sign)
+
+    anchor = sign * _PDSI_ANCHOR
+    return slope / anchor, intercept / anchor

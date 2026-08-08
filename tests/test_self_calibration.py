@@ -206,3 +206,59 @@ class TestLeastSquaresFit:
     def test_rejects_fewer_points_than_the_trimming_floor(self):
         with pytest.raises(InvalidArgumentError):
             self_calibration.least_squares_fit(np.arange(3.0), np.arange(3.0), self_calibration.WET_SIGN)
+
+
+class TestDurationFactors:
+    def test_window_lengths_match_the_reference_monthly_set(self):
+        assert self_calibration.DURATION_FACTOR_WINDOW_LENGTHS == (
+            3,
+            6,
+            9,
+            12,
+            18,
+            24,
+            30,
+            36,
+            42,
+            48,
+        )
+
+    @pytest.mark.parametrize("sign", [1, -1])
+    def test_normalizes_the_raw_fit_by_sign_times_four(self, sign):
+        rng = np.random.default_rng(7)
+        z = rng.normal(0.0, 1.5, size=600)
+
+        window_lengths = np.array(self_calibration.DURATION_FACTOR_WINDOW_LENGTHS, dtype=float)
+        extreme_sums = np.array(
+            [
+                self_calibration.extreme_z_sum(z, length, sign)
+                for length in self_calibration.DURATION_FACTOR_WINDOW_LENGTHS
+            ]
+        )
+        raw_slope, raw_intercept = self_calibration.least_squares_fit(window_lengths, extreme_sums, sign)
+
+        slope, intercept = self_calibration.duration_factors(z, sign)
+
+        assert slope == pytest.approx(raw_slope / (sign * 4.0))
+        assert intercept == pytest.approx(raw_intercept / (sign * 4.0))
+
+        # guard against the assertions above passing vacuously on a zero fit
+        assert raw_slope != pytest.approx(0.0)
+        assert raw_intercept != pytest.approx(0.0)
+        assert slope != pytest.approx(raw_slope)
+
+    def test_dry_factors_are_plausible_for_a_realistic_series(self):
+        rng = np.random.default_rng(7)
+        z = rng.normal(0.0, 1.5, size=600)
+
+        slope, intercept = self_calibration.duration_factors(z, self_calibration.DRY_SIGN)
+
+        # the PDSI recursion divides by (m + b) and weights by b / (m + b), so a
+        # usable dry fit needs a positive sum and a weighting fraction below 1 --
+        # Palmer's fixed national values are m = 0.309, b = 2.691 for comparison
+        assert slope + intercept > 0.0
+        assert 0.0 < intercept / (slope + intercept) < 1.0
+
+    def test_rejects_an_invalid_sign(self):
+        with pytest.raises(InvalidArgumentError):
+            self_calibration.duration_factors(np.arange(600.0), 0)
