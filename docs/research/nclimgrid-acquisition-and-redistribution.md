@@ -1,6 +1,6 @@
 # nClimGrid acquisition and redistribution facts
 
-**Research date:** 2026-08-08  
+**Research date:** 2026-08-08
 **Scope:** The source supply chain and rights for the Explorer's Demonstration Sample only. This finding does not revisit the interactive-explorer landscape. Every external source below is an NCEI/NOAA primary record or an official NOAA-managed NODD dataset entry.
 
 ## Answer
