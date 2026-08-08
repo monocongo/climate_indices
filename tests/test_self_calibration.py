@@ -72,3 +72,62 @@ class TestNanSafePercentile:
     def test_rejects_a_fraction_outside_the_unit_interval(self, fraction):
         with pytest.raises(InvalidArgumentError):
             self_calibration.nan_safe_percentile(np.arange(1.0, 11.0), fraction)
+
+
+class TestExtremeZSum:
+    def test_dry_side_returns_the_most_negative_rolling_sum(self):
+        z = np.array([-1.0, -5.0, -2.0, 0.0, -3.0])
+
+        # rolling 2-period sums: -6, -7, -2, -3 -> most negative is -7
+        result = self_calibration.extreme_z_sum(z, 2, self_calibration.DRY_SIGN)
+
+        assert result == pytest.approx(-7.0)
+
+    def test_wet_side_discards_a_freak_anomaly(self):
+        z = np.array([1.0, 1.0, 2.0, 2.0, 3.0, 97.0])
+
+        # rolling 2-period sums: 2, 3, 4, 5, 100.
+        # threshold = 98th percentile = kth smallest with k = int(0.98 * 5) = 4,
+        # i.e. 5.0. The 100 sum fails the filter (100 / 5 = 20.0 >= 1.25) and is
+        # discarded; 5.0 passes (5 / 5 = 1.0) and is the largest survivor.
+        result = self_calibration.extreme_z_sum(z, 2, self_calibration.WET_SIGN)
+
+        assert result == pytest.approx(5.0)
+
+    def test_dry_side_keeps_the_anomaly_the_wet_side_would_discard(self):
+        # exact mirror image of the wet case above: rolling sums -2, -3, -4, -5, -100
+        z = np.array([-1.0, -1.0, -2.0, -2.0, -3.0, -97.0])
+
+        # the dry side is deliberately unfiltered in the reference algorithm, so
+        # it returns the -100 outlier rather than the -5 the wet side would keep
+        result = self_calibration.extreme_z_sum(z, 2, self_calibration.DRY_SIGN)
+
+        assert result == pytest.approx(-100.0)
+
+    def test_missing_periods_are_skipped_rather_than_treated_as_zero(self):
+        with_missing = np.array([1.0, 1.0, np.nan, 2.0, 2.0, 3.0, 97.0])
+        without_missing = np.array([1.0, 1.0, 2.0, 2.0, 3.0, 97.0])
+
+        result = self_calibration.extreme_z_sum(with_missing, 2, self_calibration.WET_SIGN)
+
+        # a NaN mid-slide leaves the window and running sum untouched, so the
+        # result is identical to the series with the NaN simply removed
+        assert result == pytest.approx(self_calibration.extreme_z_sum(without_missing, 2, self_calibration.WET_SIGN))
+        assert result == pytest.approx(5.0)
+
+    def test_missing_periods_during_the_initial_fill_are_retried(self):
+        z = np.array([1.0, np.nan, 1.0, 2.0, 2.0, 3.0, 97.0])
+
+        # the NaN must not consume one of the window's two slots, so the first
+        # window is [1.0, 1.0] and the rolling sums are 2, 3, 4, 5, 100 again
+        result = self_calibration.extreme_z_sum(z, 2, self_calibration.WET_SIGN)
+
+        assert result == pytest.approx(5.0)
+
+    def test_rejects_an_invalid_sign(self):
+        with pytest.raises(InvalidArgumentError):
+            self_calibration.extreme_z_sum(np.arange(10.0), 3, 0)
+
+    def test_rejects_a_nonpositive_window_length(self):
+        with pytest.raises(InvalidArgumentError):
+            self_calibration.extreme_z_sum(np.arange(10.0), 0, self_calibration.WET_SIGN)
