@@ -31,3 +31,25 @@ def test_initialize_data_sets_default_duration_factors():
 
     # m + b must reproduce Palmer's published 1/q = 3.0
     assert (data["wetm"] + data["wetb"]) == pytest.approx(3.0)
+
+
+def test_statement_180_ze_uses_custom_dry_duration_factors():
+    data = _blank_data()
+    data["drym"], data["dryb"] = 1.0, 2.0  # non-default, to prove they're used
+
+    data["year"], data["month"] = 0, 0
+    data["x3"] = -2.0  # an established drought
+    data["v"] = 0.0
+    # z chosen so that pv = (z + 0.15) + max(v, 0) > 0, falling into the
+    # branch that actually computes ze (rather than short-circuiting to
+    # _statement_210 for a fizzled abatement)
+    data["z"][0, 0] = 0.5
+
+    # Calculate expected value before calling _statement_180 (which may modify x3)
+    m, b = data["drym"], data["dryb"]
+    x3_original = data["x3"]
+    expected_ze = -b * x3_original - 0.5 * (m + b)
+
+    palmer._statement_180(data)
+
+    assert data["ze"] == pytest.approx(expected_ze)

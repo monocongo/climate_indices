@@ -620,7 +620,8 @@ def _statement_180(data: dict[str, Any]) -> None:
         _statement_210(data)
         return
 
-    data["ze"] = -2.691 * data["x3"] - 1.5
+    m, b = data["drym"], data["dryb"]
+    data["ze"] = -b * data["x3"] - 0.5 * (m + b)
     _statement_190(data)
 
 
