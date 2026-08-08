@@ -110,9 +110,13 @@ def test_statement_190_px3_selects_wet_factors_when_x3_positive():
     data["pv"] = 1.0  # ppr = (pv / q) * 100 = 10 < 100, falls into the px3 branch
     data["z"][0, 0] = 4.0
 
-    palmer._statement_190(data)
-
+    # Calculate expected value before calling _statement_190, which
+    # unconditionally calls _statement_200 -> (on this code path)
+    # _statement_220, overwriting data["x3"] with the freshly computed px3.
     m, b = data["wetm"], data["wetb"]
     c = palmer._duration_factor_c(m, b)
     expected_px3 = c * data["x3"] + data["z"][0, 0] / (m + b)
+
+    palmer._statement_190(data)
+
     assert data["px3"][0, 0] == pytest.approx(expected_px3)
