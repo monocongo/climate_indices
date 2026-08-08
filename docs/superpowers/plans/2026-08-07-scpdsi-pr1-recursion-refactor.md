@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Generalize `src/climate_indices/palmer.py`'s internal PDSI recursion so its duration-factor constants (currently hardcoded `0.897`/`3.0`/`2.691`/`1.5`) are read from the `data` dict instead, defaulting to Palmer's (1965) original national values so `palmer.pdsi()`'s output is bit-for-bit-equivalent (within existing floating-point tolerance) to before this change.
+**Goal:** Generalize `src/climate_indices/palmer.py`'s internal PDSI recursion so its duration-factor constants (currently hardcoded `0.897`/`3.0`/`2.691`/`1.5`) are read from the `data` dict instead, defaulting to Palmer's (1965) original national values so `palmer.pdsi()`'s output remains numerically equivalent within the existing floating-point tolerance.
 
 **Architecture:** Introduce two private module-level constants (`_PALMER_DURATION_P`, `_PALMER_DURATION_Q`) and two small helpers (`_default_duration_factors()`, `_duration_factor_c()`), thread four new `data` dict keys (`wetm`, `wetb`, `drym`, `dryb`) through `_initialize_data()`, and rewrite the five recursion functions (`_statement_170`, `_statement_180`, `_statement_190`, `_statement_200`, `_statement_210`) to compute their formulas from those keys instead of literals. Each function's specific hardcoded constant is replaced with the algebraically-equivalent expression in terms of `m`/`b`/`c` — verified in the design doc's "Verified consistency" section.
 
