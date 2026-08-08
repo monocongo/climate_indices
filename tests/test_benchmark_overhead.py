@@ -2,11 +2,13 @@
 Performance overhead benchmarks for xarray adapter layer.
 
 Validates FR-PERF-001 and NFR-PERF-001:
-- xarray path overhead threshold set to 80% vs NumPy path for 1D arrays
-- CI fails if benchmarks regress beyond threshold
+- xarray path overhead budget is 80% vs NumPy for most 1D operations
+- PET Hargreaves has a measured, operation-specific 100% budget
+- CI fails if benchmarks regress beyond the applicable budget
 
-Tests are marked with @pytest.mark.benchmark and excluded from default test runs.
-Run explicitly with: pytest -m benchmark --benchmark-enable
+Timed tests are marked with @pytest.mark.benchmark and excluded from default test
+runs; deterministic budget-policy tests run normally. Run timed tests explicitly
+with: pytest -m benchmark --benchmark-enable
 """
 
 from __future__ import annotations
@@ -26,12 +28,31 @@ from climate_indices.xarray_adapter import pet_hargreaves, pet_thornthwaite
 # measurement parameters for stable overhead measurement using timeit.repeat
 _OVERHEAD_REPEAT = 7  # independent trials (min filters CI noise)
 _OVERHEAD_NUMBER = 3  # calls per trial (amortizes per-call overhead)
-# overhead threshold: 80% accounts for xarray machinery overhead (apply_ufunc,
+# The shared 80% budget accounts for xarray machinery overhead (apply_ufunc,
 # coordinate handling, metadata propagation) on small 1D arrays. For gridded data
 # (the primary use case), this overhead is amortized across thousands of spatial
-# points and becomes negligible (<5%). Absolute performance remains fast
-# (sub-millisecond for these test cases).
-_OVERHEAD_THRESHOLD = 0.80  # 80%
+# points and becomes negligible (<5%).
+_OVERHEAD_THRESHOLD = 0.80
+# Unchanged GitHub-hosted runs measured PET Hargreaves overhead from 70.9% to
+# 85.7%. Its fast NumPy path makes the ratio unusually sensitive to fixed adapter
+# costs and runner noise. A 100% operation-specific budget adds 14.3 percentage
+# points of headroom above the observed maximum while still failing if the xarray
+# path takes twice as long as the equivalent NumPy path. See issue #740.
+_PET_HARGREAVES_OVERHEAD_THRESHOLD = 1.00
+
+
+def _assert_overhead_within_budget(
+    operation: str,
+    numpy_time: float,
+    xarray_time: float,
+    overhead: float,
+    budget: float,
+) -> None:
+    """Assert that measured xarray overhead is below an operation's budget."""
+    assert overhead < budget, (
+        f"{operation} xarray overhead {overhead:.1%} exceeds {budget:.0%} budget "
+        f"(numpy={numpy_time:.4f}s, xarray={xarray_time:.4f}s)"
+    )
 
 
 def _pet_hargreaves_numpy(
@@ -51,6 +72,38 @@ def _pet_hargreaves_numpy(
         daily_tmean_celsius=(daily_tmin_celsius + daily_tmax_celsius) / 2.0,
         latitude_degrees=latitude_degrees,
     )
+
+
+class TestOverheadBudgetPolicy:
+    """Test pass/fail policy without relying on wall-clock measurements."""
+
+    def test_pet_hargreaves_accepts_observed_ci_variation(self) -> None:
+        """The highest observed unchanged-run overhead retains noise headroom."""
+        numpy_time = 0.002
+        overhead = 0.857
+        xarray_time = numpy_time * (1.0 + overhead)
+
+        _assert_overhead_within_budget(
+            "PET Hargreaves",
+            numpy_time,
+            xarray_time,
+            overhead,
+            _PET_HARGREAVES_OVERHEAD_THRESHOLD,
+        )
+
+    def test_pet_hargreaves_rejects_material_slowdown_with_diagnostics(self) -> None:
+        """A material slowdown fails with both timings and the budget visible."""
+        with pytest.raises(AssertionError) as exc_info:
+            _assert_overhead_within_budget(
+                "PET Hargreaves",
+                numpy_time=0.002,
+                xarray_time=0.0044,
+                overhead=1.20,
+                budget=_PET_HARGREAVES_OVERHEAD_THRESHOLD,
+            )
+
+        expected_message = "PET Hargreaves xarray overhead 120.0% exceeds 100% budget (numpy=0.0020s, xarray=0.0044s)"
+        assert str(exc_info.value).splitlines()[0] == expected_message
 
 
 # ==============================================================================
@@ -228,9 +281,10 @@ class TestOverheadThreshold:
     - xarray apply_ufunc machinery (~0.2ms for PET functions)
     - Coordinate/metadata handling
 
-    Threshold set to 80% for 1D arrays. For gridded data (primary use case),
-    overhead is amortized across spatial dimensions and becomes negligible.
-    Absolute times remain fast (all operations <3ms for 40-year monthly or 5-year daily).
+    The shared budget is 80% for 1D arrays. PET Hargreaves uses its documented
+    operation-specific budget because fixed adapter costs and runner noise are
+    large relative to its fast NumPy baseline. For gridded data (primary use
+    case), overhead is amortized across spatial dimensions and becomes negligible.
 
     Uses timeit.repeat with min selection (standard Python benchmarking practice)
     to filter upward outliers from CI noise while catching real regressions.
@@ -281,10 +335,7 @@ class TestOverheadThreshold:
                 distribution=Distribution.gamma,
             ),
         )
-        assert overhead < _OVERHEAD_THRESHOLD, (
-            f"SPI xarray overhead {overhead:.1%} exceeds {_OVERHEAD_THRESHOLD:.0%} "
-            f"(numpy={np_time:.4f}s, xarray={xa_time:.4f}s)"
-        )
+        _assert_overhead_within_budget("SPI", np_time, xa_time, overhead, _OVERHEAD_THRESHOLD)
 
     def test_spei_overhead(
         self,
@@ -312,10 +363,7 @@ class TestOverheadThreshold:
                 distribution=Distribution.gamma,
             ),
         )
-        assert overhead < _OVERHEAD_THRESHOLD, (
-            f"SPEI xarray overhead {overhead:.1%} exceeds {_OVERHEAD_THRESHOLD:.0%} "
-            f"(numpy={np_time:.4f}s, xarray={xa_time:.4f}s)"
-        )
+        _assert_overhead_within_budget("SPEI", np_time, xa_time, overhead, _OVERHEAD_THRESHOLD)
 
     def test_pet_thornthwaite_overhead(
         self,
@@ -334,10 +382,7 @@ class TestOverheadThreshold:
                 latitude=40.0,
             ),
         )
-        assert overhead < _OVERHEAD_THRESHOLD, (
-            f"PET Thornthwaite xarray overhead {overhead:.1%} exceeds {_OVERHEAD_THRESHOLD:.0%} "
-            f"(numpy={np_time:.4f}s, xarray={xa_time:.4f}s)"
-        )
+        _assert_overhead_within_budget("PET Thornthwaite", np_time, xa_time, overhead, _OVERHEAD_THRESHOLD)
 
     def test_pet_hargreaves_overhead(
         self,
@@ -359,7 +404,10 @@ class TestOverheadThreshold:
                 latitude=40.0,
             ),
         )
-        assert overhead < _OVERHEAD_THRESHOLD, (
-            f"PET Hargreaves xarray overhead {overhead:.1%} exceeds {_OVERHEAD_THRESHOLD:.0%} "
-            f"(numpy={np_time:.4f}s, xarray={xa_time:.4f}s)"
+        _assert_overhead_within_budget(
+            "PET Hargreaves",
+            np_time,
+            xa_time,
+            overhead,
+            _PET_HARGREAVES_OVERHEAD_THRESHOLD,
         )
