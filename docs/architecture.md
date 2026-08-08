@@ -560,6 +560,7 @@ See [ADR-0001](adr/0001-dual-numpy-xarray-api.md).
 See [ADR-0002](adr/0002-multiprocessing-cli-dask-xarray.md).
 
 ### 3. Time Dimension Chunking Constraint
+
 **Decision**: Dask arrays MUST have time as single chunk.
 
 **Rationale**: Climate indices require access to full time series for distribution fitting.
