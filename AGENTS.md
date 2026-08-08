@@ -35,6 +35,9 @@ are recorded as ADRs in [`docs/adr/`](docs/adr/).
   short-lived branch, commit there, push that branch to `origin`, then open a
   PR into `main`.
 - If work begins on `main`, create the branch before making the task commit.
+- If work begins on `main` with uncommitted changes, inspect them first.
+  Stop and ask for confirmation before committing or publishing pre-existing
+  or unrelated changes.
 - Before every push, inspect the destination ref and commits to be published.
   Stop and ask for confirmation if the branch includes pre-existing or
   unrelated commits.
