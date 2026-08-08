@@ -19,8 +19,8 @@ K8_SIZE = 40
 # Palmer's (1965) fixed national duration-factor parameters. Standard PDSI
 # uses these directly; self-calibrating PDSI (scPDSI) fits per-location
 # replacements via the same m/b/c relationship (see palmer's scpdsi()).
-PALMER_DURATION_P = 0.897
-PALMER_DURATION_Q = 1.0 / 3.0
+_PALMER_DURATION_P = 0.897
+_PALMER_DURATION_Q = 1.0 / 3.0
 
 
 def _default_duration_factors() -> tuple[float, float]:
@@ -31,8 +31,8 @@ def _default_duration_factors() -> tuple[float, float]:
     :return a tuple of (m, b), the duration-factor slope and intercept
     :rtype: tuple[float, float]
     """
-    m = (1.0 - PALMER_DURATION_P) / PALMER_DURATION_Q
-    b = PALMER_DURATION_P / PALMER_DURATION_Q
+    m = (1.0 - _PALMER_DURATION_P) / _PALMER_DURATION_Q
+    b = _PALMER_DURATION_P / _PALMER_DURATION_Q
     return m, b
 
 

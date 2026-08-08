@@ -4,7 +4,7 @@
 
 **Goal:** Generalize `src/climate_indices/palmer.py`'s internal PDSI recursion so its duration-factor constants (currently hardcoded `0.897`/`3.0`/`2.691`/`1.5`) are read from the `data` dict instead, defaulting to Palmer's (1965) original national values so `palmer.pdsi()`'s output is bit-for-bit-equivalent (within existing floating-point tolerance) to before this change.
 
-**Architecture:** Introduce two named module-level constants (`PALMER_DURATION_P`, `PALMER_DURATION_Q`) and two small helpers (`_default_duration_factors()`, `_duration_factor_c()`), thread four new `data` dict keys (`wetm`, `wetb`, `drym`, `dryb`) through `_initialize_data()`, and rewrite the five recursion functions (`_statement_170`, `_statement_180`, `_statement_190`, `_statement_200`, `_statement_210`) to compute their formulas from those keys instead of literals. Each function's specific hardcoded constant is replaced with the algebraically-equivalent expression in terms of `m`/`b`/`c` — verified in the design doc's "Verified consistency" section.
+**Architecture:** Introduce two private module-level constants (`_PALMER_DURATION_P`, `_PALMER_DURATION_Q`) and two small helpers (`_default_duration_factors()`, `_duration_factor_c()`), thread four new `data` dict keys (`wetm`, `wetb`, `drym`, `dryb`) through `_initialize_data()`, and rewrite the five recursion functions (`_statement_170`, `_statement_180`, `_statement_190`, `_statement_200`, `_statement_210`) to compute their formulas from those keys instead of literals. Each function's specific hardcoded constant is replaced with the algebraically-equivalent expression in terms of `m`/`b`/`c` — verified in the design doc's "Verified consistency" section.
 
 **Tech Stack:** Python, numpy, pytest (existing `climate_indices` toolchain — no new dependencies).
 
@@ -37,7 +37,7 @@ Tasks 2-5 each touch one recursion function and are independently reviewable (a 
 - Test: `tests/test_palmer_duration_factors.py` (new file)
 
 **Interfaces:**
-- Produces: `palmer.PALMER_DURATION_P: float`, `palmer.PALMER_DURATION_Q: float`, `palmer._default_duration_factors() -> tuple[float, float]` (returns `(m, b)`), `palmer._duration_factor_c(m: float, b: float) -> float`. `_initialize_data()`'s returned dict gains four new float keys: `wetm`, `wetb`, `drym`, `dryb`.
+- Produces: private constants `palmer._PALMER_DURATION_P: float` and `palmer._PALMER_DURATION_Q: float`, plus `palmer._default_duration_factors() -> tuple[float, float]` (returns `(m, b)`), `palmer._duration_factor_c(m: float, b: float) -> float`. `_initialize_data()`'s returned dict gains four new float keys: `wetm`, `wetb`, `drym`, `dryb`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -92,8 +92,8 @@ In `src/climate_indices/palmer.py`, add after the existing `AWCTOP`/`K8_SIZE` co
 # Palmer's (1965) fixed national duration-factor parameters. Standard PDSI
 # uses these directly; self-calibrating PDSI (scPDSI) fits per-location
 # replacements via the same m/b/c relationship (see palmer's scpdsi()).
-PALMER_DURATION_P = 0.897
-PALMER_DURATION_Q = 1.0 / 3.0
+_PALMER_DURATION_P = 0.897
+_PALMER_DURATION_Q = 1.0 / 3.0
 
 
 def _default_duration_factors() -> tuple[float, float]:
@@ -104,8 +104,8 @@ def _default_duration_factors() -> tuple[float, float]:
     :return a tuple of (m, b), the duration-factor slope and intercept
     :rtype: tuple[float, float]
     """
-    m = (1.0 - PALMER_DURATION_P) / PALMER_DURATION_Q
-    b = PALMER_DURATION_P / PALMER_DURATION_Q
+    m = (1.0 - _PALMER_DURATION_P) / _PALMER_DURATION_Q
+    b = _PALMER_DURATION_P / _PALMER_DURATION_Q
     return m, b
 
 
