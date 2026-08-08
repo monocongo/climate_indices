@@ -5,6 +5,9 @@ reference algorithm as implemented in the reference C++ (used for algorithm
 reference only). Each test's comment shows the derivation.
 """
 
+import ast
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -262,3 +265,36 @@ class TestDurationFactors:
     def test_rejects_an_invalid_sign(self):
         with pytest.raises(InvalidArgumentError):
             self_calibration.duration_factors(np.arange(600.0), 0)
+
+
+class TestModuleBoundaries:
+    def test_does_not_import_palmer(self):
+        """The dependency edge runs palmer -> self_calibration only (issue #718)."""
+        source = Path(self_calibration.__file__).read_text(encoding="utf-8")
+        tree = ast.parse(source)
+
+        imported: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                imported.add(module)
+                imported.update(f"{module}.{alias.name}" for alias in node.names)
+
+        offenders = sorted(name for name in imported if "palmer" in name)
+        assert not offenders, f"self_calibration must not import palmer: {offenders}"
+
+    def test_public_surface_is_exported(self):
+        assert set(self_calibration.__all__) == {
+            "DRY_SIGN",
+            "DURATION_FACTOR_WINDOW_LENGTHS",
+            "WET_SIGN",
+            "duration_factors",
+            "extreme_z_sum",
+            "kth_smallest",
+            "least_squares_fit",
+            "nan_safe_percentile",
+        }
+        for name in self_calibration.__all__:
+            assert hasattr(self_calibration, name), f"__all__ names a missing attribute: {name}"
