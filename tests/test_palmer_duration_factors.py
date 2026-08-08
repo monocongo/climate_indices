@@ -156,3 +156,42 @@ def test_statement_200_px1_always_uses_wet_factors_px2_always_dry():
 
     assert data["px1"][0, 0] == pytest.approx(expected_px1)
     assert data["px2"][0, 0] == pytest.approx(expected_px2)
+
+
+def _run_zindex_pipeline(precips: np.ndarray, pet: np.ndarray, awc: float) -> dict:
+    """Runs the same internal pipeline palmer.pdsi() runs, up through
+    _calc_kfactors (but not yet _calc_zindex), and returns the data dict.
+    Exists so this test can inject custom duration factors between
+    initialization and the recursion, without touching palmer.pdsi()'s
+    public signature."""
+    data = palmer._initialize_data(
+        precips=precips,
+        pet=pet,
+        awc=awc,
+        data_start_year=2000,
+        calibration_year_initial=2000,
+        calibration_year_final=2003,
+    )
+    palmer._calc_water_balances(data)
+    palmer._calc_cafec_coefficients(data)
+    palmer._calc_zindex_factors(data)
+    palmer._calc_kfactors(data)
+    return data
+
+
+def test_custom_duration_factors_change_pdsi_output():
+    rng = np.random.default_rng(42)
+    precips = rng.uniform(0.0, 6.0, size=12 * 4)
+    pet = rng.uniform(0.0, 4.0, size=12 * 4)
+
+    data_default = _run_zindex_pipeline(precips, pet, awc=5.0)
+    palmer._calc_zindex(data_default)
+    palmer._finish_up(data_default)
+
+    data_custom = _run_zindex_pipeline(precips, pet, awc=5.0)
+    data_custom["wetm"], data_custom["wetb"] = 1.0, 1.0
+    data_custom["drym"], data_custom["dryb"] = 1.0, 1.0
+    palmer._calc_zindex(data_custom)
+    palmer._finish_up(data_custom)
+
+    assert not np.allclose(data_default["pdsi"], data_custom["pdsi"], equal_nan=True)
