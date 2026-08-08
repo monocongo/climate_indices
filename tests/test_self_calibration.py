@@ -31,7 +31,7 @@ class TestKthSmallest:
         assert np.isnan(self_calibration.kth_smallest(values, 0))
         assert np.isnan(self_calibration.kth_smallest(values, 6))
 
-    def test_does_not_mutate_the_caller_s_array(self):
+    def test_does_not_mutate_the_callers_array(self):
         values = np.array([5.0, 1.0, 4.0, 2.0, 3.0])
         original = values.copy()
 

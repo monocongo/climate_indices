@@ -19,6 +19,7 @@ slice the Z-index series to the calibration window before calling.
 """
 
 import math
+from collections import deque
 
 import numpy as np
 
@@ -137,7 +138,7 @@ def nan_safe_percentile(values: np.ndarray, fraction: float) -> float:
     return kth_smallest(present, int(fraction * present.size))
 
 
-def _highest_reasonable(sums: list[float], sign: int) -> float:
+def _highest_reasonable(sums: np.ndarray, sign: int) -> float:
     """Select the most extreme rolling sum that is not a freak anomaly.
 
     Applies the reference implementation's outlier filter: among the sums whose
@@ -159,7 +160,7 @@ def _highest_reasonable(sums: list[float], sign: int) -> float:
     Returns:
         The most extreme surviving sum, or 0.0 if nothing survives.
     """
-    threshold = nan_safe_percentile(np.array(sums, dtype=float), _EXTREME_PERCENTILE)
+    threshold = nan_safe_percentile(sums, _EXTREME_PERCENTILE)
 
     highest = 0.0
     for value in sums:
@@ -220,7 +221,7 @@ def extreme_z_sum(z_values: np.ndarray, window_length: int, sign: int) -> float:
         )
 
     series = np.asarray(z_values, dtype=float)
-    window: list[float] = []
+    window: deque[float] = deque()
     running = 0.0
     index = 0
 
@@ -233,26 +234,29 @@ def extreme_z_sum(z_values: np.ndarray, window_length: int, sign: int) -> float:
             window.append(value)
 
     extreme = running
-    sums = [running]
+    sums = np.empty(series.size + 1, dtype=float)
+    sum_count = 1
+    sums[0] = running
 
     # slide the window forward one non-missing period at a time. The subtract-
     # then-add ordering below mirrors the reference's accumulation order and is
-    # deliberate: reassociating it as `running += value - window.pop(0)` changes
+    # deliberate: reassociating it as `running += value - old_value` changes
     # the rounding, which PR4 compares against a C++ oracle at ATOL=5e-5.
     while index < series.size:
         value = float(series[index])
         index += 1
         if not math.isnan(value):
-            running -= window.pop(0)
+            running -= window.popleft()
             running += value
             window.append(value)
-            sums.append(running)
+            sums[sum_count] = running
+            sum_count += 1
         if sign * running > sign * extreme:
             extreme = running
 
     if sign == DRY_SIGN:
         return extreme
-    return _highest_reasonable(sums, sign)
+    return _highest_reasonable(sums[:sum_count], sign)
 
 
 def least_squares_fit(x: np.ndarray, y: np.ndarray, sign: int) -> tuple[float, float]:
