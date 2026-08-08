@@ -48,6 +48,20 @@ def _duration_factor_c(m: float, b: float) -> float:
     return b / (m + b)
 
 
+def _select_duration_factors(data: dict[str, Any]) -> tuple[float, float]:
+    """
+    Select the wet or dry duration factors based on the sign of the
+    currently-established spell's severity (X3).
+
+    :param data: dictionary of parameters (intialized in pdsi)
+    :return a tuple of (m, b) - the duration-factor slope and intercept
+    :rtype: tuple[float, float]
+    """
+    if data["x3"] >= 0:
+        return data["wetm"], data["wetb"]
+    return data["drym"], data["dryb"]
+
+
 def _get_awc_bot(awc: float) -> float:
     """
     Calculate available water capcity in bottom layer
@@ -476,7 +490,8 @@ def _statement_210(data: dict[str, Any]) -> None:
     data["px1"][year, month] = 0.0
     data["px2"][year, month] = 0.0
     data["ppr"][year, month] = 0.0
-    data["px3"][year, month] = 0.897 * data["x3"] + data["z"][year, month] / 3.0
+    m, b = _select_duration_factors(data)
+    data["px3"][year, month] = _duration_factor_c(m, b) * data["x3"] + data["z"][year, month] / (m + b)
     data["x"][year, month] = data["px3"][year, month]
 
     if data["k8"] == 0:
@@ -597,7 +612,8 @@ def _statement_190(data: dict[str, Any]) -> None:
         data["ppr"][year, month] = 100
         data["px3"][year, month] = 0
     else:
-        data["px3"][year, month] = 0.897 * data["x3"] + data["z"][year, month] / 3.0
+        m, b = _select_duration_factors(data)
+        data["px3"][year, month] = _duration_factor_c(m, b) * data["x3"] + data["z"][year, month] / (m + b)
 
     _statement_200(data)
 
