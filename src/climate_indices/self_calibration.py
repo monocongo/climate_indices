@@ -171,9 +171,10 @@ def _highest_reasonable(sums: np.ndarray, sign: int) -> float:
             # its missing-value sentinel here, which lets every candidate
             # through, so the filter effectively does not apply.
             is_reasonable = True
-        elif threshold == 0.0:
-            # The reference's division yields infinity, failing the ratio test
-            # for every candidate.
+        elif math.isclose(threshold, 0.0, rel_tol=0.0, abs_tol=0.0):
+            # Use an exact zero tolerance here: the percentile is an observed
+            # value rather than an interpolated result, and a nonzero threshold
+            # must still participate in the reference's ratio test.
             is_reasonable = False
         else:
             is_reasonable = (value / threshold) < _REASONABLE_TOLERANCE

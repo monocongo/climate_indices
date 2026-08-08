@@ -73,8 +73,10 @@ class TestNanSafePercentile:
 
     @pytest.mark.parametrize("fraction", [-0.1, 1.5])
     def test_rejects_a_fraction_outside_the_unit_interval(self, fraction):
+        values = np.arange(1.0, 11.0)
+
         with pytest.raises(InvalidArgumentError):
-            self_calibration.nan_safe_percentile(np.arange(1.0, 11.0), fraction)
+            self_calibration.nan_safe_percentile(values, fraction)
 
 
 class TestExtremeZSum:
@@ -128,12 +130,16 @@ class TestExtremeZSum:
         assert result == pytest.approx(5.0)
 
     def test_rejects_an_invalid_sign(self):
+        z = np.arange(10.0)
+
         with pytest.raises(InvalidArgumentError):
-            self_calibration.extreme_z_sum(np.arange(10.0), 3, 0)
+            self_calibration.extreme_z_sum(z, 3, 0)
 
     def test_rejects_a_nonpositive_window_length(self):
+        z = np.arange(10.0)
+
         with pytest.raises(InvalidArgumentError):
-            self_calibration.extreme_z_sum(np.arange(10.0), 0, self_calibration.WET_SIGN)
+            self_calibration.extreme_z_sum(z, 0, self_calibration.WET_SIGN)
 
     def test_wet_side_returns_the_largest_survivor_rather_than_the_threshold(self):
         z = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 10.0, 11.0])
@@ -197,6 +203,18 @@ class TestExtremeZSum:
         result = self_calibration.extreme_z_sum(z, 1, self_calibration.WET_SIGN)
 
         assert result == pytest.approx(0.0)
+
+    def test_wet_side_applies_the_ratio_test_to_a_nonzero_threshold(self):
+        threshold = 1e-10
+        z = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, threshold, 1.0])
+
+        # k = int(0.98 * 10) = 9 -> the tiny positive value is the threshold.
+        # It survives with a ratio of 1.0 while the 1.0 outlier is rejected. A
+        # zero check with a nonzero absolute tolerance would incorrectly reject
+        # the threshold too and return the 0.0 floor.
+        result = self_calibration.extreme_z_sum(z, 1, self_calibration.WET_SIGN)
+
+        assert result == pytest.approx(threshold)
 
 
 class TestLeastSquaresFit:
@@ -265,16 +283,25 @@ class TestLeastSquaresFit:
         assert intercept == pytest.approx(-10.0)
 
     def test_rejects_an_invalid_sign(self):
+        x = np.arange(5.0)
+        y = np.arange(5.0)
+
         with pytest.raises(InvalidArgumentError):
-            self_calibration.least_squares_fit(np.arange(5.0), np.arange(5.0), 0)
+            self_calibration.least_squares_fit(x, y, 0)
 
     def test_rejects_mismatched_input_lengths(self):
+        x = np.arange(5.0)
+        y = np.arange(4.0)
+
         with pytest.raises(InvalidArgumentError):
-            self_calibration.least_squares_fit(np.arange(5.0), np.arange(4.0), self_calibration.WET_SIGN)
+            self_calibration.least_squares_fit(x, y, self_calibration.WET_SIGN)
 
     def test_rejects_fewer_points_than_the_trimming_floor(self):
+        x = np.arange(3.0)
+        y = np.arange(3.0)
+
         with pytest.raises(InvalidArgumentError):
-            self_calibration.least_squares_fit(np.arange(3.0), np.arange(3.0), self_calibration.WET_SIGN)
+            self_calibration.least_squares_fit(x, y, self_calibration.WET_SIGN)
 
     def test_intercept_keeps_the_initial_anchor_for_a_line_through_the_origin(self):
         x = np.array([1.0, 2.0, 3.0, 4.0])
@@ -344,8 +371,10 @@ class TestDurationFactors:
         assert 0.0 < intercept / (slope + intercept) < 1.0
 
     def test_rejects_an_invalid_sign(self):
+        z = np.arange(600.0)
+
         with pytest.raises(InvalidArgumentError):
-            self_calibration.duration_factors(np.arange(600.0), 0)
+            self_calibration.duration_factors(z, 0)
 
 
 class TestModuleBoundaries:
