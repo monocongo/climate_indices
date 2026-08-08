@@ -33,6 +33,20 @@ def test_initialize_data_sets_default_duration_factors():
     assert (data["wetm"] + data["wetb"]) == pytest.approx(3.0)
 
 
+def test_duration_factor_c_rejects_zero_factor_sum():
+    with pytest.raises(ValueError, match="must not sum to zero"):
+        palmer._duration_factor_c(1.0, -1.0)
+
+
+def test_select_duration_factors_uses_wet_factors_when_x3_is_zero():
+    data = _blank_data()
+    data["wetm"], data["wetb"] = 1.0, 2.0
+    data["drym"], data["dryb"] = 3.0, 4.0
+    data["x3"] = 0.0
+
+    assert palmer._select_duration_factors(data) == (1.0, 2.0)
+
+
 def test_statement_180_ze_uses_custom_dry_duration_factors():
     data = _blank_data()
     data["drym"], data["dryb"] = 1.0, 2.0  # non-default, to prove they're used

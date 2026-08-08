@@ -44,14 +44,24 @@ def _duration_factor_c(m: float, b: float) -> float:
     :param b: duration-factor intercept
     :return the weighting fraction c = b / (m + b)
     :rtype: float
+    :raises ValueError: if the duration factors sum to zero
     """
-    return b / (m + b)
+    denominator = m + b
+    if denominator == 0:
+        raise ValueError("duration-factor slope and intercept must not sum to zero")
+    return b / denominator
 
 
 def _select_duration_factors(data: dict[str, Any]) -> tuple[float, float]:
     """
     Select the wet or dry duration factors based on the sign of the
     currently-established spell's severity (X3).
+
+    X3 equal to zero means that no wet or dry spell is established. It is
+    assigned the wet factors to preserve the recursion's historical
+    non-negative tie-break. This choice is immaterial with Palmer's identical
+    wet and dry defaults, but must remain explicit when scPDSI supplies distinct
+    factors.
 
     :param data: dictionary of parameters (intialized in pdsi)
     :return a tuple of (m, b) - the duration-factor slope and intercept
