@@ -136,7 +136,7 @@ The options for the entry point script are described below:
 |                        | 'pet', and 'palmers'. 'scaled' indicates all    |
 |                        | three scaled indices (SPI, SPEI, and PNP) and   |
 |                        | 'palmers' indicates all Palmer indices (PDSI,   |
-|                        | PHDI, PMDI, SCPDSI, and Z-Index).               |
+|                        | PHDI, PMDI, and Z-Index).                       |
 +------------------------+-------------------------------------------------+
 | periodicity            | The periodicity of the input dataset files.     |
 |                        | Valid values are 'monthly' and 'daily'.         |
@@ -271,7 +271,7 @@ Upon completion the individual NetCDF files will contain variables for all compu
 `/data/nclimdiv_spei_gamma_03.nc`, `/data/nclimdiv_spei_gamma_06.nc`,
 `/data/nclimdiv_spei_pearson_03.nc`, `/data/nclimdiv_spei_pearson_06.nc`,
 `/data/nclimdiv_pdsi.nc`, `/data/nclimdiv_phdi.nc`, `/data/nclimdiv_pmdi.nc`,
-`/data/nclimdiv_scpdsi.nc`, and `/data/nclimdiv_zindex.nc`.
+and `/data/nclimdiv_zindex.nc`.
 Parallelization will occur utilizing all but one of the available CPUs
 (default since the `--multiprocessing` option is omitted).
 
@@ -357,13 +357,17 @@ Palmers monthly
 --multiprocessing all``
 
 The above command will compute the Palmer drought indices: PDSI (original Palmer Drought Severity Index),
-PHDI (Palmer Hydrological Drought Index), PMDI (Palmer Modified Drought Index), Z-Index (Palmer Z-Index),
-and SCPDSI (Self-calibrated Palmer Drought Severity Index) from input precipitation, potential
-evapotranspiration, and available water capacity datasets (in this case, the reduced resolution nClimGrid
-precipitation, PET, and AWC datasets provided in the example inputs directory). The input datasets are monthly
-data and the calibration period used will be Jan. 1951 through Dec. 2010. The output files will be
+PHDI (Palmer Hydrological Drought Index), PMDI (Palmer Modified Drought Index), and Z-Index (Palmer
+Z-Index) from input precipitation, potential evapotranspiration, and available water capacity datasets
+(in this case, the reduced resolution nClimGrid precipitation, PET, and AWC datasets provided in the
+example inputs directory). The input datasets are monthly data and the calibration period used will be
+Jan. 1951 through Dec. 2010. The output files will be
 `<out_dir>/nclimgrid_lowres_pdsi.nc`, `<out_dir>/nclimgrid_lowres_phdi.nc`,
-`<out_dir>/nclimgrid_lowres_pmdi.nc`, `<out_dir>/nclimgrid_lowres_scpdsi.nc`, and `<out_dir>/nclimgrid_lowres_zindex.nc`.
+`<out_dir>/nclimgrid_lowres_pmdi.nc`, and `<out_dir>/nclimgrid_lowres_zindex.nc`.
+
+.. note::
+   Self-calibrated PDSI (SCPDSI) is not yet implemented -- see
+   `issue #716 <https://github.com/monocongo/climate_indices/issues/716>`_.
 Parallelization will occur utilizing all CPUs.
 
 Pre-compute SPI distribution fitting variables
