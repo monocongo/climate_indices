@@ -135,6 +135,69 @@ class TestExtremeZSum:
         with pytest.raises(InvalidArgumentError):
             self_calibration.extreme_z_sum(np.arange(10.0), 0, self_calibration.WET_SIGN)
 
+    def test_wet_side_returns_the_largest_survivor_rather_than_the_threshold(self):
+        z = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 10.0, 11.0])
+
+        # window_length=1 makes each rolling sum equal its own Z value, so the
+        # filter's behaviour can be pinned directly. 10 sums, so the threshold
+        # is the kth smallest with k = int(0.98 * 10) = 9, i.e. 10.0. Everything
+        # clears the tolerance (11 / 10 = 1.1 < 1.25), so the answer is the
+        # largest survivor, 11.0 -- not the threshold itself.
+        # This also pins the percentile: an 80th-percentile threshold would be
+        # k = int(0.8 * 10) = 8 -> 8.0, admitting only values below 10.0 and
+        # yielding 8.0 instead.
+        result = self_calibration.extreme_z_sum(z, 1, self_calibration.WET_SIGN)
+
+        assert result == pytest.approx(11.0)
+
+    @pytest.mark.parametrize(
+        ("tail", "expected"),
+        [(12.4, 12.4), (12.5, 10.0), (12.6, 10.0)],
+    )
+    def test_wet_side_tolerance_boundary_is_exclusive(self, tail, expected):
+        z = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 10.0, tail])
+
+        # the threshold is 10.0 in all three cases, so the tail's ratio to it is
+        # 1.24, 1.25 and 1.26 respectively. The comparison is strictly less-than
+        # against a tolerance of 1.25, so only 1.24 survives; at exactly 1.25 the
+        # tail is discarded and the largest survivor falls back to 10.0.
+        result = self_calibration.extreme_z_sum(z, 1, self_calibration.WET_SIGN)
+
+        assert result == pytest.approx(expected)
+
+    def test_wet_side_counts_the_rolling_sum_from_the_initial_window_fill(self):
+        z = np.array([11.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 10.0])
+
+        # same values as the test above, with the largest moved to the front so
+        # it is the sum produced by the initial window fill rather than by the
+        # slide. Failing to record that first sum would drop 11.0 from the
+        # candidates and return 10.0.
+        result = self_calibration.extreme_z_sum(z, 1, self_calibration.WET_SIGN)
+
+        assert result == pytest.approx(11.0)
+
+    def test_wet_side_skips_filtering_when_no_percentile_is_available(self):
+        z = np.array([7.0])
+
+        # a single rolling sum gives k = int(0.98 * 1) = 0, below the 1-indexed
+        # range, so no threshold exists. The reference divides by its
+        # missing-value sentinel here, which admits every candidate -- so the
+        # sum survives unfiltered rather than being rejected to the 0.0 floor.
+        result = self_calibration.extreme_z_sum(z, 1, self_calibration.WET_SIGN)
+
+        assert result == pytest.approx(7.0)
+
+    def test_wet_side_rejects_everything_when_the_threshold_is_zero(self):
+        z = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.0])
+
+        # k = int(0.98 * 10) = 9 -> the 9th smallest is 0.0. The reference's
+        # division by zero yields infinity, which fails the ratio test for every
+        # candidate, so the result falls back to the 0.0 floor -- and, crucially,
+        # no ZeroDivisionError escapes.
+        result = self_calibration.extreme_z_sum(z, 1, self_calibration.WET_SIGN)
+
+        assert result == pytest.approx(0.0)
+
 
 class TestLeastSquaresFit:
     def test_recovers_an_exact_dry_line_without_trimming(self):
@@ -144,8 +207,9 @@ class TestLeastSquaresFit:
         slope, intercept = self_calibration.least_squares_fit(x, y, self_calibration.DRY_SIGN)
 
         # correlation is -1, so sign * correlation = 1 >= 0.85 and nothing is
-        # trimmed. SSXY / SSX = -10 / 10 = -1. Every residual is -10, ties go to
-        # the earliest point, so intercept = y[0] - slope * x[0] = -11 + 1 = -10.
+        # trimmed. SSXY / SSX = -10 / 10 = -1. Every residual is -10, and since
+        # intercept = y[i] - slope * x[i] *is* the residual, anchoring on any
+        # tied point gives the same intercept = y[0] - slope * x[0] = -11 + 1 = -10.
         assert slope == pytest.approx(-1.0)
         assert intercept == pytest.approx(-10.0)
 
@@ -181,7 +245,9 @@ class TestLeastSquaresFit:
         # = 0.8321 < 0.85 and the last point is dropped. The remaining four are
         # perfectly collinear (correlation -1), giving slope = -5/5 = -1 -- not
         # the -3 the untrimmed five-point fit would have produced. Residuals are
-        # all -10, so intercept = y[0] - slope*x[0] = -11 + 1 = -10.
+        # all -10, and since intercept = y[i] - slope*x[i] *is* the residual,
+        # anchoring on any tied point gives the same intercept =
+        # y[0] - slope*x[0] = -11 + 1 = -10.
         assert slope == pytest.approx(-1.0)
         assert intercept == pytest.approx(-10.0)
 
@@ -209,6 +275,21 @@ class TestLeastSquaresFit:
     def test_rejects_fewer_points_than_the_trimming_floor(self):
         with pytest.raises(InvalidArgumentError):
             self_calibration.least_squares_fit(np.arange(3.0), np.arange(3.0), self_calibration.WET_SIGN)
+
+    def test_intercept_keeps_the_initial_anchor_for_a_line_through_the_origin(self):
+        x = np.array([1.0, 2.0, 3.0, 4.0])
+        y = np.array([2.0, 4.0, 6.0, 8.0])
+
+        slope, intercept = self_calibration.least_squares_fit(x, y, self_calibration.WET_SIGN)
+
+        # Every residual is exactly zero, and the anchor search only moves on a
+        # residual strictly more extreme than its initial 0.0 -- so the anchor
+        # stays at the reference's initial (x[0], 0.0), giving
+        # intercept = 0.0 - slope * x[0] = -2.0 rather than the 0.0 an
+        # intuitive reading would expect. This is faithful to the reference and
+        # is pinned here precisely because it looks like a bug.
+        assert slope == pytest.approx(2.0)
+        assert intercept == pytest.approx(-2.0)
 
 
 class TestDurationFactors:
