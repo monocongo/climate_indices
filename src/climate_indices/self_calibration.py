@@ -147,7 +147,14 @@ def _highest_reasonable(sums: list[float], sign: int) -> float:
 
     Args:
         sums: The rolling sums to filter.
-        sign: WET_SIGN or DRY_SIGN, selecting which direction counts as extreme.
+        sign: Only WET_SIGN is ever passed in practice -- :func:`extreme_z_sum`
+            returns before calling this on the dry side, since the reference's
+            dry path is deliberately unfiltered. ``_EXTREME_PERCENTILE`` is
+            hard-wired to the wet side's 98th-percentile threshold; the
+            reference's dry-side filter, if it were wired up here, would need
+            a 2nd-percentile threshold instead, so passing DRY_SIGN would
+            silently apply the wrong filter rather than the reference's "no
+            filter at all".
 
     Returns:
         The most extreme surviving sum, or 0.0 if nothing survives.
@@ -269,6 +276,15 @@ def least_squares_fit(x: np.ndarray, y: np.ndarray, sign: int) -> tuple[float, f
     Raises:
         InvalidArgumentError: If sign is invalid, the inputs differ in length,
             or fewer than four points were supplied.
+        ZeroDivisionError: If the retained ``y`` values are all exactly 0.0,
+            leaving the sum-of-squares ``ss_y`` exactly zero.
+        ValueError: If the retained ``y`` values are all equal to some other
+            constant. Because the sums of squares are accumulated
+            sequentially rather than via a pairwise-summation reduction,
+            ``ss_y`` typically comes out very slightly negative rather than
+            exactly zero in this case, so ``math.sqrt(ss_y)`` raises
+            ``math domain error`` before the division is reached. Both cases
+            are deliberately unguarded here -- see #720.
     """
     _validate_sign(sign)
 
@@ -365,6 +381,17 @@ def duration_factors(z_values: np.ndarray, sign: int) -> tuple[float, float]:
     Returns:
         A tuple of (m, b) -- the duration-factor slope and intercept, in the
         form the PDSI recursion consumes as wetm/wetb or drym/dryb.
+
+        Callers that go on to divide by ``m + b`` (as the PDSI recursion
+        does) should not assume that sum is positive. On the wet side,
+        :func:`extreme_z_sum` floors to 0.0 whenever nothing survives its
+        anomaly filter for a given window length; a calibration window
+        skewed dry can floor several of the ten window lengths, and those
+        0.0s are fed to the regression as if they were real data, which can
+        pull the fitted slope negative. Symmetrically, the dry side's
+        unfiltered extreme sums can come out positive for an all-wet series.
+        Both are faithful to the reference; a consumer must handle
+        ``m + b <= 0`` rather than assume it away.
 
     Raises:
         InvalidArgumentError: If sign is invalid.
