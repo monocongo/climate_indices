@@ -28,6 +28,20 @@ are recorded as ADRs in [`docs/adr/`](docs/adr/).
 - Merge only after CI passes.
 - Avoid long-lived `release/*` branches except approved maintenance work.
 
+## Git safety (non-negotiable)
+
+- Never commit directly on `main` or push directly to `origin/main`.
+- Interpret “commit and push” as: create or update an appropriately named
+  short-lived branch, commit there, push that branch to `origin`, then open a
+  PR into `main`.
+- If work begins on `main`, create the branch before making the task commit.
+- Before every push, inspect the destination ref and commits to be published.
+  Stop and ask for confirmation if the branch includes pre-existing or
+  unrelated commits.
+- A direct `origin/main` push requires explicit maintainer approval that names
+  `origin/main` after the agent has explained that it bypasses the PR workflow.
+- Never force-push or rewrite `main` without explicit maintainer approval.
+
 ## Validation
 
 Run the normal validation gate for source or test changes:
