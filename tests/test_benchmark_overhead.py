@@ -50,7 +50,7 @@ def _assert_overhead_within_budget(
 ) -> None:
     """Assert that measured xarray overhead is below an operation's budget."""
     assert overhead < budget, (
-        f"{operation} xarray overhead {overhead:.1%} exceeds {budget:.0%} budget "
+        f"{operation} xarray overhead {overhead:.1%} meets or exceeds {budget:.0%} budget "
         f"(numpy={numpy_time:.4f}s, xarray={xarray_time:.4f}s)"
     )
 
@@ -102,7 +102,25 @@ class TestOverheadBudgetPolicy:
                 budget=_PET_HARGREAVES_OVERHEAD_THRESHOLD,
             )
 
-        expected_message = "PET Hargreaves xarray overhead 120.0% exceeds 100% budget (numpy=0.0020s, xarray=0.0044s)"
+        expected_message = (
+            "PET Hargreaves xarray overhead 120.0% meets or exceeds 100% budget (numpy=0.0020s, xarray=0.0044s)"
+        )
+        assert str(exc_info.value).splitlines()[0] == expected_message
+
+    def test_pet_hargreaves_rejects_overhead_at_budget(self) -> None:
+        """An overhead equal to the budget fails because the threshold is strict."""
+        with pytest.raises(AssertionError) as exc_info:
+            _assert_overhead_within_budget(
+                "PET Hargreaves",
+                numpy_time=0.002,
+                xarray_time=0.004,
+                overhead=_PET_HARGREAVES_OVERHEAD_THRESHOLD,
+                budget=_PET_HARGREAVES_OVERHEAD_THRESHOLD,
+            )
+
+        expected_message = (
+            "PET Hargreaves xarray overhead 100.0% meets or exceeds 100% budget (numpy=0.0020s, xarray=0.0040s)"
+        )
         assert str(exc_info.value).splitlines()[0] == expected_message
 
 
