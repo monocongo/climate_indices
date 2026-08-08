@@ -16,6 +16,37 @@ __all__ = ["pdsi"]
 AWCTOP = 1.0
 K8_SIZE = 40
 
+# Palmer's (1965) fixed national duration-factor parameters. Standard PDSI
+# uses these directly; self-calibrating PDSI (scPDSI) fits per-location
+# replacements via the same m/b/c relationship (see palmer's scpdsi()).
+PALMER_DURATION_P = 0.897
+PALMER_DURATION_Q = 1.0 / 3.0
+
+
+def _default_duration_factors() -> tuple[float, float]:
+    """
+    Palmer's (1965) fixed national duration-factor slope and intercept,
+    derived from the published p and q constants.
+
+    :return a tuple of (m, b), the duration-factor slope and intercept
+    :rtype: tuple[float, float]
+    """
+    m = (1.0 - PALMER_DURATION_P) / PALMER_DURATION_Q
+    b = PALMER_DURATION_P / PALMER_DURATION_Q
+    return m, b
+
+
+def _duration_factor_c(m: float, b: float) -> float:
+    """
+    The CAFEC-style weighting fraction implied by a pair of duration factors.
+
+    :param m: duration-factor slope
+    :param b: duration-factor intercept
+    :return the weighting fraction c = b / (m + b)
+    :rtype: float
+    """
+    return b / (m + b)
+
 
 def _get_awc_bot(awc: float) -> float:
     """
@@ -812,6 +843,13 @@ def _initialize_data(
     data["sx2"] = np.zeros((K8_SIZE,))
     data["sx3"] = np.zeros((K8_SIZE,))
     data["x"] = np.zeros((n_years, 12))
+
+    # duration factors: default to Palmer's fixed national values. scPDSI
+    # (see palmer.scpdsi()) overrides these four keys with per-location
+    # fitted values after calling this function.
+    default_m, default_b = _default_duration_factors()
+    data["wetm"], data["wetb"] = default_m, default_b
+    data["drym"], data["dryb"] = default_m, default_b
 
     _validate_fitting_params(data, fitting_params)
 
