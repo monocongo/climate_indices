@@ -10,6 +10,14 @@ rather than duplicating release or branching policy.
 index computation, including SPI, SPEI, PET, Palmer indices, and related APIs.
 The source tree uses a `src/` layout, pytest, Ruff, mypy, Hatchling, and `uv`.
 
+Domain vocabulary (SPI, SPEI, Timescale, Calibration Period, Palmer family,
+etc.) is defined once in [`src/climate_indices/CONTEXT.md`](src/climate_indices/CONTEXT.md).
+Start there before using project-specific terms in code, docs, or commits —
+it is opinionated about canonical names vs. terms to avoid. See
+[`CONTEXT-MAP.md`](CONTEXT-MAP.md) if you also need the planned Explorer
+context. Architecturally significant decisions (hard to reverse, non-obvious)
+are recorded as ADRs in [`docs/adr/`](docs/adr/).
+
 ## Trunk workflow
 
 - `main` is trunk and should always be releasable.

@@ -12,7 +12,7 @@ import numpy as np
 import scipy.constants
 import xarray as xr
 
-from climate_indices import compute, indices, utils
+from climate_indices import compute, indices, palmer, utils
 
 # the number of worker processes we'll use for process pools
 _NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count() - 1
@@ -21,7 +21,6 @@ _KEY_ARRAY = "array"
 _KEY_SHAPE = "shape"
 _KEY_LAT = "lat"
 _KEY_RESULT = "result_array"
-_KEY_RESULT_SCPDSI = "result_array_scpdsi"
 _KEY_RESULT_PDSI = "result_array_pdsi"
 _KEY_RESULT_PHDI = "result_array_phdi"
 _KEY_RESULT_PMDI = "result_array_pmdi"
@@ -833,11 +832,6 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
         }
 
         # add shared memory arrays for computed Palmers to the dictionary of shared arrays
-        if _KEY_RESULT_SCPDSI not in _global_shared_arrays:
-            _global_shared_arrays[_KEY_RESULT_SCPDSI] = {
-                _KEY_ARRAY: multiprocessing.Array("d", int(np.prod(output_shape))),
-                _KEY_SHAPE: output_shape,
-            }
         if _KEY_RESULT_PDSI not in _global_shared_arrays:
             _global_shared_arrays[_KEY_RESULT_PDSI] = {
                 _KEY_ARRAY: multiprocessing.Array("d", int(np.prod(output_shape))),
@@ -868,15 +862,11 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
                 "var_name_pet": keyword_arguments["var_name_pet"],
                 "var_name_awc": keyword_arguments["var_name_awc"],
             },
-            _KEY_RESULT_SCPDSI,
+            _KEY_RESULT_PDSI,
             input_type=input_type,
             args=args,
         )
 
-        # get the computed SCPDSI data as an array of float32 values
-        array = _global_shared_arrays[_KEY_RESULT_SCPDSI][_KEY_ARRAY]
-        shape = _global_shared_arrays[_KEY_RESULT_SCPDSI][_KEY_SHAPE]
-        scpdsi = np.frombuffer(array.get_obj()).reshape(shape).astype(float)
         # TODO once we support daily Palmers then we'll need to convert values
         #  from a 366-day calendar back into a normal/Gregorian calendar
 
@@ -899,24 +889,6 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
         array = _global_shared_arrays[_KEY_RESULT_ZINDEX][_KEY_ARRAY]
         shape = _global_shared_arrays[_KEY_RESULT_ZINDEX][_KEY_SHAPE]
         zindex = np.frombuffer(array.get_obj()).reshape(shape).astype(float)
-
-        # create a new variable to contain the SCPDSI values, assign into the dataset
-        long_name = "Self-calibrated Palmer Drought Severity Index"
-        scpdsi_attrs = {"long_name": long_name, "valid_min": -10.0, "valid_max": 10.0}
-        var_name_scpdsi = "scpdsi"
-        scpdsi_var = xr.Variable(dims=output_dims, data=scpdsi, attrs=scpdsi_attrs, encoding=output_encodings)
-        dataset[var_name_scpdsi] = scpdsi_var
-
-        # remove all data variables except for the new SCPDSI variable
-        for var_name in dataset.data_vars:
-            if var_name != var_name_scpdsi:
-                dataset = dataset.drop_vars(names=[var_name])
-
-        # TODO set global attributes accordingly for this new dataset
-
-        # write the dataset as NetCDF
-        netcdf_file_name = keyword_arguments["output_file_base"] + "_" + var_name_scpdsi + ".nc"
-        dataset.to_netcdf(netcdf_file_name)
 
         # create a new variable to contain the PDSI values, assign into the dataset
         long_name = "Palmer Drought Severity Index"
@@ -1141,6 +1113,26 @@ def _pnp(precips: np.ndarray, parameters: dict[str, Any]) -> np.ndarray:
     )
 
 
+def _palmers(
+    precips: np.ndarray,
+    pet: np.ndarray,
+    awc: float,
+    parameters: dict[str, Any],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    # NOTE: self-calibration (scPDSI) is not implemented -- palmer.pdsi()
+    # only produces standard PDSI/PHDI/PMDI/Z-Index. See CONTEXT.md and
+    # https://github.com/monocongo/climate_indices/issues/716.
+    computed_pdsi, computed_phdi, computed_pmdi, computed_zindex, _fitting_params = palmer.pdsi(
+        precips,
+        pet,
+        awc,
+        parameters["data_start_year"],
+        parameters["calibration_start_year"],
+        parameters["calibration_end_year"],
+    )
+    return computed_pdsi, computed_phdi, computed_pmdi, computed_zindex
+
+
 def _init_worker(shared_arrays_dict: dict[str, Any]) -> None:
     global _global_shared_arrays
     _global_shared_arrays = shared_arrays_dict
@@ -1234,6 +1226,29 @@ def _parallel_process(
                 "func1d": _pet,
                 "var_name_temp": input_var_names["var_name_temp"],
                 "var_name_lat": input_var_names["var_name_lat"],
+                "output_var_name": output_var_name,
+                "sub_array_start": split_indices[i],
+                "input_type": input_type,
+                "args": args,
+            }
+            if i < (required_processes - 1):
+                params["sub_array_end"] = split_indices[i + 1]
+            else:
+                params["sub_array_end"] = None
+
+            chunk_params.append(params)
+
+    elif index == "palmers":
+        # we have three input arrays (precipitation, PET, and AWC), create
+        # parameter dictionary objects appropriate to the
+        # _apply_along_axis_palmers function, one per worker process
+        for i in range(required_processes):
+            params = {
+                "index": index,
+                "func1d": _palmers,
+                "var_name_precip": input_var_names["var_name_precip"],
+                "var_name_pet": input_var_names["var_name_pet"],
+                "var_name_awc": input_var_names["var_name_awc"],
                 "output_var_name": output_var_name,
                 "sub_array_start": split_indices[i],
                 "input_type": input_type,
@@ -1404,9 +1419,6 @@ def _apply_along_axis_palmers(params: dict[str, Any]) -> None:
     args = params["args"]
 
     # get the output shared memory arrays, convert to numpy, and get the subarray slices
-    scpdsi_output_array = _global_shared_arrays[_KEY_RESULT_SCPDSI][_KEY_ARRAY]
-    scpdsi = np.frombuffer(scpdsi_output_array.get_obj()).reshape(shape)[start_index:end_index]
-
     pdsi_output_array = _global_shared_arrays[_KEY_RESULT_PDSI][_KEY_ARRAY]
     pdsi = np.frombuffer(pdsi_output_array.get_obj()).reshape(shape)[start_index:end_index]
 
@@ -1422,11 +1434,9 @@ def _apply_along_axis_palmers(params: dict[str, Any]) -> None:
     for i, (precip, pet, awc) in enumerate(zip(sub_array_precip, sub_array_pet, sub_array_awc, strict=False)):
         if params["input_type"] == InputType.grid:
             for j in range(precip.shape[0]):
-                scpdsi[i, j], pdsi[i, j], phdi[i, j], pmdi[i, j], zindex[i, j] = func1d(
-                    precip[j], pet[j], awc[j], parameters=args
-                )
+                pdsi[i, j], phdi[i, j], pmdi[i, j], zindex[i, j] = func1d(precip[j], pet[j], awc[j], parameters=args)
         else:  # divisions
-            scpdsi[i], pdsi[i], phdi[i], pmdi[i], zindex[i] = func1d(precip, pet, awc, parameters=args)
+            pdsi[i], phdi[i], pmdi[i], zindex[i] = func1d(precip, pet, awc, parameters=args)
 
 
 def _prepare_file(

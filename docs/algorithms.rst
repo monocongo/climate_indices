@@ -407,7 +407,9 @@ The Palmer Drought Severity Index (PDSI) and related indices were developed by W
 - **PHDI**: Palmer Hydrological Drought Index (groundwater, reservoir levels)
 - **PMDI**: Palmer Modified Drought Index (short-term agricultural drought)
 - **Z-Index**: Palmer Z-Index (monthly moisture anomaly)
-- **SCPDSI**: Self-Calibrating PDSI (Wells et al., 2004) - improved spatial comparability
+- **SCPDSI**: Self-Calibrating PDSI (Wells et al., 2004) - improved spatial comparability.
+  **Not yet implemented in this library** -- see `issue #716
+  <https://github.com/monocongo/climate_indices/issues/716>`_.
 
 These indices are based on a water balance model that accounts for precipitation, evapotranspiration, soil moisture, and runoff.
 
@@ -419,14 +421,13 @@ When to Use Palmer Indices
 - Operational drought monitoring (NOAA, USDA)
 - Agricultural drought assessment
 - Long-term water resource planning (PHDI)
-- Comparing drought across different U.S. regions (SCPDSI)
+- Comparing drought across different U.S. regions (SCPDSI, once implemented)
 
 **Strengths:**
 
 - Comprehensive water balance approach
 - Well-established in operational use
 - Multiple indices for different applications
-- Self-calibrating version improves spatial comparability
 
 **Limitations:**
 
@@ -451,7 +452,6 @@ The Palmer drought indices use a two-layer soil moisture accounting model:
 
    - Derive Climatically Appropriate For Existing Conditions (CAFEC) coefficients
    - Calibrate moisture departure to local climate
-   - Normalize indices for spatial comparability (SCPDSI)
 
 3. **Index calculation**
 
