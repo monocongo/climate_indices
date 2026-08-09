@@ -1,0 +1,15 @@
+{
+  "source": "NOAA National Centers for Environmental Information (NCEI)",
+  "url": "https://www.ncei.noaa.gov/pub/data/cirs/climdiv/",
+  "download_date": "2026-08-08",
+  "subset_description": "Operational nClimDiv monthly Palmer drought indices (PDSI, PHDI, PMDI, Z-Index) for the 344 US climate divisions present in tests/fixture/palmer, January 1895 through December 2022 (1536 months). Each file is a (344, 1536) float32 array whose row order matches divisions.json. Source files are climdiv-{pdsidv,phdidv,pmdidv,zndxdv}-v1.0.0-20260707. NCEI's -99.99 missing sentinel is stored as NaN.",
+  "checksum_sha256": "c1bf2b37296d2518ffda33ad5445f2ec3d5958397bb686e30c12524bb9d0857f",
+  "fixture_version": "1.0.0",
+  "validation_tolerance": {
+    "rtol": 0,
+    "atol": 0.005
+  },
+  "citation": "Palmer, W. C., 1965: Meteorological Drought. U.S. Weather Bureau Research Paper No. 45, 58 pp. Data: NOAA NCEI Climate Divisional Database (nClimDiv).",
+  "license": "U.S. Government work, public domain (17 U.S.C. Sec. 105).",
+  "notes": "External ground truth. Distinct from tests/fixture/palmer/{pdsi,phdi,pmdi,zindex}.npy, which are climate_indices' own output retained for self-consistency regression and are NOT NCEI values despite the noaa_* variable names used in tests/test_palmer.py. atol is 0.005 because NCEI publishes 2 decimal places; agreement cannot be tighter than that. Note the practical floor is nearer 0.013, since the precips.npy/pet.npy inputs in tests/fixture/palmer are not byte-identical to NCEI's operational inputs -- comparisons should account for input differences, not only file precision. Measured 2026-08-08 over 528,384 division-months: climate_indices' pdsi() agrees with these values to a median of 0.0127, with 86.2% of months within 0.05. checksum_sha256 is the SHA-256 of the concatenated sorted per-file SHA-256 digests."
+}
