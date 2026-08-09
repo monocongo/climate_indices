@@ -166,8 +166,8 @@ jobs:
         "${RUNNER_TEMP}/wheel-check/bin/python" -m pip install "${WHEEL}"
         cd "${RUNNER_TEMP}"
         "${RUNNER_TEMP}/wheel-check/bin/python" -c \
-          "from climate_indices import eddi, pet_hargreaves, pet_thornthwaite, spei, spi; \
-          assert all(map(callable, (eddi, pet_hargreaves, pet_thornthwaite, spei, spi)))"
+          "from climate_indices import eddi, pci, percentage_of_normal, pet_hargreaves, pet_thornthwaite, spei, spi; \
+          assert all(map(callable, (eddi, pci, percentage_of_normal, pet_hargreaves, pet_thornthwaite, spei, spi)))"
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1

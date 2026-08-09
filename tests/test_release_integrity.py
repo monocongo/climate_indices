@@ -326,7 +326,10 @@ def test_release_workflow_smoke_tests_built_wheel() -> None:
     assert "Test wheel installation" in workflow
     assert 'python -m venv "${RUNNER_TEMP}/wheel-check"' in workflow
     assert 'cd "${RUNNER_TEMP}"' in workflow
-    assert "from climate_indices import eddi, pet_hargreaves, pet_thornthwaite, spei, spi" in workflow
+    assert (
+        "from climate_indices import eddi, pci, percentage_of_normal, pet_hargreaves, pet_thornthwaite, spei, spi"
+        in workflow
+    )
 
 
 def test_minimum_dependency_job_preserves_resolved_environment() -> None:
@@ -354,9 +357,9 @@ def test_ci_commands_use_fresh_lock_and_prepared_environment(workflow_path: Path
     ordinary_syncs = [
         command
         for command in commands
-        if command.startswith("run: uv sync") and "--resolution lowest-direct" not in command
+        if command.startswith(("run: uv sync", "uv sync")) and "--resolution lowest-direct" not in command
     ]
-    exports = [command for command in commands if command.startswith("run: uv export")]
+    exports = [command for command in commands if command.startswith(("run: uv export", "uv export"))]
     runs = [command for command in commands if "uv run " in command]
 
     assert ordinary_syncs and all("--locked" in command for command in ordinary_syncs)

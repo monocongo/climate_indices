@@ -36,26 +36,32 @@ release workflow and publishes to PyPI through Trusted Publishing.
 
 ## Validation commands
 
-Run the normal quality gate:
+Prepare the development environment and verify that the lockfile is current:
 
 ```bash
-uv run ruff check src/ tests/
-uv run ruff format --check src/ tests/
-uv run mypy src/
-uv run pytest
+uv sync --locked --dev
+```
+
+Run the normal quality gate in that prepared environment:
+
+```bash
+uv run --no-sync ruff check src/ tests/
+uv run --no-sync ruff format --check src/ tests/
+uv run --no-sync mypy src/
+uv run --no-sync pytest
 ```
 
 Run release integrity checks before pushing a tag:
 
 ```bash
-uv run pytest tests/test_release_integrity.py
+uv run --no-sync pytest tests/test_release_integrity.py
 ```
 
 Build and inspect package artifacts when preparing the release PR:
 
 ```bash
-uv run python -m build
-uv run twine check dist/*
+uv run --no-sync python -m build
+uv run --no-sync twine check dist/*
 ```
 
 ## Tag creation
