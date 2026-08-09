@@ -1,14 +1,16 @@
 {
-  "source": "climate_indices library reference output",
+  "source": "climate_indices library reference output (standard Palmer); Wells, Goddard & Hayes reference C++ (scPDSI)",
   "url": "https://github.com/monocongo/climate_indices",
   "download_date": "2024-01-01",
-  "subset_description": "Pre-computed Palmer drought index outputs (PDSI, PHDI, PMDI, Z-Index) for 344 US climate divisions, used as regression test fixtures. Generated from the library's own Palmer implementation against NCEI nClimDiv input data.",
-  "checksum_sha256": "21f55dbbf949a9f814e6dd16a014fb6ca246aecef64d1357e4e2f3b3e21e2590",
-  "fixture_version": "1.0.0",
+  "subset_description": "Palmer drought index outputs for 344 US climate divisions, monthly, January 1895 through December 2022 (1536 values per array). Two provenance groups. (1) Standard Palmer -- pdsi.npy, phdi.npy, pmdi.npy, zindex.npy, alphas.npy, betas.npy, gammas.npy, deltas.npy -- generated from the library's own Palmer implementation against NCEI nClimDiv input data. (2) Self-calibrating Palmer -- scpdsi.npy, scphdi.npy, scpmdi.npy, sczindex.npy, and scdurfact.npy (4 values: wetm, wetb, drym, dryb) -- generated from the Wells, Goddard & Hayes reference C++ implementation. Inputs for both are precips.npy and pet.npy (inches) with per-division AWC from palmer_awc.json, calibration period 1931-1990.",
+  "checksum_sha256": "e486dc9e7e81bf3874437e6327fffd79a32a9ae59bfe99d5a251964544195753",
+  "fixture_version": "1.1.0",
   "validation_tolerance": {
     "rtol": 1e-8,
-    "atol": 1e-8
+    "atol": 1e-8,
+    "scpdsi_rtol": 0,
+    "scpdsi_atol": 5e-5
   },
-  "citation": "Palmer, W. C., 1965: Meteorological Drought. U.S. Weather Bureau Research Paper No. 45, 58 pp.",
-  "notes": "Checksum computed from division 0101 only (cat $(ls *.npy | sort) | shasum -a 256). Full fixture contains 344 divisions. This provenance was added retroactively in v2.4.0."
+  "citation": "Palmer, W. C., 1965: Meteorological Drought. U.S. Weather Bureau Research Paper No. 45, 58 pp. Self-calibrating variant: Wells, N., Goddard, S., and Hayes, M. J., 2004: A Self-Calibrating Palmer Drought Severity Index. Journal of Climate, 17(12), 2335-2351.",
+  "notes": "Checksum computed from division 0101 only (cat $(ls *.npy | sort) | shasum -a 256); it changed at fixture_version 1.1.0 because the sc* arrays were added to that directory. Full fixture contains 344 divisions. Standard-Palmer provenance was added retroactively in v2.4.0. SCPDSI GENERATION (added 2026-08-08, issue #719): produced by the Sibada/scPDSI reference C++ (Wells, Goddard & Hayes), which is GPLv3 while this project is BSD-3-Clause -- the oracle was built and run entirely outside this repository and only these numeric arrays were committed; no GPL source, headers, shim code or build scripts are distributed here. The harness shimmed four Rcpp symbols (NumericVector, NumericMatrix, Rf_error, Rf_warning) via include shadowing so pdsi.cpp and pdsi_ext.cpp compiled byte-identical to upstream, and fed inch-unit input directly rather than through the reference's millimetre entry point. HARNESS VALIDATION: running the same binary in standard-PDSI mode reproduces the committed zindex.npy for all 344 divisions at atol=5e-5, confirming the water balance, CAFEC coefficients, K-factors, unit handling and calibration window are correct. IMPORTANT -- the sc* arrays are NOT comparable to pdsi.npy/phdi.npy/pmdi.npy: those come from an NCEI Fortran (pdi.f) lineage while the sc* arrays come from the Wells lineage, and the two use different spell-selection state machines that disagree on roughly 6.3% of months by up to 8 PDSI units. On those disputed months the NCEI-lineage values are closer to NOAA operational data 88% of the time (see tests/fixture/nclimdiv). Consequently scpdsi() must implement the Wells recursion to match these fixtures; see epic #716."
 }
