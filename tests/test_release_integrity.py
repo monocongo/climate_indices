@@ -7,6 +7,8 @@ Two tiers of tests:
   Always-on (run in all CI environments):
     - Release workflow uses OIDC, not a stored token
     - Release workflow has a manual approval environment gate
+    - Release tags must point to commits on main
+    - Built wheels are smoke-tested outside the source checkout
     - Core public API symbols are importable after install
 
   Release-time only (run before pushing a release tag):
@@ -275,9 +277,14 @@ def test_release_workflow_uses_oidc_not_token() -> None:
         "release.yml references PYPI_API_TOKEN — OIDC trusted publishing must be used instead; "
         "remove the token reference and verify the trusted publisher is registered on PyPI"
     )
-    assert "id-token: write" in workflow, (
-        "release.yml is missing 'id-token: write' permission — required for OIDC publishing"
+    assert workflow.count("id-token: write") == 1, (
+        "release.yml must grant 'id-token: write' only to its publish-only job"
     )
+    publish_job = workflow.split("\n  publish:", maxsplit=1)[1].split("\n  create-release:", maxsplit=1)[0]
+    assert "id-token: write" in publish_job
+    assert "pypa/gh-action-pypi-publish" in publish_job
+    assert "actions/checkout" not in publish_job
+    assert "python -m build" not in publish_job
 
 
 def test_release_workflow_has_environment_gate() -> None:
@@ -298,10 +305,64 @@ def test_release_workflow_requires_exact_semver_tags() -> None:
     assert r"^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$" in workflow, "release.yml missing explicit exact SemVer tag guard"
 
 
+def test_release_workflow_requires_tag_commit_on_main() -> None:
+    """A release tag must point to a commit reachable from origin/main."""
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+
+    assert "fetch-depth: 0" in workflow
+    assert 'git merge-base --is-ancestor "${GITHUB_SHA}" "origin/main"' in workflow
+
+
 def test_release_workflow_creates_github_release() -> None:
     """release.yml must create the GitHub Release after PyPI publish."""
     workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
     assert "gh release create" in workflow, "release.yml must create a GitHub Release for the published tag"
+
+
+def test_release_workflow_smoke_tests_built_wheel() -> None:
+    """The built wheel must install and expose the public API outside the checkout."""
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+
+    assert "Test wheel installation" in workflow
+    assert 'python -m venv "${RUNNER_TEMP}/wheel-check"' in workflow
+    assert 'cd "${RUNNER_TEMP}"' in workflow
+    assert "from climate_indices import eddi, pet_hargreaves, pet_thornthwaite, spei, spi" in workflow
+
+
+def test_minimum_dependency_job_preserves_resolved_environment() -> None:
+    """Minimum-dependency tests must not resynchronize to the normal lock."""
+    workflow = (ROOT / ".github" / "workflows" / "unit-tests-workflow.yml").read_text()
+    minimum_job = workflow.split("\n  test-minimum-deps:", maxsplit=1)[1].split("\n  notebooks:", maxsplit=1)[0]
+
+    assert "uv sync --no-dev --group test --resolution lowest-direct" in minimum_job
+    assert "--locked" not in minimum_job
+    assert minimum_job.count("uv run --no-sync pytest") == 2
+
+
+@pytest.mark.parametrize(
+    "workflow_path",
+    [
+        Path(".github/workflows/unit-tests-workflow.yml"),
+        Path(".github/workflows/benchmarks.yml"),
+        Path(".github/workflows/release.yml"),
+    ],
+)
+def test_ci_commands_use_fresh_lock_and_prepared_environment(workflow_path: Path) -> None:
+    """Ordinary CI commands must check lock freshness and avoid implicit resyncs."""
+    workflow = (ROOT / workflow_path).read_text()
+    commands = [line.strip() for line in workflow.splitlines()]
+    ordinary_syncs = [
+        command
+        for command in commands
+        if command.startswith("run: uv sync") and "--resolution lowest-direct" not in command
+    ]
+    exports = [command for command in commands if command.startswith("run: uv export")]
+    runs = [command for command in commands if "uv run " in command]
+
+    assert ordinary_syncs and all("--locked" in command for command in ordinary_syncs)
+    assert all("--locked" in command for command in exports)
+    assert "--frozen" not in workflow
+    assert runs and all("uv run --no-sync " in command for command in runs)
 
 
 def test_core_public_api_importable() -> None:

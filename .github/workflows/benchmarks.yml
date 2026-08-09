@@ -5,6 +5,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -24,11 +28,11 @@ jobs:
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
 
       - name: Set up project
-        run: uv sync --group dev
+        run: uv sync --locked --group dev
 
       - name: Run benchmarks
         run: |
-          uv run pytest -m benchmark --benchmark-enable \
+          uv run --no-sync pytest -m benchmark --benchmark-enable \
             --benchmark-json=benchmark-results.json \
             --benchmark-columns=mean,stddev,rounds
 
@@ -42,7 +46,7 @@ jobs:
       - name: Check for regressions
         run: |
           if [ -f .benchmarks/baseline.json ]; then
-            uv run pytest-benchmark compare \
+            uv run --no-sync pytest-benchmark compare \
               .benchmarks/baseline.json benchmark-results.json \
               --csv=comparison.csv
           else

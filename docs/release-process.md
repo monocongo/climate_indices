@@ -8,6 +8,7 @@ release workflow and publishes to PyPI through Trusted Publishing.
 
 - `main` is trunk and must be releasable.
 - Release tags use exact SemVer format: `vX.Y.Z`.
+- A release tag's commit must be reachable from `origin/main`.
 - Package versions omit the leading `v`: `X.Y.Z`.
 - The Git tag, `pyproject.toml`, GitHub Release, and PyPI version must match.
 - Tag creation and tag pushes require maintainer approval.
@@ -91,21 +92,26 @@ The release workflow is `.github/workflows/release.yml`.
 It runs on tags matching `v*.*.*` and also has a bash regex guard requiring the
 exact format `vX.Y.Z`. The workflow:
 
-1. Checks out the tagged commit.
-2. Validates the release tag format.
+1. Checks out the tagged commit with full history.
+2. Validates the release tag format and verifies that its commit is reachable
+   from `origin/main`.
 3. Runs linting, formatting checks, type checking, tests, and release integrity
-   tests.
-4. Runs the security audit.
+   tests against the checked lockfile.
+4. Runs the runtime-only security audit against the checked lockfile.
 5. Verifies the tag version equals `pyproject.toml` version.
-6. Builds source and wheel artifacts with `python -m build`.
-7. Runs `twine check`.
-8. Uploads build artifacts to the workflow run.
-9. Publishes to PyPI through Trusted Publishing/OIDC.
+6. Builds source and wheel artifacts with `python -m build` in an unprivileged
+   job.
+7. Runs `twine check`, installs the wheel in a clean temporary environment, and
+   imports the public API from outside the source checkout.
+8. Uploads the tested build artifacts to the workflow run.
+9. After environment approval, downloads and publishes those artifacts to PyPI
+   through Trusted Publishing/OIDC from a publish-only job.
 10. Creates a GitHub Release for the tag with generated release notes and
     attached artifacts.
 
-The publish job uses the `release` environment, so GitHub environment approval
-is required before PyPI publication.
+Only the publish job uses the `release` environment and receives
+`id-token: write`, so GitHub environment approval is required before PyPI
+publication.
 
 ## PyPI Trusted Publishing
 
