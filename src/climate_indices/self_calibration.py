@@ -207,13 +207,18 @@ def extreme_z_sum(z_values: np.ndarray, window_length: int, sign: int) -> float:
 
     Returns:
         The representative extreme rolling sum for this window length. On the
-        wet side this is 0.0 when no rolling sum survives the anomaly filter.
+        wet side this is 0.0 when no rolling sum survives the anomaly filter,
+        or when the series has fewer than ``window_length`` non-missing
+        values and no complete window ever forms. On the dry side the latter
+        case returns NaN instead, since the dry path has no 0.0 floor to fall
+        back on.
 
     Raises:
-        InvalidArgumentError: If sign is invalid or window_length is not positive.
+        InvalidArgumentError: If sign is invalid or window_length is not a
+            positive integer.
     """
     _validate_sign(sign)
-    if window_length < 1:
+    if window_length < 1 or not float(window_length).is_integer():
         raise InvalidArgumentError(
             f"invalid rolling window length: {window_length}",
             argument_name="window_length",
@@ -233,6 +238,12 @@ def extreme_z_sum(z_values: np.ndarray, window_length: int, sign: int) -> float:
         if not math.isnan(value):
             running += value
             window.append(value)
+
+    if len(window) < window_length:
+        # the series ended before a complete window could be formed, so there
+        # is no rolling sum to report -- not even the partial one just
+        # accumulated, which would be a shorter-than-window_length sum
+        return 0.0 if sign == WET_SIGN else float("nan")
 
     extreme = running
     sums = np.empty(series.size + 1, dtype=float)

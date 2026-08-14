@@ -141,6 +141,45 @@ class TestExtremeZSum:
         with pytest.raises(InvalidArgumentError):
             self_calibration.extreme_z_sum(z, 0, self_calibration.WET_SIGN)
 
+    def test_rejects_a_fractional_window_length(self):
+        z = np.arange(10.0)
+
+        with pytest.raises(InvalidArgumentError):
+            self_calibration.extreme_z_sum(z, 2.5, self_calibration.WET_SIGN)
+
+    def test_wet_side_floors_to_zero_when_series_is_shorter_than_one_window(self):
+        # only 2 non-missing values are available, so a 5-period window can
+        # never fully form -- the partial 2-period sum must not be used as a
+        # stand-in candidate
+        z = np.array([1.0, 2.0])
+
+        result = self_calibration.extreme_z_sum(z, 5, self_calibration.WET_SIGN)
+
+        assert result == pytest.approx(0.0)
+
+    def test_dry_side_returns_nan_when_series_is_shorter_than_one_window(self):
+        z = np.array([-1.0, -2.0])
+
+        result = self_calibration.extreme_z_sum(z, 5, self_calibration.DRY_SIGN)
+
+        assert np.isnan(result)
+
+    def test_wet_side_floors_to_zero_when_missing_values_prevent_a_full_window(self):
+        # 3 non-missing values total, none of which can ever fill a 5-period
+        # window even though the raw series is longer than 5 entries
+        z = np.array([1.0, np.nan, 2.0, np.nan, 3.0])
+
+        result = self_calibration.extreme_z_sum(z, 5, self_calibration.WET_SIGN)
+
+        assert result == pytest.approx(0.0)
+
+    def test_dry_side_returns_nan_when_missing_values_prevent_a_full_window(self):
+        z = np.array([-1.0, np.nan, -2.0, np.nan, -3.0])
+
+        result = self_calibration.extreme_z_sum(z, 5, self_calibration.DRY_SIGN)
+
+        assert np.isnan(result)
+
     def test_wet_side_returns_the_largest_survivor_rather_than_the_threshold(self):
         z = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 10.0, 11.0])
 
