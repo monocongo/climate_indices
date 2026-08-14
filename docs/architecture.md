@@ -152,7 +152,7 @@ spi = "climate_indices.__spi__:main"
   - PHDI (Palmer Hydrological Drought Index)
   - PMDI (Palmer Modified Drought Index)
   - ZINDEX (Palmer Z-Index)
-  - Self-calibrated Palmer (scPDSI)
+  - scPDSI (Self-calibrated Palmer Drought Severity Index) — **not implemented**; tracked in [issue #716](https://github.com/monocongo/climate_indices/issues/716)
 
 **Key Algorithms**:
 1. **SPI/SPEI Computation**:
@@ -546,6 +546,8 @@ docker run -v $(pwd)/data:/data climate_indices:2.2.0 \
 
 **Trade-off**: Code duplication risk mitigated by having xarray API call numpy implementation internally.
 
+See [ADR-0001](adr/0001-dual-numpy-xarray-api.md).
+
 ### 2. Multiprocessing vs Dask
 **Decision**: Use multiprocessing in CLI, Dask in xarray API.
 
@@ -555,12 +557,17 @@ docker run -v $(pwd)/data:/data climate_indices:2.2.0 \
 
 **Trade-off**: Separate parallelization logic in CLI and xarray layers.
 
+See [ADR-0002](adr/0002-multiprocessing-cli-dask-xarray.md).
+
 ### 3. Time Dimension Chunking Constraint
+
 **Decision**: Dask arrays MUST have time as single chunk.
 
 **Rationale**: Climate indices require access to full time series for distribution fitting.
 
-**Enforcement**: `xarray_adapter.py` validates chunking and raises `DimensionMismatchError` if violated.
+**Enforcement**: `xarray_adapter.py` validates chunking and raises `CoordinateValidationError` if violated.
+
+See [ADR-0003](adr/0003-dask-time-dimension-single-chunk.md) for the full rationale.
 
 ### 4. Exception Hierarchy with Context
 **Decision**: Custom exceptions with context attributes instead of plain `ValueError`.
