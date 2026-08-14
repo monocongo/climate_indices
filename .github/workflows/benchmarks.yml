@@ -32,7 +32,7 @@ jobs:
 
       - name: Run benchmarks
         run: |
-          uv run --no-sync pytest -m benchmark --benchmark-enable \
+          uv run --no-sync --no-build pytest -m benchmark --benchmark-enable \
             --benchmark-json=benchmark-results.json \
             --benchmark-columns=mean,stddev,rounds
 
@@ -46,7 +46,7 @@ jobs:
       - name: Check for regressions
         run: |
           if [ -f .benchmarks/baseline.json ]; then
-            uv run --no-sync pytest-benchmark compare \
+            uv run --no-sync --no-build pytest-benchmark compare \
               .benchmarks/baseline.json benchmark-results.json \
               --csv=comparison.csv
           else

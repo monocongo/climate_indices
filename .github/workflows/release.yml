@@ -59,22 +59,22 @@ jobs:
       run: uv sync --locked --dev
 
     - name: Run ruff linter
-      run: uv run --no-sync ruff check src/ tests/
+      run: uv run --no-sync --no-build ruff check src/ tests/
 
     - name: Check ruff formatting
-      run: uv run --no-sync ruff format --check src/ tests/
+      run: uv run --no-sync --no-build ruff format --check src/ tests/
 
     - name: Run mypy type checker
-      run: uv run --no-sync mypy src/
+      run: uv run --no-sync --no-build mypy src/
 
     - name: Run core tests
-      run: uv run --no-sync pytest
+      run: uv run --no-sync --no-build pytest
 
     - name: Run validation tests
-      run: uv run --no-sync pytest -m validation
+      run: uv run --no-sync --no-build pytest -m validation
 
     - name: Run release integrity tests
-      run: uv run --no-sync pytest tests/test_release_integrity.py
+      run: uv run --no-sync --no-build pytest tests/test_release_integrity.py
 
   security-audit:
     needs: validate-release-tag

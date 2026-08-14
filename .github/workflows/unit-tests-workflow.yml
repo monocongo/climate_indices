@@ -34,13 +34,13 @@ jobs:
         run: uv sync --locked --dev
 
       - name: Run ruff linter
-        run: uv run --no-sync ruff check src/ tests/
+        run: uv run --no-sync --no-build ruff check src/ tests/
 
       - name: Check ruff formatting
-        run: uv run --no-sync ruff format --check src/ tests/
+        run: uv run --no-sync --no-build ruff format --check src/ tests/
 
       - name: Run mypy type checker
-        run: uv run --no-sync mypy src/
+        run: uv run --no-sync --no-build mypy src/
 
   test:
     runs-on: ${{ matrix.os }}
@@ -73,13 +73,13 @@ jobs:
         run: uv sync --locked --dev
 
       - name: Run core tests
-        run: uv run --no-sync pytest -m "not benchmark and not validation"
+        run: uv run --no-sync --no-build pytest -m "not benchmark and not validation"
 
       - name: Run validation tests
-        run: uv run --no-sync pytest -m validation
+        run: uv run --no-sync --no-build pytest -m validation
 
       - name: Pattern compliance check
-        run: uv run --no-sync pytest tests/test_pattern_compliance.py -v
+        run: uv run --no-sync --no-build pytest tests/test_pattern_compliance.py -v
 
   test-minimum-deps:
     runs-on: ubuntu-latest
@@ -101,10 +101,10 @@ jobs:
         run: uv sync --no-dev --group test --resolution lowest-direct
 
       - name: Run core tests with minimum dependencies
-        run: uv run --no-sync pytest -m "not benchmark and not validation"
+        run: uv run --no-sync --no-build pytest -m "not benchmark and not validation"
 
       - name: Run validation tests with minimum dependencies
-        run: uv run --no-sync pytest -m validation
+        run: uv run --no-sync --no-build pytest -m validation
 
   notebooks:
     runs-on: ubuntu-latest
@@ -128,7 +128,7 @@ jobs:
       - name: Execute v2.5 notebooks
         timeout-minutes: 10
         run: >
-          uv run --no-sync jupyter nbconvert --execute --to notebook --inplace
+          uv run --no-sync --no-build jupyter nbconvert --execute --to notebook --inplace
           notebooks/xarray_getting_started.ipynb
           notebooks/palmer_indices_xarray.ipynb
           notebooks/eddi_xarray.ipynb
