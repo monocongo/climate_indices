@@ -23,7 +23,7 @@ from collections import deque
 
 import numpy as np
 
-from climate_indices.exceptions import InvalidArgumentError
+from climate_indices.exceptions import InsufficientDataError, InvalidArgumentError
 
 __all__ = [
     "DRY_SIGN",
@@ -207,13 +207,22 @@ def extreme_z_sum(z_values: np.ndarray, window_length: int, sign: int) -> float:
 
     Returns:
         The representative extreme rolling sum for this window length. On the
-        wet side this is 0.0 when no rolling sum survives the anomaly filter.
+        wet side this is 0.0 when no rolling sum survives the anomaly filter
+        (see :func:`_highest_reasonable`); that 0.0 is a real result of the
+        published algorithm, not a placeholder.
 
     Raises:
-        InvalidArgumentError: If sign is invalid or window_length is not positive.
+        InvalidArgumentError: If sign is invalid or window_length is not a
+            positive integer.
+        InsufficientDataError: If ``z_values`` has fewer than ``window_length``
+            non-missing values, so no complete window ever forms. There is no
+            safe sentinel for this case: a 0.0 would be indistinguishable from
+            the wet-side anomaly-filter floor above, and a NaN would silently
+            satisfy :func:`duration_factors`' documented ``m + b <= 0`` guard
+            instead of tripping it.
     """
     _validate_sign(sign)
-    if window_length < 1:
+    if window_length < 1 or not float(window_length).is_integer():
         raise InvalidArgumentError(
             f"invalid rolling window length: {window_length}",
             argument_name="window_length",
@@ -233,6 +242,20 @@ def extreme_z_sum(z_values: np.ndarray, window_length: int, sign: int) -> float:
         if not math.isnan(value):
             running += value
             window.append(value)
+
+    if len(window) < window_length:
+        # the series ended before a complete window could be formed. There is
+        # no safe sentinel to report here -- not even the partial sum just
+        # accumulated, which would be a shorter-than-window_length sum -- since
+        # a 0.0/NaN placeholder is indistinguishable from a legitimate result
+        # downstream (0.0 collides with the wet-side anomaly-filter floor, and
+        # NaN silently satisfies duration_factors' documented `m + b <= 0`
+        # guard instead of tripping it). Raise instead of guessing.
+        raise InsufficientDataError(
+            f"no complete {window_length}-period rolling window: only {len(window)} non-missing periods were available",
+            non_zero_count=len(window),
+            required_count=window_length,
+        )
 
     extreme = running
     sums = np.empty(series.size + 1, dtype=float)
@@ -400,6 +423,10 @@ def duration_factors(z_values: np.ndarray, sign: int) -> tuple[float, float]:
 
     Raises:
         InvalidArgumentError: If sign is invalid.
+        InsufficientDataError: If the calibration period is too short, or has
+            too many missing values, for the largest window length in
+            :data:`DURATION_FACTOR_WINDOW_LENGTHS` to ever complete -- see
+            :func:`extreme_z_sum`.
     """
     _validate_sign(sign)
 

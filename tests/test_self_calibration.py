@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 from climate_indices import self_calibration
-from climate_indices.exceptions import InvalidArgumentError
+from climate_indices.exceptions import InsufficientDataError, InvalidArgumentError
 
 
 class TestKthSmallest:
@@ -140,6 +140,52 @@ class TestExtremeZSum:
 
         with pytest.raises(InvalidArgumentError):
             self_calibration.extreme_z_sum(z, 0, self_calibration.WET_SIGN)
+
+    def test_rejects_a_fractional_window_length(self):
+        z = np.arange(10.0)
+
+        with pytest.raises(InvalidArgumentError) as exc_info:
+            self_calibration.extreme_z_sum(z, 2.5, self_calibration.WET_SIGN)
+
+        assert exc_info.value.argument_name == "window_length"
+        assert exc_info.value.argument_value == "2.5"
+        assert exc_info.value.valid_values == "a positive integer"
+
+    def test_accepts_an_integer_valued_float_window_length(self):
+        # window_length is deliberately checked with float(x).is_integer()
+        # rather than isinstance(x, int), so an integer-valued float like 2.0
+        # must still be accepted, not just rejected when fractional
+        z = np.array([1.0, 2.0])
+
+        result = self_calibration.extreme_z_sum(z, 2.0, self_calibration.WET_SIGN)
+
+        assert result == pytest.approx(3.0)
+
+    @pytest.mark.parametrize("sign", [self_calibration.WET_SIGN, self_calibration.DRY_SIGN])
+    def test_raises_insufficient_data_when_series_is_shorter_than_one_window(self, sign):
+        # only 2 non-missing values are available, so a 5-period window can
+        # never fully form on either side -- there is no sentinel value that
+        # safely stands in for "no complete window was ever seen", so this
+        # must raise rather than return a floor/NaN placeholder
+        z = np.array([1.0, 2.0])
+
+        with pytest.raises(InsufficientDataError) as exc_info:
+            self_calibration.extreme_z_sum(z, 5, sign)
+
+        assert exc_info.value.non_zero_count == 2
+        assert exc_info.value.required_count == 5
+
+    @pytest.mark.parametrize("sign", [self_calibration.WET_SIGN, self_calibration.DRY_SIGN])
+    def test_raises_insufficient_data_when_missing_values_prevent_a_full_window(self, sign):
+        # 3 non-missing values total, none of which can ever fill a 5-period
+        # window even though the raw series has 5 entries
+        z = np.array([1.0, np.nan, 2.0, np.nan, 3.0])
+
+        with pytest.raises(InsufficientDataError) as exc_info:
+            self_calibration.extreme_z_sum(z, 5, sign)
+
+        assert exc_info.value.non_zero_count == 3
+        assert exc_info.value.required_count == 5
 
     def test_wet_side_returns_the_largest_survivor_rather_than_the_threshold(self):
         z = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 10.0, 11.0])
