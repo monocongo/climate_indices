@@ -365,7 +365,7 @@ def test_ci_commands_use_fresh_lock_and_prepared_environment(workflow_path: Path
     assert ordinary_syncs and all("--locked" in command for command in ordinary_syncs)
     assert all("--locked" in command for command in exports)
     assert "--frozen" not in workflow
-    assert runs and all("uv run --no-sync " in command for command in runs)
+    assert runs and all("uv run --no-sync --no-build " in command for command in runs)
 
 
 def test_core_public_api_importable() -> None:
