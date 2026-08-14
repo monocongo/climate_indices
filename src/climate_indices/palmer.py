@@ -16,6 +16,61 @@ __all__ = ["pdsi"]
 AWCTOP = 1.0
 K8_SIZE = 40
 
+# Palmer's (1965) fixed national duration-factor parameters. Standard PDSI
+# uses these directly; self-calibrating PDSI (scPDSI) fits per-location
+# replacements via the same m/b/c relationship (see palmer's scpdsi()).
+_PALMER_DURATION_P = 0.897
+_PALMER_DURATION_Q = 1.0 / 3.0
+
+
+def _default_duration_factors() -> tuple[float, float]:
+    """
+    Palmer's (1965) fixed national duration-factor slope and intercept,
+    derived from the published p and q constants.
+
+    :return a tuple of (m, b), the duration-factor slope and intercept
+    :rtype: tuple[float, float]
+    """
+    m = (1.0 - _PALMER_DURATION_P) / _PALMER_DURATION_Q
+    b = _PALMER_DURATION_P / _PALMER_DURATION_Q
+    return m, b
+
+
+def _duration_factor_c(m: float, b: float) -> float:
+    """
+    The CAFEC-style weighting fraction implied by a pair of duration factors.
+
+    :param m: duration-factor slope
+    :param b: duration-factor intercept
+    :return the weighting fraction c = b / (m + b)
+    :rtype: float
+    :raises ValueError: if the duration factors sum to zero
+    """
+    denominator = m + b
+    if denominator == 0:
+        raise ValueError("duration-factor slope and intercept must not sum to zero")
+    return b / denominator
+
+
+def _select_duration_factors(data: dict[str, Any]) -> tuple[float, float]:
+    """
+    Select the wet or dry duration factors based on the sign of the
+    currently-established spell's severity (X3).
+
+    X3 equal to zero means that no wet or dry spell is established. It is
+    assigned the wet factors to preserve the recursion's historical
+    non-negative tie-break. This choice is immaterial with Palmer's identical
+    wet and dry defaults, but must remain explicit when scPDSI supplies distinct
+    factors.
+
+    :param data: dictionary of parameters (intialized in pdsi)
+    :return a tuple of (m, b) - the duration-factor slope and intercept
+    :rtype: tuple[float, float]
+    """
+    if data["x3"] >= 0:
+        return data["wetm"], data["wetb"]
+    return data["drym"], data["dryb"]
+
 
 def _get_awc_bot(awc: float) -> float:
     """
@@ -445,7 +500,8 @@ def _statement_210(data: dict[str, Any]) -> None:
     data["px1"][year, month] = 0.0
     data["px2"][year, month] = 0.0
     data["ppr"][year, month] = 0.0
-    data["px3"][year, month] = 0.897 * data["x3"] + data["z"][year, month] / 3.0
+    m, b = _select_duration_factors(data)
+    data["px3"][year, month] = _duration_factor_c(m, b) * data["x3"] + data["z"][year, month] / (m + b)
     data["x"][year, month] = data["px3"][year, month]
 
     if data["k8"] == 0:
@@ -479,7 +535,10 @@ def _statement_200(data: dict[str, Any]) -> None:
     """
     year = data["year"]
     month = data["month"]
-    data["px1"][year, month] = max(0, 0.897 * data["x1"] + data["z"][year, month] / 3.0)
+    wetm, wetb = data["wetm"], data["wetb"]
+    data["px1"][year, month] = max(
+        0, _duration_factor_c(wetm, wetb) * data["x1"] + data["z"][year, month] / (wetm + wetb)
+    )
 
     # if no existing wet spell or drought
     # x1 becomes the new x3
@@ -492,7 +551,10 @@ def _statement_200(data: dict[str, Any]) -> None:
         _statement_220(data)
         return
 
-    data["px2"][year, month] = min(0.0, 0.897 * data["x2"] + data["z"][year, month] / 3.0)
+    drym, dryb = data["drym"], data["dryb"]
+    data["px2"][year, month] = min(
+        0.0, _duration_factor_c(drym, dryb) * data["x2"] + data["z"][year, month] / (drym + dryb)
+    )
 
     # if no existing wet spell or drought x2 becomes the new x3
     if (data["px2"][year, month] <= -1) and (data["px3"][year, month] == 0):
@@ -566,7 +628,8 @@ def _statement_190(data: dict[str, Any]) -> None:
         data["ppr"][year, month] = 100
         data["px3"][year, month] = 0
     else:
-        data["px3"][year, month] = 0.897 * data["x3"] + data["z"][year, month] / 3.0
+        m, b = _select_duration_factors(data)
+        data["px3"][year, month] = _duration_factor_c(m, b) * data["x3"] + data["z"][year, month] / (m + b)
 
     _statement_200(data)
 
@@ -589,7 +652,8 @@ def _statement_180(data: dict[str, Any]) -> None:
         _statement_210(data)
         return
 
-    data["ze"] = -2.691 * data["x3"] - 1.5
+    m, b = data["drym"], data["dryb"]
+    data["ze"] = -b * data["x3"] - 0.5 * (m + b)
     _statement_190(data)
 
 
@@ -611,7 +675,8 @@ def _statement_170(data: dict[str, Any]) -> None:
         _statement_210(data)
         return
 
-    data["ze"] = -2.691 * data["x3"] + 1.5
+    m, b = data["wetm"], data["wetb"]
+    data["ze"] = -b * data["x3"] + 0.5 * (m + b)
     _statement_190(data)
 
 
@@ -812,6 +877,13 @@ def _initialize_data(
     data["sx2"] = np.zeros((K8_SIZE,))
     data["sx3"] = np.zeros((K8_SIZE,))
     data["x"] = np.zeros((n_years, 12))
+
+    # duration factors: default to Palmer's fixed national values. scPDSI
+    # (see palmer.scpdsi()) overrides these four keys with per-location
+    # fitted values after calling this function.
+    default_m, default_b = _default_duration_factors()
+    data["wetm"], data["wetb"] = default_m, default_b
+    data["drym"], data["dryb"] = default_m, default_b
 
     _validate_fitting_params(data, fitting_params)
 

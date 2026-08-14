@@ -520,9 +520,11 @@ class TestXarrayAdapterInferenceHelpers:
         assert cal_end == 1999
 
     def test_infer_periodicity_month_end(self):
-        """_infer_periodicity handles ME frequency (pandas >= 2.2 default)."""
-        # pandas 2.2+ uses ME instead of MS for month-end
-        time = pd.date_range("2020-01-31", periods=24, freq="ME")
+        """_infer_periodicity handles month-end frequencies across pandas versions."""
+        try:
+            time = pd.date_range("2020-01-31", periods=24, freq="ME")
+        except ValueError:  # pandas < 2.2 uses the legacy M alias
+            time = pd.date_range("2020-01-31", periods=24, freq="M")
         time_da = xr.DataArray(time, dims=["time"])
 
         periodicity = _infer_periodicity(time_da)

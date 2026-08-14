@@ -152,7 +152,7 @@ spi = "climate_indices.__spi__:main"
   - PHDI (Palmer Hydrological Drought Index)
   - PMDI (Palmer Modified Drought Index)
   - ZINDEX (Palmer Z-Index)
-  - Self-calibrated Palmer (scPDSI)
+  - scPDSI (Self-calibrated Palmer Drought Severity Index) — **not implemented**; tracked in [issue #716](https://github.com/monocongo/climate_indices/issues/716)
 
 **Key Algorithms**:
 1. **SPI/SPEI Computation**:
@@ -560,6 +560,7 @@ See [ADR-0001](adr/0001-dual-numpy-xarray-api.md).
 See [ADR-0002](adr/0002-multiprocessing-cli-dask-xarray.md).
 
 ### 3. Time Dimension Chunking Constraint
+
 **Decision**: Dask arrays MUST have time as single chunk.
 
 **Rationale**: Climate indices require access to full time series for distribution fitting.

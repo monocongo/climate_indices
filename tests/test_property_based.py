@@ -395,13 +395,10 @@ def test_pet_thornthwaite_increases_with_temperature(temp_base: np.ndarray) -> N
 
     Note: Thornthwaite clips negative temps to 0°C before calculating the heat
     index, which can create non-monotonic behavior when comparing very cold base
-    temps vs. warmer temps. We filter out cases with significant sub-freezing
-    temps to avoid this edge case.
+    temps vs. warmer temps. Shift generated inputs above freezing while
+    preserving their seasonal shape so every example exercises the property.
     """
-    # skip test cases where more than 25% of months are below freezing
-    # as the temperature clipping creates non-monotonic heat index behavior
-    fraction_below_freezing = np.sum(temp_base < 0) / len(temp_base)
-    assume(fraction_below_freezing < 0.25)
+    temp_base = temp_base - min(0.0, float(np.min(temp_base)))
 
     # create higher temperature array
     temp_higher = temp_base + 5.0
