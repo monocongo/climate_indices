@@ -114,7 +114,7 @@ jobs:
         run: uv export --locked --no-dev --no-emit-project --format requirements.txt --output-file runtime-requirements.txt
 
       - name: Run pip-audit
-        run: uv run --no-sync pip-audit --requirement runtime-requirements.txt --disable-pip
+        run: uv run --no-sync --no-build pip-audit --requirement runtime-requirements.txt --disable-pip
 
   # Build and test artifacts without publishing privileges
   build:

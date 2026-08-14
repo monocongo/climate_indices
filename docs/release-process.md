@@ -42,26 +42,28 @@ Prepare the development environment and verify that the lockfile is current:
 uv sync --locked --dev
 ```
 
-Run the normal quality gate in that prepared environment:
+Run the normal quality gate in that prepared environment. Every
+`uv run --no-sync` command must also include `--no-build` so `uv` uses only the
+already prepared environment and does not implicitly build packages:
 
 ```bash
-uv run --no-sync ruff check src/ tests/
-uv run --no-sync ruff format --check src/ tests/
-uv run --no-sync mypy src/
-uv run --no-sync pytest
+uv run --no-sync --no-build ruff check src/ tests/
+uv run --no-sync --no-build ruff format --check src/ tests/
+uv run --no-sync --no-build mypy src/
+uv run --no-sync --no-build pytest
 ```
 
 Run release integrity checks before pushing a tag:
 
 ```bash
-uv run --no-sync pytest tests/test_release_integrity.py
+uv run --no-sync --no-build pytest tests/test_release_integrity.py
 ```
 
 Build and inspect package artifacts when preparing the release PR:
 
 ```bash
-uv run --no-sync python -m build
-uv run --no-sync twine check dist/*
+uv run --no-sync --no-build python -m build
+uv run --no-sync --no-build twine check dist/*
 ```
 
 ## Tag creation
