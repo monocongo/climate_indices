@@ -30,6 +30,7 @@ def test_wet_and_dry_spells_establish_at_half_unit_thresholds():
 
     assert wet.pdsi[0] == pytest.approx(0.5)
     assert wet.x3[0] == pytest.approx(0.5)
+    assert wet.pmdi[0] == pytest.approx(0.5)
     assert dry.pdsi[0] == pytest.approx(-0.5)
     assert dry.x3[0] == pytest.approx(-0.5)
 
@@ -102,8 +103,14 @@ def test_missing_periods_preserve_state_and_remain_missing_in_every_output():
         (1.0, 1.0, -1.0, 1.0),
         (1.0, 1.0, np.nan, 1.0),
         (1.0, -1.0, 1.0, 1.0),
+        (3.0, -1.0, 1.0, 1.0),
     ],
 )
 def test_invalid_duration_factor_denominators_raise_convergence_error(wetm, wetb, drym, dryb):
     with pytest.raises(ConvergenceError, match="duration factors"):
         _run([0.0], wetm=wetm, wetb=wetb, drym=drym, dryb=dryb)
+
+
+def test_zero_abatement_denominator_raises_convergence_error():
+    with pytest.raises(ConvergenceError, match="abatement probability"):
+        _run([2.0, 0.0])

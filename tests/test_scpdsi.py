@@ -15,15 +15,16 @@ ATOL = 5e-5
 RTOL = 0
 _FIXTURE_ROOT = Path(__file__).parent / "fixture"
 _PALMER_ROOT = _FIXTURE_ROOT / "palmer"
+_DIVISION_DIRS = tuple(sorted(path for path in _PALMER_ROOT.iterdir() if path.name.isdigit()))
+_AWCS = json.loads((_FIXTURE_ROOT / "palmer_awc.json").read_text(encoding="utf-8"))
 
 
 def _division_inputs(division: str = "0101") -> tuple[np.ndarray, np.ndarray, float]:
     division_dir = _PALMER_ROOT / division
-    awcs = json.loads((_FIXTURE_ROOT / "palmer_awc.json").read_text(encoding="utf-8"))
     return (
         np.load(division_dir / "precips.npy"),
         np.load(division_dir / "pet.npy"),
-        awcs[division],
+        _AWCS[division],
     )
 
 
@@ -123,43 +124,43 @@ def test_invalid_calibration_percentiles_raise_convergence_error(monkeypatch, dr
         _call()
 
 
+def test_scpdsi_oracle_contains_all_climate_divisions():
+    assert len(_DIVISION_DIRS) == 344
+
+
 @pytest.mark.validation
-def test_all_climate_divisions_match_scpdsi_oracle():
-    awcs = json.loads((_FIXTURE_ROOT / "palmer_awc.json").read_text(encoding="utf-8"))
-    division_dirs = sorted(path for path in _PALMER_ROOT.iterdir() if path.name.isdigit())
-    assert len(division_dirs) == 344
+@pytest.mark.parametrize("division_dir", _DIVISION_DIRS, ids=lambda path: path.name)
+def test_climate_division_matches_scpdsi_oracle(division_dir):
+    division = division_dir.name
+    scpdsi, scphdi, scpmdi, sczindex, params = palmer.scpdsi(
+        np.load(division_dir / "precips.npy"),
+        np.load(division_dir / "pet.npy"),
+        _AWCS[division],
+        1895,
+        1931,
+        1990,
+    )
+    assert params is not None
 
-    for division_dir in division_dirs:
-        division = division_dir.name
-        scpdsi, scphdi, scpmdi, sczindex, params = palmer.scpdsi(
-            np.load(division_dir / "precips.npy"),
-            np.load(division_dir / "pet.npy"),
-            awcs[division],
-            1895,
-            1931,
-            1990,
-        )
-        assert params is not None
-
-        for name, actual in (
-            ("scpdsi", scpdsi),
-            ("scphdi", scphdi),
-            ("scpmdi", scpmdi),
-            ("sczindex", sczindex),
-        ):
-            np.testing.assert_allclose(
-                actual,
-                np.load(division_dir / f"{name}.npy"),
-                atol=ATOL,
-                rtol=RTOL,
-                equal_nan=True,
-                err_msg=f"{division}: {name} mismatch",
-            )
-
+    for name, actual in (
+        ("scpdsi", scpdsi),
+        ("scphdi", scphdi),
+        ("scpmdi", scpmdi),
+        ("sczindex", sczindex),
+    ):
         np.testing.assert_allclose(
-            [params["wetm"], params["wetb"], params["drym"], params["dryb"]],
-            np.load(division_dir / "scdurfact.npy"),
+            actual,
+            np.load(division_dir / f"{name}.npy"),
             atol=ATOL,
             rtol=RTOL,
-            err_msg=f"{division}: duration factors mismatch",
+            equal_nan=True,
+            err_msg=f"{division}: {name} mismatch",
         )
+
+    np.testing.assert_allclose(
+        [params["wetm"], params["wetb"], params["drym"], params["dryb"]],
+        np.load(division_dir / "scdurfact.npy"),
+        atol=ATOL,
+        rtol=RTOL,
+        err_msg=f"{division}: duration factors mismatch",
+    )

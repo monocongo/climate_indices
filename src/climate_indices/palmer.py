@@ -4,6 +4,7 @@ import time
 from typing import Any
 
 import numpy as np
+from structlog.stdlib import BoundLogger
 
 from climate_indices import _palmer_wells, self_calibration, utils
 from climate_indices.exceptions import ConvergenceError
@@ -406,25 +407,6 @@ def _calibration_values(data: dict[str, Any], values: np.ndarray) -> np.ndarray:
     first = data["calibration_year_initial_idx"] * 12
     final = (data["calibration_year_final_idx"] + 1) * 12
     return np.asarray(values).reshape(-1)[first:final]
-
-
-def _validate_scpdsi_duration_factors(wetm: float, wetb: float, drym: float, dryb: float) -> None:
-    """Reject fitted duration factors that cannot drive the Wells recursion."""
-    wet_denominator = wetm + wetb
-    dry_denominator = drym + dryb
-    dry_coefficient_denominator = drym + wetb
-    if (
-        not np.isfinite(wet_denominator)
-        or wet_denominator <= 0.0
-        or not np.isfinite(dry_denominator)
-        or dry_denominator <= 0.0
-        or not np.isfinite(dry_coefficient_denominator)
-        or dry_coefficient_denominator == 0.0
-    ):
-        raise ConvergenceError(
-            "invalid fitted duration factors for scPDSI calibration",
-            algorithm="scPDSI duration-factor calibration",
-        )
 
 
 def _rescale_scpdsi_zindex(z_values: np.ndarray, dry_percentile: float, wet_percentile: float) -> np.ndarray:
@@ -978,6 +960,43 @@ def _initialize_data(
     return data
 
 
+def _prepare_palmer_data(
+    precips: np.ndarray,
+    pet: np.ndarray,
+    awc: float,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    fitting_params: dict[str, Any] | None,
+    log: BoundLogger,
+) -> tuple[dict[str, Any], int]:
+    """Validate inputs and run the water-balance/CAFEC stages shared by Palmer indices."""
+    if precips.size != pet.size:
+        message = "Incompatible precipitation and PET arrays"
+        log.error("validation_failed", reason=message)
+        raise ValueError(message)
+
+    if np.amin(precips) < 0.0:
+        log.warning("negative_values_clipped", field="precips")
+        precips = np.clip(precips, a_min=0.0, a_max=None)
+
+    original_length = precips.size
+    data = _initialize_data(
+        precips=precips,
+        pet=pet,
+        awc=awc,
+        data_start_year=data_start_year,
+        calibration_year_initial=calibration_year_initial,
+        calibration_year_final=calibration_year_final,
+        fitting_params=fitting_params,
+    )
+    _calc_water_balances(data)
+    if data["calibrate"]:
+        _calc_cafec_coefficients(data)
+    _calc_zindex_factors(data)
+    return data, original_length
+
+
 def pdsi(
     precips: np.ndarray,
     pet: np.ndarray,
@@ -1031,41 +1050,16 @@ def pdsi(
             )
             return precips, precips, precips, precips, None
 
-        # validate that the two input arrays are compatible
-        if precips.size != pet.size:
-            message = "Incompatible precipitation and PET arrays"
-            log.error("validation_failed", reason=message)
-            raise ValueError(message)
-
-        # clip any negative values to zero
-        if np.amin(precips) < 0.0:
-            log.warning("negative_values_clipped", field="precips")
-            precips = np.clip(precips, a_min=0.0, a_max=None)
-
-        # remember the original length of the input array, in order to facilitate
-        # returning an array of the same size
-        original_length = precips.size
-
-        # Initialize data
-        data = _initialize_data(
-            precips=precips,
-            pet=pet,
-            awc=awc,
-            data_start_year=data_start_year,
-            calibration_year_initial=calibration_year_initial,
-            calibration_year_final=calibration_year_final,
-            fitting_params=fitting_params,
+        data, original_length = _prepare_palmer_data(
+            precips,
+            pet,
+            awc,
+            data_start_year,
+            calibration_year_initial,
+            calibration_year_final,
+            fitting_params,
+            log,
         )
-
-        # Water balance calcs
-        _calc_water_balances(data)
-
-        # Get Cafec coefficients
-        if data["calibrate"]:
-            _calc_cafec_coefficients(data)
-
-        # Calculate Z-Index weighting factors (variable AK)
-        _calc_zindex_factors(data)
 
         # Sum variables now become averages over the calibration period
         # (currently not used - uncomment if want to export later)
@@ -1167,29 +1161,16 @@ def scpdsi(
             )
             return precips, precips, precips, precips, None
 
-        if precips.size != pet.size:
-            message = "Incompatible precipitation and PET arrays"
-            log.error("validation_failed", reason=message)
-            raise ValueError(message)
-
-        if np.amin(precips) < 0.0:
-            log.warning("negative_values_clipped", field="precips")
-            precips = np.clip(precips, a_min=0.0, a_max=None)
-
-        original_length = precips.size
-        data = _initialize_data(
-            precips=precips,
-            pet=pet,
-            awc=awc,
-            data_start_year=data_start_year,
-            calibration_year_initial=calibration_year_initial,
-            calibration_year_final=calibration_year_final,
-            fitting_params=fitting_params,
+        data, original_length = _prepare_palmer_data(
+            precips,
+            pet,
+            awc,
+            data_start_year,
+            calibration_year_initial,
+            calibration_year_final,
+            fitting_params,
+            log,
         )
-        _calc_water_balances(data)
-        if data["calibrate"]:
-            _calc_cafec_coefficients(data)
-        _calc_zindex_factors(data)
         _calc_scpdsi_k_factors(data)
         _calc_scpdsi_raw_zindex(data)
 
@@ -1197,7 +1178,6 @@ def scpdsi(
         calibration_z = _calibration_values(data, z_values)
         wetm, wetb = self_calibration.duration_factors(calibration_z, self_calibration.WET_SIGN)
         drym, dryb = self_calibration.duration_factors(calibration_z, self_calibration.DRY_SIGN)
-        _validate_scpdsi_duration_factors(wetm, wetb, drym, dryb)
 
         recursion = _palmer_wells.calculate(
             z_values,

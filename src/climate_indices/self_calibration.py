@@ -62,6 +62,7 @@ DURATION_FACTOR_WINDOW_LENGTHS: tuple[int, ...] = (3, 6, 9, 12, 18, 24, 30, 36, 
 # conventional extreme threshold; normalizing by it rescales the regression into
 # the slope/intercept pair the PDSI recursion consumes.
 _PDSI_ANCHOR = 4.0
+_DURATION_FACTOR_ALGORITHM = "scPDSI duration-factor least squares"
 
 
 def _validate_sign(sign: int) -> None:
@@ -331,7 +332,7 @@ def least_squares_fit(x: np.ndarray, y: np.ndarray, sign: int) -> tuple[float, f
     if not np.all(np.isfinite(abscissa)) or not np.all(np.isfinite(ordinate)):
         raise ConvergenceError(
             "least-squares fit received non-finite values",
-            algorithm="scPDSI duration-factor least squares",
+            algorithm=_DURATION_FACTOR_ALGORITHM,
         )
 
     # accumulate sequentially rather than via ndarray.sum(), whose pairwise
@@ -353,7 +354,7 @@ def least_squares_fit(x: np.ndarray, y: np.ndarray, sign: int) -> tuple[float, f
     if not math.isfinite(ss_x) or not math.isfinite(ss_y) or ss_x <= 0.0 or ss_y <= 0.0:
         raise ConvergenceError(
             "least-squares fit has degenerate variance",
-            algorithm="scPDSI duration-factor least squares",
+            algorithm=_DURATION_FACTOR_ALGORITHM,
         )
     correlation = ss_xy / (math.sqrt(ss_x) * math.sqrt(ss_y))
 
@@ -375,7 +376,7 @@ def least_squares_fit(x: np.ndarray, y: np.ndarray, sign: int) -> tuple[float, f
         if not math.isfinite(ss_x) or not math.isfinite(ss_y) or ss_x <= 0.0 or ss_y <= 0.0:
             raise ConvergenceError(
                 "least-squares fit has degenerate variance",
-                algorithm="scPDSI duration-factor least squares",
+                algorithm=_DURATION_FACTOR_ALGORITHM,
             )
         correlation = ss_xy / (math.sqrt(ss_x) * math.sqrt(ss_y))
         last -= 1
@@ -438,6 +439,8 @@ def duration_factors(z_values: np.ndarray, sign: int) -> tuple[float, float]:
             too many missing values, for the largest window length in
             :data:`DURATION_FACTOR_WINDOW_LENGTHS` to ever complete -- see
             :func:`extreme_z_sum`.
+        ConvergenceError: If duration-factor regression receives non-finite
+            values or retains points with degenerate variance.
     """
     _validate_sign(sign)
 

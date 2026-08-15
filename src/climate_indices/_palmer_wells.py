@@ -66,6 +66,24 @@ class _Tentative:
     x3: float
 
 
+@dataclass(frozen=True)
+class _Transition:
+    """One period's candidate state before it is persisted."""
+
+    x1: float
+    x2: float
+    x3: float = 0.0
+    v: float = 0.0
+    probability: float = 0.0
+    selection: int = 0
+    spell_terminated: bool = False
+
+
+def _is_exact_zero(value: float) -> bool:
+    """Preserve Wells' intentional exact-zero branching semantics."""
+    return value == 0.0  # NOSONAR: exact zero selects and backtracks Wells candidates
+
+
 def _validated_factors(wetm: float, wetb: float, drym: float, dryb: float) -> _Factors:
     wet_denominator = wetm + wetb
     dry_denominator = drym + dryb
@@ -76,7 +94,7 @@ def _validated_factors(wetm: float, wetb: float, drym: float, dryb: float) -> _F
         or not np.isfinite(dry_denominator)
         or dry_denominator <= 0.0
         or not np.isfinite(dry_coefficient_denominator)
-        or dry_coefficient_denominator == 0.0
+        or _is_exact_zero(dry_coefficient_denominator)
     ):
         raise ConvergenceError(
             "invalid fitted duration factors for the Wells recursion",
@@ -122,13 +140,13 @@ def _backtrack(pdsi: np.ndarray, tentative: list[_Tentative], selection: int) ->
 
     for values in reversed(tentative):
         if selection == 2:
-            if values.x2 == 0.0:
+            if _is_exact_zero(values.x2):
                 selection = 1
                 pdsi[values.index] = values.x1
             else:
                 pdsi[values.index] = values.x2
         else:
-            if values.x1 == 0.0:
+            if _is_exact_zero(values.x1):
                 selection = 2
                 pdsi[values.index] = values.x2
             else:
@@ -137,7 +155,7 @@ def _backtrack(pdsi: np.ndarray, tentative: list[_Tentative], selection: int) ->
 
 
 def _pmdi(probability: float, x1: float, x2: float, x3: float) -> float:
-    if x3 == 0.0:
+    if _is_exact_zero(x3):
         if abs(x1) > abs(x2):
             return x1
         return x2
@@ -148,6 +166,174 @@ def _pmdi(probability: float, x1: float, x2: float, x3: float) -> float:
     if x3 <= 0.0:
         return (1.0 - fraction) * x3 + fraction * x1
     return (1.0 - fraction) * x3 + fraction * x2
+
+
+def _abatement_transition(
+    state: _State,
+    z_value: float,
+    factors: _Factors,
+    transition: _Transition,
+    *,
+    wet_spell: bool,
+    coefficient: float,
+    denominator: float,
+    slope: float,
+    direction: float,
+    abatement_z: float,
+) -> _Transition:
+    """Advance an established spell while abatement is possible."""
+    tolerance_adjustment = (1 - _BUG) * _TOLERANCE
+    if wet_spell:
+        carry = min(state.v + tolerance_adjustment, 0.0)
+    else:
+        carry = max(state.v - tolerance_adjustment, 0.0)
+    new_v = z_value - direction * abatement_z + carry
+
+    if direction * new_v >= 0.0:
+        return _Transition(
+            x1=0.0,
+            x2=0.0,
+            x3=coefficient * state.x3 + z_value / denominator,
+            selection=3,
+        )
+
+    own_intercept = factors.wetb if wet_spell else factors.dryb
+    ze = direction * _SPELL_THRESHOLD * (slope + own_intercept) - own_intercept * state.x3
+    q = ze if state.probability >= 100.0 - _TOLERANCE else ze + state.v
+    if _is_exact_zero(q) or not np.isfinite(q):
+        raise ConvergenceError(
+            "Wells recursion could not calculate an abatement probability",
+            algorithm="scPDSI Wells recursion",
+        )
+
+    new_probability = (new_v / q) * 100.0
+    if new_probability >= 100.0 - _TOLERANCE:
+        return _Transition(
+            x1=transition.x1,
+            x2=transition.x2,
+            v=new_v,
+            probability=100.0,
+            spell_terminated=True,
+        )
+
+    return _Transition(
+        x1=transition.x1,
+        x2=transition.x2,
+        x3=coefficient * state.x3 + z_value / denominator,
+        v=new_v,
+        probability=new_probability,
+    )
+
+
+def _continue_spell(state: _State, z_value: float, factors: _Factors, transition: _Transition) -> _Transition:
+    """Continue or abate an established wet or dry spell."""
+    if _is_exact_zero(state.x3):
+        return transition
+
+    wet_spell = state.x3 >= 0.0
+    coefficient = factors.wetc if wet_spell else factors.dry_spell_c
+    denominator = factors.wet_denominator if wet_spell else factors.dry_denominator
+    slope = factors.wetm if wet_spell else factors.drym
+    direction = 1.0 if wet_spell else -1.0
+    # Generalizing Palmer's recurrence replaces the fixed 0.15
+    # effective-moisture threshold with half the fitted slope.
+    abatement_z = slope * _SPELL_THRESHOLD
+    abatement_underway = state.probability not in (0.0, 100.0)
+
+    if not abatement_underway and direction * z_value >= abatement_z:
+        return _Transition(
+            x1=0.0,
+            x2=0.0,
+            x3=coefficient * state.x3 + z_value / denominator,
+            selection=3,
+        )
+
+    return _abatement_transition(
+        state,
+        z_value,
+        factors,
+        transition,
+        wet_spell=wet_spell,
+        coefficient=coefficient,
+        denominator=denominator,
+        slope=slope,
+        direction=direction,
+        abatement_z=abatement_z,
+    )
+
+
+def _establish_spell(transition: _Transition) -> _Transition:
+    """Apply Wells' candidate selection and spell-establishment tie-breaks."""
+    if not _is_exact_zero(transition.x3):
+        return transition
+
+    if transition.x1 >= _SPELL_THRESHOLD:
+        return _Transition(
+            x1=0.0,
+            x2=transition.x2,
+            x3=transition.x1,
+            v=transition.v if transition.spell_terminated else 0.0,
+            probability=transition.probability if transition.spell_terminated else 0.0,
+            selection=1,
+            spell_terminated=transition.spell_terminated,
+        )
+    if transition.x2 <= -_SPELL_THRESHOLD:
+        return _Transition(
+            x1=transition.x1,
+            x2=0.0,
+            x3=transition.x2,
+            v=transition.v if transition.spell_terminated else 0.0,
+            probability=transition.probability if transition.spell_terminated else 0.0,
+            selection=2,
+            spell_terminated=transition.spell_terminated,
+        )
+    if _is_exact_zero(transition.x1):
+        return _Transition(
+            x1=transition.x1,
+            x2=transition.x2,
+            v=transition.v,
+            probability=transition.probability,
+            selection=2,
+            spell_terminated=transition.spell_terminated,
+        )
+    if _is_exact_zero(transition.x2):
+        return _Transition(
+            x1=transition.x1,
+            x2=transition.x2,
+            v=transition.v,
+            probability=transition.probability,
+            selection=1,
+            spell_terminated=transition.spell_terminated,
+        )
+    return transition
+
+
+def _assign_period(
+    pdsi: np.ndarray,
+    tentative: list[_Tentative],
+    index: int,
+    transition: _Transition,
+) -> None:
+    """Assign or defer one period's final PDSI value."""
+    if not transition.selection:
+        pdsi[index] = transition.x3
+        tentative.append(
+            _Tentative(
+                index=index,
+                x1=transition.x1,
+                x2=transition.x2,
+                x3=transition.x3,
+            )
+        )
+        return
+
+    _backtrack(pdsi, tentative, transition.selection)
+    if transition.selection == 1:
+        pdsi[index] = transition.x3 if not _is_exact_zero(transition.x3) else transition.x1
+    elif transition.selection == 2:
+        pdsi[index] = transition.x3 if not _is_exact_zero(transition.x3) else transition.x2
+    else:
+        pdsi[index] = transition.x3
 
 
 def calculate(
@@ -195,107 +381,24 @@ def calculate(
 
         z_value = float(z_value)
         new_x1, new_x2 = _candidate_values(state, z_value, factors)
-        new_x3 = 0.0
-        new_v = 0.0
-        new_probability = 0.0
-        selection = 0
-        spell_terminated = False
-
-        abatement_underway = state.probability not in (0.0, 100.0)
-        if state.x3 != 0.0:
-            wet_spell = state.x3 >= 0.0
-            coefficient = factors.wetc if wet_spell else factors.dry_spell_c
-            denominator = factors.wet_denominator if wet_spell else factors.dry_denominator
-            slope = factors.wetm if wet_spell else factors.drym
-            direction = 1.0 if wet_spell else -1.0
-            # Generalizing Palmer's recurrence replaces the fixed 0.15
-            # effective-moisture threshold with half the fitted slope.
-            abatement_z = slope * _SPELL_THRESHOLD
-
-            if not abatement_underway and direction * z_value >= abatement_z:
-                new_x1 = 0.0
-                new_x2 = 0.0
-                new_x3 = coefficient * state.x3 + z_value / denominator
-                selection = 3
-            else:
-                # With Wells' bug flag disabled, continued abatement carries
-                # V toward zero by the comparison tolerance before adding the
-                # current effective wetness/dryness.
-                tolerance_adjustment = (1 - _BUG) * _TOLERANCE
-                if wet_spell:
-                    carry = min(state.v + tolerance_adjustment, 0.0)
-                else:
-                    carry = max(state.v - tolerance_adjustment, 0.0)
-                new_v = z_value - direction * abatement_z + carry
-
-                if direction * new_v >= 0.0:
-                    new_x1 = 0.0
-                    new_x2 = 0.0
-                    new_v = 0.0
-                    new_x3 = coefficient * state.x3 + z_value / denominator
-                    selection = 3
-                else:
-                    own_intercept = factors.wetb if wet_spell else factors.dryb
-                    ze = direction * _SPELL_THRESHOLD * (slope + own_intercept) - own_intercept * state.x3
-                    q = ze if state.probability >= 100.0 - _TOLERANCE else ze + state.v
-                    if q == 0.0 or not np.isfinite(q):
-                        raise ConvergenceError(
-                            "Wells recursion could not calculate an abatement probability",
-                            algorithm="scPDSI Wells recursion",
-                        )
-                    new_probability = (new_v / q) * 100.0
-                    if new_probability >= 100.0 - _TOLERANCE:
-                        new_probability = 100.0
-                        new_x3 = 0.0
-                        spell_terminated = True
-                    else:
-                        new_x3 = coefficient * state.x3 + z_value / denominator
-
-        if new_x3 == 0.0:
-            if new_x1 >= _SPELL_THRESHOLD:
-                new_x3 = new_x1
-                new_x1 = 0.0
-                if not spell_terminated:
-                    new_v = 0.0
-                    new_probability = 0.0
-                selection = 1
-            elif new_x2 <= -_SPELL_THRESHOLD:
-                new_x3 = new_x2
-                new_x2 = 0.0
-                if not spell_terminated:
-                    new_v = 0.0
-                    new_probability = 0.0
-                selection = 2
-            elif new_x1 == 0.0:
-                selection = 2
-            elif new_x2 == 0.0:
-                selection = 1
-
-        if selection:
-            _backtrack(pdsi, tentative, selection)
-            if selection == 1:
-                pdsi[index] = new_x3 if new_x3 != 0.0 else new_x1
-            elif selection == 2:
-                pdsi[index] = new_x3 if new_x3 != 0.0 else new_x2
-            else:
-                pdsi[index] = new_x3
-        else:
-            pdsi[index] = new_x3
-            tentative.append(_Tentative(index=index, x1=new_x1, x2=new_x2, x3=new_x3))
+        transition = _Transition(x1=new_x1, x2=new_x2)
+        transition = _continue_spell(state, z_value, factors, transition)
+        transition = _establish_spell(transition)
+        _assign_period(pdsi, tentative, index, transition)
 
         state = _State(
-            x1=new_x1,
-            x2=new_x2,
-            x3=new_x3,
-            v=new_v,
-            probability=new_probability,
+            x1=transition.x1,
+            x2=transition.x2,
+            x3=transition.x3,
+            v=transition.v,
+            probability=transition.probability,
         )
-        x1_values[index] = new_x1
-        x2_values[index] = new_x2
-        x3_values[index] = new_x3
-        probability_values[index] = new_probability
+        x1_values[index] = transition.x1
+        x2_values[index] = transition.x2
+        x3_values[index] = transition.x3
+        probability_values[index] = transition.probability
 
-    phdi = np.where(np.isnan(pdsi), np.nan, np.where(x3_values == 0.0, pdsi, x3_values))
+    phdi = np.where(np.isnan(pdsi), np.nan, np.where(np.equal(x3_values, 0.0), pdsi, x3_values))
     pmdi = np.full(size, np.nan)
     for index in range(size):
         if not np.isnan(z[index]):
