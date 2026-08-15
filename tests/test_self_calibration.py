@@ -149,7 +149,7 @@ class TestExtremeZSum:
 
         assert exc_info.value.argument_name == "window_length"
         assert exc_info.value.argument_value == "2.5"
-        assert exc_info.value.valid_values == "a positive integer"
+        assert exc_info.value.valid_values == "a positive integer or integer-valued float"
 
     def test_accepts_an_integer_valued_float_window_length(self):
         # window_length is deliberately checked with float(x).is_integer()
