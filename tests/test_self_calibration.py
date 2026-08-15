@@ -161,7 +161,7 @@ class TestExtremeZSum:
 
         assert result == pytest.approx(3.0)
 
-    def test_integer_valued_float_window_length_is_normalized_in_error_metadata(self):
+    def test_extreme_z_sum_normalizes_integer_valued_float_in_error_metadata(self):
         z = np.array([1.0, 2.0])
 
         with pytest.raises(InsufficientDataError) as exc_info:
