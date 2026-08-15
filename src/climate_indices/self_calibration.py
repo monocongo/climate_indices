@@ -183,7 +183,7 @@ def _highest_reasonable(sums: np.ndarray, sign: int) -> float:
     return highest
 
 
-def extreme_z_sum(z_values: np.ndarray, window_length: int, sign: int) -> float:
+def extreme_z_sum(z_values: np.ndarray, window_length: int | float, sign: int) -> float:
     """Compute the representative extreme rolling Z-index sum for one window length.
 
     Ports ``get_Z_sum()``. Slides a window of ``window_length`` non-missing
@@ -203,6 +203,7 @@ def extreme_z_sum(z_values: np.ndarray, window_length: int, sign: int) -> float:
     Args:
         z_values: The Z-index series, in chronological order; NaN means missing.
         window_length: The number of non-missing periods in the rolling window.
+            Integer-valued floats such as 5.0 are accepted.
         sign: WET_SIGN or DRY_SIGN.
 
     Returns:
@@ -213,7 +214,7 @@ def extreme_z_sum(z_values: np.ndarray, window_length: int, sign: int) -> float:
 
     Raises:
         InvalidArgumentError: If sign is invalid or window_length is not a
-            positive integer.
+            positive integer or integer-valued float.
         InsufficientDataError: If ``z_values`` has fewer than ``window_length``
             non-missing values, so no complete window ever forms. There is no
             safe sentinel for this case: a 0.0 would be indistinguishable from
@@ -227,8 +228,9 @@ def extreme_z_sum(z_values: np.ndarray, window_length: int, sign: int) -> float:
             f"invalid rolling window length: {window_length}",
             argument_name="window_length",
             argument_value=str(window_length),
-            valid_values="a positive integer",
+            valid_values="a positive integer or integer-valued float",
         )
+    window_length = int(window_length)
 
     series = np.asarray(z_values, dtype=float)
     window: deque[float] = deque()

@@ -149,7 +149,7 @@ class TestExtremeZSum:
 
         assert exc_info.value.argument_name == "window_length"
         assert exc_info.value.argument_value == "2.5"
-        assert exc_info.value.valid_values == "a positive integer"
+        assert exc_info.value.valid_values == "a positive integer or integer-valued float"
 
     def test_accepts_an_integer_valued_float_window_length(self):
         # window_length is deliberately checked with float(x).is_integer()
@@ -160,6 +160,15 @@ class TestExtremeZSum:
         result = self_calibration.extreme_z_sum(z, 2.0, self_calibration.WET_SIGN)
 
         assert result == pytest.approx(3.0)
+
+    def test_extreme_z_sum_normalizes_integer_valued_float_in_error_metadata(self):
+        z = np.array([1.0, 2.0])
+
+        with pytest.raises(InsufficientDataError) as exc_info:
+            self_calibration.extreme_z_sum(z, 5.0, self_calibration.WET_SIGN)
+
+        assert exc_info.value.required_count == 5
+        assert isinstance(exc_info.value.required_count, int)
 
     @pytest.mark.parametrize("sign", [self_calibration.WET_SIGN, self_calibration.DRY_SIGN])
     def test_raises_insufficient_data_when_series_is_shorter_than_one_window(self, sign):
