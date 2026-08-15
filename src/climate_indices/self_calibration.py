@@ -183,7 +183,7 @@ def _highest_reasonable(sums: np.ndarray, sign: int) -> float:
     return highest
 
 
-def extreme_z_sum(z_values: np.ndarray, window_length: int, sign: int) -> float:
+def extreme_z_sum(z_values: np.ndarray, window_length: int | float, sign: int) -> float:
     """Compute the representative extreme rolling Z-index sum for one window length.
 
     Ports ``get_Z_sum()``. Slides a window of ``window_length`` non-missing
