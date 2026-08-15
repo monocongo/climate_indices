@@ -161,6 +161,15 @@ class TestExtremeZSum:
 
         assert result == pytest.approx(3.0)
 
+    def test_integer_valued_float_window_length_is_normalized_in_error_metadata(self):
+        z = np.array([1.0, 2.0])
+
+        with pytest.raises(InsufficientDataError) as exc_info:
+            self_calibration.extreme_z_sum(z, 5.0, self_calibration.WET_SIGN)
+
+        assert exc_info.value.required_count == 5
+        assert isinstance(exc_info.value.required_count, int)
+
     @pytest.mark.parametrize("sign", [self_calibration.WET_SIGN, self_calibration.DRY_SIGN])
     def test_raises_insufficient_data_when_series_is_shorter_than_one_window(self, sign):
         # only 2 non-missing values are available, so a 5-period window can
