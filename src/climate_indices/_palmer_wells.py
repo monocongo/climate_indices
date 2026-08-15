@@ -81,7 +81,8 @@ class _Transition:
 
 def _is_exact_zero(value: float) -> bool:
     """Preserve Wells' intentional exact-zero branching semantics."""
-    return value == 0.0  # NOSONAR: exact zero selects and backtracks Wells candidates
+    # Exact zero selects and backtracks Wells candidates.
+    return value == 0.0  # NOSONAR
 
 
 def _validated_factors(wetm: float, wetb: float, drym: float, dryb: float) -> _Factors:

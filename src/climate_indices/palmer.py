@@ -1,6 +1,7 @@
 """Compute palmer drought indices"""
 
 import time
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -23,6 +24,8 @@ K8_SIZE = 40
 # replacements via the same m/b/c relationship (see palmer's scpdsi()).
 _PALMER_DURATION_P = 0.897
 _PALMER_DURATION_Q = 1.0 / 3.0
+
+_PalmerResult = tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any] | None]
 
 
 def _default_duration_factors() -> tuple[float, float]:
@@ -960,6 +963,26 @@ def _initialize_data(
     return data
 
 
+def _bind_palmer_log(
+    index_type: str,
+    precips: np.ndarray,
+    awc: float,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+) -> BoundLogger:
+    """Bind the structured context shared by Palmer calculations."""
+    return _logger.bind(
+        index_type=index_type,
+        awc=awc,
+        data_start_year=data_start_year,
+        calibration_year_initial=calibration_year_initial,
+        calibration_year_final=calibration_year_final,
+        input_shape=precips.shape,
+        input_elements=precips.size,
+    )
+
+
 def _prepare_palmer_data(
     precips: np.ndarray,
     pet: np.ndarray,
@@ -997,6 +1020,118 @@ def _prepare_palmer_data(
     return data, original_length
 
 
+def _calculate_pdsi_prepared(data: dict[str, Any], original_length: int) -> _PalmerResult:
+    """Complete standard PDSI after the shared Palmer preparation stages."""
+    _calc_kfactors(data)
+    _calc_zindex(data)
+    _finish_up(data)
+
+    pdsi_result = data["pdsi"].flatten()[0:original_length]
+    phdi = data["phdi"].flatten()[0:original_length]
+    wplm = data["wplm"].flatten()[0:original_length]
+    z = data["z"].flatten()[0:original_length]
+    params = {key: data[key] for key in ["alpha", "beta", "gamma", "delta"]}
+    return pdsi_result, phdi, wplm, z, params
+
+
+def _calculate_scpdsi_prepared(data: dict[str, Any], original_length: int) -> _PalmerResult:
+    """Complete self-calibrating PDSI after shared Palmer preparation."""
+    _calc_scpdsi_k_factors(data)
+    _calc_scpdsi_raw_zindex(data)
+
+    z_values = data["z"].reshape(-1)
+    calibration_z = _calibration_values(data, z_values)
+    wetm, wetb = self_calibration.duration_factors(calibration_z, self_calibration.WET_SIGN)
+    drym, dryb = self_calibration.duration_factors(calibration_z, self_calibration.DRY_SIGN)
+
+    recursion = _palmer_wells.calculate(
+        z_values,
+        wetm=wetm,
+        wetb=wetb,
+        drym=drym,
+        dryb=dryb,
+    )
+    for _ in range(3):
+        calibration_pdsi = _calibration_values(data, recursion.pdsi)
+        dry_percentile = self_calibration.nan_safe_percentile(calibration_pdsi, 0.02)
+        wet_percentile = self_calibration.nan_safe_percentile(calibration_pdsi, 0.98)
+        z_values = _rescale_scpdsi_zindex(z_values, dry_percentile, wet_percentile)
+        recursion = _palmer_wells.calculate(
+            z_values,
+            wetm=wetm,
+            wetb=wetb,
+            drym=drym,
+            dryb=dryb,
+        )
+
+    params = {key: data[key] for key in ["alpha", "beta", "gamma", "delta"]}
+    params.update(wetm=wetm, wetb=wetb, drym=drym, dryb=dryb)
+    return (
+        recursion.pdsi[:original_length],
+        recursion.phdi[:original_length],
+        recursion.pmdi[:original_length],
+        z_values[:original_length],
+        params,
+    )
+
+
+def _palmer_calculation(
+    index_type: str,
+    calculate_prepared: Callable[[dict[str, Any], int], _PalmerResult],
+    precips: np.ndarray,
+    pet: np.ndarray,
+    awc: float,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    fitting_params: dict[str, Any] | None,
+) -> _PalmerResult:
+    """Run validation, shared setup, logging, and one Palmer calculation."""
+    log = _bind_palmer_log(
+        index_type,
+        precips,
+        awc,
+        data_start_year,
+        calibration_year_initial,
+        calibration_year_final,
+    )
+    log.info("calculation_started")
+    t0 = time.perf_counter()
+
+    try:
+        if (isinstance(precips, np.ma.MaskedArray) and precips.mask.all()) or np.all(np.isnan(precips)):
+            duration_ms = (time.perf_counter() - t0) * 1000.0
+            log.info(
+                "calculation_completed",
+                duration_ms=round(duration_ms, 2),
+                result="all_missing",
+            )
+            return precips, precips, precips, precips, None
+
+        data, original_length = _prepare_palmer_data(
+            precips,
+            pet,
+            awc,
+            data_start_year,
+            calibration_year_initial,
+            calibration_year_final,
+            fitting_params,
+            log,
+        )
+        result = calculate_prepared(data, original_length)
+        duration_ms = (time.perf_counter() - t0) * 1000.0
+        log.info(
+            "calculation_completed",
+            duration_ms=round(duration_ms, 2),
+            output_elements=result[0].size,
+        )
+        return result
+    except Exception:
+        duration_ms = (time.perf_counter() - t0) * 1000.0
+        log.error("calculation_failed", duration_ms=round(duration_ms, 2))
+        raise
+
+
 def pdsi(
     precips: np.ndarray,
     pet: np.ndarray,
@@ -1025,75 +1160,19 @@ def pdsi(
     :rtype: four numpy.ndarrays of the PDSI values and a dictionary of the fitted parameters
     """
 
-    # bind structured logging context for this calculation
-    log = _logger.bind(
-        index_type="pdsi",
-        awc=awc,
-        data_start_year=data_start_year,
-        calibration_year_initial=calibration_year_initial,
-        calibration_year_final=calibration_year_final,
-        input_shape=precips.shape,
-        input_elements=precips.size,
+    # _palmer_calculation emits calculation_started, calculation_completed,
+    # and calculation_failed lifecycle events for this public entry point.
+    return _palmer_calculation(
+        "pdsi",
+        _calculate_pdsi_prepared,
+        precips,
+        pet,
+        awc,
+        data_start_year,
+        calibration_year_initial,
+        calibration_year_final,
+        fitting_params,
     )
-    log.info("calculation_started")
-    t0 = time.perf_counter()
-
-    try:
-        # if we're passed all missing values then we can't compute anything,
-        # so we return the same array of missing values
-        if (isinstance(precips, np.ma.MaskedArray) and precips.mask.all()) or np.all(np.isnan(precips)):
-            duration_ms = (time.perf_counter() - t0) * 1000.0
-            log.info(
-                "calculation_completed",
-                duration_ms=round(duration_ms, 2),
-                result="all_missing",
-            )
-            return precips, precips, precips, precips, None
-
-        data, original_length = _prepare_palmer_data(
-            precips,
-            pet,
-            awc,
-            data_start_year,
-            calibration_year_initial,
-            calibration_year_final,
-            fitting_params,
-            log,
-        )
-
-        # Sum variables now become averages over the calibration period
-        # (currently not used - uncomment if want to export later)
-        # _avg_calibration_sums(data)
-
-        # reread monthly parameters for calculation of the 'K' monthly
-        # weighting factors used in z-index calculation
-        _calc_kfactors(data)
-
-        # Calculate the z-index (moisture anomaly) and pdsi (variable x)
-        _calc_zindex(data)
-
-        _finish_up(data)
-
-        # Format values
-        pdsi_result = data["pdsi"].flatten()[0:original_length]
-        phdi = data["phdi"].flatten()[0:original_length]
-        wplm = data["wplm"].flatten()[0:original_length]
-        z = data["z"].flatten()[0:original_length]
-        params = {key: data[key] for key in ["alpha", "beta", "gamma", "delta"]}
-
-        duration_ms = (time.perf_counter() - t0) * 1000.0
-        log.info(
-            "calculation_completed",
-            duration_ms=round(duration_ms, 2),
-            output_elements=pdsi_result.size,
-        )
-
-        return pdsi_result, phdi, wplm, z, params
-
-    except Exception:
-        duration_ms = (time.perf_counter() - t0) * 1000.0
-        log.error("calculation_failed", duration_ms=round(duration_ms, 2))
-        raise
 
 
 def scpdsi(
@@ -1139,92 +1218,17 @@ def scpdsi(
         ConvergenceError: If a numerical calibration stage produces unusable
             factors, percentile anchors, or recurrence denominators.
     """
-    log = _logger.bind(
-        index_type="scpdsi",
-        awc=awc,
-        data_start_year=data_start_year,
-        calibration_year_initial=calibration_year_initial,
-        calibration_year_final=calibration_year_final,
-        input_shape=precips.shape,
-        input_elements=precips.size,
+    return _palmer_calculation(
+        "scpdsi",
+        _calculate_scpdsi_prepared,
+        precips,
+        pet,
+        awc,
+        data_start_year,
+        calibration_year_initial,
+        calibration_year_final,
+        fitting_params,
     )
-    log.info("calculation_started")
-    t0 = time.perf_counter()
-
-    try:
-        if (isinstance(precips, np.ma.MaskedArray) and precips.mask.all()) or np.all(np.isnan(precips)):
-            duration_ms = (time.perf_counter() - t0) * 1000.0
-            log.info(
-                "calculation_completed",
-                duration_ms=round(duration_ms, 2),
-                result="all_missing",
-            )
-            return precips, precips, precips, precips, None
-
-        data, original_length = _prepare_palmer_data(
-            precips,
-            pet,
-            awc,
-            data_start_year,
-            calibration_year_initial,
-            calibration_year_final,
-            fitting_params,
-            log,
-        )
-        _calc_scpdsi_k_factors(data)
-        _calc_scpdsi_raw_zindex(data)
-
-        z_values = data["z"].reshape(-1)
-        calibration_z = _calibration_values(data, z_values)
-        wetm, wetb = self_calibration.duration_factors(calibration_z, self_calibration.WET_SIGN)
-        drym, dryb = self_calibration.duration_factors(calibration_z, self_calibration.DRY_SIGN)
-
-        recursion = _palmer_wells.calculate(
-            z_values,
-            wetm=wetm,
-            wetb=wetb,
-            drym=drym,
-            dryb=dryb,
-        )
-        for _ in range(3):
-            calibration_pdsi = _calibration_values(data, recursion.pdsi)
-            dry_percentile = self_calibration.nan_safe_percentile(calibration_pdsi, 0.02)
-            wet_percentile = self_calibration.nan_safe_percentile(calibration_pdsi, 0.98)
-            z_values = _rescale_scpdsi_zindex(z_values, dry_percentile, wet_percentile)
-            recursion = _palmer_wells.calculate(
-                z_values,
-                wetm=wetm,
-                wetb=wetb,
-                drym=drym,
-                dryb=dryb,
-            )
-
-        params = {
-            key: data[key]
-            for key in [
-                "alpha",
-                "beta",
-                "gamma",
-                "delta",
-            ]
-        }
-        params.update(wetm=wetm, wetb=wetb, drym=drym, dryb=dryb)
-
-        scpdsi_result = recursion.pdsi[:original_length]
-        scphdi = recursion.phdi[:original_length]
-        scpmdi = recursion.pmdi[:original_length]
-        sczindex = z_values[:original_length]
-        duration_ms = (time.perf_counter() - t0) * 1000.0
-        log.info(
-            "calculation_completed",
-            duration_ms=round(duration_ms, 2),
-            output_elements=scpdsi_result.size,
-        )
-        return scpdsi_result, scphdi, scpmdi, sczindex, params
-    except Exception:
-        duration_ms = (time.perf_counter() - t0) * 1000.0
-        log.error("calculation_failed", duration_ms=round(duration_ms, 2))
-        raise
 
 
 # TODO(v2.5.0): implement palmer_xarray() wrapper using Pattern C
