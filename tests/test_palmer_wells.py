@@ -37,7 +37,8 @@ def test_wet_and_dry_spells_establish_at_half_unit_thresholds():
 def test_wet_spell_abatement_updates_probability_and_established_index():
     result = _run([4.0, -0.1])
 
-    assert result.probability[1] == pytest.approx(25.0)
+    # The generalized effective-moisture threshold is wetm / 2 = 0.5.
+    assert result.probability[1] == pytest.approx(60.0)
     assert result.x3[1] == pytest.approx(0.95)
     assert result.pdsi[1] == pytest.approx(0.95)
 
@@ -45,11 +46,11 @@ def test_wet_spell_abatement_updates_probability_and_established_index():
 def test_probability_termination_uses_reference_tolerance():
     # The second period gives Prob=99.999995, which is below 100 but within
     # the reference tolerance of spell termination.
-    result = _run([4.0, -0.84999995])
+    result = _run([4.0, -0.49999995])
 
     assert result.probability[1] == pytest.approx(100.0)
     assert result.x3[1] == pytest.approx(0.0)
-    assert result.pdsi[1] == pytest.approx(-0.424999975)
+    assert result.pdsi[1] == pytest.approx(-0.249999975)
 
 
 def test_exact_zero_candidates_select_zero_without_leaving_pending_state():

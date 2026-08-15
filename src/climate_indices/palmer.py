@@ -5,13 +5,14 @@ from typing import Any
 
 import numpy as np
 
-from climate_indices import utils
+from climate_indices import _palmer_wells, self_calibration, utils
+from climate_indices.exceptions import ConvergenceError
 from climate_indices.logging_config import get_logger
 
 _logger = get_logger(__name__)
 
 # declare the function names that should be included in the public API for this module
-__all__ = ["pdsi"]
+__all__ = ["pdsi", "scpdsi"]
 
 AWCTOP = 1.0
 K8_SIZE = 40
@@ -360,6 +361,93 @@ def _calc_kfactors(data: dict[str, Any]) -> None:
     akhat = 1.5 * np.log10((data["trat"] + 2.8) / dbar) + 0.5
     swtd = np.sum(dbar * akhat)
     data["ak"] = 17.67 * akhat / swtd
+
+
+def _calc_scpdsi_k_factors(data: dict[str, Any]) -> None:
+    """Calculate the unnormalized monthly K-prime factors for scPDSI."""
+    sabsd = np.zeros((12,))
+    for year in range(data["calibration_year_initial_idx"], data["calibration_year_final_idx"] + 1):
+        for month in range(12):
+            phat = (
+                data["alpha"][month] * data["pet"][year, month]
+                + data["beta"][month] * data["prdat"][year, month]
+                + data["gamma"][month] * data["spdat"][year, month]
+                - data["delta"][month] * data["pldat"][year, month]
+            )
+            departure = data["precips"][year, month] - phat
+            sabsd[month] += abs(departure)
+
+    dbar = sabsd / data["n_calb_years"]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        k_prime = 1.5 * np.log10((data["trat"] + 2.8) / dbar) + 0.5
+    if not np.all(np.isfinite(k_prime)):
+        raise ConvergenceError(
+            "scPDSI K-prime calibration produced non-finite values",
+            algorithm="scPDSI K-prime calibration",
+        )
+    data["ak"] = k_prime
+
+
+def _calc_scpdsi_raw_zindex(data: dict[str, Any]) -> None:
+    """Calculate raw Z-index values for the entire input record."""
+    for year in range(data["n_years"]):
+        for month in range(12):
+            cet = data["alpha"][month] * data["pet"][year, month]
+            cr = data["beta"][month] * data["prdat"][year, month]
+            cro = data["gamma"][month] * data["spdat"][year, month]
+            cl = data["delta"][month] * data["pldat"][year, month]
+            data["cp"][year, month] = cet + cr + cro - cl
+            departure = data["precips"][year, month] - data["cp"][year, month]
+            data["z"][year, month] = data["ak"][month] * departure
+
+
+def _calibration_values(data: dict[str, Any], values: np.ndarray) -> np.ndarray:
+    """Return the flattened inclusive calibration-period portion of an array."""
+    first = data["calibration_year_initial_idx"] * 12
+    final = (data["calibration_year_final_idx"] + 1) * 12
+    return np.asarray(values).reshape(-1)[first:final]
+
+
+def _validate_scpdsi_duration_factors(wetm: float, wetb: float, drym: float, dryb: float) -> None:
+    """Reject fitted duration factors that cannot drive the Wells recursion."""
+    wet_denominator = wetm + wetb
+    dry_denominator = drym + dryb
+    dry_coefficient_denominator = drym + wetb
+    if (
+        not np.isfinite(wet_denominator)
+        or wet_denominator <= 0.0
+        or not np.isfinite(dry_denominator)
+        or dry_denominator <= 0.0
+        or not np.isfinite(dry_coefficient_denominator)
+        or dry_coefficient_denominator == 0.0
+    ):
+        raise ConvergenceError(
+            "invalid fitted duration factors for scPDSI calibration",
+            algorithm="scPDSI duration-factor calibration",
+        )
+
+
+def _rescale_scpdsi_zindex(z_values: np.ndarray, dry_percentile: float, wet_percentile: float) -> np.ndarray:
+    """Apply one sign-specific, cumulative scPDSI Z-index rescaling pass."""
+    if (
+        not np.isfinite(dry_percentile)
+        or dry_percentile >= 0.0
+        or not np.isfinite(wet_percentile)
+        or wet_percentile <= 0.0
+    ):
+        raise ConvergenceError(
+            "scPDSI calibration produced invalid dry/wet percentile anchors",
+            algorithm="scPDSI percentile calibration",
+        )
+
+    dry_ratio = -4.0 / dry_percentile
+    wet_ratio = 4.0 / wet_percentile
+    if not np.isfinite(dry_ratio) or not np.isfinite(wet_ratio):
+        raise ConvergenceError(
+            "scPDSI percentile rescaling produced non-finite ratios",
+            algorithm="scPDSI percentile calibration",
+        )
+    return np.where(z_values < 0.0, z_values * dry_ratio, z_values * wet_ratio)
 
 
 def _case(prob: float, x1: float, x2: float, x3: float) -> float:
@@ -1008,6 +1096,151 @@ def pdsi(
 
         return pdsi_result, phdi, wplm, z, params
 
+    except Exception:
+        duration_ms = (time.perf_counter() - t0) * 1000.0
+        log.error("calculation_failed", duration_ms=round(duration_ms, 2))
+        raise
+
+
+def scpdsi(
+    precips: np.ndarray,
+    pet: np.ndarray,
+    awc: float,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    fitting_params: dict[str, Any] | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any] | None]:
+    """Compute self-calibrating Palmer drought indices.
+
+    The water balance and CAFEC coefficients are shared with :func:`pdsi`.
+    Duration factors, K-prime factors, and percentile scaling are calibrated
+    from the requested calibration period, while the resulting factors are
+    applied to the full monthly record.
+
+    Args:
+        precips: Monthly precipitation values in inches.
+        pet: Monthly potential evapotranspiration values in inches.
+        awc: Available water capacity in inches.
+        data_start_year: First calendar year represented by the inputs, which
+            are assumed to begin in January.
+        calibration_year_initial: First year of the inclusive calibration
+            period.
+        calibration_year_final: Final year of the inclusive calibration period.
+        fitting_params: Optional CAFEC coefficients to reuse. Valid ``alpha``,
+            ``beta``, ``gamma``, and ``delta`` arrays follow :func:`pdsi`'s
+            behavior; duration factors are always recalibrated.
+
+    Returns:
+        A tuple containing scPDSI, scPHDI, scPMDI, the cumulatively calibrated
+        Z-index, and fitted parameters. The parameter dictionary contains
+        ``alpha``, ``beta``, ``gamma``, ``delta``, ``wetm``, ``wetb``,
+        ``drym``, and ``dryb``. All-missing input returns four same-length
+        missing arrays and ``None``.
+
+    Raises:
+        ValueError: If precipitation and PET have different lengths.
+        InsufficientDataError: If the calibration period cannot supply a
+            complete duration-factor fitting window.
+        ConvergenceError: If a numerical calibration stage produces unusable
+            factors, percentile anchors, or recurrence denominators.
+    """
+    log = _logger.bind(
+        index_type="scpdsi",
+        awc=awc,
+        data_start_year=data_start_year,
+        calibration_year_initial=calibration_year_initial,
+        calibration_year_final=calibration_year_final,
+        input_shape=precips.shape,
+        input_elements=precips.size,
+    )
+    log.info("calculation_started")
+    t0 = time.perf_counter()
+
+    try:
+        if (isinstance(precips, np.ma.MaskedArray) and precips.mask.all()) or np.all(np.isnan(precips)):
+            duration_ms = (time.perf_counter() - t0) * 1000.0
+            log.info(
+                "calculation_completed",
+                duration_ms=round(duration_ms, 2),
+                result="all_missing",
+            )
+            return precips, precips, precips, precips, None
+
+        if precips.size != pet.size:
+            message = "Incompatible precipitation and PET arrays"
+            log.error("validation_failed", reason=message)
+            raise ValueError(message)
+
+        if np.amin(precips) < 0.0:
+            log.warning("negative_values_clipped", field="precips")
+            precips = np.clip(precips, a_min=0.0, a_max=None)
+
+        original_length = precips.size
+        data = _initialize_data(
+            precips=precips,
+            pet=pet,
+            awc=awc,
+            data_start_year=data_start_year,
+            calibration_year_initial=calibration_year_initial,
+            calibration_year_final=calibration_year_final,
+            fitting_params=fitting_params,
+        )
+        _calc_water_balances(data)
+        if data["calibrate"]:
+            _calc_cafec_coefficients(data)
+        _calc_zindex_factors(data)
+        _calc_scpdsi_k_factors(data)
+        _calc_scpdsi_raw_zindex(data)
+
+        z_values = data["z"].reshape(-1)
+        calibration_z = _calibration_values(data, z_values)
+        wetm, wetb = self_calibration.duration_factors(calibration_z, self_calibration.WET_SIGN)
+        drym, dryb = self_calibration.duration_factors(calibration_z, self_calibration.DRY_SIGN)
+        _validate_scpdsi_duration_factors(wetm, wetb, drym, dryb)
+
+        recursion = _palmer_wells.calculate(
+            z_values,
+            wetm=wetm,
+            wetb=wetb,
+            drym=drym,
+            dryb=dryb,
+        )
+        for _ in range(3):
+            calibration_pdsi = _calibration_values(data, recursion.pdsi)
+            dry_percentile = self_calibration.nan_safe_percentile(calibration_pdsi, 0.02)
+            wet_percentile = self_calibration.nan_safe_percentile(calibration_pdsi, 0.98)
+            z_values = _rescale_scpdsi_zindex(z_values, dry_percentile, wet_percentile)
+            recursion = _palmer_wells.calculate(
+                z_values,
+                wetm=wetm,
+                wetb=wetb,
+                drym=drym,
+                dryb=dryb,
+            )
+
+        params = {
+            key: data[key]
+            for key in [
+                "alpha",
+                "beta",
+                "gamma",
+                "delta",
+            ]
+        }
+        params.update(wetm=wetm, wetb=wetb, drym=drym, dryb=dryb)
+
+        scpdsi_result = recursion.pdsi[:original_length]
+        scphdi = recursion.phdi[:original_length]
+        scpmdi = recursion.pmdi[:original_length]
+        sczindex = z_values[:original_length]
+        duration_ms = (time.perf_counter() - t0) * 1000.0
+        log.info(
+            "calculation_completed",
+            duration_ms=round(duration_ms, 2),
+            output_elements=scpdsi_result.size,
+        )
+        return scpdsi_result, scphdi, scpmdi, sczindex, params
     except Exception:
         duration_ms = (time.perf_counter() - t0) * 1000.0
         log.error("calculation_failed", duration_ms=round(duration_ms, 2))
