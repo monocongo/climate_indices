@@ -229,6 +229,7 @@ def extreme_z_sum(z_values: np.ndarray, window_length: int | float, sign: int) -
             argument_value=str(window_length),
             valid_values="a positive integer",
         )
+    window_length = int(window_length)
 
     series = np.asarray(z_values, dtype=float)
     window: deque[float] = deque()
