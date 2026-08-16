@@ -95,6 +95,12 @@ def test_missing_periods_preserve_state_and_remain_missing_in_every_output():
     )
 
 
+@pytest.mark.parametrize("z_value", [-np.inf, np.inf])
+def test_infinite_z_values_raise_convergence_error(z_value):
+    with pytest.raises(ConvergenceError, match="non-finite"):
+        _run([z_value])
+
+
 @pytest.mark.parametrize(
     ("wetm", "wetb", "drym", "dryb"),
     [

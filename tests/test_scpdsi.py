@@ -55,6 +55,55 @@ def test_mismatched_inputs_raise_the_same_error_as_pdsi():
         palmer.scpdsi(np.ones(60), np.ones(59), 5.0, 2000, 2000, 2004)
 
 
+@pytest.mark.parametrize("function", [palmer.pdsi, palmer.scpdsi])
+def test_mismatched_inputs_raise_before_the_all_missing_fast_path(function):
+    with pytest.raises(ValueError, match="Incompatible precipitation and PET arrays"):
+        function(np.full(60, np.nan), np.ones(59), 5.0, 2000, 2000, 2004)
+
+
+@pytest.mark.parametrize(
+    ("calibration_year_initial", "calibration_year_final"),
+    [(1894, 1990), (1931, 2023), (1990, 1931)],
+)
+def test_invalid_calibration_period_raises_value_error(calibration_year_initial, calibration_year_final):
+    precips, pet, awc = _division_inputs()
+
+    with pytest.raises(ValueError, match="calibration period"):
+        palmer.scpdsi(
+            precips,
+            pet,
+            awc,
+            1895,
+            calibration_year_initial,
+            calibration_year_final,
+        )
+
+
+@pytest.mark.parametrize("function", [palmer.pdsi, palmer.scpdsi])
+def test_negative_precipitation_is_clipped_even_when_other_values_are_missing(function):
+    precips, pet, awc = _division_inputs()
+    mixed = precips.copy()
+    mixed[-2] = -10.0
+    mixed[-1] = np.nan
+    expected_input = mixed.copy()
+    expected_input[-2] = 0.0
+
+    actual = function(mixed, pet, awc, 1895, 1931, 1990)
+    expected = function(expected_input, pet, awc, 1895, 1931, 1990)
+
+    for actual_values, expected_values in zip(actual[:4], expected[:4], strict=True):
+        np.testing.assert_allclose(actual_values, expected_values, rtol=0, atol=0, equal_nan=True)
+
+
+@pytest.mark.parametrize("function", [palmer.pdsi, palmer.scpdsi])
+def test_infinite_inputs_are_rejected(function):
+    precips, pet, awc = _division_inputs()
+    precips[-1] = np.inf
+
+    with pytest.raises(ValueError, match="infinite"):
+        function(precips, pet, awc, 1895, 1931, 1990)
+
+
 def test_supplied_cafec_coefficients_are_reused_but_duration_factors_are_recalibrated():
     _, _, _, _, standard_params = _call()
     assert standard_params is not None
