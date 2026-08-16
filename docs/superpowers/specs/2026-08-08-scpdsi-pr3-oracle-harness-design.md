@@ -126,8 +126,15 @@ the file-reading routines `GetTemp`/`GetPrecip`/`GetParam`/`CalcThornI`, which
 
 Column 8 is rewritten by every `CalcX()` call, and `Calibrate()` ends by calling `CalcX()`.
 After the three `Calibrate()` passes, column 8 therefore holds the **final rescaled** Z-index,
-which is the self-calibrated Z-index we want. Columns 13–15 are written by
-`Rext_output_X()`, called once at the very end.
+which is the self-calibrated Z-index we want — **except that on the self-calibrating path,
+`CalcZ` passes `CalcOneX` the 1-based month straight from `vals_mat` column 1, instead of
+converting it to 0-based first the way `CalcOrigK` does on the standard path. Every write to
+column 8 therefore lands one row high, and the final period's write goes past the end of the
+matrix. The harness compensates by reading column 8 at row `i+1` in `sc=true` mode and
+allocating one slack row so the final period's value is captured instead of overflowing — see
+the SC-PATH OFF-BY-ONE note in `tests/fixture/palmer/provenance.json` for the full detail.**
+Columns 13–15 are written by `Rext_output_X()`, called once at the very end, using its own
+sequential counter, and are correct on both paths.
 
 Duration factors come from `Rext_out_params()`: `wetm`, `drym`, `wetb`, `dryb` at indices
 0–3. Note the reference orders these `wetm, drym, wetb, dryb`; the committed array is
