@@ -79,6 +79,25 @@ def test_invalid_calibration_period_raises_value_error(calibration_year_initial,
         )
 
 
+@pytest.mark.parametrize(
+    ("calibration_year_initial", "calibration_year_final"),
+    [(1999, 2000), (2000, 2001), (2000, 1999)],
+)
+def test_all_missing_input_still_validates_the_calibration_period(calibration_year_initial, calibration_year_final):
+    precips = np.full(12, np.nan)
+    pet = np.full(12, np.nan)
+
+    with pytest.raises(ValueError, match="calibration period"):
+        palmer.scpdsi(
+            precips,
+            pet,
+            5.0,
+            2000,
+            calibration_year_initial,
+            calibration_year_final,
+        )
+
+
 @pytest.mark.parametrize("function", [palmer.pdsi, palmer.scpdsi])
 def test_negative_precipitation_is_clipped_even_when_other_values_are_missing(function):
     precips, pet, awc = _division_inputs()
