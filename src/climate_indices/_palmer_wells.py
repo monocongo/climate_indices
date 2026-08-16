@@ -362,10 +362,16 @@ def calculate(
 
     Raises:
         ConvergenceError: If fitted factors make a recurrence denominator
-            non-finite, non-positive, or zero as applicable.
+            non-finite, non-positive, or zero as applicable, or a Z-index
+            value is infinite.
     """
     factors = _validated_factors(wetm, wetb, drym, dryb)
     z = np.asarray(z_values, dtype=float).reshape(-1)
+    if np.any(np.isinf(z)):
+        raise ConvergenceError(
+            "Wells recursion received non-finite Z-index values",
+            algorithm="scPDSI Wells recursion",
+        )
     size = z.size
     pdsi = np.full(size, np.nan)
     x1_values = np.full(size, np.nan)

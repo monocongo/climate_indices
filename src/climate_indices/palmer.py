@@ -873,6 +873,25 @@ def _validate_fitting_params(data: dict[str, Any], fitting_params: dict[str, Any
                 break
 
 
+def _validate_calibration_period(
+    data_start_year: int,
+    n_years: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+) -> None:
+    """Ensure the inclusive calibration period is represented by the input record."""
+    data_final_year = data_start_year + n_years - 1
+    if (
+        calibration_year_initial > calibration_year_final
+        or calibration_year_initial < data_start_year
+        or calibration_year_final > data_final_year
+    ):
+        raise ValueError(
+            "calibration period must be an inclusive interval within the input data years "
+            f"[{data_start_year}, {data_final_year}]"
+        )
+
+
 def _initialize_data(
     precips: np.ndarray,
     pet: np.ndarray,
@@ -904,6 +923,12 @@ def _initialize_data(
     data["awc"] = awc
     data["awc_bot"] = _get_awc_bot(awc)
     data["n_years"] = n_years
+    _validate_calibration_period(
+        data_start_year,
+        n_years,
+        calibration_year_initial,
+        calibration_year_final,
+    )
     data["n_calb_years"] = calibration_year_final - calibration_year_initial + 1
     data["calibration_year_initial_idx"] = calibration_year_initial - data_start_year
     data["calibration_year_final_idx"] = calibration_year_final - data_start_year
@@ -994,12 +1019,7 @@ def _prepare_palmer_data(
     log: BoundLogger,
 ) -> tuple[dict[str, Any], int]:
     """Validate inputs and run the water-balance/CAFEC stages shared by Palmer indices."""
-    if precips.size != pet.size:
-        message = "Incompatible precipitation and PET arrays"
-        log.error("validation_failed", reason=message)
-        raise ValueError(message)
-
-    if np.amin(precips) < 0.0:
+    if np.any(precips < 0.0):
         log.warning("negative_values_clipped", field="precips")
         precips = np.clip(precips, a_min=0.0, a_max=None)
 
@@ -1099,7 +1119,24 @@ def _palmer_calculation(
     t0 = time.perf_counter()
 
     try:
-        if (isinstance(precips, np.ma.MaskedArray) and precips.mask.all()) or np.all(np.isnan(precips)):
+        if precips.size != pet.size:
+            message = "Incompatible precipitation and PET arrays"
+            log.error("validation_failed", reason=message)
+            raise ValueError(message)
+
+        if np.any(np.isinf(precips)) or np.any(np.isinf(pet)):
+            message = "precipitation and PET arrays cannot contain infinite values"
+            log.error("validation_failed", reason=message)
+            raise ValueError(message)
+
+        all_missing = (isinstance(precips, np.ma.MaskedArray) and precips.mask.all()) or np.all(np.isnan(precips))
+        if all_missing:
+            _validate_calibration_period(
+                data_start_year,
+                int(utils.reshape_to_2d(precips, 12).shape[0]),
+                calibration_year_initial,
+                calibration_year_final,
+            )
             duration_ms = (time.perf_counter() - t0) * 1000.0
             log.info(
                 "calculation_completed",
