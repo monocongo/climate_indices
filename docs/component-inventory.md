@@ -570,6 +570,7 @@ def transform_fitted_pearson(
 5. **scPDSI** - Self-calibrated Palmer
 
 #### Key Functions
+
 ```python
 def pdsi(
     precips: np.ndarray,
@@ -598,6 +599,7 @@ def scpdsi(
 `scpdsi()` returns `(scPDSI, scPHDI, scPMDI, scZ-Index, fitted_params)`.
 
 #### Required Inputs
+
 - Monthly precipitation (inches)
 - Monthly PET (inches)
 - Available water capacity (inches) - soil property
@@ -613,6 +615,7 @@ def scpdsi(
    recursion, and cumulative Z-index rescaling
 
 #### Dependencies
+
 - Core: `numpy`
 - Internal: `_palmer_wells`, `self_calibration`, `utils`
 
