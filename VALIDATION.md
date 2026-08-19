@@ -10,7 +10,7 @@ guarded only by internal fixtures.
 | Scope | Command | Expected result |
 | --- | --- | --- |
 | Core suite | `uv run pytest -m "not benchmark and not validation"` | Unit, property, xarray, release guardrail, and regression tests pass. |
-| Validation suite | `uv run pytest -m validation` | External validation tests pass where fixtures are present; missing external data is skipped with an explicit reason. |
+| Validation marker suite | `uv run pytest -m validation` | External validation tests pass where fixtures are present, Palmer and scPDSI regression coverage passes, and missing external data is skipped with an explicit reason. |
 | Lint | `uv run ruff check src/ tests/` | No lint findings. |
 | Format | `uv run ruff format --check src/ tests/` | No formatting changes needed. |
 | Notebooks | `uv run jupyter nbconvert --execute --to notebook --inplace notebooks/xarray_getting_started.ipynb notebooks/palmer_indices_xarray.ipynb notebooks/eddi_xarray.ipynb` | All v2.5 notebooks execute from a clean checkout. |
