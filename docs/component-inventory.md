@@ -969,7 +969,7 @@ def log_performance_metrics(
 | **`xarray_adapter.py`** | compute, indices, exceptions | numpy, xarray, dask |
 | **`indices.py`** | compute, eto, exceptions, utils | numpy, scipy |
 | **`compute.py`** | lmoments, exceptions, utils | numpy, scipy |
-| **`palmer.py`** | eto, utils | numpy |
+| **`palmer.py`** | _palmer_wells, exceptions, logging_config, self_calibration, utils | numpy, structlog |
 | **`eto.py`** | _(none)_ | numpy |
 | **`lmoments.py`** | _(none)_ | numpy |
 | **`exceptions.py`** | _(none)_ | _(none - stdlib only)_ |
