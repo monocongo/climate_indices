@@ -10,7 +10,7 @@ guarded only by internal fixtures.
 | Scope | Command | Expected result |
 | --- | --- | --- |
 | Core suite | `uv run pytest -m "not benchmark and not validation"` | Unit, property, xarray, release guardrail, and regression tests pass. |
-| Validation suite | `uv run pytest -m validation` | External validation tests pass where fixtures are present; missing external data is skipped with an explicit reason. |
+| Validation marker suite | `uv run pytest -m validation` | External validation tests pass where fixtures are present, Palmer and scPDSI regression coverage passes, and missing external data is skipped with an explicit reason. |
 | Lint | `uv run ruff check src/ tests/` | No lint findings. |
 | Format | `uv run ruff format --check src/ tests/` | No formatting changes needed. |
 | Notebooks | `uv run jupyter nbconvert --execute --to notebook --inplace notebooks/xarray_getting_started.ipynb notebooks/palmer_indices_xarray.ipynb notebooks/eddi_xarray.ipynb` | All v2.5 notebooks execute from a clean checkout. |
@@ -26,7 +26,7 @@ guarded only by internal fixtures.
 | PNP | Validated | Existing fixture tolerances in `tests/test_indices.py` and xarray PNP tests | Percent-of-normal fixture and xarray wrapper tests cover output shape and metadata. | None blocking v2.5. |
 | PCI | Validated | Existing fixture tolerances in `tests/test_indices.py` and xarray PCI tests | Daily rainfall fixture and scalar xarray wrapper tests cover PCI. | None blocking v2.5. |
 | EDDI | Partially validated | NOAA reference tests use `rtol=1e-5`, `atol=1e-5` when fixtures exist | Algorithm property tests always run; NOAA PSL reference tests live in `tests/test_noaa_eddi_reference.py` and are marked `validation`. | `tests/fixture/noaa-eddi-{1,3,6}month/` is not committed. The validation tests skip until independently prepared PET/input and NOAA reference outputs are available. |
-| Palmer PDSI/PHDI/PMDI/Z-Index | Regression covered, not independently validated | Palmer regression tests use `atol=5e-5`, `rtol=0` | `tests/test_palmer.py` exercises all committed climate-division fixtures and is marked `validation`. | `tests/fixture/palmer/provenance.json` states the outputs were generated from this library. These fixtures protect against regressions but do not satisfy independent authoritative-output validation. |
+| Palmer PDSI/PHDI/PMDI/Z-Index and scPDSI family | Regression covered, not independently validated | Palmer and scPDSI regression tests use `atol=5e-5`, `rtol=0` | `tests/test_palmer.py` exercises the standard Palmer fixtures; `tests/test_scpdsi.py` compares four self-calibrating outputs and fitted duration factors against Wells-lineage reference fixtures for all 344 climate divisions. Both are marked `validation`. | `tests/fixture/palmer/provenance.json` distinguishes library-generated standard Palmer outputs from Wells-lineage scPDSI outputs. Both fixture sets protect against regressions but are not treated as independent authoritative scientific validation. |
 
 ## EDDI Fixture Policy
 
