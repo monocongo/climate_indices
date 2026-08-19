@@ -1184,17 +1184,23 @@ def pdsi(
     Palmer Modified Drought Index (PMDI), and
     Palmer Z-Index.
 
-    :param precips: time series of monthly precipitation values, in inches
-    :param pet: time series of monthly PET values, in inches
-    :param awc: available water capacity (soil constant), in inches
-    :param data_start_year: initial year of the input precipitation and PET datasets,
-                            both of which are assumed to start in January of this year
-    :param calibration_start_year: initial year of the calibration period
-    :param calibration_end_year: final year of the calibration period
-    :param fitting_params: dictionary of the fitted parameters
-    :return: four numpy arrays containing PDSI, PHDI, PMDI, and Z-Index values respectively and
-             a dictionary containing the fitted parameters (alpha, beta, gamma, and delta)
-    :rtype: four numpy.ndarrays of the PDSI values and a dictionary of the fitted parameters
+    Args:
+        precips: Time series of monthly precipitation values, in inches.
+        pet: Time series of monthly PET values, in inches.
+        awc: Available water capacity (soil constant), in inches.
+        data_start_year: Initial year of the input precipitation and PET
+            datasets, both of which are assumed to start in January of this
+            year.
+        calibration_year_initial: Initial year of the calibration period.
+        calibration_year_final: Final year of the calibration period.
+        fitting_params: Dictionary of the fitted parameters.
+
+    Returns:
+        tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any] | None]:
+            A five-item tuple containing NumPy arrays of PDSI, PHDI, PMDI, and
+            Z-Index values, respectively, and a dictionary containing the
+            fitted ``alpha``, ``beta``, ``gamma``, and ``delta`` parameters.
+            For all-missing input, the parameter dictionary is ``None``.
     """
 
     # _palmer_calculation emits calculation_started, calculation_completed,
