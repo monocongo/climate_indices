@@ -56,7 +56,7 @@ A monthly moisture-anomaly index — the weighted difference between actual prec
 _Avoid_: Moisture anomaly index (informal synonym used in one comment; prefer Z-Index)
 
 **scPDSI (Self-calibrated Palmer Drought Severity Index)**:
-The Wells et al. (2004) self-calibrating variant of PDSI, which recalibrates duration factors and the climate characteristic (K) per location instead of using fixed national constants. It is available through the NumPy API as `palmer.scpdsi()`. The CLI's `--index palmers` path continues to produce only PDSI, PHDI, PMDI, and Z-Index until CLI support is added separately.
+The Wells et al. (2004) self-calibrating variant of PDSI, which recalibrates duration factors and the K-prime (K′) climate characteristic per location instead of using fixed national constants. K-prime is distinct from the standard K-Factor defined below. It is available through the NumPy API as `palmer.scpdsi()`. The CLI's `--index palmers` path continues to produce only PDSI, PHDI, PMDI, and Z-Index until CLI support is added separately.
 
 **CAFEC (Climatically Appropriate For Existing Conditions)**:
 Per-calendar-month calibration coefficients (alpha, beta, gamma, delta) computed from calibration-period water-balance sums, representing the precipitation/moisture terms "appropriate" for that location's climate — actual conditions are compared against CAFEC to produce the Z-Index.
