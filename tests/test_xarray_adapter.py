@@ -1957,6 +1957,19 @@ class TestCoordinateValidationIntegration:
         result = simple_func(no_time_dim_da)
         assert isinstance(result, xr.DataArray)
 
+    def test_infer_params_false_skips_calendar_validation_with_explicit_periodicity(self):
+        """Explicit Periodicity does not enable calendar validation when inference is disabled."""
+        time = pd.date_range("2000-01-02", periods=3, freq="D")
+        data = xr.DataArray([1.0, 2.0, 3.0], coords={"time": time}, dims=["time"])
+
+        @xarray_adapter(infer_params=False)
+        def simple_func(values: np.ndarray, periodicity: compute.Periodicity) -> np.ndarray:
+            return values
+
+        result = simple_func(data, periodicity=compute.Periodicity.daily)
+        assert isinstance(result, xr.DataArray)
+        xr.testing.assert_equal(result.coords["time"], data.coords["time"])
+
     def test_numpy_passthrough_skips_validation(self):
         """NumPy input bypasses all validation."""
 

@@ -6,13 +6,15 @@ results to the original NumPy-based computations (within floating-point toleranc
 
 from __future__ import annotations
 
+import cftime
 import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
 
-from climate_indices import indices, spei, spi
+from climate_indices import eddi, indices, percentage_of_normal, spei, spi, utils
 from climate_indices.compute import Periodicity
+from climate_indices.exceptions import CoordinateValidationError, InputTypeError
 from climate_indices.indices import Distribution
 
 
@@ -193,6 +195,398 @@ class TestSPIXarrayEquivalence:
             equal_nan=True,
             err_msg="3D xarray grid point differs from equivalent NumPy computation",
         )
+
+
+class TestSPIXarrayGregorianDailyCalendar:
+    """Verify daily xarray SPI honors Gregorian calendar positions."""
+
+    def test_daily_spi_matches_cli_style_calendar_conversion(self) -> None:
+        """Daily SPI preserves Gregorian dates after 366-day computation."""
+        start_year = 1999
+        end_year = 2030
+        time = pd.date_range(f"{start_year}-01-01", f"{end_year}-12-31", freq="D")
+        values = np.stack(
+            [
+                np.arange(1, len(time) + 1, dtype=float),
+                np.arange(1, len(time) + 1, dtype=float) * 1.5,
+            ]
+        )
+        precip = xr.DataArray(
+            values,
+            coords={"location": ["west", "east"], "time": time},
+            dims=["location", "time"],
+        )
+
+        expected = np.stack(
+            [
+                utils.transform_to_gregorian(
+                    indices.spi(
+                        values=utils.transform_to_366day(location_values, start_year, end_year - start_year + 1),
+                        scale=3,
+                        distribution=Distribution.gamma,
+                        data_start_year=start_year,
+                        calibration_year_initial=start_year,
+                        calibration_year_final=end_year,
+                        periodicity=Periodicity.daily,
+                    ),
+                    start_year,
+                )
+                for location_values in values
+            ]
+        )
+
+        result = spi(
+            values=precip,
+            scale=3,
+            distribution=Distribution.gamma,
+            calibration_year_initial=start_year,
+            calibration_year_final=end_year,
+        )
+
+        assert isinstance(result, xr.DataArray)
+        assert result.dims == precip.dims
+        xr.testing.assert_equal(result.coords["time"], precip.coords["time"])
+        np.testing.assert_allclose(result.values, expected, atol=1e-8, rtol=1e-7, equal_nan=True)
+
+    def test_daily_pnp_matches_cli_style_calendar_conversion(self) -> None:
+        """Daily PNP uses calendar-aligned precipitation positions through the shared seam."""
+        start_year = 1999
+        end_year = 2030
+        time = pd.date_range(f"{start_year}-01-01", f"{end_year}-12-31", freq="D")
+        precip_values = np.arange(1, len(time) + 1, dtype=float)
+        precip = xr.DataArray(precip_values, coords={"time": time}, dims=["time"])
+        expected = utils.transform_to_gregorian(
+            indices.percentage_of_normal(
+                values=utils.transform_to_366day(precip_values, start_year, end_year - start_year + 1),
+                scale=3,
+                data_start_year=start_year,
+                calibration_start_year=start_year,
+                calibration_end_year=end_year,
+                periodicity=Periodicity.daily,
+            ),
+            start_year,
+        )
+
+        result = percentage_of_normal(
+            values=precip,
+            scale=3,
+            calibration_start_year=start_year,
+            calibration_end_year=end_year,
+        )
+
+        assert isinstance(result, xr.DataArray)
+        xr.testing.assert_equal(result.coords["time"], precip.coords["time"])
+        np.testing.assert_allclose(result.values, expected, atol=1e-8, rtol=1e-7, equal_nan=True)
+
+    def test_daily_eddi_matches_cli_style_calendar_conversion(self) -> None:
+        """Daily EDDI uses calendar-aligned PET positions through the shared seam."""
+        start_year = 1999
+        end_year = 2030
+        time = pd.date_range(f"{start_year}-01-01", f"{end_year}-12-31", freq="D")
+        pet_values = np.arange(1, len(time) + 1, dtype=float)
+        pet = xr.DataArray(pet_values, coords={"time": time}, dims=["time"])
+        expected = utils.transform_to_gregorian(
+            indices.eddi(
+                pet_values=utils.transform_to_366day(pet_values, start_year, end_year - start_year + 1),
+                scale=3,
+                data_start_year=start_year,
+                calibration_year_initial=start_year,
+                calibration_year_final=end_year,
+                periodicity=Periodicity.daily,
+            ),
+            start_year,
+        )
+
+        result = eddi(
+            pet_values=pet,
+            scale=3,
+            calibration_year_initial=start_year,
+            calibration_year_final=end_year,
+        )
+
+        assert isinstance(result, xr.DataArray)
+        xr.testing.assert_equal(result.coords["time"], pet.coords["time"])
+        np.testing.assert_allclose(result.values, expected, atol=1e-8, rtol=1e-7, equal_nan=True)
+
+    def test_daily_spi_preserves_synthetic_february_29_missing_data_behavior(self) -> None:
+        """A missing February neighbor propagates through the synthetic day and Timescale."""
+        start_year = 1999
+        end_year = 2030
+        time = pd.date_range(f"{start_year}-01-01", f"{end_year}-12-31", freq="D")
+        values = np.arange(1, len(time) + 1, dtype=float)
+        february_28_index = time.get_loc(pd.Timestamp("1999-02-28"))
+        march_1_index = time.get_loc(pd.Timestamp("1999-03-01"))
+        values[february_28_index] = np.nan
+        precip = xr.DataArray(values, coords={"time": time}, dims=["time"])
+        expected = utils.transform_to_gregorian(
+            indices.spi(
+                values=utils.transform_to_366day(values, start_year, end_year - start_year + 1),
+                scale=3,
+                distribution=Distribution.gamma,
+                data_start_year=start_year,
+                calibration_year_initial=start_year,
+                calibration_year_final=end_year,
+                periodicity=Periodicity.daily,
+            ),
+            start_year,
+        )
+
+        result = spi(
+            values=precip,
+            scale=3,
+            distribution=Distribution.gamma,
+            calibration_year_initial=start_year,
+            calibration_year_final=end_year,
+        )
+
+        assert isinstance(result, xr.DataArray)
+        assert np.isnan(expected[february_28_index])
+        assert np.isnan(expected[march_1_index])
+        np.testing.assert_allclose(result.values, expected, atol=1e-8, rtol=1e-7, equal_nan=True)
+
+    def test_daily_spei_with_dask_pet_matches_calendar_converted_reference(self) -> None:
+        """A Dask-backed PET input keeps SPEI lazy and calendar-aligned."""
+        start_year = 1999
+        end_year = 2030
+        time = pd.date_range(f"{start_year}-01-01", f"{end_year}-12-31", freq="D")
+        precip_values = np.arange(100, len(time) + 100, dtype=float)
+        pet_values = np.arange(1, len(time) + 1, dtype=float) / 10
+        precip = xr.DataArray(precip_values, coords={"time": time}, dims=["time"])
+        pet = xr.DataArray(pet_values, coords={"time": time}, dims=["time"]).chunk({"time": -1})
+        total_years = end_year - start_year + 1
+        expected = utils.transform_to_gregorian(
+            indices.spei(
+                precips_mm=utils.transform_to_366day(precip_values, start_year, total_years),
+                pet_mm=utils.transform_to_366day(pet_values, start_year, total_years),
+                scale=3,
+                distribution=Distribution.gamma,
+                periodicity=Periodicity.daily,
+                data_start_year=start_year,
+                calibration_year_initial=start_year,
+                calibration_year_final=end_year,
+            ),
+            start_year,
+        )
+
+        result = spei(
+            precips_mm=precip,
+            pet_mm=pet,
+            scale=3,
+            distribution=Distribution.gamma,
+            calibration_year_initial=start_year,
+            calibration_year_final=end_year,
+        )
+
+        assert isinstance(result, xr.DataArray)
+        assert result.chunks is not None
+        np.testing.assert_allclose(result.compute().values, expected, atol=1e-8, rtol=1e-7, equal_nan=True)
+
+    def test_daily_spei_rejects_cftime_secondary_before_alignment(self) -> None:
+        """Daily SPEI rejects cftime PET instead of aligning incompatible calendars."""
+        primary_time = pd.date_range("2000-01-01", periods=3, freq="D")
+        precip = xr.DataArray([1.0, 2.0, 3.0], coords={"time": primary_time}, dims=["time"])
+        pet = xr.DataArray(
+            [0.1, 0.2, 0.3],
+            coords={
+                "time": [
+                    cftime.DatetimeNoLeap(2000, 1, 1),
+                    cftime.DatetimeNoLeap(2000, 1, 2),
+                    cftime.DatetimeNoLeap(2000, 1, 3),
+                ]
+            },
+            dims=["time"],
+        )
+
+        with pytest.raises(CoordinateValidationError, match="cftime calendars are not supported"):
+            spei(
+                precips_mm=precip,
+                pet_mm=pet,
+                scale=1,
+                distribution=Distribution.gamma,
+            )
+
+    def test_daily_spei_rejects_secondary_with_unsupported_calendar(self) -> None:
+        """Daily SPEI validates the calendar declaration on both xarray inputs."""
+        time = pd.date_range("2000-01-01", periods=3, freq="D")
+        precip = xr.DataArray([1.0, 2.0, 3.0], coords={"time": time}, dims=["time"])
+        pet = xr.DataArray([0.1, 0.2, 0.3], coords={"time": time}, dims=["time"])
+        pet.coords["time"].attrs["calendar"] = "noleap"
+
+        with pytest.raises(CoordinateValidationError, match="Unsupported calendar"):
+            spei(
+                precips_mm=precip,
+                pet_mm=pet,
+                scale=1,
+                distribution=Distribution.gamma,
+            )
+
+    def test_daily_spei_rejects_multi_chunked_dask_secondary(self) -> None:
+        """Daily SPEI enforces the one-time-chunk invariant on PET as well as precipitation."""
+        time = pd.date_range("2000-01-01", periods=3, freq="D")
+        precip = xr.DataArray([1.0, 2.0, 3.0], coords={"time": time}, dims=["time"])
+        pet = xr.DataArray([0.1, 0.2, 0.3], coords={"time": time}, dims=["time"]).chunk({"time": 1})
+
+        with pytest.raises(CoordinateValidationError, match="split across 3 chunks"):
+            spei(
+                precips_mm=precip,
+                pet_mm=pet,
+                scale=1,
+                distribution=Distribution.gamma,
+            )
+
+    def test_daily_spei_rejects_numpy_pet_secondary(self) -> None:
+        """Daily SPEI requires a coordinate-bearing PET input for calendar adaptation."""
+        time = pd.date_range("2000-01-01", periods=3, freq="D")
+        precip = xr.DataArray([1.0, 2.0, 3.0], coords={"time": time}, dims=["time"])
+
+        with pytest.raises(InputTypeError, match="requires 'pet_mm' to be an xarray.DataArray"):
+            spei(
+                precips_mm=precip,
+                pet_mm=np.array([0.1, 0.2, 0.3]),
+                scale=1,
+                distribution=Distribution.gamma,
+            )
+
+    def test_daily_spei_matches_cli_style_calendar_conversion(self) -> None:
+        """Daily SPEI adapts both xarray time series at the shared calendar seam."""
+        start_year = 1999
+        end_year = 2030
+        time = pd.date_range(f"{start_year}-01-01", f"{end_year}-12-31", freq="D")
+        precip_values = np.arange(100, len(time) + 100, dtype=float)
+        pet_values = np.arange(1, len(time) + 1, dtype=float) / 10
+        precip = xr.DataArray(precip_values, coords={"time": time}, dims=["time"])
+        pet = xr.DataArray(pet_values, coords={"time": time}, dims=["time"])
+        total_years = end_year - start_year + 1
+        expected = utils.transform_to_gregorian(
+            indices.spei(
+                precips_mm=utils.transform_to_366day(precip_values, start_year, total_years),
+                pet_mm=utils.transform_to_366day(pet_values, start_year, total_years),
+                scale=3,
+                distribution=Distribution.gamma,
+                periodicity=Periodicity.daily,
+                data_start_year=start_year,
+                calibration_year_initial=start_year,
+                calibration_year_final=end_year,
+            ),
+            start_year,
+        )
+
+        result = spei(
+            precips_mm=precip,
+            pet_mm=pet,
+            scale=3,
+            distribution=Distribution.gamma,
+            calibration_year_initial=start_year,
+            calibration_year_final=end_year,
+        )
+
+        assert isinstance(result, xr.DataArray)
+        xr.testing.assert_equal(result.coords["time"], precip.coords["time"])
+        np.testing.assert_allclose(result.values, expected, atol=1e-8, rtol=1e-7, equal_nan=True)
+
+    def test_daily_spi_supports_partial_final_year(self) -> None:
+        """Daily SPI restores only the observed days of a partial final year."""
+        start_year = 1999
+        end_year = 2030
+        time = pd.date_range(f"{start_year}-01-01", f"{end_year}-06-30", freq="D")
+        values = np.arange(1, len(time) + 1, dtype=float)
+        precip = xr.DataArray(values, coords={"time": time}, dims=["time"])
+        all_leap_values = utils.transform_to_366day(values, start_year, end_year - start_year + 1)
+        all_leap_spi = indices.spi(
+            values=all_leap_values,
+            scale=3,
+            distribution=Distribution.gamma,
+            data_start_year=start_year,
+            calibration_year_initial=start_year,
+            calibration_year_final=end_year,
+            periodicity=Periodicity.daily,
+        )
+        expected = utils.transform_to_gregorian(all_leap_spi, start_year)[: len(values)]
+
+        result = spi(
+            values=precip,
+            scale=3,
+            distribution=Distribution.gamma,
+            calibration_year_initial=start_year,
+            calibration_year_final=end_year,
+        )
+
+        assert isinstance(result, xr.DataArray)
+        xr.testing.assert_equal(result.coords["time"], precip.coords["time"])
+        np.testing.assert_allclose(result.values, expected, atol=1e-8, rtol=1e-7, equal_nan=True)
+
+    def test_spi_rejects_cftime_calendar(self) -> None:
+        """SPI explicitly rejects cftime calendars in the initial calendar slice."""
+        precip = xr.DataArray(
+            [1.0, 2.0, 3.0],
+            coords={
+                "time": [
+                    cftime.DatetimeNoLeap(2000, 1, 1),
+                    cftime.DatetimeNoLeap(2000, 1, 2),
+                    cftime.DatetimeNoLeap(2000, 1, 3),
+                ]
+            },
+            dims=["time"],
+        )
+
+        with pytest.raises(CoordinateValidationError, match="cftime calendars are not supported"):
+            spi(values=precip, scale=1, distribution=Distribution.gamma)
+
+    def test_spi_rejects_daily_input_that_does_not_begin_on_january_first(self) -> None:
+        """Daily SPI fails rather than treating a partial first year as calendar-aligned."""
+        precip = xr.DataArray(
+            [1.0, 2.0, 3.0],
+            coords={"time": pd.date_range("2000-01-02", periods=3, freq="D")},
+            dims=["time"],
+        )
+
+        with pytest.raises(CoordinateValidationError, match="begin on January 1"):
+            spi(values=precip, scale=1, distribution=Distribution.gamma)
+
+    def test_spi_rejects_monthly_input_that_does_not_begin_in_january(self) -> None:
+        """Monthly SPI fails rather than reinterpreting a non-January origin."""
+        precip = xr.DataArray(
+            [1.0, 2.0, 3.0],
+            coords={"time": pd.date_range("2000-03-01", periods=3, freq="MS")},
+            dims=["time"],
+        )
+
+        with pytest.raises(CoordinateValidationError, match="begin in January"):
+            spi(values=precip, scale=1, distribution=Distribution.gamma)
+
+    def test_daily_spi_dask_matches_cli_style_calendar_conversion(self) -> None:
+        """Dask-backed daily SPI stays lazy and preserves Gregorian dates."""
+        start_year = 1999
+        end_year = 2030
+        time = pd.date_range(f"{start_year}-01-01", f"{end_year}-12-31", freq="D")
+        values = np.arange(1, len(time) + 1, dtype=float)
+        precip = xr.DataArray(values, coords={"time": time}, dims=["time"]).chunk({"time": -1})
+        expected = utils.transform_to_gregorian(
+            indices.spi(
+                values=utils.transform_to_366day(values, start_year, end_year - start_year + 1),
+                scale=3,
+                distribution=Distribution.gamma,
+                data_start_year=start_year,
+                calibration_year_initial=start_year,
+                calibration_year_final=end_year,
+                periodicity=Periodicity.daily,
+            ),
+            start_year,
+        )
+
+        result = spi(
+            values=precip,
+            scale=3,
+            distribution=Distribution.gamma,
+            calibration_year_initial=start_year,
+            calibration_year_final=end_year,
+        )
+
+        assert isinstance(result, xr.DataArray)
+        assert result.chunks is not None
+        computed = result.compute()
+        xr.testing.assert_equal(computed.coords["time"], precip.coords["time"])
+        np.testing.assert_allclose(computed.values, expected, atol=1e-8, rtol=1e-7, equal_nan=True)
 
 
 class TestSPEIXarrayEquivalence:

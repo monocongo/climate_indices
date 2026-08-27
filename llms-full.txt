@@ -2386,7 +2386,28 @@ Common Pitfalls and Solutions
       result = spi(da_monthly, scale=6, distribution=Distribution.gamma)
 
 
-4. Multi-chunked time dimension (Dask)
+4. Unsupported calendar or calendar origin
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. warning::
+
+   **Error:** ``CoordinateValidationError: Unsupported calendar`` or a message
+   that monthly input must begin in January or daily input must begin on January 1.
+
+   **Cause:** SPI, SPEI, EDDI, and PNP group monthly values from January and
+   daily values into 366 calendar positions. ``cftime`` calendars and
+   non-January input origins cannot be represented without changing those
+   semantics.
+
+   **Solution:** For those index computations, use standard, gregorian, or
+   proleptic_gregorian datetime coordinates. Start monthly data in January and
+   daily data on January 1. A final daily year may end on any calendar date.
+   For non-leap years, the xarray adapter synthesizes February 29 from February
+   28 and March 1 before computation, then restores the original Gregorian
+   coordinate.
+
+
+5. Multi-chunked time dimension (Dask)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. warning::
@@ -2404,7 +2425,7 @@ Common Pitfalls and Solutions
       result = spi(da_rechunked, scale=6, distribution=Distribution.gamma)
 
 
-5. Passing Dataset instead of DataArray
+6. Passing Dataset instead of DataArray
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. warning::
@@ -2425,7 +2446,7 @@ Common Pitfalls and Solutions
       result = spi(precip_da, scale=6, distribution=Distribution.gamma)
 
 
-6. Insufficient calibration data with NaN
+7. Insufficient calibration data with NaN
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. warning::
