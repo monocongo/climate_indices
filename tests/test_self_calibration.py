@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 from climate_indices import self_calibration
-from climate_indices.exceptions import InsufficientDataError, InvalidArgumentError
+from climate_indices.exceptions import ConvergenceError, InsufficientDataError, InvalidArgumentError
 
 
 class TestKthSmallest:
@@ -273,6 +273,35 @@ class TestExtremeZSum:
 
 
 class TestLeastSquaresFit:
+    @pytest.mark.parametrize("constant", [0.0, 7.5])
+    def test_constant_ordinates_raise_convergence_error(self, constant):
+        x = np.arange(1.0, 6.0)
+        y = np.full(5, constant)
+
+        with pytest.raises(ConvergenceError, match="degenerate"):
+            self_calibration.least_squares_fit(x, y, self_calibration.WET_SIGN)
+
+    def test_nonfinite_ordinates_raise_convergence_error(self):
+        x = np.arange(1.0, 6.0)
+        y = np.array([1.0, 2.0, np.nan, 4.0, 5.0])
+
+        with pytest.raises(ConvergenceError, match="non-finite"):
+            self_calibration.least_squares_fit(x, y, self_calibration.WET_SIGN)
+
+    def test_nonfinite_abscissas_raise_convergence_error(self):
+        x = np.array([1.0, 2.0, np.inf, 4.0, 5.0])
+        y = np.arange(1.0, 6.0)
+
+        with pytest.raises(ConvergenceError, match="non-finite"):
+            self_calibration.least_squares_fit(x, y, self_calibration.WET_SIGN)
+
+    def test_trimming_to_degenerate_ordinates_raises_convergence_error(self):
+        x = np.arange(1.0, 6.0)
+        y = np.array([1.0, 1.0, 1.0, 1.0, 100.0])
+
+        with pytest.raises(ConvergenceError, match="degenerate"):
+            self_calibration.least_squares_fit(x, y, self_calibration.WET_SIGN)
+
     def test_recovers_an_exact_dry_line_without_trimming(self):
         x = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
         y = np.array([-11.0, -12.0, -13.0, -14.0, -15.0])
