@@ -2,19 +2,17 @@
 
 ## Scope
 
-The Palmer implementation computes five monthly drought products from
+The Palmer implementation computes four monthly drought products from
 precipitation, PET, and available water capacity:
 
 - Palmer Drought Severity Index (PDSI)
 - Palmer Hydrological Drought Index (PHDI)
 - Palmer Modified Drought Index (PMDI)
 - Palmer Z-Index
-- Self-calibrated Palmer Drought Severity Index (scPDSI)
 
-The public NumPy APIs are `climate_indices.palmer.pdsi()` and
-`climate_indices.palmer.scpdsi()`. The v2.5 xarray notebook demonstrates how
-to call the NumPy Palmer routine from labeled xarray inputs and rewrap the
-outputs with coordinates and metadata.
+The public NumPy API is `climate_indices.palmer.pdsi()`. The v2.5 xarray
+notebook demonstrates how to call the NumPy Palmer routine from labeled xarray
+inputs and rewrap the outputs with coordinates and metadata.
 
 ## Algorithm Notes
 
@@ -28,20 +26,11 @@ The implementation follows the water-balance structure described by Palmer
 5. Calculate the Z-Index moisture anomaly.
 6. Finish the recursive Palmer index calculations for PDSI, PHDI, and PMDI.
 
-`scpdsi()` shares the water-balance and CAFEC stages, then computes
-self-calibrating K-prime factors, fits location-specific duration factors,
-uses the Wells recursion, and performs three cumulative Z-index rescaling
-passes over the requested calibration period.
-
 ## Validation
 
 `tests/test_palmer.py` compares PDSI, PHDI, PMDI, Z-Index, and CAFEC
 coefficients against the committed fixture set for climate divisions. The test
 module is marked `validation` and uses `atol=5e-5`, `rtol=0`.
-
-`tests/test_scpdsi.py` compares the four self-calibrating index outputs and
-fitted duration factors against committed Wells-lineage reference fixtures for
-344 climate divisions at the same tolerance.
 
 The committed fixtures are treated as regression coverage, not independent
 scientific validation. Their provenance states that the expected outputs were
@@ -63,5 +52,3 @@ fixture or explicitly defer that item before issue #627 is closed.
 - Heddinghaus, T. R., and Sabol, P. (1991). A review of the Palmer Drought
   Severity Index and where do we go from here? Preprints, 7th Conference on
   Applied Climatology, American Meteorological Society.
-- Wells, N., Goddard, S., and Hayes, M. J. (2004). A self-calibrating Palmer
-  Drought Severity Index. Journal of Climate, 17, 2335-2351.

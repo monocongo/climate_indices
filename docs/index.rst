@@ -366,11 +366,8 @@ Jan. 1951 through Dec. 2010. The output files will be
 `<out_dir>/nclimgrid_lowres_pmdi.nc`, and `<out_dir>/nclimgrid_lowres_zindex.nc`.
 
 .. note::
-   Self-calibrated PDSI (scPDSI) is available through the NumPy API as
-   :func:`climate_indices.palmer.scpdsi`. It is not yet exposed by the
-   ``process_climate_indices --index palmers`` command; see `issue #721
-   <https://github.com/monocongo/climate_indices/issues/721>`_.
-
+   Self-calibrated PDSI (SCPDSI) is not yet implemented -- see
+   `issue #716 <https://github.com/monocongo/climate_indices/issues/716>`_.
 Parallelization will occur utilizing all CPUs.
 
 Pre-compute SPI distribution fitting variables

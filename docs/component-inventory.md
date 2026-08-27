@@ -560,6 +560,7 @@ def transform_fitted_pearson(
 
 ### `palmer.py` - Palmer Drought Indices
 **Location**: `src/climate_indices/palmer.py`
+**Lines**: 912
 **Purpose**: Palmer Drought Index family computation.
 
 #### Indices Computed
@@ -569,39 +570,24 @@ def transform_fitted_pearson(
 4. **Z-Index** - Palmer Z-Index
 5. **scPDSI** - Self-calibrated Palmer
 
-#### Key Functions
-
+#### Key Function
 ```python
-def pdsi(
-    precips: np.ndarray,
-    pet: np.ndarray,
-    awc: float,
+def palmer(
+    precips_mm: np.ndarray,
+    potential_evapotranspirations_mm: np.ndarray,
+    available_water_capacity_inches: Union[float, np.ndarray],
     data_start_year: int,
-    calibration_year_initial: int,
-    calibration_year_final: int,
-    fitting_params: dict[str, Any] | None = None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any] | None]:
-    """Compute PDSI, PHDI, PMDI, and the Z-Index."""
-
-def scpdsi(
-    precips: np.ndarray,
-    pet: np.ndarray,
-    awc: float,
-    data_start_year: int,
-    calibration_year_initial: int,
-    calibration_year_final: int,
-    fitting_params: dict[str, Any] | None = None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any] | None]:
-    """Compute scPDSI, scPHDI, scPMDI, and the self-calibrated Z-Index."""
+    calibration_start_year: int,
+    calibration_end_year: int,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Compute Palmer Drought Indices."""
 ```
 
-**Returns**: `pdsi()` returns `(PDSI, PHDI, PMDI, Z-Index, fitted_params)`;
-`scpdsi()` returns `(scPDSI, scPHDI, scPMDI, scZ-Index, fitted_params)`.
+**Returns**: `(scPDSI, PDSI, PHDI, PMDI, Z-Index)`
 
 #### Required Inputs
-
-- Monthly precipitation (inches)
-- Monthly PET (inches)
+- Monthly precipitation (mm)
+- Monthly PET (mm)
 - Available water capacity (inches) - soil property
 - Calibration period (for coefficients)
 
@@ -611,13 +597,11 @@ def scpdsi(
 3. Compute moisture departure (actual - expected)
 4. Apply Z-Index formula
 5. Compute PDSI/PHDI/PMDI via recursive tracking
-6. `scpdsi()` self-calibrates with local K-prime and duration factors, Wells
-   recursion, and cumulative Z-index rescaling
+6. Self-calibrate PDSI using local climate characteristics
 
 #### Dependencies
-
 - Core: `numpy`
-- Internal: `_palmer_wells`, `self_calibration`, `utils`
+- Internal: `eto`, `utils`
 
 ---
 
@@ -969,8 +953,7 @@ def log_performance_metrics(
 | **`xarray_adapter.py`** | compute, indices, exceptions | numpy, xarray, dask |
 | **`indices.py`** | compute, eto, exceptions, utils | numpy, scipy |
 | **`compute.py`** | lmoments, exceptions, utils | numpy, scipy |
-| **`palmer.py`** | _palmer_wells, exceptions | numpy, structlog |
-| _(continued)_ | logging_config, self_calibration, utils | _(see above)_ |
+| **`palmer.py`** | eto, utils | numpy |
 | **`eto.py`** | _(none)_ | numpy |
 | **`lmoments.py`** | _(none)_ | numpy |
 | **`exceptions.py`** | _(none)_ | _(none - stdlib only)_ |

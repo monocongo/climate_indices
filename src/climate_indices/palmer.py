@@ -1,20 +1,17 @@
 """Compute palmer drought indices"""
 
 import time
-from collections.abc import Callable
 from typing import Any
 
 import numpy as np
-from structlog.stdlib import BoundLogger
 
-from climate_indices import _palmer_wells, self_calibration, utils
-from climate_indices.exceptions import ConvergenceError
+from climate_indices import utils
 from climate_indices.logging_config import get_logger
 
 _logger = get_logger(__name__)
 
 # declare the function names that should be included in the public API for this module
-__all__ = ["pdsi", "scpdsi"]
+__all__ = ["pdsi"]
 
 AWCTOP = 1.0
 K8_SIZE = 40
@@ -24,8 +21,6 @@ K8_SIZE = 40
 # replacements via the same m/b/c relationship (see palmer's scpdsi()).
 _PALMER_DURATION_P = 0.897
 _PALMER_DURATION_Q = 1.0 / 3.0
-
-_PalmerResult = tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any] | None]
 
 
 def _default_duration_factors() -> tuple[float, float]:
@@ -365,74 +360,6 @@ def _calc_kfactors(data: dict[str, Any]) -> None:
     akhat = 1.5 * np.log10((data["trat"] + 2.8) / dbar) + 0.5
     swtd = np.sum(dbar * akhat)
     data["ak"] = 17.67 * akhat / swtd
-
-
-def _calc_scpdsi_k_factors(data: dict[str, Any]) -> None:
-    """Calculate the unnormalized monthly K-prime factors for scPDSI."""
-    sabsd = np.zeros((12,))
-    for year in range(data["calibration_year_initial_idx"], data["calibration_year_final_idx"] + 1):
-        for month in range(12):
-            phat = (
-                data["alpha"][month] * data["pet"][year, month]
-                + data["beta"][month] * data["prdat"][year, month]
-                + data["gamma"][month] * data["spdat"][year, month]
-                - data["delta"][month] * data["pldat"][year, month]
-            )
-            departure = data["precips"][year, month] - phat
-            sabsd[month] += abs(departure)
-
-    dbar = sabsd / data["n_calb_years"]
-    with np.errstate(divide="ignore", invalid="ignore"):
-        k_prime = 1.5 * np.log10((data["trat"] + 2.8) / dbar) + 0.5
-    if not np.all(np.isfinite(k_prime)):
-        raise ConvergenceError(
-            "scPDSI K-prime calibration produced non-finite values",
-            algorithm="scPDSI K-prime calibration",
-        )
-    data["ak"] = k_prime
-
-
-def _calc_scpdsi_raw_zindex(data: dict[str, Any]) -> None:
-    """Calculate raw Z-index values for the entire input record."""
-    for year in range(data["n_years"]):
-        for month in range(12):
-            cet = data["alpha"][month] * data["pet"][year, month]
-            cr = data["beta"][month] * data["prdat"][year, month]
-            cro = data["gamma"][month] * data["spdat"][year, month]
-            cl = data["delta"][month] * data["pldat"][year, month]
-            data["cp"][year, month] = cet + cr + cro - cl
-            departure = data["precips"][year, month] - data["cp"][year, month]
-            data["z"][year, month] = data["ak"][month] * departure
-
-
-def _calibration_values(data: dict[str, Any], values: np.ndarray) -> np.ndarray:
-    """Return the flattened inclusive calibration-period portion of an array."""
-    first = data["calibration_year_initial_idx"] * 12
-    final = (data["calibration_year_final_idx"] + 1) * 12
-    return np.asarray(values).reshape(-1)[first:final]
-
-
-def _rescale_scpdsi_zindex(z_values: np.ndarray, dry_percentile: float, wet_percentile: float) -> np.ndarray:
-    """Apply one sign-specific, cumulative scPDSI Z-index rescaling pass."""
-    if (
-        not np.isfinite(dry_percentile)
-        or dry_percentile >= 0.0
-        or not np.isfinite(wet_percentile)
-        or wet_percentile <= 0.0
-    ):
-        raise ConvergenceError(
-            "scPDSI calibration produced invalid dry/wet percentile anchors",
-            algorithm="scPDSI percentile calibration",
-        )
-
-    dry_ratio = -4.0 / dry_percentile
-    wet_ratio = 4.0 / wet_percentile
-    if not np.isfinite(dry_ratio) or not np.isfinite(wet_ratio):
-        raise ConvergenceError(
-            "scPDSI percentile rescaling produced non-finite ratios",
-            algorithm="scPDSI percentile calibration",
-        )
-    return np.where(z_values < 0.0, z_values * dry_ratio, z_values * wet_ratio)
 
 
 def _case(prob: float, x1: float, x2: float, x3: float) -> float:
@@ -873,25 +800,6 @@ def _validate_fitting_params(data: dict[str, Any], fitting_params: dict[str, Any
                 break
 
 
-def _validate_calibration_period(
-    data_start_year: int,
-    n_years: int,
-    calibration_year_initial: int,
-    calibration_year_final: int,
-) -> None:
-    """Ensure the inclusive calibration period is represented by the input record."""
-    data_final_year = data_start_year + n_years - 1
-    if (
-        calibration_year_initial > calibration_year_final
-        or calibration_year_initial < data_start_year
-        or calibration_year_final > data_final_year
-    ):
-        raise ValueError(
-            "calibration period must be an inclusive interval within the input data years "
-            f"[{data_start_year}, {data_final_year}]"
-        )
-
-
 def _initialize_data(
     precips: np.ndarray,
     pet: np.ndarray,
@@ -923,12 +831,6 @@ def _initialize_data(
     data["awc"] = awc
     data["awc_bot"] = _get_awc_bot(awc)
     data["n_years"] = n_years
-    _validate_calibration_period(
-        data_start_year,
-        n_years,
-        calibration_year_initial,
-        calibration_year_final,
-    )
     data["n_calb_years"] = calibration_year_final - calibration_year_initial + 1
     data["calibration_year_initial_idx"] = calibration_year_initial - data_start_year
     data["calibration_year_final_idx"] = calibration_year_final - data_start_year
@@ -988,187 +890,6 @@ def _initialize_data(
     return data
 
 
-def _bind_palmer_log(
-    index_type: str,
-    precips: np.ndarray,
-    awc: float,
-    data_start_year: int,
-    calibration_year_initial: int,
-    calibration_year_final: int,
-) -> BoundLogger:
-    """Bind the structured context shared by Palmer calculations."""
-    return _logger.bind(
-        index_type=index_type,
-        awc=awc,
-        data_start_year=data_start_year,
-        calibration_year_initial=calibration_year_initial,
-        calibration_year_final=calibration_year_final,
-        input_shape=precips.shape,
-        input_elements=precips.size,
-    )
-
-
-def _prepare_palmer_data(
-    precips: np.ndarray,
-    pet: np.ndarray,
-    awc: float,
-    data_start_year: int,
-    calibration_year_initial: int,
-    calibration_year_final: int,
-    fitting_params: dict[str, Any] | None,
-    log: BoundLogger,
-) -> tuple[dict[str, Any], int]:
-    """Validate inputs and run the water-balance/CAFEC stages shared by Palmer indices."""
-    if np.any(precips < 0.0):
-        log.warning("negative_values_clipped", field="precips")
-        precips = np.clip(precips, a_min=0.0, a_max=None)
-
-    original_length = precips.size
-    data = _initialize_data(
-        precips=precips,
-        pet=pet,
-        awc=awc,
-        data_start_year=data_start_year,
-        calibration_year_initial=calibration_year_initial,
-        calibration_year_final=calibration_year_final,
-        fitting_params=fitting_params,
-    )
-    _calc_water_balances(data)
-    if data["calibrate"]:
-        _calc_cafec_coefficients(data)
-    _calc_zindex_factors(data)
-    return data, original_length
-
-
-def _calculate_pdsi_prepared(data: dict[str, Any], original_length: int) -> _PalmerResult:
-    """Complete standard PDSI after the shared Palmer preparation stages."""
-    _calc_kfactors(data)
-    _calc_zindex(data)
-    _finish_up(data)
-
-    pdsi_result = data["pdsi"].flatten()[0:original_length]
-    phdi = data["phdi"].flatten()[0:original_length]
-    wplm = data["wplm"].flatten()[0:original_length]
-    z = data["z"].flatten()[0:original_length]
-    params = {key: data[key] for key in ["alpha", "beta", "gamma", "delta"]}
-    return pdsi_result, phdi, wplm, z, params
-
-
-def _calculate_scpdsi_prepared(data: dict[str, Any], original_length: int) -> _PalmerResult:
-    """Complete self-calibrating PDSI after shared Palmer preparation."""
-    _calc_scpdsi_k_factors(data)
-    _calc_scpdsi_raw_zindex(data)
-
-    z_values = data["z"].reshape(-1)
-    calibration_z = _calibration_values(data, z_values)
-    wetm, wetb = self_calibration.duration_factors(calibration_z, self_calibration.WET_SIGN)
-    drym, dryb = self_calibration.duration_factors(calibration_z, self_calibration.DRY_SIGN)
-
-    recursion = _palmer_wells.calculate(
-        z_values,
-        wetm=wetm,
-        wetb=wetb,
-        drym=drym,
-        dryb=dryb,
-    )
-    for _ in range(3):
-        calibration_pdsi = _calibration_values(data, recursion.pdsi)
-        dry_percentile = self_calibration.nan_safe_percentile(calibration_pdsi, 0.02)
-        wet_percentile = self_calibration.nan_safe_percentile(calibration_pdsi, 0.98)
-        z_values = _rescale_scpdsi_zindex(z_values, dry_percentile, wet_percentile)
-        recursion = _palmer_wells.calculate(
-            z_values,
-            wetm=wetm,
-            wetb=wetb,
-            drym=drym,
-            dryb=dryb,
-        )
-
-    params = {key: data[key] for key in ["alpha", "beta", "gamma", "delta"]}
-    params.update(wetm=wetm, wetb=wetb, drym=drym, dryb=dryb)
-    return (
-        recursion.pdsi[:original_length],
-        recursion.phdi[:original_length],
-        recursion.pmdi[:original_length],
-        z_values[:original_length],
-        params,
-    )
-
-
-def _palmer_calculation(
-    index_type: str,
-    calculate_prepared: Callable[[dict[str, Any], int], _PalmerResult],
-    precips: np.ndarray,
-    pet: np.ndarray,
-    awc: float,
-    data_start_year: int,
-    calibration_year_initial: int,
-    calibration_year_final: int,
-    fitting_params: dict[str, Any] | None,
-) -> _PalmerResult:
-    """Run validation, shared setup, logging, and one Palmer calculation."""
-    log = _bind_palmer_log(
-        index_type,
-        precips,
-        awc,
-        data_start_year,
-        calibration_year_initial,
-        calibration_year_final,
-    )
-    log.info("calculation_started")
-    t0 = time.perf_counter()
-
-    try:
-        if precips.size != pet.size:
-            message = "Incompatible precipitation and PET arrays"
-            log.error("validation_failed", reason=message)
-            raise ValueError(message)
-
-        if np.any(np.isinf(precips)) or np.any(np.isinf(pet)):
-            message = "precipitation and PET arrays cannot contain infinite values"
-            log.error("validation_failed", reason=message)
-            raise ValueError(message)
-
-        all_missing = (isinstance(precips, np.ma.MaskedArray) and precips.mask.all()) or np.all(np.isnan(precips))
-        if all_missing:
-            _validate_calibration_period(
-                data_start_year,
-                int(utils.reshape_to_2d(precips, 12).shape[0]),
-                calibration_year_initial,
-                calibration_year_final,
-            )
-            duration_ms = (time.perf_counter() - t0) * 1000.0
-            log.info(
-                "calculation_completed",
-                duration_ms=round(duration_ms, 2),
-                result="all_missing",
-            )
-            return precips, precips, precips, precips, None
-
-        data, original_length = _prepare_palmer_data(
-            precips,
-            pet,
-            awc,
-            data_start_year,
-            calibration_year_initial,
-            calibration_year_final,
-            fitting_params,
-            log,
-        )
-        result = calculate_prepared(data, original_length)
-        duration_ms = (time.perf_counter() - t0) * 1000.0
-        log.info(
-            "calculation_completed",
-            duration_ms=round(duration_ms, 2),
-            output_elements=result[0].size,
-        )
-        return result
-    except Exception:
-        duration_ms = (time.perf_counter() - t0) * 1000.0
-        log.error("calculation_failed", duration_ms=round(duration_ms, 2))
-        raise
-
-
 def pdsi(
     precips: np.ndarray,
     pet: np.ndarray,
@@ -1184,94 +905,113 @@ def pdsi(
     Palmer Modified Drought Index (PMDI), and
     Palmer Z-Index.
 
-    Args:
-        precips: Time series of monthly precipitation values, in inches.
-        pet: Time series of monthly PET values, in inches.
-        awc: Available water capacity (soil constant), in inches.
-        data_start_year: Initial year of the input precipitation and PET
-            datasets, both of which are assumed to start in January of this
-            year.
-        calibration_year_initial: Initial year of the calibration period.
-        calibration_year_final: Final year of the calibration period.
-        fitting_params: Dictionary of the fitted parameters.
-
-    Returns:
-        tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any] | None]:
-            A five-item tuple containing NumPy arrays of PDSI, PHDI, PMDI, and
-            Z-Index values, respectively, and a dictionary containing the
-            fitted ``alpha``, ``beta``, ``gamma``, and ``delta`` parameters.
-            For all-missing input, the parameter dictionary is ``None``.
+    :param precips: time series of monthly precipitation values, in inches
+    :param pet: time series of monthly PET values, in inches
+    :param awc: available water capacity (soil constant), in inches
+    :param data_start_year: initial year of the input precipitation and PET datasets,
+                            both of which are assumed to start in January of this year
+    :param calibration_start_year: initial year of the calibration period
+    :param calibration_end_year: final year of the calibration period
+    :param fitting_params: dictionary of the fitted parameters
+    :return: four numpy arrays containing PDSI, PHDI, PMDI, and Z-Index values respectively and
+             a dictionary containing the fitted parameters (alpha, beta, gamma, and delta)
+    :rtype: four numpy.ndarrays of the PDSI values and a dictionary of the fitted parameters
     """
 
-    # _palmer_calculation emits calculation_started, calculation_completed,
-    # and calculation_failed lifecycle events for this public entry point.
-    return _palmer_calculation(
-        "pdsi",
-        _calculate_pdsi_prepared,
-        precips,
-        pet,
-        awc,
-        data_start_year,
-        calibration_year_initial,
-        calibration_year_final,
-        fitting_params,
+    # bind structured logging context for this calculation
+    log = _logger.bind(
+        index_type="pdsi",
+        awc=awc,
+        data_start_year=data_start_year,
+        calibration_year_initial=calibration_year_initial,
+        calibration_year_final=calibration_year_final,
+        input_shape=precips.shape,
+        input_elements=precips.size,
     )
+    log.info("calculation_started")
+    t0 = time.perf_counter()
 
+    try:
+        # if we're passed all missing values then we can't compute anything,
+        # so we return the same array of missing values
+        if (isinstance(precips, np.ma.MaskedArray) and precips.mask.all()) or np.all(np.isnan(precips)):
+            duration_ms = (time.perf_counter() - t0) * 1000.0
+            log.info(
+                "calculation_completed",
+                duration_ms=round(duration_ms, 2),
+                result="all_missing",
+            )
+            return precips, precips, precips, precips, None
 
-def scpdsi(
-    precips: np.ndarray,
-    pet: np.ndarray,
-    awc: float,
-    data_start_year: int,
-    calibration_year_initial: int,
-    calibration_year_final: int,
-    fitting_params: dict[str, Any] | None = None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any] | None]:
-    """Compute self-calibrating Palmer drought indices.
+        # validate that the two input arrays are compatible
+        if precips.size != pet.size:
+            message = "Incompatible precipitation and PET arrays"
+            log.error("validation_failed", reason=message)
+            raise ValueError(message)
 
-    The water balance and CAFEC coefficients are shared with :func:`pdsi`.
-    Duration factors, K-prime factors, and percentile scaling are calibrated
-    from the requested calibration period, while the resulting factors are
-    applied to the full monthly record.
+        # clip any negative values to zero
+        if np.amin(precips) < 0.0:
+            log.warning("negative_values_clipped", field="precips")
+            precips = np.clip(precips, a_min=0.0, a_max=None)
 
-    Args:
-        precips: Monthly precipitation values in inches.
-        pet: Monthly potential evapotranspiration values in inches.
-        awc: Available water capacity in inches.
-        data_start_year: First calendar year represented by the inputs, which
-            are assumed to begin in January.
-        calibration_year_initial: First year of the inclusive calibration
-            period.
-        calibration_year_final: Final year of the inclusive calibration period.
-        fitting_params: Optional CAFEC coefficients to reuse. Valid ``alpha``,
-            ``beta``, ``gamma``, and ``delta`` arrays follow :func:`pdsi`'s
-            behavior; duration factors are always recalibrated.
+        # remember the original length of the input array, in order to facilitate
+        # returning an array of the same size
+        original_length = precips.size
 
-    Returns:
-        A tuple containing scPDSI, scPHDI, scPMDI, the cumulatively calibrated
-        Z-index, and fitted parameters. The parameter dictionary contains
-        ``alpha``, ``beta``, ``gamma``, ``delta``, ``wetm``, ``wetb``,
-        ``drym``, and ``dryb``. All-missing input returns four same-length
-        missing arrays and ``None``.
+        # Initialize data
+        data = _initialize_data(
+            precips=precips,
+            pet=pet,
+            awc=awc,
+            data_start_year=data_start_year,
+            calibration_year_initial=calibration_year_initial,
+            calibration_year_final=calibration_year_final,
+            fitting_params=fitting_params,
+        )
 
-    Raises:
-        ValueError: If precipitation and PET have different lengths.
-        InsufficientDataError: If the calibration period cannot supply a
-            complete duration-factor fitting window.
-        ConvergenceError: If a numerical calibration stage produces unusable
-            factors, percentile anchors, or recurrence denominators.
-    """
-    return _palmer_calculation(
-        "scpdsi",
-        _calculate_scpdsi_prepared,
-        precips,
-        pet,
-        awc,
-        data_start_year,
-        calibration_year_initial,
-        calibration_year_final,
-        fitting_params,
-    )
+        # Water balance calcs
+        _calc_water_balances(data)
+
+        # Get Cafec coefficients
+        if data["calibrate"]:
+            _calc_cafec_coefficients(data)
+
+        # Calculate Z-Index weighting factors (variable AK)
+        _calc_zindex_factors(data)
+
+        # Sum variables now become averages over the calibration period
+        # (currently not used - uncomment if want to export later)
+        # _avg_calibration_sums(data)
+
+        # reread monthly parameters for calculation of the 'K' monthly
+        # weighting factors used in z-index calculation
+        _calc_kfactors(data)
+
+        # Calculate the z-index (moisture anomaly) and pdsi (variable x)
+        _calc_zindex(data)
+
+        _finish_up(data)
+
+        # Format values
+        pdsi_result = data["pdsi"].flatten()[0:original_length]
+        phdi = data["phdi"].flatten()[0:original_length]
+        wplm = data["wplm"].flatten()[0:original_length]
+        z = data["z"].flatten()[0:original_length]
+        params = {key: data[key] for key in ["alpha", "beta", "gamma", "delta"]}
+
+        duration_ms = (time.perf_counter() - t0) * 1000.0
+        log.info(
+            "calculation_completed",
+            duration_ms=round(duration_ms, 2),
+            output_elements=pdsi_result.size,
+        )
+
+        return pdsi_result, phdi, wplm, z, params
+
+    except Exception:
+        duration_ms = (time.perf_counter() - t0) * 1000.0
+        log.error("calculation_failed", duration_ms=round(duration_ms, 2))
+        raise
 
 
 # TODO(v2.5.0): implement palmer_xarray() wrapper using Pattern C
