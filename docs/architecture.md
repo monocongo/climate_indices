@@ -147,12 +147,12 @@ spi = "climate_indices.__spi__:main"
   - `sum_to_scale()`: Optimized sliding window summation
   - `Periodicity` enum: `monthly` (12 steps/year), `daily` (366 steps/year)
 
-- **`palmer.py`** (912 lines): Palmer Drought Index family
+- **`palmer.py`**: Palmer Drought Index family
   - PDSI (Palmer Drought Severity Index)
   - PHDI (Palmer Hydrological Drought Index)
   - PMDI (Palmer Modified Drought Index)
   - ZINDEX (Palmer Z-Index)
-  - scPDSI (Self-calibrated Palmer Drought Severity Index) — **not implemented**; tracked in [issue #716](https://github.com/monocongo/climate_indices/issues/716)
+  - scPDSI (Self-calibrated Palmer Drought Severity Index), available through the NumPy `palmer.scpdsi()` API
 
 **Key Algorithms**:
 1. **SPI/SPEI Computation**:
