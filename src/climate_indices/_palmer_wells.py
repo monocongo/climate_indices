@@ -89,11 +89,17 @@ def _validated_factors(wetm: float, wetb: float, drym: float, dryb: float) -> _F
     """Validate fitted duration factors and derive the Wells recurrence coefficients.
 
     ``dry_coefficient_denominator`` (``drym + wetb``) may be negative, pushing
-    ``|dryc| > 1``; that is bounded because ``dryc`` only feeds the clamped x2
-    recurrence (``min(0.0, ...)``) and spell-establishment resets, unlike
-    ``wetc``/``dry_spell_c`` below, which feed the unclamped x3 recurrence and
-    must be contractions. The magnitude check below still rejects ``|dryc| >=
-    1`` defensively, for uniformity with ``wetc``/``dry_spell_c``.
+    ``|dryc| > 1``. Unlike ``wetc``/``dry_spell_c`` below, ``dryc`` only feeds
+    the x2 recurrence (``min(0.0, ...)`` in ``_candidate_values``), not the
+    unclamped x3 recurrence directly -- but that clamp is one-sided: it caps
+    x2 at zero, it does not bound its magnitude. While an opposite-sign spell
+    is already established (x3 != 0), ``_establish_spell`` returns early
+    without resetting x2, so x2 keeps recurring through ``dryc`` unclamped in
+    magnitude for as long as that spell persists. If ``|dryc| >= 1``, x2 can
+    diverge during that window and then be captured directly into x3 once the
+    established spell abates. The magnitude check below is therefore just as
+    required for ``dryc`` as it is for ``wetc``/``dry_spell_c``, not merely
+    defensive uniformity.
     """
     wet_denominator = wetm + wetb
     dry_denominator = drym + dryb
@@ -119,11 +125,13 @@ def _validated_factors(wetm: float, wetb: float, drym: float, dryb: float) -> _F
     # rejected outright.
     dryc = 1.0 - drym / dry_coefficient_denominator
     dry_spell_c = 1.0 - drym / dry_denominator
-    # wetc and dry_spell_c drive the unclamped x3 recurrence and must be
-    # contractions; dryc drives the clamped x2 recurrence but is checked too,
-    # for uniformity. Real-data calibration keeps all three well under 1.0
-    # (max observed |wetc|=0.983, |dryc|=0.981, |dry_spell_c|=0.982 across
-    # 344 nClimDiv divisions).
+    # wetc and dry_spell_c drive the unclamped x3 recurrence directly; dryc's
+    # x2 recurrence is only clamped from above (min(0.0, ...)), not bounded in
+    # magnitude, so all three must be contractions -- see the function
+    # docstring above for why dryc's check is required, not just uniformity.
+    # Real-data calibration keeps all three well under 1.0 (max observed
+    # |wetc|=0.983, |dryc|=0.981, |dry_spell_c|=0.982 across 344 nClimDiv
+    # divisions).
     for name, value in (("wetc", wetc), ("dryc", dryc), ("dry_spell_c", dry_spell_c)):
         if not np.isfinite(value) or abs(value) >= 1.0:
             raise ConvergenceError(
