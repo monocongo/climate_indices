@@ -86,6 +86,15 @@ def _is_exact_zero(value: float) -> bool:
 
 
 def _validated_factors(wetm: float, wetb: float, drym: float, dryb: float) -> _Factors:
+    """Validate fitted duration factors and derive the Wells recurrence coefficients.
+
+    ``dry_coefficient_denominator`` (``drym + wetb``) may be negative, pushing
+    ``|dryc| > 1``; that is bounded because ``dryc`` only feeds the clamped x2
+    recurrence (``min(0.0, ...)``) and spell-establishment resets, unlike
+    ``wetc``/``dry_spell_c`` below, which feed the unclamped x3 recurrence and
+    must be contractions. The magnitude check below still rejects ``|dryc| >=
+    1`` defensively, for uniformity with ``wetc``/``dry_spell_c``.
+    """
     wet_denominator = wetm + wetb
     dry_denominator = drym + dryb
     dry_coefficient_denominator = drym + wetb
@@ -105,6 +114,9 @@ def _validated_factors(wetm: float, wetb: float, drym: float, dryb: float) -> _F
     wetc = 1.0 - wetm / wet_denominator
     # Wells' published implementation intentionally uses the wet intercept in
     # this coefficient, while the dry Z contribution below uses drym + dryb.
+    # dry_coefficient_denominator (drym + wetb) may be negative; see the
+    # function docstring above for why that stays bounded rather than being
+    # rejected outright.
     dryc = 1.0 - drym / dry_coefficient_denominator
     dry_spell_c = 1.0 - drym / dry_denominator
     # wetc and dry_spell_c drive the unclamped x3 recurrence and must be
