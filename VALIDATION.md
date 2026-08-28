@@ -72,6 +72,28 @@ completed:
 3. Explicitly defer independent Palmer validation in the release issue and keep
    the current tests labeled as regression coverage only.
 
+## scPDSI Calibration-Anchor Measurement
+
+Wells' self-calibration methodology tunes each climate division's duration
+and K-prime factors so that, by construction, the calibration-period 2nd and
+98th percentiles of the self-calibrated Z-index land at exactly -4.0000 and
++4.0000. Measuring how closely `scpdsi()` reproduces that anchor across all
+344 climate divisions (calibration period 1931-1990) verifies the
+self-calibration percentile-scaling step independently of the NOAA nClimDiv
+comparison above, which instead measures agreement with an external product
+that uses different (fixed, national) K-factors.
+
+| Percentile anchor | Median | Mean | Median deviation | Max deviation | Within +/-0.05 | Within +/-0.25 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2nd (target -4.0000) | -4.0000 | -4.0142 | 0.0102 | 0.9730 | 74% | 93% |
+| 98th (target +4.0000) | +4.0000 | +3.9829 | 0.0130 | 1.5421 | 70% | 91% |
+
+This is regression coverage over the committed fixture set, not independent
+scientific validation: it confirms the self-calibration percentile-scaling
+arithmetic behaves as Wells describes for these 344 divisions, not that the
+resulting scPDSI values themselves match an external authoritative source.
+See "Palmer Authoritative-Reference Decision" above for the latter.
+
 ## References
 
 - Hobbins, M. T., Wood, A., McEvoy, D. J., Huntington, J. L., Morton, C.,
