@@ -127,7 +127,7 @@ def _validated_factors(wetm: float, wetb: float, drym: float, dryb: float) -> _F
     for name, value in (("wetc", wetc), ("dryc", dryc), ("dry_spell_c", dry_spell_c)):
         if not np.isfinite(value) or abs(value) >= 1.0:
             raise ConvergenceError(
-                f"invalid fitted duration factors for the Wells recursion: |{name}| = {value!r} is non-finite or >= 1",
+                f"invalid fitted duration factors for the Wells recursion: {name} = {value!r} is non-finite or has magnitude >= 1",
                 algorithm="scPDSI duration-factor calibration",
             )
     return _Factors(
