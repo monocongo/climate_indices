@@ -43,6 +43,7 @@ from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.compute import MIN_CALIBRATION_YEARS
 from climate_indices.exceptions import (
     CoordinateValidationError,
+    DataShapeError,
     InputAlignmentWarning,
     InputTypeError,
     InsufficientDataError,
@@ -251,7 +252,11 @@ class _DailyCalendarPlan:
         """Insert synthetic February 29 values while retaining a partial final year."""
         source = np.asarray(values)
         if source.ndim != 1 or source.size != self.original_length:
-            raise ValueError("Daily calendar transformation requires one complete xarray time-series slice")
+            raise DataShapeError(
+                "Daily calendar transformation requires one complete xarray time-series slice",
+                expected_shape=f"({self.original_length},)",
+                actual_shape=source.shape,
+            )
 
         transformed = np.full(self.all_leap_length, np.nan, dtype=float)
         source_index = 0
@@ -281,7 +286,11 @@ class _DailyCalendarPlan:
         """Remove synthetic February 29 values and trim to observed Gregorian days."""
         source = np.asarray(values)
         if source.ndim != 1 or source.size != self.all_leap_length:
-            raise ValueError("Daily calendar restoration requires one complete 366-day time-series slice")
+            raise DataShapeError(
+                "Daily calendar restoration requires one complete 366-day time-series slice",
+                expected_shape=f"({self.all_leap_length},)",
+                actual_shape=source.shape,
+            )
 
         restored = np.full(self.original_length, np.nan, dtype=float)
         source_index = 0
@@ -332,7 +341,9 @@ def _resolve_periodicity(
 def _validate_supported_calendar(time_coord: xr.DataArray) -> None:
     """Reject calendar systems that the NumPy index core cannot represent."""
     coordinate_name = str(time_coord.name) if time_coord.name is not None else "time"
-    calendar_name = time_coord.attrs.get("calendar", "standard")
+    # xarray records the calendar in .encoding on open_dataset and in .attrs on
+    # hand-built coordinates, so consult both before falling back to the default
+    calendar_name = time_coord.encoding.get("calendar", time_coord.attrs.get("calendar", "standard"))
     supported_calendars = {"standard", "gregorian", "proleptic_gregorian"}
 
     if not np.issubdtype(time_coord.dtype, np.datetime64) or calendar_name not in supported_calendars:
@@ -439,6 +450,10 @@ def _make_calendar_aware_numpy_wrapper(
     """Build an apply_ufunc callable that restores Gregorian daily output."""
 
     def wrapper(*numpy_arrays: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
+        # every positional argument here is a time series: _collect_input_dataarrays
+        # yields only DataArrays, and apply_ufunc is called with one [time_dim] entry
+        # in input_core_dims per collected array, so a non-time-series positional
+        # would fail inside apply_ufunc before ever reaching this wrapper
         return _compute_with_daily_calendar_plan(
             func,
             numpy_arrays,
@@ -2031,8 +2046,9 @@ def pet_thornthwaite(
     _validate_time_monotonicity(time_coord)
 
     # enforce the shared calendar contract: Thornthwaite groups values into calendar
-    # months from a January origin, so validate before the start year is inferred
-    _build_daily_calendar_plan(time_coord, compute.Periodicity.monthly)
+    # months from a January origin, so validate before the start year is inferred.
+    # monthly input needs no conversion, so the returned plan is always None here.
+    _ = _build_daily_calendar_plan(time_coord, compute.Periodicity.monthly)
 
     # infer data_start_year if not provided
     if data_start_year is None:

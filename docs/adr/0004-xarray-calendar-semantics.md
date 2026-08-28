@@ -34,5 +34,13 @@ gridded workloads but measurable against the cheapest NumPy paths (see
 
 The policy lives in one place — `_build_daily_calendar_plan()` — and is applied both by the
 `@xarray_adapter` decorator (SPI, SPEI, EDDI, PNP) and by the hand-written `pet_thornthwaite` and
-`pet_hargreaves` paths. `pci()` is not covered: it is a manual single-year wrapper requiring exactly
-365 or 366 values, and its contract needs a separate decision. Palmer has no direct xarray API.
+`pet_hargreaves` paths.
+
+Two paths remain uncovered, deliberately. `@xarray_adapter(infer_params=False)` disables coordinate
+inference entirely, and with it the calendar contract, so a function decorated that way and given an
+explicit `Periodicity.daily` still computes positionally against Gregorian input. That escape hatch
+exists so a caller can opt out of every inference this adapter performs, and no shipped wrapper uses
+it — but it is the one remaining way to get silently drifted output, and anything adopting it takes
+on the conversion itself. `pci()` is also uncovered: it is a manual single-year wrapper requiring
+exactly 365 or 366 values, and its contract needs a separate decision. Palmer has no direct xarray
+API.

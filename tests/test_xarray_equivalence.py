@@ -14,7 +14,7 @@ import xarray as xr
 
 from climate_indices import eddi, indices, percentage_of_normal, spei, spi, utils
 from climate_indices.compute import Periodicity
-from climate_indices.exceptions import CoordinateValidationError, InputTypeError
+from climate_indices.exceptions import CoordinateValidationError, DataShapeError, InputTypeError
 from climate_indices.indices import Distribution
 
 
@@ -905,3 +905,163 @@ class TestPETXarrayCalendarSemantics:
 
         with pytest.raises(CoordinateValidationError, match="does not match the requested monthly"):
             pet_thornthwaite(temperature=temperature, latitude=40.0)
+
+
+class TestDailyCalendarPlanShapeContract:
+    """Verify _DailyCalendarPlan rejects slices that are not whole time series."""
+
+    @staticmethod
+    def _plan():
+        """Build a two-year plan covering a non-leap year and a leap year."""
+        from climate_indices.xarray_adapter import _DailyCalendarPlan
+
+        # 2019 is not a leap year, 2020 is; the final year is partial
+        return _DailyCalendarPlan(2019, (365, 100))
+
+    def test_to_all_leap_rejects_wrong_length(self) -> None:
+        """Converting a slice of the wrong length raises with shape context."""
+        plan = self._plan()
+
+        with pytest.raises(DataShapeError) as exc_info:
+            plan.to_all_leap(np.zeros(plan.original_length - 1))
+
+        assert exc_info.value.expected_shape == f"({plan.original_length},)"
+        assert exc_info.value.actual_shape == (plan.original_length - 1,)
+
+    def test_to_all_leap_rejects_multidimensional_input(self) -> None:
+        """Converting a 2-D block raises rather than silently reshaping."""
+        plan = self._plan()
+
+        with pytest.raises(DataShapeError) as exc_info:
+            plan.to_all_leap(np.zeros((2, plan.original_length)))
+
+        assert exc_info.value.actual_shape == (2, plan.original_length)
+
+    def test_to_gregorian_rejects_wrong_length(self) -> None:
+        """Restoring a slice that is not a whole 366-day series raises."""
+        plan = self._plan()
+
+        with pytest.raises(DataShapeError) as exc_info:
+            plan.to_gregorian(np.zeros(plan.all_leap_length - 1))
+
+        assert exc_info.value.expected_shape == f"({plan.all_leap_length},)"
+        assert exc_info.value.actual_shape == (plan.all_leap_length - 1,)
+
+    def test_to_gregorian_rejects_multidimensional_input(self) -> None:
+        """Restoring a 2-D block raises rather than silently reshaping."""
+        plan = self._plan()
+
+        with pytest.raises(DataShapeError) as exc_info:
+            plan.to_gregorian(np.zeros((2, plan.all_leap_length)))
+
+        assert exc_info.value.actual_shape == (2, plan.all_leap_length)
+
+    def test_round_trip_restores_original_values_including_partial_final_year(self) -> None:
+        """to_gregorian inverts to_all_leap exactly, partial final year included."""
+        plan = self._plan()
+        values = np.arange(1, plan.original_length + 1, dtype=float)
+
+        np.testing.assert_array_equal(plan.to_gregorian(plan.to_all_leap(values)), values)
+
+
+class TestCalendarConversionHasDiscriminatingPower:
+    """Verify the CLI-style references actually differ from raw positional results.
+
+    Every calendar test in this module compares the xarray result against an explicit
+    ``transform_to_366day`` -> NumPy core -> ``transform_to_gregorian`` reference. That
+    comparison only proves anything if the converted reference differs from feeding the
+    raw Gregorian values straight to the NumPy core. If a future change moved these
+    fixtures onto data that never straddles a February 29 boundary, those tests would
+    keep passing while asserting nothing. These cases pin that requirement explicitly.
+    """
+
+    START_YEAR = 1999
+    END_YEAR = 2030
+
+    @classmethod
+    def _daily_series(cls) -> tuple[pd.DatetimeIndex, np.ndarray]:
+        """Build a daily Gregorian coordinate spanning many leap and non-leap years."""
+        time = pd.date_range(f"{cls.START_YEAR}-01-01", f"{cls.END_YEAR}-12-31", freq="D")
+        return time, np.arange(1, len(time) + 1, dtype=float)
+
+    @classmethod
+    def _to_all_leap(cls, values: np.ndarray) -> np.ndarray:
+        """Convert a Gregorian daily series to the all-leap calendar."""
+        return utils.transform_to_366day(values, cls.START_YEAR, cls.END_YEAR - cls.START_YEAR + 1)
+
+    @classmethod
+    def _assert_conversion_changes_result(cls, raw: np.ndarray, converted: np.ndarray) -> None:
+        """Assert calendar conversion moves the result away from the positional one."""
+        restored = utils.transform_to_gregorian(converted, cls.START_YEAR)[: len(raw)]
+        assert not np.allclose(restored, raw, atol=1e-8, rtol=1e-7, equal_nan=True), (
+            "calendar conversion produced the same result as the raw positional computation, "
+            "so the CLI-style comparisons in this module would pass vacuously"
+        )
+
+    def test_spi_conversion_changes_result(self) -> None:
+        """Daily SPI differs between calendar-aligned and raw positional input."""
+        _, values = self._daily_series()
+        kwargs = {
+            "scale": 3,
+            "distribution": Distribution.gamma,
+            "data_start_year": self.START_YEAR,
+            "calibration_year_initial": self.START_YEAR,
+            "calibration_year_final": self.END_YEAR,
+            "periodicity": Periodicity.daily,
+        }
+        self._assert_conversion_changes_result(
+            indices.spi(values=values, **kwargs),
+            indices.spi(values=self._to_all_leap(values), **kwargs),
+        )
+
+    def test_percentage_of_normal_conversion_changes_result(self) -> None:
+        """Daily PNP differs between calendar-aligned and raw positional input."""
+        _, values = self._daily_series()
+        kwargs = {
+            "scale": 3,
+            "data_start_year": self.START_YEAR,
+            "calibration_start_year": self.START_YEAR,
+            "calibration_end_year": self.END_YEAR,
+            "periodicity": Periodicity.daily,
+        }
+        self._assert_conversion_changes_result(
+            indices.percentage_of_normal(values=values, **kwargs),
+            indices.percentage_of_normal(values=self._to_all_leap(values), **kwargs),
+        )
+
+    def test_eddi_conversion_changes_result(self) -> None:
+        """Daily EDDI differs between calendar-aligned and raw positional input."""
+        _, values = self._daily_series()
+        kwargs = {
+            "scale": 3,
+            "data_start_year": self.START_YEAR,
+            "calibration_year_initial": self.START_YEAR,
+            "calibration_year_final": self.END_YEAR,
+            "periodicity": Periodicity.daily,
+        }
+        self._assert_conversion_changes_result(
+            indices.eddi(pet_values=values, **kwargs),
+            indices.eddi(pet_values=self._to_all_leap(values), **kwargs),
+        )
+
+    def test_spei_conversion_changes_result(self) -> None:
+        """Daily SPEI differs between calendar-aligned and raw positional input."""
+        time, _ = self._daily_series()
+        precip = np.arange(100, len(time) + 100, dtype=float)
+        pet = np.arange(1, len(time) + 1, dtype=float) / 10
+        kwargs = {
+            "scale": 3,
+            "distribution": Distribution.gamma,
+            "periodicity": Periodicity.daily,
+            "data_start_year": self.START_YEAR,
+            "calibration_year_initial": self.START_YEAR,
+            "calibration_year_final": self.END_YEAR,
+        }
+        self._assert_conversion_changes_result(
+            indices.spei(precips_mm=precip, pet_mm=pet, **kwargs),
+            indices.spei(
+                precips_mm=self._to_all_leap(precip),
+                pet_mm=self._to_all_leap(pet),
+                **kwargs,
+            ),
+        )
