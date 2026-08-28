@@ -2030,6 +2030,10 @@ def pet_thornthwaite(
     time_coord = temp_da.coords[time_dim]
     _validate_time_monotonicity(time_coord)
 
+    # enforce the shared calendar contract: Thornthwaite groups values into calendar
+    # months from a January origin, so validate before the start year is inferred
+    _build_daily_calendar_plan(time_coord, compute.Periodicity.monthly)
+
     # infer data_start_year if not provided
     if data_start_year is None:
         data_start_year = _infer_data_start_year(time_coord)
@@ -2294,6 +2298,10 @@ def pet_hargreaves(
             f"Cannot proceed with PET calculation."
         )
 
+    # enforce the shared calendar contract and plan the 366-day adaptation that
+    # eto.eto_hargreaves assumes; built from the aligned coordinate, not the inputs
+    calendar_plan = _build_daily_calendar_plan(tmin_aligned.coords[time_dim], compute.Periodicity.daily)
+
     # derive tmean
     tmean_da = (tmin_aligned + tmax_aligned) / 2.0
 
@@ -2306,9 +2314,21 @@ def pet_hargreaves(
 
     # wrapper function to handle read-only array views from apply_ufunc
     # eto.eto_hargreaves may modify arrays in-place, so create writable copies
-    def _hargreaves_with_copy(tmin: np.ndarray, tmax: np.ndarray, tmean: np.ndarray, lat: float) -> np.ndarray:
+    def _eto_hargreaves_with_copy(tmin: np.ndarray, tmax: np.ndarray, tmean: np.ndarray, lat: float) -> np.ndarray:
         """Wrapper for eto.eto_hargreaves that creates writable copies."""
         return eto.eto_hargreaves(tmin.copy(), tmax.copy(), tmean.copy(), lat)
+
+    def _hargreaves_with_copy(tmin: np.ndarray, tmax: np.ndarray, tmean: np.ndarray, lat: float) -> np.ndarray:
+        """Compute Hargreaves ETo against 366-day positions and restore Gregorian output."""
+        return _compute_with_daily_calendar_plan(
+            _eto_hargreaves_with_copy,
+            (tmin, tmax, tmean, lat),
+            {},
+            calendar_plan,
+            # latitude at position 3 is a scalar, not a time series
+            {0, 1, 2},
+            set(),
+        )
 
     # compute using xr.apply_ufunc with spatial broadcasting
     result = xr.apply_ufunc(
