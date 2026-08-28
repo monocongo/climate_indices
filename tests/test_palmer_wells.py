@@ -120,3 +120,16 @@ def test_invalid_duration_factor_denominators_raise_convergence_error(wetm, wetb
 def test_zero_abatement_denominator_raises_convergence_error():
     with pytest.raises(ConvergenceError, match="abatement probability"):
         _run([2.0, 0.0])
+
+
+@pytest.mark.parametrize(
+    ("wetm", "wetb", "drym", "dryb", "coefficient"),
+    [
+        (0.0, 1.0, 1.0, 1.0, "wetc"),
+        (10.0, -2.0, 1.0, 1.0, "dryc"),
+        (1000.0, -100.0, -1.0, 3.0, "dry_spell_c"),
+    ],
+)
+def test_duration_factor_magnitude_at_or_above_one_raises_convergence_error(wetm, wetb, drym, dryb, coefficient):
+    with pytest.raises(ConvergenceError, match=coefficient):
+        _run([0.0], wetm=wetm, wetb=wetb, drym=drym, dryb=dryb)

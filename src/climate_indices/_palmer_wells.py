@@ -107,11 +107,17 @@ def _validated_factors(wetm: float, wetb: float, drym: float, dryb: float) -> _F
     # this coefficient, while the dry Z contribution below uses drym + dryb.
     dryc = 1.0 - drym / dry_coefficient_denominator
     dry_spell_c = 1.0 - drym / dry_denominator
-    if not np.isfinite(wetc) or not np.isfinite(dryc) or not np.isfinite(dry_spell_c):
-        raise ConvergenceError(
-            "invalid fitted duration factors for the Wells recursion",
-            algorithm="scPDSI duration-factor calibration",
-        )
+    # wetc and dry_spell_c drive the unclamped x3 recurrence and must be
+    # contractions; dryc drives the clamped x2 recurrence but is checked too,
+    # for uniformity. Real-data calibration keeps all three well under 1.0
+    # (max observed |wetc|=0.983, |dryc|=0.981, |dry_spell_c|=0.982 across
+    # 344 nClimDiv divisions).
+    for name, value in (("wetc", wetc), ("dryc", dryc), ("dry_spell_c", dry_spell_c)):
+        if not np.isfinite(value) or abs(value) >= 1.0:
+            raise ConvergenceError(
+                f"invalid fitted duration factors for the Wells recursion: |{name}| = {value!r} is non-finite or >= 1",
+                algorithm="scPDSI duration-factor calibration",
+            )
     return _Factors(
         wetm=wetm,
         wetb=wetb,
