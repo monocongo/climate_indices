@@ -17,6 +17,14 @@ asserted. If ``pdsi()``/``scpdsi()`` unexpectedly raises for any division,
 the test fails loudly (no broad except/continue) -- the 344-division oracle
 test in ``test_scpdsi.py`` already proves both functions succeed for every
 real division, so a swallowed exception here would hide a real regression.
+
+Ceilings are derived from the measurements in ``_PDSI_MEASURED`` and
+``_SCPDSI_MEASURED`` with the fixed headroom documented in
+``_HEADROOM_BOUNDS`` and enforced by
+``test_ceilings_keep_documented_headroom``. The computation is fully
+deterministic -- committed ``.npy`` inputs and no RNG anywhere in the Palmer
+path -- so the headroom absorbs tolerated library/platform drift and
+refactoring, not stochastic run-to-run noise.
 """
 
 import json
@@ -25,46 +33,94 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from climate_indices import palmer
+from climate_indices import palmer, self_calibration
 
 _FIXTURE_ROOT = Path(__file__).parent / "fixture"
 _PALMER_ROOT = _FIXTURE_ROOT / "palmer"
 _NCLIMDIV_ROOT = _FIXTURE_ROOT / "nclimdiv"
-_DIVISION_DIRS = tuple(sorted(path for path in _PALMER_ROOT.iterdir() if path.name.isdigit()))
-_AWCS = json.loads((_FIXTURE_ROOT / "palmer_awc.json").read_text(encoding="utf-8"))
-_DIVISIONS = json.loads((_NCLIMDIV_ROOT / "divisions.json").read_text(encoding="utf-8"))
-_ROW_BY_DIVISION = {division: row for row, division in enumerate(_DIVISIONS)}
 
 _DATA_START_YEAR = 1895
 _CALIBRATION_YEAR_INITIAL = 1931
 _CALIBRATION_YEAR_FINAL = 1990
 
+_SERIES = ("pdsi", "phdi", "pmdi", "zindex")
 
-def _division_inputs(division_dir: Path) -> tuple[np.ndarray, np.ndarray, float]:
-    division = division_dir.name
-    return (
-        np.load(division_dir / "precips.npy"),
-        np.load(division_dir / "pet.npy"),
-        _AWCS[division],
-    )
+# provenance.json documents 528,384 division-months of overlap. Assert a floor
+# well below that so a regression that turns whole divisions into NaN shrinks
+# the compared sample loudly instead of silently improving the statistics.
+_MIN_COMPARED_MONTHS = 400_000
+
+# Measured across all 344 divisions (calibration period 1931-1990).
+_PDSI_MEASURED = {
+    "pdsi": {"median": 0.0127, "mean": 0.0432, "p90": 0.0638, "max": 7.6336},
+    "phdi": {"median": 0.0156, "max": 3.8524},
+    "pmdi": {"median": 0.0191, "max": 5.5748},
+    "zindex": {"median": 0.0129, "max": 1.0176},
+}
+_PDSI_CEILINGS = {
+    "pdsi": {"median": 0.03, "mean": 0.1, "p90": 0.15, "max": 12.0},
+    "phdi": {"median": 0.04, "max": 6.0},
+    "pmdi": {"median": 0.05, "max": 9.0},
+    "zindex": {"median": 0.03, "max": 1.6},
+}
+
+# Measured across all 344 divisions (GitHub issue #755).
+_SCPDSI_MEASURED = {
+    "pdsi": {"median": 0.4731, "mean": 0.7574, "p90": 1.7786, "max": 9.3753},
+    "phdi": {"median": 0.6055, "max": 9.0613},
+    "pmdi": {"median": 0.5714, "max": 8.9270},
+    "zindex": {"median": 0.1525, "max": 6.9305},
+}
+_SCPDSI_CEILINGS = {
+    "pdsi": {"median": 0.9, "mean": 1.5, "p90": 3.0, "max": 15.0},
+    "phdi": {"median": 1.1, "max": 14.0},
+    "pmdi": {"median": 1.0, "max": 14.0},
+    "zindex": {"median": 0.3, "max": 11.0},
+}
+
+# (minimum, maximum) permitted ceiling-to-measurement ratio, by statistic.
+_HEADROOM_BOUNDS = {"max": (1.5, 1.7), "other": (1.65, 2.7)}
 
 
-def _load_nclimdiv_arrays() -> dict[str, np.ndarray]:
-    return {name: np.load(_NCLIMDIV_ROOT / f"{name}.npy") for name in ("pdsi", "phdi", "pmdi", "zindex")}
+@pytest.fixture(scope="module")
+def division_dirs() -> tuple[Path, ...]:
+    return tuple(sorted(path for path in _PALMER_ROOT.iterdir() if path.name.isdigit()))
+
+
+@pytest.fixture(scope="module")
+def awcs(palmer_awcs) -> dict:
+    return palmer_awcs
+
+
+@pytest.fixture(scope="module")
+def row_by_division() -> dict[str, int]:
+    divisions = json.loads((_NCLIMDIV_ROOT / "divisions.json").read_text(encoding="utf-8"))
+    return {division: row for row, division in enumerate(divisions)}
+
+
+@pytest.fixture(scope="module")
+def nclimdiv() -> dict[str, np.ndarray]:
+    return {name: np.load(_NCLIMDIV_ROOT / f"{name}.npy") for name in _SERIES}
 
 
 def _abs_diffs(actual: np.ndarray, reference_row: np.ndarray) -> np.ndarray:
     """Absolute differences at months where both series report a value."""
     reference = reference_row.astype(np.float64)
-    finite = ~np.isnan(reference) & ~np.isnan(actual)
-    return np.abs(actual[finite].astype(np.float64) - reference[finite])
+    both_present = ~np.isnan(reference) & ~np.isnan(actual)
+    return np.abs(actual[both_present].astype(np.float64) - reference[both_present])
 
 
 def _summarize(all_diffs: dict[str, list[np.ndarray]]) -> dict[str, dict[str, float]]:
+    """Aggregate per-division absolute differences into comparable statistics."""
     summary = {}
     for name, diffs in all_diffs.items():
         stacked = np.concatenate(diffs)
+        assert stacked.size >= _MIN_COMPARED_MONTHS, (
+            f"{name}: only {stacked.size} division-months compared, expected at least "
+            f"{_MIN_COMPARED_MONTHS} -- the reference and computed series barely overlap"
+        )
         summary[name] = {
+            "count": int(stacked.size),
             "median": float(np.median(stacked)),
             "mean": float(np.mean(stacked)),
             "p90": float(np.percentile(stacked, 90)),
@@ -73,100 +129,114 @@ def _summarize(all_diffs: dict[str, list[np.ndarray]]) -> dict[str, dict[str, fl
     return summary
 
 
+def _collect_diffs(function, division_dirs, awcs, row_by_division, nclimdiv) -> dict[str, dict[str, float]]:
+    all_diffs: dict[str, list[np.ndarray]] = {name: [] for name in _SERIES}
+    for division_dir in division_dirs:
+        division = division_dir.name
+        values = function(
+            np.load(division_dir / "precips.npy"),
+            np.load(division_dir / "pet.npy"),
+            awcs[division],
+            _DATA_START_YEAR,
+            _CALIBRATION_YEAR_INITIAL,
+            _CALIBRATION_YEAR_FINAL,
+        )
+        assert values[4] is not None, f"{division}: {function.__name__}() returned no fitted parameters"
+        row = row_by_division[division]
+        for offset, name in enumerate(_SERIES):
+            all_diffs[name].append(_abs_diffs(values[offset], nclimdiv[name][row]))
+    return _summarize(all_diffs)
+
+
+def test_division_directories_match_nclimdiv_index(division_dirs, row_by_division):
+    """Every fixture division must have a reference row, and vice versa."""
+    assert {path.name for path in division_dirs} == set(row_by_division)
+
+
+def test_ceilings_keep_documented_headroom():
+    """Ceilings must stay within the headroom the module docstring advertises.
+
+    Without this, a ceiling can be widened to accommodate a regression while the
+    stated rationale silently stops describing the assertions.
+    """
+    for label, ceilings, measured in (
+        ("pdsi", _PDSI_CEILINGS, _PDSI_MEASURED),
+        ("scpdsi", _SCPDSI_CEILINGS, _SCPDSI_MEASURED),
+    ):
+        for series, stats in ceilings.items():
+            for stat, ceiling in stats.items():
+                low, high = _HEADROOM_BOUNDS["max" if stat == "max" else "other"]
+                ratio = ceiling / measured[series][stat]
+                assert low <= ratio <= high, (
+                    f"{label} {series} {stat}: ceiling is {ratio:.2f}x measured, want {low}-{high}x"
+                )
+
+
 @pytest.mark.validation
-def test_pdsi_vs_noaa_nclimdiv_characterization():
-    """Aggregate agreement between plain pdsi() and the NOAA nClimDiv arrays.
+@pytest.mark.parametrize(
+    ("function", "ceilings"),
+    [(palmer.pdsi, _PDSI_CEILINGS), (palmer.scpdsi, _SCPDSI_CEILINGS)],
+    ids=["pdsi", "scpdsi"],
+)
+def test_palmer_vs_noaa_nclimdiv_characterization(function, ceilings, division_dirs, awcs, row_by_division, nclimdiv):
+    """Aggregate agreement between a Palmer entry point and the NOAA nClimDiv arrays.
 
     ``pdsi()`` uses the same fixed, nationally uniform duration/K factors as
-    NOAA's operational nClimDiv product, so agreement is expected to be
-    close. Measured across all 344 divisions: pdsi median |Delta| 0.0127
-    (matches tests/fixture/nclimdiv/provenance.json's documented 86.2%
-    within 0.05), mean 0.0432, p90 0.0638, max 7.6336; phdi median 0.0156,
-    max 3.8524; pmdi median 0.0191, max 5.5748; zindex median 0.0129, max
-    1.0176. Ceilings below give ~2x headroom on medians and ~1.5x headroom
-    on maxima.
+    NOAA's operational nClimDiv product, so agreement is close; its measured
+    median |Delta| of 0.0127 is consistent with
+    ``tests/fixture/nclimdiv/provenance.json``, which records that same median
+    alongside 86.2% of months within 0.05 (a fraction this test does not
+    recompute). ``scpdsi()`` self-calibrates duration and K-prime factors per
+    division (Wells, Goddard, and Hayes 2004) while NOAA uses fixed national
+    K-factors, so the two diverge substantially by design -- expected
+    divergence, not a defect -- and its ceilings are correspondingly wider.
     """
-    nclimdiv = _load_nclimdiv_arrays()
-    all_diffs: dict[str, list[np.ndarray]] = {"pdsi": [], "phdi": [], "pmdi": [], "zindex": []}
-
-    for division_dir in _DIVISION_DIRS:
-        division = division_dir.name
-        precips, pet, awc = _division_inputs(division_dir)
-        pdsi_values, phdi_values, pmdi_values, zindex_values, _params = palmer.pdsi(
-            precips, pet, awc, _DATA_START_YEAR, _CALIBRATION_YEAR_INITIAL, _CALIBRATION_YEAR_FINAL
-        )
-        row = _ROW_BY_DIVISION[division]
-        all_diffs["pdsi"].append(_abs_diffs(pdsi_values, nclimdiv["pdsi"][row]))
-        all_diffs["phdi"].append(_abs_diffs(phdi_values, nclimdiv["phdi"][row]))
-        all_diffs["pmdi"].append(_abs_diffs(pmdi_values, nclimdiv["pmdi"][row]))
-        all_diffs["zindex"].append(_abs_diffs(zindex_values, nclimdiv["zindex"][row]))
-
-    summary = _summarize(all_diffs)
-
-    # Measured: pdsi median 0.0127, mean 0.0432, p90 0.0638, max 7.6336.
-    assert summary["pdsi"]["median"] < 0.03, summary["pdsi"]
-    assert summary["pdsi"]["mean"] < 0.1, summary["pdsi"]
-    assert summary["pdsi"]["p90"] < 0.15, summary["pdsi"]
-    assert summary["pdsi"]["max"] < 12.0, summary["pdsi"]
-
-    # Measured: phdi median 0.0156 max 3.8524; pmdi median 0.0191 max 5.5748.
-    assert summary["phdi"]["median"] < 0.04, summary["phdi"]
-    assert summary["phdi"]["max"] < 6.0, summary["phdi"]
-    assert summary["pmdi"]["median"] < 0.05, summary["pmdi"]
-    assert summary["pmdi"]["max"] < 9.0, summary["pmdi"]
-
-    # Measured: zindex median 0.0129, max 1.0176.
-    assert summary["zindex"]["median"] < 0.03, summary["zindex"]
-    assert summary["zindex"]["max"] < 2.0, summary["zindex"]
+    summary = _collect_diffs(function, division_dirs, awcs, row_by_division, nclimdiv)
+    for series, stats in ceilings.items():
+        for stat, ceiling in stats.items():
+            assert summary[series][stat] < ceiling, f"{series} {stat}: {summary[series]}"
 
 
 @pytest.mark.validation
-def test_scpdsi_vs_noaa_nclimdiv_characterization():
-    """Aggregate agreement between scpdsi() and the NOAA nClimDiv arrays.
+def test_scpdsi_calibration_anchor_lands_on_target(division_dirs, awcs):
+    """Calibration-period 2nd/98th percentiles of scPDSI should land on -/+4.
 
-    Unlike plain pdsi(), scpdsi() self-calibrates duration and K-prime
-    factors per climate division (Wells, Goddard, and Hayes 2004), while
-    NOAA's operational nClimDiv product uses fixed national K-factors. The
-    two are expected to diverge substantially by design -- this is expected
-    divergence, not a defect -- so these ceilings are wide, calibrated from
-    aggregate statistics measured across all 344 divisions (GitHub issue
-    #755), with headroom for run-to-run noise rather than a tight
-    per-division tolerance.
+    This is the defining property of Wells self-calibration, and the source of
+    the figures published in VALIDATION.md's "scPDSI Calibration-Anchor
+    Measurement" section. ``scpdsi()`` applies a fixed three rescaling passes
+    rather than iterating to a fixed point, so unsettled divisions retain a
+    residual deviation; the ceilings bound that residual.
     """
-    nclimdiv = _load_nclimdiv_arrays()
-    all_diffs: dict[str, list[np.ndarray]] = {"pdsi": [], "phdi": [], "pmdi": [], "zindex": []}
+    start = (_CALIBRATION_YEAR_INITIAL - _DATA_START_YEAR) * 12
+    end = (_CALIBRATION_YEAR_FINAL - _DATA_START_YEAR + 1) * 12
 
-    for division_dir in _DIVISION_DIRS:
+    low_deviations = []
+    high_deviations = []
+    for division_dir in division_dirs:
         division = division_dir.name
-        precips, pet, awc = _division_inputs(division_dir)
-        scpdsi_values, scphdi_values, scpmdi_values, sczindex_values, params = palmer.scpdsi(
-            precips, pet, awc, _DATA_START_YEAR, _CALIBRATION_YEAR_INITIAL, _CALIBRATION_YEAR_FINAL
-        )
-        assert params is not None, f"{division}: scpdsi() unexpectedly returned no fitted parameters"
-        row = _ROW_BY_DIVISION[division]
-        all_diffs["pdsi"].append(_abs_diffs(scpdsi_values, nclimdiv["pdsi"][row]))
-        all_diffs["phdi"].append(_abs_diffs(scphdi_values, nclimdiv["phdi"][row]))
-        all_diffs["pmdi"].append(_abs_diffs(scpmdi_values, nclimdiv["pmdi"][row]))
-        all_diffs["zindex"].append(_abs_diffs(sczindex_values, nclimdiv["zindex"][row]))
+        scpdsi_values = palmer.scpdsi(
+            np.load(division_dir / "precips.npy"),
+            np.load(division_dir / "pet.npy"),
+            awcs[division],
+            _DATA_START_YEAR,
+            _CALIBRATION_YEAR_INITIAL,
+            _CALIBRATION_YEAR_FINAL,
+        )[0]
+        window = scpdsi_values[start:end]
+        low_deviations.append(abs(self_calibration.nan_safe_percentile(window, 0.02) - (-4.0)))
+        high_deviations.append(abs(self_calibration.nan_safe_percentile(window, 0.98) - 4.0))
 
-    summary = _summarize(all_diffs)
+    low = np.asarray(low_deviations)
+    high = np.asarray(high_deviations)
+    assert low.size == high.size == len(division_dirs)
 
-    # Measured (issue #755, 344 divisions): pdsi median 0.4731, mean 0.7574,
-    # p90 1.7786, max 9.3753. Ceilings below are ~1.5-2x median/mean/p90 and
-    # ~1.5x max.
-    assert summary["pdsi"]["median"] < 0.9, summary["pdsi"]
-    assert summary["pdsi"]["mean"] < 1.5, summary["pdsi"]
-    assert summary["pdsi"]["p90"] < 3.0, summary["pdsi"]
-    assert summary["pdsi"]["max"] < 15.0, summary["pdsi"]
-
-    # Measured: phdi median 0.6055, max 9.0613.
-    assert summary["phdi"]["median"] < 1.1, summary["phdi"]
-    assert summary["phdi"]["max"] < 14.0, summary["phdi"]
-
-    # Measured: pmdi median 0.5714, max 8.9270.
-    assert summary["pmdi"]["median"] < 1.0, summary["pmdi"]
-    assert summary["pmdi"]["max"] < 14.0, summary["pmdi"]
-
-    # Measured: zindex median 0.1525, max 6.9305.
-    assert summary["zindex"]["median"] < 0.3, summary["zindex"]
-    assert summary["zindex"]["max"] < 11.0, summary["zindex"]
+    # Measured: 2nd median deviation 0.0102, max 0.9730, 74% within 0.05, 93%
+    # within 0.25; 98th median deviation 0.0130, max 1.5421, 70% and 91%.
+    for label, deviations, median_ceiling, max_ceiling, within_005, within_025 in (
+        ("2nd", low, 0.03, 2.0, 0.60, 0.85),
+        ("98th", high, 0.03, 2.5, 0.55, 0.80),
+    ):
+        assert float(np.median(deviations)) < median_ceiling, f"{label}: median deviation {np.median(deviations)}"
+        assert float(np.max(deviations)) < max_ceiling, f"{label}: max deviation {np.max(deviations)}"
+        assert float(np.mean(deviations <= 0.05)) > within_005, f"{label}: within 0.05 fraction too low"
+        assert float(np.mean(deviations <= 0.25)) > within_025, f"{label}: within 0.25 fraction too low"
