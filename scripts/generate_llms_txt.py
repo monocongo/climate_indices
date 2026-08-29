@@ -59,7 +59,9 @@ def _render(sources: list[str]) -> str:
 
 def _write(output: str, sources: list[str]) -> None:
     """Write an llms text file from the selected source files."""
-    (ROOT / output).write_text(_render(sources), encoding="utf-8")
+    # newline="\n" keeps the committed bundles LF on every platform; without it
+    # a Windows run would rewrite them with CRLF and churn the diff.
+    (ROOT / output).write_text(_render(sources), encoding="utf-8", newline="\n")
 
 
 def main() -> None:
