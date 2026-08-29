@@ -1259,7 +1259,11 @@ def scpdsi(
         InsufficientDataError: If the calibration period cannot supply a
             complete duration-factor fitting window.
         ConvergenceError: If a numerical calibration stage produces unusable
-            factors, percentile anchors, or recurrence denominators.
+            factors, percentile anchors, or recurrence denominators. The
+            duration-factor fit must yield contracting recurrence coefficients;
+            a short or climatologically skewed calibration period can pull a
+            fitted slope non-positive and trigger this (see
+            :func:`climate_indices.self_calibration.duration_factors`).
     """
     return _palmer_calculation(
         "scpdsi",
