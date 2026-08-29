@@ -1,5 +1,7 @@
 """Unit tests for the Wells-lineage Palmer recursion used by scPDSI."""
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
@@ -125,11 +127,51 @@ def test_zero_abatement_denominator_raises_convergence_error():
 @pytest.mark.parametrize(
     ("wetm", "wetb", "drym", "dryb", "coefficient"),
     [
+        # Each tuple must trip its named coefficient and no other, so the match
+        # pattern below is anchored to the message's "<name> = " fragment rather
+        # than searching for the bare name. Computed values, for maintenance:
+        #   wetc case:        wetc=1.000000  dryc=0.500000  dry_spell_c=0.500000
+        #   dryc case:        wetc=-0.250000 dryc=2.000000  dry_spell_c=0.500000
+        #   dry_spell_c case: wetc=-0.111111 dryc=0.990099  dry_spell_c=1.500000
+        # Note the dry_spell_c case leaves dryc only ~1% below the threshold --
+        # perturb those factors and it can start tripping dryc instead.
         (0.0, 1.0, 1.0, 1.0, "wetc"),
         (10.0, -2.0, 1.0, 1.0, "dryc"),
         (1000.0, -100.0, -1.0, 3.0, "dry_spell_c"),
     ],
+    ids=["wetc", "dryc", "dry_spell_c"],
 )
 def test_duration_factor_magnitude_at_or_above_one_raises_convergence_error(wetm, wetb, drym, dryb, coefficient):
-    with pytest.raises(ConvergenceError, match=coefficient):
+    with pytest.raises(ConvergenceError, match=rf"recursion: {coefficient} = "):
         _run([0.0], wetm=wetm, wetb=wetb, drym=drym, dryb=dryb)
+
+
+def test_dry_candidate_clamp_does_not_bound_magnitude():
+    """The x2 clamp is one-sided, which is why ``dryc`` needs a magnitude check.
+
+    ``_candidate_values`` applies ``min(0.0, ...)`` to x2. That caps it at zero
+    but leaves negative values free to grow, so a non-contracting ``dryc`` makes
+    x2 diverge. This pins the mechanism the ``_validated_factors`` docstring
+    cites as the justification for rejecting ``|dryc| >= 1``.
+    """
+    factors = _palmer_wells._Factors(
+        wetm=1.0,
+        wetb=1.0,
+        drym=1.0,
+        dryb=1.0,
+        wet_denominator=2.0,
+        dry_denominator=2.0,
+        wetc=0.5,
+        # The value the (10.0, -2.0, 1.0, 1.0) factors above produce.
+        dryc=2.0,
+        dry_spell_c=0.5,
+    )
+    state = _palmer_wells._State(x1=0.0, x2=-1.0, x3=0.0, v=0.0, probability=0.0)
+    magnitudes = []
+    for _ in range(5):
+        _, x2 = _palmer_wells._candidate_values(state, 0.0, factors)
+        magnitudes.append(abs(x2))
+        state = replace(state, x2=x2)
+
+    assert magnitudes == sorted(magnitudes)
+    assert magnitudes[-1] > magnitudes[0]
