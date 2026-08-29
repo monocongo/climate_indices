@@ -19,8 +19,9 @@ Rejecting rather than normalizing is deliberate. A partial *final* year is suppo
 positional layout of every preceding year is still determined. A partial *first* year is not, because
 padding one would require guessing the caller's intent about where the calendar begins, and guessing
 wrong reintroduces exactly the silent drift this decision removes. `cftime` calendars are rejected
-outright rather than approximated, since `noleap`, `360_day`, and `all_leap` have no faithful mapping
-onto the 366-day layout.
+outright rather than approximated. `noleap` and `360_day` have no faithful mapping onto the 366-day
+layout. `all_leap` matches that layout exactly, but is rejected for a different reason: the interface
+accepts only `datetime64` coordinates, and cftime cannot supply one.
 
 ## Consequences
 
