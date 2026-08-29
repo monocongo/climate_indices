@@ -76,8 +76,10 @@ completed:
 
 Wells' self-calibration methodology tunes each climate division's duration
 and K-prime factors so that, by construction, the calibration-period 2nd and
-98th percentiles of the self-calibrated Z-index land at exactly -4.0000 and
-+4.0000. Measuring how closely `scpdsi()` reproduces that anchor across all
+98th percentiles of the resulting scPDSI series land at exactly -4.0000 and
++4.0000. (`scpdsi()` takes those percentiles of the PDSI output and rescales
+the Z-index to match; the Z-index is the quantity adjusted, not the quantity
+anchored.) Measuring how closely `scpdsi()` reproduces that anchor across all
 344 climate divisions (calibration period 1931-1990) verifies the
 self-calibration percentile-scaling step independently of the NOAA nClimDiv
 comparison in `tests/test_nclimdiv_reference.py` (see the "Per-Index Evidence"
@@ -88,6 +90,15 @@ uses different (fixed, national) K-factors.
 | --- | --- | --- | --- | --- | --- | --- |
 | 2nd (target -4.0000) | -4.0000 | -4.0142 | 0.0102 | 0.9730 | 74% | 93% |
 | 98th (target +4.0000) | +4.0000 | +3.9829 | 0.0130 | 1.5421 | 70% | 91% |
+
+The medians land on the target exactly while the maxima do not, because
+`scpdsi()` applies a fixed three rescaling passes rather than iterating to a
+fixed point. Divisions whose recursion has not settled within three passes
+retain the residual deviations shown above; this is the reference behaviour,
+not a defect. These figures are regenerated and bounded by
+`test_scpdsi_calibration_anchor_lands_on_target` in
+`tests/test_nclimdiv_reference.py`, so they fail a test rather than rotting
+silently if the rescaling changes.
 
 This is regression coverage over the committed fixture set, not independent
 scientific validation: it confirms the self-calibration percentile-scaling
