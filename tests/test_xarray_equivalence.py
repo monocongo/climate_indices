@@ -197,6 +197,42 @@ class TestSPIXarrayEquivalence:
         )
 
 
+_DAILY_SPEI_START_YEAR = 1999
+_DAILY_SPEI_END_YEAR = 2030
+
+
+def _daily_spei_calendar_case() -> tuple[xr.DataArray, xr.DataArray, np.ndarray]:
+    """Build daily SPEI inputs beside the CLI-style calendar-converted reference.
+
+    The reference round-trips the NumPy core through utils.transform_to_366day()
+    and utils.transform_to_gregorian(), which is what the xarray seam is expected
+    to reproduce.
+
+    Returns:
+        The precipitation input, the PET input, and the expected SPEI values.
+    """
+    time = pd.date_range(f"{_DAILY_SPEI_START_YEAR}-01-01", f"{_DAILY_SPEI_END_YEAR}-12-31", freq="D")
+    precip_values = np.arange(100, len(time) + 100, dtype=float)
+    pet_values = np.arange(1, len(time) + 1, dtype=float) / 10
+    precip = xr.DataArray(precip_values, coords={"time": time}, dims=["time"])
+    pet = xr.DataArray(pet_values, coords={"time": time}, dims=["time"])
+    total_years = _DAILY_SPEI_END_YEAR - _DAILY_SPEI_START_YEAR + 1
+    expected = utils.transform_to_gregorian(
+        indices.spei(
+            precips_mm=utils.transform_to_366day(precip_values, _DAILY_SPEI_START_YEAR, total_years),
+            pet_mm=utils.transform_to_366day(pet_values, _DAILY_SPEI_START_YEAR, total_years),
+            scale=3,
+            distribution=Distribution.gamma,
+            periodicity=Periodicity.daily,
+            data_start_year=_DAILY_SPEI_START_YEAR,
+            calibration_year_initial=_DAILY_SPEI_START_YEAR,
+            calibration_year_final=_DAILY_SPEI_END_YEAR,
+        ),
+        _DAILY_SPEI_START_YEAR,
+    )
+    return precip, pet, expected
+
+
 class TestSPIXarrayGregorianDailyCalendar:
     """Verify daily xarray SPI honors Gregorian calendar positions."""
 
@@ -346,35 +382,15 @@ class TestSPIXarrayGregorianDailyCalendar:
 
     def test_daily_spei_with_dask_pet_matches_calendar_converted_reference(self) -> None:
         """A Dask-backed PET input keeps SPEI lazy and calendar-aligned."""
-        start_year = 1999
-        end_year = 2030
-        time = pd.date_range(f"{start_year}-01-01", f"{end_year}-12-31", freq="D")
-        precip_values = np.arange(100, len(time) + 100, dtype=float)
-        pet_values = np.arange(1, len(time) + 1, dtype=float) / 10
-        precip = xr.DataArray(precip_values, coords={"time": time}, dims=["time"])
-        pet = xr.DataArray(pet_values, coords={"time": time}, dims=["time"]).chunk({"time": -1})
-        total_years = end_year - start_year + 1
-        expected = utils.transform_to_gregorian(
-            indices.spei(
-                precips_mm=utils.transform_to_366day(precip_values, start_year, total_years),
-                pet_mm=utils.transform_to_366day(pet_values, start_year, total_years),
-                scale=3,
-                distribution=Distribution.gamma,
-                periodicity=Periodicity.daily,
-                data_start_year=start_year,
-                calibration_year_initial=start_year,
-                calibration_year_final=end_year,
-            ),
-            start_year,
-        )
+        precip, pet, expected = _daily_spei_calendar_case()
 
         result = spei(
             precips_mm=precip,
-            pet_mm=pet,
+            pet_mm=pet.chunk({"time": -1}),
             scale=3,
             distribution=Distribution.gamma,
-            calibration_year_initial=start_year,
-            calibration_year_final=end_year,
+            calibration_year_initial=_DAILY_SPEI_START_YEAR,
+            calibration_year_final=_DAILY_SPEI_END_YEAR,
         )
 
         assert isinstance(result, xr.DataArray)
@@ -449,35 +465,15 @@ class TestSPIXarrayGregorianDailyCalendar:
 
     def test_daily_spei_matches_cli_style_calendar_conversion(self) -> None:
         """Daily SPEI adapts both xarray time series at the shared calendar seam."""
-        start_year = 1999
-        end_year = 2030
-        time = pd.date_range(f"{start_year}-01-01", f"{end_year}-12-31", freq="D")
-        precip_values = np.arange(100, len(time) + 100, dtype=float)
-        pet_values = np.arange(1, len(time) + 1, dtype=float) / 10
-        precip = xr.DataArray(precip_values, coords={"time": time}, dims=["time"])
-        pet = xr.DataArray(pet_values, coords={"time": time}, dims=["time"])
-        total_years = end_year - start_year + 1
-        expected = utils.transform_to_gregorian(
-            indices.spei(
-                precips_mm=utils.transform_to_366day(precip_values, start_year, total_years),
-                pet_mm=utils.transform_to_366day(pet_values, start_year, total_years),
-                scale=3,
-                distribution=Distribution.gamma,
-                periodicity=Periodicity.daily,
-                data_start_year=start_year,
-                calibration_year_initial=start_year,
-                calibration_year_final=end_year,
-            ),
-            start_year,
-        )
+        precip, pet, expected = _daily_spei_calendar_case()
 
         result = spei(
             precips_mm=precip,
             pet_mm=pet,
             scale=3,
             distribution=Distribution.gamma,
-            calibration_year_initial=start_year,
-            calibration_year_final=end_year,
+            calibration_year_initial=_DAILY_SPEI_START_YEAR,
+            calibration_year_final=_DAILY_SPEI_END_YEAR,
         )
 
         assert isinstance(result, xr.DataArray)
