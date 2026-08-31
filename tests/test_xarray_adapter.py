@@ -452,6 +452,15 @@ class TestXarrayAdapterParameterInference:
         assert isinstance(result, xr.DataArray)
 
 
+def _month_end_freq() -> str:
+    """The month-end alias for the installed pandas: ME from 2.2, legacy M before."""
+    try:
+        pd.date_range("2020-01-31", periods=2, freq="ME")
+    except ValueError:  # pandas < 2.2 does not know the ME alias
+        return "M"
+    return "ME"
+
+
 class TestXarrayAdapterInferenceHelpers:
     """Test the private inference helper functions."""
 
@@ -557,7 +566,7 @@ class TestXarrayAdapterInferenceHelpers:
         ("freq", "start", "expected"),
         [
             ("MS", "2000-01-01", compute.Periodicity.monthly),
-            ("ME", "2000-01-31", compute.Periodicity.monthly),
+            (_month_end_freq(), "2000-01-31", compute.Periodicity.monthly),
             ("D", "2000-01-01", compute.Periodicity.daily),
             ("D", "1999-01-01", compute.Periodicity.daily),  # spans a leap year
         ],
