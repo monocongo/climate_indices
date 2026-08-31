@@ -39,15 +39,6 @@ _OVERHEAD_THRESHOLD = 0.80
 # points of headroom above the observed maximum while still failing if the xarray
 # path takes twice as long as the equivalent NumPy path. See issue #740.
 _PET_HARGREAVES_OVERHEAD_THRESHOLD = 1.00
-# PET Thornthwaite gained a fixed calendar-contract check (xr.infer_freq via
-# _build_daily_calendar_plan) so a daily coordinate can no longer be silently
-# reshaped into 12-month rows. That check costs ~0.14ms against a ~0.4ms NumPy
-# baseline, which is the cheapest operation measured here, so the ratio moved from
-# comfortably under 80% to 85-98% locally. A 120% operation-specific budget clears
-# the observed maximum with runner headroom while still failing if the xarray path
-# takes more than twice as long as the equivalent NumPy path. The cost is fixed per
-# call, so it is amortized to nothing on gridded data.
-_PET_THORNTHWAITE_OVERHEAD_THRESHOLD = 1.20
 
 
 def _assert_overhead_within_budget(
@@ -409,12 +400,15 @@ class TestOverheadThreshold:
                 latitude=40.0,
             ),
         )
+        # the calendar-contract check is matched with vectorized datetime64
+        # arithmetic rather than xr.infer_freq, so this path carries no
+        # operation-specific budget beyond the shared xarray machinery overhead
         _assert_overhead_within_budget(
             "PET Thornthwaite",
             np_time,
             xa_time,
             overhead,
-            _PET_THORNTHWAITE_OVERHEAD_THRESHOLD,
+            _OVERHEAD_THRESHOLD,
         )
 
     def test_pet_hargreaves_overhead(

@@ -187,6 +187,57 @@ def _infer_data_start_year(time_coord: xr.DataArray) -> int:
         ) from e
 
 
+def _match_supported_periodicity(time_coord: xr.DataArray) -> compute.Periodicity | None:
+    """Recognize the two supported calendar layouts without calling xr.infer_freq.
+
+    xr.infer_freq accounts for roughly 97% of the calendar-contract check, which is
+    charged on every xarray call, so the layouts the library actually supports are
+    matched here with vectorized datetime64 arithmetic instead. Anything this does
+    not recognize returns None so the caller can fall back to xr.infer_freq, whose
+    exact frequency string is still wanted for error messages.
+
+    Args:
+        time_coord: xarray DataArray containing datetime values.
+
+    Returns:
+        Periodicity.monthly for consecutive month-start or month-end values,
+        Periodicity.daily for consecutive calendar days, else None.
+    """
+    values = np.asarray(time_coord.values)
+    if not np.issubdtype(values.dtype, np.datetime64):
+        return None
+
+    # a supported coordinate lands exactly on day boundaries; anything with a
+    # sub-daily component (hourly, 12-hourly) must not be read as daily
+    days = values.astype("datetime64[D]")
+    if not np.array_equal(days.astype(values.dtype), values):
+        return None
+
+    day_offsets = days.astype("int64")
+    deltas = np.diff(day_offsets)
+    if deltas.size == 0:
+        return None
+
+    if np.all(deltas == 1):
+        return compute.Periodicity.daily
+
+    # month-length gaps alone are ambiguous, so require every value to sit on a
+    # month start or every value to sit on a month end; combined with the gap
+    # bound this rules out skipped months
+    if not np.all((deltas >= 28) & (deltas <= 31)):
+        return None
+
+    months = days.astype("datetime64[M]")
+    if np.all(days == months.astype("datetime64[D]")):
+        return compute.Periodicity.monthly
+
+    next_days = days + np.timedelta64(1, "D")
+    if np.all(next_days.astype("datetime64[M]") != months):
+        return compute.Periodicity.monthly
+
+    return None
+
+
 def _infer_periodicity(time_coord: xr.DataArray) -> compute.Periodicity:
     """Infer periodicity from time coordinate frequency.
 
@@ -207,6 +258,10 @@ def _infer_periodicity(time_coord: xr.DataArray) -> compute.Periodicity:
             coordinate_name="time",
             reason="insufficient data points",
         )
+
+    supported_periodicity = _match_supported_periodicity(time_coord)
+    if supported_periodicity is not None:
+        return supported_periodicity
 
     freq = xr.infer_freq(time_coord)  # type: ignore[no-untyped-call]
 

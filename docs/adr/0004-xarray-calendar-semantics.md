@@ -29,9 +29,15 @@ Callers must pass Gregorian datetime coordinates starting in January; monthly se
 another month, daily series beginning after January 1, and cftime-backed coordinates now raise
 instead of returning quietly wrong numbers. Daily results from the xarray API changed numerically for
 any series containing a non-leap year — they were previously drifted and are now calendar-aligned.
-Validation costs one `xr.infer_freq` call per invocation, which is fixed per call and negligible for
-gridded workloads but measurable against the cheapest NumPy paths (see
-`_PET_THORNTHWAITE_OVERHEAD_THRESHOLD` in `tests/test_benchmark_overhead.py`).
+Validation costs one periodicity check per invocation. `xr.infer_freq` proved too expensive for that
+— it dominated the check at roughly 97% of its cost, and because it scales with series length the
+overhead did not amortize as a 1-D series grew. `_match_supported_periodicity()` therefore recognizes
+the two supported layouts with vectorized `datetime64` arithmetic, falling back to `xr.infer_freq`
+only for input it does not match, where the exact frequency string is still wanted for the error
+message. That keeps the check fixed per call and negligible for gridded workloads, and it is why
+`pet_thornthwaite` needs no overhead budget of its own in `tests/test_benchmark_overhead.py`. The
+looser budget that remains on `pet_hargreaves` predates this decision and covers unrelated adapter
+cost — `xr.align` on the tmin/tmax pair — tracked in issue #740.
 
 The policy lives in one place — `_build_daily_calendar_plan()` — and is applied both by the
 `@xarray_adapter` decorator (SPI, SPEI, EDDI, PNP) and by the hand-written `pet_thornthwaite` and
