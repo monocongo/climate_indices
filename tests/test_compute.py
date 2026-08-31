@@ -492,7 +492,7 @@ def test_pearson_parameters(
     calibration_year_end_monthly,
 ):
     """
-    Test for the compute._pearson3_fitting_values() function
+    Test for the compute.pearson_parameters() function
     """
     np.testing.assert_raises(
         ValueError,
