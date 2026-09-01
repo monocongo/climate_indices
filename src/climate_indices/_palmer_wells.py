@@ -86,6 +86,28 @@ def _is_exact_zero(value: float) -> bool:
 
 
 def _validated_factors(wetm: float, wetb: float, drym: float, dryb: float) -> _Factors:
+    """Validate fitted duration factors and derive the Wells recurrence coefficients.
+
+    All three derived coefficients must be contractions (``|c| < 1``). ``wetc``
+    and ``dry_spell_c`` feed the unclamped x3 recurrence, so that requirement is
+    immediate. ``dryc`` feeds only the x2 recurrence, whose ``min(0.0, ...)``
+    clamp in ``_candidate_values`` is one-sided: it caps x2 at zero but does not
+    bound its magnitude. While an opposite-sign spell is established
+    (``x3 != 0``), ``_establish_spell`` returns early without resetting x2, so
+    across consecutive abatement periods x2 keeps recurring through ``dryc``
+    unbounded in magnitude before being captured into x3 when the spell abates.
+    (The non-abating branches -- ``_continue_spell`` and the
+    ``direction * new_v >= 0`` arm of ``_abatement_transition`` -- do reset x2 to
+    zero, so the exposure is a run of abatement periods, not the whole spell.)
+    ``dryc``'s check is therefore required, not defensive uniformity.
+
+    Taken together with the denominator checks below, the magnitude checks imply
+    ``wetm > 0`` and ``drym > 0`` (since ``wetc == wetb / wet_denominator`` and
+    ``dry_spell_c == dryb / dry_denominator``), which in turn makes
+    ``dry_coefficient_denominator = drym + wetb <= 0`` unreachable: a negative
+    denominator would force ``|dryc| = |wetb / (drym + wetb)| >= 1``. The
+    exact-zero check on it below is thus the only case it can still catch.
+    """
     wet_denominator = wetm + wetb
     dry_denominator = drym + dryb
     dry_coefficient_denominator = drym + wetb
@@ -107,11 +129,18 @@ def _validated_factors(wetm: float, wetb: float, drym: float, dryb: float) -> _F
     # this coefficient, while the dry Z contribution below uses drym + dryb.
     dryc = 1.0 - drym / dry_coefficient_denominator
     dry_spell_c = 1.0 - drym / dry_denominator
-    if not np.isfinite(wetc) or not np.isfinite(dryc) or not np.isfinite(dry_spell_c):
-        raise ConvergenceError(
-            "invalid fitted duration factors for the Wells recursion",
-            algorithm="scPDSI duration-factor calibration",
-        )
+    # All three must be contractions -- see the function docstring above.
+    # Real-data calibration keeps them well under 1.0 (max observed
+    # |wetc|=0.98284, |dryc|=0.98087, |dry_spell_c|=0.98212 across 344 nClimDiv
+    # divisions), i.e. only ~1.7% of margin against this threshold. That margin
+    # is pinned by test_fitted_duration_factor_coefficients_stay_contractions in
+    # tests/test_scpdsi.py, so erosion fails a test rather than surfacing here.
+    for name, value in (("wetc", wetc), ("dryc", dryc), ("dry_spell_c", dry_spell_c)):
+        if not np.isfinite(value) or abs(value) >= 1.0:
+            raise ConvergenceError(
+                f"invalid fitted duration factors for the Wells recursion: {name} = {value!r} is non-finite or has magnitude >= 1",
+                algorithm="scPDSI duration-factor calibration",
+            )
     return _Factors(
         wetm=wetm,
         wetb=wetb,
@@ -362,8 +391,11 @@ def calculate(
 
     Raises:
         ConvergenceError: If fitted factors make a recurrence denominator
-            non-finite, non-positive, or zero as applicable, or a Z-index
-            value is infinite.
+            non-finite, non-positive, or zero as applicable; if any derived
+            recurrence coefficient (``wetc``, ``dryc``, ``dry_spell_c``) is
+            non-finite or has magnitude >= 1, which additionally requires both
+            fitted slopes ``wetm`` and ``drym`` to be strictly positive; or if a
+            Z-index value is infinite.
     """
     factors = _validated_factors(wetm, wetb, drym, dryb)
     z = np.asarray(z_values, dtype=float).reshape(-1)

@@ -75,10 +75,15 @@ jobs:
       - name: Run core tests
         run: uv run --no-sync --no-build pytest -m "not benchmark and not validation"
 
+      # Run even when core tests fail: these cover disjoint test sets, and a
+      # core failure would otherwise report them as "skipped" rather than as
+      # the pass/fail they actually are.
       - name: Run validation tests
+        if: ${{ !cancelled() }}
         run: uv run --no-sync --no-build pytest -m validation
 
       - name: Pattern compliance check
+        if: ${{ !cancelled() }}
         run: uv run --no-sync --no-build pytest tests/test_pattern_compliance.py -v
 
   test-minimum-deps:
@@ -103,7 +108,9 @@ jobs:
       - name: Run core tests with minimum dependencies
         run: uv run --no-sync --no-build pytest -m "not benchmark and not validation"
 
+      # See the note on the same step in the `test` job above.
       - name: Run validation tests with minimum dependencies
+        if: ${{ !cancelled() }}
         run: uv run --no-sync --no-build pytest -m validation
 
   notebooks:

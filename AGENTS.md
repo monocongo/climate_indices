@@ -62,6 +62,16 @@ For packaging, release, or workflow changes, also run:
 uv run pytest tests/test_release_integrity.py
 ```
 
+If you edit any document listed in `SUMMARY_FILES` or `FULL_FILES` in
+`scripts/generate_llms_txt.py` — `README.md` and `VALIDATION.md` among them —
+regenerate the derived bundles and commit them alongside the change:
+
+```bash
+uv run scripts/generate_llms_txt.py
+```
+
+Skipping this fails `tests/test_review_scripts.py` in every CI job.
+
 ## Coding conventions
 
 - Follow existing module boundaries and local patterns.
@@ -70,7 +80,9 @@ uv run pytest tests/test_release_integrity.py
 - Use `structlog` for project logging; do not introduce stdlib logging.
 - Keep tests in `tests/` and reference fixtures in `tests/fixture/`.
 - Do not modify unrelated planning artifacts, notebooks, or generated files
-  unless the task explicitly requires it.
+  unless the task explicitly requires it. Editing a source document listed in
+  `scripts/generate_llms_txt.py` does require regenerating `llms.txt` and
+  `llms-full.txt` — see the Validation section above.
 
 ## Release policy
 
