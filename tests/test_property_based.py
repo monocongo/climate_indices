@@ -508,17 +508,11 @@ def test_spi_output_shape_matches_input(precip: np.ndarray, scale: int) -> None:
 # [-30, 30] is an empirical bound, not an invariant of the algorithm: the strategy
 # draws precipitation and PET independently over 0-500 mm, so it can pose physically
 # impossible climates (0.125 mm of rain against 220 mm of PET every month) whose
-# moisture anomalies drive |Z| past 60 and PDSI past the bound. A fresh search each
-# run therefore fails intermittently rather than on any real regression. Derandomize
-# so the examples tried are reproducible and a failure means the output moved.
-# Verified against main: pdsi() output is unchanged by the scPDSI refactor, so the
-# bound itself and the over-broad strategy want a dedicated fix.
-@settings(
-    max_examples=5,
-    deadline=None,
-    derandomize=True,
-    suppress_health_check=[HealthCheck.too_slow],
-)
+# moisture anomalies drive |Z| past 60 and PDSI past the bound. Runs are reproducible
+# because conftest derandomizes by default; the bound itself and the over-broad
+# strategy still want a dedicated fix. Verified against main: pdsi() output is
+# unchanged by the scPDSI refactor, so this is not a regression.
+@settings(max_examples=5, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 def test_pdsi_bounded_range(precip: np.ndarray, pet_array: np.ndarray, awc: float) -> None:
     """Verify PDSI falls within expected range [-30, 30].
 
