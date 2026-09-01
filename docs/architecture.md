@@ -147,12 +147,12 @@ spi = "climate_indices.__spi__:main"
   - `sum_to_scale()`: Optimized sliding window summation
   - `Periodicity` enum: `monthly` (12 steps/year), `daily` (366 steps/year)
 
-- **`palmer.py`** (912 lines): Palmer Drought Index family
+- **`palmer.py`**: Palmer Drought Index family
   - PDSI (Palmer Drought Severity Index)
   - PHDI (Palmer Hydrological Drought Index)
   - PMDI (Palmer Modified Drought Index)
   - ZINDEX (Palmer Z-Index)
-  - Self-calibrated Palmer (scPDSI)
+  - scPDSI (Self-calibrated Palmer Drought Severity Index), available through the NumPy `palmer.scpdsi()` API
 
 **Key Algorithms**:
 1. **SPI/SPEI Computation**:
@@ -560,6 +560,7 @@ See [ADR-0001](adr/0001-dual-numpy-xarray-api.md).
 See [ADR-0002](adr/0002-multiprocessing-cli-dask-xarray.md).
 
 ### 3. Time Dimension Chunking Constraint
+
 **Decision**: Dask arrays MUST have time as single chunk.
 
 **Rationale**: Climate indices require access to full time series for distribution fitting.

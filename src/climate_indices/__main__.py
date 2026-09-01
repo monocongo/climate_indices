@@ -1119,9 +1119,8 @@ def _palmers(
     awc: float,
     parameters: dict[str, Any],
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    # NOTE: self-calibration (scPDSI) is not implemented -- palmer.pdsi()
-    # only produces standard PDSI/PHDI/PMDI/Z-Index. See CONTEXT.md and
-    # https://github.com/monocongo/climate_indices/issues/716.
+    # The CLI does not yet expose the implemented self-calibrating API;
+    # palmer.pdsi() produces only standard PDSI/PHDI/PMDI/Z-Index here.
     computed_pdsi, computed_phdi, computed_pmdi, computed_zindex, _fitting_params = palmer.pdsi(
         precips,
         pet,

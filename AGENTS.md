@@ -28,6 +28,23 @@ are recorded as ADRs in [`docs/adr/`](docs/adr/).
 - Merge only after CI passes.
 - Avoid long-lived `release/*` branches except approved maintenance work.
 
+## Git safety (non-negotiable)
+
+- Never commit directly on `main` or push directly to `origin/main`.
+- Interpret “commit and push” as: create or update an appropriately named
+  short-lived branch, commit there, push that branch to `origin`, then open a
+  PR into `main`.
+- If work begins on `main`, create the branch before making the task commit.
+- If work begins on `main` with uncommitted changes, inspect them first.
+  Stop and ask for confirmation before committing or publishing pre-existing
+  or unrelated changes.
+- Before every push, inspect the destination ref and commits to be published.
+  Stop and ask for confirmation if the branch includes pre-existing or
+  unrelated commits.
+- A direct `origin/main` push requires explicit maintainer approval that names
+  `origin/main` after the agent has explained that it bypasses the PR workflow.
+- Never force-push or rewrite `main` without explicit maintainer approval.
+
 ## Validation
 
 Run the normal validation gate for source or test changes:
@@ -45,6 +62,16 @@ For packaging, release, or workflow changes, also run:
 uv run pytest tests/test_release_integrity.py
 ```
 
+If you edit any document listed in `SUMMARY_FILES` or `FULL_FILES` in
+`scripts/generate_llms_txt.py` — `README.md` and `VALIDATION.md` among them —
+regenerate the derived bundles and commit them alongside the change:
+
+```bash
+uv run scripts/generate_llms_txt.py
+```
+
+Skipping this fails `tests/test_review_scripts.py` in every CI job.
+
 ## Coding conventions
 
 - Follow existing module boundaries and local patterns.
@@ -53,7 +80,9 @@ uv run pytest tests/test_release_integrity.py
 - Use `structlog` for project logging; do not introduce stdlib logging.
 - Keep tests in `tests/` and reference fixtures in `tests/fixture/`.
 - Do not modify unrelated planning artifacts, notebooks, or generated files
-  unless the task explicitly requires it.
+  unless the task explicitly requires it. Editing a source document listed in
+  `scripts/generate_llms_txt.py` does require regenerating `llms.txt` and
+  `llms-full.txt` — see the Validation section above.
 
 ## Release policy
 

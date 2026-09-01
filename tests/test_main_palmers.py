@@ -79,6 +79,7 @@ class TestPalmersWrapper:
 class TestApplyAlongAxisPalmers:
     def test_writes_four_arrays_with_no_scpdsi_key_required(
         self,
+        monkeypatch,
         division_precip_pet,
         data_year_start_monthly,
         calibration_year_start_palmer,
@@ -99,7 +100,7 @@ class TestApplyAlongAxisPalmers:
             cli_main._KEY_RESULT_PMDI: _make_empty_shared_array(shape),
             cli_main._KEY_RESULT_ZINDEX: _make_empty_shared_array(shape),
         }
-        cli_main._global_shared_arrays = shared_arrays
+        monkeypatch.setattr(cli_main, "_global_shared_arrays", shared_arrays)
 
         params = {
             "func1d": cli_main._palmers,
