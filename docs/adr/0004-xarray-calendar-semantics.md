@@ -39,6 +39,15 @@ message. That keeps the check fixed per call and negligible for gridded workload
 looser budget that remains on `pet_hargreaves` predates this decision and covers unrelated adapter
 cost — `xr.align` on the tmin/tmax pair — tracked in issue #740.
 
+Conversion itself is not free, and it is quantized by year: a daily series is padded to whole 366-day
+years, so a partial final year costs a full extra year of core computation no matter how short it is.
+A four-day tail on a five-year series makes the NumPy core process 2196 elements instead of 1830, 20%
+more, and measurably so — it inflated `pet_hargreaves` overhead from roughly 60% to 85% locally until
+the daily benchmark fixtures were pinned to whole calendar years. Callers batching daily data will get
+the most out of it by passing whole years. The padding is correctness-preserving either way: the
+unfilled tail slots stay NaN through the computation and are discarded when the result is restored to
+its Gregorian coordinate.
+
 The policy lives in one place — `_build_daily_calendar_plan()` — and is applied both by the
 `@xarray_adapter` decorator (SPI, SPEI, EDDI, PNP) and by the hand-written `pet_thornthwaite` and
 `pet_hargreaves` paths.
