@@ -981,7 +981,7 @@ def bench_daily_tmin_np() -> np.ndarray:
     """5-year daily min temperature as 1D numpy for NumPy Hargreaves."""
     rng = np.random.default_rng(6666)
     days = len(_BENCH_DAILY_TIME)
-    day_of_year = np.tile(np.arange(1, 367), 6)[:days]
+    day_of_year = _BENCH_DAILY_TIME.dayofyear.to_numpy()
     return 10.0 + 5.0 * np.sin(2 * np.pi * (day_of_year - 105) / 365) + rng.normal(0, 1, days)
 
 
@@ -990,7 +990,7 @@ def bench_daily_tmax_np() -> np.ndarray:
     """5-year daily max temperature as 1D numpy for NumPy Hargreaves."""
     rng = np.random.default_rng(5555)
     days = len(_BENCH_DAILY_TIME)
-    day_of_year = np.tile(np.arange(1, 367), 6)[:days]
+    day_of_year = _BENCH_DAILY_TIME.dayofyear.to_numpy()
     return 22.5 + 7.5 * np.sin(2 * np.pi * (day_of_year - 105) / 365) + rng.normal(0, 1, days)
 
 
