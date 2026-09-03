@@ -400,7 +400,16 @@ class TestOverheadThreshold:
                 latitude=40.0,
             ),
         )
-        _assert_overhead_within_budget("PET Thornthwaite", np_time, xa_time, overhead, _OVERHEAD_THRESHOLD)
+        # the calendar-contract check is matched with vectorized datetime64
+        # arithmetic rather than xr.infer_freq, so this path carries no
+        # operation-specific budget beyond the shared xarray machinery overhead
+        _assert_overhead_within_budget(
+            "PET Thornthwaite",
+            np_time,
+            xa_time,
+            overhead,
+            _OVERHEAD_THRESHOLD,
+        )
 
     def test_pet_hargreaves_overhead(
         self,

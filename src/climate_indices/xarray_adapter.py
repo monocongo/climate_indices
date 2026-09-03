@@ -21,6 +21,7 @@ References:
 
 from __future__ import annotations
 
+import calendar
 import copy
 import datetime
 import functools
@@ -28,6 +29,7 @@ import inspect
 import json
 import warnings
 from collections.abc import Callable
+from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any
 
@@ -41,6 +43,7 @@ from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.compute import MIN_CALIBRATION_YEARS
 from climate_indices.exceptions import (
     CoordinateValidationError,
+    DataShapeError,
     InputAlignmentWarning,
     InputTypeError,
     InsufficientDataError,
@@ -184,6 +187,57 @@ def _infer_data_start_year(time_coord: xr.DataArray) -> int:
         ) from e
 
 
+def _match_supported_periodicity(time_coord: xr.DataArray) -> compute.Periodicity | None:
+    """Recognize the two supported calendar layouts without calling xr.infer_freq.
+
+    xr.infer_freq accounts for roughly 97% of the calendar-contract check, which is
+    charged on every xarray call, so the layouts the library actually supports are
+    matched here with vectorized datetime64 arithmetic instead. Anything this does
+    not recognize returns None so the caller can fall back to xr.infer_freq, whose
+    exact frequency string is still wanted for error messages.
+
+    Args:
+        time_coord: xarray DataArray containing datetime values.
+
+    Returns:
+        Periodicity.monthly for consecutive month-start or month-end values,
+        Periodicity.daily for consecutive calendar days, else None.
+    """
+    values = np.asarray(time_coord.values)
+    if not np.issubdtype(values.dtype, np.datetime64):
+        return None
+
+    # a supported coordinate lands exactly on day boundaries; anything with a
+    # sub-daily component (hourly, 12-hourly) must not be read as daily
+    days = values.astype("datetime64[D]")
+    if not np.array_equal(days.astype(values.dtype), values):
+        return None
+
+    day_offsets = days.astype("int64")
+    deltas = np.diff(day_offsets)
+    if deltas.size == 0:
+        return None
+
+    if np.all(deltas == 1):
+        return compute.Periodicity.daily
+
+    # month-length gaps alone are ambiguous, so require every value to sit on a
+    # month start or every value to sit on a month end; combined with the gap
+    # bound this rules out skipped months
+    if not np.all((deltas >= 28) & (deltas <= 31)):
+        return None
+
+    months = days.astype("datetime64[M]")
+    if np.all(days == months.astype("datetime64[D]")):
+        return compute.Periodicity.monthly
+
+    next_days = days + np.timedelta64(1, "D")
+    if np.all(next_days.astype("datetime64[M]") != months):
+        return compute.Periodicity.monthly
+
+    return None
+
+
 def _infer_periodicity(time_coord: xr.DataArray) -> compute.Periodicity:
     """Infer periodicity from time coordinate frequency.
 
@@ -204,6 +258,10 @@ def _infer_periodicity(time_coord: xr.DataArray) -> compute.Periodicity:
             coordinate_name="time",
             reason="insufficient data points",
         )
+
+    supported_periodicity = _match_supported_periodicity(time_coord)
+    if supported_periodicity is not None:
+        return supported_periodicity
 
     freq = xr.infer_freq(time_coord)  # type: ignore[no-untyped-call]
 
@@ -226,6 +284,265 @@ def _infer_periodicity(time_coord: xr.DataArray) -> compute.Periodicity:
             coordinate_name="time",
             reason=f"unsupported frequency: {freq}",
         )
+
+
+@dataclass(frozen=True)
+class _DailyCalendarPlan:
+    """Map Gregorian daily values to the NumPy core's 366-day calendar positions."""
+
+    year_start: int
+    observed_days_by_year: tuple[int, ...]
+
+    @property
+    def original_length(self) -> int:
+        """Return the number of observed Gregorian days."""
+        return sum(self.observed_days_by_year)
+
+    @property
+    def all_leap_length(self) -> int:
+        """Return the number of values required by the 366-day NumPy core."""
+        return len(self.observed_days_by_year) * 366
+
+    def to_all_leap(self, values: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
+        """Insert synthetic February 29 values while retaining a partial final year."""
+        source = np.asarray(values)
+        if source.ndim != 1 or source.size != self.original_length:
+            raise DataShapeError(
+                "Daily calendar transformation requires one complete xarray time-series slice",
+                expected_shape=f"({self.original_length},)",
+                actual_shape=source.shape,
+            )
+
+        transformed = np.full(self.all_leap_length, np.nan, dtype=float)
+        source_index = 0
+        target_index = 0
+
+        for year_offset, observed_days in enumerate(self.observed_days_by_year):
+            year = self.year_start + year_offset
+            source_year = source[source_index : source_index + observed_days]
+
+            if calendar.isleap(year):
+                transformed[target_index : target_index + observed_days] = source_year
+            else:
+                days_before_february_29 = min(observed_days, 59)
+                transformed[target_index : target_index + days_before_february_29] = source_year[
+                    :days_before_february_29
+                ]
+                if observed_days > 59:
+                    transformed[target_index + 59] = (source_year[58] + source_year[59]) / 2
+                    transformed[target_index + 60 : target_index + observed_days + 1] = source_year[59:]
+
+            source_index += observed_days
+            target_index += 366
+
+        return transformed
+
+    def to_gregorian(self, values: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
+        """Remove synthetic February 29 values and trim to observed Gregorian days."""
+        source = np.asarray(values)
+        if source.ndim != 1 or source.size != self.all_leap_length:
+            raise DataShapeError(
+                "Daily calendar restoration requires one complete 366-day time-series slice",
+                expected_shape=f"({self.all_leap_length},)",
+                actual_shape=source.shape,
+            )
+
+        restored = np.full(self.original_length, np.nan, dtype=float)
+        source_index = 0
+        target_index = 0
+
+        for year_offset, observed_days in enumerate(self.observed_days_by_year):
+            year = self.year_start + year_offset
+            if calendar.isleap(year):
+                restored[target_index : target_index + observed_days] = source[
+                    source_index : source_index + observed_days
+                ]
+            else:
+                days_before_february_29 = min(observed_days, 59)
+                restored[target_index : target_index + days_before_february_29] = source[
+                    source_index : source_index + days_before_february_29
+                ]
+                if observed_days > 59:
+                    restored[target_index + 59 : target_index + observed_days] = source[
+                        source_index + 60 : source_index + observed_days + 1
+                    ]
+
+            source_index += 366
+            target_index += observed_days
+
+        return restored
+
+
+def _resolve_periodicity(
+    func: Callable[..., Any],
+    modified_args: list[Any],
+    modified_kwargs: dict[str, Any],
+    inferred_params: dict[str, Any],
+) -> compute.Periodicity | None:
+    """Resolve a wrapped function's explicit or inferred Periodicity."""
+    periodicity = inferred_params.get("periodicity")
+    if periodicity is not None:
+        return periodicity if isinstance(periodicity, compute.Periodicity) else None
+
+    try:
+        bound = inspect.signature(func).bind_partial(*modified_args, **modified_kwargs)
+    except TypeError:
+        return None
+
+    periodicity = bound.arguments.get("periodicity")
+    return periodicity if isinstance(periodicity, compute.Periodicity) else None
+
+
+def _validate_supported_calendar(time_coord: xr.DataArray) -> None:
+    """Reject calendar systems that the NumPy index core cannot represent."""
+    coordinate_name = str(time_coord.name) if time_coord.name is not None else "time"
+    # xarray records the calendar in .encoding on open_dataset and in .attrs on
+    # hand-built coordinates, so consult both before falling back to the default
+    calendar_name = time_coord.encoding.get("calendar", time_coord.attrs.get("calendar", "standard"))
+    supported_calendars = {"standard", "gregorian", "proleptic_gregorian"}
+
+    if not np.issubdtype(time_coord.dtype, np.datetime64) or calendar_name not in supported_calendars:
+        raise CoordinateValidationError(
+            message=(
+                "Unsupported calendar: only standard, gregorian, and proleptic_gregorian datetime coordinates "
+                "are supported; cftime calendars are not supported."
+            ),
+            coordinate_name=coordinate_name,
+            reason="unsupported_calendar",
+        )
+
+
+def _build_daily_calendar_plan(
+    time_coord: xr.DataArray,
+    periodicity: compute.Periodicity,
+) -> _DailyCalendarPlan | None:
+    """Validate xarray calendar semantics and plan daily 366-day adaptation."""
+    coordinate_name = str(time_coord.name) if time_coord.name is not None else "time"
+    _validate_supported_calendar(time_coord)
+
+    coordinate_periodicity = _infer_periodicity(time_coord)
+    if coordinate_periodicity != periodicity:
+        raise CoordinateValidationError(
+            message=(
+                f"Time coordinate has {coordinate_periodicity.name} periodicity, which does not match the "
+                f"requested {periodicity.name} periodicity."
+            ),
+            coordinate_name=coordinate_name,
+            reason="periodicity_mismatch",
+        )
+
+    first_timestamp = pd.Timestamp(time_coord.values[0])
+    if periodicity == compute.Periodicity.monthly:
+        if first_timestamp.month != 1:
+            raise CoordinateValidationError(
+                message="Monthly input must begin in January to preserve calendar-month semantics.",
+                coordinate_name=coordinate_name,
+                reason="unsupported_start_date",
+            )
+        return None
+
+    if first_timestamp.month != 1 or first_timestamp.day != 1:
+        raise CoordinateValidationError(
+            message="Daily input must begin on January 1 to preserve calendar-day semantics.",
+            coordinate_name=coordinate_name,
+            reason="unsupported_start_date",
+        )
+
+    last_timestamp = pd.Timestamp(time_coord.values[-1])
+    remaining_days = len(time_coord)
+    observed_days_by_year = []
+    for year in range(first_timestamp.year, last_timestamp.year + 1):
+        days_in_year = 366 if calendar.isleap(year) else 365
+        observed_days = min(remaining_days, days_in_year)
+        observed_days_by_year.append(observed_days)
+        remaining_days -= observed_days
+
+    return _DailyCalendarPlan(first_timestamp.year, tuple(observed_days_by_year))
+
+
+def _resolve_daily_calendar_plan(
+    func: Callable[..., Any],
+    input_da: xr.DataArray,
+    modified_args: list[Any],
+    modified_kwargs: dict[str, Any],
+    inferred_params: dict[str, Any],
+    time_dim: str,
+) -> _DailyCalendarPlan | None:
+    """Return daily calendar adaptation when the wrapped computation needs it."""
+    periodicity = _resolve_periodicity(func, modified_args, modified_kwargs, inferred_params)
+    if periodicity is None or time_dim not in input_da.dims:
+        return None
+
+    return _build_daily_calendar_plan(input_da[time_dim], periodicity)
+
+
+def _validate_calendar_secondary_inputs(
+    calendar_plan: _DailyCalendarPlan | None,
+    resolved_secondaries: dict[str, tuple[int | None, Any]],
+    time_dim: str,
+) -> None:
+    """Validate calendar-bearing secondary inputs before shared computation."""
+    for name, (_, secondary) in resolved_secondaries.items():
+        if isinstance(secondary, xr.DataArray):
+            if time_dim in secondary.dims:
+                _validate_supported_calendar(secondary[time_dim])
+        elif calendar_plan is not None:
+            raise InputTypeError(
+                message=(
+                    f"Daily xarray input requires '{name}' to be an xarray.DataArray so its calendar can be "
+                    "validated and adapted."
+                ),
+                expected_type=xr.DataArray,
+                actual_type=type(secondary),
+            )
+
+
+def _make_calendar_aware_numpy_wrapper(
+    func: Callable[..., np.ndarray[Any, Any]],
+    valid_kwargs: dict[str, Any],
+    calendar_plan: _DailyCalendarPlan | None,
+) -> Callable[..., np.ndarray[Any, Any]]:
+    """Build an apply_ufunc callable that restores Gregorian daily output."""
+
+    def wrapper(*numpy_arrays: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
+        # every positional argument here is a time series: _collect_input_dataarrays
+        # yields only DataArrays, and apply_ufunc is called with one [time_dim] entry
+        # in input_core_dims per collected array, so a non-time-series positional
+        # would fail inside apply_ufunc before ever reaching this wrapper
+        return _compute_with_daily_calendar_plan(
+            func,
+            numpy_arrays,
+            valid_kwargs,
+            calendar_plan,
+            set(range(len(numpy_arrays))),
+            set(),
+        )
+
+    return wrapper
+
+
+def _compute_with_daily_calendar_plan(
+    func: Callable[..., np.ndarray[Any, Any]],
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    calendar_plan: _DailyCalendarPlan | None,
+    time_series_arg_positions: set[int],
+    time_series_kwarg_names: set[str],
+) -> np.ndarray[Any, Any]:
+    """Run a NumPy computation against 366-day values and restore Gregorian output."""
+    if calendar_plan is None:
+        return func(*args, **kwargs)
+
+    adapted_args = list(args)
+    for position in time_series_arg_positions:
+        adapted_args[position] = calendar_plan.to_all_leap(adapted_args[position])
+
+    adapted_kwargs = dict(kwargs)
+    for name in time_series_kwarg_names:
+        adapted_kwargs[name] = calendar_plan.to_all_leap(adapted_kwargs[name])
+
+    all_leap_result = func(*adapted_args, **adapted_kwargs)
+    return calendar_plan.to_gregorian(all_leap_result)
 
 
 def _infer_calibration_period(time_coord: xr.DataArray) -> tuple[int, int]:
@@ -1341,6 +1658,13 @@ def xarray_adapter(
                 }
 
                 if dataarray_secondaries:
+                    if infer_params and "periodicity" in inspect.signature(func).parameters:
+                        if time_dim in input_da.dims:
+                            _validate_supported_calendar(input_da[time_dim])
+                        for secondary in dataarray_secondaries.values():
+                            if time_dim in secondary.dims:
+                                _validate_supported_calendar(secondary[time_dim])
+
                     # align primary + DataArray secondaries
                     aligned_primary, aligned_secondaries = _align_inputs(input_da, dataarray_secondaries, time_dim)
 
@@ -1364,16 +1688,27 @@ def xarray_adapter(
             if infer_params:
                 _validate_time_dimension(input_da, time_dim)
                 time_coord = input_da[time_dim]
+                if "periodicity" in inspect.signature(func).parameters:
+                    _validate_supported_calendar(time_coord)
                 _validate_time_monotonicity(time_coord)
                 resolved_scale = _resolve_scale_from_args(func, tuple(modified_args), modified_kwargs)
                 if resolved_scale is not None:
                     _validate_sufficient_data(time_coord, resolved_scale)
 
             # detect Dask-backed arrays (Story 2.9)
-            is_dask = _is_dask_backed(input_da)
+            input_dataarrays = _collect_input_dataarrays(
+                input_da,
+                additional_input_names,
+                resolved_secondaries,
+                modified_args,
+                modified_kwargs,
+            )
+            is_dask = any(_is_dask_backed(dataarray) for dataarray in input_dataarrays)
             if is_dask:
-                # validate chunking constraints for Dask
-                _validate_dask_chunks(input_da, time_dim)
+                # validate chunking constraints for every Dask-backed time series
+                for dataarray in input_dataarrays:
+                    if _is_dask_backed(dataarray):
+                        _validate_dask_chunks(dataarray, time_dim)
 
             # infer temporal parameters if enabled (shared path)
             inferred_params: dict[str, Any] = {}
@@ -1386,6 +1721,18 @@ def xarray_adapter(
                         function_name=func.__name__,
                         **{k: str(v) for k, v in inferred_params.items()},
                     )
+
+            calendar_plan = None
+            if infer_params:
+                calendar_plan = _resolve_daily_calendar_plan(
+                    func,
+                    input_da,
+                    modified_args,
+                    modified_kwargs,
+                    inferred_params,
+                    time_dim,
+                )
+                _validate_calendar_secondary_inputs(calendar_plan, resolved_secondaries, time_dim)
 
             # branch: Dask execution or in-memory execution
             if is_dask:
@@ -1411,9 +1758,8 @@ def xarray_adapter(
                     input_da, additional_input_names, resolved_secondaries, modified_args, modified_kwargs
                 )
 
-                # create closure capturing valid_kwargs
-                def _numpy_func_wrapper(*numpy_arrays: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
-                    return func(*numpy_arrays, **valid_kwargs)
+                # create a calendar-aware callable for apply_ufunc
+                _numpy_func_wrapper = _make_calendar_aware_numpy_wrapper(func, valid_kwargs, calendar_plan)
 
                 # call apply_ufunc with Dask support
                 result_da: xr.DataArray = xr.apply_ufunc(
@@ -1508,9 +1854,8 @@ def xarray_adapter(
                     input_da, additional_input_names, resolved_secondaries, modified_args, modified_kwargs
                 )
 
-                # create closure capturing valid_kwargs
-                def _numpy_func_wrapper(*numpy_arrays: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
-                    return func(*numpy_arrays, **valid_kwargs)
+                # create a calendar-aware callable for apply_ufunc
+                _numpy_func_wrapper = _make_calendar_aware_numpy_wrapper(func, valid_kwargs, calendar_plan)
 
                 # call apply_ufunc without Dask support (in-memory vectorization)
                 result_da: xr.DataArray = xr.apply_ufunc(  # type: ignore[no-redef]
@@ -1556,14 +1901,20 @@ def xarray_adapter(
             numpy_values = input_da.values
 
             # extract numpy values from secondary DataArrays (if any)
+            time_series_arg_positions = {0}
+            time_series_kwarg_names: set[str] = set()
             if additional_input_names:
                 for name, (pos_index, value) in resolved_secondaries.items():
                     if isinstance(value, xr.DataArray):
                         # extract .values from aligned DataArray
                         if pos_index is not None:
                             modified_args[pos_index] = modified_args[pos_index].values
+                            time_series_arg_positions.add(pos_index)
                         else:
-                            modified_kwargs[name] = modified_kwargs[name].values
+                            secondary_values = modified_kwargs[name].values
+                            modified_kwargs[name] = secondary_values
+                            valid_kwargs[name] = secondary_values
+                            time_series_kwarg_names.add(name)
 
             # validate calibration period has sufficient non-NaN data (Story 2.8)
             # this validation requires .values, so it only runs in the in-memory path
@@ -1584,7 +1935,14 @@ def xarray_adapter(
             # replace first arg (DataArray) with numpy values
             numpy_args = (numpy_values,) + tuple(modified_args[1:])
 
-            result_values = func(*numpy_args, **valid_kwargs)
+            result_values = _compute_with_daily_calendar_plan(
+                func,
+                numpy_args,
+                valid_kwargs,
+                calendar_plan,
+                time_series_arg_positions,
+                time_series_kwarg_names,
+            )
 
             # verify NaN propagation contract (Story 2.8)
             if nan_assessment["has_nan"]:
@@ -1741,6 +2099,11 @@ def pet_thornthwaite(
     _validate_time_dimension(temp_da, time_dim)
     time_coord = temp_da.coords[time_dim]
     _validate_time_monotonicity(time_coord)
+
+    # enforce the shared calendar contract: Thornthwaite groups values into calendar
+    # months from a January origin, so validate before the start year is inferred.
+    # monthly input needs no conversion, so the returned plan is always None here.
+    _ = _build_daily_calendar_plan(time_coord, compute.Periodicity.monthly)
 
     # infer data_start_year if not provided
     if data_start_year is None:
@@ -2006,6 +2369,10 @@ def pet_hargreaves(
             f"Cannot proceed with PET calculation."
         )
 
+    # enforce the shared calendar contract and plan the 366-day adaptation that
+    # eto.eto_hargreaves assumes; built from the aligned coordinate, not the inputs
+    calendar_plan = _build_daily_calendar_plan(tmin_aligned.coords[time_dim], compute.Periodicity.daily)
+
     # derive tmean
     tmean_da = (tmin_aligned + tmax_aligned) / 2.0
 
@@ -2018,9 +2385,21 @@ def pet_hargreaves(
 
     # wrapper function to handle read-only array views from apply_ufunc
     # eto.eto_hargreaves may modify arrays in-place, so create writable copies
-    def _hargreaves_with_copy(tmin: np.ndarray, tmax: np.ndarray, tmean: np.ndarray, lat: float) -> np.ndarray:
+    def _eto_hargreaves_with_copy(tmin: np.ndarray, tmax: np.ndarray, tmean: np.ndarray, lat: float) -> np.ndarray:
         """Wrapper for eto.eto_hargreaves that creates writable copies."""
         return eto.eto_hargreaves(tmin.copy(), tmax.copy(), tmean.copy(), lat)
+
+    def _hargreaves_with_copy(tmin: np.ndarray, tmax: np.ndarray, tmean: np.ndarray, lat: float) -> np.ndarray:
+        """Compute Hargreaves ETo against 366-day positions and restore Gregorian output."""
+        return _compute_with_daily_calendar_plan(
+            _eto_hargreaves_with_copy,
+            (tmin, tmax, tmean, lat),
+            {},
+            calendar_plan,
+            # latitude at position 3 is a scalar, not a time series
+            {0, 1, 2},
+            set(),
+        )
 
     # compute using xr.apply_ufunc with spatial broadcasting
     result = xr.apply_ufunc(

@@ -14,8 +14,29 @@ Starting with version 2.2.0, the ``climate_indices`` library provides native sup
 
    The xarray DataArray API described in this guide is **beta**. The interface
    (parameter inference, metadata attributes, coordinate handling) may change in
-   future minor releases. The underlying computation results are identical to the
-   stable NumPy API. No breaking changes will occur within a minor version.
+   future minor releases. The underlying computation results are intended to be
+   identical to the stable NumPy API; no interface breaking changes are planned
+   within a minor version.
+
+.. warning:: **Calendar-alignment fix changes daily results (v2.5.0)**
+
+   Before v2.5.0, the xarray adapter passed daily Gregorian values straight into
+   the NumPy core without accounting for its 366-day-per-year layout, silently
+   shifting every value after February 28 in a non-leap year. This is now
+   corrected: :func:`climate_indices.spi`, :func:`climate_indices.spei`,
+   :func:`climate_indices.eddi`, :func:`climate_indices.percentage_of_normal`, and
+   :func:`climate_indices.xarray_adapter.pet_hargreaves` may return **different,
+   corrected** daily values for any series spanning a non-leap year. For inputs
+   using a supported Gregorian calendar (``standard``, ``gregorian``, or
+   ``proleptic_gregorian``) with daily coordinates that begin on January 1,
+   this happens with **no error raised** — the input still succeeds, just with
+   different numbers. Other previously-successful inputs (unsupported
+   calendars, or daily coordinates that do not begin on January 1) now raise a
+   validation error instead of being silently misinterpreted. The NumPy array
+   API is unaffected. See
+   ``docs/adr/0004-xarray-calendar-semantics.md`` and the "Unsupported calendar or
+   calendar origin" pitfall below for the new, separately-raised validation
+   errors this release also adds.
 
 **Who this guide is for:** Users currently working with NumPy arrays who want to leverage xarray's labeled dimensions, automatic metadata handling, and coordinate-aware operations.
 
@@ -485,7 +506,29 @@ Common Pitfalls and Solutions
       result = spi(da_monthly, scale=6, distribution=Distribution.gamma)
 
 
-4. Multi-chunked time dimension (Dask)
+4. Unsupported calendar or calendar origin
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. warning::
+
+   **Error:** ``CoordinateValidationError: Unsupported calendar`` or a message
+   that monthly input must begin in January or daily input must begin on January 1.
+
+   **Cause:** SPI, SPEI, EDDI, and PNP group monthly values from January and
+   daily values into 366 calendar positions. ``pet_thornthwaite`` (monthly) and
+   ``pet_hargreaves`` (daily) enforce the same contract. ``cftime`` calendars and
+   non-January input origins cannot be represented without changing those
+   semantics.
+
+   **Solution:** For those index computations, use standard, gregorian, or
+   proleptic_gregorian datetime coordinates. Start monthly data in January and
+   daily data on January 1. A final daily year may end on any calendar date.
+   For non-leap years, the xarray adapter synthesizes February 29 from February
+   28 and March 1 before computation, then restores the original Gregorian
+   coordinate.
+
+
+5. Multi-chunked time dimension (Dask)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. warning::
@@ -503,7 +546,7 @@ Common Pitfalls and Solutions
       result = spi(da_rechunked, scale=6, distribution=Distribution.gamma)
 
 
-5. Passing Dataset instead of DataArray
+6. Passing Dataset instead of DataArray
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. warning::
@@ -524,7 +567,7 @@ Common Pitfalls and Solutions
       result = spi(precip_da, scale=6, distribution=Distribution.gamma)
 
 
-6. Insufficient calibration data with NaN
+7. Insufficient calibration data with NaN
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. warning::

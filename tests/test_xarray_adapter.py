@@ -452,6 +452,15 @@ class TestXarrayAdapterParameterInference:
         assert isinstance(result, xr.DataArray)
 
 
+def _month_end_freq() -> str:
+    """The month-end alias for the installed pandas: ME from 2.2, legacy M before."""
+    try:
+        pd.date_range("2020-01-31", periods=2, freq="ME")
+    except ValueError:  # pandas < 2.2 does not know the ME alias
+        return "M"
+    return "ME"
+
+
 class TestXarrayAdapterInferenceHelpers:
     """Test the private inference helper functions."""
 
@@ -552,6 +561,61 @@ class TestXarrayAdapterInferenceHelpers:
 
         # should mention "at least 3" in error message
         assert "at least 3" in str(exc_info.value).lower()
+
+    @pytest.mark.parametrize(
+        ("freq", "start", "expected"),
+        [
+            ("MS", "2000-01-01", compute.Periodicity.monthly),
+            (_month_end_freq(), "2000-01-31", compute.Periodicity.monthly),
+            ("D", "2000-01-01", compute.Periodicity.daily),
+            ("D", "1999-01-01", compute.Periodicity.daily),  # spans a leap year
+        ],
+    )
+    def test_infer_periodicity_supported_layouts_skip_infer_freq(self, monkeypatch, freq, start, expected):
+        """Supported monthly/daily layouts resolve without paying for xr.infer_freq.
+
+        xr.infer_freq dominates the calendar-contract check (~97% of its cost) and
+        is charged on every xarray call, so the two layouts the library actually
+        supports must be recognized without it. Unsupported layouts may still fall
+        back to it to report an exact frequency string.
+        """
+
+        def _fail(*args, **kwargs):
+            raise AssertionError("xr.infer_freq called for a supported layout")
+
+        monkeypatch.setattr(xr, "infer_freq", _fail)
+
+        time = pd.date_range(start, periods=40, freq=freq)
+        assert _infer_periodicity(xr.DataArray(time, dims=["time"])) == expected
+
+    def test_infer_periodicity_fallback_still_reports_exact_frequency(self):
+        """Unsupported-but-regular frequencies keep the exact pandas freq string."""
+        time = pd.date_range("2000-01-01", periods=40, freq="W")
+        time_da = xr.DataArray(time, dims=["time"])
+
+        with pytest.raises(CoordinateValidationError) as exc_info:
+            _infer_periodicity(time_da)
+
+        assert "unsupported frequency" in str(exc_info.value).lower()
+        assert "'W" in str(exc_info.value)
+
+    def test_infer_periodicity_rejects_sub_daily(self):
+        """A sub-daily coordinate is not mistaken for daily by the fast path."""
+        time = pd.date_range("2000-01-01", periods=48, freq="12h")
+        time_da = xr.DataArray(time, dims=["time"])
+
+        with pytest.raises(CoordinateValidationError) as exc_info:
+            _infer_periodicity(time_da)
+
+        assert "unsupported frequency" in str(exc_info.value).lower()
+
+    def test_infer_periodicity_rejects_skipped_month(self):
+        """Month-start values that skip a month are not accepted as monthly."""
+        time = pd.to_datetime(["2000-01-01", "2000-02-01", "2000-04-01", "2000-05-01"])
+        time_da = xr.DataArray(time, dims=["time"])
+
+        with pytest.raises(CoordinateValidationError):
+            _infer_periodicity(time_da)
 
     def test_infer_data_start_year_non_datetime(self):
         """_infer_data_start_year raises CoordinateValidationError for non-datetime coord."""
@@ -1956,6 +2020,19 @@ class TestCoordinateValidationIntegration:
         # should not raise even though time dimension is missing
         result = simple_func(no_time_dim_da)
         assert isinstance(result, xr.DataArray)
+
+    def test_infer_params_false_skips_calendar_validation_with_explicit_periodicity(self):
+        """Explicit Periodicity does not enable calendar validation when inference is disabled."""
+        time = pd.date_range("2000-01-02", periods=3, freq="D")
+        data = xr.DataArray([1.0, 2.0, 3.0], coords={"time": time}, dims=["time"])
+
+        @xarray_adapter(infer_params=False)
+        def simple_func(values: np.ndarray, periodicity: compute.Periodicity) -> np.ndarray:
+            return values
+
+        result = simple_func(data, periodicity=compute.Periodicity.daily)
+        assert isinstance(result, xr.DataArray)
+        xr.testing.assert_equal(result.coords["time"], data.coords["time"])
 
     def test_numpy_passthrough_skips_validation(self):
         """NumPy input bypasses all validation."""
