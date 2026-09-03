@@ -1,53 +1,23 @@
 # Agent Instructions
 
-This file is the canonical agent-facing workflow reference for
-`climate_indices`. Tool-specific files such as `CLAUDE.md` should point here
-rather than duplicating release or branching policy.
+`climate_indices` is a Python library for climate drought indices, including
+SPI, SPEI, PET, and the Palmer family. This is the portable project guidance
+for all coding agents; tool-specific files must point here rather than copy it.
 
-## Project context
+## Read for the task
 
-`climate_indices` is a Python scientific computing library for climate drought
-index computation, including SPI, SPEI, PET, Palmer indices, and related APIs.
-The source tree uses a `src/` layout, pytest, Ruff, mypy, Hatchling, and `uv`.
+- [Agent task map](docs/agent/README.md)
+- [Core-library vocabulary](src/climate_indices/CONTEXT.md) before using domain
+  terms; [CONTEXT-MAP.md](CONTEXT-MAP.md) also covers the planned Explorer.
+- [Contributing workflow](CONTRIBUTING.md) for branches, PRs, and code style.
+- [Validation scopes](VALIDATION.md) for scientific-validation work.
+- [ADRs](docs/adr/) for non-obvious, hard-to-reverse decisions.
 
-Domain vocabulary (SPI, SPEI, Timescale, Calibration Period, Palmer family,
-etc.) is defined once in [`src/climate_indices/CONTEXT.md`](src/climate_indices/CONTEXT.md).
-Start there before using project-specific terms in code, docs, or commits —
-it is opinionated about canonical names vs. terms to avoid. See
-[`CONTEXT-MAP.md`](CONTEXT-MAP.md) if you also need the planned Explorer
-context. Architecturally significant decisions (hard to reverse, non-obvious)
-are recorded as ADRs in [`docs/adr/`](docs/adr/).
+Preserve public behavior and follow the responsible module's established
+patterns. Scope new conventions to new code; do not migrate unrelated legacy
+code, planning artifacts, notebooks, or generated files.
 
-## Trunk workflow
-
-- `main` is trunk and should always be releasable.
-- Start work from updated `main`.
-- Use short-lived branches named `feature/<topic>`, `fix/<topic>`,
-  `docs/<topic>`, `chore/<topic>`, or `hotfix/<topic>`.
-- Open PRs into `main`.
-- Merge only after CI passes.
-- Avoid long-lived `release/*` branches except approved maintenance work.
-
-## Git safety (non-negotiable)
-
-- Never commit directly on `main` or push directly to `origin/main`.
-- Interpret “commit and push” as: create or update an appropriately named
-  short-lived branch, commit there, push that branch to `origin`, then open a
-  PR into `main`.
-- If work begins on `main`, create the branch before making the task commit.
-- If work begins on `main` with uncommitted changes, inspect them first.
-  Stop and ask for confirmation before committing or publishing pre-existing
-  or unrelated changes.
-- Before every push, inspect the destination ref and commits to be published.
-  Stop and ask for confirmation if the branch includes pre-existing or
-  unrelated commits.
-- A direct `origin/main` push requires explicit maintainer approval that names
-  `origin/main` after the agent has explained that it bypasses the PR workflow.
-- Never force-push or rewrite `main` without explicit maintainer approval.
-
-## Validation
-
-Run the normal validation gate for source or test changes:
+## Validate source or test changes
 
 ```bash
 uv run ruff check src/ tests/
@@ -62,25 +32,17 @@ For packaging, release, or workflow changes, also run:
 uv run pytest tests/test_release_integrity.py
 ```
 
-## Coding conventions
+If you edit any document listed in `SUMMARY_FILES` or `FULL_FILES` in
+`scripts/generate_llms_txt.py` — `README.md` and `VALIDATION.md` among them —
+regenerate the derived bundles and commit them alongside the change:
 
-- Follow existing module boundaries and local patterns.
-- Keep public APIs typed and documented.
-- Use Google-style docstrings for public functions.
-- Use `structlog` for project logging; do not introduce stdlib logging.
-- Keep tests in `tests/` and reference fixtures in `tests/fixture/`.
-- Do not modify unrelated planning artifacts, notebooks, or generated files
-  unless the task explicitly requires it.
+```bash
+uv run scripts/generate_llms_txt.py
+```
 
-## Release policy
+Skipping this fails `tests/test_review_scripts.py` in every CI job.
 
-Releases are maintainer-owned and tag-based from `main`.
+## Releases
 
-- Tag format: `vX.Y.Z`
-- Package version: `X.Y.Z`
-- GitHub Release: `vX.Y.Z`
-- PyPI version: `X.Y.Z`
-
-Pushing a valid release tag triggers the release workflow and PyPI publishing
-through Trusted Publishing/OIDC. Do not create or push release tags without
-maintainer approval. Use `docs/release-process.md` as the release runbook.
+Releases are maintainer-owned and tag-based from `main`. Never create or push a
+release tag without approval; use [the release runbook](docs/release-process.md).

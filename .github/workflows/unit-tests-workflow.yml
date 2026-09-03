@@ -28,7 +28,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
 
       - name: Install dependencies
         run: uv sync --locked --dev
@@ -67,7 +67,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
 
       - name: Install dependencies
         run: uv sync --locked --dev
@@ -75,10 +75,15 @@ jobs:
       - name: Run core tests
         run: uv run --no-sync --no-build pytest -m "not benchmark and not validation"
 
+      # Run even when core tests fail: these cover disjoint test sets, and a
+      # core failure would otherwise report them as "skipped" rather than as
+      # the pass/fail they actually are.
       - name: Run validation tests
+        if: ${{ !cancelled() }}
         run: uv run --no-sync --no-build pytest -m validation
 
       - name: Pattern compliance check
+        if: ${{ !cancelled() }}
         run: uv run --no-sync --no-build pytest tests/test_pattern_compliance.py -v
 
   test-minimum-deps:
@@ -95,7 +100,7 @@ jobs:
           python-version: '3.10'
 
       - name: Install uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
 
       - name: Install minimum dependencies
         run: uv sync --no-dev --group test --resolution lowest-direct
@@ -103,7 +108,9 @@ jobs:
       - name: Run core tests with minimum dependencies
         run: uv run --no-sync --no-build pytest -m "not benchmark and not validation"
 
+      # See the note on the same step in the `test` job above.
       - name: Run validation tests with minimum dependencies
+        if: ${{ !cancelled() }}
         run: uv run --no-sync --no-build pytest -m validation
 
   notebooks:
@@ -120,7 +127,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v5
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v5
 
       - name: Install dependencies
         run: uv sync --locked --dev
@@ -159,7 +166,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
 
       - name: Install dependencies
         run: uv sync --locked --only-group security
