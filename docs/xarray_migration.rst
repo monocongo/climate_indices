@@ -26,9 +26,14 @@ Starting with version 2.2.0, the ``climate_indices`` library provides native sup
    corrected: :func:`climate_indices.spi`, :func:`climate_indices.spei`,
    :func:`climate_indices.eddi`, :func:`climate_indices.percentage_of_normal`, and
    :func:`climate_indices.xarray_adapter.pet_hargreaves` may return **different,
-   corrected** daily values for any series spanning a non-leap year, with **no
-   error raised** — the input that previously succeeded still succeeds, just with
-   different numbers. The NumPy array API is unaffected. See
+   corrected** daily values for any series spanning a non-leap year. For inputs
+   using a supported Gregorian calendar (``standard``, ``gregorian``, or
+   ``proleptic_gregorian``) with daily coordinates that begin on January 1,
+   this happens with **no error raised** — the input still succeeds, just with
+   different numbers. Other previously-successful inputs (unsupported
+   calendars, or daily coordinates that do not begin on January 1) now raise a
+   validation error instead of being silently misinterpreted. The NumPy array
+   API is unaffected. See
    ``docs/adr/0004-xarray-calendar-semantics.md`` and the "Unsupported calendar or
    calendar origin" pitfall below for the new, separately-raised validation
    errors this release also adds.
