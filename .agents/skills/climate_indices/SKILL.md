@@ -1,6 +1,6 @@
 ---
 name: climate-indices-conventions
-description: Repository conventions for the climate_indices Python scientific-computing library.
+description: "Repository conventions for the climate_indices Python scientific-computing library — enforces coding style, module boundaries, test placement, and Conventional Commit format. Use when changing climate_indices, writing its tests or docs, preparing commits, or running ruff/mypy validation and pytest tests."
 ---
 
 # climate_indices Conventions
