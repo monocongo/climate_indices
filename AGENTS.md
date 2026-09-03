@@ -32,6 +32,16 @@ For packaging, release, or workflow changes, also run:
 uv run pytest tests/test_release_integrity.py
 ```
 
+If you edit any document listed in `SUMMARY_FILES` or `FULL_FILES` in
+`scripts/generate_llms_txt.py` — `README.md` and `VALIDATION.md` among them —
+regenerate the derived bundles and commit them alongside the change:
+
+```bash
+uv run scripts/generate_llms_txt.py
+```
+
+Skipping this fails `tests/test_review_scripts.py` in every CI job.
+
 ## Releases
 
 Releases are maintainer-owned and tag-based from `main`. Never create or push a

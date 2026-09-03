@@ -232,3 +232,30 @@ def test_climate_division_matches_scpdsi_oracle(division_dir):
         rtol=RTOL,
         err_msg=f"{division}: duration factors mismatch",
     )
+
+
+@pytest.mark.validation
+def test_fitted_duration_factor_coefficients_stay_contractions():
+    """Real-data duration factors must keep the Wells coefficients contracting.
+
+    ``_palmer_wells._validated_factors`` rejects any coefficient with magnitude
+    >= 1. Across these 344 divisions the coefficients peak at ~0.983, i.e. only
+    ~1.7% of margin. This pins that margin: erosion fails here, with the worst
+    division named, rather than surfacing later as a ConvergenceError on user
+    data. ``test_climate_division_matches_scpdsi_oracle`` ties the library's
+    fitted factors to the same ``scdurfact.npy`` values read here.
+    """
+    worst = {"wetc": (0.0, ""), "dryc": (0.0, ""), "dry_spell_c": (0.0, "")}
+    for division_dir in _DIVISION_DIRS:
+        wetm, wetb, drym, dryb = (float(value) for value in np.load(division_dir / "scdurfact.npy"))
+        coefficients = {
+            "wetc": 1.0 - wetm / (wetm + wetb),
+            "dryc": 1.0 - drym / (drym + wetb),
+            "dry_spell_c": 1.0 - drym / (drym + dryb),
+        }
+        for name, value in coefficients.items():
+            if abs(value) > worst[name][0]:
+                worst[name] = (abs(value), division_dir.name)
+
+    for name, (magnitude, division) in worst.items():
+        assert magnitude < 0.99, f"{name} margin eroded to {magnitude:.5f} at division {division}"
