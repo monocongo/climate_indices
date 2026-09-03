@@ -160,7 +160,7 @@ def is_data_valid(
     Returns if an array is valid or not, i.e. a supported array type
     (ndarray or MaskArray) which is not all-NaN.
 
-    :param data: data object, expected as either numpy.ndarry or numpy.ma.MaskArray
+    :param data: data object, expected as either numpy.ndarray or numpy.ma.MaskArray
     :return: True if array is non-NaN for at least one element
         and is an array type valid for processing by other modules
     :rtype: boolean
@@ -415,7 +415,7 @@ def transform_to_366day(
             # from the original into the all_leap array
             original_year_end_index = original_index + 365
             if len(original) < original_year_end_index:
-                # this should be the final year, and we're just adding the remained days
+                # this should be the final year, and we're just adding the remaining days
                 remainder = original[original_index + 59 :]
                 difference = len(all_leap[all_leap_index + 60 :]) - len(remainder)
                 if difference > 0:
