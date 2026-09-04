@@ -35,7 +35,7 @@ _logger = utils.get_logger(__name__, logging.INFO)
 
 class InputType(Enum):
     """
-    Enumeration type for differentiating between gridded, timeseriesn and US
+    Enumeration type for differentiating between gridded, timeseries, and US
     climate division datasets.
     """
 
@@ -150,7 +150,7 @@ def _validate_args(args: argparse.Namespace) -> InputType:
         # don't allow a daily periodicity (yet, this will be
         # possible once we have Hargreaves or a daily Thornthwaite)
         if args.periodicity is not compute.Periodicity.monthly:
-            msg = "Invalid periodicity argument for PET: " + f"'{args.periodicity}' -- only 'monthly'' is supported"
+            msg = "Invalid periodicity argument for PET: " + f"'{args.periodicity}' -- only 'monthly' is supported"
             _logger.error(msg)
             raise ValueError(msg)
 
@@ -1588,7 +1588,7 @@ def main() -> None:
         )
         parser.add_argument(
             "--multiprocessing",
-            help="Indices to compute",
+            help="options for multiprocessing -- single core, all cores but one, or all cores",
             choices=["single", "all_but_one", "all"],
             required=False,
             default="all_but_one",

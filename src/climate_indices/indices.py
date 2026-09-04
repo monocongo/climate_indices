@@ -1014,7 +1014,7 @@ def pci(
 
     :param rainfall_mm: an array of daily rainfall value in a year,
         in mm
-    :return: PCI value for the year in aa numpy array
+    :return: PCI value for the year in a numpy array
     :rtype: 1-D numpy.ndarray of float
     """
     # bind context and emit calculation_started event

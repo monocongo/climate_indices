@@ -292,7 +292,7 @@ def _probability_of_zero(
 
     else:
         # determine the number of time steps per year
-        # (we expect 12 for monthly, 366 for daiy)
+        # (we expect 12 for monthly, 366 for daily)
         time_steps_per_year = values.shape[1]
         if time_steps_per_year not in (12, 366):
             _log_and_raise_shape_error(shape=values.shape)
