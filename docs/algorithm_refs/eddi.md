@@ -26,22 +26,21 @@ empirical ranking properties, and xarray metadata preservation. External NOAA
 PSL comparison tests live in `tests/test_noaa_eddi_reference.py` and are marked
 `validation`.
 
-The NOAA comparison tests require local fixture directories:
+The committed NOAA comparison fixtures contain paired monthly reference ET and
+EDDI at 1-, 3-, and 6-month Timescales for latitude 39.75–39.875 and longitude
+-105.0–-104.875, using the 1979–2023 table baseline:
 
 - `tests/fixture/noaa-eddi-1month/`
 - `tests/fixture/noaa-eddi-3month/`
 - `tests/fixture/noaa-eddi-6month/`
 
-When those fixtures are absent, the tests skip with a message that points to
-`scripts/prepare_noaa_eddi_fixtures.py`. This is a documented release gap until
-paired PET input and NOAA-computed EDDI outputs are committed or otherwise made
-available to CI.
+They are generated from the NOAA PSL EDDI time-series table by
+`scripts/prepare_noaa_eddi_fixtures.py` and run in CI.
 
 ## Tolerance
 
-NOAA reference comparisons use `rtol=1e-5` and `atol=1e-5`. The tolerance is
-looser than SPI/SPEI because EDDI is rank based and small differences in
-empirical probability handling can move the final z-score slightly.
+NOAA reference comparisons use `rtol=1e-5` and `atol=1e-5`. The committed
+fixture comparison's maximum observed error is `2.44e-6`, below both tolerances.
 
 ## References
 

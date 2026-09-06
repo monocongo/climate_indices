@@ -10,7 +10,7 @@ guarded only by internal fixtures.
 | Scope | Command | Expected result |
 | --- | --- | --- |
 | Core suite | `uv run pytest -m "not benchmark and not validation"` | Unit, property, xarray, release guardrail, and regression tests pass. |
-| Validation marker suite | `uv run pytest -m validation` | External validation tests pass where fixtures are present, Palmer and scPDSI regression coverage passes, and missing external data is skipped with an explicit reason. |
+| Validation marker suite | `uv run pytest -m validation` | External validation tests, including committed NOAA EDDI fixtures, pass; Palmer and scPDSI regression coverage passes. |
 | Lint | `uv run ruff check src/ tests/` | No lint findings. |
 | Format | `uv run ruff format --check src/ tests/` | No formatting changes needed. |
 | Notebooks | `uv run jupyter nbconvert --execute --to notebook --inplace notebooks/xarray_getting_started.ipynb notebooks/palmer_indices_xarray.ipynb notebooks/eddi_xarray.ipynb` | All v2.5 notebooks execute from a clean checkout. |
@@ -25,15 +25,14 @@ guarded only by internal fixtures.
 | PET Hargreaves | Validated | Existing fixture tolerances in `tests/test_eto.py` | Hargreaves tests cover daily temperature inputs. | None blocking v2.5. |
 | PNP | Validated | Existing fixture tolerances in `tests/test_indices.py` and xarray PNP tests | Percent-of-normal fixture and xarray wrapper tests cover output shape and metadata. | None blocking v2.5. |
 | PCI | Validated | Existing fixture tolerances in `tests/test_indices.py` and xarray PCI tests | Daily rainfall fixture and scalar xarray wrapper tests cover PCI. | None blocking v2.5. |
-| EDDI | Partially validated | NOAA reference tests use `rtol=1e-5`, `atol=1e-5` when fixtures exist | Algorithm property tests always run; NOAA PSL reference tests live in `tests/test_noaa_eddi_reference.py` and are marked `validation`. | `tests/fixture/noaa-eddi-{1,3,6}month/` is not committed. The validation tests skip until independently prepared PET/input and NOAA reference outputs are available. |
+| EDDI | Validated | NOAA reference tests use `rtol=1e-5`, `atol=1e-5` | Committed paired NOAA PSL monthly reference ET/EDDI fixtures for 1-, 3-, and 6-month Timescales, 1979–2023, pass in `tests/test_noaa_eddi_reference.py`; maximum observed error is `2.44e-6`. | This is one fixed latitude/longitude subset, not a CONUS-wide assessment. |
 | Palmer PDSI/PHDI/PMDI/Z-Index and scPDSI family | Regression covered, not independently validated | Palmer and scPDSI regression tests use `atol=5e-5`, `rtol=0`; nClimDiv characterization ceilings documented in `tests/test_nclimdiv_reference.py` | `tests/test_palmer.py` exercises the standard Palmer fixtures; `tests/test_scpdsi.py` compares four self-calibrating outputs and fitted duration factors against Wells-lineage reference fixtures for all 344 climate divisions; `tests/test_nclimdiv_reference.py` characterizes aggregate `pdsi()`/`scpdsi()` agreement against the NOAA NCEI nClimDiv reference arrays. All three are marked `validation`. | `tests/fixture/palmer/provenance.json` distinguishes library-generated standard Palmer outputs from Wells-lineage scPDSI outputs. These fixture sets protect against regressions but are not treated as independent authoritative scientific validation. |
 
 ## EDDI Fixture Policy
 
-The NOAA EDDI validation tests intentionally skip when the reference fixture
-directories are absent. This keeps normal CI reproducible without committing a
-large external dataset, while still making the validation contract executable
-for release candidates.
+The paired NOAA PSL EDDI fixtures are committed and run in CI. They contain
+monthly reference ET and 1-, 3-, and 6-month EDDI for latitude 39.75–39.875
+and longitude -105.0–-104.875, with the 1979–2023 table baseline.
 
 Required fixture layout:
 
@@ -50,10 +49,11 @@ Each directory must contain:
 - `pet_input.npy`
 - `eddi_reference.npy`
 
-The provenance file must follow `tests/fixture/provenance_schema.json`, cite the
-NOAA PSL EDDI source, record checksums, and state the calibration period used.
-The validation tests compare only non-NaN reference values and separately verify
-NaN placement.
+The provenance file follows `tests/fixture/provenance_schema.json`, cites the
+NOAA PSL EDDI time-series source, records checksums, and states the calibration
+period. The validation tests compare non-NaN reference values and separately
+verify NaN placement. `scripts/prepare_noaa_eddi_fixtures.py` refuses an
+unexpected table baseline so fixture refreshes are intentional.
 
 ## Palmer Authoritative-Reference Decision
 

@@ -1,0 +1,18 @@
+{
+  "data_start_year": 1979,
+  "calibration_year_initial": 1979,
+  "calibration_year_final": 2023,
+  "spatial_subset": {
+    "latitude_bounds": [
+      39.75,
+      39.875
+    ],
+    "longitude_bounds": [
+      -105.0,
+      -104.875
+    ]
+  },
+  "source": "NOAA PSL EDDI time-series master table",
+  "source_url": "https://psl.noaa.gov/eddi/#timeseries",
+  "table_baseline": "1979-2023"
+}
