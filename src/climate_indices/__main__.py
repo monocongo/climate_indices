@@ -81,7 +81,6 @@ def _validate_args(args: argparse.Namespace) -> InputType:
         ("lat", "lon", "time"),
         ("time", "lat", "lon"),
         ("lat", "lon"),
-        ("lat", "lon"),
     ]
     expected_dimensions_divisions_awc = [
         ("time", "division"),
@@ -384,7 +383,7 @@ def _validate_args(args: argparse.Namespace) -> InputType:
                     if dimensions not in expected_dimensions_grid_awc:
                         msg = (
                             f"Invalid dimensions of the AWC variable: {dimensions}"
-                            + f"(expected names and order: {expected_dimensions_grid}"
+                            + f"(expected names and order: {expected_dimensions_grid_awc}"
                         )
                         _logger.error(msg)
                         raise ValueError(msg)
@@ -411,7 +410,7 @@ def _validate_args(args: argparse.Namespace) -> InputType:
                     if dimensions not in expected_dimensions_divisions_awc:
                         msg = (
                             f"Invalid dimensions of the AWC variable: {dimensions}"
-                            + f"(expected names and order: {expected_dimensions_grid}"
+                            + f"(expected names and order: {expected_dimensions_divisions_awc}"
                         )
                         _logger.error(msg)
                         raise ValueError(msg)
@@ -1625,18 +1624,6 @@ def process_climate_indices(
     :param arguments: A dictionary or argparse.Namespace containing the arguments
     :return: The results of the climate indices processing
     """
-    # Extract arguments
-    # index = args['index']
-    # periodicity = args['periodicity']
-    # scales = args['scales']
-    # calibration_start_year = args['calibration_start_year']
-    # calibration_end_year = args['calibration_end_year']
-    # netcdf_precip = args['netcdf_precip']
-    # var_name_precip = args['var_name_precip']
-    # output_file_base = args['output_file_base']
-
-    # Add your existing processing logic here
-    # ...
 
     try:
         # validate the arguments and determine the input type

@@ -919,7 +919,7 @@ def pet(
     :param temperature_celsius: an array of average temperature values,
         in degrees Celsius
     :param latitude_degrees: the latitude of the location, in degrees north,
-        must be within range [-90.0 ... 90.0] (inclusive), otherwise a
+        must be within range (-90.0 ... 90.0) (exclusive), otherwise a
         ValueError is raised
     :param data_start_year: the initial year of the input dataset
     :return: an array of PET values, of the same size and shape as the input
@@ -992,7 +992,7 @@ def pet(
         message = (
             f"Invalid latitude value: {latitude_degrees}"
             + " (must be in degrees north, between -90.0 and "
-            + "90.0 inclusive)"
+            + "90.0 exclusive)"
         )
         _logger.error(message)
         raise ValueError(message)
@@ -1103,7 +1103,7 @@ def pci(
             message,
             argument_name="rainfall_mm",
             argument_value=f"array with {len(rainfall_mm)} elements",
-            valid_values="array length must be a multiple of 365 or 366",
+            valid_values="array length must be 365 or 366",
         )
     except Exception as exc:
         log.error(

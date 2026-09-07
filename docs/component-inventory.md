@@ -691,18 +691,18 @@ def hargreaves(
 
 #### Key Function
 ```python
-def lmoments(data: np.ndarray) -> Tuple[float, float, float, float]:
-    """Compute L-moments (Hosking 1990 algorithm)."""
+def fit(timeseries: np.ndarray) -> dict[str, float]:
+    """Return the Pearson Type III parameters (loc, scale, skew) fitted via L-moments."""
 ```
 
-**Returns**: `(L1, L2, L3, L4)` - first four L-moments
+**Returns**: a dict with keys `'loc'`, `'scale'`, and `'skew'` (the Pearson Type III parameters)
 
 #### Algorithm
 Implements Hosking (1990) probability-weighted moments approach:
 1. Sort data
 2. Compute probability-weighted moments
 3. Transform to L-moments
-4. Return (location, scale, skew, kurtosis equivalents)
+4. Return the fitted Pearson Type III parameters (`loc`, `scale`, `skew`)
 
 #### Usage
 Called by `compute.pearson_parameters()` for robust parameter estimation.
