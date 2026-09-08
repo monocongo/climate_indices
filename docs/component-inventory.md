@@ -714,7 +714,7 @@ Called by `compute.pearson_parameters()` for robust parameter estimation.
 
 #### Dependencies
 - Core: `numpy`
-- No internal dependencies
+- Internal: `utils`
 
 ---
 
@@ -972,7 +972,7 @@ def log_performance_metrics(
 | **`palmer.py`** | _palmer_wells, exceptions | numpy, structlog |
 | _(continued)_ | logging_config, self_calibration, utils | _(see above)_ |
 | **`eto.py`** | _(none)_ | numpy |
-| **`lmoments.py`** | _(none)_ | numpy |
+| **`lmoments.py`** | utils | numpy |
 | **`exceptions.py`** | _(none)_ | _(none - stdlib only)_ |
 | **`logging_config.py`** | _(none)_ | structlog |
 | **`utils.py`** | _(none)_ | numpy |

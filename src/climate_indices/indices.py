@@ -919,7 +919,7 @@ def pet(
     :param temperature_celsius: an array of average temperature values,
         in degrees Celsius
     :param latitude_degrees: the latitude of the location, in degrees north,
-        must be within range (-90.0 ... 90.0) (exclusive), otherwise a
+        must be within range [-90.0 ... 90.0] (inclusive), otherwise a
         ValueError is raised
     :param data_start_year: the initial year of the input dataset
     :return: an array of PET values, of the same size and shape as the input
@@ -937,6 +937,27 @@ def pet(
     memory_metrics = check_large_array_memory(temperature_celsius)
 
     try:
+        # If we've been passed an array of latitude values then just use
+        # the first one -- useful when applying this function with xarray.GroupBy
+        # or numpy.apply_along_axis() where we've had to duplicate values in a 3-D
+        # array of latitudes in order to correspond with a 3-D array of temperatures.
+        if isinstance(latitude_degrees, np.ndarray):
+            if latitude_degrees.size == 0:
+                message = "Invalid latitude value: empty latitude array (must contain at least one value)"
+                _logger.error(message)
+                raise ValueError(message)
+            latitude_degrees = cast(float, latitude_degrees.flat[0])
+
+        # make sure we're not dealing with a NaN or out-of-range latitude value
+        if (latitude_degrees is None) or np.isnan(latitude_degrees) or not (-90.0 <= latitude_degrees <= 90.0):
+            message = (
+                f"Invalid latitude value: {latitude_degrees}"
+                + " (must be in degrees north, between -90.0 and "
+                + "90.0 inclusive)"
+            )
+            _logger.error(message)
+            raise ValueError(message)
+
         # make sure we're not dealing with all NaN values
         if np.ma.isMaskedArray(temperature_celsius) and (temperature_celsius.count() == 0):
             # we started with all NaNs for the temperature, so just return the same as PET
@@ -961,41 +982,20 @@ def pet(
             )
             return temperature_celsius
 
-        # If we've been passed an array of latitude values then just use
-        # the first one -- useful when applying this function with xarray.GroupBy
-        # or numpy.apply_along_axis() where we've had to duplicate values in a 3-D
-        # array of latitudes in order to correspond with a 3-D array of temperatures.
-        if isinstance(latitude_degrees, np.ndarray):
-            if latitude_degrees.size == 0:
-                message = "Invalid latitude value: empty latitude array (must contain at least one value)"
-                _logger.error(message)
-                raise ValueError(message)
-            latitude_degrees = cast(float, latitude_degrees.flat[0])
-
-        # make sure we're not dealing with a NaN or out-of-range latitude value
-        if (latitude_degrees is not None) and not np.isnan(latitude_degrees) and (-90.0 < latitude_degrees < 90.0):
-            # compute and return the PET values using Thornthwaite's equation
-            result = eto.eto_thornthwaite(
-                temperature_celsius,
-                latitude_degrees,
-                data_start_year,
-            )
-            duration_ms = (time.perf_counter() - t0) * 1000.0
-            log.info(
-                "calculation_completed",
-                duration_ms=round(duration_ms, 2),
-                output_shape=result.shape,
-                **(memory_metrics or {}),
-            )
-            return result
-
-        message = (
-            f"Invalid latitude value: {latitude_degrees}"
-            + " (must be in degrees north, between -90.0 and "
-            + "90.0 exclusive)"
+        # compute and return the PET values using Thornthwaite's equation
+        result = eto.eto_thornthwaite(
+            temperature_celsius,
+            latitude_degrees,
+            data_start_year,
         )
-        _logger.error(message)
-        raise ValueError(message)
+        duration_ms = (time.perf_counter() - t0) * 1000.0
+        log.info(
+            "calculation_completed",
+            duration_ms=round(duration_ms, 2),
+            output_shape=result.shape,
+            **(memory_metrics or {}),
+        )
+        return result
     except Exception as exc:
         log.error(
             "calculation_failed",
