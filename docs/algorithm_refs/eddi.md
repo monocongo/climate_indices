@@ -40,7 +40,7 @@ They are generated from the NOAA PSL EDDI time-series table by
 ## Tolerance
 
 NOAA reference comparisons use `rtol=1e-5` and `atol=1e-5`. The committed
-fixture comparison's maximum observed error is `2.44e-6`, below both tolerances.
+fixture comparison's maximum observed error is `2.43e-6`, below both tolerances.
 
 ## References
 

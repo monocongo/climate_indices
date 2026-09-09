@@ -168,7 +168,7 @@ workflow.
 
 The v2.5 validation status is tracked in `VALIDATION.md`. EDDI is validated
 against committed paired NOAA PSL monthly reference ET/EDDI fixtures for 1-, 3-,
-and 6-month Timescales (1979–2023); the maximum observed error is `2.44e-6`.
+and 6-month Timescales (1979–2023); the maximum observed error is `2.43e-6`.
 Palmer tests cover the committed regression fixtures for PDSI, PHDI, PMDI, and
 Z-Index, plus Wells-lineage reference fixtures for scPDSI's four
 self-calibrating outputs and fitted duration factors. These fixtures are treated

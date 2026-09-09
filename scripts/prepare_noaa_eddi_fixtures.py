@@ -23,7 +23,7 @@ import hashlib
 import json
 import re
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import numpy as np
 import requests
@@ -58,21 +58,36 @@ def _compute_checksum(directory: Path) -> str:
     return hasher.hexdigest()
 
 
+def _validated_noaa_url(url: str) -> str:
+    """Return a URL only when it has the NOAA PSL HTTPS origin."""
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or parsed.netloc != "psl.noaa.gov":
+        raise ValueError(f"NOAA URL must use https://psl.noaa.gov: {url}")
+    return url
+
+
 def _download_master_table() -> str:
     """Fetch the master EDDI table generated for the fixed spatial subset."""
-    response = requests.post(_NOAA_REQUEST_URL, data=_REQUEST_DATA, timeout=60)
+    response = requests.post(
+        _validated_noaa_url(_NOAA_REQUEST_URL),
+        data=_REQUEST_DATA,
+        timeout=60,
+        allow_redirects=False,
+    )
     response.raise_for_status()
     iframe = re.search(r'<iframe[^>]+src=["\']([^"\']+)', response.text, re.IGNORECASE)
     if iframe is None:
         raise ValueError("NOAA EDDI response did not contain a result iframe")
 
-    result = requests.get(urljoin(_NOAA_URL, iframe.group(1)), timeout=60)
+    iframe_url = _validated_noaa_url(urljoin(_NOAA_URL, iframe.group(1)))
+    result = requests.get(iframe_url, timeout=60, allow_redirects=False)
     result.raise_for_status()
     table_link = re.search(r'href=["\']([^"\']*master\.table)["\']', result.text, re.IGNORECASE)
     if table_link is None:
         raise ValueError("NOAA EDDI result did not link a master.table file")
 
-    table = requests.get(urljoin(_NOAA_URL, table_link.group(1)), timeout=60)
+    table_url = _validated_noaa_url(urljoin(_NOAA_URL, table_link.group(1)))
+    table = requests.get(table_url, timeout=60, allow_redirects=False)
     table.raise_for_status()
     return table.text
 
