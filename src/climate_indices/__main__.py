@@ -75,19 +75,9 @@ def _validate_args(args: argparse.Namespace) -> InputType:
     expected_dimensions_grid = [("lat", "lon", "time"), ("time", "lat", "lon")]
     expected_dimensions_timeseries = [("time",)]
 
-    # the dimensions we expect to find for the AWC data variable
-    # (i.e. should be the same as the P, T, and PET but "time" is optional)
-    expected_dimensions_grid_awc = [
-        ("lat", "lon", "time"),
-        ("time", "lat", "lon"),
-        ("lat", "lon"),
-        ("lat", "lon"),
-    ]
-    expected_dimensions_divisions_awc = [
-        ("time", "division"),
-        ("division", "time"),
-        ("division",),
-    ]
+    # AWC is fixed per location, without a time dimension.
+    expected_dimensions_grid_awc = [("lat", "lon")]
+    expected_dimensions_divisions_awc = [("division",)]
 
     # all indices except PET require a precipitation file
     if args.index != "pet":
@@ -182,8 +172,8 @@ def _validate_args(args: argparse.Namespace) -> InputType:
                 _logger.error(msg)
                 raise ValueError(msg)
 
-    # SPEI and Palmers require either a PET file or a temperature file in order to compute PET
-    if args.index in ["spei", "scaled", "palmers"]:
+    # SPEI, scaled, Palmers, and all require either a PET file or a temperature file to compute PET
+    if args.index in ["spei", "scaled", "palmers", "all"]:
         if args.netcdf_temp is None:
             if args.netcdf_pet is None:
                 msg = "Missing the required temperature or PET files, neither were provided"
@@ -356,8 +346,8 @@ def _validate_args(args: argparse.Namespace) -> InputType:
                     _logger.error(msg)
                     raise ValueError(msg)
 
-        # Palmers requires an available water capacity file
-        if args.index in ["palmers"]:
+        # Palmers and all require an available water capacity file
+        if args.index in ["palmers", "all"]:
             if args.netcdf_awc is None:
                 msg = "Missing the required available water capacity file"
                 _logger.error(msg)
@@ -383,8 +373,8 @@ def _validate_args(args: argparse.Namespace) -> InputType:
                 if input_type == InputType.grid:
                     if dimensions not in expected_dimensions_grid_awc:
                         msg = (
-                            f"Invalid dimensions of the AWC variable: {dimensions}"
-                            + f"(expected names and order: {expected_dimensions_grid}"
+                            f"Invalid dimensions of the AWC variable: {dimensions} "
+                            f"(expected names and order: {expected_dimensions_grid_awc})"
                         )
                         _logger.error(msg)
                         raise ValueError(msg)
@@ -410,8 +400,8 @@ def _validate_args(args: argparse.Namespace) -> InputType:
                 elif input_type == InputType.divisions:
                     if dimensions not in expected_dimensions_divisions_awc:
                         msg = (
-                            f"Invalid dimensions of the AWC variable: {dimensions}"
-                            + f"(expected names and order: {expected_dimensions_grid}"
+                            f"Invalid dimensions of the AWC variable: {dimensions} "
+                            f"(expected names and order: {expected_dimensions_divisions_awc})"
                         )
                         _logger.error(msg)
                         raise ValueError(msg)
@@ -1625,18 +1615,6 @@ def process_climate_indices(
     :param arguments: A dictionary or argparse.Namespace containing the arguments
     :return: The results of the climate indices processing
     """
-    # Extract arguments
-    # index = args['index']
-    # periodicity = args['periodicity']
-    # scales = args['scales']
-    # calibration_start_year = args['calibration_start_year']
-    # calibration_end_year = args['calibration_end_year']
-    # netcdf_precip = args['netcdf_precip']
-    # var_name_precip = args['var_name_precip']
-    # output_file_base = args['output_file_base']
-
-    # Add your existing processing logic here
-    # ...
 
     try:
         # validate the arguments and determine the input type

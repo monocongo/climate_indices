@@ -99,8 +99,8 @@ def _sunset_hour_angle(
     # from latitude and solar declination
     cos_sunset_hour_angle = -math.tan(latitude_radians) * math.tan(solar_declination_radians)
 
-    # If the sunset hour angle is >= 1 there is no sunset, i.e. 24 hours of daylight
-    # If the sunset hour angle is <= 1 there is no sunrise, i.e. 24 hours of darkness
+    # If the cosine of the sunset hour angle is >= 1 there is no sunrise, i.e. 24 hours of darkness
+    # If the cosine of the sunset hour angle is <= -1 there is no sunset, i.e. 24 hours of daylight
     # See http://www.itacanet.org/the-sun-as-a-source-of-energy/part-3-calculating-solar-angles/
     # Domain of acos is -1 <= x <= 1 radians (this is not mentioned in FAO-56!)
     return math.acos(min(max(cos_sunset_hour_angle, -1.0), 1.0))

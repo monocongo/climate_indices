@@ -750,6 +750,22 @@ class TestPETXarrayEquivalence:
             err_msg="PET Thornthwaite differs between NumPy and xarray paths",
         )
 
+    @pytest.mark.parametrize("latitude", [-90.0, 90.0])
+    def test_pet_thornthwaite_accepts_polar_latitudes(self, latitude: float) -> None:
+        """The adapter must accept the inclusive geographic latitude bounds."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        temperature = xr.DataArray(
+            np.full(12, 10.0),
+            coords={"time": pd.date_range("2000-01-01", periods=12, freq="MS")},
+            dims=["time"],
+        )
+
+        result = pet_thornthwaite(temperature, latitude)
+
+        assert isinstance(result, xr.DataArray)
+        assert result.shape == temperature.shape
+
     def test_pet_hargreaves_equivalence(
         self,
         bench_daily_tmin_np: np.ndarray,
