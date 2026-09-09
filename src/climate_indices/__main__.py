@@ -172,7 +172,7 @@ def _validate_args(args: argparse.Namespace) -> InputType:
                 _logger.error(msg)
                 raise ValueError(msg)
 
-    # SPEI and Palmers require either a PET file or a temperature file in order to compute PET
+    # SPEI, scaled, Palmers, and all require either a PET file or a temperature file to compute PET
     if args.index in ["spei", "scaled", "palmers", "all"]:
         if args.netcdf_temp is None:
             if args.netcdf_pet is None:
@@ -346,7 +346,7 @@ def _validate_args(args: argparse.Namespace) -> InputType:
                     _logger.error(msg)
                     raise ValueError(msg)
 
-        # Palmers requires an available water capacity file
+        # Palmers and all require an available water capacity file
         if args.index in ["palmers", "all"]:
             if args.netcdf_awc is None:
                 msg = "Missing the required available water capacity file"

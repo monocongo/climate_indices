@@ -912,19 +912,23 @@ def pet(
     latitude_degrees: float | np.ndarray,
     data_start_year: int,
 ) -> np.ndarray:
-    """
-    This function computes potential evapotranspiration (PET) using
-    Thornthwaite's equation.
+    """Compute potential evapotranspiration (PET) using Thornthwaite's equation.
 
-    :param temperature_celsius: an array of average temperature values,
-        in degrees Celsius
-    :param latitude_degrees: the latitude of the location, in degrees north,
-        must be within range [-90.0 ... 90.0] (inclusive), otherwise a
-        ValueError is raised
-    :param data_start_year: the initial year of the input dataset
-    :return: an array of PET values, of the same size and shape as the input
-        temperature values array, in millimeters/time step
-    :rtype: 1-D numpy.ndarray of floats
+    Args:
+        temperature_celsius (numpy.ndarray): An array of average temperature
+            values, in degrees Celsius.
+        latitude_degrees (float | numpy.ndarray): The latitude of the location,
+            in degrees north. Must be within range [-90.0 ... 90.0] (inclusive).
+        data_start_year (int): The initial year of the input dataset.
+
+    Returns:
+        numpy.ndarray: A 1-D array of float PET values, of the same size and
+            shape as the input temperature values array, in millimeters/time
+            step.
+
+    Raises:
+        ValueError: If ``latitude_degrees`` is empty, None, NaN, or outside
+            [-90.0 ... 90.0] (inclusive).
     """
     # bind context and emit calculation_started event
     log = _logger.bind(
