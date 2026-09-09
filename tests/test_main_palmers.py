@@ -8,11 +8,13 @@ outputs) even though `palmer.pdsi()` only produces four (pdsi, phdi, pmdi,
 zindex) -- self-calibration isn't implemented (see CONTEXT.md / issue #716).
 """
 
+import argparse
 import multiprocessing
 import os
 
 import numpy as np
 import pytest
+import xarray as xr
 
 from climate_indices import __main__ as cli_main
 from climate_indices import palmer
@@ -39,6 +41,36 @@ def _make_shared_array(values: np.ndarray, shape: tuple[int, ...]) -> dict:
 def _make_empty_shared_array(shape: tuple[int, ...]) -> dict:
     shared = multiprocessing.Array("d", int(np.prod(shape)))
     return {cli_main._KEY_ARRAY: shared, cli_main._KEY_SHAPE: shape}
+
+
+class TestAWCDimensions:
+    @pytest.mark.parametrize("index", ["palmers", "all"])
+    def test_validate_args_rejects_time_dependent_awc(self, monkeypatch, index):
+        """AWC with a time dimension cannot be consumed by Palmer workers."""
+        coords = {"division": [_DIVISION_ID], "time": np.arange(12)}
+        datasets = {
+            "precip.nc": xr.Dataset({"precip": (("division", "time"), np.ones((1, 12)))}, coords=coords),
+            "pet.nc": xr.Dataset({"pet": (("division", "time"), np.ones((1, 12)))}, coords=coords),
+            "awc.nc": xr.Dataset({"awc": (("time", "division"), np.ones((12, 1)))}, coords=coords),
+        }
+        monkeypatch.setattr(cli_main.xr, "open_dataset", datasets.__getitem__)
+        arguments = argparse.Namespace(
+            index=index,
+            netcdf_precip="precip.nc",
+            var_name_precip="precip",
+            netcdf_temp=None,
+            netcdf_pet="pet.nc",
+            var_name_pet="pet",
+            netcdf_awc="awc.nc",
+            var_name_awc="awc",
+        )
+
+        with pytest.raises(ValueError) as error:
+            cli_main._validate_args(arguments)
+
+        assert str(error.value) == (
+            "Invalid dimensions of the AWC variable: ('time', 'division') (expected names and order: [('division',)])"
+        )
 
 
 class TestPalmersWrapper:
