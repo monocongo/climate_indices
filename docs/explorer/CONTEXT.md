@@ -77,7 +77,7 @@ A Derived Index Cube that an operator has explicitly protected from automated re
 _Avoid_: Visitor-owned result, session-owned result
 
 **Output Provenance Manifest**:
-The versioned, immutable, publication-specific account of a Derived Index Cube's scientific identity, derivation, and artifact integrity. It accompanies the artifact, is retained in its Derived Index Cube Record, and is replaced on rematerialization even when the Computation Key is unchanged. It is distinct from Fixture Provenance and lightweight CF output metadata.
+The versioned, immutable, publication-specific account of one registered Derived Index Cube's scientific identity, derivation, and artifact integrity. Its canonical form is a sibling `provenance.json`, serialized as RFC 8785 JSON Canonicalization Scheme bytes; the Derived Index Cube Record, not the manifest itself, stores those bytes and their digest, so the manifest never contains its own hash. Its artifact checksum covers only the published NetCDF or Zarr payload, excluding the sibling manifest, and the artifact's CF metadata carries only a relative `climate_indices_provenance_uri` pointer rather than duplicating manifest content. Attempts, retries, timing, workers, logs, diagnostics, and eviction history belong only to the Derived Index Cube Record. A rematerialization for the same Computation Key produces a new cube, manifest, and artifact checksum rather than updating the prior ones in place. It is distinct from Fixture Provenance and lightweight CF output metadata.
 _Avoid_: Fixture provenance, CF output metadata
 
 **Derived Index Cube Record**:
