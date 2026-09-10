@@ -11,6 +11,8 @@ import warnings
 
 import numpy as np
 import pytest
+import scipy.special
+import scipy.stats
 
 from climate_indices import ClimateIndicesWarning, compute
 from climate_indices.exceptions import (
@@ -458,3 +460,109 @@ class TestCalculationsCompleteWithWarnings:
             # no climate indices warnings should be recorded
             climate_warnings = [w for w in warning_list if issubclass(w.category, ClimateIndicesWarning)]
             assert len(climate_warnings) == 0
+
+
+class TestKolmogorovSmirnovParity:
+    """Test that the direct K-S implementation matches scipy.stats.kstest.
+
+    The goodness-of-fit check computes its D statistic directly instead of calling
+    scipy.stats.kstest, whose dispatch overhead dominated SPI runtime. These tests
+    pin that the substitution is numerically exact and reaches the same poor-fit
+    decision, including for samples with a varying number of valid values.
+    """
+
+    def test_ks_poor_fit_p_value_matches_kstest_for_gamma(self) -> None:
+        """Direct K-S should match scipy.stats.kstest on gamma-fitted samples."""
+        rng = np.random.default_rng(42)
+
+        for trial in range(60):
+            sample_size = int(rng.integers(8, 60))
+            shape = float(rng.uniform(0.5, 6.0))
+            scale = float(rng.uniform(2.0, 50.0))
+            if trial % 3 == 0:
+                # wrong family, so a poor fit is reached often
+                values = rng.normal(shape * scale, scale, sample_size)
+                values = values[values > 0]
+            else:
+                values = rng.gamma(shape, scale, sample_size)
+            if values.size < 4:
+                continue
+
+            _, expected_p_value = scipy.stats.kstest(
+                values,
+                lambda x, a=shape, s=scale: scipy.stats.gamma.cdf(x, a=a, scale=s),
+            )
+            sorted_values = np.sort(values)
+            actual = compute._ks_poor_fit_p_value(
+                sorted_values,
+                scipy.special.gammainc(shape, sorted_values / scale),
+            )
+
+            expected_poor = expected_p_value < compute.GOODNESS_OF_FIT_P_VALUE_THRESHOLD
+            assert (actual is not None) == expected_poor
+            if actual is not None:
+                np.testing.assert_allclose(actual, expected_p_value, atol=1e-12)
+
+    def test_ks_poor_fit_p_value_matches_kstest_for_pearson3(self) -> None:
+        """Direct K-S should match scipy.stats.kstest on Pearson Type III samples."""
+        rng = np.random.default_rng(42)
+
+        for trial in range(60):
+            sample_size = int(rng.integers(8, 60))
+            skew = float(rng.uniform(-1.5, 2.5))
+            loc = float(rng.uniform(10.0, 60.0))
+            scale = float(rng.uniform(2.0, 30.0))
+            if trial % 3 == 0:
+                values = rng.uniform(0.0, 120.0, sample_size)
+            else:
+                values = scipy.stats.pearson3.rvs(skew, loc=loc, scale=scale, size=sample_size, random_state=rng)
+            values = values[np.isfinite(values)]
+            if values.size < 4:
+                continue
+
+            _, expected_p_value = scipy.stats.kstest(
+                values,
+                lambda x, sk=skew, lc=loc, sc=scale: scipy.stats.pearson3.cdf(x, sk, loc=lc, scale=sc),
+            )
+            sorted_values = np.sort(values)
+            actual = compute._ks_poor_fit_p_value(
+                sorted_values,
+                scipy.stats.pearson3.cdf(sorted_values, skew, loc=loc, scale=scale),
+            )
+
+            expected_poor = expected_p_value < compute.GOODNESS_OF_FIT_P_VALUE_THRESHOLD
+            assert (actual is not None) == expected_poor
+            if actual is not None:
+                np.testing.assert_allclose(actual, expected_p_value, atol=1e-12)
+
+    def test_ks_poor_fit_p_value_returns_none_for_good_fit(self) -> None:
+        """A well-fitting sample should report no poor fit."""
+        rng = np.random.default_rng(42)
+        values = np.sort(rng.gamma(2.0, 20.0, 400))
+
+        assert compute._ks_poor_fit_p_value(values, scipy.special.gammainc(2.0, values / 20.0)) is None
+
+    def test_gamma_parameters_warns_on_clearly_poor_fit(self) -> None:
+        """A sample far from gamma should still emit GoodnessOfFitWarning."""
+        rng = np.random.default_rng(42)
+        # strongly bimodal values do not fit a gamma distribution
+        values = np.where(
+            rng.random((60, 12)) < 0.5, rng.uniform(0.1, 0.5, (60, 12)), rng.uniform(90.0, 100.0, (60, 12))
+        )
+
+        with warnings.catch_warnings(record=True) as warning_list:
+            warnings.simplefilter("always")
+            compute.gamma_parameters(
+                values,
+                data_start_year=1960,
+                calibration_start_year=1960,
+                calibration_end_year=2019,
+                periodicity=compute.Periodicity.monthly,
+            )
+
+        fit_warnings = [w for w in warning_list if issubclass(w.category, GoodnessOfFitWarning)]
+        assert len(fit_warnings) == 1
+        warning = fit_warnings[0].message
+        assert warning.distribution_name == "gamma"
+        assert warning.poor_fit_count == 12
+        assert warning.total_steps == 12
