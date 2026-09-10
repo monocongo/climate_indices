@@ -126,6 +126,12 @@ def _ffwi(
     return _moisture_damping(equilibrium_moisture_content) * np.sqrt(1.0 + wind_speed_mph**2) / _FFWI_NORMALIZER
 
 
+def _as_float_array(values: npt.ArrayLike) -> npt.NDArray[np.float64]:
+    """Coerce to float64, turning masked elements into NaN instead of dropping the mask."""
+    filled = np.ma.asarray(values, dtype=np.float64).filled(np.nan)
+    return np.asarray(filled, dtype=np.float64)
+
+
 def fosberg_ffwi(
     temperature_celsius: npt.ArrayLike,
     relative_humidity_percent: npt.ArrayLike,
@@ -161,8 +167,8 @@ def fosberg_ffwi(
 
     Returns:
         FFWI with the broadcast shape of the inputs. NaN where any input is
-        NaN, where relative humidity lies outside [0, 100], or where wind speed
-        is negative.
+        NaN or masked, where relative humidity lies outside [0, 100], or where
+        wind speed is negative.
 
     Raises:
         InvalidArgumentError: If the inputs cannot be broadcast together.
@@ -172,9 +178,9 @@ def fosberg_ffwi(
         >>> round(float(fire.fosberg_ffwi(30.0, 15.0, 10.0)), 2)
         59.24
     """
-    temperature = np.asarray(temperature_celsius, dtype=np.float64)
-    humidity = np.asarray(relative_humidity_percent, dtype=np.float64)
-    wind = np.asarray(wind_speed_meters_per_second, dtype=np.float64)
+    temperature = _as_float_array(temperature_celsius)
+    humidity = _as_float_array(relative_humidity_percent)
+    wind = _as_float_array(wind_speed_meters_per_second)
 
     try:
         temperature, humidity, wind = np.broadcast_arrays(temperature, humidity, wind)

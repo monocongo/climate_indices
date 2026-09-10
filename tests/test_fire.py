@@ -176,6 +176,16 @@ def test_out_of_range_inputs_are_nan() -> None:
     assert np.isfinite(result[3])
 
 
+def test_masked_inputs_are_nan() -> None:
+    """Masked elements count as missing, like NaN, not as the data under the mask."""
+    humidity = np.ma.masked_array([20.0, 20.0, 20.0], mask=[False, True, False])
+    wind = np.ma.masked_array([5, 5, 5], mask=[False, False, True])  # integer data too
+    result = fire.fosberg_ffwi(25.0, humidity, wind)
+    assert not np.ma.isMaskedArray(result)
+    assert np.isfinite(result[0])
+    assert np.isnan(result[1:]).all()
+
+
 def test_edges_of_the_valid_range_are_valid() -> None:
     result = fire.fosberg_ffwi(20.0, np.array([0.0, 100.0]), 0.0)
     assert np.isfinite(result).all()
