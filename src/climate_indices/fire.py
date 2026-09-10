@@ -71,10 +71,12 @@ def _equilibrium_moisture_content(
     """Simard (1968) equilibrium moisture content, in percent.
 
     The three regressions were fitted independently and do not meet at the
-    breakpoints. At 10% relative humidity the result jumps by up to about 0.7,
-    with a size and sign that depend on temperature; at 50% it jumps by up to
-    about 0.5. That is a property of the published equations, not of this
-    implementation, and the index inherits a jump of roughly one unit.
+    breakpoints. At 10% relative humidity the result jumps by roughly 0.5 to
+    0.7 near typical fire-weather temperatures, with a size and sign that
+    depend on temperature and grow larger toward the cold end of this
+    module's supported range; at 50% the jump is smaller, roughly 0.5. That
+    is a property of the published equations, not of this implementation,
+    and the index inherits a jump of roughly one unit.
 
     Args:
         temperature_fahrenheit: Air temperature, degrees Fahrenheit.
@@ -163,7 +165,10 @@ def fosberg_ffwi(
             fuel moisture and a 30 mph wind, giving the conventional 0-100
             scale. NCEP's GEMPAK implementation does not clamp, and some
             studies deliberately keep values above 100; pass ``False`` to
-            reproduce them.
+            reproduce them. This only affects the upper bound: the moisture
+            content clamp that keeps the index at 0 rather than negative in
+            cold, saturated air (see ``_moisture_damping``) is always
+            applied, independent of this flag.
 
     Returns:
         FFWI with the broadcast shape of the inputs. NaN where any input is

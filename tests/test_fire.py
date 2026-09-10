@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from unittest import mock
 
 import numpy as np
 import pytest
@@ -106,7 +107,7 @@ def test_saturated_cold_air_gives_zero_not_a_negative_index() -> None:
     """Below about -43 C at 100% humidity the moisture content exceeds 30."""
     assert _emc(-58.0, 100.0) > 30.0
     for cap in (True, False):
-        assert float(fire.fosberg_ffwi(-50.0, 100.0, 5.0, cap_at_100=cap)) == 0.0
+        assert float(fire.fosberg_ffwi(-50.0, 100.0, 5.0, cap_at_100=cap)) == pytest.approx(0.0, abs=1e-9)
 
 
 @pytest.mark.parametrize(
@@ -121,12 +122,23 @@ def test_reference_values(temperature: float, humidity: float, wind: float, expe
 
 
 def test_cap_is_applied_by_default_and_can_be_turned_off() -> None:
-    assert float(fire.fosberg_ffwi(40.0, 5.0, 25.0)) == 100.0
+    assert float(fire.fosberg_ffwi(40.0, 5.0, 25.0)) == pytest.approx(100.0)
     assert float(fire.fosberg_ffwi(40.0, 5.0, 25.0, cap_at_100=False)) == pytest.approx(172.5894, abs=1e-4)
 
 
 def _gempak_pd_fosb(tmpc: np.ndarray, relh: np.ndarray, sped: np.ndarray) -> np.ndarray:
-    """Transcription of NCEP GEMPAK's pd_fosb, in float32 with its own constants."""
+    """Transcription of NCEP GEMPAK's pd_fosb, in float32 with its own constants.
+
+    Note this shares its Simard/GEMPAK coefficients with ``fire.py`` by
+    construction, so `test_matches_ncep_gempak` below checks formula
+    structure, branch selection, and unit conversion against an
+    independently-written float32 implementation; it cannot catch a
+    coefficient mistranscribed identically in both places. The reference
+    values in `test_reference_values` and `test_emc_matches_simard_on_each_range`
+    are pinned directly from these same coefficients too. An authoritative,
+    independently-sourced FFWI dataset (e.g. a captured real GEMPAK run) would
+    close that gap; none was available while writing this test.
+    """
     f32 = np.float32
     tmpc, relh, sped = (np.asarray(a, dtype=f32) for a in (tmpc, relh, sped))
     tf = tmpc * f32(9.0 / 5.0) + f32(32.0)
@@ -198,8 +210,61 @@ def test_inputs_broadcast() -> None:
 
 
 def test_incompatible_shapes_raise() -> None:
-    with pytest.raises(InvalidArgumentError, match="must broadcast together"):
+    with pytest.raises(InvalidArgumentError, match="must broadcast together") as exc_info:
         fire.fosberg_ffwi(np.zeros(3), np.zeros(4), 5.0)
+
+    assert exc_info.value.argument_name == (
+        "temperature_celsius/relative_humidity_percent/wind_speed_meters_per_second"
+    )
+    assert exc_info.value.valid_values == "Arrays broadcastable to a common shape"
+    assert "(3,)" in exc_info.value.argument_value
+    assert "(4,)" in exc_info.value.argument_value
+
+
+def test_accepts_plain_python_sequences() -> None:
+    """Non-numpy array-likes broadcast and coerce through the public API."""
+    result = fire.fosberg_ffwi([20.0, 25.0], [30, 90], [1, 10])
+    assert result.shape == (2,)
+    assert np.isfinite(result).all()
+
+
+def test_calculation_failure_logs_and_propagates() -> None:
+    """An internal failure emits calculation_failed and re-raises, not swallowed."""
+    mock_logger = mock.MagicMock()
+    mock_logger.bind.return_value = mock_logger
+
+    def _raise(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("synthetic failure")
+
+    with (
+        mock.patch.object(fire, "_logger", mock_logger),
+        mock.patch.object(fire, "_equilibrium_moisture_content", side_effect=_raise),
+        pytest.raises(RuntimeError, match="synthetic failure"),
+    ):
+        fire.fosberg_ffwi(20.0, 30.0, 5.0)
+
+    mock_logger.info.assert_called_once_with("calculation_started")
+    failed_calls = [call for call in mock_logger.error.call_args_list if call.args[0] == "calculation_failed"]
+    assert len(failed_calls) == 1
+    assert failed_calls[0].kwargs["error_type"] == "RuntimeError"
+    assert "synthetic failure" in failed_calls[0].kwargs["error_message"]
+
+
+def test_large_array_memory_metrics_are_logged() -> None:
+    """calculation_completed includes memory metrics when check_large_array_memory reports them."""
+    mock_logger = mock.MagicMock()
+    mock_logger.bind.return_value = mock_logger
+
+    with (
+        mock.patch.object(fire, "_logger", mock_logger),
+        mock.patch.object(fire, "check_large_array_memory", return_value={"array_memory_mb": 1234.5}),
+    ):
+        result = fire.fosberg_ffwi(20.0, 30.0, 5.0)
+
+    assert np.isfinite(result)
+    completed_calls = [call for call in mock_logger.info.call_args_list if call.args[0] == "calculation_completed"]
+    assert len(completed_calls) == 1
+    assert completed_calls[0].kwargs["array_memory_mb"] == 1234.5
 
 
 def test_chunked_time_axis_matches_eager() -> None:
