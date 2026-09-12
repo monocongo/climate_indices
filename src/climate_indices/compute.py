@@ -938,16 +938,12 @@ def _ks_poor_fit_p_value(
         (ranks / sample_size - cdf_values).max(),
         (cdf_values - (ranks - 1) / sample_size).max(),
     )
-    if d_statistic <= _ks_critical_value(sample_size):
+    if d_statistic < _ks_critical_value(sample_size):
         return None
 
-    # Match scipy.stats.kstest, which preserves floating input precision in its p-value.
-    p_value = float(scipy.stats.kstwo.sf(d_statistic, sample_size))
-    p_value_threshold = GOODNESS_OF_FIT_P_VALUE_THRESHOLD
-    if np.issubdtype(sorted_values.dtype, np.floating):
-        p_value = float(np.asarray(p_value, dtype=sorted_values.dtype))
-        p_value_threshold = float(np.asarray(p_value_threshold, dtype=sorted_values.dtype))
-    return p_value if p_value < p_value_threshold else None
+    # Match scipy.stats.kstest at the threshold, including its version-specific dtype handling.
+    p_value = scipy.stats.kstest(sorted_values, lambda _: cdf_values).pvalue
+    return float(p_value) if p_value < GOODNESS_OF_FIT_P_VALUE_THRESHOLD else None
 
 
 def _check_goodness_of_fit_gamma(

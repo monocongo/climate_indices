@@ -499,7 +499,17 @@ class TestKolmogorovSmirnovParity:
         actual = compute._ks_poor_fit_p_value(values, cdf_values)
 
         assert (actual is not None) == (expected_p_value < compute.GOODNESS_OF_FIT_P_VALUE_THRESHOLD)
-        assert actual is None
+        if actual is not None:
+            assert actual == float(expected_p_value)
+
+    def test_ks_poor_fit_p_value_matches_kstest_at_critical_value(self) -> None:
+        """Direct K-S should defer to SciPy when D equals the critical value."""
+        values = np.arange(4, dtype=float)
+        cdf_values = np.full(4, scipy.stats.kstwo.isf(compute.GOODNESS_OF_FIT_P_VALUE_THRESHOLD, 4))
+        expected_p_value = scipy.stats.kstest(values, lambda _: cdf_values).pvalue
+        actual = compute._ks_poor_fit_p_value(values, cdf_values)
+
+        assert (actual is not None) == (expected_p_value < compute.GOODNESS_OF_FIT_P_VALUE_THRESHOLD)
 
     def test_ks_poor_fit_p_value_matches_kstest_for_gamma(self) -> None:
         """Direct K-S should match scipy.stats.kstest on gamma-fitted samples."""
