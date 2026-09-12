@@ -24,8 +24,11 @@ a reanalysis-driven reference-ET product (e.g. gridMET) confounds algorithm
 correctness with genuine climate-dependent bias between PET formulas, so no
 defensible numerical tolerance exists (see the decision on
 [Identify a gridded reference-ET dataset for PET stretch validation](https://github.com/monocongo/climate_indices/issues/775)).
-Literature worked examples are therefore the primary independent validation
-evidence for PET.
+Literature worked examples are therefore the primary external output-reference
+evidence for PET. The sources provide daylight hours or extraterrestrial
+radiation rather than a latitude/date pair, so the tests reconstruct those
+coordinates with the library's solar geometry; they do not independently
+validate that reconstruction.
 
 `tests/test_eto.py` covers both methods against synthetic regression
 fixtures (`tests/fixture/temp_celsius.npy`, `tests/fixture/pet_thornthwaite.npy`,

@@ -184,6 +184,7 @@ def test_eto_thornthwaite(temps_celsius, latitude_degrees, data_year_start_month
 
 
 # ------------------------------------------------------------------------------
+@pytest.mark.validation
 @pytest.mark.usefixtures(
     "thornthwaite_literature_monthly_temps_celsius",
     "thornthwaite_literature_expected_pet_mm",
@@ -212,6 +213,7 @@ def test_eto_thornthwaite_literature_watson(
 
 
 # ------------------------------------------------------------------------------
+@pytest.mark.validation
 @pytest.mark.usefixtures(
     "hargreaves_literature_tmin_tmax_tmean_celsius",
     "hargreaves_literature_expected_eto_mm_per_day",
