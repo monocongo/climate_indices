@@ -184,6 +184,67 @@ def test_eto_thornthwaite(temps_celsius, latitude_degrees, data_year_start_month
 
 
 # ------------------------------------------------------------------------------
+@pytest.mark.usefixtures(
+    "thornthwaite_literature_monthly_temps_celsius",
+    "thornthwaite_literature_expected_pet_mm",
+)
+def test_eto_thornthwaite_literature_watson(
+    thornthwaite_literature_monthly_temps_celsius,
+    thornthwaite_literature_expected_pet_mm,
+):
+    """Thornthwaite (1948) worked example from Watson & Burnett (1995).
+
+    See tests/fixture/pet_literature/metadata.json for the full citation and
+    for why an approximate, back-solved latitude is used here: the source
+    supplies monthly mean daylight hours directly rather than a latitude.
+    """
+    computed_pet = eto.eto_thornthwaite(
+        thornthwaite_literature_monthly_temps_celsius.copy(),
+        43.0,  # approximate latitude back-solved from the source's daylight hours
+        2001,  # arbitrary non-leap year; source does not specify one
+    )
+    np.testing.assert_allclose(
+        computed_pet,
+        thornthwaite_literature_expected_pet_mm,
+        atol=4.0,  # matches PyETo's own tolerance for this exact source
+        err_msg="PET (Thornthwaite) literature worked example not reproduced within tolerance",
+    )
+
+
+# ------------------------------------------------------------------------------
+@pytest.mark.usefixtures(
+    "hargreaves_literature_tmin_tmax_tmean_celsius",
+    "hargreaves_literature_expected_eto_mm_per_day",
+)
+def test_eto_hargreaves_literature_mehta(
+    hargreaves_literature_tmin_tmax_tmean_celsius,
+    hargreaves_literature_expected_eto_mm_per_day,
+):
+    """Hargreaves-Samani (1985) worked example from Mehta (2006).
+
+    See tests/fixture/pet_literature/metadata.json for the full citation and
+    for how the source's extraterrestrial radiation input was mapped onto a
+    (latitude, day_of_year) pair for climate_indices.eto.eto_hargreaves.
+    """
+    tmin, tmax, tmean = hargreaves_literature_tmin_tmax_tmean_celsius
+    day_of_year = 58  # back-solved to reproduce the source's et_rad input
+    latitude_degrees = -12.3
+
+    daily_tmin = np.full(366, tmin)
+    daily_tmax = np.full(366, tmax)
+    daily_tmean = np.full(366, tmean)
+
+    result = eto.eto_hargreaves(daily_tmin, daily_tmax, daily_tmean, latitude_degrees)
+
+    np.testing.assert_allclose(
+        result[day_of_year - 1],
+        hargreaves_literature_expected_eto_mm_per_day[0],
+        atol=0.05,  # source value is quoted to 1 decimal place
+        err_msg="ETo (Hargreaves) literature worked example not reproduced within tolerance",
+    )
+
+
+# ------------------------------------------------------------------------------
 def test_sunset_hour_angle():
     # make sure that an invalid latitude value raises an error
     pytest.raises(InvalidArgumentError, eto._sunset_hour_angle, np.deg2rad(-100.0), np.deg2rad(0.0))
