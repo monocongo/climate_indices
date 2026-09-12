@@ -941,9 +941,13 @@ def _ks_poor_fit_p_value(
     if d_statistic <= _ks_critical_value(sample_size):
         return None
 
-    # confirm against the exact p-value so behavior matches a direct kstest at the boundary
+    # Match scipy.stats.kstest, which preserves floating input precision in its p-value.
     p_value = float(scipy.stats.kstwo.sf(d_statistic, sample_size))
-    return p_value if p_value < GOODNESS_OF_FIT_P_VALUE_THRESHOLD else None
+    p_value_threshold = GOODNESS_OF_FIT_P_VALUE_THRESHOLD
+    if np.issubdtype(sorted_values.dtype, np.floating):
+        p_value = float(np.asarray(p_value, dtype=sorted_values.dtype))
+        p_value_threshold = float(np.asarray(p_value_threshold, dtype=sorted_values.dtype))
+    return p_value if p_value < p_value_threshold else None
 
 
 def _check_goodness_of_fit_gamma(
@@ -983,7 +987,7 @@ def _check_goodness_of_fit_gamma(
                 # the regularized lower incomplete gamma function is the gamma CDF
                 p_value = _ks_poor_fit_p_value(
                     sorted_values,
-                    scipy.special.gammainc(alpha, sorted_values / beta),
+                    scipy.special.gammainc(float(alpha), sorted_values.astype(float) / float(beta)),
                 )
                 if p_value is not None:
                     poor_fit_steps.append((time_step_index, p_value))
