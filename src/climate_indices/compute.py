@@ -921,9 +921,8 @@ def _ks_poor_fit_p_value(
 
     The D statistic is computed directly rather than through ``scipy.stats.kstest``,
     whose argument-dispatch machinery dominates the runtime of this check when it runs
-    once per grid cell. Because the survival function is strictly decreasing in D, the
-    exact p-value is only evaluated for samples whose D exceeds the critical value,
-    which is the uncommon case.
+    once per grid cell. The exact p-value is evaluated only for samples at or within
+    one input-dtype ULP of the critical D value, which is the uncommon case.
 
     Args:
         sorted_values: Ascending valid sample values.
@@ -938,7 +937,11 @@ def _ks_poor_fit_p_value(
         (ranks / sample_size - cdf_values).max(),
         (cdf_values - (ranks - 1) / sample_size).max(),
     )
-    if d_statistic < _ks_critical_value(sample_size):
+    critical_value = _ks_critical_value(sample_size)
+    critical_tolerance = 0.0
+    if np.issubdtype(sorted_values.dtype, np.floating):
+        critical_tolerance = float(np.spacing(np.asarray(critical_value, dtype=sorted_values.dtype)))
+    if d_statistic < critical_value - critical_tolerance:
         return None
 
     # Match scipy.stats.kstest at the threshold, including its version-specific dtype handling.
