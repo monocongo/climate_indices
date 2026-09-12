@@ -11,6 +11,8 @@ import warnings
 
 import numpy as np
 import pytest
+import scipy.special
+import scipy.stats
 
 from climate_indices import ClimateIndicesWarning, compute
 from climate_indices.exceptions import (
@@ -368,26 +370,28 @@ class TestGoodnessOfFitWarning:
             assert len(fit_warnings) <= 1
 
     def test_pearson_parameters_warns_on_poor_fit(self) -> None:
-        """pearson_parameters should warn when KS test indicates poor Pearson fit."""
-        # create data that poorly fits Pearson Type III (uniform distribution)
-        np.random.seed(456)
-        values = np.random.uniform(-5, 5, size=(40, 12))
+        """pearson_parameters should warn for a clearly poor Pearson Type III fit."""
+        rng = np.random.default_rng(42)
+        values = np.where(
+            rng.random((60, 12)) < 0.5, rng.uniform(0.1, 0.5, (60, 12)), rng.uniform(90.0, 100.0, (60, 12))
+        )
 
         with warnings.catch_warnings(record=True) as warning_list:
             warnings.simplefilter("always")
             compute.pearson_parameters(
                 values,
-                data_start_year=1980,
-                calibration_start_year=1980,
+                data_start_year=1960,
+                calibration_start_year=1960,
                 calibration_end_year=2019,
                 periodicity=compute.Periodicity.monthly,
             )
 
-            fit_warnings = [w for w in warning_list if issubclass(w.category, GoodnessOfFitWarning)]
-            # soft test - uniform should often produce poor fit
-            if len(fit_warnings) > 0:
-                warning = fit_warnings[0].message
-                assert warning.distribution_name == "pearson3"
+        fit_warnings = [w for w in warning_list if issubclass(w.category, GoodnessOfFitWarning)]
+        assert len(fit_warnings) == 1
+        warning = fit_warnings[0].message
+        assert warning.distribution_name == "pearson3"
+        assert warning.poor_fit_count == 12
+        assert warning.total_steps == 12
 
 
 class TestCalculationsCompleteWithWarnings:
@@ -458,3 +462,178 @@ class TestCalculationsCompleteWithWarnings:
             # no climate indices warnings should be recorded
             climate_warnings = [w for w in warning_list if issubclass(w.category, ClimateIndicesWarning)]
             assert len(climate_warnings) == 0
+
+
+class TestKolmogorovSmirnovParity:
+    """Test that the direct K-S implementation matches scipy.stats.kstest.
+
+    The goodness-of-fit check computes its D statistic directly instead of calling
+    scipy.stats.kstest, whose dispatch overhead dominated SPI runtime. These tests
+    pin that the substitution is numerically exact and reaches the same poor-fit
+    decision, including for samples with a varying number of valid values.
+    """
+
+    def test_gamma_goodness_of_fit_matches_kstest_for_float32(self) -> None:
+        """Gamma goodness-of-fit should preserve SciPy's float32 threshold decision."""
+        values = np.full((2, 1), np.float32(0.012090744), dtype=np.float32)
+        alpha = beta = np.array([0.1], dtype=np.float32)
+        expected_p_value = scipy.stats.kstest(
+            values[:, 0],
+            lambda x: scipy.stats.gamma.cdf(x, a=alpha[0], scale=beta[0]),
+        ).pvalue
+        assert expected_p_value < compute.GOODNESS_OF_FIT_P_VALUE_THRESHOLD
+
+        with warnings.catch_warnings(record=True) as warning_list:
+            warnings.simplefilter("always")
+            compute._check_goodness_of_fit_gamma(values, alpha, beta)
+
+        fit_warnings = [w for w in warning_list if issubclass(w.category, GoodnessOfFitWarning)]
+        assert len(fit_warnings) == 1
+        assert fit_warnings[0].message.poor_fit_count == 1
+
+    def test_ks_poor_fit_p_value_matches_kstest_for_float16(self) -> None:
+        """Direct K-S should preserve SciPy's float16 threshold decision."""
+        values = np.array([1, 2], dtype=np.float16)
+        cdf_values = np.full(2, scipy.stats.kstwo.isf(0.04999, 2))
+        expected_p_value = scipy.stats.kstest(values, lambda _: cdf_values).pvalue
+        actual = compute._ks_poor_fit_p_value(values, cdf_values)
+
+        assert (actual is not None) == (expected_p_value < compute.GOODNESS_OF_FIT_P_VALUE_THRESHOLD)
+        if actual is not None:
+            assert actual == float(expected_p_value)
+
+    def test_ks_poor_fit_p_value_matches_kstest_at_critical_value(self) -> None:
+        """Direct K-S should defer to SciPy when D equals the critical value."""
+        values = np.arange(4, dtype=float)
+        cdf_values = np.full(4, scipy.stats.kstwo.isf(compute.GOODNESS_OF_FIT_P_VALUE_THRESHOLD, 4))
+        expected_p_value = scipy.stats.kstest(values, lambda _: cdf_values).pvalue
+        actual = compute._ks_poor_fit_p_value(values, cdf_values)
+
+        assert (actual is not None) == (expected_p_value < compute.GOODNESS_OF_FIT_P_VALUE_THRESHOLD)
+
+    def test_ks_poor_fit_p_value_matches_kstest_with_float32_critical_rounding(self) -> None:
+        """Direct K-S should defer to SciPy within float32 precision of the critical value."""
+        sample_size = 30
+        critical_value = scipy.stats.kstwo.isf(compute.GOODNESS_OF_FIT_P_VALUE_THRESHOLD, sample_size)
+        target = np.maximum(
+            np.arange(1, sample_size + 1) / sample_size - (critical_value - 2.2e-8),
+            1e-10,
+        )
+        values = scipy.stats.gamma.ppf(target, a=2.0).astype(np.float32)
+        cdf_values = scipy.special.gammainc(2.0, values.astype(float))
+        expected_p_value = scipy.stats.kstest(values, lambda x: scipy.stats.gamma.cdf(x, a=2.0)).pvalue
+        actual = compute._ks_poor_fit_p_value(values, cdf_values)
+
+        assert (actual is not None) == (expected_p_value < compute.GOODNESS_OF_FIT_P_VALUE_THRESHOLD)
+
+    def test_ks_poor_fit_p_value_matches_kstest_with_float32_rank_rounding(self) -> None:
+        """Direct K-S should defer to SciPy within float32 rank-rounding precision."""
+        sample_size = 33
+        critical_value = scipy.stats.kstwo.isf(compute.GOODNESS_OF_FIT_P_VALUE_THRESHOLD, sample_size)
+        tolerance = np.spacing(np.asarray(critical_value, dtype=np.float32))
+        target = np.maximum(
+            np.arange(1, sample_size + 1) / sample_size - (critical_value - 2.45 * tolerance),
+            1e-20,
+        )
+        values = scipy.stats.gamma.ppf(target, a=2.0).astype(np.float32)
+        cdf_values = scipy.special.gammainc(2.0, values.astype(float))
+        expected_p_value = scipy.stats.kstest(values, lambda _: cdf_values).pvalue
+        actual = compute._ks_poor_fit_p_value(values, cdf_values)
+
+        assert (actual is not None) == (expected_p_value < compute.GOODNESS_OF_FIT_P_VALUE_THRESHOLD)
+
+    def test_ks_poor_fit_p_value_matches_kstest_for_gamma(self) -> None:
+        """Direct K-S should match scipy.stats.kstest on gamma-fitted samples."""
+        rng = np.random.default_rng(42)
+
+        for trial in range(60):
+            sample_size = int(rng.integers(8, 60))
+            shape = float(rng.uniform(0.5, 6.0))
+            scale = float(rng.uniform(2.0, 50.0))
+            if trial % 3 == 0:
+                # wrong family, so a poor fit is reached often
+                values = rng.normal(shape * scale, scale, sample_size)
+                values = values[values > 0]
+            else:
+                values = rng.gamma(shape, scale, sample_size)
+            if values.size < 4:
+                continue
+
+            _, expected_p_value = scipy.stats.kstest(
+                values,
+                lambda x, a=shape, s=scale: scipy.stats.gamma.cdf(x, a=a, scale=s),
+            )
+            sorted_values = np.sort(values)
+            actual = compute._ks_poor_fit_p_value(
+                sorted_values,
+                scipy.special.gammainc(shape, sorted_values / scale),
+            )
+
+            expected_poor = expected_p_value < compute.GOODNESS_OF_FIT_P_VALUE_THRESHOLD
+            assert (actual is not None) == expected_poor
+            if actual is not None:
+                np.testing.assert_allclose(actual, expected_p_value, atol=1e-12)
+
+    def test_ks_poor_fit_p_value_matches_kstest_for_pearson3(self) -> None:
+        """Direct K-S should match scipy.stats.kstest on Pearson Type III samples."""
+        rng = np.random.default_rng(42)
+
+        for trial in range(60):
+            sample_size = int(rng.integers(8, 60))
+            skew = float(rng.uniform(-1.5, 2.5))
+            loc = float(rng.uniform(10.0, 60.0))
+            scale = float(rng.uniform(2.0, 30.0))
+            if trial % 3 == 0:
+                values = rng.uniform(0.0, 120.0, sample_size)
+            else:
+                values = scipy.stats.pearson3.rvs(skew, loc=loc, scale=scale, size=sample_size, random_state=rng)
+            values = values[np.isfinite(values)]
+            if values.size < 4:
+                continue
+
+            _, expected_p_value = scipy.stats.kstest(
+                values,
+                lambda x, sk=skew, lc=loc, sc=scale: scipy.stats.pearson3.cdf(x, sk, loc=lc, scale=sc),
+            )
+            sorted_values = np.sort(values)
+            actual = compute._ks_poor_fit_p_value(
+                sorted_values,
+                scipy.stats.pearson3.cdf(sorted_values, skew, loc=loc, scale=scale),
+            )
+
+            expected_poor = expected_p_value < compute.GOODNESS_OF_FIT_P_VALUE_THRESHOLD
+            assert (actual is not None) == expected_poor
+            if actual is not None:
+                np.testing.assert_allclose(actual, expected_p_value, atol=1e-12)
+
+    def test_ks_poor_fit_p_value_returns_none_for_good_fit(self) -> None:
+        """A well-fitting sample should report no poor fit."""
+        rng = np.random.default_rng(42)
+        values = np.sort(rng.gamma(2.0, 20.0, 400))
+
+        assert compute._ks_poor_fit_p_value(values, scipy.special.gammainc(2.0, values / 20.0)) is None
+
+    def test_gamma_parameters_warns_on_clearly_poor_fit(self) -> None:
+        """A sample far from gamma should still emit GoodnessOfFitWarning."""
+        rng = np.random.default_rng(42)
+        # strongly bimodal values do not fit a gamma distribution
+        values = np.where(
+            rng.random((60, 12)) < 0.5, rng.uniform(0.1, 0.5, (60, 12)), rng.uniform(90.0, 100.0, (60, 12))
+        )
+
+        with warnings.catch_warnings(record=True) as warning_list:
+            warnings.simplefilter("always")
+            compute.gamma_parameters(
+                values,
+                data_start_year=1960,
+                calibration_start_year=1960,
+                calibration_end_year=2019,
+                periodicity=compute.Periodicity.monthly,
+            )
+
+        fit_warnings = [w for w in warning_list if issubclass(w.category, GoodnessOfFitWarning)]
+        assert len(fit_warnings) == 1
+        warning = fit_warnings[0].message
+        assert warning.distribution_name == "gamma"
+        assert warning.poor_fit_count == 12
+        assert warning.total_steps == 12

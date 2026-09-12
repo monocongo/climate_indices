@@ -2,10 +2,12 @@
 Common classes and functions used to compute the various climate indices.
 """
 
+import functools
 import warnings
 from enum import Enum
 
 import numpy as np
+import scipy.special
 import scipy.stats
 
 from climate_indices import lmoments, utils
@@ -898,6 +900,55 @@ def _check_calibration_data_quality(
             warnings.warn(missing_data_warning, stacklevel=3)
 
 
+@functools.lru_cache(maxsize=32)
+def _ks_critical_value(sample_size: int) -> float:
+    """Critical Kolmogorov-Smirnov D statistic at the goodness-of-fit threshold.
+
+    Args:
+        sample_size: Number of valid values in the tested sample.
+
+    Returns:
+        The D statistic above which the fit is considered poor.
+    """
+    return float(scipy.stats.kstwo.isf(GOODNESS_OF_FIT_P_VALUE_THRESHOLD, sample_size))
+
+
+def _ks_poor_fit_p_value(
+    sorted_values: np.ndarray,
+    cdf_values: np.ndarray,
+) -> float | None:
+    """Kolmogorov-Smirnov p-value for a sample, returned only when the fit is poor.
+
+    The D statistic is computed directly rather than through ``scipy.stats.kstest``,
+    whose argument-dispatch machinery dominates the runtime of this check when it runs
+    once per grid cell. The exact p-value is evaluated only for samples within one
+    input-dtype machine epsilon of the critical D value, which is the uncommon case.
+
+    Args:
+        sorted_values: Ascending valid sample values.
+        cdf_values: Fitted CDF evaluated at ``sorted_values``.
+
+    Returns:
+        The p-value when it falls below the goodness-of-fit threshold, otherwise None.
+    """
+    sample_size = sorted_values.size
+    ranks = np.arange(1, sample_size + 1)
+    d_statistic = max(
+        (ranks / sample_size - cdf_values).max(),
+        (cdf_values - (ranks - 1) / sample_size).max(),
+    )
+    critical_value = _ks_critical_value(sample_size)
+    critical_tolerance = 0.0
+    if np.issubdtype(sorted_values.dtype, np.floating):
+        critical_tolerance = float(np.finfo(sorted_values.dtype).eps)
+    if d_statistic < critical_value - critical_tolerance:
+        return None
+
+    # Match scipy.stats.kstest at the threshold, including its version-specific dtype handling.
+    p_value = scipy.stats.kstest(sorted_values, lambda _: cdf_values).pvalue
+    return float(p_value) if p_value < GOODNESS_OF_FIT_P_VALUE_THRESHOLD else None
+
+
 def _check_goodness_of_fit_gamma(
     calibration_values: np.ndarray,
     alphas: np.ndarray,
@@ -931,11 +982,13 @@ def _check_goodness_of_fit_gamma(
 
             # perform Kolmogorov-Smirnov test
             try:
-                ks_statistic, p_value = scipy.stats.kstest(
-                    valid_values,
-                    lambda x, a=alpha, s=beta: scipy.stats.gamma.cdf(x, a=a, scale=s),
+                sorted_values = np.sort(valid_values)
+                # the regularized lower incomplete gamma function is the gamma CDF
+                p_value = _ks_poor_fit_p_value(
+                    sorted_values,
+                    scipy.special.gammainc(float(alpha), sorted_values.astype(float) / float(beta)),
                 )
-                if p_value < GOODNESS_OF_FIT_P_VALUE_THRESHOLD:
+                if p_value is not None:
                     poor_fit_steps.append((time_step_index, p_value))
             except Exception:
                 # ignore fitting errors during goodness-of-fit check
@@ -1006,11 +1059,12 @@ def _check_goodness_of_fit_pearson(
 
             # perform Kolmogorov-Smirnov test
             try:
-                ks_statistic, p_value = scipy.stats.kstest(
-                    valid_values,
-                    lambda x, sk=skew, loc_=loc, sc=scale: scipy.stats.pearson3.cdf(x, sk, loc=loc_, scale=sc),
+                sorted_values = np.sort(valid_values)
+                p_value = _ks_poor_fit_p_value(
+                    sorted_values,
+                    scipy.stats.pearson3.cdf(sorted_values, skew, loc=loc, scale=scale),
                 )
-                if p_value < GOODNESS_OF_FIT_P_VALUE_THRESHOLD:
+                if p_value is not None:
                     poor_fit_steps.append((time_step_index, p_value))
             except Exception:
                 # ignore fitting errors during goodness-of-fit check
