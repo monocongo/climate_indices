@@ -526,6 +526,22 @@ class TestKolmogorovSmirnovParity:
 
         assert (actual is not None) == (expected_p_value < compute.GOODNESS_OF_FIT_P_VALUE_THRESHOLD)
 
+    def test_ks_poor_fit_p_value_matches_kstest_with_float32_rank_rounding(self) -> None:
+        """Direct K-S should defer to SciPy within float32 rank-rounding precision."""
+        sample_size = 33
+        critical_value = scipy.stats.kstwo.isf(compute.GOODNESS_OF_FIT_P_VALUE_THRESHOLD, sample_size)
+        tolerance = np.spacing(np.asarray(critical_value, dtype=np.float32))
+        target = np.maximum(
+            np.arange(1, sample_size + 1) / sample_size - (critical_value - 2.45 * tolerance),
+            1e-20,
+        )
+        values = scipy.stats.gamma.ppf(target, a=2.0).astype(np.float32)
+        cdf_values = scipy.special.gammainc(2.0, values.astype(float))
+        expected_p_value = scipy.stats.kstest(values, lambda _: cdf_values).pvalue
+        actual = compute._ks_poor_fit_p_value(values, cdf_values)
+
+        assert (actual is not None) == (expected_p_value < compute.GOODNESS_OF_FIT_P_VALUE_THRESHOLD)
+
     def test_ks_poor_fit_p_value_matches_kstest_for_gamma(self) -> None:
         """Direct K-S should match scipy.stats.kstest on gamma-fitted samples."""
         rng = np.random.default_rng(42)
