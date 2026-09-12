@@ -1,0 +1,15 @@
+{
+  "source": "Literature worked examples for the Thornthwaite (1948) and Hargreaves-Samani (1985) PET methods, transcribed from secondary sources that reproduce the original equations",
+  "url": "https://github.com/woodcrafty/PyETo/blob/master/tests/test_thornthwaite.py, https://github.com/woodcrafty/PyETo/blob/master/tests/test_fao.py",
+  "download_date": "2026-09-12",
+  "subset_description": "Two literature-derived worked examples, one per PET method implemented in climate_indices.eto: (1) Thornthwaite monthly temperatures, monthly mean daylight hours, and expected monthly PET from Watson & Burnett (1995) 'Hydrology: An Environmental Approach', Worked Example 19-2; (2) Hargreaves-Samani daily tmin/tmax/tmean and expected daily ETo from Mehta (2006) 'Estimating Evapotranspiration from Weather Data' (Arghyam/Cornell University). Both worked examples are quoted from PyETo's own test suite, the upstream project climate_indices.eto derives its implementation from. See metadata.json for full citations, derivation notes, and per-method tolerance rationale.",
+  "checksum_sha256": "313c693a0f1dcb5465fc27d870f5603893c498d95f1d559a1128aaa2c4ebbd81",
+  "fixture_version": "1.0.0",
+  "validation_tolerance": {
+    "thornthwaite_atol_mm": 4.0,
+    "hargreaves_atol_mm_per_day": 0.05
+  },
+  "citation": "Thornthwaite, C.W. (1948) An Approach toward a Rational Classification of Climate. Geographical Review, 38, 55-94; Hargreaves, G.H. and Samani, Z.A. (1985) Reference Crop Evapotranspiration from Temperature. Applied Engineering in Agriculture, 1(2), 96-99.",
+  "license": "Worked-example values only (a handful of numbers each); no license restrictions apply to the fixture files themselves. PyETo (the immediate source of these values) is BSD-licensed, see https://github.com/woodcrafty/PyETo/blob/master/LICENSE.txt.",
+  "notes": "Checksum computed from all .npy files in this directory (cat $(ls *.npy | sort) | shasum -a 256). The Thornthwaite fixture is validated through climate_indices.eto.eto_thornthwaite with an approximate, back-solved latitude (see metadata.json) because the source supplies daylight hours directly rather than a latitude; this is the only approximation in these fixtures and is documented with its own tolerance rationale. The Hargreaves fixture reproduces the source's extraterrestrial radiation input exactly (see metadata.json) and validates climate_indices.eto.eto_hargreaves with no approximation beyond the source's own quoted precision."
+}

@@ -291,6 +291,33 @@ def hargreaves_latitude_degrees():
     return 35.0
 
 
+# ------------------------------------------------------------------------------
+# Literature-derived PET worked examples (issue #774). See
+# tests/fixture/pet_literature/metadata.json for full citations and derivation
+# notes.
+_PET_LITERATURE_DIR = os.path.join(os.path.split(__file__)[0], "fixture", "pet_literature")
+
+
+@pytest.fixture(scope="module")
+def thornthwaite_literature_monthly_temps_celsius():
+    return np.load(os.path.join(_PET_LITERATURE_DIR, "thornthwaite_monthly_temps_celsius.npy"))
+
+
+@pytest.fixture(scope="module")
+def thornthwaite_literature_expected_pet_mm():
+    return np.load(os.path.join(_PET_LITERATURE_DIR, "thornthwaite_expected_pet_mm.npy"))
+
+
+@pytest.fixture(scope="module")
+def hargreaves_literature_tmin_tmax_tmean_celsius():
+    return np.load(os.path.join(_PET_LITERATURE_DIR, "hargreaves_daily_tmin_tmax_tmean_celsius.npy"))
+
+
+@pytest.fixture(scope="module")
+def hargreaves_literature_expected_eto_mm_per_day():
+    return np.load(os.path.join(_PET_LITERATURE_DIR, "hargreaves_expected_eto_mm_per_day.npy"))
+
+
 # ==============================================================================
 # xarray fixtures for testing xarray-aware climate index computations
 # ==============================================================================

@@ -1,0 +1,35 @@
+{
+  "thornthwaite": {
+    "citation": "Thornthwaite, C.W. (1948) An Approach toward a Rational Classification of Climate. Geographical Review, 38, 55-94. https://doi.org/10.2307/210739",
+    "worked_example_source": "Watson, I. and Burnett, A.D. (1995) Hydrology: An Environmental Approach. Lewis Publishers/CRC Press, ISBN 978-1-56670-087-0. Worked Example 19-2 (Thornthwaite potential evapotranspiration).",
+    "why_secondary_source": "The 1948 Geographical Review article is not freely accessible (JSTOR paywall, pre-1996 U.S. copyright); Watson & Burnett's textbook reproduces Thornthwaite's own worked calculation with full inputs and outputs and is the same source already used to validate PyETo (github.com/woodcrafty/PyETo, tests/test_thornthwaite.py), the upstream project climate_indices.eto credits in its module docstring.",
+    "inputs": {
+      "monthly_temps_celsius": "thornthwaite_monthly_temps_celsius.npy — mean monthly air temperature, Jan-Dec, as printed in the worked example",
+      "monthly_mean_daylight_hours": "thornthwaite_monthly_mean_daylight_hours.npy — mean daylight hours per month as printed in the worked example; not used directly by climate_indices.eto.eto_thornthwaite (which derives daylight hours from latitude), included here for traceability to the source"
+    },
+    "expected_output": {
+      "expected_pet_mm": "thornthwaite_expected_pet_mm.npy — potential evapotranspiration (mm/month) as printed in the worked example"
+    },
+    "latitude_degrees_approx": 43.0,
+    "latitude_derivation": "Not stated by the secondary source (which supplies monthly_mean_daylight_hours directly rather than a latitude). Back-solved by climate_indices as the Northern-Hemisphere latitude whose climate_indices.eto._monthly_mean_daylight_hours(latitude, leap=False) output most closely matches the source's monthly_mean_daylight_hours array (max deviation 0.36 hours, at latitude=43.08 degrees N; 43.0 degrees N was used for simplicity with negligible difference in output).",
+    "data_start_year_used": 2001,
+    "data_start_year_rationale": "Arbitrary non-leap year; the source does not tie the example to a specific calendar year.",
+    "tolerance_rationale": "atol=4.0 mm matches the tolerance PyETo's own test suite established for this exact source (test_thornthwaite in tests/test_thornthwaite.py: 'small difference in estimated monthly PET of up to +/- 4 mm' from the source's rounded coefficients, rounded intermediate values, and no day-count adjustment). climate_indices.eto.eto_thornthwaite run at latitude=43.0, data_start_year=2001 reproduces the source's 12 monthly PET values with a maximum absolute difference of 2.77 mm, within that tolerance."
+  },
+  "hargreaves": {
+    "citation": "Hargreaves, G.H. and Samani, Z.A. (1985) Reference Crop Evapotranspiration from Temperature. Applied Engineering in Agriculture, 1(2), 96-99.",
+    "worked_example_source": "Mehta, V.K. (2006) Estimating Evapotranspiration from Weather Data. Arghyam / Cornell University, as reproduced in PyETo (github.com/woodcrafty/PyETo, tests/test_fao.py::test_hargreaves), the upstream project climate_indices.eto credits in its module docstring.",
+    "why_secondary_source": "The original 1985 Applied Engineering in Agriculture article is paywalled and not reachable from this environment; the worked example is a faithful application of Equation 52 in Allen et al. (1998) FAO Irrigation and Drainage Paper 56 (the same equation climate_indices.eto.eto_hargreaves implements, per its own docstring), and is the exact fixture PyETo itself uses to validate its Hargreaves implementation.",
+    "inputs": {
+      "tmin_tmax_tmean_celsius": "hargreaves_daily_tmin_tmax_tmean_celsius.npy — [tmin, tmax, tmean] in degrees Celsius, as printed in the worked example"
+    },
+    "expected_output": {
+      "expected_eto_mm_per_day": "hargreaves_expected_eto_mm_per_day.npy — reference evapotranspiration in mm/day, quoted to 1 decimal place in the worked example"
+    },
+    "et_rad_mj_m2_day_source_value": 38.93715,
+    "latitude_degrees_derived": -12.3,
+    "day_of_year_derived": 58,
+    "derivation": "The worked example supplies extraterrestrial radiation (et_rad = 38.93715 MJ/m2/day) directly rather than a latitude and day of year, because PyETo's hargreaves() function takes et_rad as an input. climate_indices.eto.eto_hargreaves instead derives et_rad internally from latitude and day of year, so climate_indices back-solved the (latitude, day_of_year) pair reproducing that et_rad value via climate_indices.eto's own solar geometry functions: latitude=-12.3 degrees, day_of_year=58 reproduces et_rad=38.937149 MJ/m2/day (difference 1.3e-6), which is exact to the precision the source value is quoted at.",
+    "tolerance_rationale": "atol=0.05 mm/day reflects the source's 1-decimal-place precision (6.1 mm/day). climate_indices.eto.eto_hargreaves(tmin=28, tmax=38, tmean=35, latitude_degrees=-12.3) evaluated at day_of_year=58 (index 57 of a 366-day year) returns 6.1008 mm/day, a difference of 0.0008 mm/day from the source value."
+  }
+}
