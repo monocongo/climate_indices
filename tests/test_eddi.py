@@ -328,6 +328,42 @@ def test_eddi_2d_array(
     assert computed_eddi.size == pet_2d.size
 
 
+def test_eddi_noaa_tukey_ranking():
+    """EDDI should use NOAA's zero-based Tukey plotting position."""
+    from climate_indices.indices import _hastings_inverse_normal
+
+    pet = np.arange(36, dtype=float)
+    result = indices.eddi(
+        pet_values=pet,
+        scale=1,
+        data_start_year=2000,
+        calibration_year_initial=2000,
+        calibration_year_final=2002,
+        periodicity=compute.Periodicity.monthly,
+    )
+
+    expected = _hastings_inverse_normal(np.array([0.66 / 3.33]))[0]
+    assert result[0] == pytest.approx(expected)
+
+
+def test_eddi_noaa_rank_includes_leading_scale_pad():
+    """Leading scale pads occupy their NOAA rank positions."""
+    from climate_indices.indices import _hastings_inverse_normal
+
+    pet = np.arange(1, 37, dtype=float)
+    result = indices.eddi(
+        pet_values=pet,
+        scale=3,
+        data_start_year=2000,
+        calibration_year_initial=2000,
+        calibration_year_final=2002,
+        periodicity=compute.Periodicity.monthly,
+    )
+
+    expected = _hastings_inverse_normal(np.array([1.66 / 3.33]))[0]
+    assert result[12] == pytest.approx(expected)
+
+
 def test_eddi_calibration_start_before_data():
     """Test that calibration start year before data start year raises InvalidArgumentError."""
     num_years = 10
