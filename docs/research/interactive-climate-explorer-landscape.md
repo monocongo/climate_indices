@@ -1,8 +1,8 @@
 # Interactive climate-index explorer landscape
 
-**Research date:** 2026-08-08  
-**Revised:** 2026-09-10 — Climate Engine added; the executive conclusion and recommendation are superseded, see [Decision](#decision-2026-09-10-shelve-the-explorer).  
-**Scope:** Primary sources only: official documentation, first-party repositories/source, project-owned demos, and first-party service terms. Repository links are pinned where practical.
+- **Research date:** 2026-08-08
+- **Revised:** 2026-09-10 — Climate Engine added; the executive conclusion and recommendation are superseded, see [Decision](#decision-2026-09-10-shelve-the-explorer).
+- **Scope:** Primary sources only: official documentation, first-party repositories/source, project-owned demos, and first-party service terms. Repository links are pinned where practical.
 
 ## Executive conclusion
 
@@ -15,9 +15,9 @@ The exploration pattern already exists for precomputed cubes:
 - **Lexcube** is a close, non-map 3-D alternative: hovering reports a pixel and clicking the front cube face plots that location's time series, although only over the currently visible time extent. [LEX-README]
 - **Google Earth Engine** supplies map-click callbacks, image-collection time-series charts, deferred server execution, and hosted Apps, so the interaction can be assembled there with custom code. [EE-CLICK] [EE-CHART] [EE-DEFERRED] [EE-APPS]
 
-The original review then claimed that no turnkey application exposes the exact `climate_indices` scientific controls—SPI, scale 6, gamma distribution, and explicit calibration years—over a computed gridded result with linked map/time-series exploration.
+The original review then claimed that no turnkey application exposes specified gamma-SPI controls—a 6-month Timescale, gamma distribution, and explicit calibration years—over a computed gridded result with linked map/time-series exploration.
 
-**That claim was wrong, and the 2026-08-08 review missed the tool that disproves it.** Climate Engine's public API computes SPI on demand with a caller-supplied `distribution` and a caller-supplied `start_year`/`end_year` standardization period, distinct from the display window, and its viewer provides the linked map and point series. [CE-API-DIST] [CE-API-SPEC] The reviewed candidate list omitted Climate Engine entirely, so the "not found" finding reflected the gap in the survey rather than a gap in the field.
+**That claim was wrong, and the 2026-08-08 review missed the tool that covers those controls.** Climate Engine's public API computes SPI on demand with a caller-supplied `distribution` and a caller-supplied `start_year`/`end_year` standardization period, distinct from the display window, and its viewer provides the linked map and point series. [CE-API-DIST] [CE-API-SPEC] The reviewed candidate list omitted Climate Engine entirely, so the "not found" finding reflected the gap in the survey rather than a gap in the field.
 
 What Climate Engine does **not** offer is narrower and concrete: Pearson Type III, user-supplied datasets and grids, self-calibrating Palmer, and the fire-weather family. See [Climate Engine](#climate-engine) below.
 
@@ -33,7 +33,7 @@ proposed the three options below. **Those options are superseded** — see
 
 The proposed product combines three layers that should not be conflated:
 
-1. **Scientific derivation:** fit and transform an index using parameters such as scale, distribution, and calibration period at every grid cell.
+1. **Scientific derivation:** fit and transform an index using parameters such as Timescale, distribution, and calibration period at every grid cell.
 2. **Whole-cube orchestration:** execute that computation across all spatial cells, with progress, cancellation, cache/persistence, provenance, and failure handling.
 3. **Exploration:** map one time slice, navigate time, hover/click a location, and plot the selected point's full time series.
 
@@ -120,7 +120,7 @@ explicit calibration period and linked map/point exploration is an existing, hos
 
 The separate precomputed **gridMET DROUGHT** product is a different thing and should not be confused with the above:
 it is CONUS-only at 4 km, standardized over a fixed 1981–2016 window for SPI/SPEI/EDDI and 1979–2018 for PDSI and the
-Palmer Z index, at fixed 14-day to 5-year scales, using the non-parametric plotting-position method. [CE-GRIDMET-DROUGHT]
+Palmer Z index, at fixed 14-day to 5-year Timescales, using the non-parametric plotting-position method. [CE-GRIDMET-DROUGHT]
 Reading that product's fixed window as a property of Climate Engine as a whole is the specific error this revision corrects.
 
 What remains outside Climate Engine, from the reviewed material:
@@ -239,9 +239,9 @@ A pure upstream contribution could add xcube's generic operation UI or Pan3D's g
 
 ## Decision (2026-09-10): shelve the Explorer
 
-The recommended direction below is superseded. It was written on the premise that parameterized, `climate_indices`-backed
-whole-grid computation joined to map/point exploration was unavailable elsewhere. Climate Engine provides exactly that,
-on demand, with a caller-chosen distribution and calibration period. [CE-API-DIST] [CE-API-SPEC]
+The recommended direction below is superseded. It was written on the premise that hosted gamma-SPI computation with
+caller-chosen distribution and calibration-period controls joined to map/point exploration was unavailable elsewhere.
+Climate Engine provides those controls on demand. [CE-API-DIST] [CE-API-SPEC]
 
 Two findings closed the question:
 
@@ -267,7 +267,7 @@ Where `climate_indices` is still unmatched, and where effort should go instead:
 
 1. **Correct the product claim.** Say: “Existing tools explore precomputed cubes; the proposed value is parameterized, `climate_indices`-backed whole-grid computation integrated with that exploration.” Do not say the exploration itself is unavailable.
 2. **Build a small Panel/HoloViz reference application, not a new general viewer.** Support one tracer-bullet workflow—such as SPI-6/gamma/calibration bounds—with an explicit Compute action, one map slice, time navigation, and nearest-cell full series. Treat it as experimental while the xarray API remains beta. [CI-SPI]
-3. **Normalize and persist by computation key.** At minimum include source identity/version, variable, index, scale, distribution, calibration period, periodicity, library version, chunking-relevant grid identity, and missing-data policy. Map and point interactions must never refit the index.
+3. **Normalize and persist by computation key.** At minimum include source identity/version, variable, index, Timescale, distribution, calibration period, periodicity, library version, chunking-relevant grid identity, and missing-data policy. Map and point interactions must never refit the index.
 4. **Run an xcube spike before committing to a production frontend.** Verify external operation registration, schema discovery, job cancellation, Dask scheduler behavior, durable Zarr output, cache reuse, Viewer discovery of a completed dataset, and time-series performance.
 5. **Open an xcube design discussion.** Propose a generic schema-driven compute form and stable operation/plugin API. Keep `climate_indices` controls in an external package or deployment, so upstream core remains domain-neutral.
 6. **Adopt Xpublish only when backend/API requirements justify it.** If chosen, contribute a standalone climate-index plugin and use EDR/tiles as reusable delivery interfaces.
@@ -320,7 +320,7 @@ All sources below are owned by the relevant project or service. “Maintenance�
 [CE-SPEI]: https://climateengine.org/datasets/drought/standardized-precipitation-evapotranspiration-index/
 [CE-GRIDMET-DROUGHT]: https://developers.google.com/earth-engine/datasets/catalog/GRIDMET_DROUGHT
 [CE-API-SPEC]: https://api.climateengine.org/openapi.json
-[CE-API-DIST]: Climate Engine API v1, `GET /raster/mapid/standard_index`, retrieved 2026-09-10. An invalid `distribution` returns `Invalid distribution: zzz. Should be one of ['gamma', 'loglogistic', 'nonparametric'].`; an invalid `variable` returns the valid index list for that distribution, `['spi']` for `gamma`.
+[CE-API-DIST]: https://api.climateengine.org/raster/mapid/standard_index "Climate Engine API v1, GET /raster/mapid/standard_index, retrieved 2026-09-10. An invalid distribution returns gamma, loglogistic, or nonparametric; gamma supports spi."
 
 ### climate_indices
 
