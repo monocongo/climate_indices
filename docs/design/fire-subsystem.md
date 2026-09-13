@@ -49,14 +49,50 @@ with its own `CF_METADATA` entry under the same validation and one-time-chunk
 guarantees. Independent per-output adapters are not a substitute: CFFWIS is
 one shared computation, not seven.
 
-Stateful functions share one state contract, specified in
-[#795](https://github.com/monocongo/climate_indices/issues/795): keyword-only
-`initial_<code>` parameters with literature defaults (FFMC 85, DMC 6, DC 15,
-KBDI 0), a `spin_up` parameter defaulting to the literature-standard behavior,
-and `return_state: bool = False`. With `return_state=True` the final state is
-returned alongside the result so a run can be continued without recomputing
-the archive. #795 fixes the state object type and wet-spell handling; no index
+State initialization, final-state extraction, spin-up, and wet-spell state
+follow [ADR-0006](../adr/0006-fire-recursive-state-and-execution.md). No index
 may invent a different state-return convention.
+
+## Stateful recurrence contract
+
+Planned NumPy APIs for KBDI, FFMC, DMC, DC, and CFFWIS (#799, #803) will
+accept time-first daily arrays. Their
+single-output APIs take keyword-only `initial_<code>: float | None`,
+`initial_state`, `return_state=False`, and `spin_up=0`. `None` selects the
+literature seed: KBDI 0, FFMC 85, DMC 6, or DC 15. `initial_state` restores the
+full named state, including auxiliary values such as KBDI's cumulative
+wet-spell precipitation, and cannot be combined with a seed. It is the only
+lossless way to append a new observation period.
+
+A stateful call normally returns its index array. With `return_state=True`, it
+returns a named `{Index}Result(values, state)`. `CFFWISResult` keeps its named
+index outputs and returns its state under the same flag. State types are
+algorithm-specific frozen dataclasses, never anonymous tuples or xarray
+`Dataset` objects. `spin_up` computes but omits that many leading input days;
+there is no universal scientifically valid nonzero default, so callers discard
+a study-appropriate transient.
+
+```python
+import numpy as np
+
+# illustrative of the target #799 API; fire.kbdi does not exist yet
+history = fire.kbdi(precipitation_1980_2020, temperature_1980_2020, mean_annual_precipitation, return_state=True)
+next_year = fire.kbdi(precipitation_2021, temperature_2021, mean_annual_precipitation, initial_state=history.state, return_state=True)
+whole = fire.kbdi(precipitation_1980_2021, temperature_1980_2021, mean_annual_precipitation)
+np.testing.assert_array_equal(np.concatenate((history.values, next_year.values)), whole)
+```
+
+The implementation vectorizes each daily update over spatial cells and loops
+only over time. It has a required pure-NumPy baseline; `numba` is not an
+optional dependency unless later benchmark evidence justifies its support cost.
+
+## Xarray chunking
+
+Future stateful xarray fire adapters validate every time-varying input with
+`xarray_adapter._validate_dask_chunks()`. A Dask `time` dimension must be one
+chunk, while spatial dimensions may remain chunked. The adapter raises
+`CoordinateValidationError` with a rechunk command rather than silently
+rechunking and materializing a large history.
 
 ## Names and input contracts
 
