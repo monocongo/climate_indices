@@ -1,5 +1,6 @@
 """Offline regression check for the notebook and companion Dask script."""
 
+import ast
 import json
 import runpy
 from pathlib import Path
@@ -9,7 +10,121 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from climate_indices import compute, indices
+from climate_indices import compute, exceptions, indices
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS_DIR = REPO_ROOT / "scripts"
+
+# The canonical data/calibration contract (matches data/e2e/manifest.json once
+# scripts/prepare_e2e_inputs.py has generated it, and both e2e entrypoints).
+CANONICAL_YEARS = {"data_start_year": 1980, "cal_start_year": 1981, "cal_end_year": 2010}
+
+
+@pytest.fixture
+def e2e(monkeypatch):
+    monkeypatch.syspath_prepend(str(SCRIPTS_DIR))
+    import end_to_end_example
+
+    return end_to_end_example
+
+
+def _write_monthly_inputs(tmp_path, times, units="mm"):
+    """Write single-pixel precip/PET NetCDF inputs at the given monthly timestamps."""
+    rng = np.random.default_rng(0)
+    shape = (len(times), 1, 1)
+    precip = rng.gamma(2, 40, shape).astype("float32")
+    pet = rng.uniform(20, 100, shape).astype("float32")
+    ds = xr.Dataset(
+        {"pr": (("time", "lat", "lon"), precip), "pet": (("time", "lat", "lon"), pet)},
+        coords={"time": times, "lat": [35.0], "lon": [-100.0]},
+    )
+    for name in ds:
+        ds[name].attrs["units"] = units
+    precip_path, pet_path = tmp_path / "precip.nc", tmp_path / "pet.nc"
+    ds[["pr"]].to_netcdf(precip_path, engine="scipy")
+    ds[["pet"]].to_netcdf(pet_path, engine="scipy")
+    return precip_path, pet_path
+
+
+def _extract_pipeline_config_years(source: str) -> dict[str, int]:
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == "pipeline_config" for target in node.targets
+        ):
+            return {
+                key.value: value.value
+                for key, value in zip(node.value.keys, node.value.values, strict=True)
+                if isinstance(key, ast.Constant) and key.value in CANONICAL_YEARS and isinstance(value, ast.Constant)
+            }
+    raise AssertionError("pipeline_config assignment not found")
+
+
+def test_pipeline_config_matches_canonical_contract():
+    """Guards against reintroducing the stale 1990/1991-2020 configuration."""
+    script_source = (SCRIPTS_DIR / "end_to_end_example.py").read_text()
+    assert _extract_pipeline_config_years(script_source) == CANONICAL_YEARS
+
+    notebook = json.loads((SCRIPTS_DIR / "e2e_with_dask.ipynb").read_text())
+    notebook_source = "\n".join(
+        "".join(cell["source"]) for cell in notebook["cells"] if "pipeline_config" in "".join(cell.get("source", []))
+    )
+    assert _extract_pipeline_config_years(notebook_source) == CANONICAL_YEARS
+
+
+def test_clean_and_prepare_inputs_rejects_wrong_units(tmp_path, e2e):
+    pytest.importorskip("zarr")
+    times = pd.date_range("1980-01-01", periods=12, freq="MS")
+    precip_path, pet_path = _write_monthly_inputs(tmp_path, times, units="inches")
+    with pytest.raises(exceptions.InvalidArgumentError):
+        e2e.clean_and_prepare_inputs(precip_path, pet_path, tmp_path / "prepared.zarr")
+
+
+def test_clean_and_prepare_inputs_rejects_irregular_timestamps(tmp_path, e2e):
+    pytest.importorskip("zarr")
+    # 12 monthly timestamps with July 1980 missing (and 1981-01 appended instead).
+    times = pd.date_range("1980-01-01", periods=13, freq="MS").delete(6)
+    precip_path, pet_path = _write_monthly_inputs(tmp_path, times)
+    with pytest.raises(exceptions.CoordinateValidationError):
+        e2e.clean_and_prepare_inputs(precip_path, pet_path, tmp_path / "prepared.zarr")
+
+
+def test_compute_indices_parallel_rejects_stale_data_start_year(tmp_path, e2e):
+    pytest.importorskip("zarr")
+    times = pd.date_range("1980-01-01", periods=24, freq="MS")
+    precip_path, pet_path = _write_monthly_inputs(tmp_path, times)
+    prepared = tmp_path / "prepared.zarr"
+    e2e.clean_and_prepare_inputs(precip_path, pet_path, prepared)
+    config = {
+        "scale": 3,
+        "distribution_spi": indices.Distribution.gamma,
+        "distribution_spei": indices.Distribution.pearson,
+        "periodicity": compute.Periodicity.monthly,
+        "data_start_year": 1990,
+        "cal_start_year": 1990,
+        "cal_end_year": 1991,
+    }
+    with pytest.raises(exceptions.InvalidArgumentError):
+        e2e.compute_indices_parallel(prepared, tmp_path / "output.zarr", config)
+
+
+def test_compute_indices_parallel_rejects_calibration_outside_data_range(tmp_path, e2e):
+    pytest.importorskip("zarr")
+    times = pd.date_range("1980-01-01", periods=24, freq="MS")
+    precip_path, pet_path = _write_monthly_inputs(tmp_path, times)
+    prepared = tmp_path / "prepared.zarr"
+    e2e.clean_and_prepare_inputs(precip_path, pet_path, prepared)
+    config = {
+        "scale": 3,
+        "distribution_spi": indices.Distribution.gamma,
+        "distribution_spei": indices.Distribution.pearson,
+        "periodicity": compute.Periodicity.monthly,
+        "data_start_year": 1980,
+        "cal_start_year": 1981,
+        "cal_end_year": 2020,
+    }
+    with pytest.raises(exceptions.InvalidArgumentError):
+        e2e.compute_indices_parallel(prepared, tmp_path / "output.zarr", config)
 
 
 @pytest.mark.parametrize("entrypoint", ["end_to_end_example.py", "e2e_with_dask.ipynb"])
@@ -33,6 +148,7 @@ def test_e2e_pipeline(tmp_path, monkeypatch, entrypoint):
     precip = rng.gamma(2, 40, shape).astype("float32")
     pet = rng.uniform(20, 100, shape).astype("float32")
     precip[:, 0, 1] = pet[:, 0, 1] = np.nan
+    precip[100, 0, 0] = 0.0  # meaningful zero precipitation, distinct from the masked/missing pixel
     ds = xr.Dataset(
         {"pr": (("time", "lat", "lon"), precip), "pet": (("time", "lat", "lon"), pet)},
         coords={"time": pd.date_range("1980-01-01", periods=372, freq="MS"), "lat": [35.0], "lon": [-100.0, -99.0]},
@@ -77,6 +193,9 @@ def test_e2e_pipeline(tmp_path, monkeypatch, entrypoint):
         assert actual.spei_3[:, 0, 1].isnull().all()
         assert actual.spi_3[:2].isnull().all()
         assert actual.spei_3[:2].isnull().all()
+        # Meaningful zero precipitation (index 100, land pixel) stays a real value, not NaN.
+        assert np.isfinite(actual.spi_3[100, 0, 0])
+        assert np.isfinite(actual.spei_3[100, 0, 0])
         xr.testing.assert_equal(actual.time, ds.time)
 
 
