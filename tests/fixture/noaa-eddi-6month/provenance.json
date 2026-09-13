@@ -1,0 +1,16 @@
+{
+  "source": "NOAA Physical Sciences Laboratory (PSL)",
+  "url": "https://psl.noaa.gov/eddi/#timeseries",
+  "download_date": "2026-09-06",
+  "subset_description": "EDDI 6-month and monthly reference ET from the NOAA PSL EDDI time-series master table for latitude 39.75 to 39.875 and longitude -105.0 to -104.875.",
+  "checksum_sha256": "aee8d3db06c01728fed701c7cb78e63373e5aaa9eaef9b7b0b04d655981fe5c2",
+  "fixture_version": "1.0.0",
+  "validation_tolerance": {
+    "rtol": 1e-05,
+    "atol": 1e-05
+  },
+  "citation": "Hobbins, M. T., A. Wood, D. McEvoy, J. Huntington, C. Morton, M. Anderson, and C. Hain (2016), The Evaporative Demand Drought Index. Part I.",
+  "doi": "10.1175/JHM-D-15-0121.1",
+  "license": "Public domain (U.S. Government work)",
+  "notes": "Retrieved through the NOAA PSL time-series tool using monavg=1 and monend=0; the table baseline is 1979-2023."
+}
