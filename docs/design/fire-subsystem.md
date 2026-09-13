@@ -48,7 +48,8 @@ may invent a different state-return convention.
 
 ## Stateful recurrence contract
 
-KBDI, FFMC, DMC, DC, and CFFWIS accept time-first daily arrays. Their
+Planned NumPy APIs for KBDI, FFMC, DMC, DC, and CFFWIS (#799, #803) will
+accept time-first daily arrays. Their
 single-output APIs take keyword-only `initial_<code>: float | None`,
 `initial_state`, `return_state=False`, and `spin_up=0`. `None` selects the
 literature seed: KBDI 0, FFMC 85, DMC 6, or DC 15. `initial_state` restores the
@@ -67,6 +68,7 @@ a study-appropriate transient.
 ```python
 import numpy as np
 
+# illustrative of the target #799 API; fire.kbdi does not exist yet
 history = fire.kbdi(precipitation_1980_2020, temperature_1980_2020, mean_annual_precipitation, return_state=True)
 next_year = fire.kbdi(precipitation_2021, temperature_2021, mean_annual_precipitation, initial_state=history.state, return_state=True)
 whole = fire.kbdi(precipitation_1980_2021, temperature_1980_2021, mean_annual_precipitation)
