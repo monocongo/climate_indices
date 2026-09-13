@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import date
 from unittest import mock
 
 import numpy as np
@@ -11,7 +12,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from climate_indices import fire
-from climate_indices.exceptions import InvalidArgumentError
+from climate_indices.exceptions import DataShapeError, InvalidArgumentError
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -298,6 +299,69 @@ def test_chunked_time_axis_matches_eager() -> None:
         output_dtypes=[np.float64],
     )
     np.testing.assert_array_equal(chunked.compute().values, eager)
+
+
+# ------------------------------------------------------------------------------
+# recurrence architecture
+
+
+def _accumulate(state: np.ndarray, forcing: np.ndarray) -> tuple[np.ndarray]:
+    """Small recurrence representative: tomorrow retains today's state."""
+    return (state + forcing,)
+
+
+@pytest.mark.parametrize(
+    ("inputs", "initial_state", "match"),
+    [
+        pytest.param((np.asarray(1.0),), (0.0,), "time dimension", id="scalar_input"),
+        pytest.param(
+            (np.zeros(2), np.zeros(3)),
+            (0.0,),
+            "equal shapes",
+            id="unequal_daily_inputs",
+        ),
+        pytest.param(
+            (np.zeros((2, 2)),),
+            (np.zeros(3),),
+            "must broadcast",
+            id="nonbroadcastable_state",
+        ),
+    ],
+)
+def test_recurrence_invalid_shapes_raise_data_shape_error(
+    inputs: tuple[np.ndarray, ...],
+    initial_state: tuple[np.ndarray | float, ...],
+    match: str,
+) -> None:
+    """The shared recurrence reports NumPy shape errors consistently."""
+    with pytest.raises(DataShapeError, match=match):
+        fire._recurse(inputs, initial_state, _accumulate)
+
+
+def test_recurrence_append_state_round_trip() -> None:
+    """1980–2020 state plus 2021 matches one 1980–2021 recurrence exactly."""
+    start = date(1980, 1, 1)
+    append_start = date(2021, 1, 1)
+    end = date(2022, 1, 1)
+    history_days = (append_start - start).days
+    forcing = np.arange((end - start).days, dtype=np.float64)
+
+    whole, _ = fire._recurse((forcing,), (0.0,), _accumulate)
+    history, state = fire._recurse((forcing[:history_days],), (0.0,), _accumulate)
+    appended, _ = fire._recurse((forcing[history_days:],), state, _accumulate)
+
+    np.testing.assert_array_equal(np.concatenate((history, appended)), whole)
+
+
+@pytest.mark.benchmark(group="fire-recurrence")
+def test_recurrence_benchmark(benchmark) -> None:
+    """Benchmark one all-time spatial tile; #795 records the projected CONUS cost."""
+    forcing = np.full((14_610, 25, 25), 0.25, dtype=np.float64)
+    initial_state = np.zeros((25, 25), dtype=np.float64)
+
+    values, _ = benchmark(fire._recurse, (forcing,), (initial_state,), _accumulate)
+
+    assert values.shape == forcing.shape
 
 
 # ------------------------------------------------------------------------------
