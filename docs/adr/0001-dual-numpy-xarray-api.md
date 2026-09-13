@@ -4,4 +4,4 @@
 
 ## Consequences
 
-The established numpy API in `indices.py` remains stable and receives no new functions. New non-Palmer index computations must be added to `compute.py` and exposed through the modern API in `typed_public_api.py` and `xarray_adapter.py`. Palmer-family computations are the established exception: they live in `palmer.py` and currently expose only their numpy API. Adding xarray support for Palmer indices requires a separate, explicit architecture decision rather than unsupported wiring through `indices.py` or `xarray_adapter.py`.
+The established numpy API in `indices.py` remains stable and receives no new functions. New non-Palmer index computations must be added to `compute.py` and exposed through the modern API in `typed_public_api.py` and `xarray_adapter.py`. Palmer-family computations are the established exception: they live in `palmer.py` and currently expose only their numpy API. Adding xarray support for Palmer indices requires a separate, explicit architecture decision rather than unsupported wiring through `indices.py` or `xarray_adapter.py`. The fire family is the documented exception in [ADR-0005](./0005-fire-module-api.md).
