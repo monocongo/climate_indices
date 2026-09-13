@@ -12,6 +12,7 @@ for all coding agents; tool-specific files must point here rather than copy it.
 - [Contributing workflow](CONTRIBUTING.md) for branches, PRs, and code style.
 - [Validation scopes](VALIDATION.md) for scientific-validation work.
 - [ADRs](docs/adr/) for non-obvious, hard-to-reverse decisions.
+- [Issue tracker guide](docs/agent/issue-tracker.md) for managing GitHub issues via `gh`.
 
 Preserve public behavior and follow the responsible module's established
 patterns. Scope new conventions to new code; do not migrate unrelated legacy
