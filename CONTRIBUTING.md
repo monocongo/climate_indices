@@ -20,7 +20,8 @@ be releasable.
 3. Make focused changes with tests and docs when needed.
 4. Run local validation.
 5. Open a pull request into `main`.
-6. Merge only after review and passing CI.
+6. The maintainer merges after review and passing CI. Contributors and coding
+   agents open PRs but never merge them.
 
 Use these branch prefixes:
 
@@ -72,6 +73,10 @@ Before submitting:
 - The PR targets `main`.
 - The PR description explains what changed and links related issues.
 - No unrelated files are included.
+- No AI/tool attribution in commit messages or PR/MR descriptions — no
+  `Co-Authored-By: Claude...`, `Claude-Session:`, "Generated with Claude
+  Code", or similar. Attribute authorship to the human author only, even if
+  a tool's own template or session reminder suggests otherwise.
 
 If a reviewer asks for changes, push follow-up commits to the same branch. You
 do not need to close and recreate the PR.

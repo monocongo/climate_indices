@@ -78,7 +78,7 @@ be releasable.
    `uv run mypy src/`
    `uv run pytest`
 5. Open a PR into `main`.
-6. Merge only after CI passes.
+6. The maintainer merges the PR after review and passing CI; agents never merge.
 
 Use `feature/<topic>`, `fix/<topic>`, `docs/<topic>`, `chore/<topic>`, or
 `hotfix/<topic>` branch names. Release branches are avoided; use maintenance
@@ -94,8 +94,9 @@ version must match.
 - GitHub Release: `v1.2.3`
 - PyPI release: `1.2.3`
 
-1. Prepare and merge a release PR that updates `pyproject.toml`, `CHANGELOG.md`,
-   and release notes/docs.
+1. Prepare a release PR that updates `pyproject.toml`, `CHANGELOG.md`,
+   and release notes/docs; the maintainer merges it after review and passing
+   CI.
 2. Confirm `main` is green.
 3. Create an annotated tag from `main`.
 4. Push the tag. The release workflow builds, validates, publishes to PyPI, and
