@@ -1,0 +1,71 @@
+{
+  "source": "NOAA National Centers for Environmental Information (NCEI)",
+  "url": "https://www.ncei.noaa.gov/pub/data/cirs/climdiv/",
+  "download_date": "2026-09-12",
+  "subset_description": "Operational nClimDiv monthly Standardized Precipitation Index (SPI) for the 344 US climate divisions present in tests/fixture/palmer and tests/fixture/nclimdiv, January 1895 through December 2022 (1536 months), for timescales 1, 2, 3, 6, 9, 12 and 24 months (element codes 71-77). Each <scale>.npy is a (344, 1536) float32 array whose row order matches tests/fixture/nclimdiv/divisions.json. Source files are climdiv-sp{01,02,03,06,09,12,24}dv-v1.0.0-20260904. NCEI's -99.99 missing sentinel is stored as NaN.",
+  "checksum_sha256": "9103a2d87eefade88f8c8ec9ca69fc2eb004c5a46162bb2cee283122d72e4100",
+  "fixture_version": "1.0.0",
+  "validation_tolerance": {
+    "sp01_median": 0.03,
+    "sp01_p90": 0.07,
+    "sp01_max": 2.2,
+    "sp02_median": 0.03,
+    "sp02_p90": 0.06,
+    "sp02_max": 1.6,
+    "sp03_median": 0.03,
+    "sp03_p90": 0.06,
+    "sp03_max": 1.4,
+    "sp06_median": 0.03,
+    "sp06_p90": 0.06,
+    "sp06_max": 1.1,
+    "sp09_median": 0.03,
+    "sp09_p90": 0.06,
+    "sp09_max": 0.7,
+    "sp12_median": 0.03,
+    "sp12_p90": 0.06,
+    "sp12_max": 0.65,
+    "sp24_median": 0.06,
+    "sp24_p90": 0.17,
+    "sp24_max": 1.9
+  },
+  "measured_stats": {
+    "sp01": {
+      "median": 0.0136,
+      "p90": 0.0342,
+      "max": 1.29
+    },
+    "sp02": {
+      "median": 0.0129,
+      "p90": 0.0298,
+      "max": 0.9576
+    },
+    "sp03": {
+      "median": 0.0126,
+      "p90": 0.0287,
+      "max": 0.8376
+    },
+    "sp06": {
+      "median": 0.0126,
+      "p90": 0.0275,
+      "max": 0.6563
+    },
+    "sp09": {
+      "median": 0.0123,
+      "p90": 0.026,
+      "max": 0.4088
+    },
+    "sp12": {
+      "median": 0.0122,
+      "p90": 0.0252,
+      "max": 0.3644
+    },
+    "sp24": {
+      "median": 0.0304,
+      "p90": 0.0827,
+      "max": 1.1598
+    }
+  },
+  "citation": "McKee, T. B., Doesken, N. J., and Kleist, J., 1993: The relationship of drought frequency and duration to time scales. Proceedings of the 8th Conference on Applied Climatology, American Meteorological Society, 179-184. Data: NOAA NCEI Climate Divisional Database (nClimDiv).",
+  "license": "U.S. Government work, public domain (17 U.S.C. Sec. 105).",
+  "notes": "External ground truth for climate_indices.indices.spi() with Distribution.pearson (Pearson Type III), matching NCEI's documented distribution choice for this product (drought-readme.txt). Input precipitation is the existing tests/fixture/palmer/<division>/precips.npy arrays, which are byte-identical (to 2 decimals) to NCEI's climdiv-pcpndv for the same divisions and period -- verified for division 0101 at fixture creation time. CALIBRATION FINDING (empirical, resolves GitHub issue #777): NCEI's drought-readme.txt states a fixed 1931-1990 calibration window, but reproducing SPI with that window disagrees badly with these files (median abs diff 0.086-0.167 across timescales, sampled divisions). Baldwin & Chen (2020, JAMC, 'Major Over- and Underestimation of Drought Found in NOAA's Climate Divisional SPI Dataset') report that NCEI's actual production behavior uses a full/expanding period-of-record window instead. Using calibration_year_initial=1895, calibration_year_final=2022 (the full input period) instead reproduces these files far more closely (see calibration_check below), confirming Baldwin & Chen's finding -- so validation tests MUST use full-period-of-record calibration, not the README's stated 1931-1990 window. INDEPENDENCE: this repository's own author separately maintains a fork of NOAA/NIDIS's gridded nClimGrid-monthly SPI/SPEI/PET Python tool (per drought.gov's 'Source Code: Climate and Drought Indices in Python' page), so that gridded product is excluded as circular. This climate-divisional product is part of NCEI's older Climate Divisional Database lineage (documentation dated 2014, predating this Python package's 2017 copyright) and is plausibly computed by a separate, older Fortran-derived codebase (drought.gov separately lists 'Source Code: Drought Indices in Fortran (SPI, PDSI)' as distinct public-release code), but NOAA does not publish an explicit statement that the two are unrelated, so independence is plausible but not airtight -- see docs/research/spi-dataset-survey.md. MEASURED (full-period-of-record calibration, all 344 divisions): see measured_stats."
+}

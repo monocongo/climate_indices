@@ -12,6 +12,7 @@ SUMMARY_FILES = [
     "VALIDATION.md",
     "docs/xarray_compatibility.md",
     "docs/algorithm_refs/eddi.md",
+    "docs/algorithm_refs/pet.md",
     "docs/algorithm_refs/palmer.md",
 ]
 

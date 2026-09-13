@@ -21,6 +21,25 @@ may change in a future minor release.
 | Automatic temporal inference | Yes | Monthly and daily time-coordinate inference is covered by adapter tests. |
 | Multi-input alignment | Yes | SPEI aligns precipitation and PET with an inner join and emits a warning when timesteps are dropped. |
 
+## Stateful fire indices (planned)
+
+KBDI and CFFWIS moisture-code adapters are not yet shipped; this section
+describes the contract they will follow, per
+[ADR-0006](adr/0006-fire-recursive-state-and-execution.md). Only the
+weather-only Fosberg index is available today, via the NumPy layer.
+
+The planned adapters are recursive: each daily value needs its predecessor.
+Dask-backed inputs must therefore keep the complete `time` dimension in one
+chunk for every time-varying weather variable. Spatial chunks remain
+supported. Multi-chunk time input will raise `CoordinateValidationError` with
+`data = data.chunk({'time': -1})`; adapters never rechunk implicitly, because
+doing so can materialize a large daily history.
+
+Callers will use the returned state to append later observations without
+recomputing the archive. The state is a NumPy-layer value object rather than
+an xarray `Dataset`, so its arrays carry the computational spatial shape but
+no coordinates.
+
 ## Operational Guidance
 
 - Use NumPy APIs for stable production integrations that cannot absorb beta

@@ -48,6 +48,16 @@
         "type": "number"
       }
     },
+    "measured_stats": {
+      "type": "object",
+      "description": "Measured agreement statistics per named subset or scale, for datasets validated against loose characterization ceilings rather than fixed tolerances.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "number"
+        }
+      }
+    },
     "citation": {
       "type": "string",
       "description": "Bibliographic reference for the methodology or dataset."

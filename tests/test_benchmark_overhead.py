@@ -39,6 +39,14 @@ _OVERHEAD_THRESHOLD = 0.80
 # points of headroom above the observed maximum while still failing if the xarray
 # path takes twice as long as the equivalent NumPy path. See issue #740.
 _PET_HARGREAVES_OVERHEAD_THRESHOLD = 1.00
+# The K-S goodness-of-fit speedup (PR #818) cut the SPI/SPEI NumPy baselines to
+# ~0.35ms, below the fixed adapter cost (~0.3-0.45ms, two input arrays for SPEI).
+# The unchanged ratio budget therefore fails without any adapter regression:
+# SPI measured 92.8% and SPEI 108.2%-114.6%. These budgets add ~30 points of
+# headroom above the observed maxima while still failing if the xarray path
+# takes more than ~2.2x/2.5x the equivalent NumPy path.
+_SPI_OVERHEAD_THRESHOLD = 1.25
+_SPEI_OVERHEAD_THRESHOLD = 1.50
 
 
 def _assert_overhead_within_budget(
@@ -299,10 +307,11 @@ class TestOverheadThreshold:
     - xarray apply_ufunc machinery (~0.2ms for PET functions)
     - Coordinate/metadata handling
 
-    The shared budget is 80% for 1D arrays. PET Hargreaves uses its documented
-    operation-specific budget because fixed adapter costs and runner noise are
-    large relative to its fast NumPy baseline. For gridded data (primary use
-    case), overhead is amortized across spatial dimensions and becomes negligible.
+    The shared budget is 80% for 1D arrays. PET Hargreaves, SPI, and SPEI use
+    documented operation-specific budgets because fixed adapter costs and runner
+    noise are large relative to their fast NumPy baselines. For gridded data
+    (primary use case), overhead is amortized across spatial dimensions and
+    becomes negligible.
 
     Uses timeit.repeat with min selection (standard Python benchmarking practice)
     to filter upward outliers from CI noise while catching real regressions.
@@ -353,7 +362,7 @@ class TestOverheadThreshold:
                 distribution=Distribution.gamma,
             ),
         )
-        _assert_overhead_within_budget("SPI", np_time, xa_time, overhead, _OVERHEAD_THRESHOLD)
+        _assert_overhead_within_budget("SPI", np_time, xa_time, overhead, _SPI_OVERHEAD_THRESHOLD)
 
     def test_spei_overhead(
         self,
@@ -381,7 +390,7 @@ class TestOverheadThreshold:
                 distribution=Distribution.gamma,
             ),
         )
-        _assert_overhead_within_budget("SPEI", np_time, xa_time, overhead, _OVERHEAD_THRESHOLD)
+        _assert_overhead_within_budget("SPEI", np_time, xa_time, overhead, _SPEI_OVERHEAD_THRESHOLD)
 
     def test_pet_thornthwaite_overhead(
         self,
