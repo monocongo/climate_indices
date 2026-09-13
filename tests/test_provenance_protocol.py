@@ -150,6 +150,30 @@ class TestProvenanceChecksum:
             f"regenerate the checksum and update provenance.json."
         )
 
+    def test_ncei_spi_checksum_matches(self) -> None:
+        """Verify NCEI SPI fixture checksum matches provenance.json.
+
+        The checksum covers the complete canonical array set (all seven
+        timescale .npy files), so a corrupted, partially refreshed, or
+        replaced array fails loudly before the set is used as a reference.
+        """
+        fixture_dir = FIXTURE_DIR / "ncei_spi"
+        provenance_path = fixture_dir / "provenance.json"
+        if not provenance_path.exists():
+            pytest.skip("NCEI SPI provenance.json not yet created")
+
+        with provenance_path.open() as f:
+            provenance = json.load(f)
+
+        actual_checksum = _compute_checksum_for_npy_files(fixture_dir)
+        assert actual_checksum == provenance["checksum_sha256"], (
+            f"NCEI SPI fixture checksum mismatch. "
+            f"Expected: {provenance['checksum_sha256']}, "
+            f"Actual: {actual_checksum}. "
+            f"If the fixture data was intentionally refreshed, "
+            f"rerun scripts/prepare_ncei_spi_fixtures.py."
+        )
+
 
 class TestProvenanceProtocolCoverage:
     """Ensure provenance protocol is being followed for reference datasets."""
