@@ -800,8 +800,8 @@ def _ks_poor_fit_p_value(
 
     The D statistic is computed directly rather than through ``scipy.stats.kstest``,
     whose argument-dispatch machinery dominates the runtime of this check when it runs
-    once per grid cell. The exact p-value is evaluated only for samples within one
-    input-dtype machine epsilon of the critical D value, which is the uncommon case.
+    once per grid cell. Clearly acceptable fits skip the exact p-value calculation.
+    Candidate poor fits and values near the critical D value defer to SciPy.
 
     Args:
         sorted_values: Ascending valid sample values.
