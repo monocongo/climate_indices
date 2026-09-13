@@ -33,8 +33,11 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import os
 import re
+import shutil
 import sys
+import tempfile
 import urllib.request
 from pathlib import Path
 
@@ -53,6 +56,33 @@ _DATA_START_YEAR = 1895
 _DATA_END_YEAR = 2022  # matches tests/fixture/palmer/<division>/precips.npy length
 _MISSING_SENTINEL = -99.99
 
+_APPROVED_ORIGIN = "https://www.ncei.noaa.gov/"
+_MAX_DOWNLOAD_BYTES = 64 * 1024 * 1024  # files are ~6 MB; anything larger is malformed
+_MIN_DIVISION_COVERAGE = 0.95  # fraction of months that must be non-NaN per division
+
+# Agreement with climate_indices.indices.spi() (Pearson III, full-period-of-record
+# calibration) measured across all 344 divisions (GitHub issue #777), and the
+# loose characterization ceilings the tests assert against. Mirrored in
+# tests/test_ncei_spi_reference.py, which cross-checks these against provenance.json.
+_MEASURED_STATS = {
+    1: {"median": 0.0136, "p90": 0.0342, "max": 1.2900},
+    2: {"median": 0.0129, "p90": 0.0298, "max": 0.9576},
+    3: {"median": 0.0126, "p90": 0.0287, "max": 0.8376},
+    6: {"median": 0.0126, "p90": 0.0275, "max": 0.6563},
+    9: {"median": 0.0123, "p90": 0.0260, "max": 0.4088},
+    12: {"median": 0.0122, "p90": 0.0252, "max": 0.3644},
+    24: {"median": 0.0304, "p90": 0.0827, "max": 1.1598},
+}
+_CEILINGS = {
+    1: {"median": 0.03, "p90": 0.07, "max": 2.2},
+    2: {"median": 0.03, "p90": 0.06, "max": 1.6},
+    3: {"median": 0.03, "p90": 0.06, "max": 1.4},
+    6: {"median": 0.03, "p90": 0.06, "max": 1.1},
+    9: {"median": 0.03, "p90": 0.06, "max": 0.7},
+    12: {"median": 0.03, "p90": 0.06, "max": 0.65},
+    24: {"median": 0.06, "p90": 0.17, "max": 1.9},
+}
+
 _LINE_RE = re.compile(r"^(\d{4})(\d{2})(\d{4})(.{84})")
 
 
@@ -60,10 +90,15 @@ def _download(scale: int) -> str:
     """Fetch one climdiv-spNNdv file's raw text from NCEI."""
     filename = f"climdiv-sp{_SCALE_ELEMENT_CODES[scale]}dv-{_FILE_VERSION}"
     url = f"{_NCEI_BASE_URL}/{filename}"
-    if not url.startswith("https://www.ncei.noaa.gov/"):
-        raise ValueError(f"NCEI URL must use https://www.ncei.noaa.gov, got: {url}")
-    with urllib.request.urlopen(url, timeout=30) as response:  # noqa: S310 -- URL host validated above
-        return response.read().decode("ascii")
+    if not url.startswith(_APPROVED_ORIGIN):
+        raise ValueError(f"NCEI URL must use {_APPROVED_ORIGIN}, got: {url}")
+    with urllib.request.urlopen(url, timeout=30) as response:  # noqa: S310 -- URL host validated above and below
+        if not response.url.startswith(_APPROVED_ORIGIN):
+            raise ValueError(f"download redirected off the approved NCEI origin: {response.url}")
+        payload = response.read(_MAX_DOWNLOAD_BYTES + 1)
+    if len(payload) > _MAX_DOWNLOAD_BYTES:
+        raise ValueError(f"NCEI response exceeds {_MAX_DOWNLOAD_BYTES} bytes, refusing to parse: {url}")
+    return payload.decode("ascii")
 
 
 def _parse(raw_text: str) -> dict[str, dict[int, np.ndarray]]:
@@ -100,7 +135,7 @@ def _compute_checksum(directory: Path) -> str:
     return hasher.hexdigest()
 
 
-def _write_provenance(directory: Path, checksum: str, calibration_stats: dict) -> None:
+def _write_provenance(directory: Path, checksum: str) -> None:
     provenance = {
         "source": "NOAA National Centers for Environmental Information (NCEI)",
         "url": f"{_NCEI_BASE_URL}/",
@@ -116,10 +151,12 @@ def _write_provenance(directory: Path, checksum: str, calibration_stats: dict) -
         ),
         "checksum_sha256": checksum,
         "fixture_version": "1.0.0",
+        # the actual characterization criteria asserted by test_ncei_spi_reference.py:
+        # per-scale median/p90/max absolute-difference ceilings
         "validation_tolerance": {
-            "rtol": 0,
-            "atol": 0.05,
+            f"sp{scale:02d}_{stat}": value for scale, stats in _CEILINGS.items() for stat, value in stats.items()
         },
+        "measured_stats": {f"sp{scale:02d}": stats for scale, stats in _MEASURED_STATS.items()},
         "citation": (
             "McKee, T. B., Doesken, N. J., and Kleist, J., 1993: The relationship of drought "
             "frequency and duration to time scales. Proceedings of the 8th Conference on "
@@ -155,7 +192,7 @@ def _write_provenance(directory: Path, checksum: str, calibration_stats: dict) -
             "Code: Drought Indices in Fortran (SPI, PDSI)' as distinct public-release code), "
             "but NOAA does not publish an explicit statement that the two are unrelated, so "
             "independence is plausible but not airtight -- see docs/research/spi-dataset-survey.md. "
-            f"MEASURED (full-period-of-record calibration, all 344 divisions): {calibration_stats}"
+            "MEASURED (full-period-of-record calibration, all 344 divisions): see measured_stats."
         ),
     }
     (directory / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
@@ -166,8 +203,7 @@ def main() -> None:
     row_by_division = {division: row for row, division in enumerate(divisions)}
     n_months = (_DATA_END_YEAR - _DATA_START_YEAR + 1) * 12
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
+    arrays = {}
     for scale in _SCALE_ELEMENT_CODES:
         print(f"Downloading SPI-{scale} ...", file=sys.stderr)
         raw_text = _download(scale)
@@ -179,13 +215,36 @@ def main() -> None:
                 continue  # state/regional/national aggregate or a division outside our 344
             array[row_by_division[division]] = _to_series(by_year)
 
-        np.save(OUTPUT_DIR / f"sp{scale:02d}.npy", array)
-        print(f"  wrote sp{scale:02d}.npy {array.shape}", file=sys.stderr)
+        # refuse to commit fixtures with absent or sparse divisions
+        missing = [division for division in divisions if division not in by_division]
+        sparse = [
+            division
+            for division in divisions
+            if division not in missing
+            and np.count_nonzero(~np.isnan(array[row_by_division[division]])) < _MIN_DIVISION_COVERAGE * n_months
+        ]
+        if missing or sparse:
+            raise RuntimeError(
+                f"SPI-{scale}: incomplete NCEI coverage -- {len(missing)} divisions absent {missing[:5]}, "
+                f"{len(sparse)} divisions below {_MIN_DIVISION_COVERAGE:.0%} non-NaN {sparse[:5]}"
+            )
+        arrays[scale] = array
+        print(f"  parsed sp{scale:02d} {array.shape}", file=sys.stderr)
 
-    checksum = _compute_checksum(OUTPUT_DIR)
-    _write_provenance(
-        OUTPUT_DIR, checksum, calibration_stats="see tests/test_ncei_spi_reference.py for the measured ceilings"
-    )
+    # stage the complete generation in a sibling directory and swap it in, so an
+    # interrupted refresh never leaves a mixture of old and new arrays live
+    staging = Path(tempfile.mkdtemp(prefix=".ncei_spi-staging-", dir=FIXTURE_DIR))
+    try:
+        for scale, array in arrays.items():
+            np.save(staging / f"sp{scale:02d}.npy", array)
+        checksum = _compute_checksum(staging)
+        _write_provenance(staging, checksum)
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        for staged_file in staging.iterdir():
+            os.replace(staged_file, OUTPUT_DIR / staged_file.name)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
     print(f"Done. checksum_sha256={checksum}", file=sys.stderr)
 
 

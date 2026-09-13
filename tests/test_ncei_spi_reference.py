@@ -34,11 +34,14 @@ _DATA_END_YEAR = 2022  # matches tests/fixture/palmer/<division>/precips.npy len
 
 _SCALES = (1, 2, 3, 6, 9, 12, 24)
 
-# Minimum overlapping division-months per scale (longer scales lose the
-# leading `scale - 1` months to the rolling-sum warmup). A regression that
-# turns whole divisions into NaN shrinks the compared sample loudly instead
-# of silently improving the statistics.
-_MIN_COMPARED_MONTHS = {1: 520_000, 2: 520_000, 3: 520_000, 6: 520_000, 9: 515_000, 12: 515_000, 24: 510_000}
+_N_MONTHS = (_DATA_END_YEAR - _DATA_START_YEAR + 1) * 12
+
+# Slack below the maximum comparable months per division (longer scales lose
+# the leading `scale - 1` months to the rolling-sum warmup), tolerating a few
+# legitimately missing NCEI months. Every division must clear this floor, so a
+# regression that turns a division into NaN -- or a fixture whose rows are
+# permuted or absent -- fails loudly instead of washing out in the aggregate.
+_PER_DIVISION_SLACK = 12
 
 # Measured across all 344 divisions (GitHub issue #777), full-period-of-record
 # calibration (1895-2022). See tests/fixture/ncei_spi/provenance.json.
@@ -82,12 +85,8 @@ def _abs_diffs(computed: np.ndarray, reference_row: np.ndarray) -> np.ndarray:
     return np.abs(computed[both_present] - reference[both_present])
 
 
-def _summarize(diffs: list[np.ndarray], scale: int) -> dict[str, float]:
+def _summarize(diffs: list[np.ndarray]) -> dict[str, float]:
     stacked = np.concatenate(diffs)
-    assert stacked.size >= _MIN_COMPARED_MONTHS[scale], (
-        f"scale {scale}: only {stacked.size} division-months compared, expected at least "
-        f"{_MIN_COMPARED_MONTHS[scale]} -- the reference and computed series barely overlap"
-    )
     return {
         "median": float(np.median(stacked)),
         "p90": float(np.percentile(stacked, 90)),
@@ -108,9 +107,28 @@ def test_ceilings_keep_documented_headroom():
             assert low <= ratio <= high, f"scale {scale} {stat}: ceiling is {ratio:.2f}x measured, want {low}-{high}x"
 
 
+@pytest.fixture
+def pearson_fallbacks(monkeypatch) -> list[str]:
+    """Record any Pearson->gamma fallback inside ``indices.spi()``.
+
+    The characterization claims Pearson Type III coverage; ``spi()`` silently
+    falls back to gamma on fitting failure or excessive NaNs, so the test must
+    observe and reject that fallback rather than comparing gamma values.
+    """
+    fallbacks: list[str] = []
+    original = indices._fallback_strategy.log_fallback_warning
+
+    def spy(reason: str, context: str = "") -> None:
+        fallbacks.append(reason)
+        original(reason, context)
+
+    monkeypatch.setattr(indices._fallback_strategy, "log_fallback_warning", spy)
+    return fallbacks
+
+
 @pytest.mark.validation
 @pytest.mark.parametrize("scale", _SCALES)
-def test_spi_vs_noaa_ncei_climdiv_characterization(scale, divisions, precips_by_division):
+def test_spi_vs_noaa_ncei_climdiv_characterization(scale, divisions, precips_by_division, pearson_fallbacks):
     """Aggregate agreement between ``indices.spi()`` and NOAA's climdiv SPI.
 
     Uses the Pearson Type III distribution (matching NCEI's documented
@@ -130,11 +148,29 @@ def test_spi_vs_noaa_ncei_climdiv_characterization(scale, divisions, precips_by_
             _DATA_END_YEAR,
             compute.Periodicity.monthly,
         )
-        diffs.append(_abs_diffs(computed, reference[row]))
+        row_diffs = _abs_diffs(computed, reference[row])
+        min_compared = _N_MONTHS - (scale - 1) - _PER_DIVISION_SLACK
+        assert row_diffs.size >= min_compared, (
+            f"scale {scale} division {division}: only {row_diffs.size} months compared, "
+            f"expected at least {min_compared} -- fixture row missing/permuted or computed series is NaN"
+        )
+        diffs.append(row_diffs)
 
-    summary = _summarize(diffs, scale)
+    assert not pearson_fallbacks, f"scale {scale}: Pearson fit fell back to gamma: {pearson_fallbacks}"
+
+    summary = _summarize(diffs)
     for stat, ceiling in _CEILINGS[scale].items():
         assert summary[stat] < ceiling, f"scale {scale} {stat}: {summary}"
+
+
+def test_provenance_characterization_matches_test_constants():
+    """provenance.json must describe the criteria this module actually asserts."""
+    provenance = json.loads((_NCEI_SPI_ROOT / "provenance.json").read_text(encoding="utf-8"))
+    expected_ceilings = {
+        f"sp{scale:02d}_{stat}": value for scale, stats in _CEILINGS.items() for stat, value in stats.items()
+    }
+    assert provenance["validation_tolerance"] == expected_ceilings
+    assert provenance["measured_stats"] == {f"sp{scale:02d}": stats for scale, stats in _MEASURED.items()}
 
 
 def test_division_rows_match_nclimdiv_index(divisions):
