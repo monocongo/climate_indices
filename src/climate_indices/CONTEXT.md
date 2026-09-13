@@ -83,7 +83,10 @@ Daily PET estimated from min/max/mean temperature and extraterrestrial radiation
 Fire-weather and fuel-dryness indices live in the namespaced `fire` module (`from climate_indices import fire`), never as unqualified package functions — see [ADR-0005](../../docs/adr/0005-fire-module-api.md) and the [fire subsystem design](../../docs/design/fire-subsystem.md).
 
 **FFWI (Fosberg Fire Weather Index)**:
-A dimensionless, weather-only, elementwise fire-weather index from temperature, relative humidity, and wind speed; computed by `fire.fosberg_ffwi()`. The only fire index implemented today; KBDI, CFFWIS, HDW, and Haines are planned contracts in the design doc.
+A dimensionless, weather-only, elementwise fire-weather index from temperature, relative humidity, and wind speed; computed by `fire.fosberg_ffwi()`.
+
+**HDW (Hot-Dry-Windy Index)**:
+The vapor pressure deficit times wind speed, maximized over the lowest 500 m above ground level of a vertical profile; computed by `fire.hot_dry_windy()` in hPa m s⁻¹. KBDI, CFFWIS, and Haines are planned contracts in the design doc.
 
 ### Statistics
 

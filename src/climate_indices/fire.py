@@ -1,11 +1,15 @@
 """Fire-weather indices computed from standard meteorological inputs.
 
 This module is the NumPy layer of the fire-weather family tracked in #793. It
-currently provides the Fosberg Fire Weather Index, which is weather-only and
-carries no state between time steps.
+currently provides the Fosberg Fire Weather Index and the Hot-Dry-Windy
+Index, both weather-only and carrying no state between time steps.
 
 References
 ----------
+Srock, A.F., Charney, J.J., Potter, B.E., Goodrick, S.L. (2018) The
+Hot-Dry-Windy Index: A New Fire Weather Index. Atmosphere, 9(7), 279.
+doi:10.3390/atmos9070279.
+
 Fosberg, M.A. (1978) Weather in wildland fire management: the fire weather
 index. Conference on Sierra Nevada Meteorology, Lake Tahoe, CA, 1-4.
 
@@ -15,7 +19,6 @@ Fire Research Institute, Information Report FF-X-14.
 
 Goodrick, S.L. (2002) Modification of the Fosberg fire weather index to include
 drought. International Journal of Wildland Fire, 11, 205-211.
-
 NCEP GEMPAK, ``pd_fosb`` / ``pr_fosb`` (T. Lee, 2003): the operational
 implementation behind the ``FOSINDX`` GRIB2 parameter.
 https://github.com/Unidata/gempak
@@ -29,6 +32,7 @@ from collections.abc import Callable
 import numpy as np
 import numpy.typing as npt
 
+from climate_indices import pm_eto
 from climate_indices.exceptions import DataShapeError, InvalidArgumentError
 from climate_indices.logging_config import get_logger
 from climate_indices.performance import check_large_array_memory
@@ -37,7 +41,7 @@ from climate_indices.performance import check_large_array_memory
 _logger = get_logger(__name__)
 
 # declare the function names that should be included in the public API for this module
-__all__ = ["fosberg_ffwi"]
+__all__ = ["fosberg_ffwi", "hot_dry_windy"]
 
 # Simard (1968) equilibrium moisture content regressions, one per relative
 # humidity range, with the coefficients of NCEP's operational GEMPAK code.
@@ -63,6 +67,12 @@ _FFWI_CAP = 100.0
 
 # exact, by the definition of the international mile
 _METERS_PER_SECOND_PER_MPH = 0.44704
+
+# HDW analyzes the lowest 500 m above ground level (Srock et al., 2018)
+_HDW_LAYER_TOP_METERS = 500.0
+
+# pm_eto saturation vapor pressure is kPa; HDW reports VPD in hPa
+_KPA_PER_HPA = 0.1
 
 _RecurrenceStep = Callable[..., tuple[npt.NDArray[np.float64], ...]]
 
@@ -337,6 +347,176 @@ def fosberg_ffwi(
             index = np.minimum(index, _FFWI_CAP)
 
         result = np.where(invalid, np.nan, index).astype(np.float64, copy=False)
+        duration_ms = (time.perf_counter() - t0) * 1000.0
+        log.info(
+            "calculation_completed",
+            duration_ms=round(duration_ms, 2),
+            output_shape=result.shape,
+            **(memory_metrics or {}),
+        )
+        return result
+    except Exception as exc:
+        log.error(
+            "calculation_failed",
+            exc_info=True,
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+        )
+        raise
+
+
+def hot_dry_windy(
+    temperature_celsius: npt.ArrayLike,
+    relative_humidity_percent: npt.ArrayLike,
+    wind_speed_meters_per_second: npt.ArrayLike,
+    height_agl_meters: npt.ArrayLike,
+    *,
+    level_axis: int = -1,
+) -> npt.NDArray[np.float64]:
+    """Compute the Hot-Dry-Windy Index (HDW).
+
+    A weather-only index of dangerous fire-behavior potential (Srock et al.,
+    2018): the vapor pressure deficit (VPD) times the wind speed, maximized
+    over the levels in the lowest 500 m above ground level (AGL)::
+
+        HDW = max over levels with 0 <= height_agl <= 500 of (VPD * wind speed)
+
+    Inputs are vertical profiles with SI units, like the rest of the package.
+    The four inputs broadcast against each other; the shared dimension
+    ``level_axis`` is the vertical coordinate and is reduced by the maximum.
+    VPD comes from each level's own temperature and relative humidity, with
+    saturation vapor pressure from ``pm_eto.saturation_vapor_pressure`` (FAO-56
+    Eq 11), converted from kPa to the hPa of the published index.
+
+    ``height_agl_meters`` is the vertical coordinate itself, so the AGL
+    determination happens where that coordinate is built:
+
+    - Model-level input (e.g. CFSR): use the model's own height field, or
+      geopotential height minus the surface geopotential height of the grid
+      cell.
+    - Pressure-level input: convert each pressure level to geopotential height
+      (hypsometric equation) and subtract the surface height of the grid cell.
+
+    The result is sensitive to vertical resolution: coarse level spacing can
+    miss the level where VPD and wind combine worst, and sampling more levels
+    inside the layer can only raise the maximum. Compare HDW across datasets
+    only at comparable vertical resolution. Srock et al. (2018) additionally
+    adiabatically adjust each level's VPD to the surface and take the VPD and
+    wind maxima independently (so they may come from different levels); this
+    implementation follows the simplified formulation of the issue contract,
+    the per-level product, which never exceeds the published variant.
+
+    Args:
+        temperature_celsius: Air temperature profile, degrees Celsius.
+        relative_humidity_percent: Relative humidity profile, percent, in
+            [0, 100].
+        wind_speed_meters_per_second: Wind speed profile, meters per second,
+            non-negative.
+        height_agl_meters: Height above ground level of each level, meters.
+            Levels outside [0, 500], or with NaN height, are excluded from the
+            maximum.
+        level_axis: Axis of the broadcast inputs that holds the vertical
+            coordinate. Reduced by the layer maximum.
+
+    Returns:
+        HDW in hPa m s-1, with the broadcast shape of the inputs minus
+        ``level_axis``. NaN where any in-layer level has NaN or out-of-range
+        input, and for columns with no level inside the lowest 500 m AGL.
+
+    Raises:
+        InvalidArgumentError: If the inputs cannot be broadcast together, or
+            ``level_axis`` is out of range for the broadcast shape.
+
+    Example:
+        >>> from climate_indices import fire
+        >>> round(float(fire.hot_dry_windy([30.0, 26.0], [15.0, 30.0], [8.0, 12.0], [10.0, 400.0])), 2)
+        288.53
+    """
+    temperature = _as_float_array(temperature_celsius)
+    humidity = _as_float_array(relative_humidity_percent)
+    wind = _as_float_array(wind_speed_meters_per_second)
+    height = _as_float_array(height_agl_meters)
+
+    broadcast_ndim = max(array.ndim for array in (temperature, humidity, wind, height))
+    if height.ndim == 1 and broadcast_ndim > 1 and -broadcast_ndim <= level_axis < broadcast_ndim:
+        axis = level_axis % broadcast_ndim
+        height = height.reshape((1,) * axis + height.shape + (1,) * (broadcast_ndim - axis - 1))
+
+    try:
+        temperature, humidity, wind, height = np.broadcast_arrays(temperature, humidity, wind, height)
+    except ValueError as exc:
+        message = (
+            "Incompatible array shapes for Hot-Dry-Windy Index: "
+            f"temperature={temperature.shape}, relative_humidity={humidity.shape}, "
+            f"wind_speed={wind.shape}, height_agl={height.shape}. The inputs must broadcast together."
+        )
+        _logger.error(message)
+        raise InvalidArgumentError(
+            message,
+            argument_name="temperature_celsius/relative_humidity_percent/wind_speed_meters_per_second/height_agl_meters",
+            argument_value=f"shapes {temperature.shape}, {humidity.shape}, {wind.shape}, {height.shape}",
+            valid_values="Arrays broadcastable to a common shape",
+        ) from exc
+
+    if temperature.ndim == 0:
+        # a single level is a degenerate profile; give it an axis to reduce
+        temperature, humidity, wind, height = (a.reshape(1) for a in (temperature, humidity, wind, height))
+
+    if not -temperature.ndim <= level_axis < temperature.ndim:
+        message = (
+            f"level_axis {level_axis} is out of range for the broadcast input shape "
+            f"{temperature.shape} with {temperature.ndim} dimensions."
+        )
+        _logger.error(message)
+        raise InvalidArgumentError(
+            message,
+            argument_name="level_axis",
+            argument_value=str(level_axis),
+            valid_values=f"An axis of the broadcast shape {temperature.shape}",
+        )
+    axis = level_axis % temperature.ndim
+
+    # bind context and emit calculation_started event
+    log = _logger.bind(
+        index_type="hot_dry_windy",
+        input_shape=temperature.shape,
+        input_elements=temperature.size,
+    )
+    log.info("calculation_started")
+    t0 = time.perf_counter()
+    memory_metrics = check_large_array_memory(temperature, humidity, wind, height)
+
+    try:
+        # outside the physical range the formulas still return numbers, but
+        # meaningless ones, so treat such values as missing
+        in_layer = (height >= 0.0) & (height <= _HDW_LAYER_TOP_METERS)
+        invalid = (humidity < 0.0) | (humidity > 100.0) | (wind < 0.0)
+        invalid_count = int(np.count_nonzero(invalid & in_layer))
+        if invalid_count > 0:
+            _logger.warning(
+                f"Found {invalid_count} values with relative humidity outside [0, 100] "
+                "or negative wind speed; HDW is NaN in those columns."
+            )
+        empty_columns = int(np.count_nonzero(~np.any(in_layer, axis=axis)))
+        if empty_columns > 0:
+            _logger.warning(
+                f"Found {empty_columns} columns with no level in the lowest "
+                f"{_HDW_LAYER_TOP_METERS:.0f} m AGL; HDW is NaN there."
+            )
+
+        saturation_hpa = pm_eto.saturation_vapor_pressure(temperature) / _KPA_PER_HPA
+        vpd_hpa = saturation_hpa * (1.0 - humidity / 100.0)
+
+        # NaN in-layer propagates through the maximum; out-of-layer levels are
+        # excluded via -inf, which any real product beats
+        value = np.where(invalid, np.nan, vpd_hpa * wind)
+        product = np.where(in_layer, value, -np.inf)
+        if product.shape[axis] == 0:
+            index = np.full(product.shape[:axis] + product.shape[axis + 1 :], np.nan)
+        else:
+            index = np.max(product, axis=axis)
+        result = np.where(np.any(in_layer, axis=axis), index, np.nan).astype(np.float64, copy=False)
+
         duration_ms = (time.perf_counter() - t0) * 1000.0
         log.info(
             "calculation_completed",
