@@ -80,9 +80,15 @@ def _recurse(
     wet-spell precipitation across an append boundary.
     """
     if not inputs:
-        raise ValueError("A recurrence requires at least one daily input array.")
+        raise InvalidArgumentError(
+            "A recurrence requires at least one daily input array.",
+            argument_name="inputs",
+        )
     if not initial_state:
-        raise ValueError("A recurrence requires at least one state value.")
+        raise InvalidArgumentError(
+            "A recurrence requires at least one state value.",
+            argument_name="initial_state",
+        )
 
     input_shape = inputs[0].shape
     if not input_shape:
@@ -113,9 +119,9 @@ def _recurse(
     state = tuple(state_values)
     result = np.empty(input_shape, dtype=np.float64)
     for day in range(input_shape[0]):
-        state = tuple(
-            np.asarray(value, dtype=np.float64) for value in step(*state, *(values[day] for values in inputs))
-        )
+        # copy: a step may return views into the inputs or reuse its own buffers;
+        # the recurrence must own every state array so steps can't mutate inputs
+        state = tuple(np.array(value, dtype=np.float64) for value in step(*state, *(values[day] for values in inputs)))
         result[day] = state[0]
 
     return result, tuple(value.copy() for value in state)

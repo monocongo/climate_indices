@@ -338,6 +338,36 @@ def test_recurrence_invalid_shapes_raise_data_shape_error(
         fire._recurse(inputs, initial_state, _accumulate)
 
 
+def test_recurrence_requires_inputs_and_state() -> None:
+    """Empty inputs or state are argument errors, not shape errors."""
+    with pytest.raises(InvalidArgumentError, match="at least one daily input"):
+        fire._recurse((), (0.0,), _accumulate)
+    with pytest.raises(InvalidArgumentError, match="at least one state"):
+        fire._recurse((np.zeros(2),), (), _accumulate)
+
+
+def test_recurrence_step_cannot_mutate_inputs() -> None:
+    """A step returning input views must not leak writes into caller arrays."""
+    forcing = np.arange(6, dtype=np.float64).reshape(3, 2)
+    original = forcing.copy()
+
+    def aliasing_step(state: np.ndarray, day: np.ndarray) -> tuple[np.ndarray]:
+        state += 1.0
+        return (day,)
+
+    fire._recurse((forcing,), (np.zeros(2),), aliasing_step)
+
+    np.testing.assert_array_equal(forcing, original)
+
+
+def test_recurrence_zero_length_time_returns_initial_state() -> None:
+    """No days means no values, and the initial state passes through."""
+    values, state = fire._recurse((np.zeros((0, 2)),), (1.0,), _accumulate)
+
+    assert values.shape == (0, 2)
+    np.testing.assert_array_equal(state[0], np.ones(2))
+
+
 def test_recurrence_append_state_round_trip() -> None:
     """1980–2020 state plus 2021 matches one 1980–2021 recurrence exactly."""
     start = date(1980, 1, 1)
