@@ -13,6 +13,36 @@ from climate_indices import compute, indices
 from climate_indices.exceptions import CoordinateValidationError, InvalidArgumentError
 
 
+def _validate_monthly_time(time_values: np.ndarray) -> pd.DatetimeIndex:
+    """Return complete month-start or month-end timestamps."""
+    try:
+        time = pd.DatetimeIndex(time_values)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise CoordinateValidationError(
+            "Time coordinate must contain supported datetime values.",
+            coordinate_name="time",
+            reason="not datetime-like",
+        ) from exc
+    if time.empty:
+        raise CoordinateValidationError(
+            "Time coordinate must not be empty.", coordinate_name="time", reason="empty coordinate"
+        )
+    if time.is_month_start.all():
+        expected_time = pd.date_range(time[0], periods=time.size, freq="MS")
+    elif time.is_month_end.all():
+        expected_time = pd.date_range(time[0], periods=time.size, freq=pd.offsets.MonthEnd())
+    else:
+        expected_time = pd.DatetimeIndex([])
+    if not time.equals(expected_time):
+        raise CoordinateValidationError(
+            "Time coordinate must be a complete, chronological sequence of monthly "
+            "month-start or month-end timestamps.",
+            coordinate_name="time",
+            reason="non-monotonic, irregular, or gapped monthly timestamps",
+        )
+    return time
+
+
 def clean_and_prepare_inputs(precip_path: Path, pet_path: Path, zarr_prepared_path: Path) -> None:
     """Prepare aligned monthly totals in mm for blockwise SPI/SPEI computation.
 
@@ -33,15 +63,7 @@ def clean_and_prepare_inputs(precip_path: Path, pet_path: Path, zarr_prepared_pa
                 argument_value=f"pr={pr.attrs.get('units')!r}, pet={pet.attrs.get('units')!r}",
                 valid_values="mm",
             )
-        time = pr["time"].values
-        expected_time = pd.date_range(time[0], periods=time.size, freq="MS").values
-        if not np.array_equal(time, expected_time):
-            raise CoordinateValidationError(
-                "Precipitation/PET time coordinate must be a complete, chronological "
-                "sequence of monthly month-start timestamps.",
-                coordinate_name="time",
-                reason="non-monotonic, irregular, or gapped monthly timestamps",
-            )
+        _validate_monthly_time(pr["time"].values)
         ds_clean = xr.Dataset({"precip": pr, "pet": pet, "wb": pr - pet}).transpose("time", "lat", "lon")
         ds_clean["wb"].attrs = {"long_name": "Precipitation minus PET, monthly total", "units": "mm"}
         # Full time series per block; 10x10 gives multiple tasks on the small example grid.
@@ -133,16 +155,22 @@ def compute_indices_parallel(zarr_prepared_path: Path, output_zarr_path: Path, c
     with xr.open_zarr(zarr_prepared_path, consolidated=True) as ds:
         ds = ds.transpose("time", "lat", "lon").chunk({"time": -1})
 
-        time = pd.DatetimeIndex(ds["time"].values)
+        time = _validate_monthly_time(ds["time"].values)
+        if time[0].month != 1 or time[-1].month != 12:
+            raise CoordinateValidationError(
+                "Prepared dataset must cover complete calendar years.",
+                coordinate_name="time",
+                reason="incomplete first or final year",
+            )
         data_start_year = config["data_start_year"]
-        if time[0] != pd.Timestamp(year=data_start_year, month=1, day=1):
+        if time[0].year != data_start_year:
             raise InvalidArgumentError(
                 "config['data_start_year'] does not match the prepared dataset's first monthly timestamp.",
                 argument_name="data_start_year",
                 argument_value=str(data_start_year),
                 valid_values=str(time[0].year),
             )
-        data_end_year = data_start_year + (time.size // 12) - 1
+        data_end_year = time[-1].year
         cal_start_year, cal_end_year = config["cal_start_year"], config["cal_end_year"]
         if not (data_start_year <= cal_start_year <= cal_end_year <= data_end_year):
             raise InvalidArgumentError(

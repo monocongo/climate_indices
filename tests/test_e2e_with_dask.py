@@ -89,6 +89,22 @@ def test_clean_and_prepare_inputs_rejects_irregular_timestamps(tmp_path, e2e):
         e2e.clean_and_prepare_inputs(precip_path, pet_path, tmp_path / "prepared.zarr")
 
 
+def test_clean_and_prepare_inputs_accepts_month_end_timestamps(tmp_path, e2e):
+    pytest.importorskip("zarr")
+    times = pd.date_range("1980-01-31", periods=12, freq=pd.offsets.MonthEnd())
+    precip_path, pet_path = _write_monthly_inputs(tmp_path, times)
+    prepared = tmp_path / "prepared.zarr"
+    e2e.clean_and_prepare_inputs(precip_path, pet_path, prepared)
+    with xr.open_zarr(prepared) as actual:
+        xr.testing.assert_equal(actual.time, xr.DataArray(times, dims="time", name="time"))
+
+
+@pytest.mark.parametrize("times", [np.array([], dtype="datetime64[ns]"), np.array(["not-a-date"])])
+def test_monthly_time_validation_uses_coordinate_validation_error(times, e2e):
+    with pytest.raises(exceptions.CoordinateValidationError):
+        e2e._validate_monthly_time(times)
+
+
 def test_compute_indices_parallel_rejects_stale_data_start_year(tmp_path, e2e):
     pytest.importorskip("zarr")
     times = pd.date_range("1980-01-01", periods=24, freq="MS")
@@ -124,6 +140,30 @@ def test_compute_indices_parallel_rejects_calibration_outside_data_range(tmp_pat
         "cal_end_year": 2020,
     }
     with pytest.raises(exceptions.InvalidArgumentError):
+        e2e.compute_indices_parallel(prepared, tmp_path / "output.zarr", config)
+
+
+def test_compute_indices_parallel_rejects_discontinuous_prepared_store(tmp_path, e2e):
+    pytest.importorskip("zarr")
+    times = pd.date_range("1980-01-01", periods=372, freq="MS").delete(6).append(pd.DatetimeIndex(["2010-12-01"]))
+    prepared = tmp_path / "prepared.zarr"
+    xr.Dataset(
+        {
+            "precip": (("time", "lat", "lon"), np.ones((372, 1, 1), dtype="float32")),
+            "pet": (("time", "lat", "lon"), np.ones((372, 1, 1), dtype="float32")),
+        },
+        coords={"time": times, "lat": [35.0], "lon": [-100.0]},
+    ).chunk({"time": -1}).to_zarr(prepared, zarr_format=2, consolidated=True)
+    config = {
+        "scale": 3,
+        "distribution_spi": indices.Distribution.gamma,
+        "distribution_spei": indices.Distribution.pearson,
+        "periodicity": compute.Periodicity.monthly,
+        "data_start_year": 1980,
+        "cal_start_year": 1981,
+        "cal_end_year": 2010,
+    }
+    with pytest.raises(exceptions.CoordinateValidationError):
         e2e.compute_indices_parallel(prepared, tmp_path / "output.zarr", config)
 
 
