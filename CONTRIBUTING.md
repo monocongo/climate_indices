@@ -72,7 +72,7 @@ Before submitting:
 - The PR targets `main`.
 - The PR description explains what changed and links related issues.
 - No unrelated files are included.
-- No AI/tool attribution in commit messages or the PR description — no
+- No AI/tool attribution in commit messages or PR/MR descriptions — no
   `Co-Authored-By: Claude...`, `Claude-Session:`, "Generated with Claude
   Code", or similar. Attribute authorship to the human author only, even if
   a tool's own template or session reminder suggests otherwise.
