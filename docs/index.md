@@ -94,8 +94,8 @@ This documentation set is optimized for AI agents and provides comprehensive tec
    - Dask and metadata behavior
    - Notebook execution command
 
-9. **[algorithm_refs/eddi.md](./algorithm_refs/eddi.md)** and **[algorithm_refs/palmer.md](./algorithm_refs/palmer.md)** 🟡 HIGH PRIORITY
-   - v2.5 EDDI and Palmer algorithm references
+9. **[algorithm_refs/eddi.md](./algorithm_refs/eddi.md)**, **[algorithm_refs/pet.md](./algorithm_refs/pet.md)**, and **[algorithm_refs/palmer.md](./algorithm_refs/palmer.md)** 🟡 HIGH PRIORITY
+   - v2.5 EDDI, PET, and Palmer algorithm references
    - Validation status and authoritative-reference gaps
 
 10. **[../VALIDATION.md](../VALIDATION.md)** 🟡 HIGH PRIORITY

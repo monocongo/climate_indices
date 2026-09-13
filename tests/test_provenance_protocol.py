@@ -32,7 +32,7 @@ def _find_provenance_files() -> list[Path]:
     return sorted(FIXTURE_DIR.rglob("provenance.json"))
 
 
-def _compute_checksum_for_division(directory: Path) -> str:
+def _compute_checksum_for_npy_files(directory: Path) -> str:
     """Compute SHA-256 checksum for .npy files in a single directory.
 
     Concatenates sorted .npy file contents and returns the hex digest.
@@ -122,9 +122,28 @@ class TestProvenanceChecksum:
         division_dir = FIXTURE_DIR / "palmer" / "0101"
         assert division_dir.exists(), "Palmer division 0101 fixture missing"
 
-        actual_checksum = _compute_checksum_for_division(division_dir)
+        actual_checksum = _compute_checksum_for_npy_files(division_dir)
         assert actual_checksum == expected_checksum, (
             f"Palmer fixture checksum mismatch. "
+            f"Expected: {expected_checksum}, "
+            f"Actual: {actual_checksum}. "
+            f"If the fixture data was intentionally updated, "
+            f"regenerate the checksum and update provenance.json."
+        )
+
+    def test_pet_literature_checksum_matches(self) -> None:
+        """Verify PET literature fixture checksum matches provenance.json."""
+        fixture_dir = FIXTURE_DIR / "pet_literature"
+        provenance_path = fixture_dir / "provenance.json"
+        assert provenance_path.exists(), "PET literature provenance.json missing"
+
+        with provenance_path.open() as f:
+            provenance = json.load(f)
+
+        expected_checksum = provenance["checksum_sha256"]
+        actual_checksum = _compute_checksum_for_npy_files(fixture_dir)
+        assert actual_checksum == expected_checksum, (
+            f"PET literature fixture checksum mismatch. "
             f"Expected: {expected_checksum}, "
             f"Actual: {actual_checksum}. "
             f"If the fixture data was intentionally updated, "
@@ -146,7 +165,7 @@ class TestProvenanceChecksum:
         with provenance_path.open() as f:
             provenance = json.load(f)
 
-        actual_checksum = _compute_checksum_for_division(fixture_dir)
+        actual_checksum = _compute_checksum_for_npy_files(fixture_dir)
         assert actual_checksum == provenance["checksum_sha256"], (
             f"NCEI SPI fixture checksum mismatch. "
             f"Expected: {provenance['checksum_sha256']}, "
