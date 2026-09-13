@@ -79,17 +79,27 @@ def _recurse(
     value; remaining states retain recurrence bookkeeping such as KBDI's
     wet-spell precipitation across an append boundary.
     """
+    input_shape = _check_recurrence_inputs(inputs)
+    spatial_shape = input_shape[1:]
+    state = _initial_state_arrays(initial_state, spatial_shape)
+    state_count = len(state)
+    result = np.empty(input_shape, dtype=np.float64)
+    for day in range(input_shape[0]):
+        state = _apply_step(step, state, inputs, day, state_count, spatial_shape)
+        result[day] = state[0]
+
+    return result, tuple(value.copy() for value in state)
+
+
+def _check_recurrence_inputs(
+    inputs: tuple[npt.NDArray[np.float64], ...],
+) -> tuple[int, ...]:
+    """Validate daily recurrence inputs and return their shared shape."""
     if not inputs:
         raise InvalidArgumentError(
             "A recurrence requires at least one daily input array.",
             argument_name="inputs",
         )
-    if not initial_state:
-        raise InvalidArgumentError(
-            "A recurrence requires at least one state value.",
-            argument_name="initial_state",
-        )
-
     input_shape = inputs[0].shape
     if not input_shape:
         raise DataShapeError(
@@ -103,8 +113,19 @@ def _recurse(
                 expected_shape=str(input_shape),
                 actual_shape=values.shape,
             )
+    return input_shape
 
-    spatial_shape = input_shape[1:]
+
+def _initial_state_arrays(
+    initial_state: tuple[npt.ArrayLike, ...],
+    spatial_shape: tuple[int, ...],
+) -> tuple[npt.NDArray[np.float64], ...]:
+    """Broadcast each initial state value to the spatial input shape."""
+    if not initial_state:
+        raise InvalidArgumentError(
+            "A recurrence requires at least one state value.",
+            argument_name="initial_state",
+        )
     state_values: list[npt.NDArray[np.float64]] = []
     for value in initial_state:
         initial_value = np.asarray(value, dtype=np.float64)
@@ -116,32 +137,35 @@ def _recurse(
                 expected_shape=str(spatial_shape),
                 actual_shape=initial_value.shape,
             ) from exc
-    state = tuple(state_values)
-    state_count = len(state)
-    result = np.empty(input_shape, dtype=np.float64)
-    for day in range(input_shape[0]):
-        # copy: a step may return views into the inputs or reuse its own buffers;
-        # the recurrence must own every state array so steps can't mutate inputs
-        next_state = tuple(
-            np.array(value, dtype=np.float64) for value in step(*state, *(values[day] for values in inputs))
-        )
-        if len(next_state) != state_count:
-            raise InvalidArgumentError(
-                "A recurrence step must return the complete state tuple it was given.",
-                argument_name="step",
-                argument_value=f"{len(next_state)} state values, expected {state_count}",
-            )
-        for value in next_state:
-            if value.shape != spatial_shape:
-                raise DataShapeError(
-                    "A recurrence step must keep each state's spatial shape.",
-                    expected_shape=str(spatial_shape),
-                    actual_shape=value.shape,
-                )
-        state = next_state
-        result[day] = state[0]
+    return tuple(state_values)
 
-    return result, tuple(value.copy() for value in state)
+
+def _apply_step(
+    step: _RecurrenceStep,
+    state: tuple[npt.NDArray[np.float64], ...],
+    inputs: tuple[npt.NDArray[np.float64], ...],
+    day: int,
+    state_count: int,
+    spatial_shape: tuple[int, ...],
+) -> tuple[npt.NDArray[np.float64], ...]:
+    """Advance the recurrence one day, validating the returned state."""
+    # copy: a step may return views into the inputs or reuse its own buffers;
+    # the recurrence must own every state array so steps can't mutate inputs
+    next_state = tuple(np.array(value, dtype=np.float64) for value in step(*state, *(values[day] for values in inputs)))
+    if len(next_state) != state_count:
+        raise InvalidArgumentError(
+            "A recurrence step must return the complete state tuple it was given.",
+            argument_name="step",
+            argument_value=f"{len(next_state)} state values, expected {state_count}",
+        )
+    for value in next_state:
+        if value.shape != spatial_shape:
+            raise DataShapeError(
+                "A recurrence step must keep each state's spatial shape.",
+                expected_shape=str(spatial_shape),
+                actual_shape=value.shape,
+            )
+    return next_state
 
 
 def _equilibrium_moisture_content(
