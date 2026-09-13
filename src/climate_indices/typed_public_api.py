@@ -15,6 +15,10 @@ PCI uses a manual wrapper instead of @xarray_adapter because its output shape
 
 .. warning:: **Beta Feature (xarray path)** — The xarray DataArray overloads in
    this module are beta. The NumPy overloads are stable.
+
+Fire-weather APIs are intentionally namespaced under ``climate_indices.fire``.
+Do not add unqualified fire wrappers or package-level re-exports here; each
+beta xarray path stays on its corresponding ``fire.<name>`` public route.
 """
 
 from __future__ import annotations
