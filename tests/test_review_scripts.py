@@ -83,7 +83,9 @@ def test_read_missing_llms_source_names_file_and_source_lists() -> None:
 )
 def test_llms_bundle_matches_configured_sources(output: Path, sources: list[str]) -> None:
     """Committed llms bundles should exactly match their configured sources."""
-    assert (ROOT / output).read_text(encoding="utf-8") == generate_llms_txt._render(sources)
+    assert (ROOT / output).read_text(encoding="utf-8") == generate_llms_txt._render(sources), (
+        f"{output} is stale relative to {sources}. Regenerate with: uv run scripts/generate_llms_txt.py"
+    )
 
 
 def test_render_builds_header_and_ordered_sections(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

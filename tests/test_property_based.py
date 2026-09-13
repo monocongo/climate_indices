@@ -395,13 +395,10 @@ def test_pet_thornthwaite_increases_with_temperature(temp_base: np.ndarray) -> N
 
     Note: Thornthwaite clips negative temps to 0°C before calculating the heat
     index, which can create non-monotonic behavior when comparing very cold base
-    temps vs. warmer temps. We filter out cases with significant sub-freezing
-    temps to avoid this edge case.
+    temps vs. warmer temps. Shift generated inputs above freezing while
+    preserving their seasonal shape so every example exercises the property.
     """
-    # skip test cases where more than 25% of months are below freezing
-    # as the temperature clipping creates non-monotonic heat index behavior
-    fraction_below_freezing = np.sum(temp_base < 0) / len(temp_base)
-    assume(fraction_below_freezing < 0.25)
+    temp_base = temp_base - min(0.0, float(np.min(temp_base)))
 
     # create higher temperature array
     temp_higher = temp_base + 5.0
@@ -505,6 +502,13 @@ def test_spi_output_shape_matches_input(precip: np.ndarray, scale: int) -> None:
     pet_array=monthly_precipitation_array(num_years=10),
     awc=st.floats(min_value=1.0, max_value=10.0, allow_nan=False, allow_infinity=False),
 )
+# [-30, 30] is an empirical bound, not an invariant of the algorithm: the strategy
+# draws precipitation and PET independently over 0-500 mm, so it can pose physically
+# impossible climates (0.125 mm of rain against 220 mm of PET every month) whose
+# moisture anomalies drive |Z| past 60 and PDSI past the bound. Runs are reproducible
+# because conftest derandomizes by default; the bound itself and the over-broad
+# strategy still want a dedicated fix. Verified against main: pdsi() output is
+# unchanged by the scPDSI refactor, so this is not a regression.
 @settings(max_examples=5, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 def test_pdsi_bounded_range(precip: np.ndarray, pet_array: np.ndarray, awc: float) -> None:
     """Verify PDSI falls within expected range [-30, 30].

@@ -560,7 +560,6 @@ def transform_fitted_pearson(
 
 ### `palmer.py` - Palmer Drought Indices
 **Location**: `src/climate_indices/palmer.py`
-**Lines**: 912
 **Purpose**: Palmer Drought Index family computation.
 
 #### Indices Computed
@@ -570,24 +569,39 @@ def transform_fitted_pearson(
 4. **Z-Index** - Palmer Z-Index
 5. **scPDSI** - Self-calibrated Palmer
 
-#### Key Function
+#### Key Functions
+
 ```python
-def palmer(
-    precips_mm: np.ndarray,
-    potential_evapotranspirations_mm: np.ndarray,
-    available_water_capacity_inches: Union[float, np.ndarray],
+def pdsi(
+    precips: np.ndarray,
+    pet: np.ndarray,
+    awc: float,
     data_start_year: int,
-    calibration_start_year: int,
-    calibration_end_year: int,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Compute Palmer Drought Indices."""
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    fitting_params: dict[str, Any] | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any] | None]:
+    """Compute PDSI, PHDI, PMDI, and the Z-Index."""
+
+def scpdsi(
+    precips: np.ndarray,
+    pet: np.ndarray,
+    awc: float,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    fitting_params: dict[str, Any] | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any] | None]:
+    """Compute scPDSI, scPHDI, scPMDI, and the self-calibrated Z-Index."""
 ```
 
-**Returns**: `(scPDSI, PDSI, PHDI, PMDI, Z-Index)`
+**Returns**: `pdsi()` returns `(PDSI, PHDI, PMDI, Z-Index, fitted_params)`;
+`scpdsi()` returns `(scPDSI, scPHDI, scPMDI, scZ-Index, fitted_params)`.
 
 #### Required Inputs
-- Monthly precipitation (mm)
-- Monthly PET (mm)
+
+- Monthly precipitation (inches)
+- Monthly PET (inches)
 - Available water capacity (inches) - soil property
 - Calibration period (for coefficients)
 
@@ -597,11 +611,13 @@ def palmer(
 3. Compute moisture departure (actual - expected)
 4. Apply Z-Index formula
 5. Compute PDSI/PHDI/PMDI via recursive tracking
-6. Self-calibrate PDSI using local climate characteristics
+6. `scpdsi()` self-calibrates with local K-prime and duration factors, Wells
+   recursion, and cumulative Z-index rescaling
 
 #### Dependencies
+
 - Core: `numpy`
-- Internal: `eto`, `utils`
+- Internal: `_palmer_wells`, `self_calibration`, `utils`
 
 ---
 
@@ -675,18 +691,18 @@ def hargreaves(
 
 #### Key Function
 ```python
-def lmoments(data: np.ndarray) -> Tuple[float, float, float, float]:
-    """Compute L-moments (Hosking 1990 algorithm)."""
+def fit(timeseries: np.ndarray) -> dict[str, float]:
+    """Return the Pearson Type III parameters (loc, scale, skew) fitted via L-moments."""
 ```
 
-**Returns**: `(L1, L2, L3, L4)` - first four L-moments
+**Returns**: a dict with keys `'loc'`, `'scale'`, and `'skew'` (the Pearson Type III parameters)
 
 #### Algorithm
 Implements Hosking (1990) probability-weighted moments approach:
 1. Sort data
 2. Compute probability-weighted moments
 3. Transform to L-moments
-4. Return (location, scale, skew, kurtosis equivalents)
+4. Return the fitted Pearson Type III parameters (`loc`, `scale`, `skew`)
 
 #### Usage
 Called by `compute.pearson_parameters()` for robust parameter estimation.
@@ -698,7 +714,7 @@ Called by `compute.pearson_parameters()` for robust parameter estimation.
 
 #### Dependencies
 - Core: `numpy`
-- No internal dependencies
+- Internal: `utils`
 
 ---
 
@@ -953,9 +969,10 @@ def log_performance_metrics(
 | **`xarray_adapter.py`** | compute, indices, exceptions | numpy, xarray, dask |
 | **`indices.py`** | compute, eto, exceptions, utils | numpy, scipy |
 | **`compute.py`** | lmoments, exceptions, utils | numpy, scipy |
-| **`palmer.py`** | eto, utils | numpy |
+| **`palmer.py`** | _palmer_wells, exceptions | numpy, structlog |
+| _(continued)_ | logging_config, self_calibration, utils | _(see above)_ |
 | **`eto.py`** | _(none)_ | numpy |
-| **`lmoments.py`** | _(none)_ | numpy |
+| **`lmoments.py`** | utils | numpy |
 | **`exceptions.py`** | _(none)_ | _(none - stdlib only)_ |
 | **`logging_config.py`** | _(none)_ | structlog |
 | **`utils.py`** | _(none)_ | numpy |

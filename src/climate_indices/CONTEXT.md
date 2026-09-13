@@ -1,6 +1,6 @@
 # climate_indices (core library)
 
-A Python scientific computing library that turns raw climate observations (precipitation, temperature) into standardized drought and moisture indices — SPI, SPEI, PNP, EDDI, and the Palmer family — via distribution fitting and statistical transformation.
+A Python scientific computing library that turns raw climate observations (precipitation, temperature) into standardized drought and moisture indices — SPI, SPEI, PNP, EDDI, and the Palmer family — via distribution fitting and statistical transformation. It also computes fire-weather indices, namespaced under the `fire` module.
 
 ## Language
 
@@ -56,8 +56,7 @@ A monthly moisture-anomaly index — the weighted difference between actual prec
 _Avoid_: Moisture anomaly index (informal synonym used in one comment; prefer Z-Index)
 
 **scPDSI (Self-calibrated Palmer Drought Severity Index)**:
-The Wells et al. (2004) self-calibrating variant of PDSI, which recalibrates duration factors and the climate characteristic (K) per location instead of using fixed national constants.
-**Not implemented.** `palmer.py` contains no self-calibration procedure. The CLI's Palmers path used to claim an "scpdsi" output despite this (and was separately broken — see git history around the `_parallel_process` "palmers" dispatch fix); that fake output has been removed. The CLI's `--index palmers` now produces only PDSI, PHDI, PMDI, and Z-Index. Tracked for real implementation in [issue #716](https://github.com/monocongo/climate_indices/issues/716).
+The Wells et al. (2004) self-calibrating variant of PDSI, which recalibrates duration factors and the K-prime (K′) climate characteristic per location instead of using fixed national constants. K-prime is distinct from the standard K-Factor defined below. It is available through the NumPy API as `palmer.scpdsi()`. The CLI's `--index palmers` path continues to produce only PDSI, PHDI, PMDI, and Z-Index until CLI support is added separately.
 
 **CAFEC (Climatically Appropriate For Existing Conditions)**:
 Per-calendar-month calibration coefficients (alpha, beta, gamma, delta) computed from calibration-period water-balance sums, representing the precipitation/moisture terms "appropriate" for that location's climate — actual conditions are compared against CAFEC to produce the Z-Index.
@@ -78,6 +77,13 @@ Monthly PET estimated from mean air temperature and day length, via a temperatur
 
 **Hargreaves Method**:
 Daily PET estimated from min/max/mean temperature and extraterrestrial radiation (Hargreaves, 1985; FAO-56 eq. 52).
+
+### Fire family
+
+Fire-weather and fuel-dryness indices live in the namespaced `fire` module (`from climate_indices import fire`), never as unqualified package functions — see [ADR-0005](../../docs/adr/0005-fire-module-api.md) and the [fire subsystem design](../../docs/design/fire-subsystem.md).
+
+**FFWI (Fosberg Fire Weather Index)**:
+A dimensionless, weather-only, elementwise fire-weather index from temperature, relative humidity, and wind speed; computed by `fire.fosberg_ffwi()`. The only fire index implemented today; KBDI, CFFWIS, HDW, and Haines are planned contracts in the design doc.
 
 ### Statistics
 

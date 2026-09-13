@@ -13,12 +13,7 @@ import pytest
 from climate_indices import compute, indices
 from climate_indices.eto import eto_hargreaves
 from climate_indices.logging_config import _reset_logging_for_testing, configure_logging
-from climate_indices.performance import (
-    LARGE_ARRAY_THRESHOLD_BYTES,
-    _reset_psutil_cache,
-    check_large_array_memory,
-    get_process_memory_mb,
-)
+from climate_indices.performance import LARGE_ARRAY_THRESHOLD_BYTES, check_large_array_memory, get_process_memory_mb
 
 
 @pytest.fixture(autouse=False)
@@ -74,48 +69,19 @@ class TestGetProcessMemoryMb:
 
     def test_returns_float_when_psutil_available(self):
         """get_process_memory_mb returns float when psutil is installed."""
-        # reset cache to ensure fresh import attempt
-        _reset_psutil_cache()
-
-        # attempt to import psutil
         try:
             import psutil  # noqa: F401
-
-            psutil_available = True
         except ImportError:
-            psutil_available = False
-
-        if psutil_available:
-            result = get_process_memory_mb()
-            assert isinstance(result, float)
-            assert result > 0
-        else:
             pytest.skip("psutil not installed")
+
+        result = get_process_memory_mb()
+        assert isinstance(result, float)
+        assert result > 0
 
     def test_returns_none_when_psutil_unavailable(self):
         """get_process_memory_mb returns None when psutil is not installed."""
-        # reset cache
-        _reset_psutil_cache()
-
-        # mock psutil as unavailable
         with patch.dict("sys.modules", {"psutil": None}):
-            with patch("builtins.__import__", side_effect=ImportError):
-                result = get_process_memory_mb()
-                assert result is None
-
-    def test_caches_psutil_availability(self):
-        """get_process_memory_mb caches psutil availability check."""
-        # reset cache
-        _reset_psutil_cache()
-
-        # first call
-        result1 = get_process_memory_mb()
-
-        # second call should use cached result (no new import attempt)
-        result2 = get_process_memory_mb()
-
-        # both calls should return same type
-        assert type(result1) is type(result2)
+            assert get_process_memory_mb() is None
 
 
 class TestCheckLargeArrayMemory:
@@ -171,9 +137,6 @@ class TestCheckLargeArrayMemory:
 
     def test_includes_process_memory_when_psutil_available(self):
         """check_large_array_memory includes process_memory_mb when psutil available."""
-        # reset cache
-        _reset_psutil_cache()
-
         # check if psutil is available
         try:
             import psutil  # noqa: F401
@@ -199,13 +162,8 @@ class TestCheckLargeArrayMemory:
 
     def test_excludes_process_memory_when_psutil_unavailable(self):
         """check_large_array_memory excludes process_memory_mb when psutil unavailable."""
-        # reset cache
-        _reset_psutil_cache()
-
         # mock psutil as unavailable
         with patch.dict("sys.modules", {"psutil": None}):
-            # trigger cache update
-            get_process_memory_mb()
 
             class MockArray:
                 nbytes = LARGE_ARRAY_THRESHOLD_BYTES + 1000

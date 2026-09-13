@@ -66,6 +66,16 @@ def test_pet(
         data_year_start_monthly,
     )
 
+    # The geographic poles are valid latitude coordinates.
+    for polar_latitude in (-90.0, 90.0):
+        result = indices.pet(temps_celsius, polar_latitude, data_year_start_monthly)
+        assert result.size == temps_celsius.size
+
+    # Invalid latitude values must not bypass validation for all-NaN temperatures.
+    for invalid_latitude in (-91.0, 91.0):
+        with pytest.raises(ValueError):
+            indices.pet(all_nan_temps, invalid_latitude, data_year_start_monthly)
+
     # compute PET from the monthly temperatures, latitude, and initial years -- if this runs without
     # error then this test passes, as the underlying method(s) being used to compute PET will be tested
     # in the relevant test_compute.py or test_eto.py codes

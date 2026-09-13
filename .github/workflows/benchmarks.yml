@@ -5,6 +5,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -21,18 +25,19 @@ jobs:
           python-version: '3.12'
 
       - name: Install uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
 
       - name: Set up project
-        run: uv sync --group dev
+        run: uv sync --locked --group dev
 
       - name: Run benchmarks
         run: |
-          uv run pytest -m benchmark --benchmark-enable \
+          uv run --no-sync --no-build pytest -m benchmark --benchmark-enable \
             --benchmark-json=benchmark-results.json \
             --benchmark-columns=mean,stddev,rounds
 
       - name: Upload benchmark results
+        if: ${{ !cancelled() }}  # preserve timing diagnostics when the benchmark gate fails
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: benchmark-results
@@ -41,7 +46,7 @@ jobs:
       - name: Check for regressions
         run: |
           if [ -f .benchmarks/baseline.json ]; then
-            uv run pytest-benchmark compare \
+            uv run --no-sync --no-build pytest-benchmark compare \
               .benchmarks/baseline.json benchmark-results.json \
               --csv=comparison.csv
           else

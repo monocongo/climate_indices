@@ -40,33 +40,19 @@ if TYPE_CHECKING:
 # 1 GB threshold for triggering memory metrics logging
 LARGE_ARRAY_THRESHOLD_BYTES = 1_073_741_824
 
-# cached psutil availability flag (set on first call to get_process_memory_mb)
-_PSUTIL_AVAILABLE: bool | None = None
-
 
 def get_process_memory_mb() -> float | None:
     """Get current process memory usage in megabytes.
 
-    Uses psutil if available. On first call, attempts to import psutil and caches
-    the result for subsequent calls.
+    Uses psutil if available.
 
     Returns:
         Current RSS (Resident Set Size) memory in MB, or None if psutil is not installed.
     """
-    global _PSUTIL_AVAILABLE
-
-    if _PSUTIL_AVAILABLE is None:
-        try:
-            import psutil  # noqa: F401
-
-            _PSUTIL_AVAILABLE = True
-        except ImportError:
-            _PSUTIL_AVAILABLE = False
-
-    if not _PSUTIL_AVAILABLE:
+    try:
+        import psutil
+    except ImportError:
         return None
-
-    import psutil
 
     process = psutil.Process()
     memory_bytes = process.memory_info().rss
@@ -106,13 +92,3 @@ def check_large_array_memory(*arrays: np.ndarray) -> dict[str, float] | None:
         metrics["process_memory_mb"] = round(process_memory, 2)
 
     return metrics
-
-
-def _reset_psutil_cache() -> None:
-    """Reset the cached psutil availability flag for test isolation.
-
-    This function is intended for testing purposes only, allowing tests to reset
-    the module-level cache and re-evaluate psutil availability.
-    """
-    global _PSUTIL_AVAILABLE
-    _PSUTIL_AVAILABLE = None

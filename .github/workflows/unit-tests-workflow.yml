@@ -1,6 +1,14 @@
 name: tests
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -20,19 +28,19 @@ jobs:
           python-version: '3.12'
 
       - name: Install uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --locked --dev
 
       - name: Run ruff linter
-        run: uv run ruff check src/ tests/
+        run: uv run --no-sync --no-build ruff check src/ tests/
 
       - name: Check ruff formatting
-        run: uv run ruff format --check src/ tests/
+        run: uv run --no-sync --no-build ruff format --check src/ tests/
 
       - name: Run mypy type checker
-        run: uv run mypy src/
+        run: uv run --no-sync --no-build mypy src/
 
   test:
     runs-on: ${{ matrix.os }}
@@ -52,8 +60,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
@@ -61,19 +67,24 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --locked --dev
 
       - name: Run core tests
-        run: uv run pytest -m "not benchmark and not validation"
+        run: uv run --no-sync --no-build pytest -m "not benchmark and not validation"
 
+      # Run even when core tests fail: these cover disjoint test sets, and a
+      # core failure would otherwise report them as "skipped" rather than as
+      # the pass/fail they actually are.
       - name: Run validation tests
-        run: uv run pytest -m validation
+        if: ${{ !cancelled() }}
+        run: uv run --no-sync --no-build pytest -m validation
 
       - name: Pattern compliance check
-        run: uv run pytest tests/test_pattern_compliance.py -v
+        if: ${{ !cancelled() }}
+        run: uv run --no-sync --no-build pytest tests/test_pattern_compliance.py -v
 
   test-minimum-deps:
     runs-on: ubuntu-latest
@@ -89,16 +100,18 @@ jobs:
           python-version: '3.10'
 
       - name: Install uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
 
       - name: Install minimum dependencies
         run: uv sync --no-dev --group test --resolution lowest-direct
 
       - name: Run core tests with minimum dependencies
-        run: uv run pytest -m "not benchmark and not validation"
+        run: uv run --no-sync --no-build pytest -m "not benchmark and not validation"
 
+      # See the note on the same step in the `test` job above.
       - name: Run validation tests with minimum dependencies
-        run: uv run pytest -m validation
+        if: ${{ !cancelled() }}
+        run: uv run --no-sync --no-build pytest -m validation
 
   notebooks:
     runs-on: ubuntu-latest
@@ -114,15 +127,15 @@ jobs:
           python-version: '3.12'
 
       - name: Install uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v5
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v5
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --locked --dev
 
       - name: Execute v2.5 notebooks
         timeout-minutes: 10
         run: >
-          uv run jupyter nbconvert --execute --to notebook --inplace
+          uv run --no-sync --no-build jupyter nbconvert --execute --to notebook --inplace
           notebooks/xarray_getting_started.ipynb
           notebooks/palmer_indices_xarray.ipynb
           notebooks/eddi_xarray.ipynb
@@ -146,8 +159,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
@@ -155,13 +166,13 @@ jobs:
           python-version: "3.12"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
 
       - name: Install dependencies
-        run: uv sync --frozen --only-group security
+        run: uv sync --locked --only-group security
 
       - name: Export runtime requirements
-        run: uv export --frozen --no-dev --no-emit-project --format requirements.txt --output-file runtime-requirements.txt
+        run: uv export --locked --no-dev --no-emit-project --format requirements.txt --output-file runtime-requirements.txt
 
       - name: Run pip-audit
-        run: uv run --no-sync pip-audit --requirement runtime-requirements.txt --disable-pip
+        run: uv run --no-sync --no-build pip-audit --requirement runtime-requirements.txt --disable-pip

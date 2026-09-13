@@ -49,6 +49,7 @@ This documentation set is optimized for AI agents and provides comprehensive tec
    - Data flow and computation patterns
    - Testing architecture and CI/CD pipelines
    - Key design decisions and trade-offs
+   - Current deepening candidates: [architecture-deepening-review-2026-08-27.md](./architecture-deepening-review-2026-08-27.md)
 
 3. **[source-tree-analysis.md](./source-tree-analysis.md)** 🟡 HIGH PRIORITY
    - Annotated directory structure
