@@ -164,7 +164,7 @@ Use the normal trunk flow for hotfixes whenever possible:
 2. Create `hotfix/<topic>`.
 3. Make the smallest safe fix with a regression test.
 4. Run validation.
-5. The maintainer merges the PR into `main` after CI passes.
+5. The maintainer merges the PR into `main` after review and passing CI.
 6. Prepare and tag a patch release from `main`.
 
 For an older supported version, a maintainer may approve a maintenance branch.

@@ -78,7 +78,7 @@ be releasable.
    `uv run mypy src/`
    `uv run pytest`
 5. Open a PR into `main`.
-6. The maintainer merges the PR after CI passes; agents never merge.
+6. The maintainer merges the PR after review and passing CI; agents never merge.
 
 Use `feature/<topic>`, `fix/<topic>`, `docs/<topic>`, `chore/<topic>`, or
 `hotfix/<topic>` branch names. Release branches are avoided; use maintenance
