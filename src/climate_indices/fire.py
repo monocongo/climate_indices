@@ -437,6 +437,11 @@ def hot_dry_windy(
     wind = _as_float_array(wind_speed_meters_per_second)
     height = _as_float_array(height_agl_meters)
 
+    broadcast_ndim = max(array.ndim for array in (temperature, humidity, wind, height))
+    if height.ndim == 1 and broadcast_ndim > 1 and -broadcast_ndim <= level_axis < broadcast_ndim:
+        axis = level_axis % broadcast_ndim
+        height = height.reshape((1,) * axis + height.shape + (1,) * (broadcast_ndim - axis - 1))
+
     try:
         temperature, humidity, wind, height = np.broadcast_arrays(temperature, humidity, wind, height)
     except ValueError as exc:
@@ -484,15 +489,14 @@ def hot_dry_windy(
     try:
         # outside the physical range the formulas still return numbers, but
         # meaningless ones, so treat such values as missing
+        in_layer = (height >= 0.0) & (height <= _HDW_LAYER_TOP_METERS)
         invalid = (humidity < 0.0) | (humidity > 100.0) | (wind < 0.0)
-        invalid_count = int(np.count_nonzero(invalid))
+        invalid_count = int(np.count_nonzero(invalid & in_layer))
         if invalid_count > 0:
             _logger.warning(
                 f"Found {invalid_count} values with relative humidity outside [0, 100] "
                 "or negative wind speed; HDW is NaN in those columns."
             )
-
-        in_layer = (height >= 0.0) & (height <= _HDW_LAYER_TOP_METERS)
         empty_columns = int(np.count_nonzero(~np.any(in_layer, axis=axis)))
         if empty_columns > 0:
             _logger.warning(
@@ -507,7 +511,10 @@ def hot_dry_windy(
         # excluded via -inf, which any real product beats
         value = np.where(invalid, np.nan, vpd_hpa * wind)
         product = np.where(in_layer, value, -np.inf)
-        index = np.max(product, axis=axis)
+        if product.shape[axis] == 0:
+            index = np.full(product.shape[:axis] + product.shape[axis + 1 :], np.nan)
+        else:
+            index = np.max(product, axis=axis)
         result = np.where(np.any(in_layer, axis=axis), index, np.nan).astype(np.float64, copy=False)
 
         duration_ms = (time.perf_counter() - t0) * 1000.0

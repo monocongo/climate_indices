@@ -521,6 +521,17 @@ def test_hdw_invalid_in_layer_propagates_but_above_layer_is_ignored() -> None:
     assert np.isfinite(above_layer)
 
 
+def test_hdw_invalid_above_layer_does_not_warn() -> None:
+    mock_logger = mock.MagicMock()
+    mock_logger.bind.return_value = mock_logger
+
+    with mock.patch.object(fire, "_logger", mock_logger):
+        result = fire.hot_dry_windy([20.0, 20.0], [50.0, 101.0], [5.0, 5.0], [10.0, 800.0])
+
+    assert np.isfinite(result)
+    mock_logger.warning.assert_not_called()
+
+
 def test_hdw_masked_inputs_are_nan() -> None:
     humidity = np.ma.masked_array([15.0, 30.0], mask=[True, False])
     result = fire.hot_dry_windy([30.0, 26.0], humidity, [8.0, 12.0], [10.0, 400.0])
@@ -537,12 +548,18 @@ def test_hdw_level_axis_selects_the_reduced_dimension() -> None:
     temperature = np.array([[30.0, 20.0], [26.0, 18.0]])  # (level, column)
     humidity = np.array([[15.0, 50.0], [30.0, 60.0]])
     wind = np.array([[8.0, 3.0], [12.0, 4.0]])
-    height = np.array([[10.0], [400.0]])
+    height = np.array([10.0, 400.0])
 
     result = fire.hot_dry_windy(temperature, humidity, wind, height, level_axis=0)
     transposed = fire.hot_dry_windy(temperature.T, humidity.T, wind.T, np.array([10.0, 400.0]), level_axis=-1)
     np.testing.assert_array_equal(result, transposed)
     assert result.shape == (2,)
+
+
+def test_hdw_empty_level_axis_is_nan() -> None:
+    result = fire.hot_dry_windy(np.empty((0, 2)), np.empty((0, 2)), np.empty((0, 2)), np.empty(0), level_axis=0)
+    assert result.shape == (2,)
+    assert np.isnan(result).all()
 
 
 def test_hdw_level_axis_out_of_range_raises() -> None:
