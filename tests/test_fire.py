@@ -346,6 +346,18 @@ def test_recurrence_requires_inputs_and_state() -> None:
         fire._recurse((np.zeros(2),), (), _accumulate)
 
 
+def test_recurrence_step_must_return_complete_same_shaped_state() -> None:
+    """A step that drops a state or changes its spatial shape is rejected."""
+    with pytest.raises(InvalidArgumentError, match="complete state"):
+        fire._recurse((np.zeros(2),), (0.0,), lambda state, day: ())
+
+    def shrinking_step(state: np.ndarray, day: np.ndarray) -> tuple[np.ndarray]:
+        return (np.float64(0.0),)
+
+    with pytest.raises(DataShapeError, match="spatial shape"):
+        fire._recurse((np.zeros((2, 3)),), (np.zeros(3),), shrinking_step)
+
+
 def test_recurrence_step_cannot_mutate_inputs() -> None:
     """A step returning input views must not leak writes into caller arrays."""
     forcing = np.arange(6, dtype=np.float64).reshape(3, 2)

@@ -117,11 +117,28 @@ def _recurse(
                 actual_shape=initial_value.shape,
             ) from exc
     state = tuple(state_values)
+    state_count = len(state)
     result = np.empty(input_shape, dtype=np.float64)
     for day in range(input_shape[0]):
         # copy: a step may return views into the inputs or reuse its own buffers;
         # the recurrence must own every state array so steps can't mutate inputs
-        state = tuple(np.array(value, dtype=np.float64) for value in step(*state, *(values[day] for values in inputs)))
+        next_state = tuple(
+            np.array(value, dtype=np.float64) for value in step(*state, *(values[day] for values in inputs))
+        )
+        if len(next_state) != state_count:
+            raise InvalidArgumentError(
+                "A recurrence step must return the complete state tuple it was given.",
+                argument_name="step",
+                argument_value=f"{len(next_state)} state values, expected {state_count}",
+            )
+        for value in next_state:
+            if value.shape != spatial_shape:
+                raise DataShapeError(
+                    "A recurrence step must keep each state's spatial shape.",
+                    expected_shape=str(spatial_shape),
+                    actual_shape=value.shape,
+                )
+        state = next_state
         result[day] = state[0]
 
     return result, tuple(value.copy() for value in state)
