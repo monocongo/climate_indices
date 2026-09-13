@@ -2,7 +2,7 @@
 
 ## Contexts
 
-- [climate_indices (core library)](./src/climate_indices/CONTEXT.md) — computes standardized drought/moisture indices (SPI, SPEI, PNP, EDDI, Palmer family) from climate observations; the shipped, tested product. The planned [fire subsystem](./docs/design/fire-subsystem.md) belongs to this context.
+- [climate_indices (core library)](./src/climate_indices/CONTEXT.md) — computes standardized drought/moisture indices (SPI, SPEI, PNP, EDDI, Palmer family) from climate observations; the shipped, tested product. The [fire subsystem](./docs/design/fire-subsystem.md) belongs to this context; only Fosberg FFWI is implemented so far, the rest is planned.
 - [Climate Index Explorer](./docs/explorer/CONTEXT.md) — a planned interactive tool for exploring precomputed/on-demand index results; currently in research/planning (see `docs/research/interactive-climate-explorer-landscape.md`), no source tree yet
 
 ## Relationships
