@@ -1293,9 +1293,9 @@ def _is_dask_backed(data: xr.DataArray) -> bool:
 def _validate_dask_chunks(data: xr.DataArray, time_dim: str) -> None:
     """Validate that the time dimension is not split across multiple Dask chunks.
 
-    SPI/SPEI require the full time series for distribution fitting, so the time
-    dimension must be in a single chunk (or unchunked). Spatial dimensions can
-    be arbitrarily chunked for parallel computation.
+    Distribution fitting and stateful recurrences both require the full time
+    series. Spatial dimensions can be arbitrarily chunked for parallel
+    computation. This shared helper is the chunking guard for fire adapters.
 
     Args:
         data: Dask-backed DataArray to validate
@@ -1321,7 +1321,8 @@ def _validate_dask_chunks(data: xr.DataArray, time_dim: str) -> None:
     if len(time_chunks) > 1:
         error_msg = (
             f"Time dimension '{time_dim}' is split across {len(time_chunks)} chunks. "
-            f"Climate indices require the full time series for distribution fitting. "
+            "Climate indices require the full time series for distribution fitting "
+            "or stateful recurrences. "
             f"Rechunk using: data = data.chunk({{'{time_dim}': -1}})"
         )
         _log().error(

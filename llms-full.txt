@@ -78,7 +78,7 @@ be releasable.
    `uv run mypy src/`
    `uv run pytest`
 5. Open a PR into `main`.
-6. Merge only after CI passes.
+6. The maintainer merges the PR after review and passing CI; agents never merge.
 
 Use `feature/<topic>`, `fix/<topic>`, `docs/<topic>`, `chore/<topic>`, or
 `hotfix/<topic>` branch names. Release branches are avoided; use maintenance
@@ -94,8 +94,9 @@ version must match.
 - GitHub Release: `v1.2.3`
 - PyPI release: `1.2.3`
 
-1. Prepare and merge a release PR that updates `pyproject.toml`, `CHANGELOG.md`,
-   and release notes/docs.
+1. Prepare a release PR that updates `pyproject.toml`, `CHANGELOG.md`,
+   and release notes/docs; the maintainer merges it after review and passing
+   CI.
 2. Confirm `main` is green.
 3. Create an annotated tag from `main`.
 4. Push the tag. The release workflow builds, validates, publishes to PyPI, and
@@ -281,10 +282,10 @@ guarded only by internal fixtures.
 
 | Index | Status | Tolerance | Evidence | Known gap |
 | --- | --- | --- | --- | --- |
-| SPI | Validated | Gamma `atol=1e-8`, Pearson `atol=1e-5` in xarray equivalence tests | Legacy NumPy fixtures and xarray equivalence tests compare gamma and Pearson outputs across scales. | Existing fixtures are historical project references rather than newly extracted literature tables. |
+| SPI | Validated (internal) + qualified external comparison (Pearson III) | Gamma `atol=1e-8`, Pearson `atol=1e-5` in xarray equivalence tests; NOAA NCEI climdiv characterization ceilings documented in `tests/test_ncei_spi_reference.py` | Legacy NumPy fixtures and xarray equivalence tests compare gamma and Pearson outputs across scales. `tests/test_ncei_spi_reference.py` characterizes `indices.spi()` (Pearson III, full-period-of-record calibration) against NOAA NCEI's operational climdiv SPI product for all 344 climate divisions and all 7 published timescales; marked `validation`. | `tests/fixture/ncei_spi/provenance.json` records that NCEI's climate-divisional SPI product's independence from this codebase's lineage could not be confirmed as airtight from public documentation alone (see `docs/research/spi-dataset-survey.md`), and that NCEI's actual calibration behavior is a full/expanding period-of-record window rather than its documented fixed 1931-1990 baseline (Baldwin & Chen 2020). WMO SPI User Guide worked-example extraction remains outstanding (issue #778). |
 | SPEI | Validated | Gamma `atol=1e-8`, Pearson `atol=1e-5` in xarray equivalence tests | Legacy NumPy fixtures and xarray equivalence tests compare gamma and Pearson outputs across scales. | Existing fixtures are historical project references rather than newly extracted literature tables. |
-| PET Thornthwaite | Validated | Existing fixture tolerances in `tests/test_eto.py` | Thornthwaite fixtures are exercised by PET and Palmer tests. | None blocking v2.5. |
-| PET Hargreaves | Validated | Existing fixture tolerances in `tests/test_eto.py` | Hargreaves tests cover daily temperature inputs. | None blocking v2.5. |
+| PET Thornthwaite | Validated | Synthetic-fixture `atol=0.001`; literature worked example `atol=4.0` mm/month | `tests/test_eto.py::test_eto_thornthwaite` covers synthetic regression fixtures; `test_eto_thornthwaite_literature_watson` compares against a Thornthwaite (1948) worked example (Watson & Burnett, 1995) in `tests/fixture/pet_literature/`. See `docs/algorithm_refs/pet.md`. | The source supplies daylight hours, not latitude; coordinate reconstruction is not independently validated. |
+| PET Hargreaves | Validated | Synthetic-input sanity checks; literature worked example `atol=0.05` mm/day | `tests/test_eto.py::test_eto_hargreaves_with_fixtures` checks synthetic daily-input output shape and bounds; `test_eto_hargreaves_literature_mehta` compares against a Hargreaves-Samani (1985) worked example (Mehta, 2006) in `tests/fixture/pet_literature/`. See `docs/algorithm_refs/pet.md`. | The source supplies extraterrestrial radiation, not latitude/day of year; coordinate reconstruction is not independently validated. |
 | PNP | Validated | Existing fixture tolerances in `tests/test_indices.py` and xarray PNP tests | Percent-of-normal fixture and xarray wrapper tests cover output shape and metadata. | None blocking v2.5. |
 | PCI | Validated | Existing fixture tolerances in `tests/test_indices.py` and xarray PCI tests | Daily rainfall fixture and scalar xarray wrapper tests cover PCI. | None blocking v2.5. |
 | EDDI | Partially validated | NOAA reference tests use `rtol=1e-5`, `atol=1e-5` when fixtures exist | Algorithm property tests always run; NOAA PSL reference tests live in `tests/test_noaa_eddi_reference.py` and are marked `validation`. | `tests/fixture/noaa-eddi-{1,3,6}month/` is not committed. The validation tests skip until independently prepared PET/input and NOAA reference outputs are available. |
@@ -404,6 +405,25 @@ may change in a future minor release.
 | Automatic temporal inference | Yes | Monthly and daily time-coordinate inference is covered by adapter tests. |
 | Multi-input alignment | Yes | SPEI aligns precipitation and PET with an inner join and emits a warning when timesteps are dropped. |
 
+## Stateful fire indices (planned)
+
+KBDI and CFFWIS moisture-code adapters are not yet shipped; this section
+describes the contract they will follow, per
+[ADR-0006](adr/0006-fire-recursive-state-and-execution.md). Only the
+weather-only Fosberg index is available today, via the NumPy layer.
+
+The planned adapters are recursive: each daily value needs its predecessor.
+Dask-backed inputs must therefore keep the complete `time` dimension in one
+chunk for every time-varying weather variable. Spatial chunks remain
+supported. Multi-chunk time input will raise `CoordinateValidationError` with
+`data = data.chunk({'time': -1})`; adapters never rechunk implicitly, because
+doing so can materialize a large daily history.
+
+Callers will use the returned state to append later observations without
+recomputing the archive. The state is a NumPy-layer value object rather than
+an xarray `Dataset`, so its arrays carry the computational spatial shape but
+no coordinates.
+
 ## Operational Guidance
 
 - Use NumPy APIs for stable production integrations that cannot absorb beta
@@ -473,6 +493,94 @@ empirical probability handling can move the final z-score slightly.
   https://psl.noaa.gov/eddi/
 - NOAA PSL EDDI archive:
   https://downloads.psl.noaa.gov/Projects/EDDI/
+
+## docs/algorithm_refs/pet.md
+
+# Potential Evapotranspiration (PET)
+
+## Scope
+
+`climate_indices.eto` implements two PET methods:
+
+- **Thornthwaite (1948)** — monthly PET from mean monthly air temperature,
+  latitude, and calendar-derived daylight hours.
+- **Hargreaves-Samani (1985)** — daily PET (ETo) from minimum, maximum, and
+  mean daily air temperature, latitude, and day of year (via
+  extraterrestrial radiation), following Equation 52 in Allen et al. (1998)
+  FAO Irrigation and Drainage Paper 56.
+
+## Public API
+
+Use `climate_indices.eto.eto_thornthwaite()` and
+`climate_indices.eto.eto_hargreaves()`. Both accept NumPy arrays; xarray
+support is wired through `xarray_adapter.py` where applicable.
+
+## Validation
+
+PET has no single authoritative external gridded dataset: comparing against
+a reanalysis-driven reference-ET product (e.g. gridMET) confounds algorithm
+correctness with genuine climate-dependent bias between PET formulas, so no
+defensible numerical tolerance exists (see the decision on
+[Identify a gridded reference-ET dataset for PET stretch validation](https://github.com/monocongo/climate_indices/issues/775)).
+Literature worked examples are therefore the primary external output-reference
+evidence for PET. The sources provide daylight hours or extraterrestrial
+radiation rather than a latitude/date pair, so the tests reconstruct those
+coordinates with the library's solar geometry; they do not independently
+validate that reconstruction.
+
+`tests/test_eto.py` covers both methods against synthetic regression
+fixtures (`tests/fixture/temp_celsius.npy`, `tests/fixture/pet_thornthwaite.npy`,
+and the `hargreaves_*` fixtures generated in `tests/conftest.py`) and, since
+issue [#774](https://github.com/monocongo/climate_indices/issues/774),
+against literature-derived worked examples in
+`tests/fixture/pet_literature/`:
+
+- `test_eto_thornthwaite_literature_watson` — Thornthwaite worked example
+  from Watson & Burnett (1995).
+- `test_eto_hargreaves_literature_mehta` — Hargreaves-Samani worked example
+  from Mehta (2006).
+
+Neither the original Thornthwaite (1948) *Geographical Review* article nor
+the original Hargreaves & Samani (1985) *Applied Engineering in Agriculture*
+article is freely accessible from this environment (JSTOR paywall for the
+former; the latter's hosts were unreachable). Both worked examples are
+instead taken from secondary sources that reproduce the original equations
+with full inputs and outputs — the same two worked examples used by PyETo
+(https://github.com/woodcrafty/PyETo) to validate its own Thornthwaite and
+Hargreaves implementations, which `climate_indices.eto` credits in its
+module docstring as the code it was derived from. Full citations, and the
+derivation of the (latitude, day-of-year) inputs each worked example
+implies, are documented in `tests/fixture/pet_literature/metadata.json`.
+
+## Tolerance
+
+- Thornthwaite: `atol=4.0` mm/month, matching the tolerance PyETo's own test
+  suite established for this exact source (its rounded coefficients and
+  intermediate values, and no day-count adjustment, introduce a few mm of
+  imprecision independent of any implementation difference). The worked
+  example's monthly daylight hours are matched to an approximate
+  back-solved latitude (43.0°N) since the source states daylight hours
+  directly rather than a latitude; see metadata.json.
+- Hargreaves: `atol=0.05` mm/day, matching the source's 1-decimal-place
+  precision. The worked example's extraterrestrial radiation input is
+  reproduced exactly via a back-solved (latitude, day-of-year) pair; see
+  metadata.json.
+
+## References
+
+- Thornthwaite, C.W. (1948). An Approach toward a Rational Classification
+  of Climate. Geographical Review, 38, 55-94.
+  https://doi.org/10.2307/210739
+- Hargreaves, G.H. and Samani, Z.A. (1985). Reference Crop Evapotranspiration
+  from Temperature. Applied Engineering in Agriculture, 1(2), 96-99.
+- Allen, R.G., Pereira, L.S., Raes, D., and Smith, M. (1998). Crop
+  Evapotranspiration - Guidelines for Computing Crop Water Requirements.
+  FAO Irrigation and Drainage Paper 56. https://www.fao.org/4/x0490e/x0490e00.htm
+- Watson, I. and Burnett, A.D. (1995). Hydrology: An Environmental Approach.
+  Lewis Publishers/CRC Press. ISBN 978-1-56670-087-0.
+- Mehta, V.K. (2006). Estimating Evapotranspiration from Weather Data.
+  Arghyam / Cornell University.
+- Richards, M. PyETo. https://github.com/woodcrafty/PyETo
 
 ## docs/algorithm_refs/palmer.md
 
