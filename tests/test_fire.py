@@ -29,7 +29,8 @@ def test_public_api_is_namespaced() -> None:
 
     assert climate_indices.fire is fire
     assert "fire" in climate_indices.__all__
-    assert not hasattr(climate_indices, "fosberg_ffwi")
+    for name in fire.__all__:
+        assert not hasattr(climate_indices, name)
 
 
 def _emc(temperature_fahrenheit: float, relative_humidity_percent: float) -> float:

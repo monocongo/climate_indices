@@ -11,7 +11,7 @@ and couple unrelated API evolution.
 
 Fire computations live in `climate_indices.fire`, a stable NumPy module. It is
 publicly imported as `from climate_indices import fire`; its functions are not
-re-exported from the package root. The canonical Canadian function is
+re-exported from the package root. The Canadian FWI component is
 `fire.cffwis_fwi()`, never `fire.fwi()`, and Fosberg remains
 `fire.fosberg_ffwi()`.
 
