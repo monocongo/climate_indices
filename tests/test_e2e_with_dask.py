@@ -15,7 +15,6 @@ from climate_indices import compute, indices
 @pytest.mark.parametrize("entrypoint", ["end_to_end_example.py", "e2e_with_dask.ipynb"])
 def test_e2e_pipeline(tmp_path, monkeypatch, entrypoint):
     pytest.importorskip("zarr")
-    pytest.importorskip("h5py")
     path = Path(__file__).resolve().parents[1] / "scripts" / entrypoint
     if path.suffix == ".py":
         namespace = runpy.run_path(str(path))
@@ -41,8 +40,8 @@ def test_e2e_pipeline(tmp_path, monkeypatch, entrypoint):
     for name in ds:
         ds[name].attrs["units"] = "mm"
     precip_path, pet_path = tmp_path / "precip.nc", tmp_path / "pet.nc"
-    ds[["pr"]].to_netcdf(precip_path, engine="h5netcdf")
-    ds[["pet"]].to_netcdf(pet_path, engine="h5netcdf")
+    ds[["pr"]].to_netcdf(precip_path, engine="scipy")
+    ds[["pet"]].to_netcdf(pet_path, engine="scipy")
     prepared, output = tmp_path / "prepared.zarr", tmp_path / "output.zarr"
     namespace["clean_and_prepare_inputs"](precip_path, pet_path, prepared)
     config = {
@@ -79,3 +78,41 @@ def test_e2e_pipeline(tmp_path, monkeypatch, entrypoint):
         assert actual.spi_3[:2].isnull().all()
         assert actual.spei_3[:2].isnull().all()
         xr.testing.assert_equal(actual.time, ds.time)
+
+
+def test_failed_run_preserves_existing_output(tmp_path, monkeypatch):
+    pytest.importorskip("zarr")
+    namespace = runpy.run_path(str(Path(__file__).resolve().parents[1] / "scripts" / "end_to_end_example.py"))
+    shape = (372, 1, 1)
+    prepared, output = tmp_path / "prepared.zarr", tmp_path / "output.zarr"
+    rng = np.random.default_rng(1)
+    ds = xr.Dataset(
+        {
+            "precip": (("time", "lat", "lon"), rng.gamma(2, 40, shape).astype("float32")),
+            "pet": (("time", "lat", "lon"), rng.uniform(20, 100, shape).astype("float32")),
+            "wb": (("time", "lat", "lon"), np.zeros(shape, dtype="float32")),
+        },
+        coords={"time": pd.date_range("1980-01-01", periods=372, freq="MS"), "lat": [35.0], "lon": [-100.0]},
+    )
+    ds.chunk({"time": -1}).to_zarr(prepared, zarr_format=2)
+    sentinel = xr.Dataset({"old": (("x",), [1.0])})
+    sentinel.to_zarr(output, mode="w", zarr_format=2)
+    config = {
+        "scale": 3,
+        "distribution_spi": indices.Distribution.gamma,
+        "distribution_spei": indices.Distribution.pearson,
+        "data_start_year": 1980,
+        "cal_start_year": 1981,
+        "cal_end_year": 2010,
+        "periodicity": compute.Periodicity.monthly,
+    }
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("simulated block failure")
+
+    monkeypatch.setattr(xr.Dataset, "to_zarr", boom)
+    with pytest.raises(RuntimeError, match="simulated block failure"):
+        namespace["compute_indices_parallel"](prepared, output, config)
+    monkeypatch.undo()
+    with xr.open_zarr(output) as actual:
+        xr.testing.assert_equal(actual, sentinel)

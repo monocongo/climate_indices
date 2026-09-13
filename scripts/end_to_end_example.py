@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run with: uv run --with h5py --with zarr scripts/end_to_end_example.py."""
 
+import shutil
 from pathlib import Path
 
 import dask.array as da
@@ -145,7 +146,13 @@ def compute_indices_parallel(zarr_prepared_path: Path, output_zarr_path: Path, c
                 "units": "dimensionless",
             }
         print(f"Computing SPI/SPEI: {output_zarr_path}")
-        ds_output.to_zarr(output_zarr_path, mode="w", zarr_format=2, consolidated=True)
+        # Write beside the target and swap on success so a failed run leaves a
+        # previously completed store intact.
+        tmp_path = output_zarr_path.with_name(output_zarr_path.name + ".tmp")
+        shutil.rmtree(tmp_path, ignore_errors=True)
+        ds_output.to_zarr(tmp_path, mode="w", zarr_format=2, consolidated=True)
+        shutil.rmtree(output_zarr_path, ignore_errors=True)
+        tmp_path.rename(output_zarr_path)
 
 
 if __name__ == "__main__":

@@ -47,6 +47,7 @@ test = [
     "pytest>=8.4.1",
     "pytest-benchmark>=4.0.0",
     "pytest-cov>=6.2.1",
+    "zarr>=2.18",
 ]
 dev = [
     "climate-indices[test,docs]",
@@ -131,6 +132,12 @@ module = [
 ]
 ignore_missing_imports = true
 
+# Optional test-only dependency; its py3.12+ syntax breaks parsing under
+# python_version = "3.10", and no first-party code imports it.
+[[tool.mypy.overrides]]
+module = ["zarr.*"]
+follow_imports = "skip"
+
 [[tool.mypy.overrides]]
 module = [
     "climate_indices.typed_public_api",
@@ -210,6 +217,7 @@ test = [
     "pytest>=8.4.1",
     "pytest-benchmark>=4.0.0",
     "pytest-cov>=6.2.1",
+    "zarr>=2.18",
 ]
 dev = [
     {include-group = "test"},
