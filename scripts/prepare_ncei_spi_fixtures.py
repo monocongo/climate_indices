@@ -62,8 +62,8 @@ _MIN_DIVISION_COVERAGE = 0.95  # fraction of months that must be non-NaN per div
 
 # Agreement with climate_indices.indices.spi() (Pearson III, full-period-of-record
 # calibration) measured across all 344 divisions (GitHub issue #777), and the
-# loose characterization ceilings the tests assert against. Mirrored in
-# tests/test_ncei_spi_reference.py, which cross-checks these against provenance.json.
+# loose characterization ceilings the tests assert against. Written into
+# provenance.json, from which tests/test_ncei_spi_reference.py loads them.
 _MEASURED_STATS = {
     1: {"median": 0.0136, "p90": 0.0342, "max": 1.2900},
     2: {"median": 0.0129, "p90": 0.0298, "max": 0.9576},
