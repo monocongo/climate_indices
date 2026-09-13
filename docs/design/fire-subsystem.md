@@ -42,9 +42,21 @@ The one multi-output exception is CFFWIS: NumPy returns a named
 `isi`, `bui`, `fwi`, and `dsr` variables. `fwi` is an output variable required
 by CFFWIS terminology, not a callable. There is no `fire.fwi()`.
 
-State initialization, final-state extraction, spin-up, and wet-spell state
-follow the shared contract in [#795](https://github.com/monocongo/climate_indices/issues/795).
-No index may invent a different state-return convention.
+The current `xarray_adapter` finalizes a single `DataArray`, so the CFFWIS
+xarray route cannot use it as-is. It requires a multi-output extension that
+calls the shared NumPy core once, then rewraps each of the seven variables
+with its own `CF_METADATA` entry under the same validation and one-time-chunk
+guarantees. Independent per-output adapters are not a substitute: CFFWIS is
+one shared computation, not seven.
+
+Stateful functions share one state contract, specified in
+[#795](https://github.com/monocongo/climate_indices/issues/795): keyword-only
+`initial_<code>` parameters with literature defaults (FFMC 85, DMC 6, DC 15,
+KBDI 0), a `spin_up` parameter defaulting to the literature-standard behavior,
+and `return_state: bool = False`. With `return_state=True` the final state is
+returned alongside the result so a run can be continued without recomputing
+the archive. #795 fixes the state object type and wet-spell handling; no index
+may invent a different state-return convention.
 
 ## Names and input contracts
 
@@ -64,7 +76,7 @@ kernels.
 | `buildup_index(dmc, dc)` | DMC, DC | dimensionless BUI |
 | `cffwis_fwi(isi, bui)` | ISI, BUI | dimensionless Canadian Fire Weather Index |
 | `daily_severity_rating(cffwis_fwi)` | Canadian FWI | dimensionless DSR |
-| `cffwis(temperature_celsius, relative_humidity_percent, wind_speed_meters_per_second, precipitation_mm, latitude_degrees_north, *, ...)` | CFFWIS weather inputs above | `CFFWISResult`; xarray counterpart accepts `tas`, `hurs`, `sfcWind`, `pr`, and optional `lat`, returning `Dataset` |
+| `cffwis(temperature_celsius, relative_humidity_percent, wind_speed_meters_per_second, precipitation_mm, latitude_degrees_north, *, initial_ffmc=85.0, initial_dmc=6.0, initial_dc=15.0, spin_up=None, return_state=False)` | CFFWIS weather inputs above; `initial_*` and `spin_up` follow the shared state contract | `CFFWISResult` plus final state when `return_state=True`; xarray counterpart accepts `tas`, `hurs`, `sfcWind`, `pr`, and optional `lat`, returning `Dataset` |
 | `hot_dry_windy(temperature_celsius, relative_humidity_percent, wind_speed_meters_per_second, height_agl_meters, *, level_axis=-1)` | vertical profiles in °C, %, m s⁻¹, m AGL | hPa m s⁻¹; all levels must identify the lowest 500 m AGL |
 | `haines_index(temperature_lower_celsius, temperature_upper_celsius, dewpoint_lower_celsius, *, variant)` | pressure-level °C inputs selected by `variant` | integer 2–6; `variant` is `"low"`, `"mid"`, or `"high"`, never inferred by default |
 
@@ -85,8 +97,12 @@ chunking. Elementwise invalid observations produce the documented missing
 output. Do not add fire-specific exception classes.
 
 Fire outputs have no CF `standard_name`. Xarray metadata comes exclusively from
-`CF_METADATA`; each adapter supplies a `long_name`, units, description, and
-references as specified in [#798](https://github.com/monocongo/climate_indices/issues/798).
+`CF_METADATA`: each adapter's `long_name`, units, description, and references
+come from its registry entry, never hand-written in an adapter. The current
+`CFAttributes` schema holds only `long_name`, `units`, and `references` and
+has no fire entries; [#798](https://github.com/monocongo/climate_indices/issues/798)
+extends the schema with `description` and adds the fire entries, and no fire
+adapter ships before that lands.
 
 `drought_code()` names the CFFWIS component only. It neither accepts a climate
 calibration period nor means SPI, SPEI, PDSI, or any other drought index.
