@@ -20,7 +20,8 @@ be releasable.
 3. Make focused changes with tests and docs when needed.
 4. Run local validation.
 5. Open a pull request into `main`.
-6. Merge only after review and passing CI.
+6. The maintainer merges after review and passing CI. Contributors and coding
+   agents open PRs but never merge them.
 
 Use these branch prefixes:
 
