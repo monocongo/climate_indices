@@ -75,7 +75,7 @@ def clean_and_prepare_inputs(precip_path: Path, pet_path: Path, zarr_prepared_pa
 def compute_indices_parallel(zarr_prepared_path: Path, output_zarr_path: Path, config: dict) -> None:
     """Compute SPI/SPEI lazily via the public xarray API, materializing only at the Zarr write.
 
-    The canonical path is the public typed API (``climate_indices.indices.spi``/``spei``)
+    The canonical path is the public typed API (``climate_indices.spi``/``climate_indices.spei``)
     on Dask-backed DataArrays, which runs ``xr.apply_ufunc(..., dask=\"parallelized\")``
     underneath (ADRs 0001-0003). Labeled dimensions/coordinates are preserved and Dask
     schedules one task per spatial chunk, so spatial chunking drives task parallelism;

@@ -286,6 +286,14 @@ def test_compute_indices_parallel_uses_public_xarray_api():
     source = (SCRIPTS_DIR / "end_to_end_example.py").read_text()
     assert "map_blocks" not in source
     tree = ast.parse(source)
+    public_imports = {
+        alias.asname or alias.name
+        for node in tree.body
+        if isinstance(node, ast.ImportFrom) and node.module == "climate_indices"
+        for alias in node.names
+        if alias.name in {"spi", "spei"}
+    }
+    assert public_imports == {"spi", "spei"}
     func = next(
         node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "compute_indices_parallel"
     )
