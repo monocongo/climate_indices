@@ -32,7 +32,7 @@ release workflow and publishes to PyPI through Trusted Publishing.
 6. Update `RELEASE_NOTES.md` or related docs when needed.
 7. Run validation locally.
 8. Open a PR into `main`.
-9. Merge only after review and passing CI.
+9. The maintainer merges after review and passing CI; agents never merge.
 
 ## Validation commands
 
@@ -164,7 +164,7 @@ Use the normal trunk flow for hotfixes whenever possible:
 2. Create `hotfix/<topic>`.
 3. Make the smallest safe fix with a regression test.
 4. Run validation.
-5. Merge the PR into `main` after CI passes.
+5. The maintainer merges the PR into `main` after review and passing CI.
 6. Prepare and tag a patch release from `main`.
 
 For an older supported version, a maintainer may approve a maintenance branch.

@@ -21,6 +21,25 @@ may change in a future minor release.
 | Automatic temporal inference | Yes | Monthly and daily time-coordinate inference is covered by adapter tests. |
 | Multi-input alignment | Yes | SPEI aligns precipitation and PET with an inner join and emits a warning when timesteps are dropped. |
 
+## Stateful fire indices (planned)
+
+KBDI and CFFWIS moisture-code adapters are not yet shipped; this section
+describes the contract they will follow, per
+[ADR-0006](adr/0006-fire-recursive-state-and-execution.md). Only the
+weather-only Fosberg index is available today, via the NumPy layer.
+
+The planned adapters are recursive: each daily value needs its predecessor.
+Dask-backed inputs must therefore keep the complete `time` dimension in one
+chunk for every time-varying weather variable. Spatial chunks remain
+supported. Multi-chunk time input will raise `CoordinateValidationError` with
+`data = data.chunk({'time': -1})`; adapters never rechunk implicitly, because
+doing so can materialize a large daily history.
+
+Callers will use the returned state to append later observations without
+recomputing the archive. The state is a NumPy-layer value object rather than
+an xarray `Dataset`, so its arrays carry the computational spatial shape but
+no coordinates.
+
 ## Operational Guidance
 
 - Use NumPy APIs for stable production integrations that cannot absorb beta
@@ -29,5 +48,11 @@ may change in a future minor release.
   and metadata are more valuable than strict interface stability.
 - Keep Dask chunks spatial when possible and leave `time` as one chunk before
   calling index functions.
+- The canonical lazy xarray/Dask SPI/SPEI workflow is
+  `scripts/end_to_end_example.py` with `scripts/e2e_with_dask.ipynb`: the public
+  typed API on Dask-backed DataArrays (`xr.apply_ufunc(..., dask="parallelized")`),
+  one full time chunk with spatial chunks driving task parallelism, and
+  precipitation/PET exact-aligned at preparation time so SPEI never relies on
+  coordinate intersection.
 - Run the notebook CI command before publishing examples:
   `uv run jupyter nbconvert --execute --to notebook --inplace notebooks/xarray_getting_started.ipynb notebooks/palmer_indices_xarray.ipynb notebooks/eddi_xarray.ipynb`.

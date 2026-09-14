@@ -1,6 +1,6 @@
 # climate_indices (core library)
 
-A Python scientific computing library that turns raw climate observations (precipitation, temperature) into standardized drought and moisture indices — SPI, SPEI, PNP, EDDI, and the Palmer family — via distribution fitting and statistical transformation.
+A Python scientific computing library that turns raw climate observations (precipitation, temperature) into standardized drought and moisture indices — SPI, SPEI, PNP, EDDI, and the Palmer family — via distribution fitting and statistical transformation. It also computes fire-weather indices, namespaced under the `fire` module.
 
 ## Language
 
@@ -77,6 +77,16 @@ Monthly PET estimated from mean air temperature and day length, via a temperatur
 
 **Hargreaves Method**:
 Daily PET estimated from min/max/mean temperature and extraterrestrial radiation (Hargreaves, 1985; FAO-56 eq. 52).
+
+### Fire family
+
+Fire-weather and fuel-dryness indices live in the namespaced `fire` module (`from climate_indices import fire`), never as unqualified package functions — see [ADR-0005](../../docs/adr/0005-fire-module-api.md) and the [fire subsystem design](../../docs/design/fire-subsystem.md).
+
+**FFWI (Fosberg Fire Weather Index)**:
+A dimensionless, weather-only, elementwise fire-weather index from temperature, relative humidity, and wind speed; computed by `fire.fosberg_ffwi()`.
+
+**HDW (Hot-Dry-Windy Index)**:
+The vapor pressure deficit times wind speed, maximized over the lowest 500 m above ground level of a vertical profile; computed by `fire.hot_dry_windy()` in hPa m s⁻¹. KBDI, CFFWIS, and Haines are planned contracts in the design doc.
 
 ### Statistics
 

@@ -47,11 +47,13 @@ test = [
     "pytest>=8.4.1",
     "pytest-benchmark>=4.0.0",
     "pytest-cov>=6.2.1",
+    "zarr>=2.18",
 ]
 dev = [
     "climate-indices[test,docs]",
     "build>=1.3.0",
     "cartopy>=0.24.1",
+    "distributed>=2025.7.0",
     "jupyter>=1.1.1",
     "matplotlib>=3.10.3",
     "mypy>=1.10.0",
@@ -129,6 +131,12 @@ module = [
     "pandas.*",
 ]
 ignore_missing_imports = true
+
+# Optional test-only dependency; its py3.12+ syntax breaks parsing under
+# python_version = "3.10", and no first-party code imports it.
+[[tool.mypy.overrides]]
+module = ["zarr.*"]
+follow_imports = "skip"
 
 [[tool.mypy.overrides]]
 module = [
@@ -209,11 +217,13 @@ test = [
     "pytest>=8.4.1",
     "pytest-benchmark>=4.0.0",
     "pytest-cov>=6.2.1",
+    "zarr>=2.18",
 ]
 dev = [
     {include-group = "test"},
     "build>=1.3.0",
     "cartopy>=0.24.1",
+    "distributed>=2025.7.0",
     "jupyter>=1.1.1",
     "matplotlib>=3.10.3",
     "mypy>=1.10.0",
