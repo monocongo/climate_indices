@@ -1527,7 +1527,7 @@ Library has no network dependencies; all data is file-based.
 
 ---
 
-**Next Steps**: See [source-tree-analysis.md](./source-tree-analysis.md) for annotated directory structure, [development-guide.md](./development-guide.md) for setup instructions, and [deployment-guide.md](./deployment-guide.md) for CI/CD details.
+**Next Steps**: See [component-inventory.md](./component-inventory.md) for the module catalog, [development-guide.md](./development-guide.md) for setup instructions, and [deployment-guide.md](./deployment-guide.md) for CI/CD details.
 
 ## docs/development-guide.md
 

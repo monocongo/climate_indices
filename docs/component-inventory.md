@@ -978,6 +978,14 @@ def log_performance_metrics(
 | **`utils.py`** | _(none)_ | numpy |
 | **`performance.py`** | logging_config | psutil |
 
+### Dependency Rules
+
+1. **No circular dependencies**: modules follow the layered architecture above
+2. **Infrastructure has no upper-layer imports**: pure utilities
+3. **Math/Stats layer independent**: could be extracted to a separate package
+4. **Public API wraps Computation**: `xarray_adapter` uses `indices` internally
+5. **CLI depends on all layers**: imports from all layers as needed
+
 ---
 
 ## Usage Patterns
