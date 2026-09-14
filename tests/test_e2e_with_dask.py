@@ -237,6 +237,10 @@ def test_e2e_pipeline(tmp_path, monkeypatch, entrypoint):
         assert np.isfinite(actual.spi_3[100, 0, 0])
         assert np.isfinite(actual.spei_3[100, 0, 0])
         xr.testing.assert_equal(actual.time, ds.time)
+        # The typed API computes in float64; the on-disk store must stay float32
+        # (matching the float32 mm inputs) rather than silently doubling in size.
+        assert actual.spi_3.dtype == np.float32
+        assert actual.spei_3.dtype == np.float32
 
 
 def test_failed_run_preserves_existing_output(tmp_path, monkeypatch):

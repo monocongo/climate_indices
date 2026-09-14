@@ -82,7 +82,8 @@ def compute_indices_parallel(zarr_prepared_path: Path, output_zarr_path: Path, c
     the time dimension must remain a single chunk. Precipitation and PET must already
     cover exactly the same coordinates and dates, as guaranteed at preparation time by
     ``clean_and_prepare_inputs`` (``join=\"exact\"``); the SPEI adapter would otherwise
-    silently intersect coordinates.
+    silently intersect mismatched spatial coordinates, and warn (or raise, if the
+    overlap is empty) only on a mismatched time axis.
 
     Args:
         zarr_prepared_path: Store produced by ``clean_and_prepare_inputs``.
@@ -128,29 +129,27 @@ def compute_indices_parallel(zarr_prepared_path: Path, output_zarr_path: Path, c
         spei_da = spei(
             precips_mm=ds["precip"], pet_mm=ds["pet"], distribution=config["distribution_spei"], **index_kwargs
         )
+        spi_name, spei_name = f"spi_{config['scale']}", f"spei_{config['scale']}"
         ds_output = xr.Dataset(
-            {
-                f"spi_{config['scale']}": spi_da,
-                f"spei_{config['scale']}": spei_da,
-            }
+            {spi_name: spi_da, spei_name: spei_da},
+            coords=ds.coords,
         )
-        for name, long_name in (
-            ("spi", "Standardized Precipitation Index"),
-            ("spei", "Standardized Precipitation Evapotranspiration Index"),
-        ):
-            ds_output[f"{name}_{config['scale']}"].attrs.update(
-                {
-                    "long_name": long_name,
-                    "scale": config["scale"],
-                    "units": "dimensionless",
-                }
-            )
         print(f"Computing SPI/SPEI: {output_zarr_path}")
         # Write beside the target and swap on success so a failed run leaves a
         # previously completed store intact.
         tmp_path = output_zarr_path.with_name(output_zarr_path.name + ".tmp")
         shutil.rmtree(tmp_path, ignore_errors=True)
-        ds_output.to_zarr(tmp_path, mode="w", zarr_format=2, consolidated=True)
+        # The typed API computes in float64 (xr.apply_ufunc(..., output_dtypes=[float])
+        # regardless of input dtype); downcast on write only, to keep the on-disk
+        # footprint at the float32 precision the float32 mm inputs actually carry.
+        float32_encoding = {"dtype": "float32"}
+        ds_output.to_zarr(
+            tmp_path,
+            mode="w",
+            zarr_format=2,
+            consolidated=True,
+            encoding={spi_name: float32_encoding, spei_name: float32_encoding},
+        )
         shutil.rmtree(output_zarr_path, ignore_errors=True)
         tmp_path.rename(output_zarr_path)
 
