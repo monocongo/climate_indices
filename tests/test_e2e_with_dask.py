@@ -237,6 +237,10 @@ def test_e2e_pipeline(tmp_path, monkeypatch, entrypoint):
         assert np.isfinite(actual.spi_3[100, 0, 0])
         assert np.isfinite(actual.spei_3[100, 0, 0])
         xr.testing.assert_equal(actual.time, ds.time)
+        # The typed API computes in float64; the on-disk store must stay float32
+        # (matching the float32 mm inputs) rather than silently doubling in size.
+        assert actual.spi_3.dtype == np.float32
+        assert actual.spei_3.dtype == np.float32
 
 
 def test_failed_run_preserves_existing_output(tmp_path, monkeypatch):
@@ -275,3 +279,23 @@ def test_failed_run_preserves_existing_output(tmp_path, monkeypatch):
     monkeypatch.undo()
     with xr.open_zarr(output) as actual:
         xr.testing.assert_equal(actual, sentinel)
+
+
+def test_compute_indices_parallel_uses_public_xarray_api():
+    """Pins the #825 canonical path: public typed API, no hand-rolled map_blocks."""
+    source = (SCRIPTS_DIR / "end_to_end_example.py").read_text()
+    assert "map_blocks" not in source
+    tree = ast.parse(source)
+    public_imports = {
+        alias.asname or alias.name
+        for node in tree.body
+        if isinstance(node, ast.ImportFrom) and node.module == "climate_indices"
+        for alias in node.names
+        if alias.name in {"spi", "spei"}
+    }
+    assert public_imports == {"spi", "spei"}
+    func = next(
+        node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "compute_indices_parallel"
+    )
+    calls = {node.func.id for node in ast.walk(func) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
+    assert {"spi", "spei"} <= calls

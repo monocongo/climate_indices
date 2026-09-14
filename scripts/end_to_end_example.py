@@ -4,12 +4,11 @@
 import shutil
 from pathlib import Path
 
-import dask.array as da
 import numpy as np
 import pandas as pd
 import xarray as xr
 
-from climate_indices import compute, indices
+from climate_indices import compute, indices, spei, spi
 from climate_indices.exceptions import CoordinateValidationError, InvalidArgumentError
 
 
@@ -72,80 +71,19 @@ def clean_and_prepare_inputs(precip_path: Path, pet_path: Path, zarr_prepared_pa
         ds_clean.to_zarr(zarr_prepared_path, mode="w", zarr_format=2, consolidated=True)
 
 
-# 2. Element-wise Wrapper Functions for climate_indices
-def _spi_wrapper(
-    precip_chunk,
-    scale,
-    distribution,
-    data_start_year,
-    calibration_start_year,
-    calibration_end_year,
-    periodicity: compute.Periodicity,
-) -> np.ndarray:
-    """
-    Guaranteed to receive a numpy array with shape (time, lat, lon) where time is continuous,
-    but lat and lon represent a subset block dictated by Dask.
-    """
-    # Allocate empty output matching input shape
-    output = np.full(precip_chunk.shape, np.nan, dtype=np.float32)
-
-    # Iterate over the spatial block slice passed to this worker
-    for i in range(precip_chunk.shape[1]):
-        for j in range(precip_chunk.shape[2]):
-            time_series = precip_chunk[:, i, j]
-
-            # Skip computation if entirely filled with NaNs (e.g., oceans)
-            if np.isnan(time_series).all():
-                continue
-
-            output[:, i, j] = indices.spi(
-                values=time_series,
-                scale=scale,
-                distribution=distribution,
-                data_start_year=data_start_year,
-                calibration_year_initial=calibration_start_year,
-                calibration_year_final=calibration_end_year,
-                periodicity=periodicity,
-            )
-    return output
-
-
-def _spei_wrapper(
-    precip_chunk,
-    pet_chunk,
-    scale,
-    distribution,
-    data_start_year,
-    calibration_start_year,
-    calibration_end_year,
-    periodicity: compute.Periodicity,
-) -> np.ndarray:
-    """Wrapper for block-level SPEI calculation."""
-    output = np.full(precip_chunk.shape, np.nan, dtype=np.float32)
-
-    for i in range(precip_chunk.shape[1]):
-        for j in range(precip_chunk.shape[2]):
-            precip_time_series = precip_chunk[:, i, j]
-            pet_time_series = pet_chunk[:, i, j]
-            if np.isnan(precip_time_series).all():
-                continue
-
-            output[:, i, j] = indices.spei(
-                precips_mm=precip_time_series,
-                pet_mm=pet_time_series,
-                scale=scale,
-                distribution=distribution,
-                data_start_year=data_start_year,
-                calibration_year_initial=calibration_start_year,
-                calibration_year_final=calibration_end_year,
-                periodicity=periodicity,
-            )
-    return output
-
-
-# 3. Concurrent Scaling Block Execution
+# 2. Canonical Calculation Path
 def compute_indices_parallel(zarr_prepared_path: Path, output_zarr_path: Path, config: dict) -> None:
-    """Compute SPI/SPEI in spatial blocks, retaining the complete time series.
+    """Compute SPI/SPEI lazily via the public xarray API, materializing only at the Zarr write.
+
+    The canonical path is the public typed API (``climate_indices.spi``/``climate_indices.spei``)
+    on Dask-backed DataArrays, which runs ``xr.apply_ufunc(..., dask=\"parallelized\")``
+    underneath (ADRs 0001-0003). Labeled dimensions/coordinates are preserved and Dask
+    schedules one task per spatial chunk, so spatial chunking drives task parallelism;
+    the time dimension must remain a single chunk. Precipitation and PET must already
+    cover exactly the same coordinates and dates, as guaranteed at preparation time by
+    ``clean_and_prepare_inputs`` (``join=\"exact\"``); the SPEI adapter would otherwise
+    silently intersect mismatched spatial coordinates, and warn (or raise, if the
+    overlap is empty) only on a mismatched time axis.
 
     Args:
         zarr_prepared_path: Store produced by ``clean_and_prepare_inputs``.
@@ -180,41 +118,38 @@ def compute_indices_parallel(zarr_prepared_path: Path, output_zarr_path: Path, c
                 valid_values=f"{data_start_year}-{data_end_year}",
             )
 
-        kwargs = {
+        index_kwargs = {
             "scale": config["scale"],
-            "data_start_year": config["data_start_year"],
-            "calibration_start_year": config["cal_start_year"],
-            "calibration_end_year": config["cal_end_year"],
+            "data_start_year": data_start_year,
+            "calibration_year_initial": cal_start_year,
+            "calibration_year_final": cal_end_year,
             "periodicity": config["periodicity"],
-            "dtype": np.float32,
-            "meta": np.empty((0, 0, 0), dtype=np.float32),
         }
-        spi_array = da.map_blocks(_spi_wrapper, ds["precip"].data, distribution=config["distribution_spi"], **kwargs)
-        spei_array = da.map_blocks(
-            _spei_wrapper, ds["precip"].data, ds["pet"].data, distribution=config["distribution_spei"], **kwargs
+        spi_da = spi(values=ds["precip"], distribution=config["distribution_spi"], **index_kwargs)
+        spei_da = spei(
+            precips_mm=ds["precip"], pet_mm=ds["pet"], distribution=config["distribution_spei"], **index_kwargs
         )
+        spi_name, spei_name = f"spi_{config['scale']}", f"spei_{config['scale']}"
         ds_output = xr.Dataset(
-            {
-                f"spi_{config['scale']}": (("time", "lat", "lon"), spi_array),
-                f"spei_{config['scale']}": (("time", "lat", "lon"), spei_array),
-            },
+            {spi_name: spi_da, spei_name: spei_da},
             coords=ds.coords,
         )
-        for name, long_name in (
-            ("spi", "Standardized Precipitation Index"),
-            ("spei", "Standardized Precipitation Evapotranspiration Index"),
-        ):
-            ds_output[f"{name}_{config['scale']}"].attrs = {
-                "long_name": long_name,
-                "scale": config["scale"],
-                "units": "dimensionless",
-            }
         print(f"Computing SPI/SPEI: {output_zarr_path}")
         # Write beside the target and swap on success so a failed run leaves a
         # previously completed store intact.
         tmp_path = output_zarr_path.with_name(output_zarr_path.name + ".tmp")
         shutil.rmtree(tmp_path, ignore_errors=True)
-        ds_output.to_zarr(tmp_path, mode="w", zarr_format=2, consolidated=True)
+        # The typed API computes in float64 (xr.apply_ufunc(..., output_dtypes=[float])
+        # regardless of input dtype); downcast on write only, to keep the on-disk
+        # footprint at the float32 precision the float32 mm inputs actually carry.
+        float32_encoding = {"dtype": "float32"}
+        ds_output.to_zarr(
+            tmp_path,
+            mode="w",
+            zarr_format=2,
+            consolidated=True,
+            encoding={spi_name: float32_encoding, spei_name: float32_encoding},
+        )
         shutil.rmtree(output_zarr_path, ignore_errors=True)
         tmp_path.rename(output_zarr_path)
 
