@@ -10,6 +10,7 @@ points to maintained task-specific guidance instead of duplicating it.
 | Make an architectural decision | [existing ADRs](../adr/) before adding an ADR for a hard-to-reverse, non-obvious trade-off |
 | Prepare a release | [release-process.md](../release-process.md) |
 | Work on the planned Explorer | [CONTEXT-MAP.md](../../CONTEXT-MAP.md) first |
+| Manage GitHub issues | [issue tracker guide](issue-tracker.md) |
 
 The general documentation landing pages are not agent working guidance; do not
 use them as a source for current project facts without verifying those facts in

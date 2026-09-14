@@ -2963,6 +2963,7 @@ class TestValidateDaskChunks:
             _validate_dask_chunks(dask_multi_time_chunk, "time")
 
         assert exc_info.value.reason == "multi_chunked_time_dimension"
+        assert "stateful recurrences" in str(exc_info.value)
         assert "chunk({'time': -1})" in str(exc_info.value)
 
     def test_missing_time_dim_skipped(self, no_time_dim_da):
