@@ -984,12 +984,12 @@ def _pci_from_monthly_totals(monthly_totals: np.ndarray) -> float:
 
 
 def test_pci_uniform_distribution_bounded() -> None:
-    """Verify PCI for uniform daily rainfall matches calendar-month totals.
+    """Verify PCI for uniform leap-year daily rainfall.
 
-    Property: PCI for uniform daily rainfall is deterministic. Equal daily
-    rainfall still yields unequal monthly totals because months have different
-    lengths, so PCI is 100 * sum(p_i^2) / (sum p_i)^2 with p_i equal to each
-    month's length rather than the theoretical minimum of 100/12.
+    Calendar months differ in length, so even uniform daily rain does not
+    reach the theoretical minimum of 100/12 ≈ 8.333. With correct month-end
+    boundaries the value is ≈ 8.337, not the ≈ 9.75 produced when February
+    is dropped.
     """
     # 366-day year with equal rain each day
     rainfall = np.full(366, 10.0)
@@ -1004,6 +1004,12 @@ def test_pci_uniform_distribution_bounded() -> None:
         rtol=1e-10,
         err_msg="Uniform leap-year PCI should match calendar-month totals",
     )
+    np.testing.assert_allclose(
+        result[0],
+        8.337066,
+        rtol=1e-6,
+        err_msg="Uniform leap-year PCI should be ~8.34, not ~9.75",
+    )
 
     # verify determinism: same input always produces same output
     result2 = indices.pci(rainfall)
@@ -1011,10 +1017,11 @@ def test_pci_uniform_distribution_bounded() -> None:
 
 
 def test_pci_365_uniform_distribution_bounded() -> None:
-    """Verify PCI for uniform 365-day rainfall matches calendar-month totals.
+    """Verify PCI for uniform 365-day daily rainfall.
 
-    Property: Same as the leap-year uniform case, using February's 28-day
-    length. Leap and non-leap uniform PCI must differ.
+    Same as the leap-year uniform case: 100/12 ≈ 8.333 is still not hit
+    because February has 28 days. The correct value is ≈ 8.340, not ≈ 9.75.
+    Leap and non-leap uniform PCI must differ.
     """
     rainfall = np.full(365, 10.0)
     result = indices.pci(rainfall)
@@ -1027,6 +1034,12 @@ def test_pci_365_uniform_distribution_bounded() -> None:
         expected,
         rtol=1e-10,
         err_msg="Uniform non-leap PCI should match calendar-month totals",
+    )
+    np.testing.assert_allclose(
+        result[0],
+        8.340026,
+        rtol=1e-6,
+        err_msg="Uniform non-leap PCI should be ~8.34, not ~9.75",
     )
 
     leap_result = indices.pci(np.full(366, 10.0))
