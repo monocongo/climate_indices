@@ -7,6 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
+from unittest.mock import Mock
 
 import pytest
 
@@ -31,6 +32,56 @@ generate_llms_txt = _load_script(
     "generate_llms_txt",
     "scripts/generate_llms_txt.py",
 )
+try:
+    prepare_noaa_eddi_fixtures: ModuleType | None = _load_script(
+        "prepare_noaa_eddi_fixtures",
+        "scripts/prepare_noaa_eddi_fixtures.py",
+    )
+except ModuleNotFoundError:
+    # `requests` is declared in the script's own PEP 723 metadata, not the
+    # project's `test` dependency group, so it is absent under `uv sync
+    # --group test` (e.g. the minimum-dependencies CI job).
+    prepare_noaa_eddi_fixtures = None
+
+requires_requests = pytest.mark.skipif(
+    prepare_noaa_eddi_fixtures is None,
+    reason="requests not installed (outside prepare_noaa_eddi_fixtures.py's own dependency declaration)",
+)
+
+
+@requires_requests
+def test_download_master_table_limits_requests_to_noaa(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The fixture downloader must not follow URLs outside NOAA PSL."""
+    assert prepare_noaa_eddi_fixtures is not None
+    post = Mock(return_value=Mock(text='<iframe src="/eddi/result">'))
+    get = Mock(side_effect=[Mock(text='<a href="/eddi/master.table">'), Mock(text="table")])
+    monkeypatch.setattr(prepare_noaa_eddi_fixtures.requests, "post", post)
+    monkeypatch.setattr(prepare_noaa_eddi_fixtures.requests, "get", get)
+
+    assert prepare_noaa_eddi_fixtures._download_master_table() == "table"
+
+    calls = [post.call_args, *get.call_args_list]
+    assert [call.args[0] for call in calls] == [
+        "https://psl.noaa.gov/cgi-bin/eddi_int/eddi.ts.pl",
+        "https://psl.noaa.gov/eddi/result",
+        "https://psl.noaa.gov/eddi/master.table",
+    ]
+    assert all(call.kwargs["allow_redirects"] is False for call in calls)
+
+
+@requires_requests
+def test_download_master_table_rejects_external_iframe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The fixture downloader must reject an iframe outside NOAA PSL."""
+    assert prepare_noaa_eddi_fixtures is not None
+    post = Mock(return_value=Mock(text='<iframe src="https://example.com/result">'))
+    get = Mock()
+    monkeypatch.setattr(prepare_noaa_eddi_fixtures.requests, "post", post)
+    monkeypatch.setattr(prepare_noaa_eddi_fixtures.requests, "get", get)
+
+    with pytest.raises(ValueError, match="NOAA URL must use https://psl.noaa.gov"):
+        prepare_noaa_eddi_fixtures._download_master_table()
+
+    get.assert_not_called()
 
 
 def test_get_issue_labels_raises_on_gh_failure(monkeypatch: pytest.MonkeyPatch) -> None:
