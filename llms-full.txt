@@ -2515,7 +2515,7 @@ def log_performance_metrics(
 
 1. **No circular dependencies**: modules follow the layered architecture above
 2. **Infrastructure has no upper-layer imports**: pure utilities
-3. **Math/Stats layer independent**: could be extracted to a separate package
+3. **Math/Stats layer independent of upper layers**: may depend on Infrastructure utilities (e.g. `lmoments.py` on `utils.py`) but not on Compute, Indices, or the public API layers; could be extracted to standalone utilities
 4. **Public API wraps Computation**: `xarray_adapter` uses `indices` internally
 5. **CLI depends on all layers**: imports from all layers as needed
 
