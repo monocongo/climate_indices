@@ -30,22 +30,24 @@ Pipeline
     4. Reopen the prepared store and re-verify values, dims, and chunking
        against the freshly written raw NetCDF before trusting it.
 
-Output contract (data/e2e/manifest.json is the machine-readable record)
+Output contract (data/e2e/current/manifest.json is the machine-readable record)
     precip, pet, and wb share dims (time, lat, lon) and units "mm"; time runs
     1980-01-01 through 2016-12-01 monthly. The store opens with
     xr.open_zarr(path, consolidated=True) and has one time chunk plus 10x10
     spatial chunks. manifest.json additionally records the source URLs and
     checksums, the calibration period, and the realized dimensions/chunks.
 
-Generated files live in data/e2e/ (ignored by Git) and are replaced on
-reruns. Rerunning this script is the one documented way to regenerate or
-re-verify the sample; it needs no network access once data/e2e/source/ holds
-checksum-valid downloads.
+Each run writes a private generation under data/e2e/generations/ and only
+atomically switches data/e2e/current after validation. Consumers must resolve
+current once before opening any artifacts. Rerunning needs no network access
+once data/e2e/source/ holds checksum-valid downloads.
 """
 
 import hashlib
 import json
 import shutil
+import tempfile
+import uuid
 from pathlib import Path
 from urllib.request import urlopen
 
@@ -63,15 +65,42 @@ SOURCES = {
 DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "e2e"
 
 
+def _cache_source(source_dir: Path, name: str, checksum: str) -> Path:
+    """Return a checksum-valid source download."""
+    path = source_dir / f"nclimgrid_lowres_{name}.nc"
+    url = f"{SOURCE_URL}/{path.name}"
+    if not path.exists():
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="wb", dir=source_dir, prefix=f".{path.name}.", suffix=".download", delete=False
+            ) as target:
+                temporary = Path(target.name)
+                with urlopen(url, timeout=120) as response:
+                    shutil.copyfileobj(response, target)
+            if hashlib.sha256(temporary.read_bytes()).hexdigest() != checksum:
+                raise ValueError(f"SHA-256 mismatch: {url}")
+            temporary.replace(path)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+    if hashlib.sha256(path.read_bytes()).hexdigest() != checksum:
+        raise ValueError(f"SHA-256 mismatch: {path}; remove it and rerun to download again.")
+    return path
+
+
 def prepare_inputs(output_dir: Path = DATA_DIR) -> None:
-    """Download, normalize, and verify monthly precipitation/PET inputs.
+    """Download, normalize, validate, and atomically publish monthly inputs.
 
     Args:
-        output_dir: Directory for source downloads, derived files, and manifest.
+        output_dir: Directory for shared source downloads and input generations.
     """
     source_dir = output_dir / "source"
+    generations_dir = output_dir / "generations"
     source_dir.mkdir(parents=True, exist_ok=True)
+    generations_dir.mkdir(exist_ok=True)
     arrays = {}
+    generation_id = uuid.uuid4().hex
     manifest = {
         "source_commit": SOURCE_COMMIT,
         "period": ["1980-01-01", "2016-12-01"],
@@ -79,20 +108,7 @@ def prepare_inputs(output_dir: Path = DATA_DIR) -> None:
         "sources": {},
     }
     for name, checksum in SOURCES.items():
-        path = source_dir / f"nclimgrid_lowres_{name}.nc"
-        url = f"{SOURCE_URL}/{path.name}"
-        if not path.exists():
-            temporary = path.with_suffix(".download")
-            try:
-                with urlopen(url, timeout=120) as response, temporary.open("wb") as target:
-                    shutil.copyfileobj(response, target)
-                if hashlib.sha256(temporary.read_bytes()).hexdigest() != checksum:
-                    raise ValueError(f"SHA-256 mismatch: {url}")
-                temporary.replace(path)
-            finally:
-                temporary.unlink(missing_ok=True)
-        if hashlib.sha256(path.read_bytes()).hexdigest() != checksum:
-            raise ValueError(f"SHA-256 mismatch: {path}; remove it and rerun to download again.")
+        path = _cache_source(source_dir, name, checksum)
         with xr.open_dataset(path, engine="h5netcdf") as source:
             values = source[name].sel(time=slice("1980-01-01", "2016-12-31"))
             if values.attrs.get("units") not in {"millimeter", "millimeters", "mm"}:
@@ -104,7 +120,7 @@ def prepare_inputs(output_dir: Path = DATA_DIR) -> None:
             raise ValueError(f"Invalid values in {name}; expected nonnegative totals and a NaN mask.")
         values.attrs["units"] = "mm"
         arrays[name] = values
-        manifest["sources"][name] = {"url": url, "sha256": checksum}
+        manifest["sources"][name] = {"url": f"{SOURCE_URL}/{path.name}", "sha256": checksum}
 
     pr, pet = xr.align(arrays["prcp"], arrays["pet"], join="exact")
     ds = xr.Dataset({"pr": pr, "pet": pet})
@@ -113,27 +129,40 @@ def prepare_inputs(output_dir: Path = DATA_DIR) -> None:
         "source": SOURCE_URL,
         "history": "Selected complete years 1980-2016; renamed prcp to pr; transposed to time, lat, lon; units normalized to mm.",
     }
-    for name, filename in (("pr", "raw_precipitation.nc"), ("pet", "raw_pet.nc")):
-        ds[[name]].to_netcdf(
-            output_dir / filename,
-            engine="h5netcdf",
-            encoding={name: {"zlib": True, "complevel": 4, "chunksizes": (1, ds.sizes["lat"], ds.sizes["lon"])}},
-        )
-        with xr.open_dataset(output_dir / filename) as saved:
-            xr.testing.assert_equal(saved[name], ds[name])
+    with tempfile.TemporaryDirectory(dir=output_dir, prefix=f".{generation_id}.") as temporary_dir:
+        staging_dir = Path(temporary_dir)
+        for name, filename in (("pr", "raw_precipitation.nc"), ("pet", "raw_pet.nc")):
+            path = staging_dir / filename
+            ds[[name]].to_netcdf(
+                path,
+                engine="h5netcdf",
+                encoding={name: {"zlib": True, "complevel": 4, "chunksizes": (1, ds.sizes["lat"], ds.sizes["lon"])}},
+            )
+            with xr.open_dataset(path) as saved:
+                xr.testing.assert_equal(saved[name], ds[name])
 
-    prepared_path = output_dir / "cache_prepared_input.zarr"
-    clean_and_prepare_inputs(output_dir / "raw_precipitation.nc", output_dir / "raw_pet.nc", prepared_path)
-    with xr.open_zarr(prepared_path, consolidated=True) as prepared:
-        np.testing.assert_allclose(prepared.precip, pr)
-        np.testing.assert_allclose(prepared.pet, pet)
-        np.testing.assert_allclose(prepared.wb, pr - pet)
-        assert prepared.precip.dims == ("time", "lat", "lon")
-        assert prepared.precip.chunks[0] == (ds.sizes["time"],)
-        manifest["dimensions"] = dict(prepared.sizes)
-        manifest["chunks"] = list(prepared.precip.encoding["chunks"])
-    (output_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    print(f"Validated NetCDF + Zarr inputs in {output_dir} ({dict(ds.sizes)})")
+        prepared_path = staging_dir / "cache_prepared_input.zarr"
+        clean_and_prepare_inputs(staging_dir / "raw_precipitation.nc", staging_dir / "raw_pet.nc", prepared_path)
+        with xr.open_zarr(prepared_path, consolidated=True) as prepared:
+            np.testing.assert_allclose(prepared.precip, pr)
+            np.testing.assert_allclose(prepared.pet, pet)
+            np.testing.assert_allclose(prepared.wb, pr - pet)
+            assert prepared.precip.dims == ("time", "lat", "lon")
+            assert prepared.precip.chunks[0] == (ds.sizes["time"],)
+            manifest["dimensions"] = dict(prepared.sizes)
+            manifest["chunks"] = list(prepared.precip.encoding["chunks"])
+        (staging_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+
+        generation_path = generations_dir / generation_id
+        staging_dir.rename(generation_path)
+        current = output_dir / "current"
+        pending_current = output_dir / f".current-{generation_id}"
+        try:
+            pending_current.symlink_to(generation_path.relative_to(output_dir), target_is_directory=True)
+            pending_current.replace(current)
+        finally:
+            pending_current.unlink(missing_ok=True)
+    print(f"Validated NetCDF + Zarr inputs in {output_dir / 'current'} ({dict(ds.sizes)})")
 
 
 if __name__ == "__main__":
