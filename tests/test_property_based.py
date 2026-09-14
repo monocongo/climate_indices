@@ -978,20 +978,32 @@ def test_pnp_scales_linearly_with_input(multiplier: float) -> None:
 # ============================================================================
 
 
-def test_pci_uniform_distribution_bounded() -> None:
-    """Verify PCI for uniform daily rainfall stays within expected bounds.
+def _pci_from_monthly_totals(monthly_totals: np.ndarray) -> float:
+    """Oliver (1980) PCI from twelve monthly precipitation totals."""
+    return float((np.sum(monthly_totals**2) / (np.sum(monthly_totals) ** 2)) * 100)
 
-    Property: PCI for uniform daily rainfall should be deterministic and
-    bounded. Due to the month-length boundaries used in the PCI algorithm,
-    equal daily rainfall does not produce equal monthly totals, so the
-    theoretical minimum of 100/12 is not achieved. However, the value
-    should be consistent and bounded within [8.0, 12.0].
+
+def test_pci_uniform_distribution_bounded() -> None:
+    """Verify PCI for uniform daily rainfall matches calendar-month totals.
+
+    Property: PCI for uniform daily rainfall is deterministic. Equal daily
+    rainfall still yields unequal monthly totals because months have different
+    lengths, so PCI is 100 * sum(p_i^2) / (sum p_i)^2 with p_i equal to each
+    month's length rather than the theoretical minimum of 100/12.
     """
     # 366-day year with equal rain each day
     rainfall = np.full(366, 10.0)
     result = indices.pci(rainfall)
+    expected = _pci_from_monthly_totals(
+        np.array([31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31], dtype=float),
+    )
 
-    assert 8.0 < result[0] < 12.0, f"Uniform PCI {result[0]} outside expected bounds [8, 12]"
+    np.testing.assert_allclose(
+        result[0],
+        expected,
+        rtol=1e-10,
+        err_msg="Uniform leap-year PCI should match calendar-month totals",
+    )
 
     # verify determinism: same input always produces same output
     result2 = indices.pci(rainfall)
@@ -999,14 +1011,26 @@ def test_pci_uniform_distribution_bounded() -> None:
 
 
 def test_pci_365_uniform_distribution_bounded() -> None:
-    """Verify PCI for uniform 365-day rainfall stays within expected bounds.
+    """Verify PCI for uniform 365-day rainfall matches calendar-month totals.
 
-    Property: Same as above but for non-leap year.
+    Property: Same as the leap-year uniform case, using February's 28-day
+    length. Leap and non-leap uniform PCI must differ.
     """
     rainfall = np.full(365, 10.0)
     result = indices.pci(rainfall)
+    expected = _pci_from_monthly_totals(
+        np.array([31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31], dtype=float),
+    )
 
-    assert 8.0 < result[0] < 12.0, f"Uniform PCI (365) {result[0]} outside expected bounds [8, 12]"
+    np.testing.assert_allclose(
+        result[0],
+        expected,
+        rtol=1e-10,
+        err_msg="Uniform non-leap PCI should match calendar-month totals",
+    )
+
+    leap_result = indices.pci(np.full(366, 10.0))
+    assert result[0] != leap_result[0], "Leap and non-leap uniform PCI should differ"
 
 
 @given(
