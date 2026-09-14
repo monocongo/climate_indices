@@ -983,7 +983,7 @@ def _pci_from_monthly_totals(monthly_totals: np.ndarray) -> float:
     return float((np.sum(monthly_totals**2) / (np.sum(monthly_totals) ** 2)) * 100)
 
 
-def test_pci_uniform_distribution_bounded() -> None:
+def test_pci_uniform_distribution_matches_calendar_month_totals() -> None:
     """Verify PCI for uniform daily rainfall matches calendar-month totals.
 
     Property: PCI for uniform daily rainfall is deterministic. Equal daily
@@ -1010,7 +1010,7 @@ def test_pci_uniform_distribution_bounded() -> None:
     assert result[0] == result2[0], "PCI should be deterministic"
 
 
-def test_pci_365_uniform_distribution_bounded() -> None:
+def test_pci_365_uniform_distribution_matches_calendar_month_totals() -> None:
     """Verify PCI for uniform 365-day rainfall matches calendar-month totals.
 
     Property: Same as the leap-year uniform case, using February's 28-day
