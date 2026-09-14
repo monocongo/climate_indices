@@ -231,12 +231,10 @@ if __name__ == "__main__":
         "cal_start_year": 1981,
         "cal_end_year": 2010,
     }
-    data_dir = Path(__file__).resolve().parents[1] / "data" / "e2e"
-    precip_nc = data_dir / "raw_precipitation.nc"
-    pet_nc = data_dir / "raw_pet.nc"
+    data_root = Path(__file__).resolve().parents[1] / "data" / "e2e"
+    data_dir = (data_root / "current").resolve()
     prepared_zarr = data_dir / "cache_prepared_input.zarr"
-    final_output_zarr = data_dir / "climate_indices_output.zarr"
+    final_output_zarr = data_root / "climate_indices_output.zarr"
 
     with Client(n_workers=4, threads_per_worker=2, memory_limit="4GB", dashboard_address=None):
-        clean_and_prepare_inputs(precip_nc, pet_nc, prepared_zarr)
         compute_indices_parallel(prepared_zarr, final_output_zarr, pipeline_config)
