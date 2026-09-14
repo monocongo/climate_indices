@@ -66,7 +66,7 @@ def _expected_python_constraint() -> SpecifierSet:
 
 def _workflow_python_matrix(relative_path: Path) -> list[str]:
     """Extract the single inline Python test matrix from a workflow."""
-    workflow = (ROOT / relative_path).read_text()
+    workflow = (ROOT / relative_path).read_text(encoding="utf-8")
     matches = re.findall(r"^\s+python-version:\s*\[([^]]+)]", workflow, re.MULTILINE)
     assert len(matches) == 1, f"Expected one Python matrix in {relative_path}, found {len(matches)}"
     return re.findall(r"['\"](\d+\.\d+)['\"]", matches[0])
@@ -80,7 +80,7 @@ def _expected_badge_url() -> str:
 
 def _read_pyproject_version() -> str:
     """Extract version from pyproject.toml without requiring tomllib."""
-    content = (ROOT / "pyproject.toml").read_text()
+    content = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     match = re.search(r'^version\s*=\s*["\']([^"\']+)["\']', content, re.MULTILINE)
     if not match:
         raise RuntimeError("Could not find 'version = ...' in pyproject.toml")
@@ -203,7 +203,7 @@ def test_workflow_python_matrix_matches_classifiers(workflow: Path) -> None:
 
 def test_macos_covers_minimum_and_maximum_python() -> None:
     """The unit-test workflow must exercise both support boundaries on macOS."""
-    workflow = (ROOT / ".github" / "workflows" / "unit-tests-workflow.yml").read_text()
+    workflow = (ROOT / ".github" / "workflows" / "unit-tests-workflow.yml").read_text(encoding="utf-8")
     macos_versions = re.findall(
         r"- python-version:\s*['\"](\d+\.\d+)['\"]\s+os:\s*macos-latest",
         workflow,
@@ -214,7 +214,7 @@ def test_macos_covers_minimum_and_maximum_python() -> None:
 
 def test_docker_uses_latest_supported_python() -> None:
     """Every Docker build stage must use the latest classified Python minor."""
-    dockerfile = (ROOT / "Dockerfile").read_text()
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     base_versions = re.findall(r"^FROM python:(\d+\.\d+)-slim", dockerfile, re.MULTILINE)
     assert base_versions, "Dockerfile must use an official python:<minor>-slim base image"
     assert set(base_versions) == {_declared_python_versions()[-1]}
@@ -224,9 +224,9 @@ def test_front_page_python_support_matches_classifiers() -> None:
     """README rows, latest marker, and front-page badges must match metadata."""
     versions = _declared_python_versions()
     badge_url = _expected_badge_url()
-    readme = (ROOT / "README.md").read_text()
-    docs_index = (ROOT / "docs" / "index.rst").read_text()
-    release_process = (ROOT / "docs" / "release-process.md").read_text()
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    docs_index = (ROOT / "docs" / "index.rst").read_text(encoding="utf-8")
+    release_process = (ROOT / "docs" / "release-process.md").read_text(encoding="utf-8")
 
     support_rows = re.findall(r"^\| (\d+\.\d+) \| Supported \|([^|]*)\|$", readme, re.MULTILINE)
     assert [version for version, _notes in support_rows] == versions
@@ -243,7 +243,7 @@ def test_release_process_documents_pypi_metadata_verification() -> None:
     """Post-release checklist must direct maintainers to verify PyPI Requires-Python
     and classifiers, and to cross-check the badge against them.
     """
-    release_process = (ROOT / "docs" / "release-process.md").read_text()
+    release_process = (ROOT / "docs" / "release-process.md").read_text(encoding="utf-8")
     assert "Requires-Python" in release_process, (
         "docs/release-process.md must instruct maintainers to verify the live PyPI Requires-Python metadata"
     )
@@ -272,7 +272,7 @@ def test_release_workflow_uses_oidc_not_token() -> None:
     Addresses: F2/F14 — prevents a token accidentally replacing the OIDC publisher
     and surfacing only at the manual-approval stage of a live release.
     """
-    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     assert "PYPI_API_TOKEN" not in workflow, (
         "release.yml references PYPI_API_TOKEN — OIDC trusted publishing must be used instead; "
         "remove the token reference and verify the trusted publisher is registered on PyPI"
@@ -292,7 +292,7 @@ def test_release_workflow_has_environment_gate() -> None:
 
     Addresses: F14 — ensures the manual approval gate cannot be silently removed.
     """
-    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     assert "environment: release" in workflow, (
         "release.yml missing 'environment: release' — the manual approval gate before PyPI publish has been removed"
     )
@@ -300,14 +300,14 @@ def test_release_workflow_has_environment_gate() -> None:
 
 def test_release_workflow_requires_exact_semver_tags() -> None:
     """release.yml must trigger and publish only for exact vX.Y.Z tags."""
-    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     assert "v*.*.*" in workflow, "release.yml should only trigger on v*.*.* release tag candidates"
     assert r"^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$" in workflow, "release.yml missing explicit exact SemVer tag guard"
 
 
 def test_release_workflow_requires_tag_commit_on_main() -> None:
     """A release tag must point to a commit reachable from origin/main."""
-    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
 
     assert "fetch-depth: 0" in workflow
     assert 'git merge-base --is-ancestor "${GITHUB_SHA}" "origin/main"' in workflow
@@ -315,13 +315,13 @@ def test_release_workflow_requires_tag_commit_on_main() -> None:
 
 def test_release_workflow_creates_github_release() -> None:
     """release.yml must create the GitHub Release after PyPI publish."""
-    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     assert "gh release create" in workflow, "release.yml must create a GitHub Release for the published tag"
 
 
 def test_release_workflow_smoke_tests_built_wheel() -> None:
     """The built wheel must install and expose the public API outside the checkout."""
-    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
 
     assert "Test wheel installation" in workflow
     assert 'python -m venv "${RUNNER_TEMP}/wheel-check"' in workflow
@@ -334,7 +334,7 @@ def test_release_workflow_smoke_tests_built_wheel() -> None:
 
 def test_minimum_dependency_job_preserves_resolved_environment() -> None:
     """Minimum-dependency tests must not resynchronize to the normal lock."""
-    workflow = (ROOT / ".github" / "workflows" / "unit-tests-workflow.yml").read_text()
+    workflow = (ROOT / ".github" / "workflows" / "unit-tests-workflow.yml").read_text(encoding="utf-8")
     minimum_job = workflow.split("\n  test-minimum-deps:", maxsplit=1)[1].split("\n  notebooks:", maxsplit=1)[0]
 
     assert "uv sync --no-dev --group test --resolution lowest-direct" in minimum_job
@@ -352,7 +352,7 @@ def test_minimum_dependency_job_preserves_resolved_environment() -> None:
 )
 def test_ci_commands_use_fresh_lock_and_prepared_environment(workflow_path: Path) -> None:
     """Ordinary CI commands must check lock freshness and avoid implicit resyncs."""
-    workflow = (ROOT / workflow_path).read_text()
+    workflow = (ROOT / workflow_path).read_text(encoding="utf-8")
     commands = [line.strip() for line in workflow.splitlines()]
     ordinary_syncs = [
         command
@@ -420,7 +420,7 @@ def test_changelog_has_no_unreleased_block() -> None:
     Addresses: F8 (AC-0 guardrail) — the single most common release mistake in this
     repo; catches the exact scenario that triggered the v2.3.0 sequencing issue.
     """
-    changelog = (ROOT / "CHANGELOG.md").read_text()
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     assert "## [Unreleased]" not in changelog, (
         "CHANGELOG.md contains '## [Unreleased]' — change the header to '## [X.Y.Z] - YYYY-MM-DD' before releasing"
     )
@@ -433,7 +433,7 @@ def test_changelog_top_entry_matches_pyproject_version() -> None:
     Addresses: F8 — catches version bump in one file without the other.
     """
     pyproject_version = _read_pyproject_version()
-    changelog = (ROOT / "CHANGELOG.md").read_text()
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     match = re.search(r"^## \[(\d+\.\d+\.\d+)\]", changelog, re.MULTILINE)
     assert match is not None, "No versioned release block (## [X.Y.Z]) found in CHANGELOG.md"
     changelog_version = match.group(1)
