@@ -76,7 +76,8 @@ def test_failed_regeneration_preserves_current_generation(tmp_path, monkeypatch)
         },
     )
     output_dir = tmp_path / "e2e"
-    module.prepare_inputs(output_dir)
+    fixture_grid = {"lat": 1, "lon": 1}
+    module.prepare_inputs(output_dir, expected_grid=fixture_grid)
     current = output_dir / "current"
     published = current.resolve()
     manifest = json.loads((published / "manifest.json").read_text())
@@ -87,7 +88,7 @@ def test_failed_regeneration_preserves_current_generation(tmp_path, monkeypatch)
 
     monkeypatch.setattr(module, "clean_and_prepare_inputs", fail)
     with pytest.raises(RuntimeError, match="simulated generation failure"):
-        module.prepare_inputs(output_dir)
+        module.prepare_inputs(output_dir, expected_grid=fixture_grid)
 
     assert current.resolve() == published
     assert json.loads((current / "manifest.json").read_text()) == manifest

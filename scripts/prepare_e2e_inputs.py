@@ -63,6 +63,14 @@ SOURCES = {
     "pet": "caf705806052724f6db5f588b2c9347a8f632496896d2380cfa120fd7a53885d",
 }
 DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "e2e"
+CANONICAL_GRID = {"lat": 38, "lon": 87}
+SPATIAL_CHUNK = 10
+
+
+def _boundary_chunks(size: int, chunk_size: int) -> tuple[int, ...]:
+    """Return dask's chunk-length sequence for a dimension, including the boundary remainder."""
+    full, remainder = divmod(size, chunk_size)
+    return (chunk_size,) * full + ((remainder,) if remainder else ())
 
 
 def _cache_source(source_dir: Path, name: str, checksum: str) -> Path:
@@ -89,12 +97,15 @@ def _cache_source(source_dir: Path, name: str, checksum: str) -> Path:
     return path
 
 
-def prepare_inputs(output_dir: Path = DATA_DIR) -> None:
+def prepare_inputs(output_dir: Path = DATA_DIR, expected_grid: dict[str, int] | None = None) -> None:
     """Download, normalize, validate, and atomically publish monthly inputs.
 
     Args:
         output_dir: Directory for shared source downloads and input generations.
+        expected_grid: Canonical {"lat", "lon"} sizes the prepared store must match.
+            Defaults to CANONICAL_GRID; tests substitute a smaller grid.
     """
+    expected_grid = expected_grid or CANONICAL_GRID
     source_dir = output_dir / "source"
     generations_dir = output_dir / "generations"
     source_dir.mkdir(parents=True, exist_ok=True)
@@ -147,8 +158,20 @@ def prepare_inputs(output_dir: Path = DATA_DIR) -> None:
             np.testing.assert_allclose(prepared.precip, pr)
             np.testing.assert_allclose(prepared.pet, pet)
             np.testing.assert_allclose(prepared.wb, pr - pet)
-            assert prepared.precip.dims == ("time", "lat", "lon")
-            assert prepared.precip.chunks[0] == (ds.sizes["time"],)
+            if prepared.precip.dims != ("time", "lat", "lon"):
+                raise ValueError(f"Unexpected dims: {prepared.precip.dims}")
+            if prepared.sizes["lat"] != expected_grid["lat"] or prepared.sizes["lon"] != expected_grid["lon"]:
+                raise ValueError(
+                    f"Unexpected grid {prepared.sizes['lat']}x{prepared.sizes['lon']}; "
+                    f"expected {expected_grid['lat']}x{expected_grid['lon']}"
+                )
+            expected_chunks = (
+                (ds.sizes["time"],),
+                _boundary_chunks(expected_grid["lat"], SPATIAL_CHUNK),
+                _boundary_chunks(expected_grid["lon"], SPATIAL_CHUNK),
+            )
+            if prepared.precip.chunks != expected_chunks:
+                raise ValueError(f"Unexpected chunk layout {prepared.precip.chunks}; expected {expected_chunks}")
             manifest["dimensions"] = dict(prepared.sizes)
             manifest["chunks"] = list(prepared.precip.encoding["chunks"])
         (staging_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
