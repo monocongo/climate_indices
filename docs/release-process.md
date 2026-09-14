@@ -29,7 +29,7 @@ release workflow and publishes to PyPI through Trusted Publishing.
    ```
 4. Update `pyproject.toml` to `X.Y.Z`.
 5. Update `CHANGELOG.md` with `## [X.Y.Z] - YYYY-MM-DD`.
-6. Update `RELEASE_NOTES.md` or related docs when needed.
+6. Update `CHANGELOG.md` or related docs when needed.
 7. Run validation locally.
 8. Open a PR into `main`.
 9. The maintainer merges after review and passing CI; agents never merge.

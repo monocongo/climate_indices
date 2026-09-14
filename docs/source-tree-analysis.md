@@ -17,7 +17,6 @@ climate_indices/
 │   ├── README.md                ← GitHub landing page, quick start
 │   ├── CONTRIBUTING.md          ← Development workflow, coding standards
 │   ├── CHANGELOG.md             ← Version history, breaking changes
-│   ├── RELEASE_NOTES.md         ← Release-specific notes
 │   ├── LICENSE                  ← BSD 3-Clause license
 │   └── DISCLAIMER               ← US Government software disclaimer
 │
