@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
+from dask.callbacks import Callback
 
 from climate_indices import __version__, compute, exceptions, indices
 
@@ -152,15 +153,29 @@ def test_notebook_uses_public_xarray_api():
     assert public_imports == {"spi", "spei"}
 
 
-def test_notebook_spi_spei_stay_lazy_until_the_write(e2e_data):
+def test_notebook_spi_spei_stay_lazy_until_the_write(e2e_data, monkeypatch):
     """The typed API results stay Dask-backed until to_zarr materializes them."""
     namespace: dict = {}
     sources = _executable_cells()
+    calculation_index = next(index for index, source in enumerate(sources) if "spi_da = spi(" in source)
     write_index = next(index for index, source in enumerate(sources) if "to_zarr" in source)
-    _exec_cells(namespace, sources[:write_index])
+    _exec_cells(namespace, sources[:calculation_index])
+
+    def fail_on_compute(*_args):
+        pytest.fail("SPI/SPEI computed before the Zarr write")
+
+    def stop_before_write(*_args, **_kwargs):
+        raise RuntimeError("stopped before the Zarr write")
+
+    # The write cell itself is executed too, with to_zarr stubbed out, so a
+    # compute added to its prefix cannot slip past the guard.
+    monkeypatch.setattr(xr.Dataset, "to_zarr", stop_before_write)
+    with Callback(pretask=fail_on_compute), pytest.raises(RuntimeError, match="stopped before the Zarr write"):
+        _exec_cells(namespace, sources[calculation_index : write_index + 1])
     assert namespace["spi_da"].chunks is not None
     assert namespace["spei_da"].chunks is not None
     assert namespace["spi_da"].dims == ("time", "lat", "lon")
+    assert namespace["spei_da"].dims == ("time", "lat", "lon")
 
 
 def test_notebook_spei_receives_pet_not_water_balance():
