@@ -99,11 +99,6 @@
       "purpose": "Technical architecture documentation",
       "file_path": "docs/architecture.md"
     },
-    "source-tree-analysis.md": {
-      "status": "generated",
-      "purpose": "Annotated directory structure",
-      "file_path": "docs/source-tree-analysis.md"
-    },
     "component-inventory.md": {
       "status": "generated",
       "purpose": "Module and component catalog",

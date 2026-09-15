@@ -680,7 +680,7 @@ def hargreaves(
 
 #### Dependencies
 - Core: `numpy`
-- No internal dependencies (self-contained)
+- Internal: `exceptions`, `logging_config`, `performance` (large-array memory check), `utils`
 
 ---
 
@@ -971,12 +971,20 @@ def log_performance_metrics(
 | **`compute.py`** | lmoments, exceptions, utils | numpy, scipy |
 | **`palmer.py`** | _palmer_wells, exceptions | numpy, structlog |
 | _(continued)_ | logging_config, self_calibration, utils | _(see above)_ |
-| **`eto.py`** | _(none)_ | numpy |
+| **`eto.py`** | exceptions, logging_config, performance, utils | numpy |
 | **`lmoments.py`** | utils | numpy |
 | **`exceptions.py`** | _(none)_ | _(none - stdlib only)_ |
 | **`logging_config.py`** | _(none)_ | structlog |
 | **`utils.py`** | _(none)_ | numpy |
 | **`performance.py`** | logging_config | psutil |
+
+### Dependency Rules
+
+1. **No circular dependencies**: modules follow the layered architecture above
+2. **Infrastructure has no upper-layer imports**: pure utilities
+3. **Math/Stats layer has no upper-layer imports**: depends only on Infrastructure utilities (`lmoments.py` on `utils`; `eto.py` on `exceptions`, `logging_config`, `performance`, `utils`), never on Compute, Indices, or the public API layers — extracting it standalone would require carrying that infrastructure along
+4. **Public API wraps Computation**: `xarray_adapter` uses `indices` internally
+5. **CLI depends on all layers**: imports from all layers as needed
 
 ---
 
