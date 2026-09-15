@@ -1,11 +1,11 @@
 """Tests for the CFFWIS moisture codes: ffmc, duff_moisture_code, drought_code (#803).
 
 The frozen reference vectors in this module were produced with the NRCan
-reference implementation (``cffdrs``), the maintained port of the Canadian
-Forest Service code that the full cross-implementation validation in #805
-targets. They pin the equations, the latitude-band tables, and the
-month-dependent day lengths; they are regression fixtures, not an
-independent scientific validation.
+reference implementation (``cffdrs_py`` commit 0f57fcca2a6a84b69fe8d50f29d947f0be34d5f6,
+2026-08-06), a port of the Canadian Forest Service code that the full
+cross-implementation validation in #805 targets. They pin the equations, the
+latitude-band tables, and the month-dependent day lengths; they are
+regression fixtures, not an independent scientific validation.
 """
 
 from __future__ import annotations
@@ -111,16 +111,48 @@ _DC_SOUTH_REFERENCE = np.array(
     ]
 )
 
-# one day from the literature seed: T=25 C, RH=40 %, no rain, month 7
-_DMC_LATITUDE_REFERENCE = np.array([9.67784496, 8.99566404, 8.6694036, 8.34314316, 7.9279026])
-_DC_LATITUDE_REFERENCE = np.array([23.204, 20.704, 20.704, 19.204, 19.204])
-# one day from the literature seed at 46 N: T=25 C, RH=40 %, no rain
-_DMC_MONTH_REFERENCE = np.array([7.9279026, 9.79648512, 9.67784496, 8.3728032])
-_DC_MONTH_REFERENCE = np.array([19.204, 20.454, 23.204, 20.204])
+# one day from the literature seed, T=25 C, RH=40 %, no rain: (latitude, expected).
+# Bands: 46 N (latitude > 30), 20 N (10, 30], equator [-10, 10], 20 S [-30, -10), 40 S (< -30).
+_DMC_LATITUDE_CASES = [
+    (50.0, 9.67784496),
+    (30.0, 8.99566404),
+    (25.0, 8.99566404),
+    (10.0, 8.6694036),
+    (0.0, 8.6694036),
+    (-10.0, 8.34314316),
+    (-20.0, 8.34314316),
+    (-30.0, 7.9279026),
+    (-45.0, 7.9279026),
+]
+# (latitude, expected) for DC. Bands: north (> 20), equator [-20, 20], south (< -20).
+_DC_LATITUDE_CASES = [
+    (50.0, 23.204),
+    (20.0, 20.704),
+    (0.0, 20.704),
+    (-20.0, 19.204),
+    (-50.0, 19.204),
+]
+# one day from the literature seed at 46 N, T=25 C, RH=40 %, no rain: (month, expected)
+_DMC_MONTH_CASES = [
+    (1, 7.9279026),
+    (4, 9.79648512),
+    (7, 9.67784496),
+    (10, 8.3728032),
+    (12, 7.7796024),
+]
+_DC_MONTH_CASES = [
+    (1, 19.204),
+    (4, 20.454),
+    (7, 23.204),
+    (10, 20.204),
+    (12, 19.204),
+]
 # one FFMC day from the 85 seed: T=25 C, RH=40 %, wind 10.8 km/h, one rain amount
 _FFMC_RAIN_REFERENCE = np.array([89.1896214799, 88.7924137871, 87.2245824186, 71.8779804228])
-_DMC_FLOOR_REFERENCE = np.array([6.0, 6.0, 6.15500496])
-_DC_FLOOR_REFERENCE = np.array([100.0, 100.0, 100.0])
+# (temperature, expected) for the DMC temperature floor at 46 N, July
+_DMC_FLOOR_REFERENCE = np.array([6.0, 6.15500496])
+# (temperature, expected) for the DC midwinter evapotranspiration floor
+_DC_FLOOR_REFERENCE = np.array([100.0, 100.0])
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -181,6 +213,18 @@ def _with_missing(weather: _Weather, start: int, stop: int | None = None) -> _We
     precipitation = weather.precipitation.copy()
     precipitation[start:stop] = np.nan
     return replace(weather, precipitation=precipitation)
+
+
+def _column(weather: _Weather, index: int) -> _Weather:
+    """One spatial cell of a two-column weather batch as its own time series."""
+    return _Weather(
+        temperature=weather.temperature[:, index],
+        humidity=weather.humidity[:, index],
+        wind=weather.wind[:, index],
+        precipitation=weather.precipitation[:, index],
+        latitude=weather.latitude,
+        month=weather.month[:, index],
+    )
 
 
 def _state_code(state: object) -> np.ndarray:
@@ -281,44 +325,36 @@ def test_dc_matches_the_southern_reference_series() -> None:
     np.testing.assert_allclose(values, _DC_SOUTH_REFERENCE, rtol=0.0, atol=_REFERENCE_TOLERANCE)
 
 
-@pytest.mark.parametrize("latitude", [50.0, 25.0, 0.0, -20.0, -45.0])
-def test_dmc_latitude_bands_match_the_reference_values(latitude: float) -> None:
-    """Each latitude band selects its own effective-day-length table row."""
+@pytest.mark.parametrize(("latitude", "expected"), _DMC_LATITUDE_CASES)
+def test_dmc_latitude_bands_match_the_reference_values(latitude: float, expected: float) -> None:
+    """Each latitude band, including its boundaries, selects its own table row."""
     weather = _series(1, latitude=latitude)
     weather.temperature[:] = 25.0
     weather.humidity[:] = 40.0
-    values = _run_dmc(weather)
-    expected = _DMC_LATITUDE_REFERENCE[[50.0, 25.0, 0.0, -20.0, -45.0].index(latitude)]
-    np.testing.assert_allclose(values, expected, rtol=0.0, atol=_REFERENCE_TOLERANCE)
+    np.testing.assert_allclose(_run_dmc(weather), expected, rtol=0.0, atol=_REFERENCE_TOLERANCE)
 
 
-@pytest.mark.parametrize("latitude", [50.0, 20.0, 0.0, -20.0, -50.0])
-def test_dc_latitude_bands_match_the_reference_values(latitude: float) -> None:
-    """Each latitude band selects its own day-length adjustment."""
+@pytest.mark.parametrize(("latitude", "expected"), _DC_LATITUDE_CASES)
+def test_dc_latitude_bands_match_the_reference_values(latitude: float, expected: float) -> None:
+    """Each latitude band, including its boundaries, selects its own adjustment."""
     weather = _series(1, latitude=latitude)
     weather.temperature[:] = 25.0
-    values = _run_dc(weather)
-    expected = _DC_LATITUDE_REFERENCE[[50.0, 20.0, 0.0, -20.0, -50.0].index(latitude)]
-    np.testing.assert_allclose(values, expected, rtol=0.0, atol=_REFERENCE_TOLERANCE)
+    np.testing.assert_allclose(_run_dc(weather), expected, rtol=0.0, atol=_REFERENCE_TOLERANCE)
 
 
-@pytest.mark.parametrize("month", [1, 4, 7, 10])
-def test_dmc_month_table_matches_the_reference_values(month: int) -> None:
+@pytest.mark.parametrize(("month", "expected"), _DMC_MONTH_CASES)
+def test_dmc_month_table_matches_the_reference_values(month: int, expected: float) -> None:
     weather = _series(1, month=month)
     weather.temperature[:] = 25.0
     weather.humidity[:] = 40.0
-    values = _run_dmc(weather)
-    expected = _DMC_MONTH_REFERENCE[[1, 4, 7, 10].index(month)]
-    np.testing.assert_allclose(values, expected, rtol=0.0, atol=_REFERENCE_TOLERANCE)
+    np.testing.assert_allclose(_run_dmc(weather), expected, rtol=0.0, atol=_REFERENCE_TOLERANCE)
 
 
-@pytest.mark.parametrize("month", [1, 4, 7, 10])
-def test_dc_month_table_matches_the_reference_values(month: int) -> None:
+@pytest.mark.parametrize(("month", "expected"), _DC_MONTH_CASES)
+def test_dc_month_table_matches_the_reference_values(month: int, expected: float) -> None:
     weather = _series(1, month=month)
     weather.temperature[:] = 25.0
-    values = _run_dc(weather)
-    expected = _DC_MONTH_REFERENCE[[1, 4, 7, 10].index(month)]
-    np.testing.assert_allclose(values, expected, rtol=0.0, atol=_REFERENCE_TOLERANCE)
+    np.testing.assert_allclose(_run_dc(weather), expected, rtol=0.0, atol=_REFERENCE_TOLERANCE)
 
 
 def test_northern_and_southern_hemispheres_differ() -> None:
@@ -368,7 +404,7 @@ def test_dmc_temperature_floor() -> None:
     np.testing.assert_array_equal(floored, at_floor)
     np.testing.assert_allclose(floored, _DMC_FLOOR_REFERENCE[0], rtol=0.0, atol=_REFERENCE_TOLERANCE)
     weather.temperature[:] = 0.0
-    np.testing.assert_allclose(_run_dmc(weather), _DMC_FLOOR_REFERENCE[2], rtol=0.0, atol=_REFERENCE_TOLERANCE)
+    np.testing.assert_allclose(_run_dmc(weather), _DMC_FLOOR_REFERENCE[1], rtol=0.0, atol=_REFERENCE_TOLERANCE)
 
 
 def test_dc_temperature_floor_and_evapotranspiration_floor() -> None:
@@ -477,8 +513,52 @@ def test_append_resume_round_trip_is_bitwise_identical(runner: object) -> None:
     weather = _reference_weather()
     first = runner(_slice(weather, 0, 5), return_state=True)
     second = runner(_slice(weather, 5, 12), initial_state=first.state, return_state=True)
-    whole = runner(weather)
-    np.testing.assert_array_equal(np.concatenate((first.values, second.values)), whole)
+    whole = runner(weather, return_state=True)
+    np.testing.assert_array_equal(np.concatenate((first.values, second.values)), whole.values)
+    np.testing.assert_array_equal(_state_code(second.state), _state_code(whole.state))
+
+
+@pytest.mark.parametrize("runner", _RUNNERS)
+def test_append_resume_round_trip_is_bitwise_identical_per_cell(runner: object) -> None:
+    weather = _series(8)
+    weather.temperature = np.tile(weather.temperature[:, None], (1, 3))
+    weather.humidity = np.tile(weather.humidity[:, None], (1, 3))
+    weather.wind = np.tile(weather.wind[:, None], (1, 3))
+    weather.precipitation = np.tile(weather.precipitation[:, None], (1, 3))
+    weather.month = np.tile(weather.month[:, None], (1, 3))
+    weather.month[:, 1] = 1
+
+    first = runner(_slice(weather, 0, 3), return_state=True)
+    second = runner(_slice(weather, 3, 8), initial_state=first.state, return_state=True)
+    whole = runner(weather, return_state=True)
+    np.testing.assert_array_equal(np.concatenate((first.values, second.values)), whole.values)
+    np.testing.assert_array_equal(_state_code(second.state), _state_code(whole.state))
+    assert first.state.trailing_gap_days is not None
+    assert whole.state.trailing_gap_days is not None
+
+
+@pytest.mark.parametrize("runner", _RUNNERS)
+def test_returned_state_does_not_alias_the_values(runner: object) -> None:
+    """ADR-0006: the final state is copied before it is returned."""
+    result = runner(_reference_weather(), return_state=True)
+    assert not np.shares_memory(_state_code(result.state), result.values)
+
+
+@pytest.mark.parametrize("runner", _RUNNERS)
+def test_partially_valid_grid_matches_running_the_valid_cell_alone(runner: object) -> None:
+    """The active-cell fast path must not change results for cells that stay valid."""
+    weather = _series(6)
+    weather.temperature = np.tile(weather.temperature[:, None], (1, 2))
+    weather.humidity = np.tile(weather.humidity[:, None], (1, 2))
+    weather.wind = np.tile(weather.wind[:, None], (1, 2))
+    weather.precipitation = np.tile(weather.precipitation[:, None], (1, 2))
+    weather.month = np.tile(weather.month[:, None], (1, 2))
+    weather.precipitation[2, 0] = np.nan
+
+    mixed = runner(weather)
+    alone = runner(_column(weather, 1))
+    np.testing.assert_array_equal(mixed[:, 1], alone)
+    assert np.isnan(mixed[2:, 0]).all()
 
 
 @pytest.mark.parametrize("runner", _RUNNERS)
@@ -538,6 +618,7 @@ def test_propagate_poisons_from_the_first_valid_day_after_an_interior_gap(runner
     assert np.isfinite(result.values[:2]).all()
     assert np.isnan(result.values[2:]).all()
     assert int(result.state.trailing_gap_days) == 0
+    assert np.isnan(_state_code(result.state))
 
 
 @pytest.mark.parametrize("runner", _RUNNERS)
@@ -555,6 +636,8 @@ def test_propagate_all_nan_input_returns_an_unstarted_state(runner: object) -> N
     result = runner(weather, return_state=True)
     assert np.isnan(result.values).all()
     assert result.state.trailing_gap_days is None
+    expected_seed = {_run_ffmc: 85.0, _run_dmc: 6.0, _run_dc: 15.0}[runner]
+    assert float(_state_code(result.state)) == pytest.approx(expected_seed)
 
 
 @pytest.mark.parametrize("runner", _RUNNERS)
@@ -629,13 +712,41 @@ def test_bridge_skips_leading_missing_days_before_the_start(runner: object) -> N
 
 
 @pytest.mark.parametrize("runner", _RUNNERS)
-def test_bridge_trailing_gap_within_the_limit_keeps_the_last_valid_state(runner: object) -> None:
-    weather = _with_missing(_series(5), 4, 5)
-    result = runner(weather, nan_policy="bridge", max_gap_days=2, return_state=True)
-    assert np.isfinite(result.values[:4]).all()
-    assert np.isnan(result.values[4])
-    assert result.state.trailing_gap_days == 1
+@pytest.mark.parametrize("max_gap_days", [1, 2, 3])
+def test_bridge_trailing_gap_at_the_limit_keeps_the_last_valid_state(runner: object, max_gap_days: int) -> None:
+    weather = _with_missing(_series(3 + max_gap_days), 3, 3 + max_gap_days)
+    result = runner(weather, nan_policy="bridge", max_gap_days=max_gap_days, return_state=True)
+    assert np.isfinite(result.values[:3]).all()
+    assert np.isnan(result.values[3:]).all()
+    assert int(result.state.trailing_gap_days) == max_gap_days
     assert np.isfinite(_state_code(result.state))
+
+
+@pytest.mark.parametrize("runner", _RUNNERS)
+@pytest.mark.parametrize("max_gap_days", [1, 2, 3])
+def test_bridge_trailing_gap_past_the_limit_poisons_the_state(runner: object, max_gap_days: int) -> None:
+    weather = _with_missing(_series(4 + max_gap_days), 3, 4 + max_gap_days)
+    result = runner(weather, nan_policy="bridge", max_gap_days=max_gap_days, return_state=True)
+    assert np.isnan(result.values[3:]).all()
+    assert int(result.state.trailing_gap_days) == max_gap_days + 1
+    assert np.isnan(_state_code(result.state))
+
+
+@pytest.mark.parametrize("runner", _RUNNERS)
+def test_bridge_all_nan_continuation_poisons_only_after_the_limit(runner: object) -> None:
+    state = runner(_series(3), return_state=True).state
+    weather = _with_missing(_series(3), 0)
+
+    within = runner(weather, initial_state=state, nan_policy="bridge", max_gap_days=3, return_state=True)
+    assert np.isnan(within.values).all()
+    assert int(within.state.trailing_gap_days) == 3
+    assert np.isfinite(_state_code(within.state))
+
+    past = runner(weather, initial_state=state, nan_policy="bridge", max_gap_days=2, return_state=True)
+    assert np.isnan(_state_code(past.state))
+
+    unstarted = runner(weather, nan_policy="bridge", max_gap_days=1, return_state=True)
+    assert unstarted.state.trailing_gap_days is None
 
 
 @pytest.mark.parametrize("runner", _RUNNERS)
@@ -646,9 +757,12 @@ def test_bridge_split_gap_append_poisons_on_the_same_day_as_one_shot(runner: obj
     options = {"nan_policy": "bridge", "max_gap_days": 3}
     first = runner(_slice(weather, 0, 6), return_state=True, **options)
     second = runner(_slice(weather, 6, days), initial_state=first.state, return_state=True, **options)
-    whole = runner(weather, **options)
+    whole = runner(weather, return_state=True, **options)
     joined = np.concatenate((first.values, second.values))
-    np.testing.assert_array_equal(joined, whole)
+    assert np.isfinite(_state_code(first.state))
+    assert np.isnan(joined[7])
+    np.testing.assert_array_equal(joined, whole.values)
+    np.testing.assert_array_equal(_state_code(second.state), _state_code(whole.state))
 
 
 # ------------------------------------------------------------------------------
@@ -678,6 +792,30 @@ def test_negative_precipitation_raises() -> None:
     for runner in (_run_ffmc, _run_dmc, _run_dc):
         with pytest.raises(InvalidArgumentError, match="precipitation"):
             runner(weather)
+
+
+def test_absurd_temperature_raises_instead_of_returning_a_non_finite_state() -> None:
+    """A finite input whose recurrence overflows must fail, not return an unusable state."""
+    weather = _series(10)
+    weather.temperature[:] = np.finfo(np.float64).max
+    for runner in (_run_dmc, _run_dc):
+        with pytest.raises(InvalidArgumentError, match="non-finite"):
+            runner(weather, return_state=True)
+
+
+def test_absurd_precipitation_raises_instead_of_returning_a_non_finite_state() -> None:
+    weather = _series(2)
+    weather.precipitation = np.asarray([0.0, 1e308])
+    with pytest.raises(InvalidArgumentError, match="non-finite"):
+        _run_ffmc(weather, return_state=True)
+
+
+def test_absurd_wind_raises_instead_of_becoming_a_missing_day() -> None:
+    """The km/h conversion must not turn a finite wind into a missing observation."""
+    weather = _series(2)
+    weather.wind = np.asarray([3.0, 1e308])
+    with pytest.raises(InvalidArgumentError, match="wind_speed_meters_per_second"):
+        _run_ffmc(weather)
 
 
 @pytest.mark.parametrize("bound_infinity", [np.inf, -np.inf])

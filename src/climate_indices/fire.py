@@ -189,22 +189,107 @@ class KBDIResult:
     state: KBDIState
 
 
-def _kbdi_static_array(
+def _static_spatial_array(
     values: npt.ArrayLike,
     spatial_shape: tuple[int, ...],
     name: str,
 ) -> npt.NDArray[np.float64]:
-    """Coerce a scalar or spatial field to the KBDI spatial shape."""
+    """Coerce a scalar or spatial field to a recurrence's trailing spatial shape."""
     array = _as_float_array(values)
     try:
         return np.broadcast_to(array, spatial_shape).astype(np.float64, copy=True)
     except ValueError as exc:
         raise InvalidArgumentError(
-            f"{name} with shape {array.shape} cannot broadcast to KBDI spatial shape {spatial_shape}.",
+            f"{name} with shape {array.shape} cannot broadcast to spatial shape {spatial_shape}.",
             argument_name=name,
             argument_value=f"shape {array.shape}",
             valid_values=f"A scalar or an array broadcastable to {spatial_shape}",
         ) from exc
+
+
+def _validate_recurrence_options(
+    nan_policy: object,
+    max_gap_days: object,
+    spin_up: object,
+    seed_name: str,
+    seed: object,
+    initial_state: object,
+) -> None:
+    """Validate the configuration shared by every stateful fire recurrence."""
+    if nan_policy not in ("propagate", "bridge"):
+        raise InvalidArgumentError(
+            "nan_policy must be 'propagate' or 'bridge'.",
+            argument_name="nan_policy",
+            argument_value=str(nan_policy),
+            valid_values="'propagate', 'bridge'",
+        )
+    if isinstance(max_gap_days, bool) or not isinstance(max_gap_days, int) or max_gap_days < 0:
+        raise InvalidArgumentError(
+            "max_gap_days must be a non-negative integer.",
+            argument_name="max_gap_days",
+            argument_value=str(max_gap_days),
+            valid_values="A non-negative integer",
+        )
+    if (nan_policy == "propagate" and max_gap_days != 0) or (nan_policy == "bridge" and max_gap_days < 1):
+        raise InvalidArgumentError(
+            "max_gap_days must be zero for 'propagate' and positive for 'bridge'.",
+            argument_name="max_gap_days",
+            argument_value=str(max_gap_days),
+            valid_values="0 for 'propagate'; at least 1 for 'bridge'",
+        )
+    if isinstance(spin_up, bool) or not isinstance(spin_up, int) or spin_up < 0:
+        raise InvalidArgumentError(
+            "spin_up must be a non-negative integer.",
+            argument_name="spin_up",
+            argument_value=str(spin_up),
+            valid_values="A non-negative integer",
+        )
+    if seed is not None and initial_state is not None:
+        raise InvalidArgumentError(
+            f"{seed_name} cannot be combined with initial_state.",
+            argument_name=f"{seed_name}/initial_state",
+            argument_value="both supplied",
+            valid_values="Supply at most one initial condition",
+        )
+
+
+def _apply_gap_policy(
+    state_value: npt.NDArray[np.float64],
+    day_weather_valid: npt.NDArray[np.bool_],
+    static_valid: npt.NDArray[np.bool_],
+    started: npt.NDArray[np.bool_],
+    poisoned: npt.NDArray[np.bool_],
+    trailing_gap_days: npt.NDArray[np.int64],
+    *,
+    nan_policy: Literal["propagate", "bridge"],
+    max_gap_days: int,
+) -> npt.NDArray[np.bool_]:
+    """Apply one day of the ADR-0007 missing-day policy, returning the active cells.
+
+    ``state_value``, ``started``, ``poisoned``, and ``trailing_gap_days`` are
+    updated in place. A missing day is one with an invalid weather
+    observation. A cell whose static input is unusable never starts and is not
+    an elapsed missing day. A valid day is the return point's last day, so any
+    earlier run is closed.
+    """
+    valid = day_weather_valid & static_valid
+    missing_started = ~day_weather_valid & static_valid & (started | poisoned)
+
+    if nan_policy == "propagate":
+        state_value[missing_started] = np.nan
+        poisoned[missing_started] = True
+        trailing_gap_days[missing_started] = np.maximum(trailing_gap_days[missing_started], 0) + 1
+    else:
+        next_gap_days = np.maximum(trailing_gap_days, 0) + 1
+        over_gap_limit = missing_started & (next_gap_days > max_gap_days)
+        state_value[over_gap_limit] = np.nan
+        poisoned[over_gap_limit] = True
+        trailing_gap_days[missing_started] = next_gap_days[missing_started]
+
+    active = valid & ~poisoned
+    started[active] = True
+    trailing_gap_days[valid & (started | poisoned)] = 0
+    return active
 
 
 def _kbdi_state_arrays(
@@ -229,8 +314,8 @@ def _kbdi_state_arrays(
             valid_values=units,
         )
 
-    kbdi_value = _kbdi_static_array(state.kbdi, spatial_shape, "initial_state.kbdi")
-    wet_spell = _kbdi_static_array(
+    kbdi_value = _static_spatial_array(state.kbdi, spatial_shape, "initial_state.kbdi")
+    wet_spell = _static_spatial_array(
         state.wet_spell_precipitation,
         spatial_shape,
         "initial_state.wet_spell_precipitation",
@@ -257,7 +342,7 @@ def _kbdi_state_arrays(
     if state.trailing_gap_days is None:
         trailing_gap_days = np.full(spatial_shape, -1, dtype=np.int64)
     else:
-        trailing = _kbdi_static_array(state.trailing_gap_days, spatial_shape, "initial_state.trailing_gap_days")
+        trailing = _static_spatial_array(state.trailing_gap_days, spatial_shape, "initial_state.trailing_gap_days")
         if np.any(~np.isfinite(trailing)) or np.any(trailing < -1) or np.any(trailing != np.floor(trailing)):
             raise InvalidArgumentError(
                 "initial_state.trailing_gap_days must contain integers greater than or equal to -1.",
@@ -346,41 +431,7 @@ def kbdi(
             argument_value=str(units),
             valid_values="'metric', 'imperial'",
         )
-    if nan_policy not in ("propagate", "bridge"):
-        raise InvalidArgumentError(
-            "nan_policy must be 'propagate' or 'bridge'.",
-            argument_name="nan_policy",
-            argument_value=str(nan_policy),
-            valid_values="'propagate', 'bridge'",
-        )
-    if isinstance(max_gap_days, bool) or not isinstance(max_gap_days, int) or max_gap_days < 0:
-        raise InvalidArgumentError(
-            "max_gap_days must be a non-negative integer.",
-            argument_name="max_gap_days",
-            argument_value=str(max_gap_days),
-            valid_values="A non-negative integer",
-        )
-    if (nan_policy == "propagate" and max_gap_days != 0) or (nan_policy == "bridge" and max_gap_days < 1):
-        raise InvalidArgumentError(
-            "max_gap_days must be zero for 'propagate' and positive for 'bridge'.",
-            argument_name="max_gap_days",
-            argument_value=str(max_gap_days),
-            valid_values="0 for 'propagate'; at least 1 for 'bridge'",
-        )
-    if isinstance(spin_up, bool) or not isinstance(spin_up, int) or spin_up < 0:
-        raise InvalidArgumentError(
-            "spin_up must be a non-negative integer.",
-            argument_name="spin_up",
-            argument_value=str(spin_up),
-            valid_values="A non-negative integer",
-        )
-    if initial_kbdi is not None and initial_state is not None:
-        raise InvalidArgumentError(
-            "initial_kbdi cannot be combined with initial_state.",
-            argument_name="initial_kbdi/initial_state",
-            argument_value="both supplied",
-            valid_values="Supply at most one initial condition",
-        )
+    _validate_recurrence_options(nan_policy, max_gap_days, spin_up, "initial_kbdi", initial_kbdi, initial_state)
 
     precipitation_array = _as_float_array(precipitation)
     temperature_array = _as_float_array(maximum_temperature)
@@ -433,7 +484,9 @@ def kbdi(
             )
         mean_annual = np.sum(np.where(finite_precipitation, precipitation_array, 0.0), axis=0) / valid_days * 365.25
     else:
-        mean_annual = _kbdi_static_array(mean_annual_precipitation, internal_spatial_shape, "mean_annual_precipitation")
+        mean_annual = _static_spatial_array(
+            mean_annual_precipitation, internal_spatial_shape, "mean_annual_precipitation"
+        )
     if np.any(np.isinf(mean_annual)) or np.any(np.isfinite(mean_annual) & (mean_annual <= 0.0)):
         raise InvalidArgumentError(
             "mean_annual_precipitation must be positive where finite.",
@@ -446,7 +499,7 @@ def kbdi(
         if initial_kbdi is None:
             kbdi_value = np.zeros(internal_spatial_shape, dtype=np.float64)
         else:
-            kbdi_value = _kbdi_static_array(initial_kbdi, internal_spatial_shape, "initial_kbdi")
+            kbdi_value = _static_spatial_array(initial_kbdi, internal_spatial_shape, "initial_kbdi")
             if np.any(~np.isfinite(kbdi_value)) or np.any(kbdi_value < 0.0) or np.any(kbdi_value > maximum):
                 raise InvalidArgumentError(
                     f"initial_kbdi must be finite and within [0, {maximum:g}].",
@@ -509,27 +562,19 @@ def kbdi(
             precipitation_day = precipitation_array[day]
             temperature_day = temperature_array[day]
             weather_valid = np.isfinite(precipitation_day) & np.isfinite(temperature_day)
-            valid = weather_valid & static_valid
             # A cell whose static climatology is unavailable has no recurrence
             # to gap-manage: its output is NaN and its carried state is left
             # as it was, so a NaN climatology is never an elapsed missing day.
-            missing_started = ~weather_valid & static_valid & (started | poisoned)
-
-            if nan_policy == "propagate":
-                kbdi_value[missing_started] = np.nan
-                poisoned[missing_started] = True
-                trailing_gap_days[missing_started] = np.maximum(trailing_gap_days[missing_started], 0) + 1
-            else:
-                next_gap_days = np.maximum(trailing_gap_days, 0) + 1
-                over_gap_limit = missing_started & (next_gap_days > max_gap_days)
-                kbdi_value[over_gap_limit] = np.nan
-                poisoned[over_gap_limit] = True
-                trailing_gap_days[missing_started] = next_gap_days[missing_started]
-
-            active = valid & ~poisoned
-            started[active] = True
-            # a valid day is the return point's last day, so any earlier run is closed
-            trailing_gap_days[valid & (started | poisoned)] = 0
+            active = _apply_gap_policy(
+                kbdi_value,
+                weather_valid,
+                static_valid,
+                started,
+                poisoned,
+                trailing_gap_days,
+                nan_policy=nan_policy,
+                max_gap_days=max_gap_days,
+            )
 
             rainy = active & (precipitation_day > 0.0)
             prior_wet_spell = wet_spell.copy()
@@ -672,70 +717,6 @@ class DCResult:
 
     values: npt.NDArray[np.float64]
     state: DCState
-
-
-def _static_spatial_array(
-    values: npt.ArrayLike,
-    spatial_shape: tuple[int, ...],
-    name: str,
-) -> npt.NDArray[np.float64]:
-    """Coerce a scalar or spatial field to a recurrence's spatial shape."""
-    array = _as_float_array(values)
-    try:
-        return np.broadcast_to(array, spatial_shape).astype(np.float64, copy=True)
-    except ValueError as exc:
-        raise InvalidArgumentError(
-            f"{name} with shape {array.shape} cannot broadcast to spatial shape {spatial_shape}.",
-            argument_name=name,
-            argument_value=f"shape {array.shape}",
-            valid_values=f"A scalar or an array broadcastable to {spatial_shape}",
-        ) from exc
-
-
-def _validate_recurrence_options(
-    nan_policy: object,
-    max_gap_days: object,
-    spin_up: object,
-    seed_name: str,
-    seed: object,
-    initial_state: object,
-) -> None:
-    """Validate the configuration shared by every stateful fire recurrence."""
-    if nan_policy not in ("propagate", "bridge"):
-        raise InvalidArgumentError(
-            "nan_policy must be 'propagate' or 'bridge'.",
-            argument_name="nan_policy",
-            argument_value=str(nan_policy),
-            valid_values="'propagate', 'bridge'",
-        )
-    if isinstance(max_gap_days, bool) or not isinstance(max_gap_days, int) or max_gap_days < 0:
-        raise InvalidArgumentError(
-            "max_gap_days must be a non-negative integer.",
-            argument_name="max_gap_days",
-            argument_value=str(max_gap_days),
-            valid_values="A non-negative integer",
-        )
-    if (nan_policy == "propagate" and max_gap_days != 0) or (nan_policy == "bridge" and max_gap_days < 1):
-        raise InvalidArgumentError(
-            "max_gap_days must be zero for 'propagate' and positive for 'bridge'.",
-            argument_name="max_gap_days",
-            argument_value=str(max_gap_days),
-            valid_values="0 for 'propagate'; at least 1 for 'bridge'",
-        )
-    if isinstance(spin_up, bool) or not isinstance(spin_up, int) or spin_up < 0:
-        raise InvalidArgumentError(
-            "spin_up must be a non-negative integer.",
-            argument_name="spin_up",
-            argument_value=str(spin_up),
-            valid_values="A non-negative integer",
-        )
-    if seed is not None and initial_state is not None:
-        raise InvalidArgumentError(
-            f"{seed_name} cannot be combined with initial_state.",
-            argument_name=f"{seed_name}/initial_state",
-            argument_value="both supplied",
-            valid_values="Supply at most one initial condition",
-        )
 
 
 def _daily_weather_arrays(
@@ -895,9 +876,19 @@ def _initialize_single_value_state(
     return value, trailing_gap_days
 
 
+def _active_view(
+    active: npt.NDArray[np.bool_] | None,
+    *arrays: npt.NDArray[np.float64],
+) -> tuple[npt.NDArray[np.float64], ...]:
+    """Restrict each array to the active cells, or return them unchanged for all cells."""
+    if active is None:
+        return arrays
+    return tuple(array[active] for array in arrays)
+
+
 def _run_cffwis_recurrence(
     state_value: npt.NDArray[np.float64],
-    step: Callable[[int], npt.NDArray[np.float64]],
+    step: Callable[[int, npt.NDArray[np.bool_] | None], npt.NDArray[np.float64]],
     *,
     index_type: str,
     weather_valid: npt.NDArray[np.bool_],
@@ -910,11 +901,11 @@ def _run_cffwis_recurrence(
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.int64] | None]:
     """Run a time-first daily recurrence under the ADR-0007 missing-day policy.
 
-    ``step(day)`` returns the next code value for every cell; only cells with
-    a valid observation whose recurrence has started and is not poisoned adopt
-    it. ``static_valid`` marks cells with a usable static input (latitude, for
-    the codes that need it); such a cell's output is always NaN and its state
-    is left untouched.
+    ``step(day, active)`` returns the next code value for every cell when
+    ``active`` is ``None`` and for the selected cells otherwise. Only cells
+    with a valid observation whose recurrence has started and is not poisoned
+    adopt it. A cell whose static input is unusable never starts: its output
+    stays NaN and its state is untouched.
     """
     n_days = weather_valid.shape[0]
     values = np.full((max(n_days - spin_up, 0), *weather_valid.shape[1:]), np.nan, dtype=np.float64)
@@ -928,36 +919,37 @@ def _run_cffwis_recurrence(
     )
     log.info("calculation_started")
     t0 = time.perf_counter()
-    memory_metrics = check_large_array_memory(*memory_arrays)
+    memory_metrics = check_large_array_memory(*memory_arrays, weather_valid, values)
 
     try:
         for day in range(n_days):
-            day_weather_valid = weather_valid[day]
-            valid = day_weather_valid & static_valid
-            # a cell whose static input is unusable has no recurrence to
-            # gap-manage: it never starts, so it is not an elapsed missing day
-            missing_started = ~day_weather_valid & static_valid & (started | poisoned)
-
-            if nan_policy == "propagate":
-                state_value[missing_started] = np.nan
-                poisoned[missing_started] = True
-                trailing_gap_days[missing_started] = np.maximum(trailing_gap_days[missing_started], 0) + 1
-            else:
-                next_gap_days = np.maximum(trailing_gap_days, 0) + 1
-                over_gap_limit = missing_started & (next_gap_days > max_gap_days)
-                state_value[over_gap_limit] = np.nan
-                poisoned[over_gap_limit] = True
-                trailing_gap_days[missing_started] = next_gap_days[missing_started]
-
-            active = valid & ~poisoned
-            started[active] = True
-            # a valid day is the return point's last day, so any earlier run is closed
-            trailing_gap_days[valid & (started | poisoned)] = 0
+            # A cell whose static input is unusable has no recurrence to
+            # gap-manage: it never starts, so it is not an elapsed missing day.
+            active = _apply_gap_policy(
+                state_value,
+                weather_valid[day],
+                static_valid,
+                started,
+                poisoned,
+                trailing_gap_days,
+                nan_policy=nan_policy,
+                max_gap_days=max_gap_days,
+            )
 
             if np.any(active):
                 with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
-                    updated = step(day)
-                state_value[active] = updated[active]
+                    updated = step(day, None if active.all() else active)
+                if np.any(~np.isfinite(updated)):
+                    raise InvalidArgumentError(
+                        f"{index_type} produced a non-finite value from finite inputs.",
+                        argument_name=index_type,
+                        argument_value="non-finite result",
+                        valid_values="Finite inputs whose result stays within float64",
+                    )
+                if active.all():
+                    state_value[:] = updated
+                else:
+                    state_value[active] = updated
             if day >= spin_up:
                 values[day - spin_up] = np.where(active, state_value, np.nan)
 
@@ -1158,8 +1150,9 @@ def ffmc(
         wind_speed_meters_per_second: Daily 10 m wind speed, time-first,
             meters per second.
         precipitation_mm: Daily 24-hour precipitation, time-first, mm.
-        initial_ffmc: Seed code, scalar or spatial. ``None`` selects the
-            literature seed of 85. Cannot be combined with ``initial_state``.
+        initial_ffmc: Seed code, scalar or an array of the trailing spatial
+            shape. ``None`` selects the literature seed of 85. Cannot be
+            combined with ``initial_state``.
         initial_state: State returned by an earlier call.
         return_state: Return :class:`FFMCResult` with the final state.
         spin_up: Number of leading input days to compute but omit from the
@@ -1206,7 +1199,15 @@ def ffmc(
     temperature = temperature.reshape(temperature.shape[0], *internal_spatial_shape)
     humidity = humidity.reshape(temperature.shape)
     precipitation = precipitation.reshape(temperature.shape)
-    wind = wind.reshape(temperature.shape) * _KILOMETERS_PER_HOUR_PER_METER_PER_SECOND
+    with np.errstate(over="ignore"):
+        wind = wind.reshape(temperature.shape) * _KILOMETERS_PER_HOUR_PER_METER_PER_SECOND
+    if np.any(np.isinf(wind)):
+        raise InvalidArgumentError(
+            "wind_speed_meters_per_second is too large to convert to kilometers per hour.",
+            argument_name="wind_speed_meters_per_second",
+            argument_value="finite value that overflows the km/h conversion",
+            valid_values="Finite values that do not overflow the km/h conversion",
+        )
 
     weather_valid = (
         np.isfinite(temperature)
@@ -1229,8 +1230,16 @@ def ffmc(
         spatial_shape=internal_spatial_shape,
     )
 
-    def step(day: int) -> npt.NDArray[np.float64]:
-        return _ffmc_next(state_value, temperature[day], humidity[day], wind[day], precipitation[day])
+    def step(day: int, active: npt.NDArray[np.bool_] | None = None) -> npt.NDArray[np.float64]:
+        state_slice, temperature_slice, humidity_slice, wind_slice, precipitation_slice = _active_view(
+            active,
+            state_value,
+            temperature[day],
+            humidity[day],
+            wind[day],
+            precipitation[day],
+        )
+        return _ffmc_next(state_slice, temperature_slice, humidity_slice, wind_slice, precipitation_slice)
 
     values, state_gap_days = _run_cffwis_recurrence(
         state_value,
@@ -1296,12 +1305,15 @@ def duff_moisture_code(
         relative_humidity_percent: Daily noon-local-standard-time relative
             humidity, time-first, percent.
         precipitation_mm: Daily 24-hour precipitation, time-first, mm.
-        latitude_degrees_north: Cell latitude, scalar or spatial, degrees
-            north in [-90, 90]. NaN marks a cell with no usable band.
+        latitude_degrees_north: Cell latitude, scalar or an array
+            broadcastable to the trailing spatial shape (for example
+            ``(lat, 1)`` or ``(lat, lon)`` for a ``(time, lat, lon)`` grid),
+            degrees north in [-90, 90]. NaN marks a cell with no usable band.
         month: Calendar month for each day, scalar or time-first, integer in
             [1, 12].
-        initial_dmc: Seed code, scalar or spatial. ``None`` selects the
-            literature seed of 6. Cannot be combined with ``initial_state``.
+        initial_dmc: Seed code, scalar or an array of the trailing spatial
+            shape. ``None`` selects the literature seed of 6. Cannot be
+            combined with ``initial_state``.
         initial_state: State returned by an earlier call.
         return_state: Return :class:`DMCResult` with the final state.
         spin_up: Number of leading input days to compute but omit from the
@@ -1368,9 +1380,19 @@ def duff_moisture_code(
     )
     band = _dmc_day_length_band(latitude)
 
-    def step(day: int) -> npt.NDArray[np.float64]:
-        effective_day_length = _DMC_EFFECTIVE_DAY_LENGTH_HOURS[band, months[day] - 1]
-        return _dmc_next(state_value, temperature[day], humidity[day], precipitation[day], effective_day_length)
+    def step(day: int, active: npt.NDArray[np.bool_] | None = None) -> npt.NDArray[np.float64]:
+        if active is None:
+            effective_day_length = _DMC_EFFECTIVE_DAY_LENGTH_HOURS[band, months[day] - 1]
+        else:
+            effective_day_length = _DMC_EFFECTIVE_DAY_LENGTH_HOURS[band[active], months[day][active] - 1]
+        state_slice, temperature_slice, humidity_slice, precipitation_slice = _active_view(
+            active,
+            state_value,
+            temperature[day],
+            humidity[day],
+            precipitation[day],
+        )
+        return _dmc_next(state_slice, temperature_slice, humidity_slice, precipitation_slice, effective_day_length)
 
     values, state_gap_days = _run_cffwis_recurrence(
         state_value,
@@ -1433,12 +1455,15 @@ def drought_code(
         temperature_celsius: Daily noon-local-standard-time air temperature,
             time-first, degrees Celsius.
         precipitation_mm: Daily 24-hour precipitation, time-first, mm.
-        latitude_degrees_north: Cell latitude, scalar or spatial, degrees
-            north in [-90, 90]. NaN marks a cell with no usable band.
+        latitude_degrees_north: Cell latitude, scalar or an array
+            broadcastable to the trailing spatial shape (for example
+            ``(lat, 1)`` or ``(lat, lon)`` for a ``(time, lat, lon)`` grid),
+            degrees north in [-90, 90]. NaN marks a cell with no usable band.
         month: Calendar month for each day, scalar or time-first, integer in
             [1, 12].
-        initial_dc: Seed code, scalar or spatial. ``None`` selects the
-            literature seed of 15. Cannot be combined with ``initial_state``.
+        initial_dc: Seed code, scalar or an array of the trailing spatial
+            shape. ``None`` selects the literature seed of 15. Cannot be
+            combined with ``initial_state``.
         initial_state: State returned by an earlier call.
         return_state: Return :class:`DCResult` with the final state.
         spin_up: Number of leading input days to compute but omit from the
@@ -1497,9 +1522,18 @@ def drought_code(
     )
     band = _dc_day_length_band(latitude)
 
-    def step(day: int) -> npt.NDArray[np.float64]:
-        day_length_adjustment = _DC_DAY_LENGTH_ADJUSTMENT[band, months[day] - 1]
-        return _dc_next(state_value, temperature[day], precipitation[day], day_length_adjustment)
+    def step(day: int, active: npt.NDArray[np.bool_] | None = None) -> npt.NDArray[np.float64]:
+        if active is None:
+            day_length_adjustment = _DC_DAY_LENGTH_ADJUSTMENT[band, months[day] - 1]
+        else:
+            day_length_adjustment = _DC_DAY_LENGTH_ADJUSTMENT[band[active], months[day][active] - 1]
+        state_slice, temperature_slice, precipitation_slice = _active_view(
+            active,
+            state_value,
+            temperature[day],
+            precipitation[day],
+        )
+        return _dc_next(state_slice, temperature_slice, precipitation_slice, day_length_adjustment)
 
     values, state_gap_days = _run_cffwis_recurrence(
         state_value,

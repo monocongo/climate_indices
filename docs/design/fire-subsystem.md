@@ -68,8 +68,8 @@ KBDI implements the contract today, with `KBDIState` carrying `kbdi`,
 `wet_spell_precipitation`, `trailing_gap_days`, and `units`; FFMC, DMC, and DC
 implement it with their single code value plus `trailing_gap_days`. The
 planned CFFWIS orchestrator (#804) will accept time-first daily arrays.
-Single-output APIs take keyword-only `initial_<code>: float | None`,
-`initial_state`, `return_state=False`, and `spin_up=0`. `None` selects the
+Single-output APIs take keyword-only `initial_<code>: float or spatial
+field | None`, `initial_state`, `return_state=False`, and `spin_up=0`. `None` selects the
 literature seed: KBDI 0, FFMC 85, DMC 6, or DC 15. `initial_state` restores the
 full named state, including auxiliary values such as KBDI's cumulative
 wet-spell precipitation, and cannot be combined with a seed. It is the only
