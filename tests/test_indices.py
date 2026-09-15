@@ -202,6 +202,34 @@ def test_pnp(
         )
 
 
+def test_pnp_calibration_period_extends_past_data():
+    """Calibration windows with a trailing partial period still average per calendar time step."""
+    # 481 monthly values starting 1900, i.e. 40 years plus one extra month
+    values = np.arange(481, dtype=float)
+
+    # the calibration period starts past the data start and ends past the data end,
+    # so the calibration window is 121 values, i.e. 10 whole years plus one month
+    computed_pnp = indices.percentage_of_normal(
+        values,
+        1,
+        1900,
+        1930,
+        1969,
+        compute.Periodicity.monthly,
+    )
+
+    # reference: per calendar time step average of the truncated calibration window
+    calibration_period_sums = values[(1930 - 1900) * 12 :]
+    averages = np.array([np.nanmean(calibration_period_sums[i::12]) for i in range(12)])
+    expected = np.full(values.shape, np.nan)
+    for i in range(values.size):
+        divisor = averages[i % 12]
+        if divisor > 0.0:
+            expected[i] = values[i] / divisor
+
+    np.testing.assert_allclose(computed_pnp, expected, equal_nan=True)
+
+
 @pytest.mark.usefixtures(
     "precips_mm_monthly",
     "precips_mm_daily",

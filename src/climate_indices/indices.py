@@ -46,6 +46,13 @@ _HASTINGS_D1 = 1.432788
 _HASTINGS_D2 = 0.189269
 _HASTINGS_D3 = 0.001308
 
+# day-of-year start index of each calendar month, keyed by the number of days in
+# the year; used as the np.add.reduceat boundaries when computing PCI
+_PCI_MONTH_STARTS: dict[int, np.ndarray] = {
+    365: np.array([0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334]),
+    366: np.array([0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]),
+}
+
 # Import fallback strategy for consistent behavior
 _fallback_strategy = compute.DistributionFallbackStrategy()
 
@@ -871,6 +878,9 @@ def percentage_of_normal(
         # element to the end the values will equal the sum of the corresponding
         # time step plus the values of the two previous time steps
         scale_sums = compute.sum_to_scale(values, scale)
+        # treat masked values as the missing (NaN) values they represent
+        if np.ma.isMaskedArray(scale_sums):
+            scale_sums = np.ma.filled(scale_sums.astype(float), np.nan)
 
         # extract the timesteps over which we'll compute the normal
         # average for each time step of the year
@@ -879,22 +889,25 @@ def percentage_of_normal(
         calibration_end_index = calibration_start_index + (calibration_years * period_length)
         calibration_period_sums = scale_sums[calibration_start_index:calibration_end_index]
 
+        # pad a trailing partial period with NaN (ignored by the average) so that the
+        # calibration period reshapes into whole calendar periods, e.g. when the
+        # calibration period extends past the end of the data
+        if calibration_period_sums.size % period_length:
+            calibration_period_sums = np.concatenate(
+                [calibration_period_sums, np.full(-calibration_period_sums.size % period_length, np.nan)],
+            )
+
         # for each time step in the calibration period, get the average of
         # the scale sum for that calendar time step (i.e. average all January sums,
         # then all February sums, etc.)
-        averages = np.full((period_length,), np.nan)
-        for i in range(period_length):
-            averages[i] = np.nanmean(calibration_period_sums[i::period_length])
+        averages = np.nanmean(calibration_period_sums.reshape(-1, period_length), axis=0)
 
-        # TODO replace the below loop with a vectorized implementation
-        # for each time step of the scale_sums array find its corresponding
-        # percentage of the time steps scale average for its respective calendar time step
+        # for each time step of the scale_sums array find its corresponding percentage
+        # of the time steps scale average for its respective calendar time step, leaving
+        # NaN wherever the calendar time step's average is not a positive value
+        divisors = np.resize(averages, scale_sums.shape)
         percentages_of_normal = np.full(scale_sums.shape, np.nan)
-        for i in range(scale_sums.size):
-            # make sure we don't have a zero divisor
-            divisor = averages[i % period_length]
-            if divisor > 0.0:
-                percentages_of_normal[i] = scale_sums[i] / divisor
+        np.divide(scale_sums, divisors, out=percentages_of_normal, where=divisors > 0.0)
 
         duration_ms = (time.perf_counter() - t0) * 1000.0
         log.info(
@@ -1065,43 +1078,17 @@ def pci(
             return rainfall_mm
 
         # make sure we're not dealing with a NaN or out-of-range or less than the expected rainfall value
-        if len(rainfall_mm) == 366 and not sum(np.isnan(rainfall_mm)):
-            # Cumulative month-end day-of-year boundaries (not month lengths).
-            m = [31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335, 366]
-            start = 0
-            numerator = 0
-            denominator = 0
-
-            for month in range(12):
-                numerator = numerator + (sum(rainfall_mm[start : m[month]]) ** 2)
-                denominator = denominator + sum(rainfall_mm[start : m[month]])
-
-                start = m[month]
-
-            result = np.array([(numerator / (denominator**2)) * 100])
-            duration_ms = (time.perf_counter() - t0) * 1000.0
-            log.info(
-                "calculation_completed",
-                duration_ms=round(duration_ms, 2),
-                output_shape=result.shape,
-                **(memory_metrics or {}),
+        month_starts = _PCI_MONTH_STARTS.get(len(rainfall_mm))
+        if month_starts is not None and not sum(np.isnan(rainfall_mm)):
+            # masked values are treated as the missing (NaN) values they represent
+            rainfall = (
+                np.ma.filled(rainfall_mm.astype(float), np.nan) if np.ma.isMaskedArray(rainfall_mm) else rainfall_mm
             )
-            return result
 
-        if len(rainfall_mm) == 365 and not sum(np.isnan(rainfall_mm)):
-            # Cumulative month-end day-of-year boundaries (not month lengths).
-            m = [31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365]
-            start = 0
-            numerator = 0
-            denominator = 0
-
-            for month in range(12):
-                numerator = numerator + (sum(rainfall_mm[start : m[month]]) ** 2)
-                denominator = denominator + sum(rainfall_mm[start : m[month]])
-
-                start = m[month]
-
-            result = np.array([(numerator / (denominator**2)) * 100])
+            # monthly rainfall totals, one per calendar month, then Oliver (1980) PCI
+            monthly_totals = np.add.reduceat(rainfall, month_starts)
+            pci_value = (np.sum(monthly_totals**2) / (np.sum(monthly_totals) ** 2)) * 100
+            result = np.array([pci_value])
             duration_ms = (time.perf_counter() - t0) * 1000.0
             log.info(
                 "calculation_completed",
