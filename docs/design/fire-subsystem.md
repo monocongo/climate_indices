@@ -93,8 +93,13 @@ The default `nan_policy="propagate"` never bridges a gap: missing days have
 NaN outputs, and the first valid day after an interior gap resumes with a NaN
 state, so every later output is NaN. `nan_policy="bridge"` with
 `max_gap_days=N` skips interior and trailing runs of at most `N` days with the
-state unchanged, and poisons from the first run that exceeds it. Leading
-missing days never poison. Interpolation is deliberately not a policy:
+state unchanged, and poisons from the first run that exceeds it. The limit is
+counted over the continuous series: the state returned by a bridged run
+carries `bridged_gap_days`, and a resumed call counts its leading missing
+days against what remains of `max_gap_days`, so a run spanning an append
+boundary either stays bridged or poisons exactly as the one-shot series would.
+Leading missing days are unbounded only when there is no `initial_state` to
+continue. Interpolation is deliberately not a policy:
 callers fill inputs upstream so the fill stays visible. A day is missing when
 any time-varying weather input is NaN; sub-freezing and inactive-index days
 are valid observations, and off-season periods must use the seasonal state
