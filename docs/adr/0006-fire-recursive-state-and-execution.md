@@ -25,10 +25,13 @@ outputs and adds the state under the same flag. `spin_up` runs and omits that
 many leading input days; no universal nonzero default is scientifically
 justified, so users choose a study-specific transient length.
 
-Implementations use the private `_recurse` pattern: vectorize each daily step
-across spatial cells, loop only over time, and copy the final state before
-returning it. The round-trip test computes 1980–2020, resumes with its state
-for 2021, and bitwise-compares it with one 1980–2021 run.
+Implementations vectorize each daily step across spatial cells, loop only over
+time, and copy the final state before returning it. Each implementation's
+round-trip test must resume a run with the state returned at an intermediate
+day and bitwise-compare the concatenation against one continuous run. The
+tuple-based prototype engine that first demonstrated this contract was removed
+as dead code in #850; #799 and #803 apply the same execution pattern to their
+frozen state dataclasses.
 
 NumPy is the required correct baseline. `numba` is not an optional dependency:
 it adds a compiler/runtime support surface and the time loop is short relative
