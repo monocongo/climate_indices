@@ -107,7 +107,17 @@ def e2e_data(tmp_path, monkeypatch):
     return tmp_path, ds
 
 
-def _synthetic_dataset() -> xr.Dataset:
+@pytest.fixture(params=["MS", pd.offsets.MonthEnd()])
+def e2e_data_any_calendar(request, tmp_path, monkeypatch):
+    """Prepared store under each accepted calendar convention (month-start and month-end)."""
+    pytest.importorskip("zarr")
+    ds = _synthetic_dataset(time_freq=request.param)
+    _publish_store(tmp_path, ds)
+    monkeypatch.setenv("CLIMATE_INDICES_E2E_DATA", str(tmp_path))
+    return tmp_path, ds
+
+
+def _synthetic_dataset(time_freq="MS") -> xr.Dataset:
     """One land cell, one fully masked cell, and one meaningful zero, 1980-2010 monthly."""
     rng = np.random.default_rng(42)
     shape = (372, 2, 2)
@@ -122,7 +132,7 @@ def _synthetic_dataset() -> xr.Dataset:
             "wb": (("time", "lat", "lon"), precip - pet),
         },
         coords={
-            "time": pd.date_range("1980-01-01", periods=372, freq="MS"),
+            "time": pd.date_range("1980-01-01", periods=372, freq=time_freq),
             "lat": [35.0, 36.0],
             "lon": [-100.0, -99.0],
         },
@@ -288,25 +298,17 @@ def test_notebook_reopens_saved_output_with_a_fresh_lazy_handle():
     )
     expected_open = ast.parse("xr.open_zarr(final_output_zarr, consolidated=True)", mode="eval").body
     assert ast.dump(out_ds_assignment.value) == ast.dump(expected_open)
-    diagnostic_start = next(
-        node.lineno
+    map_assignment = next(
+        node
         for node in tree.body
         if isinstance(node, ast.Assign)
-        and any(isinstance(target, ast.Name) and target.id == "spi_index" for target in node.targets)
+        and any(isinstance(target, ast.Name) and target.id == "map_slices" for target in node.targets)
     )
-    diagnostic_sources = {
-        target.id: node.value.value.id
-        for node in tree.body
-        if isinstance(node, ast.Assign)
-        and isinstance(node.value, ast.Subscript)
-        and isinstance(node.value.value, ast.Name)
-        for target in node.targets
-        if isinstance(target, ast.Name) and target.id in {"spi_index", "spei_index"}
-    }
-    assert diagnostic_sources == {"spi_index": "out_ds", "spei_index": "out_ds"}
+    expected_map = ast.parse("map_slices = out_ds[[spi_name, spei_name]].sel(time=map_date).compute()").body[0]
+    assert ast.dump(map_assignment) == ast.dump(expected_map)
+    map_start = map_assignment.lineno
     assert not any(
-        isinstance(node, ast.Name) and node.id == "ds_output" and node.lineno >= diagnostic_start
-        for node in ast.walk(tree)
+        isinstance(node, ast.Name) and node.id == "ds_output" and node.lineno >= map_start for node in ast.walk(tree)
     )
     assert "out_ds.close()" in source
 
@@ -468,12 +470,39 @@ def test_interrupted_publish_restores_previous_output(e2e_data, monkeypatch):
         xr.testing.assert_equal(actual, sentinel)
 
 
-def test_notebook_plot_cells_execute(e2e_data):
-    """Guards the plot cells against a renamed variable or removed argument."""
+def test_notebook_plot_cells_execute(e2e_data_any_calendar):
+    """Map cells select valid persisted slices and retain scientific labels."""
     matplotlib = pytest.importorskip("matplotlib")
     matplotlib.use("Agg")
+    from matplotlib.colors import to_rgba
+
     namespace: dict = {}
     _exec_cells(namespace, _cells_excluding_client())
+
+    map_slices = namespace["map_slices"]
+    assert dict(map_slices.sizes) == {"lat": 2, "lon": 2}
+    assert namespace["selected_date"] == namespace["map_date"]
+    for variable_name in (namespace["spi_name"], namespace["spei_name"]):
+        assert map_slices[variable_name].chunks is None
+        assert np.isnan(map_slices[variable_name].sel(lat=35.0, lon=-99.0).item())
+
+    figure = namespace["fig"]
+    expected_date = pd.Timestamp(namespace["map_date"]).strftime("%Y-%m-%d")
+    scale = namespace["pipeline_config"]["scale"]
+    try:
+        map_axes = [axis for axis in figure.axes if axis.get_xlabel() == "Longitude (degrees east)"]
+        assert len(map_axes) == 2
+        for axis, index_label in zip(map_axes, ("SPI", "SPEI"), strict=True):
+            assert axis.get_ylabel() == "Latitude (degrees north)"
+            assert axis.get_title() == f"{index_label} | {scale}-month Timescale | {expected_date}"
+            assert axis.collections[0].get_clim() == (-3.0, 3.0)
+            assert axis.collections[0].colorbar.extend == "both"
+            np.testing.assert_allclose(axis.collections[0].cmap.get_bad(), to_rgba(namespace["missing_color"]))
+
+        colorbar_labels = {axis.get_ylabel() for axis in figure.axes if axis not in map_axes}
+        assert colorbar_labels == {"SPI (dimensionless)", "SPEI (dimensionless)"}
+    finally:
+        namespace["plt"].close(figure)
 
 
 def test_notebook_selected_location_and_guards(e2e_data):
