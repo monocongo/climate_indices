@@ -439,6 +439,11 @@ no coordinates.
   preparation time so SPEI never relies on coordinate intersection.
 - Run the notebook CI command before publishing examples:
   `uv run jupyter nbconvert --execute --to notebook --inplace notebooks/xarray_getting_started.ipynb notebooks/palmer_indices_xarray.ipynb notebooks/eddi_xarray.ipynb`.
+  That command and the CI `notebooks` job cover only the three notebooks
+  listed. `notebooks/zarr_dask_spi_spei.ipynb` needs prepared inputs from
+  `scripts/prepare_e2e_inputs.py` that neither provisions, so it is instead
+  covered by `tests/test_e2e_with_dask.py`, which executes its cells against
+  a synthetic store.
 
 ## docs/algorithm_refs/eddi.md
 
