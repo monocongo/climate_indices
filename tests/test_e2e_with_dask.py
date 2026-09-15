@@ -30,11 +30,22 @@ def _code_cells() -> list[str]:
 
 
 def _executable_cells() -> list[str]:
-    # The Dask Client cell is execution mechanics (#829's remit), and without
-    # matplotlib the minimum-dependency job cannot render plots (#830/#831);
-    # without them Dask falls back to the local scheduler and coverage of the
-    # calculation path is unchanged.
-    return [source for source in _code_cells() if "dask.distributed" not in source and ".plot(" not in source]
+    # The Dask Client cell (and its matching close()) is execution mechanics
+    # out of scope here (#829) and stays untested; local Dask falls back to
+    # the threaded scheduler without it, so calculation-path coverage is
+    # unaffected. The plot cells are excluded from every test that reuses
+    # this list because matplotlib isn't guaranteed present (e.g. the
+    # minimum-dependency CI job); test_notebook_plot_cells_execute covers
+    # them separately, gated on matplotlib being importable.
+    return [
+        source
+        for source in _code_cells()
+        if "dask.distributed" not in source and ".plot(" not in source and "client.close" not in source
+    ]
+
+
+def _cells_excluding_client() -> list[str]:
+    return [source for source in _code_cells() if "dask.distributed" not in source and "client.close" not in source]
 
 
 def _exec_cells(namespace: dict, sources: list[str]) -> None:
@@ -300,3 +311,11 @@ def test_interrupted_publish_preserves_previous_generation(e2e_data, monkeypatch
     assert recovered.exists(), "previous generation lost after an interrupted publish"
     with xr.open_zarr(recovered) as actual:
         xr.testing.assert_equal(actual, sentinel)
+
+
+def test_notebook_plot_cells_execute(e2e_data):
+    """Guards the plot cells against a renamed variable or removed argument."""
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    namespace: dict = {}
+    _exec_cells(namespace, _cells_excluding_client())
