@@ -846,9 +846,11 @@ No overlapping time steps after alignment
 Notebook and Prepared-Input Workflow
 =====================================
 
-The xarray/Dask tutorial ``notebooks/zarr_dask_spi_spei.ipynb`` runs against a
-prepared sample store instead of ad-hoc inputs, so its failures are mostly
-setup problems. Check this section before changing the notebook.
+The xarray/Dask tutorial
+`notebooks/zarr_dask_spi_spei.ipynb
+<https://github.com/monocongo/climate_indices/blob/main/notebooks/zarr_dask_spi_spei.ipynb>`__
+runs against a prepared sample store instead of ad-hoc inputs, so its failures
+are mostly setup problems. Check this section before changing the notebook.
 
 Running the tutorial
 --------------------
@@ -894,8 +896,9 @@ verifies each file's SHA-256 before use, so a stale or corrupted cache fails
 loudly instead of feeding wrong values into the tutorial. Reruns need no
 network access once ``data/e2e/source/`` is populated; delete that directory
 and rerun when a checksum error names a file you did not modify. See
-``docs/research/nclimgrid-acquisition-and-redistribution.md`` for the source
-provenance and attribution constraints.
+`docs/research/nclimgrid-acquisition-and-redistribution.md
+<https://github.com/monocongo/climate_indices/blob/main/docs/research/nclimgrid-acquisition-and-redistribution.md>`__
+for the source provenance and attribution constraints.
 
 Input contract mismatches
 -------------------------
@@ -932,7 +935,8 @@ Time chunking
    fitting needs each location's full series, so ``time`` must be one chunk in
    both the prepared store and the calculation input. See
    `Multi-chunked time dimension`_ and
-   ``docs/adr/0003-dask-time-dimension-single-chunk.md``.
+   `docs/adr/0003-dask-time-dimension-single-chunk.md
+   <https://github.com/monocongo/climate_indices/blob/main/docs/adr/0003-dask-time-dimension-single-chunk.md>`__.
 
    **Solution:** rechunk with ``ds.chunk({"time": -1})`` before calculating
    (as the notebook does) and rewrite persistent stores with the complete

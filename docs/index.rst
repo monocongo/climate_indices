@@ -416,8 +416,9 @@ from a fresh kernel with:
 
 See :doc:`troubleshooting` for the workflow's setup and failure modes,
 :doc:`xarray_migration` for the xarray stability guarantees, and
-``docs/adr/0003-dask-time-dimension-single-chunk.md`` for the single-time-chunk
-correctness constraint.
+`docs/adr/0003-dask-time-dimension-single-chunk.md
+<https://github.com/monocongo/climate_indices/blob/main/docs/adr/0003-dask-time-dimension-single-chunk.md>`__
+for the single-time-chunk correctness constraint.
 
 
 User Guides
