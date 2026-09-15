@@ -226,10 +226,29 @@ def test_notebook_pipeline_end_to_end(e2e_data):
 
 
 def test_notebook_reopens_saved_output_with_a_fresh_lazy_handle():
-    """The saved results must be reopened from disk, never the in-memory object."""
+    """Diagnostics must select from the saved store, not the calculated dataset."""
     source = "\n".join(_code_cells())
-    assert "load_dataset" not in source
-    assert "xr.open_zarr(final_output_zarr, consolidated=True)" in source
+    tree = ast.parse(source)
+    diagnostic_start = next(
+        node.lineno
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "spi_index" for target in node.targets)
+    )
+    diagnostic_sources = {
+        target.id: node.value.value.id
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Subscript)
+        and isinstance(node.value.value, ast.Name)
+        for target in node.targets
+        if isinstance(target, ast.Name) and target.id in {"spi_index", "spei_index"}
+    }
+    assert diagnostic_sources == {"spi_index": "out_ds", "spei_index": "out_ds"}
+    assert not any(
+        isinstance(node, ast.Name) and node.id == "ds_output" and node.lineno >= diagnostic_start
+        for node in ast.walk(tree)
+    )
     assert "out_ds.close()" in source
 
 
@@ -355,6 +374,7 @@ def test_failed_run_preserves_existing_output(e2e_data, monkeypatch):
     monkeypatch.undo()
     with xr.open_zarr(output) as actual:
         xr.testing.assert_equal(actual, sentinel)
+    assert not list(data_root.glob(f".{output.name}.staging-*"))
 
 
 def test_interrupted_publish_preserves_previous_generation(e2e_data, monkeypatch):
