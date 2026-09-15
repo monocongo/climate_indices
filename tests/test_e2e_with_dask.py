@@ -65,6 +65,13 @@ def _split_at_calculation(sources: list[str]) -> tuple[list[str], list[str]]:
     raise AssertionError("calculation cells not found")
 
 
+def _cell_index(sources: list[str], needle: str, description: str) -> int:
+    for index, source in enumerate(sources):
+        if needle in source:
+            return index
+    raise AssertionError(f"{description} cell not found")
+
+
 def _extract_pipeline_config_years(source: str) -> dict[str, int]:
     tree = ast.parse(source)
     for node in ast.walk(tree):
@@ -157,8 +164,8 @@ def test_notebook_spi_spei_stay_lazy_until_the_write(e2e_data, monkeypatch):
     """The typed API results stay Dask-backed until to_zarr materializes them."""
     namespace: dict = {}
     sources = _executable_cells()
-    calculation_index = next(index for index, source in enumerate(sources) if "spi_da = spi(" in source)
-    write_index = next(index for index, source in enumerate(sources) if "to_zarr" in source)
+    calculation_index = _cell_index(sources, "spi_da = spi(", "calculation")
+    write_index = _cell_index(sources, "to_zarr", "write")
     _exec_cells(namespace, sources[:calculation_index])
 
     def fail_on_compute(*_args):
@@ -421,7 +428,7 @@ def test_failed_run_preserves_existing_output(e2e_data, monkeypatch):
 
     namespace: dict = {}
     sources = _executable_cells()
-    write_index = next(i for i, source in enumerate(sources) if "to_zarr" in source)
+    write_index = _cell_index(sources, "to_zarr", "write")
     _exec_cells(namespace, sources[:write_index])
 
     def boom(*args, **kwargs):
@@ -445,7 +452,7 @@ def test_interrupted_publish_restores_previous_output(e2e_data, monkeypatch):
 
     namespace: dict = {}
     sources = _executable_cells()
-    write_index = next(i for i, source in enumerate(sources) if "to_zarr" in source)
+    write_index = _cell_index(sources, "to_zarr", "write")
     _exec_cells(namespace, sources[:write_index])
 
     original_rename = Path.rename
