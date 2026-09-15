@@ -17,7 +17,7 @@ how much of the contract is inferred and validated for you.
 | EDDI (`eddi`) | PET | Any consistent units (values are ranked); millimeters conventional | Monthly or daily |
 | PNP (`percentage_of_normal`) | Precipitation | Same units throughout (the index is a ratio) | Monthly or daily |
 | PCI (`pci`) | Rainfall for one calendar year | Millimeters | Daily, single year |
-| Palmer (`palmer.pdsi` and related) | Precipitation, PET, available water capacity | Inches | Monthly, 12 values per year; NumPy API only |
+| Palmer (`palmer.pdsi` and related) | Precipitation, PET, available water capacity | Inches | Monthly, 12 values per year; CLI and NumPy API, no direct xarray API |
 
 The value array matters, not the `units` attribute. The NumPy and xarray APIs
 never convert units, and editing an attribute is not conversion. The command
@@ -69,7 +69,11 @@ ones.
 ## Missing values and zeros
 
 - NaN marks missing data and propagates per cell: an input NaN produces a NaN
-  output. Nothing is interpolated, filled, or silently dropped.
+  output. Nothing is interpolated or filled. Calibration estimation omits NaNs
+  rather than consuming them — `percentage_of_normal` averages each calendar
+  step with `np.nanmean`, so a NaN inside the calibration period does not block
+  the normal, non-NaN cells can still receive finite percentages from the
+  remaining values, and the NaN cell's own output stays NaN.
 - Zero precipitation is data, meaning a dry period, not a missing value, and is
   preserved. Zero-inflated series are a distribution-fitting concern, not a
   data-cleaning one.
