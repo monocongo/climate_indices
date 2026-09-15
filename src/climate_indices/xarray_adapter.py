@@ -1331,8 +1331,8 @@ def _build_output_attrs(
 ) -> dict[str, Any]:
     """Build output attributes with CF metadata, calculation metadata, version, and history.
 
-    Pure attribute construction—extracts the dict-building logic from _finalize_ufunc_result()
-    so every execution path applies identical metadata.
+    Pure attribute construction—centralizes the dict-building logic so every execution
+    path applies identical metadata.
 
     Args:
         input_da: Original input DataArray with full coordinate metadata
