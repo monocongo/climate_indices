@@ -85,6 +85,14 @@ def _publish_store(data_root: Path, ds: xr.Dataset) -> None:
 def e2e_data(tmp_path, monkeypatch):
     """Synthetic prepared store: one land cell and one masked cell, 1980-2010 monthly."""
     pytest.importorskip("zarr")
+    ds = _synthetic_dataset()
+    _publish_store(tmp_path, ds)
+    monkeypatch.setenv("CLIMATE_INDICES_E2E_DATA", str(tmp_path))
+    return tmp_path, ds
+
+
+def _synthetic_dataset() -> xr.Dataset:
+    """One land cell, one fully masked cell, and one meaningful zero, 1980-2010 monthly."""
     rng = np.random.default_rng(42)
     shape = (372, 2, 2)
     precip = rng.gamma(2, 40, shape).astype("float32")
@@ -106,9 +114,7 @@ def e2e_data(tmp_path, monkeypatch):
     for name in ds:
         ds[name].attrs["units"] = "mm"
     ds["wb"].attrs["long_name"] = "Precipitation minus PET, monthly total"
-    _publish_store(tmp_path, ds)
-    monkeypatch.setenv("CLIMATE_INDICES_E2E_DATA", str(tmp_path))
-    return tmp_path, ds
+    return ds
 
 
 def test_pipeline_config_matches_canonical_contract():
@@ -197,6 +203,27 @@ def test_notebook_rejects_calibration_outside_data_range(e2e_data):
     namespace["pipeline_config"].update({"cal_end_year": 2020})
     with pytest.raises(exceptions.InvalidArgumentError):
         _exec_cells(namespace, calculation)
+
+
+def test_notebook_rejects_partially_missing_cells(tmp_path, monkeypatch):
+    pytest.importorskip("zarr")
+    ds = _synthetic_dataset()
+    ds["precip"].values[100, 0, 0] = np.nan
+    ds["pet"].values[100, 0, 0] = np.nan
+    _publish_store(tmp_path, ds)
+    monkeypatch.setenv("CLIMATE_INDICES_E2E_DATA", str(tmp_path))
+    with pytest.raises(exceptions.InvalidArgumentError):
+        _exec_cells({}, _executable_cells())
+
+
+def test_notebook_rejects_mismatched_missingness(tmp_path, monkeypatch):
+    pytest.importorskip("zarr")
+    ds = _synthetic_dataset()
+    ds["pet"].values[100, 0, 0] = np.nan  # PET missing where precip is present
+    _publish_store(tmp_path, ds)
+    monkeypatch.setenv("CLIMATE_INDICES_E2E_DATA", str(tmp_path))
+    with pytest.raises(exceptions.InvalidArgumentError):
+        _exec_cells({}, _executable_cells())
 
 
 def test_notebook_rejects_discontinuous_prepared_store(tmp_path, monkeypatch):
