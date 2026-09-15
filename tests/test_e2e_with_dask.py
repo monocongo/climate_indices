@@ -174,6 +174,11 @@ def test_notebook_spi_spei_stay_lazy_until_the_write(e2e_data, monkeypatch):
     def stop_before_write(*_args, **_kwargs):
         raise RuntimeError("stopped before the Zarr write")
 
+    # Prove the guard's callback fires, so a dask regression cannot silently
+    # reduce this test to the chunks/dims assertions below.
+    with Callback(pretask=fail_on_compute), pytest.raises(pytest.fail.Exception):
+        xr.DataArray([1.0]).chunk().compute()
+
     # The write cell itself is executed too, with to_zarr stubbed out, so a
     # compute added to its prefix cannot slip past the guard.
     monkeypatch.setattr(xr.Dataset, "to_zarr", stop_before_write)
