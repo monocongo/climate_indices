@@ -86,6 +86,21 @@ The implementation vectorizes each daily update over spatial cells and loops
 only over time. It has a required pure-NumPy baseline; `numba` is not an
 optional dependency unless later benchmark evidence justifies its support cost.
 
+## Missing data and gaps
+
+Missing days are governed by [ADR-0007](../adr/0007-fire-missing-data-policy.md).
+The default `nan_policy="propagate"` never bridges a gap: missing days have
+NaN outputs, and the first valid day after an interior gap resumes with a NaN
+state, so every later output is NaN. `nan_policy="bridge"` with
+`max_gap_days=N` skips interior and trailing runs of at most `N` days with the
+state unchanged, and poisons from the first run that exceeds it. Leading
+missing days never poison. Interpolation is deliberately not a policy:
+callers fill inputs upstream so the fill stays visible. A day is missing when
+any time-varying weather input is NaN; sub-freezing and inactive-index days
+are valid observations, and off-season periods must use the seasonal state
+carry from #806 rather than NaN. Each stateful implementation must carry the
+parametrized gap matrix recorded in ADR-0007.
+
 ## Xarray chunking
 
 Future stateful xarray fire adapters validate every time-varying input with
@@ -117,7 +132,9 @@ kernels.
 | `haines_index(temperature_lower_celsius, temperature_upper_celsius, dewpoint_lower_celsius, *, variant)` | pressure-level °C inputs selected by `variant` | integer 2–6; `variant` is `"low"`, `"mid"`, or `"high"`, never inferred by default |
 
 Only `fosberg_ffwi()` and `hot_dry_windy()` are implemented today; the
-remaining rows are planned contracts, not yet callable.
+remaining rows are planned contracts, not yet callable. Every stateful row
+above also accepts the keyword-only missing-data arguments
+`nan_policy="propagate"` and `max_gap_days=0` described above.
 
 `fosberg_ffwi()` is weather-only and elementwise. KBDI, FFMC, DMC, DC, and
 CFFWIS are daily recursive functions; their weather inputs must be ordered in

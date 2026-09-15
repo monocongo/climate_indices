@@ -40,6 +40,14 @@ recomputing the archive. The state is a NumPy-layer value object rather than
 an xarray `Dataset`, so its arrays carry the computational spatial shape but
 no coordinates.
 
+Missing observations follow
+[ADR-0007](adr/0007-fire-missing-data-policy.md): nothing is interpolated
+implicitly. The default `nan_policy="propagate"` poisons the state at the
+first interior gap and yields NaN outputs from there on;
+`nan_policy="bridge"` with `max_gap_days=N` skips runs of at most `N` missing
+days. Adapters forward both keyword arguments to the NumPy core so the policy
+applies per cell along the time axis.
+
 ## Operational Guidance
 
 - Use NumPy APIs for stable production integrations that cannot absorb beta
