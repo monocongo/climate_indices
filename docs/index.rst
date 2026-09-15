@@ -407,6 +407,7 @@ User Guides
    :maxdepth: 2
 
    quickstart
+   data_requirements
    algorithms
    wildfire_applications
    pypi_release
