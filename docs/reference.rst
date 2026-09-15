@@ -25,6 +25,10 @@ xarray Integration
 .. warning:: **Beta Feature** — The xarray adapter layer is beta.
    See :doc:`xarray_migration` for stability guarantees.
 
+The Dask-backed SPI/SPEI workflow is demonstrated end to end in
+``notebooks/zarr_dask_spi_spei.ipynb``; :doc:`troubleshooting` covers its setup
+and failure modes.
+
 climate_indices.xarray_adapter
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

@@ -140,6 +140,10 @@ jobs:
           notebooks/palmer_indices_xarray.ipynb
           notebooks/eddi_xarray.ipynb
 
+      - name: Smoke-execute the Zarr/Dask SPI/SPEI tutorial
+        timeout-minutes: 15
+        run: bash scripts/smoke_e2e_notebook.sh
+
   security-audit:
     permissions:
       contents: read
