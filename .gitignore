@@ -93,6 +93,9 @@ _bmad-output/
 .claude/settings.local.json
 .claude/skills/
 
+# Agent session handoffs
+.handoffs/
+
 # Codex local skill installation state
 skills-lock.json
 
