@@ -67,6 +67,11 @@ _wrapped_eddi = xarray_adapter(
 )(indices.eddi)
 
 
+def _not_none(**kwargs: Any) -> dict[str, Any]:
+    """Drop keyword arguments whose values are None, e.g. inferred xarray params."""
+    return {key: value for key, value in kwargs.items() if value is not None}
+
+
 # SPI overloads
 @overload
 def spi(
@@ -137,22 +142,18 @@ def spi(
     Returns:
         SPI values as numpy.ndarray or xarray.DataArray (matches input type).
     """
-    # filter out None kwargs before passing to wrapped function
-    kwargs = {
-        "scale": scale,
-        "distribution": distribution,
-        "fitting_params": fitting_params,
-    }
-    if data_start_year is not None:
-        kwargs["data_start_year"] = data_start_year
-    if calibration_year_initial is not None:
-        kwargs["calibration_year_initial"] = calibration_year_initial
-    if calibration_year_final is not None:
-        kwargs["calibration_year_final"] = calibration_year_final
-    if periodicity is not None:
-        kwargs["periodicity"] = periodicity
-
-    return _wrapped_spi(values, **kwargs)
+    return _wrapped_spi(
+        values,
+        scale=scale,
+        distribution=distribution,
+        fitting_params=fitting_params,
+        **_not_none(
+            data_start_year=data_start_year,
+            calibration_year_initial=calibration_year_initial,
+            calibration_year_final=calibration_year_final,
+            periodicity=periodicity,
+        ),
+    )
 
 
 # SPEI overloads
@@ -229,22 +230,19 @@ def spei(
     Returns:
         SPEI values as numpy.ndarray or xarray.DataArray (matches input type).
     """
-    # filter out None kwargs before passing to wrapped function
-    kwargs = {
-        "scale": scale,
-        "distribution": distribution,
-        "fitting_params": fitting_params,
-    }
-    if periodicity is not None:
-        kwargs["periodicity"] = periodicity
-    if data_start_year is not None:
-        kwargs["data_start_year"] = data_start_year
-    if calibration_year_initial is not None:
-        kwargs["calibration_year_initial"] = calibration_year_initial
-    if calibration_year_final is not None:
-        kwargs["calibration_year_final"] = calibration_year_final
-
-    return _wrapped_spei(precips_mm, pet_mm, **kwargs)
+    return _wrapped_spei(
+        precips_mm,
+        pet_mm,
+        scale=scale,
+        distribution=distribution,
+        fitting_params=fitting_params,
+        **_not_none(
+            periodicity=periodicity,
+            data_start_year=data_start_year,
+            calibration_year_initial=calibration_year_initial,
+            calibration_year_final=calibration_year_final,
+        ),
+    )
 
 
 # Percentage of Normal (PNP) overloads
@@ -315,20 +313,16 @@ def percentage_of_normal(
     Returns:
         PNP values as numpy.ndarray or xarray.DataArray (matches input type).
     """
-    # filter out None kwargs before passing to wrapped function
-    kwargs: dict[str, Any] = {
-        "scale": scale,
-    }
-    if data_start_year is not None:
-        kwargs["data_start_year"] = data_start_year
-    if calibration_start_year is not None:
-        kwargs["calibration_start_year"] = calibration_start_year
-    if calibration_end_year is not None:
-        kwargs["calibration_end_year"] = calibration_end_year
-    if periodicity is not None:
-        kwargs["periodicity"] = periodicity
-
-    return _wrapped_percentage_of_normal(values, **kwargs)
+    return _wrapped_percentage_of_normal(
+        values,
+        scale=scale,
+        **_not_none(
+            data_start_year=data_start_year,
+            calibration_start_year=calibration_start_year,
+            calibration_end_year=calibration_end_year,
+            periodicity=periodicity,
+        ),
+    )
 
 
 # PCI (Precipitation Concentration Index) overloads
@@ -569,13 +563,13 @@ def eddi(
     Returns:
         EDDI values as numpy.ndarray or xarray.DataArray (matches input type).
     """
-    kwargs: dict[str, Any] = {"scale": scale}
-    if data_start_year is not None:
-        kwargs["data_start_year"] = data_start_year
-    if calibration_year_initial is not None:
-        kwargs["calibration_year_initial"] = calibration_year_initial
-    if calibration_year_final is not None:
-        kwargs["calibration_year_final"] = calibration_year_final
-    if periodicity is not None:
-        kwargs["periodicity"] = periodicity
-    return _wrapped_eddi(pet_values, **kwargs)
+    return _wrapped_eddi(
+        pet_values,
+        scale=scale,
+        **_not_none(
+            data_start_year=data_start_year,
+            calibration_year_initial=calibration_year_initial,
+            calibration_year_final=calibration_year_final,
+            periodicity=periodicity,
+        ),
+    )
