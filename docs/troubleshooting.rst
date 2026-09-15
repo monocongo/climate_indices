@@ -76,6 +76,10 @@ Use this table to quickly find the section for your error message:
      - `Dask and Chunking Issues`_
    * - ``No overlapping time steps after alignment``
      - `Dask and Chunking Issues`_
+   * - ``Prepared inputs not found`` / ``Input manifest not found``
+     - `Notebook and Prepared-Input Workflow`_
+   * - ``must keep time as a single chunk``
+     - `Notebook and Prepared-Input Workflow`_
    * - ``ShortCalibrationWarning``
      - `Warnings (Non-Fatal)`_
    * - ``MissingDataWarning``
@@ -836,6 +840,128 @@ No overlapping time steps after alignment
           scale=6,
           distribution=indices.Distribution.gamma,
       )
+
+----
+
+Notebook and Prepared-Input Workflow
+=====================================
+
+The xarray/Dask tutorial
+`notebooks/zarr_dask_spi_spei.ipynb
+<https://github.com/monocongo/climate_indices/blob/main/notebooks/zarr_dask_spi_spei.ipynb>`__
+runs against a prepared sample store instead of ad-hoc inputs, so its failures
+are mostly setup problems. Check this section before changing the notebook.
+
+Running the tutorial
+--------------------
+
+One command prepares the pinned sample inputs (cached after the first run) and
+executes the notebook from a fresh kernel:
+
+.. code-block:: bash
+
+   bash scripts/smoke_e2e_notebook.sh
+
+Interactively, run ``uv sync --group dev`` first, then **Restart Kernel → Run
+All**. The smoke command executes into a scratch directory, so it never
+overwrites the committed notebook.
+
+Missing prepared inputs
+-----------------------
+
+.. warning::
+
+   **Error:** ``FileNotFoundError: Prepared inputs not found: ../data/e2e/current. Generate them once with: uv run --group dev scripts/prepare_e2e_inputs.py``
+
+   **Cause:** ``data/e2e/`` is gitignored and no generation has been published
+   yet, or ``CLIMATE_INDICES_E2E_DATA`` points at a directory without a
+   ``current`` entry.
+
+   **Solution:** From the repository root:
+
+   .. code-block:: bash
+
+      uv run --group dev scripts/prepare_e2e_inputs.py
+
+   Then restart the kernel and rerun. The default ``../data/e2e`` resolves
+   against the kernel's working directory, which is ``notebooks/`` for the
+   documented launch commands; a kernel started elsewhere moves that default.
+   ``CLIMATE_INDICES_E2E_DATA`` overrides it (the test suite uses that
+   override), so set it to an absolute path when running from another
+   directory.
+
+Input preparation and checksum failures
+---------------------------------------
+
+The preparation script downloads about 5 MB of pinned source NetCDF and
+verifies each file's SHA-256 before use, so a stale or corrupted cache fails
+loudly instead of feeding wrong values into the tutorial. Reruns need no
+network access once ``data/e2e/source/`` is populated; delete that directory
+and rerun when a checksum error names a file you did not modify. See
+`docs/research/nclimgrid-acquisition-and-redistribution.md
+<https://github.com/monocongo/climate_indices/blob/main/docs/research/nclimgrid-acquisition-and-redistribution.md>`__
+for the source provenance and attribution constraints.
+
+Input contract mismatches
+-------------------------
+
+The notebook validates the prepared store before calculating, and each failure
+names the contract it enforces:
+
+- **Coordinates:** precipitation and PET must be exactly aligned before SPEI;
+  partial overlap is not enough. See `Coordinate and Dimension Errors`_ and
+  :doc:`xarray_migration`.
+- **Units:** inputs must be monthly totals in millimeters declared as
+  ``units == "mm"``. Relabeling the attribute is not a conversion; convert the
+  values upstream instead.
+- **Calibration Period:** ``data_start_year`` and the calibration years in the
+  notebook's ``pipeline_config`` must match the prepared store and its
+  ``manifest.json``. See `Empty calibration period`_ and
+  `ShortCalibrationWarning`_.
+- **Missing data:** missing values must be ``NaN``, missingness must match
+  between precipitation and PET, and no cell may be partially missing across
+  the time series, because distribution fitting needs one complete series per
+  location. See `Insufficient non-NaN data`_.
+- **All-NaN results:** an all-NaN cell means the location never had enough
+  valid data to fit; the notebook's guard treats those cells as unavailable
+  instead of failing the whole grid.
+
+Time chunking
+-------------
+
+.. warning::
+
+   **Error:** ``CoordinateValidationError: Prepared store must keep time as a single chunk.``
+
+   **Cause:** spatial chunks parallelize independently, but distribution
+   fitting needs each location's full series, so ``time`` must be one chunk in
+   both the prepared store and the calculation input. See
+   `Multi-chunked time dimension`_ and
+   `docs/adr/0003-dask-time-dimension-single-chunk.md
+   <https://github.com/monocongo/climate_indices/blob/main/docs/adr/0003-dask-time-dimension-single-chunk.md>`__.
+
+   **Solution:** rechunk with ``ds.chunk({"time": -1})`` before calculating
+   (as the notebook does) and rewrite persistent stores with the complete
+   ``time`` dimension in a single chunk. Spatial chunk sizes are free to vary.
+
+Apparent lack of parallelism
+----------------------------
+
+Dask parallelizes over spatial chunks, not over time. A grid no larger than
+one spatial chunk produces a single task no matter how many workers exist; the
+tutorial's 38x87 grid with 10x10 chunks yields roughly 40 spatial blocks, and
+worker count alone is not evidence of parallelism. Inspect the chunk layout and
+task graph (the notebook does) and expect scheduling overhead, not a speedup,
+for a small sample. See `Dask and Chunking Issues`_ and `Performance Tuning`_.
+
+Optional dependencies
+---------------------
+
+The notebook disables the Dask dashboard so the optional ``bokeh`` dependency
+stays optional, and its plot cells need ``matplotlib`` from the ``dev`` group.
+A minimum-dependency environment can execute the calculation cells without
+plots, which is what ``tests/test_e2e_with_dask.py`` does against a synthetic
+store.
 
 ----
 
