@@ -35,22 +35,19 @@ def _code_cells() -> list[str]:
 
 
 def _executable_cells() -> list[str]:
-    # The Dask Client cell (and its matching close()) is execution mechanics
-    # out of scope here (#829) and stays untested; local Dask falls back to
-    # the threaded scheduler without it, so calculation-path coverage is
-    # unaffected. The plot cells are excluded from every test that reuses
-    # this list because matplotlib isn't guaranteed present (e.g. the
-    # minimum-dependency CI job); test_notebook_plot_cells_execute covers
-    # them separately, gated on matplotlib being importable.
-    return [
-        source
-        for source in _code_cells()
-        if "dask.distributed" not in source and ".plot(" not in source and "client.close" not in source
-    ]
+    # The Dask Client cell is execution mechanics out of scope here (#829) and
+    # stays untested; local Dask falls back to the threaded scheduler without
+    # it, so calculation-path coverage is unaffected. The write cell's guarded
+    # `client.close()` is skipped whenever no client exists in the namespace.
+    # The plot cells are excluded from every test that reuses this list
+    # because matplotlib isn't guaranteed present (e.g. the minimum-dependency
+    # CI job); test_notebook_plot_cells_execute covers them separately, gated
+    # on matplotlib being importable.
+    return [source for source in _code_cells() if "dask.distributed" not in source and ".plot(" not in source]
 
 
 def _cells_excluding_client() -> list[str]:
-    return [source for source in _code_cells() if "dask.distributed" not in source and "client.close" not in source]
+    return [source for source in _code_cells() if "dask.distributed" not in source]
 
 
 def _exec_cells(namespace: dict, sources: list[str]) -> None:
@@ -186,6 +183,12 @@ def test_notebook_spi_spei_stay_lazy_until_the_write(e2e_data, monkeypatch):
     assert namespace["spei_da"].chunks is not None
     assert namespace["spi_da"].dims == ("time", "lat", "lon")
     assert namespace["spei_da"].dims == ("time", "lat", "lon")
+
+
+def test_notebook_demonstrates_split_time_rejection(e2e_data, capsys):
+    """The split-`time` demo must trigger the guard, not silently skip its premise."""
+    _exec_cells({}, _executable_cells())
+    assert "rejected as expected" in capsys.readouterr().out
 
 
 def test_notebook_spei_receives_pet_not_water_balance():
