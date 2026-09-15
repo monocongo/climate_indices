@@ -12,6 +12,7 @@ import numpy as np
 import xarray as xr
 
 from climate_indices import compute, indices, utils
+from climate_indices._cli import _add_common_spi_arguments, _prepare_file
 
 # variable names for the distribution fitting parameters
 _FITTING_VARIABLES = ("alpha", "beta", "skew", "loc", "scale", "prob_zero")
@@ -1254,55 +1255,6 @@ def _apply_to_subarray_pearson(params):
             )
 
 
-def _prepare_file(netcdf_file, var_name):
-    """
-    Determine if the NetCDF file has the expected lat, lon, and time dimensions,
-    and if not correctly ordered then create a temporary NetCDF with dimensions
-    in (lat, lon, time) order, otherwise just return the input NetCDF unchanged.
-
-    :param str netcdf_file:
-    :param str var_name:
-    :return: name of the NetCDF file containing correct dimensions
-    """
-
-    # make sure we have the expected dimensions for the data type
-    ds = xr.open_dataset(netcdf_file)
-    dimensions = ds[var_name].dims
-
-    # Validate dimensions based on data type
-    if "division" in dimensions:
-        # Climate divisions data
-        if len(dimensions) == 1:
-            expected_dims = {"division"}
-        elif len(dimensions) == 2:
-            expected_dims = {"division", "time"}
-        else:
-            message = f"Unsupported dimensions for climate division variable '{var_name}': {dimensions}"
-            _logger.error(message)
-            raise ValueError(message)
-    else:
-        # Gridded or timeseries data
-        if len(dimensions) == 1:
-            expected_dims = {"time"}
-        elif len(dimensions) == 2:
-            expected_dims = {"lat", "lon"}
-        elif len(dimensions) == 3:
-            expected_dims = {"lat", "lon", "time"}
-        else:
-            message = f"Unsupported dimensions for variable '{var_name}': {dimensions}"
-            _logger.error(message)
-            raise ValueError(message)
-
-    # Validate that the actual dimensions match expected dimensions
-    actual_dims = set(dimensions)
-    if actual_dims != expected_dims:
-        message = f"Invalid dimensions for variable '{var_name}': got {actual_dims}, expected {expected_dims}"
-        _logger.error(message)
-        raise ValueError(message)
-
-    return netcdf_file
-
-
 def main():  # type: () -> None
     # This function is used to perform climate indices processing on NetCDF
     # gridded datasets.
@@ -1317,20 +1269,6 @@ def main():  # type: () -> None
     # --var_name_precip prcp
     # --output_file_base ~/data/test/spi/nclimgrid_lowres
 
-    # # ==========================================================================
-    # # UNCOMMENT THE BELOW FOR PROFILING
-    # # ==========================================================================
-    # import cProfile
-    # import sys
-    #
-    # # if check avoids hackery when not profiling
-    # if sys.modules['__main__'].__file__ == cProfile.__file__:
-    #     import process_grid  # Imports you again (does *not* use cache or execute as __main__)
-    #
-    #     globals().update(vars(process_grid))  # Replaces current contents with newly imported stuff
-    #     sys.modules['__main__'] = process_grid  # Ensures pickle lookups on __main__ find matching version
-    # # ========== END OF PROFILING-SPECIFIC CODE ================================
-
     try:
         # log some timing info, used later for elapsed time
         start_datetime = datetime.now()
@@ -1338,51 +1276,9 @@ def main():  # type: () -> None
 
         # parse the command line arguments
         parser = argparse.ArgumentParser()
-        parser.add_argument(
-            "--periodicity",
-            help="Process input as either monthly or daily values",
-            choices=[compute.Periodicity.monthly, compute.Periodicity.daily],
-            type=compute.Periodicity.from_string,
-            required=True,
-        )
-        parser.add_argument(
-            "--scales",
-            help="Timestep scales over which the SPI values are to be computed",
-            type=int,
-            nargs="*",
-        )
-        parser.add_argument(
-            "--calibration_start_year",
-            help="Initial year of the calibration period",
-            type=int,
-        )
-        parser.add_argument(
-            "--calibration_end_year",
-            help="Final year of calibration period",
-            type=int,
-        )
-        parser.add_argument(
-            "--netcdf_precip",
-            type=str,
-            help="Precipitation NetCDF file to be used as input for indices computations",
-        )
-        parser.add_argument(
-            "--var_name_precip",
-            type=str,
-            help="Precipitation variable name used in the precipitation NetCDF file",
-        )
-        parser.add_argument(
-            "--output_file_base",
-            type=str,
-            help="Base output file path and name for the resulting output files",
-            required=True,
-        )
-        parser.add_argument(
-            "--multiprocessing",
-            help="options for multiprocessing -- single core, all cores but one, or all cores",
-            choices=["single", "all_but_one", "all"],
-            required=False,
-            default="all_but_one",
+        _add_common_spi_arguments(
+            parser,
+            scales_help="Timestep scales over which the SPI values are to be computed",
         )
         parser.add_argument(
             "--load_params",
