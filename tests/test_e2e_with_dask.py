@@ -188,6 +188,12 @@ def test_notebook_spi_spei_stay_lazy_until_the_write(e2e_data, monkeypatch):
     assert namespace["spei_da"].dims == ("time", "lat", "lon")
 
 
+def test_notebook_demonstrates_split_time_rejection(e2e_data, capsys):
+    """The split-`time` demo must trigger the guard, not silently skip its premise."""
+    _exec_cells({}, _executable_cells())
+    assert "rejected as expected" in capsys.readouterr().out
+
+
 def test_notebook_spei_receives_pet_not_water_balance():
     """SPEI must consume actual PET; a pre-computed water balance is not accepted."""
     tree = ast.parse("\n".join(_code_cells()))
