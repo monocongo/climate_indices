@@ -3,6 +3,10 @@
 The notebook is the authoritative artifact: these tests execute its code cells
 against a tiny synthetic prepared store (located via CLIMATE_INDICES_E2E_DATA)
 instead of importing a companion script.
+
+Nothing here reaches the network. Optional backends are skipped when absent:
+tests that write or reopen Zarr stores importorskip("zarr"), and the plot-cell
+test importorskip("matplotlib").
 """
 
 import ast
@@ -148,6 +152,31 @@ def test_notebook_uses_public_xarray_api():
     assert public_imports == {"spi", "spei"}
 
 
+def test_notebook_spi_spei_stay_lazy_until_the_write(e2e_data):
+    """The typed API results stay Dask-backed until to_zarr materializes them."""
+    namespace: dict = {}
+    sources = _executable_cells()
+    write_index = next(index for index, source in enumerate(sources) if "to_zarr" in source)
+    _exec_cells(namespace, sources[:write_index])
+    assert namespace["spi_da"].chunks is not None
+    assert namespace["spei_da"].chunks is not None
+    assert namespace["spi_da"].dims == ("time", "lat", "lon")
+
+
+def test_notebook_spei_receives_pet_not_water_balance():
+    """SPEI must consume actual PET; a pre-computed water balance is not accepted."""
+    tree = ast.parse("\n".join(_code_cells()))
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "spei"
+    ]
+    assert len(calls) == 1
+    arguments = {keyword.arg: ast.dump(keyword.value) for keyword in calls[0].keywords}
+    assert arguments["precips_mm"] == ast.dump(ast.parse('ds_calc["precip"]', mode="eval").body)
+    assert arguments["pet_mm"] == ast.dump(ast.parse('ds_calc["pet"]', mode="eval").body)
+
+
 def test_notebook_pipeline_end_to_end(e2e_data):
     data_root, ds = e2e_data
     namespace: dict = {}
@@ -160,18 +189,25 @@ def test_notebook_pipeline_end_to_end(e2e_data):
         "calibration_year_final": 2010,
         "periodicity": compute.Periodicity.monthly,
     }
-    expected_spi = indices.spi(ds.precip[:, 0, 0].values.copy(), distribution=indices.Distribution.gamma, **kwargs)
-    expected_spei = indices.spei(
-        ds.precip[:, 0, 0].values.copy(),
-        ds.pet[:, 0, 0].values.copy(),
-        distribution=indices.Distribution.pearson,
-        **kwargs,
-    )
     with xr.open_zarr(data_root / "climate_indices_output.zarr", consolidated=True) as actual:
-        np.testing.assert_allclose(actual.spi_3[:, 0, 0], expected_spi, atol=1e-6)
-        np.testing.assert_allclose(actual.spei_3[:, 0, 0], expected_spei, atol=1e-6)
-        assert actual.spi_3[:, 0, 1].isnull().all()
-        assert actual.spei_3[:, 0, 1].isnull().all()
+        # Every spatial cell, not just one representative series: valid cells
+        # must match the direct stable API, all-missing cells must stay NaN.
+        for lat in range(ds.sizes["lat"]):
+            for lon in range(ds.sizes["lon"]):
+                precip_series = ds.precip[:, lat, lon].values.copy()
+                if np.isnan(precip_series).all():
+                    assert actual.spi_3[:, lat, lon].isnull().all()
+                    assert actual.spei_3[:, lat, lon].isnull().all()
+                    continue
+                expected_spi = indices.spi(precip_series, distribution=indices.Distribution.gamma, **kwargs)
+                expected_spei = indices.spei(
+                    precip_series,
+                    ds.pet[:, lat, lon].values.copy(),
+                    distribution=indices.Distribution.pearson,
+                    **kwargs,
+                )
+                np.testing.assert_allclose(actual.spi_3[:, lat, lon], expected_spi, atol=1e-6)
+                np.testing.assert_allclose(actual.spei_3[:, lat, lon], expected_spei, atol=1e-6)
         # scale - 1 leading values are unavailable at the 3-month Timescale.
         assert actual.spi_3[:2].isnull().all()
         assert actual.spei_3[:2].isnull().all()
