@@ -1615,7 +1615,9 @@ def xarray_adapter(
     Notes:
         - NumPy inputs: Passed through unchanged to the wrapped function
         - xarray inputs: Values extracted, parameters inferred, result rewrapped with coords
-        - 1D and multi-dimensional DataArrays supported
+        - 1D and multi-dimensional DataArrays supported; parameter inference requires the configured
+          ``time_dim``, and Dask-backed inputs must keep that dimension in a single chunk
+          (see :doc:`xarray_migration`)
         - Uses inspect.signature() for generic parameter mapping (works with any function)
     """
 
