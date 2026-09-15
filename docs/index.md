@@ -51,38 +51,32 @@ This documentation set is optimized for AI agents and provides comprehensive tec
    - Key design decisions and trade-offs
    - Current deepening candidates: [architecture-deepening-review-2026-08-27.md](./architecture-deepening-review-2026-08-27.md)
 
-3. **[source-tree-analysis.md](./source-tree-analysis.md)** 🟡 HIGH PRIORITY
-   - Annotated directory structure
-   - Critical file locations and priorities
-   - Module dependency graph
-   - Entry points for common development tasks
-
-4. **[component-inventory.md](./component-inventory.md)** 🟡 HIGH PRIORITY
+3. **[component-inventory.md](./component-inventory.md)** 🟡 HIGH PRIORITY
    - Comprehensive catalog of all 14 modules
    - Function-level documentation
    - Dependencies and usage patterns
    - Code examples for each component
 
-5. **[development-guide.md](./development-guide.md)** 🟢 STANDARD
+4. **[development-guide.md](./development-guide.md)** 🟢 STANDARD
    - Prerequisites and installation
    - Development workflow
    - Testing and code quality commands
    - Coding standards and troubleshooting
 
-6. **[deployment-guide.md](./deployment-guide.md)** 🟢 STANDARD
+5. **[deployment-guide.md](./deployment-guide.md)** 🟢 STANDARD
    - Docker containerization
    - CI/CD pipeline details (3 workflows)
    - PyPI distribution process
    - ReadTheDocs deployment
    - Dependency management with uv
 
-7. **[release-process.md](./release-process.md)** 🟢 STANDARD
+6. **[release-process.md](./release-process.md)** 🟢 STANDARD
    - Maintainer release checklist
    - Tag-based release flow from `main`
    - PyPI Trusted Publishing expectations
    - Hotfix flow
 
-8. **[contribution-guide.md](./contribution-guide.md)** 🟢 STANDARD
+7. **[contribution-guide.md](./contribution-guide.md)** 🟢 STANDARD
    - Development setup for contributors
    - Coding conventions and standards
    - Testing requirements
@@ -148,8 +142,7 @@ uv run pytest
 **Recommended Reading Order**:
 1. [project-overview.md](./project-overview.md) - Understand project scope and design
 2. [architecture.md](./architecture.md) - Learn system architecture
-3. [source-tree-analysis.md](./source-tree-analysis.md) - Navigate codebase
-4. [component-inventory.md](./component-inventory.md) - Deep-dive into modules
+3. [component-inventory.md](./component-inventory.md) - Deep-dive into modules
 
 **For Specific Tasks**:
 - **Add new index**: Read `compute.py`, `indices.py`, `xarray_adapter.py` + tests

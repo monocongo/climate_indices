@@ -1066,7 +1066,8 @@ def pci(
 
         # make sure we're not dealing with a NaN or out-of-range or less than the expected rainfall value
         if len(rainfall_mm) == 366 and not sum(np.isnan(rainfall_mm)):
-            m = [31, 29, 91, 121, 152, 182, 213, 244, 274, 305, 335, 366]
+            # Cumulative month-end day-of-year boundaries (not month lengths).
+            m = [31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335, 366]
             start = 0
             numerator = 0
             denominator = 0
@@ -1088,7 +1089,8 @@ def pci(
             return result
 
         if len(rainfall_mm) == 365 and not sum(np.isnan(rainfall_mm)):
-            m = [31, 28, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365]
+            # Cumulative month-end day-of-year boundaries (not month lengths).
+            m = [31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365]
             start = 0
             numerator = 0
             denominator = 0

@@ -159,7 +159,7 @@ class TestTypedPublicAPICompliance:
 
         # parse the source file AST to find @overload decorators
         source_file = _SRC_ROOT / "typed_public_api.py"
-        tree = ast.parse(source_file.read_text())
+        tree = ast.parse(source_file.read_text(encoding="utf-8"))
 
         overload_count = 0
         for node in ast.walk(tree):
@@ -286,7 +286,7 @@ class TestStructlogLifecycleCompliance:
         """Each module uses structlog (via get_logger) not stdlib logging."""
         info = INDICES[index_name]
         mod_path = _SRC_ROOT / f"{info['module']}.py"
-        source = mod_path.read_text()
+        source = mod_path.read_text(encoding="utf-8")
 
         # should use structlog-based logger, not stdlib logging.getLogger
         assert "get_logger" in source, f"{info['module']}.py should use get_logger() for structlog"
@@ -321,7 +321,7 @@ class TestStructuredExceptionsCompliance:
         # the function itself or its validation helpers should use InvalidArgumentError
         has_structured = "InvalidArgumentError" in source
         # also check the module-level (for helper validators)
-        mod_source = (_SRC_ROOT / f"{info['module']}.py").read_text()
+        mod_source = (_SRC_ROOT / f"{info['module']}.py").read_text(encoding="utf-8")
         has_module_import = "InvalidArgumentError" in mod_source
 
         assert has_structured or has_module_import, (
@@ -330,17 +330,17 @@ class TestStructuredExceptionsCompliance:
 
     def test_eto_module_imports_structured_exceptions(self) -> None:
         """eto.py imports InvalidArgumentError from exceptions module."""
-        source = (_SRC_ROOT / "eto.py").read_text()
+        source = (_SRC_ROOT / "eto.py").read_text(encoding="utf-8")
         assert "from climate_indices.exceptions import InvalidArgumentError" in source
 
     def test_indices_module_imports_structured_exceptions(self) -> None:
         """indices.py imports InvalidArgumentError from exceptions module."""
-        source = (_SRC_ROOT / "indices.py").read_text()
+        source = (_SRC_ROOT / "indices.py").read_text(encoding="utf-8")
         assert "InvalidArgumentError" in source
 
     def test_palmer_uses_structlog_error_context(self) -> None:
         """Palmer module logs structured error context on failure."""
-        source = (_SRC_ROOT / "palmer.py").read_text()
+        source = (_SRC_ROOT / "palmer.py").read_text(encoding="utf-8")
         assert "calculation_failed" in source, "palmer.py should log 'calculation_failed' with error context"
 
 
@@ -355,7 +355,7 @@ class TestPropertyBasedTestCompliance:
     def _get_property_test_source(self) -> str:
         """Read the property-based test file source."""
         test_file = _TEST_ROOT / "test_property_based.py"
-        return test_file.read_text()
+        return test_file.read_text(encoding="utf-8")
 
     @pytest.mark.parametrize(
         "search_term,index_name",
