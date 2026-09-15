@@ -1,0 +1,14 @@
+{
+  "source": "Keetch and Byram (1968), A Drought Index for Forest Fire Control, Research Paper SE-38, Figure 1 sample record (pp. 11-13)",
+  "url": "https://research.fs.usda.gov/treesearch/40",
+  "download_date": "2026-09-15",
+  "subset_description": "Transcription of the published 30-day Figure 1 worked example: daily precipitation, rounded maximum temperature, published net rain, Table 4 drought factor, and published KBDI. The series starts from the published previous-day KBDI of 164 hundredths of an inch and exercises the report's integer lookup tables (Table 4, 50-inch mean annual rainfall).",
+  "checksum_sha256": "5741a5f4aa396c8009af72001b52b83cc9a707f2ae6055ccbf29614726066612",
+  "fixture_version": "1.0.0",
+  "validation_tolerance": {
+    "figure1_continuous_equation_atol_hundredths_in": 4.0
+  },
+  "citation": "Keetch, J.J. and Byram, G.M. (1968) A Drought Index for Forest Fire Control. USDA Forest Service Research Paper SE-38. https://research.fs.usda.gov/treesearch/40",
+  "license": "U.S. Government work (17 USC 105); the source PDF is not redistributed. The corrected standard constant used by the test is documented by Alexander, M.E. (1990) Computer Calculation of the Keetch-Byram Drought Index - Programmers Beware! Fire Management Notes 51(4):23-25.",
+  "notes": "Figure 1 is an exact oracle for the 1968 integer table workflow, not for the corrected continuous Equation 18 that fire.kbdi() implements. The tolerance is a bound on the accumulated table discretization (3 F temperature bins, 50-point deficit columns, integer drought factors), not a rounding allowance chosen to make the test pass. Source PDF SHA-256 at transcription: 4a000f5e4da1eb6b414724549b847b0556a1b6d5d56793c5459b18f01c45c03b. The net_rain_in and table_drought_factor columns make the source's reduce-then-increase ordering auditable and are checked by the test independently of production code."
+}
