@@ -53,6 +53,15 @@ State initialization, final-state extraction, spin-up, and wet-spell state
 follow [ADR-0006](../adr/0006-fire-recursive-state-and-execution.md). No index
 may invent a different state-return convention.
 
+KBDI has the same "current adapter can't use it as-is" problem from a
+different direction: `kbdi()`'s `units` argument selects between two
+registry entries (`kbdi` for metric, `kbdi_imperial` for imperial) at *call*
+time, but `xarray_adapter`'s `cf_metadata` parameter binds one fixed
+`CFAttributes` dict at *decoration* time (#798). The KBDI xarray adapter
+(#801) needs the adapter to resolve the registry key per call — from the
+caller's `units` argument, not from a decorator-time constant — the same way
+the CFFWIS extension above resolves seven keys from one call.
+
 ## Stateful recurrence contract
 
 KBDI implements the contract today, with `KBDIState` carrying `kbdi`,
@@ -158,11 +167,18 @@ output. Do not add fire-specific exception classes.
 
 Fire outputs have no CF `standard_name`. Xarray metadata comes exclusively from
 `CF_METADATA`: each adapter's `long_name`, units, description, and references
-come from its registry entry, never hand-written in an adapter. The current
-`CFAttributes` schema holds only `long_name`, `units`, and `references` and
-has no fire entries; [#798](https://github.com/monocongo/climate_indices/issues/798)
-extends the schema with `description` and adds the fire entries, and no fire
-adapter ships before that lands.
+come from its registry entry, never hand-written in an adapter.
+[#798](https://github.com/monocongo/climate_indices/issues/798) extended
+`CFAttributes` with `description` and `climate_indices_variant`, and added
+entries for the indices implemented today: `kbdi` (metric), `kbdi_imperial`,
+`ffwi`, and `hdw`. KBDI uses two keys, not one, because `kbdi()` returns two
+different unit scales from the same function; `climate_indices_variant`
+distinguishes them. CFFWIS (`ffmc`, `dmc`, `dc`, `isi`, `bui`, `fwi`, `dsr`,
+#803/#804) and the Haines Index (`haines`, #810) have no registry entries yet
+— their unit and variant decisions (CFFWIS classic vs. FWI2025, Haines
+elevation variant) are open questions best resolved against real
+implementations, not guessed ahead of them. No adapter for an index ships
+before its registry entry lands.
 
 `drought_code()` names the CFFWIS component only. It neither accepts a climate
 calibration period nor means SPI, SPEI, PDSI, or any other drought index.
