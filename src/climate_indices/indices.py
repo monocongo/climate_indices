@@ -827,6 +827,20 @@ def percentage_of_normal(
     memory_metrics = check_large_array_memory(values)
 
     try:
+        # we expect to operate upon a 1-D array, so if we've been passed a 2-D array
+        # then we flatten it, otherwise raise an error
+        shape = values.shape
+        if len(shape) == 2:
+            values = values.flatten()
+        elif len(shape) != 1:
+            message = f"Invalid shape of input array: {shape} -- only 1-D and 2-D arrays are supported"
+            log.error(message)
+            raise DataShapeError(
+                message,
+                expected_shape="(N,) or (years, periods)",
+                actual_shape=shape,
+            )
+
         # if doing monthly then we'll use 12 periods, corresponding to calendar
         # months, if daily assume years w/366 days
         if periodicity == compute.Periodicity.monthly:
@@ -889,25 +903,48 @@ def percentage_of_normal(
         calibration_end_index = calibration_start_index + (calibration_years * period_length)
         calibration_period_sums = scale_sums[calibration_start_index:calibration_end_index]
 
-        # pad a trailing partial period with NaN (ignored by the average) so that the
-        # calibration period reshapes into whole calendar periods, e.g. when the
-        # calibration period extends past the end of the data
-        if calibration_period_sums.size % period_length:
-            calibration_period_sums = np.concatenate(
-                [calibration_period_sums, np.full(-calibration_period_sums.size % period_length, np.nan)],
-            )
+        if calibration_period_sums.size:
+            # pad a trailing partial period with NaN (ignored by the average) so that the
+            # calibration period reshapes into whole calendar periods, e.g. when the
+            # calibration period extends past the end of the data
+            if calibration_period_sums.size % period_length:
+                calibration_period_sums = np.concatenate(
+                    [calibration_period_sums, np.full(-calibration_period_sums.size % period_length, np.nan)],
+                )
 
-        # for each time step in the calibration period, get the average of
-        # the scale sum for that calendar time step (i.e. average all January sums,
-        # then all February sums, etc.)
-        averages = np.nanmean(calibration_period_sums.reshape(-1, period_length), axis=0)
+            # for each time step in the calibration period, get the average of
+            # the scale sum for that calendar time step (i.e. average all January sums,
+            # then all February sums, etc.)
+            averages = np.nanmean(calibration_period_sums.reshape(-1, period_length), axis=0)
+        else:
+            # the calibration window lies beyond the end of the data, so no normal
+            # values are available -- every percentage is missing
+            averages = np.full((period_length,), np.nan)
 
         # for each time step of the scale_sums array find its corresponding percentage
         # of the time steps scale average for its respective calendar time step, leaving
         # NaN wherever the calendar time step's average is not a positive value
-        divisors = np.resize(averages, scale_sums.shape)
+        averages = np.where(averages > 0.0, averages, np.nan)
         percentages_of_normal = np.full(scale_sums.shape, np.nan)
-        np.divide(scale_sums, divisors, out=percentages_of_normal, where=divisors > 0.0)
+
+        # divide whole calendar periods at a time so that the repeating normals broadcast
+        # from the (small) averages array rather than an input-sized divisor array
+        whole_periods = scale_sums.size // period_length
+        if whole_periods:
+            np.divide(
+                scale_sums[: whole_periods * period_length].reshape(whole_periods, period_length),
+                averages,
+                out=percentages_of_normal[: whole_periods * period_length].reshape(whole_periods, period_length),
+            )
+
+        # a trailing partial period uses the normals of the calendar time steps it covers
+        remainder_start = whole_periods * period_length
+        if remainder_start < scale_sums.size:
+            np.divide(
+                scale_sums[remainder_start:],
+                averages[: scale_sums.size - remainder_start],
+                out=percentages_of_normal[remainder_start:],
+            )
 
         duration_ms = (time.perf_counter() - t0) * 1000.0
         log.info(
