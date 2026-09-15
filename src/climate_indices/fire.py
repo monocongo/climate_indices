@@ -399,14 +399,22 @@ def kbdi(
     if units == "imperial":
         with np.errstate(over="ignore"):
             precipitation_array = precipitation_array * 25.4
-            temperature_array = (temperature_array - 32.0) * 5.0 / 9.0
+            # the factor is grouped so the intermediate product cannot overflow
+            temperature_array = (temperature_array - 32.0) * (5.0 / 9.0)
             mean_annual = mean_annual * 25.4
             kbdi_value = kbdi_value * _KBDI_MM_PER_POINT
             wet_spell = wet_spell * 25.4
-        if np.any(np.isinf(precipitation_array)) or np.any(np.isinf(mean_annual)) or np.any(np.isinf(wet_spell)):
+        if (
+            np.any(np.isinf(precipitation_array))
+            or np.any(np.isinf(temperature_array))
+            or np.any(np.isinf(mean_annual))
+            or np.any(np.isinf(wet_spell))
+        ):
             raise InvalidArgumentError(
                 "Imperial inputs must be representable in metric units: the conversion overflows float64.",
-                argument_name="precipitation/mean_annual_precipitation/initial_state.wet_spell_precipitation",
+                argument_name=(
+                    "precipitation/maximum_temperature/mean_annual_precipitation/initial_state.wet_spell_precipitation"
+                ),
                 argument_value="finite value too large to convert to metric units",
                 valid_values="Finite values that do not overflow the metric conversion",
             )
