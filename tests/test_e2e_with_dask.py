@@ -102,7 +102,17 @@ def e2e_data(tmp_path, monkeypatch):
     return tmp_path, ds
 
 
-def _synthetic_dataset() -> xr.Dataset:
+@pytest.fixture(params=["MS", pd.offsets.MonthEnd()])
+def e2e_data_any_calendar(request, tmp_path, monkeypatch):
+    """Prepared store under each accepted calendar convention (month-start and month-end)."""
+    pytest.importorskip("zarr")
+    ds = _synthetic_dataset(time_freq=request.param)
+    _publish_store(tmp_path, ds)
+    monkeypatch.setenv("CLIMATE_INDICES_E2E_DATA", str(tmp_path))
+    return tmp_path, ds
+
+
+def _synthetic_dataset(time_freq="MS") -> xr.Dataset:
     """One land cell, one fully masked cell, and one meaningful zero, 1980-2010 monthly."""
     rng = np.random.default_rng(42)
     shape = (372, 2, 2)
@@ -117,7 +127,7 @@ def _synthetic_dataset() -> xr.Dataset:
             "wb": (("time", "lat", "lon"), precip - pet),
         },
         coords={
-            "time": pd.date_range("1980-01-01", periods=372, freq="MS"),
+            "time": pd.date_range("1980-01-01", periods=372, freq=time_freq),
             "lat": [35.0, 36.0],
             "lon": [-100.0, -99.0],
         },
@@ -409,7 +419,7 @@ def test_interrupted_publish_restores_previous_output(e2e_data, monkeypatch):
         xr.testing.assert_equal(actual, sentinel)
 
 
-def test_notebook_plot_cells_execute(e2e_data):
+def test_notebook_plot_cells_execute(e2e_data_any_calendar):
     """Map cells select valid persisted slices and retain scientific labels."""
     matplotlib = pytest.importorskip("matplotlib")
     matplotlib.use("Agg")
