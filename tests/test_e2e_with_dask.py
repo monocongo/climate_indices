@@ -14,7 +14,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from climate_indices import compute, exceptions, indices
+from climate_indices import __version__, compute, exceptions, indices
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 NOTEBOOK = REPO_ROOT / "notebooks" / "zarr_dask_spi_spei.ipynb"
@@ -178,11 +178,91 @@ def test_notebook_pipeline_end_to_end(e2e_data):
         # Meaningful zero precipitation (index 100, land pixel) stays a real value, not NaN.
         assert np.isfinite(actual.spi_3[100, 0, 0])
         assert np.isfinite(actual.spei_3[100, 0, 0])
+        # Coordinates and dimensions survive the write and reopen.
+        assert dict(actual.sizes) == dict(ds.sizes)
         xr.testing.assert_equal(actual.time, ds.time)
+        np.testing.assert_array_equal(actual.lat.values, ds.lat.values)
+        np.testing.assert_array_equal(actual.lon.values, ds.lon.values)
         # The typed API computes in float64; the on-disk store must stay float32
         # (matching the float32 mm inputs) rather than silently doubling in size.
         assert actual.spi_3.dtype == np.float32
         assert actual.spei_3.dtype == np.float32
+
+        # The public API's per-variable metadata must survive the write and reopen;
+        # "periodicity" is added by the notebook so the Timescale unit is explicit.
+        expected_metadata = {
+            "spi_3": {
+                "long_name": "Standardized Precipitation Index",
+                "units": "dimensionless",
+                "scale": 3,
+                "distribution": "gamma",
+                "calibration_year_initial": 1981,
+                "calibration_year_final": 2010,
+                "periodicity": "monthly",
+                "climate_indices_version": __version__,
+            },
+            "spei_3": {
+                "long_name": "Standardized Precipitation Evapotranspiration Index",
+                "units": "dimensionless",
+                "scale": 3,
+                "distribution": "pearson",
+                "calibration_year_initial": 1981,
+                "calibration_year_final": 2010,
+                "periodicity": "monthly",
+                "climate_indices_version": __version__,
+            },
+        }
+        for variable_name, expected_attrs in expected_metadata.items():
+            attrs = actual[variable_name].attrs
+            for key, value in expected_attrs.items():
+                assert attrs.get(key) == value, f"{variable_name}.{key}"
+            # CF defines no drought-index standard_name, so precipitation's
+            # inherited precipitation_amount must not describe the result.
+            assert "standard_name" not in attrs
+            assert variable_name.split("_")[0].upper() in attrs["history"]
+            assert __version__ in attrs["history"]
+        assert "McKee" in actual.spi_3.attrs["references"]
+        assert "Vicente-Serrano" in actual.spei_3.attrs["references"]
+
+
+def test_notebook_reopens_saved_output_with_a_fresh_lazy_handle():
+    """The saved results must be reopened from disk, never the in-memory object."""
+    source = "\n".join(_code_cells())
+    assert "load_dataset" not in source
+    assert "xr.open_zarr(final_output_zarr, consolidated=True)" in source
+    assert "out_ds.close()" in source
+
+
+def test_reopened_output_is_lazy_and_independent_of_prepared_inputs(e2e_data):
+    """Reopened results stay lazy and self-contained after the inputs are gone."""
+    data_root, _ = e2e_data
+    _exec_cells({}, _executable_cells())
+    (data_root / "current").unlink()
+    with xr.open_zarr(data_root / "climate_indices_output.zarr", consolidated=True) as reopened:
+        assert reopened["spi_3"].chunks is not None
+        assert reopened["spei_3"].chunks is not None
+        selected = reopened["spi_3"].isel(time=-1, lat=0, lon=0).compute()
+        assert np.isfinite(selected.item())
+
+
+def test_rerun_replaces_previous_output(e2e_data):
+    """A successful rerun replaces the previous completed output store."""
+    data_root, _ = e2e_data
+    output = data_root / "climate_indices_output.zarr"
+    xr.Dataset({"stale": (("x",), [1.0])}).to_zarr(output, mode="w", zarr_format=2)
+    _exec_cells({}, _executable_cells())
+    with xr.open_zarr(output, consolidated=True) as actual:
+        assert set(actual.data_vars) == {"spi_3", "spei_3"}
+
+
+def test_notebook_rejects_overlapping_output_and_input(e2e_data):
+    """Overlapping input/output/staging paths fail before anything is written."""
+    data_root, _ = e2e_data
+    output = data_root / "climate_indices_output.zarr"
+    output.symlink_to(data_root / "current" / "cache_prepared_input.zarr", target_is_directory=True)
+    with pytest.raises(exceptions.InvalidArgumentError, match="must not overlap"):
+        _exec_cells({}, _executable_cells())
+    assert output.is_symlink()
 
 
 def test_notebook_missing_prepared_inputs_is_actionable(tmp_path, monkeypatch):
