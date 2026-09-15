@@ -423,3 +423,25 @@ def test_notebook_plot_cells_execute(e2e_data):
     matplotlib.use("Agg")
     namespace: dict = {}
     _exec_cells(namespace, _cells_excluding_client())
+
+
+def test_notebook_selected_location_and_guards(e2e_data):
+    """A known cell resolves to stored coordinates; invalid and all-NaN cells are refused."""
+    data_root, _ = e2e_data
+    namespace: dict = {}
+    _exec_cells(namespace, _executable_cells())
+    select_grid_cell = namespace["select_grid_cell"]
+
+    with xr.open_zarr(data_root / "climate_indices_output.zarr", consolidated=True) as reopened:
+        series, actual_lat, actual_lon = select_grid_cell(reopened["spi_3"], 35.4, -99.7)
+        assert (actual_lat, actual_lon) == (35.0, -100.0)
+        assert series.dims == ("time",)
+        assert series.attrs["scale"] == 3
+        # scale - 1 leading values are unavailable at the 3-month Timescale.
+        assert int(series.notnull().sum()) == series.size - 2
+
+        # Out-of-domain and all-NaN selections are rejected, not plotted.
+        with pytest.raises(ValueError, match="outside the grid domain"):
+            select_grid_cell(reopened["spi_3"], 90.0, 0.0)
+        with pytest.raises(ValueError, match="all NaN"):
+            select_grid_cell(reopened["spi_3"], 35.0, -99.0)
