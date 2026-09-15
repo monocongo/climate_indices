@@ -2,7 +2,10 @@
 
 This module is the NumPy layer of the fire-weather family tracked in #793. It
 currently provides the Fosberg Fire Weather Index and the Hot-Dry-Windy
-Index, both weather-only and carrying no state between time steps.
+Index, both weather-only and carrying no state between time steps. Stateful
+recurrences for the planned KBDI and CFFWIS indices (#799, #803) follow the
+execution, state-ownership, and append/resume contract recorded in
+``docs/adr/0006-fire-recursive-state-and-execution.md``.
 
 References
 ----------
