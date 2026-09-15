@@ -86,7 +86,12 @@ Fire-weather and fuel-dryness indices live in the namespaced `fire` module (`fro
 A dimensionless, weather-only, elementwise fire-weather index from temperature, relative humidity, and wind speed; computed by `fire.fosberg_ffwi()`.
 
 **HDW (Hot-Dry-Windy Index)**:
-The vapor pressure deficit times wind speed, maximized over the lowest 500 m above ground level of a vertical profile; computed by `fire.hot_dry_windy()` in hPa m s⁻¹. KBDI, CFFWIS, and Haines are planned contracts in the design doc.
+The vapor pressure deficit times wind speed, maximized over the lowest 500 m above ground level of a vertical profile; computed by `fire.hot_dry_windy()` in hPa m s⁻¹.
+
+**KBDI (Keetch-Byram Drought Index)**:
+A daily recursive measure of cumulative moisture deficiency in deep duff and upper soil layers, on a 0–800 scale of hundredths of an inch (0–203.2 mm metric), from precipitation, daily maximum temperature, and mean annual precipitation; computed by `fire.kbdi()`. Moisture loss reverses only through net rain: consecutive rainy days form one wet spell, and only rain above its first 5.08 mm (0.20 in) reduces the index. A fire-danger index, not a standardized drought index like SPI or SPEI.
+
+FFMC, DMC, DC, CFFWIS, and Haines are planned contracts in the design doc.
 
 ### Statistics
 

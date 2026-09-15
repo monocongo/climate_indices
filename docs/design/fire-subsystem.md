@@ -55,9 +55,10 @@ may invent a different state-return convention.
 
 ## Stateful recurrence contract
 
-Planned NumPy APIs for KBDI, FFMC, DMC, DC, and CFFWIS (#799, #803) will
-accept time-first daily arrays. Their
-single-output APIs take keyword-only `initial_<code>: float | None`,
+KBDI implements the contract today, with `KBDIState` carrying `kbdi`,
+`wet_spell_precipitation`, `trailing_gap_days`, and `units`. The planned NumPy
+APIs for FFMC, DMC, DC, and CFFWIS (#803) will accept time-first daily arrays.
+Single-output APIs take keyword-only `initial_<code>: float | None`,
 `initial_state`, `return_state=False`, and `spin_up=0`. `None` selects the
 literature seed: KBDI 0, FFMC 85, DMC 6, or DC 15. `initial_state` restores the
 full named state, including auxiliary values such as KBDI's cumulative
@@ -75,7 +76,7 @@ a study-appropriate transient.
 ```python
 import numpy as np
 
-# illustrative of the target #799 API; fire.kbdi does not exist yet
+# illustrative of the shared stateful API; change the arrays and rerun on the next period
 history = fire.kbdi(precipitation_1980_2020, temperature_1980_2020, mean_annual_precipitation, return_state=True)
 next_year = fire.kbdi(precipitation_2021, temperature_2021, mean_annual_precipitation, initial_state=history.state, return_state=True)
 whole = fire.kbdi(precipitation_1980_2021, temperature_1980_2021, mean_annual_precipitation)
@@ -125,7 +126,7 @@ kernels.
 | Public name | Inputs | Output / accepted alternative |
 | --- | --- | --- |
 | `fosberg_ffwi(temperature_celsius, relative_humidity_percent, wind_speed_meters_per_second, cap_at_100=True)` | °C, %, m s⁻¹ | dimensionless FFWI; no alternative units |
-| `kbdi(precipitation, maximum_temperature, mean_annual_precipitation, *, units="metric")` | metric: mm day⁻¹, °C, mm year⁻¹ | metric moisture deficit in mm, range 0–200; `units="imperial"` accepts inches day⁻¹, °F, inches year⁻¹ and returns 0–800 hundredths of an inch |
+| `kbdi(precipitation, maximum_temperature, mean_annual_precipitation=None, *, units="metric")` | metric: mm day⁻¹, °C, mm year⁻¹; omitting the mean derives it from at least 30 years of record | metric moisture deficit in mm, range 0–203.2 (the exact conversion of 0–800 hundredths of an inch); `units="imperial"` accepts inches day⁻¹, °F, inches year⁻¹ and returns 0–800 hundredths of an inch |
 | `ffmc(temperature_celsius, relative_humidity_percent, wind_speed_meters_per_second, precipitation_mm)` | noon-LST °C, %, 10 m m s⁻¹, 24 h mm | dimensionless Fine Fuel Moisture Code |
 | `duff_moisture_code(temperature_celsius, relative_humidity_percent, precipitation_mm, latitude_degrees_north, month)` | noon-LST °C, %, 24 h mm, degrees north, calendar month | dimensionless DMC |
 | `drought_code(temperature_celsius, precipitation_mm, latitude_degrees_north, month)` | noon-LST °C, 24 h mm, degrees north, calendar month | dimensionless DC; distinct from package drought indices |
@@ -137,9 +138,9 @@ kernels.
 | `hot_dry_windy(temperature_celsius, relative_humidity_percent, wind_speed_meters_per_second, height_agl_meters, *, level_axis=-1)` | vertical profiles in °C, %, m s⁻¹, m AGL | hPa m s⁻¹; all levels must identify the lowest 500 m AGL |
 | `haines_index(temperature_lower_celsius, temperature_upper_celsius, dewpoint_lower_celsius, *, variant)` | pressure-level °C inputs selected by `variant` | integer 2–6; `variant` is `"low"`, `"mid"`, or `"high"`, never inferred by default |
 
-Only `fosberg_ffwi()` and `hot_dry_windy()` are implemented today; the
-remaining rows are planned contracts, not yet callable. Every stateful row
-above also accepts the keyword-only missing-data arguments
+Only `fosberg_ffwi()`, `hot_dry_windy()`, and `kbdi()` are implemented today;
+the remaining rows are planned contracts, not yet callable. `kbdi()` also
+accepts the keyword-only missing-data arguments
 `nan_policy="propagate"` and `max_gap_days=0` described above.
 
 `fosberg_ffwi()` is weather-only and elementwise. KBDI, FFMC, DMC, DC, and
