@@ -48,11 +48,10 @@ no coordinates.
   and metadata are more valuable than strict interface stability.
 - Keep Dask chunks spatial when possible and leave `time` as one chunk before
   calling index functions.
-- The canonical lazy xarray/Dask SPI/SPEI workflow is
-  `scripts/end_to_end_example.py` with `scripts/e2e_with_dask.ipynb`: the public
-  typed API on Dask-backed DataArrays (`xr.apply_ufunc(..., dask="parallelized")`),
-  one full time chunk with spatial chunks driving task parallelism, and
-  precipitation/PET exact-aligned at preparation time so SPEI never relies on
-  coordinate intersection.
+- The canonical lazy xarray/Dask SPI/SPEI workflow is the teaching notebook
+  `scripts/e2e_with_dask.ipynb`: the public typed API on Dask-backed DataArrays
+  (`xr.apply_ufunc(..., dask="parallelized")`), one full time chunk with spatial
+  chunks driving task parallelism, and precipitation/PET exact-aligned at
+  preparation time so SPEI never relies on coordinate intersection.
 - Run the notebook CI command before publishing examples:
   `uv run jupyter nbconvert --execute --to notebook --inplace notebooks/xarray_getting_started.ipynb notebooks/palmer_indices_xarray.ipynb notebooks/eddi_xarray.ipynb`.

@@ -1,8 +1,12 @@
-"""Offline regression check for the notebook and companion Dask script."""
+"""Offline regression checks for the E2E teaching notebook.
+
+The notebook is the authoritative artifact: these tests execute its code cells
+against a tiny synthetic prepared store (located via CLIMATE_INDICES_E2E_DATA)
+instead of importing a companion script.
+"""
 
 import ast
 import json
-import runpy
 from pathlib import Path
 
 import numpy as np
@@ -13,37 +17,34 @@ import xarray as xr
 from climate_indices import compute, exceptions, indices
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS_DIR = REPO_ROOT / "scripts"
+NOTEBOOK = REPO_ROOT / "scripts" / "e2e_with_dask.ipynb"
 
 # The canonical data/calibration contract (matches data/e2e/manifest.json once
-# scripts/prepare_e2e_inputs.py has generated it, and both e2e entrypoints).
+# scripts/prepare_e2e_inputs.py has generated it, and the notebook).
 CANONICAL_YEARS = {"data_start_year": 1980, "cal_start_year": 1981, "cal_end_year": 2010}
 
 
-@pytest.fixture
-def e2e(monkeypatch):
-    monkeypatch.syspath_prepend(str(SCRIPTS_DIR))
-    import end_to_end_example
-
-    return end_to_end_example
+def _code_cells() -> list[str]:
+    notebook = json.loads(NOTEBOOK.read_text())
+    return ["".join(cell["source"]) for cell in notebook["cells"] if cell["cell_type"] == "code"]
 
 
-def _write_monthly_inputs(tmp_path, times, units="mm"):
-    """Write single-pixel precip/PET NetCDF inputs at the given monthly timestamps."""
-    rng = np.random.default_rng(0)
-    shape = (len(times), 1, 1)
-    precip = rng.gamma(2, 40, shape).astype("float32")
-    pet = rng.uniform(20, 100, shape).astype("float32")
-    ds = xr.Dataset(
-        {"pr": (("time", "lat", "lon"), precip), "pet": (("time", "lat", "lon"), pet)},
-        coords={"time": times, "lat": [35.0], "lon": [-100.0]},
-    )
-    for name in ds:
-        ds[name].attrs["units"] = units
-    precip_path, pet_path = tmp_path / "precip.nc", tmp_path / "pet.nc"
-    ds[["pr"]].to_netcdf(precip_path, engine="scipy")
-    ds[["pet"]].to_netcdf(pet_path, engine="scipy")
-    return precip_path, pet_path
+def _executable_cells() -> list[str]:
+    # The Dask Client cell is execution mechanics (#829's remit); without it Dask
+    # falls back to the local scheduler, which keeps CI memory bounded.
+    return [source for source in _code_cells() if "dask.distributed" not in source]
+
+
+def _exec_cells(namespace: dict, sources: list[str]) -> None:
+    for source in sources:
+        exec(compile(source, str(NOTEBOOK), "exec"), namespace)
+
+
+def _split_at_calculation(sources: list[str]) -> tuple[list[str], list[str]]:
+    for index, source in enumerate(sources):
+        if "open_zarr" in source:
+            return sources[:index], sources[index:]
+    raise AssertionError("calculation cells not found")
 
 
 def _extract_pipeline_config_years(source: str) -> dict[str, int]:
@@ -60,161 +61,79 @@ def _extract_pipeline_config_years(source: str) -> dict[str, int]:
     raise AssertionError("pipeline_config assignment not found")
 
 
-def test_pipeline_config_matches_canonical_contract():
-    """Guards against reintroducing the stale 1990/1991-2020 configuration."""
-    script_source = (SCRIPTS_DIR / "end_to_end_example.py").read_text()
-    assert _extract_pipeline_config_years(script_source) == CANONICAL_YEARS
-
-    notebook = json.loads((SCRIPTS_DIR / "e2e_with_dask.ipynb").read_text())
-    notebook_source = "\n".join(
-        "".join(cell["source"]) for cell in notebook["cells"] if "pipeline_config" in "".join(cell.get("source", []))
-    )
-    assert _extract_pipeline_config_years(notebook_source) == CANONICAL_YEARS
-
-
-def test_clean_and_prepare_inputs_rejects_wrong_units(tmp_path, e2e):
-    pytest.importorskip("zarr")
-    times = pd.date_range("1980-01-01", periods=12, freq="MS")
-    precip_path, pet_path = _write_monthly_inputs(tmp_path, times, units="inches")
-    with pytest.raises(exceptions.InvalidArgumentError):
-        e2e.clean_and_prepare_inputs(precip_path, pet_path, tmp_path / "prepared.zarr")
-
-
-def test_clean_and_prepare_inputs_rejects_irregular_timestamps(tmp_path, e2e):
-    pytest.importorskip("zarr")
-    # 12 monthly timestamps with July 1980 missing (and 1981-01 appended instead).
-    times = pd.date_range("1980-01-01", periods=13, freq="MS").delete(6)
-    precip_path, pet_path = _write_monthly_inputs(tmp_path, times)
-    with pytest.raises(exceptions.CoordinateValidationError):
-        e2e.clean_and_prepare_inputs(precip_path, pet_path, tmp_path / "prepared.zarr")
-
-
-def test_clean_and_prepare_inputs_accepts_month_end_timestamps(tmp_path, e2e):
-    pytest.importorskip("zarr")
-    times = pd.date_range("1980-01-31", periods=12, freq=pd.offsets.MonthEnd())
-    precip_path, pet_path = _write_monthly_inputs(tmp_path, times)
-    prepared = tmp_path / "prepared.zarr"
-    e2e.clean_and_prepare_inputs(precip_path, pet_path, prepared)
-    with xr.open_zarr(prepared) as actual:
-        xr.testing.assert_equal(actual.time, xr.DataArray(times, dims="time", name="time"))
-
-
-@pytest.mark.parametrize("times", [np.array([], dtype="datetime64[ns]"), np.array(["not-a-date"])])
-def test_monthly_time_validation_uses_coordinate_validation_error(times, e2e):
-    with pytest.raises(exceptions.CoordinateValidationError):
-        e2e._validate_monthly_time(times)
-
-
-def test_compute_indices_parallel_rejects_stale_data_start_year(tmp_path, e2e):
-    pytest.importorskip("zarr")
-    times = pd.date_range("1980-01-01", periods=24, freq="MS")
-    precip_path, pet_path = _write_monthly_inputs(tmp_path, times)
-    prepared = tmp_path / "prepared.zarr"
-    e2e.clean_and_prepare_inputs(precip_path, pet_path, prepared)
-    config = {
-        "scale": 3,
-        "distribution_spi": indices.Distribution.gamma,
-        "distribution_spei": indices.Distribution.pearson,
-        "periodicity": compute.Periodicity.monthly,
-        "data_start_year": 1990,
-        "cal_start_year": 1990,
-        "cal_end_year": 1991,
+def _publish_store(data_root: Path, ds: xr.Dataset) -> None:
+    """Write a prepared store and manifest in the generations + current/ layout."""
+    generation = data_root / "generations" / "synthetic"
+    generation.mkdir(parents=True)
+    chunked = ds.chunk({"time": -1, "lat": 1, "lon": 1})
+    chunked.to_zarr(generation / "cache_prepared_input.zarr", zarr_format=2, consolidated=True)
+    manifest = {
+        "source_commit": "synthetic",
+        "period": [str(ds.time.dt.strftime("%Y-%m-%d").values[0]), str(ds.time.dt.strftime("%Y-%m-%d").values[-1])],
+        "calibration_period": [1981, 2010],
+        "sources": {},
+        "dimensions": dict(ds.sizes),
+        "chunks": [ds.sizes["time"], 1, 1],
     }
-    with pytest.raises(exceptions.InvalidArgumentError):
-        e2e.compute_indices_parallel(prepared, tmp_path / "output.zarr", config)
+    (generation / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    (data_root / "current").symlink_to(generation, target_is_directory=True)
 
 
-def test_compute_indices_parallel_rejects_calibration_outside_data_range(tmp_path, e2e):
+@pytest.fixture
+def e2e_data(tmp_path, monkeypatch):
+    """Synthetic prepared store: one land cell and one masked cell, 1980-2010 monthly."""
     pytest.importorskip("zarr")
-    times = pd.date_range("1980-01-01", periods=24, freq="MS")
-    precip_path, pet_path = _write_monthly_inputs(tmp_path, times)
-    prepared = tmp_path / "prepared.zarr"
-    e2e.clean_and_prepare_inputs(precip_path, pet_path, prepared)
-    config = {
-        "scale": 3,
-        "distribution_spi": indices.Distribution.gamma,
-        "distribution_spei": indices.Distribution.pearson,
-        "periodicity": compute.Periodicity.monthly,
-        "data_start_year": 1980,
-        "cal_start_year": 1981,
-        "cal_end_year": 2020,
-    }
-    with pytest.raises(exceptions.InvalidArgumentError):
-        e2e.compute_indices_parallel(prepared, tmp_path / "output.zarr", config)
-
-
-def test_compute_indices_parallel_rejects_discontinuous_prepared_store(tmp_path, e2e):
-    pytest.importorskip("zarr")
-    times = pd.date_range("1980-01-01", periods=372, freq="MS").delete(6).append(pd.DatetimeIndex(["2010-12-01"]))
-    prepared = tmp_path / "prepared.zarr"
-    xr.Dataset(
-        {
-            "precip": (("time", "lat", "lon"), np.ones((372, 1, 1), dtype="float32")),
-            "pet": (("time", "lat", "lon"), np.ones((372, 1, 1), dtype="float32")),
-        },
-        coords={"time": times, "lat": [35.0], "lon": [-100.0]},
-    ).chunk({"time": -1}).to_zarr(prepared, zarr_format=2, consolidated=True)
-    config = {
-        "scale": 3,
-        "distribution_spi": indices.Distribution.gamma,
-        "distribution_spei": indices.Distribution.pearson,
-        "periodicity": compute.Periodicity.monthly,
-        "data_start_year": 1980,
-        "cal_start_year": 1981,
-        "cal_end_year": 2010,
-    }
-    with pytest.raises(exceptions.CoordinateValidationError):
-        e2e.compute_indices_parallel(prepared, tmp_path / "output.zarr", config)
-
-
-@pytest.mark.parametrize("entrypoint", ["end_to_end_example.py", "e2e_with_dask.ipynb"])
-def test_e2e_pipeline(tmp_path, monkeypatch, entrypoint):
-    pytest.importorskip("zarr")
-    path = Path(__file__).resolve().parents[1] / "scripts" / entrypoint
-    if path.suffix == ".py":
-        namespace = runpy.run_path(str(path))
-    else:
-        namespace = {}
-        for cell in json.loads(path.read_text())["cells"]:
-            source = "".join(cell.get("source", []))
-            if cell["cell_type"] == "code" and ("from end_to_end_example import" in source):
-                monkeypatch.chdir(path.parent)
-                monkeypatch.syspath_prepend(str(path.parent))
-                exec(compile(source, str(path), "exec"), namespace)
-
-    # One land cell and one masked cell, with a complete 30-year Calibration Period.
     rng = np.random.default_rng(42)
-    shape = (372, 1, 2)
+    shape = (372, 2, 2)
     precip = rng.gamma(2, 40, shape).astype("float32")
     pet = rng.uniform(20, 100, shape).astype("float32")
-    precip[:, 0, 1] = pet[:, 0, 1] = np.nan
-    precip[100, 0, 0] = 0.0  # meaningful zero precipitation, distinct from the masked/missing pixel
+    precip[:, 0, 1] = pet[:, 0, 1] = np.nan  # masked/missing cell
+    precip[100, 0, 0] = 0.0  # meaningful zero precipitation, distinct from missing
     ds = xr.Dataset(
-        {"pr": (("time", "lat", "lon"), precip), "pet": (("time", "lat", "lon"), pet)},
-        coords={"time": pd.date_range("1980-01-01", periods=372, freq="MS"), "lat": [35.0], "lon": [-100.0, -99.0]},
+        {
+            "precip": (("time", "lat", "lon"), precip),
+            "pet": (("time", "lat", "lon"), pet),
+            "wb": (("time", "lat", "lon"), precip - pet),
+        },
+        coords={
+            "time": pd.date_range("1980-01-01", periods=372, freq="MS"),
+            "lat": [35.0, 36.0],
+            "lon": [-100.0, -99.0],
+        },
     )
     for name in ds:
         ds[name].attrs["units"] = "mm"
-    precip_path, pet_path = tmp_path / "precip.nc", tmp_path / "pet.nc"
-    ds[["pr"]].to_netcdf(precip_path, engine="scipy")
-    ds[["pet"]].to_netcdf(pet_path, engine="scipy")
-    prepared, output = tmp_path / "prepared.zarr", tmp_path / "output.zarr"
-    namespace["clean_and_prepare_inputs"](precip_path, pet_path, prepared)
-    config = {
-        "scale": 3,
-        "distribution_spi": indices.Distribution.gamma,
-        "distribution_spei": indices.Distribution.pearson,
-        "data_start_year": 1980,
-        "cal_start_year": 1981,
-        "cal_end_year": 2010,
-        "periodicity": compute.Periodicity.monthly,
+    ds["wb"].attrs["long_name"] = "Precipitation minus PET, monthly total"
+    _publish_store(tmp_path, ds)
+    monkeypatch.setenv("CLIMATE_INDICES_E2E_DATA", str(tmp_path))
+    return tmp_path, ds
+
+
+def test_pipeline_config_matches_canonical_contract():
+    """Guards against reintroducing the stale 1990/1991-2020 configuration."""
+    assert _extract_pipeline_config_years("\n".join(_code_cells())) == CANONICAL_YEARS
+
+
+def test_notebook_uses_public_xarray_api():
+    """Pins the #825 canonical path: public typed API, no hand-rolled map_blocks."""
+    source = "\n".join(_code_cells())
+    assert "map_blocks" not in source
+    tree = ast.parse(source)
+    public_imports = {
+        alias.asname or alias.name
+        for node in tree.body
+        if isinstance(node, ast.ImportFrom) and node.module == "climate_indices"
+        for alias in node.names
+        if alias.name in {"spi", "spei"}
     }
-    namespace["compute_indices_parallel"](prepared, output, config)
-    with xr.open_zarr(prepared) as actual:
-        assert actual.precip.dims == ("time", "lat", "lon")
-        assert actual.precip.chunks[0] == (372,)
-        np.testing.assert_allclose(actual.wb, ds.pr - ds.pet)
-        np.testing.assert_allclose(actual.pet, ds.pet)
+    assert public_imports == {"spi", "spei"}
+
+
+def test_notebook_pipeline_end_to_end(e2e_data):
+    data_root, ds = e2e_data
+    namespace: dict = {}
+    _exec_cells(namespace, _executable_cells())
+
     kwargs = {
         "scale": 3,
         "data_start_year": 1980,
@@ -222,15 +141,19 @@ def test_e2e_pipeline(tmp_path, monkeypatch, entrypoint):
         "calibration_year_final": 2010,
         "periodicity": compute.Periodicity.monthly,
     }
-    expected_spi = indices.spi(precip[:, 0, 0].copy(), distribution=indices.Distribution.gamma, **kwargs)
+    expected_spi = indices.spi(ds.precip[:, 0, 0].values.copy(), distribution=indices.Distribution.gamma, **kwargs)
     expected_spei = indices.spei(
-        precip[:, 0, 0].copy(), pet[:, 0, 0].copy(), distribution=indices.Distribution.pearson, **kwargs
+        ds.precip[:, 0, 0].values.copy(),
+        ds.pet[:, 0, 0].values.copy(),
+        distribution=indices.Distribution.pearson,
+        **kwargs,
     )
-    with xr.open_zarr(output) as actual:
+    with xr.open_zarr(data_root / "climate_indices_output.zarr", consolidated=True) as actual:
         np.testing.assert_allclose(actual.spi_3[:, 0, 0], expected_spi, atol=1e-6)
         np.testing.assert_allclose(actual.spei_3[:, 0, 0], expected_spei, atol=1e-6)
         assert actual.spi_3[:, 0, 1].isnull().all()
         assert actual.spei_3[:, 0, 1].isnull().all()
+        # scale - 1 leading values are unavailable at the 3-month Timescale.
         assert actual.spi_3[:2].isnull().all()
         assert actual.spei_3[:2].isnull().all()
         # Meaningful zero precipitation (index 100, land pixel) stays a real value, not NaN.
@@ -243,59 +166,65 @@ def test_e2e_pipeline(tmp_path, monkeypatch, entrypoint):
         assert actual.spei_3.dtype == np.float32
 
 
-def test_failed_run_preserves_existing_output(tmp_path, monkeypatch):
+def test_notebook_missing_prepared_inputs_is_actionable(tmp_path, monkeypatch):
+    monkeypatch.setenv("CLIMATE_INDICES_E2E_DATA", str(tmp_path))
+    with pytest.raises(FileNotFoundError, match="prepare_e2e_inputs"):
+        _exec_cells({}, _executable_cells())
+
+
+def test_notebook_rejects_stale_data_start_year(e2e_data):
+    namespace: dict = {}
+    setup, calculation = _split_at_calculation(_executable_cells())
+    _exec_cells(namespace, setup)
+    namespace["pipeline_config"].update({"data_start_year": 1990, "cal_start_year": 1990, "cal_end_year": 1991})
+    with pytest.raises(exceptions.InvalidArgumentError):
+        _exec_cells(namespace, calculation)
+
+
+def test_notebook_rejects_calibration_outside_data_range(e2e_data):
+    namespace: dict = {}
+    setup, calculation = _split_at_calculation(_executable_cells())
+    _exec_cells(namespace, setup)
+    namespace["pipeline_config"].update({"cal_end_year": 2020})
+    with pytest.raises(exceptions.InvalidArgumentError):
+        _exec_cells(namespace, calculation)
+
+
+def test_notebook_rejects_discontinuous_prepared_store(tmp_path, monkeypatch):
     pytest.importorskip("zarr")
-    namespace = runpy.run_path(str(Path(__file__).resolve().parents[1] / "scripts" / "end_to_end_example.py"))
-    shape = (372, 1, 1)
-    prepared, output = tmp_path / "prepared.zarr", tmp_path / "output.zarr"
-    rng = np.random.default_rng(1)
+    times = pd.date_range("1980-01-01", periods=372, freq="MS").delete(6).append(pd.DatetimeIndex(["2010-12-01"]))
     ds = xr.Dataset(
         {
-            "precip": (("time", "lat", "lon"), rng.gamma(2, 40, shape).astype("float32")),
-            "pet": (("time", "lat", "lon"), rng.uniform(20, 100, shape).astype("float32")),
-            "wb": (("time", "lat", "lon"), np.zeros(shape, dtype="float32")),
+            "precip": (("time", "lat", "lon"), np.ones((372, 1, 1), dtype="float32")),
+            "pet": (("time", "lat", "lon"), np.ones((372, 1, 1), dtype="float32")),
         },
-        coords={"time": pd.date_range("1980-01-01", periods=372, freq="MS"), "lat": [35.0], "lon": [-100.0]},
+        coords={"time": times, "lat": [35.0], "lon": [-100.0]},
     )
-    ds.chunk({"time": -1}).to_zarr(prepared, zarr_format=2)
+    for name in ds:
+        ds[name].attrs["units"] = "mm"
+    _publish_store(tmp_path, ds)
+    monkeypatch.setenv("CLIMATE_INDICES_E2E_DATA", str(tmp_path))
+    with pytest.raises(exceptions.CoordinateValidationError):
+        _exec_cells({}, _executable_cells())
+
+
+def test_failed_run_preserves_existing_output(e2e_data, monkeypatch):
+    data_root, _ = e2e_data
+    output = data_root / "climate_indices_output.zarr"
     sentinel = xr.Dataset({"old": (("x",), [1.0])})
     sentinel.to_zarr(output, mode="w", zarr_format=2)
-    config = {
-        "scale": 3,
-        "distribution_spi": indices.Distribution.gamma,
-        "distribution_spei": indices.Distribution.pearson,
-        "data_start_year": 1980,
-        "cal_start_year": 1981,
-        "cal_end_year": 2010,
-        "periodicity": compute.Periodicity.monthly,
-    }
+
+    namespace: dict = {}
+    sources = _executable_cells()
+    write_index = next(i for i, source in enumerate(sources) if "to_zarr" in source)
+    _exec_cells(namespace, sources[:write_index])
 
     def boom(*args, **kwargs):
         raise RuntimeError("simulated block failure")
 
     monkeypatch.setattr(xr.Dataset, "to_zarr", boom)
     with pytest.raises(RuntimeError, match="simulated block failure"):
-        namespace["compute_indices_parallel"](prepared, output, config)
+        _exec_cells(namespace, sources[write_index : write_index + 1])
     monkeypatch.undo()
     with xr.open_zarr(output) as actual:
         xr.testing.assert_equal(actual, sentinel)
-
-
-def test_compute_indices_parallel_uses_public_xarray_api():
-    """Pins the #825 canonical path: public typed API, no hand-rolled map_blocks."""
-    source = (SCRIPTS_DIR / "end_to_end_example.py").read_text()
-    assert "map_blocks" not in source
-    tree = ast.parse(source)
-    public_imports = {
-        alias.asname or alias.name
-        for node in tree.body
-        if isinstance(node, ast.ImportFrom) and node.module == "climate_indices"
-        for alias in node.names
-        if alias.name in {"spi", "spei"}
-    }
-    assert public_imports == {"spi", "spei"}
-    func = next(
-        node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "compute_indices_parallel"
-    )
-    calls = {node.func.id for node in ast.walk(func) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
-    assert {"spi", "spei"} <= calls

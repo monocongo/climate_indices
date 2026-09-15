@@ -20,7 +20,7 @@ Pipeline
        months.
     2. Verify declared units are millimeters, transpose to (time, lat, lon),
        and write raw_precipitation.nc / raw_pet.nc.
-    3. Call clean_and_prepare_inputs() (end_to_end_example.py) to align
+    3. Call clean_and_prepare_inputs() (defined below) to align
        precipitation and PET on identical coordinates, derive an explanatory
        wb = precip - pet water-balance variable, and write a consolidated
        Zarr v2 store (cache_prepared_input.zarr) with the full time series in
@@ -54,7 +54,8 @@ from urllib.request import urlopen
 import numpy as np
 import pandas as pd
 import xarray as xr
-from end_to_end_example import clean_and_prepare_inputs
+
+from climate_indices.exceptions import CoordinateValidationError, InvalidArgumentError
 
 SOURCE_COMMIT = "ae57c488af832c1ebfdf864c8ed7d16636e2e36f"
 SOURCE_URL = f"https://raw.githubusercontent.com/monocongo/example_climate_indices/{SOURCE_COMMIT}/example/input"
@@ -65,6 +66,65 @@ SOURCES = {
 DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "e2e"
 CANONICAL_GRID = {"lat": 38, "lon": 87}
 SPATIAL_CHUNK = 10
+
+
+def _validate_monthly_time(time_values: np.ndarray) -> pd.DatetimeIndex:
+    """Return complete month-start or month-end timestamps."""
+    try:
+        time = pd.DatetimeIndex(time_values)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise CoordinateValidationError(
+            "Time coordinate must contain supported datetime values.",
+            coordinate_name="time",
+            reason="not datetime-like",
+        ) from exc
+    if time.empty:
+        raise CoordinateValidationError(
+            "Time coordinate must not be empty.", coordinate_name="time", reason="empty coordinate"
+        )
+    if time.is_month_start.all():
+        expected_time = pd.date_range(time[0], periods=time.size, freq="MS")
+    elif time.is_month_end.all():
+        expected_time = pd.date_range(time[0], periods=time.size, freq=pd.offsets.MonthEnd())
+    else:
+        expected_time = pd.DatetimeIndex([])
+    if not time.equals(expected_time):
+        raise CoordinateValidationError(
+            "Time coordinate must be a complete, chronological sequence of monthly "
+            "month-start or month-end timestamps.",
+            coordinate_name="time",
+            reason="non-monotonic, irregular, or gapped monthly timestamps",
+        )
+    return time
+
+
+def clean_and_prepare_inputs(precip_path: Path, pet_path: Path, zarr_prepared_path: Path) -> None:
+    """Prepare aligned monthly totals in mm for blockwise SPI/SPEI computation.
+
+    Args:
+        precip_path: NetCDF file containing ``pr(time, lat, lon)`` in mm.
+        pet_path: NetCDF file containing ``pet(time, lat, lon)`` in mm.
+        zarr_prepared_path: Prepared Zarr store to create or replace.
+    """
+    with (
+        xr.open_dataset(precip_path, chunks={"time": 1}) as ds_precip,
+        xr.open_dataset(pet_path, chunks={"time": 1}) as ds_pet,
+    ):
+        pr, pet = xr.align(ds_precip["pr"], ds_pet["pet"], join="exact")
+        if pr.attrs.get("units") != "mm" or pet.attrs.get("units") != "mm":
+            raise InvalidArgumentError(
+                "Inputs must contain monthly totals with units='mm'.",
+                argument_name="units",
+                argument_value=f"pr={pr.attrs.get('units')!r}, pet={pet.attrs.get('units')!r}",
+                valid_values="mm",
+            )
+        _validate_monthly_time(pr["time"].values)
+        ds_clean = xr.Dataset({"precip": pr, "pet": pet, "wb": pr - pet}).transpose("time", "lat", "lon")
+        ds_clean["wb"].attrs = {"long_name": "Precipitation minus PET, monthly total", "units": "mm"}
+        # Full time series per block; 10x10 gives multiple tasks on the small example grid.
+        ds_clean = ds_clean.drop_encoding().chunk({"time": -1, "lat": 10, "lon": 10})
+        print(f"Saving prepared inputs: {zarr_prepared_path}")
+        ds_clean.to_zarr(zarr_prepared_path, mode="w", zarr_format=2, consolidated=True)
 
 
 def _boundary_chunks(size: int, chunk_size: int) -> tuple[int, ...]:
