@@ -229,6 +229,14 @@ def test_notebook_reopens_saved_output_with_a_fresh_lazy_handle():
     """Diagnostics must select from the saved store, not the calculated dataset."""
     source = "\n".join(_code_cells())
     tree = ast.parse(source)
+    out_ds_assignment = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "out_ds" for target in node.targets)
+    )
+    expected_open = ast.parse("xr.open_zarr(final_output_zarr, consolidated=True)", mode="eval").body
+    assert ast.dump(out_ds_assignment.value) == ast.dump(expected_open)
     diagnostic_start = next(
         node.lineno
         for node in tree.body
@@ -377,13 +385,8 @@ def test_failed_run_preserves_existing_output(e2e_data, monkeypatch):
     assert not list(data_root.glob(f".{output.name}.staging-*"))
 
 
-def test_interrupted_publish_preserves_previous_generation(e2e_data, monkeypatch):
-    """A crash during the rename swap must not destroy the previous output.
-
-    Guards against a delete-before-rename publish (the store is deleted
-    outright, with no recovery) by requiring the previous generation to
-    survive at the documented path or at its backup name.
-    """
+def test_interrupted_publish_restores_previous_output(e2e_data, monkeypatch):
+    """A failed publish rename restores the previous output at its final path."""
     data_root, _ = e2e_data
     output = data_root / "climate_indices_output.zarr"
     sentinel = xr.Dataset({"old": (("x",), [1.0])})
@@ -407,9 +410,10 @@ def test_interrupted_publish_preserves_previous_generation(e2e_data, monkeypatch
     monkeypatch.undo()
 
     backup = data_root / f".{output.name}.previous"
-    recovered = output if output.exists() else backup
-    assert recovered.exists(), "previous generation lost after an interrupted publish"
-    with xr.open_zarr(recovered) as actual:
+    assert output.exists(), "previous generation was not restored after an interrupted publish"
+    assert not backup.exists()
+    assert not list(data_root.glob(f".{output.name}.staging-*"))
+    with xr.open_zarr(output) as actual:
         xr.testing.assert_equal(actual, sentinel)
 
 
