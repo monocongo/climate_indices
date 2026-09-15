@@ -161,6 +161,23 @@ def _kbdi_static_array(
         ) from exc
 
 
+def _kbdi_initial_value(
+    initial_kbdi: npt.ArrayLike,
+    spatial_shape: tuple[int, ...],
+    maximum: float,
+) -> npt.NDArray[np.float64]:
+    """Validate a caller-supplied seed KBDI and broadcast it to the spatial shape."""
+    kbdi_value = _kbdi_static_array(initial_kbdi, spatial_shape, "initial_kbdi")
+    if np.any(~np.isfinite(kbdi_value)) or np.any(kbdi_value < 0.0) or np.any(kbdi_value > maximum):
+        raise InvalidArgumentError(
+            f"initial_kbdi must be finite and within [0, {maximum:g}].",
+            argument_name="initial_kbdi",
+            argument_value="non-finite or outside the valid KBDI range",
+            valid_values=f"[0, {maximum:g}]",
+        )
+    return kbdi_value
+
+
 def _kbdi_state_arrays(
     state: KBDIState,
     spatial_shape: tuple[int, ...],
@@ -230,6 +247,65 @@ def _kbdi_state_arrays(
         )
 
     return kbdi_value, wet_spell, trailing_gap_days
+
+
+def _validate_kbdi_configuration(
+    *,
+    units: Literal["metric", "imperial"],
+    nan_policy: Literal["propagate", "bridge"],
+    max_gap_days: int,
+    spin_up: int,
+    initial_kbdi: npt.ArrayLike | xr.DataArray | None,
+    initial_state: KBDIState | None,
+) -> None:
+    """Validate the configuration shared by the NumPy and xarray paths.
+
+    Called before dispatch: the xarray path must reject invalid configuration
+    eagerly instead of returning a lazy, metadata-bearing result that fails
+    only when evaluated.
+    """
+    if units not in ("metric", "imperial"):
+        raise InvalidArgumentError(
+            "units must be 'metric' or 'imperial'.",
+            argument_name="units",
+            argument_value=str(units),
+            valid_values="'metric', 'imperial'",
+        )
+    if nan_policy not in ("propagate", "bridge"):
+        raise InvalidArgumentError(
+            "nan_policy must be 'propagate' or 'bridge'.",
+            argument_name="nan_policy",
+            argument_value=str(nan_policy),
+            valid_values="'propagate', 'bridge'",
+        )
+    if isinstance(max_gap_days, bool) or not isinstance(max_gap_days, int) or max_gap_days < 0:
+        raise InvalidArgumentError(
+            "max_gap_days must be a non-negative integer.",
+            argument_name="max_gap_days",
+            argument_value=str(max_gap_days),
+            valid_values="A non-negative integer",
+        )
+    if (nan_policy == "propagate" and max_gap_days != 0) or (nan_policy == "bridge" and max_gap_days < 1):
+        raise InvalidArgumentError(
+            "max_gap_days must be zero for 'propagate' and positive for 'bridge'.",
+            argument_name="max_gap_days",
+            argument_value=str(max_gap_days),
+            valid_values="0 for 'propagate'; at least 1 for 'bridge'",
+        )
+    if isinstance(spin_up, bool) or not isinstance(spin_up, int) or spin_up < 0:
+        raise InvalidArgumentError(
+            "spin_up must be a non-negative integer.",
+            argument_name="spin_up",
+            argument_value=str(spin_up),
+            valid_values="A non-negative integer",
+        )
+    if initial_kbdi is not None and initial_state is not None:
+        raise InvalidArgumentError(
+            "initial_kbdi cannot be combined with initial_state.",
+            argument_name="initial_kbdi/initial_state",
+            argument_value="both supplied",
+            valid_values="Supply at most one initial condition",
+        )
 
 
 @overload
@@ -342,21 +418,43 @@ def kbdi(
         InvalidArgumentError: If shapes, configuration, state, or physical
             precipitation inputs are invalid.
         CoordinateValidationError: xarray input only -- if the time dimension
-            is missing, non-monotonic, split across multiple Dask chunks, or
-            precipitation/maximum_temperature share no overlapping time steps.
+            is missing or lacks a coordinate, non-monotonic, not consecutive
+            daily, split across multiple Dask chunks, if the inputs' non-time
+            coordinates do not align, or if precipitation/maximum_temperature
+            share no overlapping time steps.
 
     Notes:
         xarray-only: ``precipitation`` and ``maximum_temperature`` must be the
         same type (both NumPy or both ``xr.DataArray``); a CF ``units``
         attribute on either is converted to the scale ``units`` selects (mm/inch
         for precipitation, including ``kg m-2 s-1``; Celsius/Fahrenheit/Kelvin
-        for temperature), an absent or unrecognized attribute is assumed to
-        already match. Dask-backed input parallelizes over spatial chunks with
+        for temperature). An absent attribute is assumed to already match the
+        selected scale; an unrecognized one raises ``InvalidArgumentError``.
+        An attributed ``mean_annual_precipitation`` is converted the same way,
+        accepting annual totals (``mm``, ``inch``, ``mm year-1``, ...) but not
+        daily or flux rates. The time coordinate must be consecutive daily
+        observations. Dask-backed input parallelizes over spatial chunks with
         the ``time`` dimension required to be a single chunk.
     """
+    if isinstance(precipitation, xr.DataArray) != isinstance(maximum_temperature, xr.DataArray):
+        raise TypeError(
+            "precipitation and maximum_temperature must be the same type. "
+            f"Got precipitation={type(precipitation).__name__}, "
+            f"maximum_temperature={type(maximum_temperature).__name__}. "
+            "Convert both to the same type (both numpy arrays or both xr.DataArray)."
+        )
+    _validate_kbdi_configuration(
+        units=units,
+        nan_policy=nan_policy,
+        max_gap_days=max_gap_days,
+        spin_up=spin_up,
+        initial_kbdi=initial_kbdi,
+        initial_state=initial_state,
+    )
     if detect_input_type(precipitation) != InputType.NUMPY:
         # narrow for mypy: detect_input_type raises for anything but NUMPY/XARRAY
         assert isinstance(precipitation, xr.DataArray)
+        assert isinstance(maximum_temperature, xr.DataArray)
         return _kbdi_xarray(
             precipitation,
             maximum_temperature,
@@ -369,48 +467,6 @@ def kbdi(
             nan_policy=nan_policy,
             max_gap_days=max_gap_days,
             time_dim=time_dim,
-        )
-    if units not in ("metric", "imperial"):
-        raise InvalidArgumentError(
-            "units must be 'metric' or 'imperial'.",
-            argument_name="units",
-            argument_value=str(units),
-            valid_values="'metric', 'imperial'",
-        )
-    if nan_policy not in ("propagate", "bridge"):
-        raise InvalidArgumentError(
-            "nan_policy must be 'propagate' or 'bridge'.",
-            argument_name="nan_policy",
-            argument_value=str(nan_policy),
-            valid_values="'propagate', 'bridge'",
-        )
-    if isinstance(max_gap_days, bool) or not isinstance(max_gap_days, int) or max_gap_days < 0:
-        raise InvalidArgumentError(
-            "max_gap_days must be a non-negative integer.",
-            argument_name="max_gap_days",
-            argument_value=str(max_gap_days),
-            valid_values="A non-negative integer",
-        )
-    if (nan_policy == "propagate" and max_gap_days != 0) or (nan_policy == "bridge" and max_gap_days < 1):
-        raise InvalidArgumentError(
-            "max_gap_days must be zero for 'propagate' and positive for 'bridge'.",
-            argument_name="max_gap_days",
-            argument_value=str(max_gap_days),
-            valid_values="0 for 'propagate'; at least 1 for 'bridge'",
-        )
-    if isinstance(spin_up, bool) or not isinstance(spin_up, int) or spin_up < 0:
-        raise InvalidArgumentError(
-            "spin_up must be a non-negative integer.",
-            argument_name="spin_up",
-            argument_value=str(spin_up),
-            valid_values="A non-negative integer",
-        )
-    if initial_kbdi is not None and initial_state is not None:
-        raise InvalidArgumentError(
-            "initial_kbdi cannot be combined with initial_state.",
-            argument_name="initial_kbdi/initial_state",
-            argument_value="both supplied",
-            valid_values="Supply at most one initial condition",
         )
 
     precipitation_array = _as_float_array(precipitation)
@@ -477,14 +533,7 @@ def kbdi(
         if initial_kbdi is None:
             kbdi_value = np.zeros(internal_spatial_shape, dtype=np.float64)
         else:
-            kbdi_value = _kbdi_static_array(initial_kbdi, internal_spatial_shape, "initial_kbdi")
-            if np.any(~np.isfinite(kbdi_value)) or np.any(kbdi_value < 0.0) or np.any(kbdi_value > maximum):
-                raise InvalidArgumentError(
-                    f"initial_kbdi must be finite and within [0, {maximum:g}].",
-                    argument_name="initial_kbdi",
-                    argument_value="non-finite or outside the valid KBDI range",
-                    valid_values=f"[0, {maximum:g}]",
-                )
+            kbdi_value = _kbdi_initial_value(initial_kbdi, internal_spatial_shape, maximum)
         wet_spell = np.zeros(internal_spatial_shape, dtype=np.float64)
         trailing_gap_days = np.full(internal_spatial_shape, -1, dtype=np.int64)
     else:
@@ -636,8 +685,13 @@ def kbdi(
 # CF units-attribute spellings this module recognizes, matching the precedent
 # list in __main__.py's legacy CLI unit handling, plus the CF flux unit the
 # NetCDF/Zarr ecosystem commonly uses for precipitation rate.
-_PRECIP_UNITS_MM = frozenset({"mm", "millimeters", "millimeter", "mm/dy", "mm day-1", "mm/day"})
+_PRECIP_UNITS_MM = frozenset({"mm", "millimeters", "millimeter"})
+_PRECIP_UNITS_MM_PER_DAY = frozenset({"mm/dy", "mm day-1", "mm/day"})
+_PRECIP_UNITS_MM_PER_YEAR = frozenset({"mm/year", "mm/yr", "mm year-1", "mm yr-1"})
 _PRECIP_UNITS_INCH = frozenset({"inch", "inches"})
+_PRECIP_UNITS_INCH_PER_YEAR = frozenset(
+    {"in/year", "in/yr", "inch/year", "inch/yr", "inches/year", "inches/yr", "inch year-1", "inch yr-1"}
+)
 _PRECIP_UNITS_FLUX = frozenset({"kg m-2 s-1", "kg/m2/s", "kg m^-2 s^-1", "kg.m-2.s-1", "kg/m^2/s"})
 _SECONDS_PER_DAY = 86400.0
 
@@ -647,31 +701,52 @@ _TEMP_UNITS_KELVIN = frozenset({"k", "kelvin"})
 _KELVIN_OFFSET_CELSIUS = 273.15
 
 
-def _convert_precipitation_units(data: xr.DataArray, target: Literal["mm", "inch"]) -> xr.DataArray:
+def _convert_precipitation_units(
+    data: xr.DataArray,
+    target: Literal["mm", "inch"],
+    *,
+    argument_name: str = "precipitation.attrs['units']",
+    annual: bool = False,
+) -> xr.DataArray:
     """Convert a precipitation DataArray to ``target`` from its CF ``units`` attribute.
 
-    An absent or unrecognized ``units`` attribute is assumed to already match
-    ``target`` -- the caller's ``units=`` scale is trusted, never silently
-    overridden. Conversion is xarray arithmetic, so Dask-backed input stays
-    lazy.
+    An absent ``units`` attribute is assumed to already match ``target`` -- the
+    caller's ``units=`` scale is trusted, never silently overridden. An
+    unrecognized attribute raises ``InvalidArgumentError`` rather than guessing.
+    ``annual=True`` declares a mean annual climatology: per-day and flux rate
+    units are rejected, and per-year spellings are accepted in addition to the
+    annual totals (``mm``, ``inch``). Conversion is xarray arithmetic, so
+    Dask-backed input stays lazy.
     """
     raw_units = data.attrs.get("units")
     normalized = raw_units.strip().lower() if isinstance(raw_units, str) else None
     if normalized is None:
         return data
-    if normalized in _PRECIP_UNITS_FLUX:
-        data = data * _SECONDS_PER_DAY
+    if normalized in _PRECIP_UNITS_FLUX or normalized in _PRECIP_UNITS_MM_PER_DAY:
+        if annual:
+            raise InvalidArgumentError(
+                f"mean_annual_precipitation cannot use precipitation rate units: {raw_units!r}.",
+                argument_name=argument_name,
+                argument_value=str(raw_units),
+                valid_values="An annual total (mm, inch) or a per-year rate (mm year-1, inch year-1)",
+            )
+        if normalized in _PRECIP_UNITS_FLUX:
+            data = data * _SECONDS_PER_DAY
         source: Literal["mm", "inch"] = "mm"
-    elif normalized in _PRECIP_UNITS_MM:
+    elif normalized in _PRECIP_UNITS_MM or (annual and normalized in _PRECIP_UNITS_MM_PER_YEAR):
         source = "mm"
-    elif normalized in _PRECIP_UNITS_INCH:
+    elif normalized in _PRECIP_UNITS_INCH or (annual and normalized in _PRECIP_UNITS_INCH_PER_YEAR):
         source = "inch"
     else:
         raise InvalidArgumentError(
             f"Unsupported precipitation units attribute: {raw_units!r}.",
-            argument_name="precipitation.attrs['units']",
+            argument_name=argument_name,
             argument_value=str(raw_units),
-            valid_values="mm / mm day-1, inch(es), or kg m-2 s-1",
+            valid_values=(
+                "An annual total (mm, inch) or a per-year rate (mm year-1, inch year-1)"
+                if annual
+                else "mm / mm day-1, inch(es), or kg m-2 s-1"
+            ),
         )
     if source == target:
         return data
@@ -682,8 +757,9 @@ def _convert_precipitation_units(data: xr.DataArray, target: Literal["mm", "inch
 def _convert_temperature_units(data: xr.DataArray, target: Literal["celsius", "fahrenheit"]) -> xr.DataArray:
     """Convert a temperature DataArray to ``target`` from its CF ``units`` attribute.
 
-    An absent or unrecognized ``units`` attribute is assumed to already match
-    ``target``. Conversion is xarray arithmetic, so Dask-backed input stays lazy.
+    An absent ``units`` attribute is assumed to already match ``target``; an
+    unrecognized one raises ``InvalidArgumentError`` rather than guessing.
+    Conversion is xarray arithmetic, so Dask-backed input stays lazy.
     """
     raw_units = data.attrs.get("units")
     normalized = raw_units.strip().lower() if isinstance(raw_units, str) else None
@@ -709,9 +785,57 @@ def _convert_temperature_units(data: xr.DataArray, target: Literal["celsius", "f
     return converted
 
 
+def _validate_time_coordinate_present(data: xr.DataArray, time_dim: str) -> None:
+    """Require a real time coordinate, not xarray's virtual integer index.
+
+    A named dimension without an attached coordinate is unverifiable: xarray
+    fabricates a positional index for it, which would silently be read as time.
+
+    Raises:
+        CoordinateValidationError: If the time dimension has no coordinate.
+    """
+    if time_dim not in data.coords:
+        raise CoordinateValidationError(
+            message=(
+                f"Input has a '{time_dim}' dimension but no '{time_dim}' coordinate, so its daily "
+                f"cadence cannot be validated. Attach a daily datetime coordinate with assign_coords."
+            ),
+            coordinate_name=time_dim,
+            reason="missing_coordinate",
+        )
+
+
+def _validate_daily_time_coordinate(data: xr.DataArray, time_dim: str) -> None:
+    """Require consecutive daily samples: the KBDI recurrence is defined per day.
+
+    Raises:
+        CoordinateValidationError: If the time steps are not exactly one day apart.
+    """
+    values = data.coords[time_dim].values
+    if values.size < 2:
+        return
+    try:
+        deltas = np.diff(values.astype("datetime64[ns]"))
+    except (TypeError, ValueError) as exc:
+        raise CoordinateValidationError(
+            message=f"Cannot verify daily cadence for '{time_dim}': unsupported datetime type.",
+            coordinate_name=time_dim,
+            reason="unsupported_datetime_type",
+        ) from exc
+    if np.any(deltas != np.timedelta64(1, "D")):
+        raise CoordinateValidationError(
+            message=(
+                f"KBDI requires consecutive daily '{time_dim}' steps, but '{time_dim}' is not daily. "
+                "Aggregate the observations to daily totals and daily maxima before calling."
+            ),
+            coordinate_name=time_dim,
+            reason="not_daily",
+        )
+
+
 def _kbdi_xarray(
     precipitation: xr.DataArray,
-    maximum_temperature: xr.DataArray | npt.ArrayLike,
+    maximum_temperature: xr.DataArray,
     mean_annual_precipitation: npt.ArrayLike | xr.DataArray | None,
     *,
     units: Literal["metric", "imperial"],
@@ -736,21 +860,32 @@ def _kbdi_xarray(
     :func:`~climate_indices.xarray_adapter.pet_hargreaves`, this does not need
     ``vectorize=True`` per-cell looping.
     """
-    if not isinstance(maximum_temperature, xr.DataArray):
-        raise TypeError(
-            "precipitation and maximum_temperature must be the same type. "
-            f"Got precipitation=DataArray, maximum_temperature={type(maximum_temperature).__name__}. "
-            "Convert both to the same type (both numpy arrays or both xr.DataArray)."
-        )
     precip_da = precipitation
     temp_da = maximum_temperature
 
     _validate_time_dimension(precip_da, time_dim)
     _validate_time_dimension(temp_da, time_dim)
+    for data in (precip_da, temp_da):
+        _validate_time_coordinate_present(data, time_dim)
     _validate_time_monotonicity(precip_da.coords[time_dim])
     _validate_time_monotonicity(temp_da.coords[time_dim])
+    for data in (precip_da, temp_da):
+        _validate_daily_time_coordinate(data, time_dim)
 
+    shared_spatial_dims = [str(dim) for dim in precip_da.dims if dim in temp_da.dims and dim != time_dim]
     precip_aligned, temp_aligned = xr.align(precip_da, temp_da, join="inner")
+    for dim in sorted(shared_spatial_dims):
+        if precip_aligned.sizes[dim] != precip_da.sizes[dim]:
+            raise CoordinateValidationError(
+                message=(
+                    f"Input alignment dropped coordinates along non-time dimension '{dim}': "
+                    f"precipitation had {precip_da.sizes[dim]}, maximum_temperature had "
+                    f"{temp_da.sizes[dim]}, and {precip_aligned.sizes[dim]} remain after the inner join. "
+                    "Subset or align the inputs explicitly; KBDI never reduces spatial coverage silently."
+                ),
+                coordinate_name=dim,
+                reason="non_time_alignment_dropped_coordinates",
+            )
     aligned_len = precip_aligned.sizes[time_dim]
     original_len = max(precip_da.sizes[time_dim], temp_da.sizes[time_dim])
     if aligned_len == 0:
@@ -788,6 +923,16 @@ def _kbdi_xarray(
     spatial_dims = tuple(d for d in precip_aligned.dims if d != time_dim)
     spatial_shape = tuple(precip_aligned.sizes[d] for d in spatial_dims)
 
+    # validate initial conditions eagerly: a bad seed must fail this call, not a
+    # later lazy evaluation (the NumPy core revalidates per chunk)
+    maximum = 800.0 if units == "imperial" else _KBDI_MAX_MM
+    internal_spatial_shape = spatial_shape or (1,)
+    if initial_state is not None:
+        _kbdi_state_arrays(initial_state, internal_spatial_shape, units, maximum)
+    elif initial_kbdi is not None and not isinstance(initial_kbdi, xr.DataArray):
+        # a DataArray seed may be Dask-backed; validating it eagerly would compute it
+        _kbdi_initial_value(initial_kbdi, internal_spatial_shape, maximum)
+
     def _wrap_spatial(value: npt.ArrayLike | xr.DataArray) -> xr.DataArray:
         """Broadcast a scalar/array/DataArray to a DataArray on ``spatial_dims``.
 
@@ -799,7 +944,16 @@ def _kbdi_xarray(
             return value
         return xr.DataArray(np.broadcast_to(np.asarray(value, dtype=np.float64), spatial_shape), dims=spatial_dims)
 
-    mean_annual_arg = None if mean_annual_precipitation is None else _wrap_spatial(mean_annual_precipitation)
+    mean_annual_arg: xr.DataArray | None = None
+    if mean_annual_precipitation is not None:
+        if isinstance(mean_annual_precipitation, xr.DataArray):
+            mean_annual_precipitation = _convert_precipitation_units(
+                mean_annual_precipitation,
+                precip_target,
+                argument_name="mean_annual_precipitation.attrs['units']",
+                annual=True,
+            )
+        mean_annual_arg = _wrap_spatial(mean_annual_precipitation)
     seed_kbdi_arg: xr.DataArray | None = None
     seed_wet_arg: xr.DataArray | None = None
     seed_gap_arg: xr.DataArray | None = None
@@ -906,12 +1060,21 @@ def _kbdi_xarray(
         result_da: xr.DataArray = values_result
         return result_da
 
-    final_gap: npt.NDArray[np.int64] = gap_result.values
+    # One compute for all three state fields: they share the recurrence graph,
+    # so separate .values calls would each rerun the whole recurrence.
+    final_state = xr.Dataset(
+        {
+            "kbdi": kbdi_result,
+            "wet_spell_precipitation": wet_result,
+            "trailing_gap_days": gap_result,
+        }
+    ).load()
+    final_gap: npt.NDArray[np.int64] = final_state["trailing_gap_days"].values
     return KBDIResult(
         values=values_result,
         state=KBDIState(
-            kbdi=kbdi_result.values,
-            wet_spell_precipitation=wet_result.values,
+            kbdi=final_state["kbdi"].values,
+            wet_spell_precipitation=final_state["wet_spell_precipitation"].values,
             trailing_gap_days=None if bool(np.all(final_gap < 0)) else final_gap,
             units=units,
         ),

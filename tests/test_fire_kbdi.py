@@ -933,11 +933,12 @@ class TestKBDIXarrayUnitInference:
 
     def test_absent_units_attribute_is_trusted_as_is(self) -> None:
         """No `units` attribute means the raw values already match the `units=` scale."""
-        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays()
+        precip_da, temp_da, mean_annual_da, precipitation, temperature, mean_annual = _gridded_dataarrays()
         assert "units" not in temp_da.attrs
+        assert "units" not in precip_da.attrs
         result = fire.kbdi(precip_da, temp_da, mean_annual_da)
-        expected = fire.kbdi(precip_da, temp_da, mean_annual_da)
-        np.testing.assert_array_equal(result.values, expected.values)
+        expected = fire.kbdi(precipitation, temperature, mean_annual)
+        np.testing.assert_array_equal(result.values, expected)
 
     def test_unrecognized_temperature_units_raises(self) -> None:
         precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays()
@@ -952,6 +953,35 @@ class TestKBDIXarrayUnitInference:
         precip_da.attrs["units"] = "furlongs"
         with pytest.raises(InvalidArgumentError):
             fire.kbdi(precip_da, temp_da, mean_annual_da)
+
+    def test_inch_mean_annual_climatology_is_converted_to_metric(self) -> None:
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays()
+        mean_annual_inches = (mean_annual_da / 25.4).assign_attrs(units="inches")
+        result = fire.kbdi(precip_da, temp_da, mean_annual_inches)
+        expected = fire.kbdi(precip_da, temp_da, mean_annual_da)
+        np.testing.assert_allclose(result.values, expected.values, rtol=1e-10)
+
+    def test_mm_mean_annual_climatology_is_converted_to_imperial(self) -> None:
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays()
+        precip_inches = (precip_da / 25.4).assign_attrs(units="inches")
+        temp_fahrenheit = (temp_da * 9.0 / 5.0 + 32.0).assign_attrs(units="degF")
+        mean_annual_mm = mean_annual_da.assign_attrs(units="mm")
+        result = fire.kbdi(precip_inches, temp_fahrenheit, mean_annual_mm, units="imperial")
+        expected = fire.kbdi(precip_inches, temp_fahrenheit, mean_annual_da / 25.4, units="imperial")
+        np.testing.assert_allclose(result.values, expected.values, rtol=1e-10)
+
+    def test_year_rate_mean_annual_units_are_accepted(self) -> None:
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays()
+        mean_annual_per_year = mean_annual_da.assign_attrs(units="mm year-1")
+        expected = fire.kbdi(precip_da, temp_da, mean_annual_da)
+        result = fire.kbdi(precip_da, temp_da, mean_annual_per_year)
+        np.testing.assert_array_equal(result.values, expected.values)
+
+    def test_rate_units_for_mean_annual_climatology_raise(self) -> None:
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays()
+        rate = xr.full_like(mean_annual_da, 1e-5).assign_attrs(units="kg m-2 s-1")
+        with pytest.raises(InvalidArgumentError, match="mean_annual_precipitation"):
+            fire.kbdi(precip_da, temp_da, rate)
 
 
 class TestKBDIXarrayDaskChunking:
@@ -970,6 +1000,41 @@ class TestKBDIXarrayDaskChunking:
         temp_dask = temp_da.chunk({"time": -1, "lat": 1, "lon": 1})
         result = fire.kbdi(precip_dask, temp_dask, mean_annual_da)
         assert result.chunks is not None
+
+    def test_invalid_configuration_raises_before_lazy_construction(self) -> None:
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays(days=40)
+        precip_dask = precip_da.chunk({"time": -1, "lat": 1, "lon": 1})
+        temp_dask = temp_da.chunk({"time": -1, "lat": 1, "lon": 1})
+        with pytest.raises(InvalidArgumentError, match="nan_policy"):
+            fire.kbdi(precip_dask, temp_dask, mean_annual_da, nan_policy="interpolate")
+
+    def test_invalid_initial_state_raises_before_lazy_construction(self) -> None:
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays(days=40)
+        precip_dask = precip_da.chunk({"time": -1, "lat": 1, "lon": 1})
+        temp_dask = temp_da.chunk({"time": -1, "lat": 1, "lon": 1})
+        state = fire.KBDIState(
+            kbdi=np.ones((2, 3)), wet_spell_precipitation=np.zeros((2, 3)), trailing_gap_days=None, units="imperial"
+        )
+        with pytest.raises(InvalidArgumentError, match="units"):
+            fire.kbdi(precip_dask, temp_dask, mean_annual_da, initial_state=state)
+
+    def test_state_materialization_executes_the_recurrence_once(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """All three state fields must share one execution of the recurrence graph."""
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays()
+        precip_dask = precip_da.chunk({"time": -1, "lat": 1, "lon": 1})
+        temp_dask = temp_da.chunk({"time": -1, "lat": 1, "lon": 1})
+        real_kbdi = fire.kbdi
+        calls: list[int] = []
+
+        def counting_kbdi(*args: object, **kwargs: object) -> object:
+            calls.append(1)
+            return real_kbdi(*args, **kwargs)
+
+        monkeypatch.setattr(fire, "kbdi", counting_kbdi)
+        result = real_kbdi(precip_dask, temp_dask, mean_annual_da, return_state=True)
+        assert isinstance(result, fire.KBDIResult)
+        # 2 lat x 3 lon chunks: exactly one recurrence execution per chunk
+        assert len(calls) == 6
 
 
 class TestKBDIXarraySpinUp:
@@ -1014,6 +1079,32 @@ class TestKBDIXarrayInputValidation:
         precip_da, _temp_da, mean_annual_da, precipitation, temperature, _mean_annual = _gridded_dataarrays()
         with pytest.raises(TypeError, match="same type"):
             fire.kbdi(precip_da, temperature, mean_annual_da)
+        with pytest.raises(TypeError, match="same type"):
+            fire.kbdi(precipitation, _temp_da, mean_annual_da)
+
+    def test_invalid_configuration_raises_on_the_xarray_path(self) -> None:
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays(days=20)
+        state = fire.KBDIState(kbdi=np.array(1.0), wet_spell_precipitation=np.array(0.0), trailing_gap_days=None)
+        with pytest.raises(InvalidArgumentError, match="initial_kbdi"):
+            fire.kbdi(precip_da, temp_da, mean_annual_da, initial_kbdi=5.0, initial_state=state)
+
+    def test_not_daily_time_coordinate_raises(self) -> None:
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays(days=48)
+        hourly = pd.date_range("2000-01-01", periods=48, freq="h")
+        with pytest.raises(CoordinateValidationError, match="daily"):
+            fire.kbdi(precip_da.assign_coords(time=hourly), temp_da, mean_annual_da)
+
+    def test_time_dimension_without_coordinate_raises(self) -> None:
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays(days=20)
+        no_time_coord = xr.DataArray(precip_da.values, dims=precip_da.dims)
+        with pytest.raises(CoordinateValidationError, match="coordinate"):
+            fire.kbdi(no_time_coord, temp_da, mean_annual_da)
+
+    def test_mismatched_spatial_coordinates_raise(self) -> None:
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays()
+        shifted_temp = temp_da.assign_coords(lat=[20.0, 30.0])
+        with pytest.raises(CoordinateValidationError, match="lat"):
+            fire.kbdi(precip_da, shifted_temp, mean_annual_da)
 
     def test_missing_time_dimension_raises(self) -> None:
         precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays()

@@ -13,7 +13,7 @@ may change in a future minor release.
 | `DataArray` inputs for PET Hargreaves | Yes | xarray adapter tests cover aligned daily temperature inputs. |
 | `DataArray` inputs for PNP | Yes | PNP wrapper tests cover scale handling and metadata. |
 | `DataArray` inputs for PCI | Yes | PCI uses a manual scalar-output wrapper. |
-| `DataArray` inputs for KBDI | Yes | `fire.kbdi()` resolves the `kbdi`/`kbdi_imperial` CF entry per call from `units`; supports `return_state`/`initial_state`, `spin_up`, `nan_policy`/`max_gap_days`, and CF `units`-attribute unit inference. See `tests/test_fire_kbdi.py`. |
+| `DataArray` inputs for KBDI | Yes | `fire.kbdi()` resolves the `kbdi`/`kbdi_imperial` CF entry per call from `units`; supports `return_state`/`initial_state`, `spin_up`, `nan_policy`/`max_gap_days`, and CF `units`-attribute unit inference for the weather inputs and an attributed mean annual climatology. Inputs must share a consecutive daily time coordinate; alignment that would drop non-time coordinates is rejected. See `tests/test_fire_kbdi.py`. |
 | Palmer direct xarray API | No | Use the NumPy Palmer function with `.values`, then rewrap outputs. See `notebooks/palmer_indices_xarray.ipynb`. |
 | Coordinate preservation | Yes | Adapter tests verify time and spatial coordinates are preserved. |
 | CF-style metadata | Yes | `CF_METADATA` registry and adapter tests verify `long_name`, `units`, `references`, version, and history attributes. |
