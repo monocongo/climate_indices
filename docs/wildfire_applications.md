@@ -59,7 +59,11 @@ or attribution ([NOAA/NIDIS drought update][drought-update-2020]).
 
 Given a continuous daily xarray `DataArray` of reference ET covering the
 calibration period and event, compute a 14-day EDDI series for a Central
-California point:
+California point. This uses the xarray `DataArray` route of
+`climate_indices.eddi`, which is **beta**: numerical results match the stable
+NumPy API, but parameter inference, metadata, and coordinate handling may change
+in a future minor release ([xarray_compatibility.md](./xarray_compatibility.md)).
+Use the NumPy API when an integration cannot absorb beta interface changes.
 
 ```python
 import matplotlib.pyplot as plt
@@ -83,11 +87,15 @@ plt.title("Central California 14-day EDDI, June–September 2020")
 plt.show()
 ```
 
-Adapt coordinate names and longitude convention to the source dataset. The
-xarray path infers daily Periodicity and the data start year from the time
-coordinate. Keep the event outside the 1980–2019 Calibration Period, then
-interpret positive excursions as unusually high demand relative to that
-period ([NOAA PSL][noaa-eddi]).
+Adapt coordinate names and longitude convention to the source dataset. The time
+coordinate must be `datetime64` in the standard, Gregorian, or
+proleptic_gregorian calendar — a `calendar` attribute naming one of those, or
+no `calendar` attribute at all — and daily input must begin on January 1;
+`cftime` calendars and other start dates are rejected. Given those constraints,
+the xarray path infers daily Periodicity and the data start year from the time
+coordinate. Keep the event outside the
+1980–2019 Calibration Period, then interpret positive excursions as unusually
+high demand relative to that period ([NOAA PSL][noaa-eddi]).
 
 This example is not a numerical reproduction of NOAA's map. NOAA's product
 uses FAO-56 Penman–Monteith reference evapotranspiration driven by NLDAS-2 and a
