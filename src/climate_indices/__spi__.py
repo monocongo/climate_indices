@@ -43,21 +43,6 @@ class InputType(Enum):
     timeseries = 3
 
 
-def init_worker(arrays_and_shapes):
-    """
-    Initialization function that assigns named arrays into the global variable.
-
-    :param arrays_and_shapes: dictionary containing variable names as keys
-        and two-element dictionaries containing RawArrays and associated shapes
-        (i.e. each value of the dictionary is itself a dictionary with one key "array"
-        and another key _KEY_SHAPE)
-    :return:
-    """
-
-    global _global_shared_arrays
-    _global_shared_arrays = arrays_and_shapes
-
-
 def _validate_args(args):
     """
     Validate the processing settings to confirm that proper argument
@@ -194,27 +179,6 @@ def _validate_args(args):
         raise ValueError(msg)
 
     return input_type
-
-
-def _build_arguments(keyword_args):
-    """
-    Builds a dictionary of function arguments appropriate to the index to be computed.
-
-    :param dict keyword_args:
-    :return: dictionary of arguments keyed with names expected by the corresponding
-        index computation function
-    """
-
-    function_arguments = {
-        "data_start_year": keyword_args["data_start_year"],
-        "scale": keyword_args["scale"],
-        "distribution": keyword_args["distribution"],
-        "calibration_year_initial": keyword_args["calibration_start_year"],
-        "calibration_year_final": keyword_args["calibration_end_year"],
-        "periodicity": keyword_args["periodicity"],
-    }
-
-    return function_arguments
 
 
 def _get_variable_attributes(

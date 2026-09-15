@@ -44,21 +44,6 @@ class InputType(Enum):
     timeseries = 3
 
 
-def init_worker(arrays_and_shapes: dict[str, tuple[Any, ...]]) -> None:
-    """
-    Initialization function that assigns named arrays into the global variable.
-
-    param arrays_and_shapes: dictionary containing variable names as keys
-        and two-element dictionaries containing RawArrays and associated shapes
-        (i.e. each value of the dictionary is itself a dictionary with one key "array"
-        and another key _KEY_SHAPE)
-    return:
-    """
-
-    global _global_shared_arrays
-    _global_shared_arrays = arrays_and_shapes
-
-
 def _validate_args(args: argparse.Namespace) -> InputType:
     """
     Validate the processing settings to confirm that proper argument
