@@ -1,34 +1,4 @@
-"""Performance metrics utilities for computation tracking.
-
-This module provides utilities for tracking performance metrics during climate index
-calculations, including input size tracking and memory usage monitoring for large arrays.
-
-Custom Metrics via Context Binding
------------------------------------
-
-The structlog library's `bind()` method allows you to attach custom metrics to a logger
-context. All subsequent log events from that logger will include the bound fields:
-
-Example:
-    ::
-
-        import structlog
-        from climate_indices.performance import check_large_array_memory
-
-        log = structlog.get_logger()
-        log = log.bind(
-            computation_type="spi",
-            input_elements=values.size,
-            scale_months=3,
-        )
-
-        # all subsequent log events will include the bound fields
-        log.info("calculation_started")  # includes computation_type, input_elements, scale_months
-        log.info("calculation_completed", duration_ms=123.45)  # same fields present
-
-This pattern is used throughout the climate_indices package to ensure consistent
-context across calculation lifecycle events (started, completed, failed).
-"""
+"""Performance metrics utilities for computation tracking."""
 
 from __future__ import annotations
 
@@ -72,13 +42,6 @@ def check_large_array_memory(*arrays: np.ndarray) -> dict[str, float] | None:
         Dictionary with 'array_memory_mb' (always) and 'process_memory_mb' (if psutil
         available) when total array memory exceeds threshold. Returns None if under
         threshold.
-
-    Example:
-        ::
-
-            memory_metrics = check_large_array_memory(precips_mm, pet_mm)
-            if memory_metrics:
-                log.info("large_arrays_detected", **memory_metrics)
     """
     total_bytes = sum(arr.nbytes for arr in arrays)
 

@@ -98,7 +98,7 @@ def detect_input_type(data: Any) -> InputType:
 
     This is a pure classifier—it determines the type category but does not
     perform any data transformation or coercion. The actual dispatch logic
-    is handled by the @xarray_adapter decorator (Story 2.2).
+    is handled by the @xarray_adapter decorator.
 
     .. note:: Part of the beta xarray adapter layer. See :doc:`xarray_migration`.
 
@@ -115,7 +115,7 @@ def detect_input_type(data: Any) -> InputType:
 
     Notes:
         - np.ma.MaskedArray is a subclass of np.ndarray, so it's automatically accepted
-        - Dask-backed xr.DataArray is still classified as XARRAY (Dask handling is Story 2.9)
+        - Dask-backed xr.DataArray is still classified as XARRAY
         - bool is a subclass of int in Python, so True/False are classified as NUMPY
         - xr.Dataset is rejected with a hint to select a specific variable
     """
@@ -1615,7 +1615,7 @@ def xarray_adapter(
     Notes:
         - NumPy inputs: Passed through unchanged to the wrapped function
         - xarray inputs: Values extracted, parameters inferred, result rewrapped with coords
-        - 1D DataArrays only in Story 2.2; multi-dimensional support added in Story 2.9
+        - 1D and multi-dimensional DataArrays supported
         - Uses inspect.signature() for generic parameter mapping (works with any function)
     """
 
@@ -1636,14 +1636,14 @@ def xarray_adapter(
             # xarray path: detect → [resolve → align] → validate → extract → infer → compute → rewrap → log
             input_da = data
 
-            # check skipna parameter (Story 2.8)
+            # check skipna parameter
             if skipna:
                 raise NotImplementedError(
                     "skipna=True not yet implemented (FR-INPUT-004). "
                     "NaN values are propagated through calculations by default."
                 )
 
-            # resolve and align secondary inputs (Story 3.1)
+            # resolve and align secondary inputs
             modified_args = list(args)
             modified_kwargs = dict(kwargs)
             resolved_secondaries: dict[str, tuple[int | None, Any]] = {}
@@ -1685,7 +1685,7 @@ def xarray_adapter(
                                 # replace kwarg
                                 modified_kwargs[name] = aligned_secondaries[name]
 
-            # coordinate validation (Story 2.7)
+            # coordinate validation
             if infer_params:
                 _validate_time_dimension(input_da, time_dim)
                 time_coord = input_da[time_dim]
@@ -1696,7 +1696,7 @@ def xarray_adapter(
                 if resolved_scale is not None:
                     _validate_sufficient_data(time_coord, resolved_scale)
 
-            # detect Dask-backed arrays (Story 2.9)
+            # detect Dask-backed arrays
             input_dataarrays = _collect_input_dataarrays(
                 input_da,
                 additional_input_names,
@@ -1737,9 +1737,7 @@ def xarray_adapter(
 
             # branch: Dask execution or in-memory execution
             if is_dask:
-                # ═══════════════════════════════════════════════════════════════════
-                # Dask execution path (Story 2.9)
-                # ═══════════════════════════════════════════════════════════════════
+                # Dask execution path
 
                 # build call_kwargs from modified_kwargs + inferred params
                 call_kwargs = dict(modified_kwargs)
@@ -1796,11 +1794,9 @@ def xarray_adapter(
 
                 return result_da
 
-            # ═══════════════════════════════════════════════════════════════════
             # In-memory execution path (original logic)
-            # ═══════════════════════════════════════════════════════════════════
 
-            # assess NaN density for diagnostics (Story 2.8)
+            # assess NaN density for diagnostics
             nan_assessment = _assess_nan_density(input_da)
             if nan_assessment["has_nan"]:
                 _log().info(
@@ -1825,13 +1821,11 @@ def xarray_adapter(
             # check if input is multi-dimensional (has spatial dims beyond time)
             # and has a time dimension (required for apply_ufunc with input_core_dims)
             if input_da.ndim > 1 and time_dim in input_da.dims:
-                # ═══════════════════════════════════════════════════════════════════
                 # Multi-dimensional in-memory execution path
-                # ═══════════════════════════════════════════════════════════════════
                 # use xr.apply_ufunc with vectorize=True to handle spatial broadcasting
                 # similar to Dask path but without dask="parallelized"
 
-                # validate calibration period has sufficient non-NaN data (Story 2.8)
+                # validate calibration period has sufficient non-NaN data
                 if nan_assessment["has_nan"] and infer_params and time_dim in input_da.dims:
                     time_coord = input_da[time_dim]
                     cal_initial = call_kwargs.get("calibration_year_initial")
@@ -1894,9 +1888,7 @@ def xarray_adapter(
                 _log().info("xarray_adapter_completed", **log_fields)
                 return result_da
 
-            # ═══════════════════════════════════════════════════════════════════
             # 1D in-memory execution path
-            # ═══════════════════════════════════════════════════════════════════
 
             # extract numpy values from primary
             numpy_values = input_da.values
@@ -1917,7 +1909,7 @@ def xarray_adapter(
                             valid_kwargs[name] = secondary_values
                             time_series_kwarg_names.add(name)
 
-            # validate calibration period has sufficient non-NaN data (Story 2.8)
+            # validate calibration period has sufficient non-NaN data
             # this validation requires .values, so it only runs in the in-memory path
             if nan_assessment["has_nan"] and infer_params and time_dim in input_da.dims:
                 time_coord = input_da[time_dim]
@@ -1945,7 +1937,7 @@ def xarray_adapter(
                 time_series_kwarg_names,
             )
 
-            # verify NaN propagation contract (Story 2.8)
+            # verify NaN propagation contract
             if nan_assessment["has_nan"]:
                 if not _verify_nan_propagation(nan_assessment["nan_positions"], result_values):
                     _log().warning(
@@ -1965,7 +1957,7 @@ def xarray_adapter(
                 input_da, result_values, cf_metadata, calc_metadata, index_name=resolved_index_name
             )
 
-            # log completion with NaN metrics (Story 2.8)
+            # log completion with NaN metrics
             log_fields = {
                 "function_name": func.__name__,
                 "input_shape": input_da.shape,
