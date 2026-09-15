@@ -498,6 +498,14 @@ def test_imperial_values_that_overflow_the_metric_conversion_raise() -> None:
         fire.kbdi(np.zeros(2), np.full(2, 70.0), huge, units="imperial")
 
 
+def test_huge_finite_imperial_temperature_is_not_treated_as_missing() -> None:
+    """Grouping the Fahrenheit-to-Celsius factor keeps the intermediate product finite."""
+    temperature = np.finfo(np.float64).max / 5.0 * 1.0000001
+    assert np.isfinite(temperature)
+    result = fire.kbdi(np.zeros(2), np.full(2, temperature), 40.0, units="imperial")
+    assert np.isfinite(result).all()
+
+
 @pytest.mark.parametrize(
     ("argument", "value"),
     [
