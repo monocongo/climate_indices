@@ -22,34 +22,38 @@ is a day where any time-varying weather input is NaN.
 updates state. The first valid day after an interior missing run resumes with
 a NaN state, so every output from that day onward is NaN. This is the
 conservative default: no state is fabricated across a gap. A missing run that
-touches the end of the input poisons the final state the same way. Leading
-missing days never poison a call without `initial_state`: the recurrence
-begins at the first valid day with the seed, just as if the input started
-there. When `initial_state` is supplied the series has already started, so a
-leading missing run is interior to it and poisons. If every input day is
-missing, the output is all NaN; the returned state is the seed/default initial
-state for a call without `initial_state`, and a NaN state for a resume.
+touches the end of a started recurrence poisons the final state the same way.
+Leading missing days never poison before the recurrence has started: the
+recurrence begins at the first valid day with the seed, just as if the input
+started there. Once a state reports a started recurrence, a leading missing
+run is interior to the series and poisons. If every input day is missing, the
+output is all NaN; the returned state is the seed or a supplied not-started
+`initial_state`, while a supplied started state poisons.
 
 **bridge.** Interior and trailing missing runs no longer than `max_gap_days`
 are skipped: their outputs are NaN, their state is "no change", and the next
 valid day resumes from the last valid state. The first missing run longer
-than `max_gap_days` poisons: outputs from the run's first missing day onward
-are NaN and the state from that point is NaN. A trailing run within the limit
-leaves `return_state` at the last valid state, so a caller can explicitly
-append across it. `bridge` never invents weather values.
+than `max_gap_days` poisons: its days are NaN outputs and the state turns NaN
+as soon as the run passes `max_gap_days`, so every later output is NaN. A
+trailing run within the limit leaves `return_state` at the last valid state,
+so a caller can explicitly append across it. `bridge` never invents weather
+values.
 
 The limit applies to the continuous series, not to one call. Each per-index
 state dataclass ([ADR-0006](./0006-fire-recursive-state-and-execution.md))
-therefore carries `bridged_gap_days`, the number of missing days bridged
-immediately before the return point (always 0 under `propagate`, which poisons
-instead). A call that resumes from such an `initial_state` counts its leading
-missing days against the remaining allowance: a run that pushes
-`initial_state.bridged_gap_days + run_length` past `max_gap_days` poisons,
-exactly as the one-shot series would. The count keeps accumulating while no
-valid day resumes the recurrence, so an all-missing continuation still
-poisons once it exceeds the allowance. A call without `initial_state` has no
-run to continue, so its leading missing days are unbounded and never poison:
-the recurrence simply starts at the first valid day.
+therefore carries `trailing_gap_days: int | None`: the number of missing days
+immediately before the return point, `0` when the last input day was valid,
+and `None` while no valid day has started the recurrence. A resumed call
+measures its leading missing run against the state: `None` means the run is
+still pre-start, so it is unbounded and never poisons; otherwise a run that
+pushes `trailing_gap_days + run_length` past `max_gap_days` poisons, exactly
+as the one-shot series would. The count keeps accumulating while no valid day
+resumes the recurrence, so an all-missing continuation of a started state
+still poisons once it exceeds the allowance, while an all-missing
+continuation of a not-started state stays `None`. A call without
+`initial_state` has no run to continue, so its leading missing days are
+unbounded and never poison: the recurrence simply starts at the first valid
+day.
 
 Interpolation is not a policy. Callers that want filled weather data must do
 it upstream, where the fill is explicit, testable, and visible in the input
@@ -83,5 +87,8 @@ recurrence over the valid days alone; a bridged run split across an append
 boundary, resumed from the mid-run state, bitwise-equals the one-shot run,
 including a run that exceeds the limit only once the pieces are joined; and
 `return_state` after a trailing gap, NaN under `propagate` and the last valid
-state plus its `bridged_gap_days` count under a bridged `bridge` run. Xarray
-adapters forward both arguments so the policy applies per cell (#801, #807).
+state plus its `trailing_gap_days` count under a bridged `bridge` run; and the
+all-NaN call, all-NaN output with the returned state left not started
+(`trailing_gap_days is None`) unless the supplied state was already started,
+which poisons. Xarray adapters forward both arguments so the policy applies
+per cell (#801, #807).
