@@ -24,6 +24,10 @@ EXPECTED_KEYS = {
     "phdi",
     "pmdi",
     "z_index",
+    "kbdi",
+    "kbdi_imperial",
+    "ffwi",
+    "hdw",
 }
 
 REQUIRED_FIELDS = {"long_name", "units", "references"}
@@ -37,8 +41,8 @@ class TestRegistryStructure:
         assert set(CF_METADATA.keys()) == EXPECTED_KEYS
 
     def test_registry_entry_count(self) -> None:
-        """Registry has exactly 12 entries."""
-        assert len(CF_METADATA) == 12
+        """Registry has exactly 16 entries."""
+        assert len(CF_METADATA) == 16
 
     @pytest.mark.parametrize("index_name", sorted(EXPECTED_KEYS))
     def test_entry_has_required_fields(self, index_name: str) -> None:
@@ -180,6 +184,59 @@ class TestZIndexEntry:
         references = CF_METADATA["z_index"]["references"]
         assert "Palmer" in references
         assert "1965" in references
+
+
+class TestFireEntries:
+    """Validate fire-weather registry entries (#798)."""
+
+    FIRE_KEYS = ("kbdi", "kbdi_imperial", "ffwi", "hdw")
+
+    def test_kbdi_long_name(self) -> None:
+        assert CF_METADATA["kbdi"]["long_name"] == "Keetch-Byram Drought Index"
+
+    def test_kbdi_units(self) -> None:
+        assert CF_METADATA["kbdi"]["units"] == "mm"
+
+    def test_kbdi_variant(self) -> None:
+        assert CF_METADATA["kbdi"]["climate_indices_variant"] == "metric"
+
+    def test_kbdi_imperial_units(self) -> None:
+        assert CF_METADATA["kbdi_imperial"]["units"] == "1"
+
+    def test_kbdi_imperial_variant(self) -> None:
+        assert CF_METADATA["kbdi_imperial"]["climate_indices_variant"] == "imperial"
+
+    def test_kbdi_variants_share_long_name(self) -> None:
+        """The two KBDI unit scales are the same index, so long_name matches."""
+        assert CF_METADATA["kbdi"]["long_name"] == CF_METADATA["kbdi_imperial"]["long_name"]
+
+    def test_kbdi_variants_differ_in_units_and_variant(self) -> None:
+        assert CF_METADATA["kbdi"]["units"] != CF_METADATA["kbdi_imperial"]["units"]
+        assert CF_METADATA["kbdi"]["climate_indices_variant"] != CF_METADATA["kbdi_imperial"]["climate_indices_variant"]
+
+    def test_ffwi_long_name(self) -> None:
+        assert CF_METADATA["ffwi"]["long_name"] == "Fosberg Fire Weather Index"
+
+    def test_ffwi_references_contains_fosberg(self) -> None:
+        references = CF_METADATA["ffwi"]["references"]
+        assert "Fosberg" in references
+        assert "1978" in references
+
+    def test_hdw_long_name(self) -> None:
+        assert CF_METADATA["hdw"]["long_name"] == "Hot-Dry-Windy Index"
+
+    def test_hdw_units(self) -> None:
+        assert CF_METADATA["hdw"]["units"] == "hPa m s-1"
+
+    def test_hdw_references_contains_srock(self) -> None:
+        references = CF_METADATA["hdw"]["references"]
+        assert "Srock" in references
+        assert "2018" in references
+
+    @pytest.mark.parametrize("index_name", FIRE_KEYS)
+    def test_no_fire_entry_has_standard_name(self, index_name: str) -> None:
+        """Fire indices have no official CF standard_name (design doc policy)."""
+        assert "standard_name" not in CF_METADATA[index_name]
 
 
 class TestBackwardCompatibility:
