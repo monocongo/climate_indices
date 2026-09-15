@@ -40,10 +40,6 @@ class TestRegistryStructure:
         """Registry has entries for all indices."""
         assert set(CF_METADATA.keys()) == EXPECTED_KEYS
 
-    def test_registry_entry_count(self) -> None:
-        """Registry has exactly 16 entries."""
-        assert len(CF_METADATA) == 16
-
     @pytest.mark.parametrize("index_name", sorted(EXPECTED_KEYS))
     def test_entry_has_required_fields(self, index_name: str) -> None:
         """Each entry contains long_name, units, and references."""
@@ -201,7 +197,8 @@ class TestFireEntries:
         assert CF_METADATA["kbdi"]["climate_indices_variant"] == "metric"
 
     def test_kbdi_imperial_units(self) -> None:
-        assert CF_METADATA["kbdi_imperial"]["units"] == "1"
+        """0.01 in, not a bare "1": the imperial scale is a physical length, not dimensionless."""
+        assert CF_METADATA["kbdi_imperial"]["units"] == "0.01 in"
 
     def test_kbdi_imperial_variant(self) -> None:
         assert CF_METADATA["kbdi_imperial"]["climate_indices_variant"] == "imperial"
@@ -216,6 +213,10 @@ class TestFireEntries:
 
     def test_ffwi_long_name(self) -> None:
         assert CF_METADATA["ffwi"]["long_name"] == "Fosberg Fire Weather Index"
+
+    def test_ffwi_units(self) -> None:
+        """Matches the registry's established dimensionless spelling (spi, spei, eddi, ...)."""
+        assert CF_METADATA["ffwi"]["units"] == "dimensionless"
 
     def test_ffwi_references_contains_fosberg(self) -> None:
         references = CF_METADATA["ffwi"]["references"]
@@ -232,6 +233,11 @@ class TestFireEntries:
         references = CF_METADATA["hdw"]["references"]
         assert "Srock" in references
         assert "2018" in references
+
+    @pytest.mark.parametrize("index_name", FIRE_KEYS)
+    def test_fire_entry_has_description(self, index_name: str) -> None:
+        """The design doc requires every fire adapter's description to come from the registry."""
+        assert CF_METADATA[index_name].get("description", "").strip()
 
     @pytest.mark.parametrize("index_name", FIRE_KEYS)
     def test_no_fire_entry_has_standard_name(self, index_name: str) -> None:

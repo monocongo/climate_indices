@@ -1,8 +1,10 @@
 """CF Convention metadata registry for climate indices.
 
-Centralizes CF-compliant metadata (long_name, units, references) for all
-climate indices that produce xarray DataArray output. Each entry follows
-the CF Conventions (https://cfconventions.org/) attribute model.
+Centralizes CF-compliant metadata (long_name, units, references) for
+climate indices, including some without an xarray adapter yet: an entry may
+land ahead of its adapter (see docs/design/fire-subsystem.md), but no
+adapter ships before its entry. Each entry follows the CF Conventions
+(https://cfconventions.org/) attribute model.
 
 This module is a leaf dependency with no local imports, ensuring it can
 be safely imported by any module without circular dependency risk.
@@ -183,7 +185,7 @@ CF_METADATA: dict[str, CFAttributes] = {
     },
     "kbdi_imperial": {
         "long_name": "Keetch-Byram Drought Index",
-        "units": "1",
+        "units": "0.01 in",
         "description": (
             "Cumulative soil moisture deficit, imperial scale, hundredths of "
             "an inch, range [0, 800] — the exact conversion of the metric "
@@ -202,7 +204,7 @@ CF_METADATA: dict[str, CFAttributes] = {
     },
     "ffwi": {
         "long_name": "Fosberg Fire Weather Index",
-        "units": "1",
+        "units": "dimensionless",
         "description": "Weather-only fire-danger index, conventionally capped at 100.",
         "references": (
             "Fosberg, M. A. (1978). "
