@@ -2,7 +2,7 @@
 """Generate the notebook's NetCDF and Zarr inputs from pinned nClimGrid examples.
 
 Run from the repository root:
-    uv run --with h5py --with zarr scripts/prepare_e2e_inputs.py
+    uv run --group dev scripts/prepare_e2e_inputs.py
 
 Source and provenance
     Downloads paired monthly precipitation/PET NetCDF files from SOURCE_COMMIT,

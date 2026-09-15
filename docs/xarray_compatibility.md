@@ -81,8 +81,10 @@ applies per cell along the time axis.
   of the prepared inputs, so analysis does not recompute SPI/SPEI.
 - Run the notebook CI command before publishing examples:
   `uv run jupyter nbconvert --execute --to notebook --inplace notebooks/xarray_getting_started.ipynb notebooks/palmer_indices_xarray.ipynb notebooks/eddi_xarray.ipynb`.
-  That command and the CI `notebooks` job cover only the three notebooks
-  listed. `notebooks/zarr_dask_spi_spei.ipynb` needs prepared inputs from
-  `scripts/prepare_e2e_inputs.py` that neither provisions, so it is instead
-  covered by `tests/test_e2e_with_dask.py`, which executes its cells against
-  a synthetic store.
+- Execute the end-to-end tutorial from a fresh kernel before publishing it:
+  `bash scripts/smoke_e2e_notebook.sh` prepares the pinned sample inputs and
+  runs `notebooks/zarr_dask_spi_spei.ipynb` end to end into a scratch directory,
+  so a local run never rewrites the committed notebook. The CI `notebooks` job
+  runs both commands. `tests/test_e2e_with_dask.py` keeps offline coverage by
+  executing the notebook's cells against a synthetic store, so ordinary test
+  jobs need no download.

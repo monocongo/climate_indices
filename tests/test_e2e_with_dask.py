@@ -379,6 +379,17 @@ def test_notebook_rejects_calibration_outside_data_range(e2e_data):
         _exec_cells(namespace, calculation)
 
 
+def test_notebook_rejects_manifest_calibration_mismatch(e2e_data):
+    """Manifest provenance must agree with the notebook's Calibration Period."""
+    data_root, _ = e2e_data
+    manifest_path = data_root / "current" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["calibration_period"] = [1990, 2000]
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    with pytest.raises(exceptions.InvalidArgumentError, match="Calibration Period"):
+        _exec_cells({}, _executable_cells())
+
+
 def test_notebook_rejects_partially_missing_cells(tmp_path, monkeypatch):
     pytest.importorskip("zarr")
     ds = _synthetic_dataset()
