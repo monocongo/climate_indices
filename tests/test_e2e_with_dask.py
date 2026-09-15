@@ -237,13 +237,15 @@ def test_notebook_reopens_saved_output_with_a_fresh_lazy_handle():
     )
     expected_open = ast.parse("xr.open_zarr(final_output_zarr, consolidated=True)", mode="eval").body
     assert ast.dump(out_ds_assignment.value) == ast.dump(expected_open)
-    map_start = next(
-        node.lineno
+    map_assignment = next(
+        node
         for node in tree.body
         if isinstance(node, ast.Assign)
         and any(isinstance(target, ast.Name) and target.id == "map_slices" for target in node.targets)
     )
-    assert "map_slices = out_ds[[spi_name, spei_name]].sel(time=map_date).compute()" in source
+    expected_map = ast.parse("map_slices = out_ds[[spi_name, spei_name]].sel(time=map_date).compute()").body[0]
+    assert ast.dump(map_assignment) == ast.dump(expected_map)
+    map_start = map_assignment.lineno
     assert not any(
         isinstance(node, ast.Name) and node.id == "ds_output" and node.lineno >= map_start for node in ast.walk(tree)
     )
@@ -424,14 +426,19 @@ def test_notebook_plot_cells_execute(e2e_data):
         assert np.isnan(map_slices[variable_name].sel(lat=35.0, lon=-99.0).item())
 
     figure = namespace["fig"]
-    map_axes = [axis for axis in figure.axes if axis.get_xlabel() == "Longitude (degrees east)"]
-    assert len(map_axes) == 2
-    for axis, index_label in zip(map_axes, ("SPI", "SPEI"), strict=True):
-        assert axis.get_ylabel() == "Latitude (degrees north)"
-        assert axis.get_title() == f"{index_label} | 3-month Timescale | 2000-07-01"
-        assert axis.collections[0].get_clim() == (-3.0, 3.0)
-        np.testing.assert_allclose(axis.collections[0].cmap.get_bad(), to_rgba("0.75"))
+    expected_date = pd.Timestamp(namespace["map_date"]).strftime("%Y-%m-%d")
+    scale = namespace["pipeline_config"]["scale"]
+    try:
+        map_axes = [axis for axis in figure.axes if axis.get_xlabel() == "Longitude (degrees east)"]
+        assert len(map_axes) == 2
+        for axis, index_label in zip(map_axes, ("SPI", "SPEI"), strict=True):
+            assert axis.get_ylabel() == "Latitude (degrees north)"
+            assert axis.get_title() == f"{index_label} | {scale}-month Timescale | {expected_date}"
+            assert axis.collections[0].get_clim() == (-3.0, 3.0)
+            assert axis.collections[0].colorbar.extend == "both"
+            np.testing.assert_allclose(axis.collections[0].cmap.get_bad(), to_rgba(namespace["missing_color"]))
 
-    colorbar_labels = {axis.get_ylabel() for axis in figure.axes if axis not in map_axes}
-    assert colorbar_labels == {"SPI (dimensionless)", "SPEI (dimensionless)"}
-    namespace["plt"].close(figure)
+        colorbar_labels = {axis.get_ylabel() for axis in figure.axes if axis not in map_axes}
+        assert colorbar_labels == {"SPI (dimensionless)", "SPEI (dimensionless)"}
+    finally:
+        namespace["plt"].close(figure)
