@@ -30,12 +30,11 @@ from climate_indices.xarray_adapter import (
     _assess_nan_density,
     _build_history_entry,
     _build_output_attrs,
-    _build_output_dataarray,
+    _finalize_ufunc_result,
     _infer_calibration_period,
     _infer_data_start_year,
     _infer_periodicity,
     _infer_temporal_parameters,
-    _is_dask_backed,
     _resolve_scale_from_args,
     _resolve_secondary_inputs,
     _serialize_attr_value,
@@ -874,13 +873,33 @@ class TestXarrayAdapterIntegration:
         assert not isinstance(result, xr.DataArray)
 
 
-class TestBuildOutputDataarray:
-    """Unit tests for _build_output_dataarray() coordinate preservation function."""
+def _finalize_numpy_result(
+    input_da: xr.DataArray,
+    result_values: np.ndarray,
+    cf_metadata: dict[str, str] | None = None,
+    calculation_metadata: dict[str, object] | None = None,
+    index_name: str | None = "TEST",
+) -> xr.DataArray:
+    """Call the shared finalizer with NumPy values, mirroring the in-memory path."""
+    calc_metadata = calculation_metadata or {}
+    return _finalize_ufunc_result(
+        result_values,
+        input_da,
+        calc_metadata,
+        cf_metadata=cf_metadata,
+        calculation_metadata_keys=list(calc_metadata) or None,
+        index_display_name=index_name,
+        func_name="test",
+    )
+
+
+class TestFinalizeOutputResult:
+    """Unit tests for _finalize_ufunc_result() coordinate preservation (NumPy rewrap path)."""
 
     def test_dimension_coords_preserved(self, coord_rich_1d_da):
         """All dimension coordinates present with identical values."""
         result_values = np.ones_like(coord_rich_1d_da.values)
-        output = _build_output_dataarray(coord_rich_1d_da, result_values)
+        output = _finalize_numpy_result(coord_rich_1d_da, result_values)
 
         assert "time" in output.coords
         np.testing.assert_array_equal(output.coords["time"].values, coord_rich_1d_da.coords["time"].values)
@@ -888,7 +907,7 @@ class TestBuildOutputDataarray:
     def test_non_dimension_coords_preserved(self, coord_rich_1d_da):
         """Auxiliary coordinates (e.g., month) survive rewrap."""
         result_values = np.ones_like(coord_rich_1d_da.values)
-        output = _build_output_dataarray(coord_rich_1d_da, result_values)
+        output = _finalize_numpy_result(coord_rich_1d_da, result_values)
 
         assert "month" in output.coords
         np.testing.assert_array_equal(output.coords["month"].values, coord_rich_1d_da.coords["month"].values)
@@ -896,7 +915,7 @@ class TestBuildOutputDataarray:
     def test_scalar_coords_preserved(self, coord_rich_1d_da):
         """Scalar coordinates (e.g., station_id) survive rewrap."""
         result_values = np.ones_like(coord_rich_1d_da.values)
-        output = _build_output_dataarray(coord_rich_1d_da, result_values)
+        output = _finalize_numpy_result(coord_rich_1d_da, result_values)
 
         assert "station_id" in output.coords
         assert output.coords["station_id"].values == coord_rich_1d_da.coords["station_id"].values
@@ -904,7 +923,7 @@ class TestBuildOutputDataarray:
     def test_coord_attrs_preserved(self, coord_rich_1d_da):
         """Each coordinate's .attrs dict matches input."""
         result_values = np.ones_like(coord_rich_1d_da.values)
-        output = _build_output_dataarray(coord_rich_1d_da, result_values)
+        output = _finalize_numpy_result(coord_rich_1d_da, result_values)
 
         # check time coord attrs
         assert output.coords["time"].attrs["axis"] == "T"
@@ -921,7 +940,7 @@ class TestBuildOutputDataarray:
     def test_da_attrs_preserved_without_cf(self, coord_rich_1d_da):
         """DA-level attrs match input when cf_metadata=None."""
         result_values = np.ones_like(coord_rich_1d_da.values)
-        output = _build_output_dataarray(coord_rich_1d_da, result_values, cf_metadata=None)
+        output = _finalize_numpy_result(coord_rich_1d_da, result_values, cf_metadata=None)
 
         assert output.attrs["units"] == "mm"
         assert output.attrs["long_name"] == "Monthly Precipitation"
@@ -933,7 +952,7 @@ class TestBuildOutputDataarray:
             "long_name": "Standardized Precipitation Index",
             "units": "dimensionless",
         }
-        output = _build_output_dataarray(coord_rich_1d_da, result_values, cf_metadata)
+        output = _finalize_numpy_result(coord_rich_1d_da, result_values, cf_metadata)
 
         # DA attrs should be overridden
         assert output.attrs["long_name"] == "Standardized Precipitation Index"
@@ -946,7 +965,7 @@ class TestBuildOutputDataarray:
             "long_name": "Standardized Precipitation Index",
             "standard_name": "spi",
         }
-        output = _build_output_dataarray(coord_rich_1d_da, result_values, cf_metadata)
+        output = _finalize_numpy_result(coord_rich_1d_da, result_values, cf_metadata)
 
         # coord attrs should remain unchanged
         assert output.coords["time"].attrs["standard_name"] == "time"
@@ -955,28 +974,28 @@ class TestBuildOutputDataarray:
     def test_coord_order_preserved(self, coord_rich_1d_da):
         """list(output.coords) == list(input.coords)."""
         result_values = np.ones_like(coord_rich_1d_da.values)
-        output = _build_output_dataarray(coord_rich_1d_da, result_values)
+        output = _finalize_numpy_result(coord_rich_1d_da, result_values)
 
         assert list(output.coords.keys()) == list(coord_rich_1d_da.coords.keys())
 
     def test_dim_order_preserved(self, coord_rich_1d_da):
         """output.dims == input.dims."""
         result_values = np.ones_like(coord_rich_1d_da.values)
-        output = _build_output_dataarray(coord_rich_1d_da, result_values)
+        output = _finalize_numpy_result(coord_rich_1d_da, result_values)
 
         assert output.dims == coord_rich_1d_da.dims
 
     def test_result_values_correct(self, coord_rich_1d_da):
         """output.values matches the raw result array."""
         result_values = np.arange(len(coord_rich_1d_da.values))
-        output = _build_output_dataarray(coord_rich_1d_da, result_values)
+        output = _finalize_numpy_result(coord_rich_1d_da, result_values)
 
         np.testing.assert_array_equal(output.values, result_values)
 
     def test_name_preserved(self, coord_rich_1d_da):
         """output.name == input.name."""
         result_values = np.ones_like(coord_rich_1d_da.values)
-        output = _build_output_dataarray(coord_rich_1d_da, result_values)
+        output = _finalize_numpy_result(coord_rich_1d_da, result_values)
 
         assert output.name == coord_rich_1d_da.name
 
@@ -984,7 +1003,7 @@ class TestBuildOutputDataarray:
         """Mutating input coord attrs after call does not affect output."""
         input_da = coord_rich_1d_da.copy(deep=True)
         result_values = np.ones_like(input_da.values)
-        output = _build_output_dataarray(input_da, result_values)
+        output = _finalize_numpy_result(input_da, result_values)
 
         # mutate the copy's coord attrs after building output
         input_da.coords["time"].attrs["axis"] = "X"
@@ -999,7 +1018,7 @@ class TestBuildOutputDataarray:
         # only test first time slice to match 1D result shape
         input_1d = multi_coord_da.isel(lat=0)
         result_values = np.ones_like(input_1d.values)
-        output = _build_output_dataarray(input_1d, result_values)
+        output = _finalize_numpy_result(input_1d, result_values)
 
         assert "time" in output.coords
         assert output.coords["time"].attrs["axis"] == "T"
@@ -1007,7 +1026,7 @@ class TestBuildOutputDataarray:
     def test_history_added_when_index_name_provided(self, coord_rich_1d_da):
         """History attribute should be added when index_name is provided."""
         result_values = np.ones_like(coord_rich_1d_da.values)
-        output = _build_output_dataarray(
+        output = _finalize_numpy_result(
             coord_rich_1d_da,
             result_values,
             calculation_metadata={"scale": 3, "distribution": indices.Distribution.gamma},
@@ -1018,18 +1037,19 @@ class TestBuildOutputDataarray:
         assert "SPI-3 calculated using gamma distribution" in output.attrs["history"]
         assert "climate_indices v" in output.attrs["history"]
 
-    def test_no_history_when_index_name_none(self, coord_rich_1d_da):
-        """History attribute should not be added when index_name is None."""
+    def test_index_name_falls_back_to_func_name(self, coord_rich_1d_da):
+        """No explicit index name → history uses the wrapped function's name."""
         result_values = np.ones_like(coord_rich_1d_da.values)
-        output = _build_output_dataarray(
+        output = _finalize_numpy_result(
             coord_rich_1d_da,
             result_values,
             calculation_metadata={"scale": 3},
             index_name=None,
         )
 
-        # history should not be present (backward compat for direct callers)
-        assert "history" not in output.attrs
+        # func_name="test" fallback → uppercase display name in history
+        assert "history" in output.attrs
+        assert "TEST-3 calculated" in output.attrs["history"]
 
 
 class TestCoordinatePreservationRoundTrip:
@@ -1323,10 +1343,10 @@ class TestLibraryVersionAttribute:
         assert result.attrs["units"] == "dimensionless"
         assert "climate_indices_version" in result.attrs
 
-    def test_version_in_build_output_directly(self, coord_rich_1d_da):
-        """_build_output_dataarray adds version even without decorator."""
+    def test_version_in_shared_finalizer(self, coord_rich_1d_da):
+        """_finalize_ufunc_result adds version even without decorator."""
         result_values = np.ones_like(coord_rich_1d_da.values)
-        output = _build_output_dataarray(coord_rich_1d_da, result_values)
+        output = _finalize_numpy_result(coord_rich_1d_da, result_values)
 
         assert "climate_indices_version" in output.attrs
 
@@ -2935,18 +2955,6 @@ class TestNanHandlingSPIIntegration:
         assert result.dims == monthly_precip_with_nan.dims
         assert "time" in result.coords
         assert len(result.coords["time"]) == len(monthly_precip_with_nan.coords["time"])
-
-
-class TestIsDaskBacked:
-    """Test _is_dask_backed() helper function."""
-
-    def test_in_memory_array_returns_false(self, sample_monthly_precip_da):
-        """In-memory DataArray is not Dask-backed."""
-        assert not _is_dask_backed(sample_monthly_precip_da)
-
-    def test_dask_array_returns_true(self, dask_monthly_precip_1d):
-        """Dask-backed DataArray is detected."""
-        assert _is_dask_backed(dask_monthly_precip_1d)
 
 
 class TestValidateDaskChunks:

@@ -1275,21 +1275,6 @@ def _infer_temporal_parameters(
     return inferred
 
 
-def _is_dask_backed(data: xr.DataArray) -> bool:
-    """Check if a DataArray is backed by a Dask array.
-
-    Uses the canonical xarray idiom (data.chunks is not None) to detect Dask-backed
-    arrays without importing dask.array directly.
-
-    Args:
-        data: DataArray to check
-
-    Returns:
-        True if data is Dask-backed, False otherwise
-    """
-    return data.chunks is not None
-
-
 def _validate_dask_chunks(data: xr.DataArray, time_dim: str) -> None:
     """Validate that the time dimension is not split across multiple Dask chunks.
 
@@ -1346,8 +1331,8 @@ def _build_output_attrs(
 ) -> dict[str, Any]:
     """Build output attributes with CF metadata, calculation metadata, version, and history.
 
-    Pure attribute construction—extracts the dict-building logic from _build_output_dataarray()
-    so both in-memory and Dask execution paths can apply identical metadata.
+    Pure attribute construction—extracts the dict-building logic from _finalize_ufunc_result()
+    so every execution path applies identical metadata.
 
     Args:
         input_da: Original input DataArray with full coordinate metadata
@@ -1395,63 +1380,6 @@ def _build_output_attrs(
         output_attrs["history"] = _append_history(output_attrs, history_entry)
 
     return output_attrs
-
-
-def _build_output_dataarray(
-    input_da: xr.DataArray,
-    result_values: np.ndarray[Any, Any],
-    cf_metadata: dict[str, str] | None = None,
-    calculation_metadata: dict[str, Any] | None = None,
-    index_name: str | None = None,
-) -> xr.DataArray:
-    """Build output DataArray with preserved coordinates and metadata.
-
-    This function implements the rewrap phase of the adapter contract, ensuring
-    all coordinates (dimension, non-dimension, and scalar) and their attributes
-    survive the extract→compute→rewrap pipeline.
-
-    Args:
-        input_da: Original input DataArray with full coordinate metadata
-        result_values: NumPy result array from index computation
-        cf_metadata: Optional CF Convention metadata to apply to DataArray-level
-            attributes. Overrides conflicting input attrs but never affects
-            coordinate-level attributes.
-        calculation_metadata: Optional dict of calculation-specific metadata
-            (e.g., scale, distribution) to add to DataArray attributes.
-            Enum values are automatically serialized to .name strings.
-        index_name: Optional climate index display name for history tracking
-            (e.g., "SPI"). If provided, appends a CF-compliant history entry.
-
-    Returns:
-        DataArray with result_values and preserved coordinates/dims/attrs
-
-    Notes:
-        - Deep-copies coordinate attrs to prevent mutation bleed-through
-        - Preserves coordinate ordering (dict insertion order)
-        - CF metadata only affects DataArray-level attrs, not coord attrs
-        - Preserves the input DataArray's .name attribute
-        - Attribute layering: input attrs → CF metadata → calculation metadata → version → history
-    """
-    # build output attrs using extracted helper
-    output_attrs = _build_output_attrs(input_da, cf_metadata, calculation_metadata, index_name)
-
-    # construct output with coords and dims from input
-    result_da = xr.DataArray(
-        result_values,
-        coords=input_da.coords,
-        dims=input_da.dims,
-        attrs=output_attrs,
-        name=input_da.name,
-    )
-
-    # deep-copy coordinate attrs to guard against upstream behavior changes
-    # xarray 2025.6.1 preserves coord attrs through DataArray(coords=...),
-    # but we defensively copy to ensure isolation
-    for coord_name in result_da.coords:
-        if coord_name in input_da.coords:
-            result_da.coords[coord_name].attrs = copy.deepcopy(input_da.coords[coord_name].attrs)
-
-    return result_da
 
 
 def _capture_calculation_metadata(
@@ -1505,7 +1433,7 @@ def _collect_input_dataarrays(
 
 
 def _finalize_ufunc_result(
-    result_da: xr.DataArray,
+    result: np.ndarray[Any, Any] | xr.DataArray,
     input_da: xr.DataArray,
     valid_kwargs: dict[str, Any],
     *,
@@ -1514,10 +1442,15 @@ def _finalize_ufunc_result(
     index_display_name: str | None,
     func_name: str,
 ) -> xr.DataArray:
-    """Apply post-apply_ufunc processing: reorder dims, attach metadata, copy coord attrs.
+    """Rewrap a computation result with the input's coords, dims, attrs, and name.
+
+    Single finalizer for every execution path: NumPy results are wrapped using the
+    input's coords/dims; DataArray results from apply_ufunc (whose core dims were moved
+    to the end) are transposed back. Both then receive identical attributes and
+    deep-copied coordinate attrs.
 
     Args:
-        result_da: Result DataArray from apply_ufunc
+        result: NumPy result array, or DataArray from apply_ufunc
         input_da: Original input DataArray
         valid_kwargs: Filtered kwargs passed to the wrapped function
         cf_metadata: CF convention metadata for the output
@@ -1528,9 +1461,17 @@ def _finalize_ufunc_result(
     Returns:
         Finalized DataArray with restored dimensions, metadata, and coordinate attributes
     """
-    # restore dimension order (apply_ufunc moves core dims to end)
-    if result_da.dims != input_da.dims:
-        result_da = result_da.transpose(*input_da.dims)
+    if isinstance(result, xr.DataArray):
+        result_da = result
+        # restore dimension order (apply_ufunc moves core dims to end)
+        if result_da.dims != input_da.dims:
+            result_da = result_da.transpose(*input_da.dims)
+    else:
+        result_da = xr.DataArray(
+            result,
+            coords=input_da.coords,
+            dims=input_da.dims,
+        )
 
     # apply metadata using _build_output_attrs
     calc_metadata = _capture_calculation_metadata(calculation_metadata_keys, valid_kwargs)
@@ -1538,7 +1479,9 @@ def _finalize_ufunc_result(
     output_attrs = _build_output_attrs(input_da, cf_metadata, calc_metadata, index_name=resolved_index_name)
     result_da.attrs.update(output_attrs)
 
-    # deep-copy coordinate attrs
+    # deep-copy coordinate attrs to prevent mutation bleed-through
+    # (xarray currently preserves coord attrs through DataArray(coords=...),
+    # but we defensively copy to ensure isolation)
     for coord_name in result_da.coords:
         if coord_name in input_da.coords:
             result_da.coords[coord_name].attrs = copy.deepcopy(input_da.coords[coord_name].attrs)
@@ -1706,11 +1649,11 @@ def xarray_adapter(
                 modified_args,
                 modified_kwargs,
             )
-            is_dask = any(_is_dask_backed(dataarray) for dataarray in input_dataarrays)
+            is_dask = any(dataarray.chunks is not None for dataarray in input_dataarrays)
             if is_dask:
                 # validate chunking constraints for every Dask-backed time series
                 for dataarray in input_dataarrays:
-                    if _is_dask_backed(dataarray):
+                    if dataarray.chunks is not None:
                         _validate_dask_chunks(dataarray, time_dim)
 
             # infer temporal parameters if enabled (shared path)
@@ -1948,15 +1891,15 @@ def xarray_adapter(
                         message="Output missing NaN values present in input",
                     )
 
-            # capture calculation metadata from resolved kwargs
-            calc_metadata = _capture_calculation_metadata(calculation_metadata_keys, valid_kwargs)
-
-            # resolve index name for history tracking
-            resolved_index_name = index_display_name if index_display_name is not None else func.__name__.upper()
-
             # rewrap result as DataArray with preserved coordinates/metadata
-            result_da = _build_output_dataarray(
-                input_da, result_values, cf_metadata, calc_metadata, index_name=resolved_index_name
+            result_da = _finalize_ufunc_result(
+                result_values,
+                input_da,
+                valid_kwargs,
+                cf_metadata=cf_metadata,
+                calculation_metadata_keys=calculation_metadata_keys,
+                index_display_name=index_display_name,
+                func_name=func.__name__,
             )
 
             # log completion with NaN metrics
