@@ -21,6 +21,25 @@ may change in a future minor release.
 | Automatic temporal inference | Yes | Monthly and daily time-coordinate inference is covered by adapter tests. |
 | Multi-input alignment | Yes | SPEI aligns precipitation and PET with an inner join and emits a warning when timesteps are dropped. |
 
+## Stateful fire indices (planned)
+
+KBDI and CFFWIS moisture-code adapters are not yet shipped; this section
+describes the contract they will follow, per
+[ADR-0006](adr/0006-fire-recursive-state-and-execution.md). Only the
+weather-only Fosberg index is available today, via the NumPy layer.
+
+The planned adapters are recursive: each daily value needs its predecessor.
+Dask-backed inputs must therefore keep the complete `time` dimension in one
+chunk for every time-varying weather variable. Spatial chunks remain
+supported. Multi-chunk time input will raise `CoordinateValidationError` with
+`data = data.chunk({'time': -1})`; adapters never rechunk implicitly, because
+doing so can materialize a large daily history.
+
+Callers will use the returned state to append later observations without
+recomputing the archive. The state is a NumPy-layer value object rather than
+an xarray `Dataset`, so its arrays carry the computational spatial shape but
+no coordinates.
+
 ## Operational Guidance
 
 - Use NumPy APIs for stable production integrations that cannot absorb beta
@@ -29,5 +48,33 @@ may change in a future minor release.
   and metadata are more valuable than strict interface stability.
 - Keep Dask chunks spatial when possible and leave `time` as one chunk before
   calling index functions.
+- The canonical lazy xarray/Dask SPI/SPEI workflow is the teaching notebook
+  `notebooks/zarr_dask_spi_spei.ipynb`: the public typed API on Dask-backed DataArrays
+  (`xr.apply_ufunc(..., dask="parallelized")`), one full time chunk with spatial
+  chunks driving task parallelism, and precipitation/PET exact-aligned at
+  preparation time so SPEI never relies on coordinate intersection.
+- Persist results to a separate consolidated Zarr v2 store rather than back into
+  the prepared inputs. The notebook's `data/e2e/climate_indices_output.zarr` is
+  the sample path: `float32` index variables keep the API's `long_name`,
+  dimensionless `units`, `references`, `scale`, `distribution`, Calibration
+  Period years, `climate_indices_version`, and appended `history`, plus a
+  `periodicity` attribute that names the Timescale unit. CF defines no
+  `standard_name` for drought indices, so inherited input names such as
+  `precipitation_amount` are dropped rather than mislabeling the result.
+- Rerun persistence is a local, single-writer replacement: stage beside the
+  target, then rename the previous output aside and swap, so a failed
+  calculation or write leaves the completed store intact. Close readers before
+  rerunning, keep input/output/staging paths non-overlapping, and do not run
+  concurrent writers against one output path; the final directory swap is not
+  crash-atomic.
+- Reopen persisted results with `xr.open_zarr(..., consolidated=True)` in a fresh
+  handle: inspect metadata and chunks without loading data, compute only the
+  selected diagnostics, then close the handle. The reopened store is independent
+  of the prepared inputs, so analysis does not recompute SPI/SPEI.
 - Run the notebook CI command before publishing examples:
   `uv run jupyter nbconvert --execute --to notebook --inplace notebooks/xarray_getting_started.ipynb notebooks/palmer_indices_xarray.ipynb notebooks/eddi_xarray.ipynb`.
+  That command and the CI `notebooks` job cover only the three notebooks
+  listed. `notebooks/zarr_dask_spi_spei.ipynb` needs prepared inputs from
+  `scripts/prepare_e2e_inputs.py` that neither provisions, so it is instead
+  covered by `tests/test_e2e_with_dask.py`, which executes its cells against
+  a synthetic store.

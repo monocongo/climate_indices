@@ -20,6 +20,7 @@ Run scripts/prepare_noaa_eddi_fixtures.py to download and prepare the data.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -182,6 +183,11 @@ class TestNoaaEddiReference:
         for field in required:
             assert field in provenance, f"Missing provenance field: {field}"
             assert provenance[field], f"Empty provenance field: {field}"
+
+        checksum = hashlib.sha256()
+        for npy_file in sorted(_fixture_dir_for_scale(scale).glob("*.npy")):
+            checksum.update(npy_file.read_bytes())
+        assert provenance["checksum_sha256"] == checksum.hexdigest()
 
         # source should reference NOAA
         assert "NOAA" in provenance["source"] or "PSL" in provenance["source"], (

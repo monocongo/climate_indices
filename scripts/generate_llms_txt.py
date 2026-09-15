@@ -12,6 +12,7 @@ SUMMARY_FILES = [
     "VALIDATION.md",
     "docs/xarray_compatibility.md",
     "docs/algorithm_refs/eddi.md",
+    "docs/algorithm_refs/pet.md",
     "docs/algorithm_refs/palmer.md",
 ]
 
@@ -19,6 +20,7 @@ FULL_FILES = [
     *SUMMARY_FILES,
     "docs/project-overview.md",
     "docs/architecture.md",
+    "docs/component-inventory.md",
     "docs/development-guide.md",
     "docs/contribution-guide.md",
     "docs/xarray_migration.rst",

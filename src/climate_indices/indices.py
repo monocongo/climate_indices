@@ -289,6 +289,10 @@ def eddi(
             pet_values = utils.reshape_to_2d(pet_values, 366)
             num_periods = 366
 
+        # NOAA ranks left-padded scale values below valid observations.
+        leading_scale_pads = np.zeros(pet_values.shape, dtype=bool)
+        leading_scale_pads.flat[: min(scale - 1, original_length)] = True
+
         # compute data dimensions for validation
         num_years = pet_values.shape[0]
         data_end_year = data_start_year + num_years - 1
@@ -345,8 +349,12 @@ def eddi(
             # extract climatology values (calibration period only)
             climatology = period_values[calibration_start_year_index : calibration_end_year_index + 1]
 
-            # remove NaN values from climatology
+            # Remove missing observations, but preserve the rank positions of
+            # the NaNs added by the scale accumulation at the series start.
             climatology_valid = climatology[~np.isnan(climatology)]
+            leading_pads_count = np.count_nonzero(
+                leading_scale_pads[calibration_start_year_index : calibration_end_year_index + 1, period_index]
+            )
 
             # skip if insufficient climatology data
             if len(climatology_valid) < 2:
@@ -360,13 +368,13 @@ def eddi(
                 if np.isnan(current_value):
                     continue
 
-                # count how many climatology values are less than current value
-                # (rank starts at 1, matching NOAA Fortran implementation)
-                rank = 1 + np.sum(current_value > climatology_valid)
+                # NOAA uses zero-based ranks and treats leading scale pads as
+                # lower than every observed value.
+                rank = leading_pads_count + np.sum(current_value > climatology_valid)
 
                 # Tukey plotting position
-                n = len(climatology_valid)
-                p = (rank - 0.33) / (n + 0.33)
+                n = len(climatology_valid) + leading_pads_count
+                p = (rank + 0.66) / (n + 0.33)
 
                 # clip probability to valid range to avoid log(0)
                 p = np.clip(p, 1e-10, 1.0 - 1e-10)
@@ -1058,7 +1066,8 @@ def pci(
 
         # make sure we're not dealing with a NaN or out-of-range or less than the expected rainfall value
         if len(rainfall_mm) == 366 and not sum(np.isnan(rainfall_mm)):
-            m = [31, 29, 91, 121, 152, 182, 213, 244, 274, 305, 335, 366]
+            # Cumulative month-end day-of-year boundaries (not month lengths).
+            m = [31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335, 366]
             start = 0
             numerator = 0
             denominator = 0
@@ -1080,7 +1089,8 @@ def pci(
             return result
 
         if len(rainfall_mm) == 365 and not sum(np.isnan(rainfall_mm)):
-            m = [31, 28, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365]
+            # Cumulative month-end day-of-year boundaries (not month lengths).
+            m = [31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365]
             start = 0
             numerator = 0
             denominator = 0
