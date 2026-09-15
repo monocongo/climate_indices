@@ -193,58 +193,31 @@ def _calc_recharge(
     return et, tl, r, ro, sss, ssu
 
 
-def _calc_alpha(data: dict[str, Any]) -> None:
+def _calc_cafec_ratio(
+    data: dict[str, Any],
+    name: str,
+    numerator_key: str,
+    denominator_key: str,
+    both_zero: float = 1.0,
+) -> None:
     """
-    Calculate alpha parameters
+    Calculate a CAFEC coefficient as the ratio of two summed water balance terms
 
     :param data: dictionary of parameters (intialized in pdsi)
+    :param name: key of the coefficient to calculate
+    :param numerator_key: key of the numerator sums
+    :param denominator_key: key of the denominator sums
+    :param both_zero: value to use when the numerator and denominator are both zero
     """
-    data["alpha"] = np.zeros(data["petsum"].shape)
-    for idx, pet in enumerate(data["petsum"]):
-        if pet != 0:
-            data["alpha"][idx] = data["etsum"][idx] / pet
-        elif data["etsum"][idx] == 0:
-            data["alpha"][idx] = 1.0
-
-
-def _calc_beta(data: dict[str, Any]) -> None:
-    """
-    Calculate beta parameters
-
-    :param data: dictionary of parameters (intialized in pdsi)
-    """
-    data["beta"] = np.zeros(data["prsum"].shape)
-    for idx, pr in enumerate(data["prsum"]):
-        if pr != 0:
-            data["beta"][idx] = data["rsum"][idx] / pr
-        elif data["rsum"][idx] == 0:
-            data["beta"][idx] = 1.0
-
-
-def _calc_gamma(data: dict[str, Any]) -> None:
-    """
-    Calculate gamma parameters
-
-    :param data: dictionary of parameters (intialized in pdsi)
-    """
-    data["gamma"] = np.zeros(data["spsum"].shape)
-    for idx, sp in enumerate(data["spsum"]):
-        if sp != 0:
-            data["gamma"][idx] = data["rosum"][idx] / sp
-        elif data["rosum"][idx] == 0:
-            data["gamma"][idx] = 1.0
-
-
-def _calc_delta(data: dict[str, Any]) -> None:
-    """
-    Calculate delta parameters
-
-    :param data: dictionary of parameters (intialized in pdsi)
-    """
-    data["delta"] = np.zeros(data["plsum"].shape)
-    for idx, pl in enumerate(data["plsum"]):
-        if pl != 0:
-            data["delta"][idx] = data["tlsum"][idx] / pl
+    numerator = data[numerator_key]
+    denominator = data[denominator_key]
+    values = np.zeros(denominator.shape)
+    for idx, den in enumerate(denominator):
+        if den != 0:
+            values[idx] = numerator[idx] / den
+        elif numerator[idx] == 0:
+            values[idx] = both_zero
+    data[name] = values
 
 
 def _calc_water_balances(data: dict[str, Any]) -> None:
@@ -304,10 +277,10 @@ def _calc_cafec_coefficients(data: dict[str, Any]) -> None:
 
     :param data: dictionary of parameters (intialized in pdsi)
     """
-    _calc_alpha(data)
-    _calc_beta(data)
-    _calc_gamma(data)
-    _calc_delta(data)
+    _calc_cafec_ratio(data, "alpha", "etsum", "petsum")
+    _calc_cafec_ratio(data, "beta", "rsum", "prsum")
+    _calc_cafec_ratio(data, "gamma", "rosum", "spsum")
+    _calc_cafec_ratio(data, "delta", "tlsum", "plsum", both_zero=0.0)
 
 
 def _calc_zindex_factors(data: dict[str, Any]) -> None:
@@ -340,12 +313,9 @@ def _avg_calibration_sums(data: dict[str, Any]) -> None:
     data["rosum"] = data["rosum"] / n_calb_years
 
 
-def _calc_kfactors(data: dict[str, Any]) -> None:
+def _calc_k_prime_and_dbar(data: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
     """
-    Calculate K Factors
-
-    Reread monthly parameters for calculation of the 'K' monthly
-    weighting factors used in z-index calculation
+    Calculate monthly mean absolute departures (dbar) and raw K-prime factors
 
     :param data: dictionary of parameters (intialized in pdsi)
     """
@@ -358,32 +328,30 @@ def _calc_kfactors(data: dict[str, Any]) -> None:
                 + data["gamma"][month] * data["spdat"][year, month]
                 - data["delta"][month] * data["pldat"][year, month]
             )
-            d = data["precips"][year, month] - phat
-            sabsd[month] += abs(d)
+            sabsd[month] += abs(data["precips"][year, month] - phat)
 
     dbar = sabsd / data["n_calb_years"]
-    akhat = 1.5 * np.log10((data["trat"] + 2.8) / dbar) + 0.5
+    return dbar, 1.5 * np.log10((data["trat"] + 2.8) / dbar) + 0.5
+
+
+def _calc_kfactors(data: dict[str, Any]) -> None:
+    """
+    Calculate K Factors
+
+    Reread monthly parameters for calculation of the 'K' monthly
+    weighting factors used in z-index calculation
+
+    :param data: dictionary of parameters (intialized in pdsi)
+    """
+    dbar, akhat = _calc_k_prime_and_dbar(data)
     swtd = np.sum(dbar * akhat)
     data["ak"] = 17.67 * akhat / swtd
 
 
 def _calc_scpdsi_k_factors(data: dict[str, Any]) -> None:
     """Calculate the unnormalized monthly K-prime factors for scPDSI."""
-    sabsd = np.zeros((12,))
-    for year in range(data["calibration_year_initial_idx"], data["calibration_year_final_idx"] + 1):
-        for month in range(12):
-            phat = (
-                data["alpha"][month] * data["pet"][year, month]
-                + data["beta"][month] * data["prdat"][year, month]
-                + data["gamma"][month] * data["spdat"][year, month]
-                - data["delta"][month] * data["pldat"][year, month]
-            )
-            departure = data["precips"][year, month] - phat
-            sabsd[month] += abs(departure)
-
-    dbar = sabsd / data["n_calb_years"]
     with np.errstate(divide="ignore", invalid="ignore"):
-        k_prime = 1.5 * np.log10((data["trat"] + 2.8) / dbar) + 0.5
+        _, k_prime = _calc_k_prime_and_dbar(data)
     if not np.all(np.isfinite(k_prime)):
         raise ConvergenceError(
             "scPDSI K-prime calibration produced non-finite values",
