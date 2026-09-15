@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from climate_indices import compute, indices
-from climate_indices.exceptions import InvalidArgumentError
+from climate_indices.exceptions import DataShapeError, InvalidArgumentError
 
 # disable logging messages
 logging.disable(logging.CRITICAL)
@@ -199,6 +199,91 @@ def test_pnp(
             calibration_year_start_daily,
             calibration_year_end_daily,
             compute.Periodicity.daily,
+        )
+
+
+def test_pnp_calibration_period_extends_past_data():
+    """Calibration windows with a trailing partial period still average per calendar time step."""
+    # 481 monthly values starting 1900, i.e. 40 years plus one extra month
+    values = np.arange(481, dtype=float)
+
+    # the calibration period starts past the data start and ends past the data end,
+    # so the calibration window is 121 values, i.e. 10 whole years plus one month
+    computed_pnp = indices.percentage_of_normal(
+        values,
+        1,
+        1900,
+        1930,
+        1969,
+        compute.Periodicity.monthly,
+    )
+
+    # reference: per calendar time step average of the truncated calibration window
+    calibration_period_sums = values[(1930 - 1900) * 12 :]
+    averages = np.array([np.nanmean(calibration_period_sums[i::12]) for i in range(12)])
+    expected = np.full(values.shape, np.nan)
+    for i in range(values.size):
+        divisor = averages[i % 12]
+        if divisor > 0.0:
+            expected[i] = values[i] / divisor
+
+    np.testing.assert_allclose(computed_pnp, expected, equal_nan=True)
+
+
+def test_pnp_calibration_period_beyond_data_returns_missing():
+    """A calibration window past the end of the data yields all-NaN percentages, without raising."""
+    values = np.arange(240, dtype=float)  # 20 years of monthly values starting 1900
+
+    computed_pnp = indices.percentage_of_normal(
+        values,
+        1,
+        1900,
+        1921,
+        1925,
+        compute.Periodicity.monthly,
+    )
+
+    assert computed_pnp.shape == values.shape
+    assert np.isnan(computed_pnp).all()
+
+
+def test_pnp_2d_input_matches_flattened_1d():
+    """A 2-D (years, periods) input is flattened, matching the equivalent 1-D series."""
+    values = np.arange(240, dtype=float).reshape(20, 12)
+
+    computed_2d = indices.percentage_of_normal(
+        values,
+        3,
+        1900,
+        1900,
+        1919,
+        compute.Periodicity.monthly,
+    )
+    computed_1d = indices.percentage_of_normal(
+        values.flatten(),
+        3,
+        1900,
+        1900,
+        1919,
+        compute.Periodicity.monthly,
+    )
+
+    assert computed_2d.shape == computed_1d.shape
+    np.testing.assert_allclose(computed_2d, computed_1d, equal_nan=True)
+
+
+def test_pnp_3d_input_raises():
+    """An input array with more than two dimensions raises DataShapeError."""
+    values = np.zeros((2, 3, 4))
+
+    with pytest.raises(DataShapeError):
+        indices.percentage_of_normal(
+            values,
+            1,
+            1900,
+            1900,
+            1901,
+            compute.Periodicity.monthly,
         )
 
 
