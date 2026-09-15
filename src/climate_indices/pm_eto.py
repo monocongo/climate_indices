@@ -34,6 +34,15 @@ FloatOrArray = float | npt.NDArray[np.floating[Any]]
 # Physical constants (FAO-56, Chapter 2)
 # ---------------------------------------------------------------------------
 
+# specific heat of moist air at constant pressure [MJ kg-1 degC-1]
+SPECIFIC_HEAT_MOIST_AIR = 1.013e-3
+
+# ratio of molecular weight of water vapour to dry air (epsilon)
+MOLECULAR_WEIGHT_RATIO = 0.622
+
+# latent heat of vaporization at 20 degC [MJ kg-1] (FAO-56 simplification)
+LATENT_HEAT_DEFAULT = 2.45
+
 # standard atmospheric pressure at sea level [kPa]
 ATMOSPHERIC_PRESSURE_SEA_LEVEL = 101.3
 

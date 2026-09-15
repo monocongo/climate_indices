@@ -18,6 +18,9 @@ import pytest
 
 from climate_indices.pm_eto import (
     ATMOSPHERIC_PRESSURE_SEA_LEVEL,
+    LATENT_HEAT_DEFAULT,
+    MOLECULAR_WEIGHT_RATIO,
+    SPECIFIC_HEAT_MOIST_AIR,
     actual_vapor_pressure_from_dewpoint,
     actual_vapor_pressure_from_rhmax,
     actual_vapor_pressure_from_rhmean,
@@ -40,6 +43,11 @@ from climate_indices.pm_eto import (
 # ---------------------------------------------------------------------------
 FAO_ABS_TOL = 0.01
 MATH_ABS_TOL = 1e-4
+
+
+def test_physical_constants_are_available() -> None:
+    """Physical constants remain available to module consumers."""
+    assert (SPECIFIC_HEAT_MOIST_AIR, MOLECULAR_WEIGHT_RATIO, LATENT_HEAT_DEFAULT) == (1.013e-3, 0.622, 2.45)
 
 
 # ===================================================================
