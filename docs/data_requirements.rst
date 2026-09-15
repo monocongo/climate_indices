@@ -24,7 +24,9 @@ Variables, units, and temporal layout
      - Monthly or daily
    * - SPEI (``spei``)
      - Precipitation and PET
-     - Both in the same units; millimeters conventional
+     - Both in millimeters (the implementation adds a fixed 1000 mm offset
+       to ``precipitation - PET``, so matching non-millimeter units are not
+       equivalent)
      - Monthly or daily
    * - Thornthwaite PET (``pet_thornthwaite``)
      - Mean temperature, latitude
@@ -86,14 +88,19 @@ Calibration period
   ``ShortCalibrationWarning``, and more than 20% missing values inside the
   period emits a warning about fitting reliability.
 - When no calibration period is given, the xarray API uses the full input
-  range and raises ``InsufficientDataError`` when fewer than 30 effective
-  non-NaN years fall inside it.
+  range. If the input contains NaNs, it raises ``InsufficientDataError`` when
+  fewer than 30 effective non-NaN years fall inside that range; a complete
+  input shorter than 30 years proceeds with only ``ShortCalibrationWarning``.
 - Pearson fitting requires enough non-zero values per calendar period and
   raises ``InsufficientDataError`` otherwise; use the gamma distribution for
   strongly zero-inflated precipitation.
 - Matching the calibration years to the actual data coverage is the caller's
-  responsibility today; the NumPy API does not check the requested years
-  against the input range.
+  responsibility for SPI and SPEI, which do not check the requested years
+  against the input range. ``eddi`` validates both bounds and raises
+  ``InvalidArgumentError`` when they fall outside the data.
+  ``percentage_of_normal`` raises for a start year before the data and for a
+  calibration span larger than the input, but not for an end year beyond the
+  data's final year.
 
 Missing values and zeros
 ------------------------
@@ -103,12 +110,18 @@ Missing values and zeros
 - Zero precipitation is data, meaning a dry period, not a missing value, and is
   preserved. Zero-inflated series are a distribution-fitting concern, not a
   data-cleaning one.
-- Negative precipitation is clipped to zero with a warning. Fix sign
-  conventions upstream instead of relying on the clip.
-- Dask-backed xarray input must keep the full ``time`` dimension in a single
-  chunk; spatial chunks remain free to parallelize. The adapters never rechunk
-  implicitly and raise ``CoordinateValidationError`` with the exact fix
-  (``data = data.chunk({"time": -1})``) when ``time`` is split.
+- SPI and SPEI clip negative precipitation to zero with a warning; EDDI does
+  the same for PET. ``percentage_of_normal`` and PCI use their supplied
+  rainfall values unmodified, so fix sign conventions upstream instead of
+  relying on a clip.
+- Dask-backed xarray input to the index adapters must keep the full ``time``
+  dimension in a single chunk; spatial chunks remain free to parallelize.
+  Those adapters never rechunk implicitly and raise
+  ``CoordinateValidationError`` with the exact fix
+  (``data = data.chunk({"time": -1})``) when ``time`` is split. The PET
+  adapters (``pet_thornthwaite``, ``pet_hargreaves``) are the exception: they
+  pass ``allow_rechunk=True`` and silently consolidate a split ``time``
+  dimension, with a potentially large memory cost.
 
 Multiple variables and grids
 ----------------------------
@@ -149,12 +162,12 @@ What is validated where
      - Warned
    * - Calibration non-NaN sample size
      - Caller
-     - Enforced
+     - Enforced when NaNs are present
      - Caller
    * - Calibration years inside data coverage
-     - Not checked
-     - Not checked
-     - Not checked
+     - Partial (see note)
+     - Partial (see note)
+     - Partial (see note)
    * - Multi-variable alignment
      - Caller, by array size
      - Inner join with warning
@@ -169,8 +182,12 @@ What is validated where
      - Enforced
    * - Dask ``time`` chunk
      - Not applicable
-     - Enforced
+     - Enforced, except the PET adapters
      - Not applicable
+
+The coverage checks are index-specific: ``eddi`` validates both calibration
+bounds, ``percentage_of_normal`` validates the start year and the calibration
+span only, and SPI and SPEI perform no coverage checks.
 
 See also
 --------
