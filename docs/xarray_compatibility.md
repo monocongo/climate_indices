@@ -49,7 +49,7 @@ no coordinates.
 - Keep Dask chunks spatial when possible and leave `time` as one chunk before
   calling index functions.
 - The canonical lazy xarray/Dask SPI/SPEI workflow is the teaching notebook
-  `scripts/e2e_with_dask.ipynb`: the public typed API on Dask-backed DataArrays
+  `notebooks/zarr_dask_spi_spei.ipynb`: the public typed API on Dask-backed DataArrays
   (`xr.apply_ufunc(..., dask="parallelized")`), one full time chunk with spatial
   chunks driving task parallelism, and precipitation/PET exact-aligned at
   preparation time so SPEI never relies on coordinate intersection.

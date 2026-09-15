@@ -17,7 +17,7 @@ import xarray as xr
 from climate_indices import compute, exceptions, indices
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-NOTEBOOK = REPO_ROOT / "scripts" / "e2e_with_dask.ipynb"
+NOTEBOOK = REPO_ROOT / "notebooks" / "zarr_dask_spi_spei.ipynb"
 
 # The canonical data/calibration contract (matches data/e2e/manifest.json once
 # scripts/prepare_e2e_inputs.py has generated it, and the notebook).
