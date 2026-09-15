@@ -418,10 +418,10 @@ def kbdi(
         InvalidArgumentError: If shapes, configuration, state, or physical
             precipitation inputs are invalid.
         CoordinateValidationError: xarray input only -- if the time dimension
-            is missing or lacks a coordinate, non-monotonic, not consecutive
-            daily, split across multiple Dask chunks, if the inputs' non-time
-            coordinates do not align, or if precipitation/maximum_temperature
-            share no overlapping time steps.
+            is missing, an attached time coordinate is non-monotonic or not
+            consecutive daily, the time dimension is split across multiple Dask
+            chunks, the inputs' non-time coordinates do not align, or
+            precipitation/maximum_temperature share no overlapping time steps.
 
     Notes:
         xarray-only: ``precipitation`` and ``maximum_temperature`` must be the
@@ -432,9 +432,10 @@ def kbdi(
         selected scale; an unrecognized one raises ``InvalidArgumentError``.
         An attributed ``mean_annual_precipitation`` is converted the same way,
         accepting annual totals (``mm``, ``inch``, ``mm year-1``, ...) but not
-        daily or flux rates. The time coordinate must be consecutive daily
-        observations. Dask-backed input parallelizes over spatial chunks with
-        the ``time`` dimension required to be a single chunk.
+        daily or flux rates. An attached time coordinate must hold consecutive
+        daily observations; a dimension-only time axis is aligned positionally.
+        Dask-backed input parallelizes over spatial chunks with the ``time``
+        dimension required to be a single chunk.
     """
     if isinstance(precipitation, xr.DataArray) != isinstance(maximum_temperature, xr.DataArray):
         raise TypeError(
@@ -785,28 +786,11 @@ def _convert_temperature_units(data: xr.DataArray, target: Literal["celsius", "f
     return converted
 
 
-def _validate_time_coordinate_present(data: xr.DataArray, time_dim: str) -> None:
-    """Require a real time coordinate, not xarray's virtual integer index.
-
-    A named dimension without an attached coordinate is unverifiable: xarray
-    fabricates a positional index for it, which would silently be read as time.
-
-    Raises:
-        CoordinateValidationError: If the time dimension has no coordinate.
-    """
-    if time_dim not in data.coords:
-        raise CoordinateValidationError(
-            message=(
-                f"Input has a '{time_dim}' dimension but no '{time_dim}' coordinate, so its daily "
-                f"cadence cannot be validated. Attach a daily datetime coordinate with assign_coords."
-            ),
-            coordinate_name=time_dim,
-            reason="missing_coordinate",
-        )
-
-
 def _validate_daily_time_coordinate(data: xr.DataArray, time_dim: str) -> None:
     """Require consecutive daily samples: the KBDI recurrence is defined per day.
+
+    Called only when the time coordinate is attached; a dimension-only time
+    axis has no cadence metadata to check.
 
     Raises:
         CoordinateValidationError: If the time steps are not exactly one day apart.
@@ -865,12 +849,12 @@ def _kbdi_xarray(
 
     _validate_time_dimension(precip_da, time_dim)
     _validate_time_dimension(temp_da, time_dim)
+    # a dimension-only time axis carries no cadence metadata: xarray aligns it
+    # positionally, so monotonicity and daily checks apply only to real coords
     for data in (precip_da, temp_da):
-        _validate_time_coordinate_present(data, time_dim)
-    _validate_time_monotonicity(precip_da.coords[time_dim])
-    _validate_time_monotonicity(temp_da.coords[time_dim])
-    for data in (precip_da, temp_da):
-        _validate_daily_time_coordinate(data, time_dim)
+        if time_dim in data.coords:
+            _validate_time_monotonicity(data.coords[time_dim])
+            _validate_daily_time_coordinate(data, time_dim)
 
     shared_spatial_dims = [str(dim) for dim in precip_da.dims if dim in temp_da.dims and dim != time_dim]
     precip_aligned, temp_aligned = xr.align(precip_da, temp_da, join="inner")

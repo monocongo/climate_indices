@@ -1094,11 +1094,22 @@ class TestKBDIXarrayInputValidation:
         with pytest.raises(CoordinateValidationError, match="daily"):
             fire.kbdi(precip_da.assign_coords(time=hourly), temp_da, mean_annual_da)
 
-    def test_time_dimension_without_coordinate_raises(self) -> None:
+    def test_time_dimension_without_coordinate_is_supported(self) -> None:
+        """A dimension-only time axis is aligned positionally, as before."""
+        precip_da, temp_da, mean_annual_da, precipitation, temperature, mean_annual = _gridded_dataarrays(days=20)
+        no_time_precip = xr.DataArray(precip_da.values, dims=precip_da.dims)
+        no_time_temp = xr.DataArray(temp_da.values, dims=temp_da.dims)
+        result = fire.kbdi(no_time_precip, no_time_temp, mean_annual_da)
+        expected = fire.kbdi(precipitation, temperature, mean_annual)
+        np.testing.assert_array_equal(result.values, expected)
+
+    def test_coordinate_less_time_pairs_with_indexed_input(self) -> None:
+        """xarray's positional alignment handles one unindexed time axis."""
         precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays(days=20)
-        no_time_coord = xr.DataArray(precip_da.values, dims=precip_da.dims)
-        with pytest.raises(CoordinateValidationError, match="coordinate"):
-            fire.kbdi(no_time_coord, temp_da, mean_annual_da)
+        no_time_precip = xr.DataArray(precip_da.values, dims=precip_da.dims)
+        result = fire.kbdi(no_time_precip, temp_da, mean_annual_da)
+        expected = fire.kbdi(precip_da, temp_da, mean_annual_da)
+        np.testing.assert_array_equal(result.values, expected.values)
 
     def test_mismatched_spatial_coordinates_raise(self) -> None:
         precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays()
