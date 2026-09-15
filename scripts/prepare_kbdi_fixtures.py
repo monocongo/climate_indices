@@ -32,6 +32,8 @@ import hashlib
 import io
 import json
 import math
+import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -53,8 +55,14 @@ _GHCN_ACCESS_URL = (
     "&dataTypes=PRCP,TMAX&format=csv&includeAttributes=false"
 )
 _APPROVED_ORIGIN = "https://www.ncei.noaa.gov/"
+_APPROVED_ORIGIN_PARTS = urllib.parse.urlsplit(_APPROVED_ORIGIN)
 _MAX_DOWNLOAD_BYTES = 32 * 1024 * 1024
 _TENTHS_PER_UNIT = 10.0
+_GHCN_START = dt.date.fromisoformat(_GHCN_START_DATE)
+_GHCN_END = dt.date.fromisoformat(_GHCN_END_DATE)
+_GHCN_EXPECTED_DATES = [
+    (_GHCN_START + dt.timedelta(days=offset)).isoformat() for offset in range((_GHCN_END - _GHCN_START).days + 1)
+]
 
 # Figure 1 of SE-38, transcribed from the printed sample record. Column order
 # follows the published form; blank rain cells are zero.
@@ -245,19 +253,44 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _write_csv(path: Path, header: list[str], rows: list[list[str]]) -> str:
-    """Write a CSV with ``\\n`` line endings and return the SHA-256 of its bytes."""
+def _csv_text(header: list[str], rows: list[list[str]]) -> tuple[str, str]:
+    """Serialize a CSV with ``\\n`` line endings, returning its text and SHA-256."""
     buffer = io.StringIO()
     writer = csv.writer(buffer, lineterminator="\n")
     writer.writerow(header)
     writer.writerows(rows)
-    payload = buffer.getvalue().encode()
-    path.write_bytes(payload)
-    return _sha256(payload)
+    csv_text = buffer.getvalue()
+    return csv_text, _sha256(csv_text.encode())
 
 
-def _write_provenance(path: Path, provenance: dict[str, object]) -> None:
-    path.write_text(json.dumps(provenance, indent=2) + "\n")
+def _write_bundle(
+    csv_path: Path,
+    csv_text: str,
+    provenance_path: Path,
+    provenance: dict[str, object],
+) -> None:
+    """Replace a fixture CSV and its provenance as one staged unit.
+
+    Both files are serialized and written beside their targets before either is
+    swapped in, so a refresh that fails while downloading, serializing, or
+    writing leaves the previous bundle intact instead of a truncated CSV or a
+    CSV whose provenance describes different bytes.
+    """
+    staged = [
+        (csv_path, csv_text),
+        (provenance_path, json.dumps(provenance, indent=2) + "\n"),
+    ]
+    temps: list[tuple[Path, Path]] = []
+    try:
+        for target, contents in staged:
+            temp = target.with_name(target.name + ".tmp")
+            temp.write_text(contents)
+            temps.append((temp, target))
+        for temp, target in temps:
+            temp.replace(target)
+    finally:
+        for temp, _ in temps:
+            temp.unlink(missing_ok=True)
 
 
 def _reference_kbdi_mm(
@@ -299,11 +332,34 @@ def _reference_kbdi_mm(
     return values
 
 
+def _is_approved_url(url: str) -> bool:
+    """Whether ``url`` is on the approved HTTPS NCEI origin."""
+    parts = urllib.parse.urlsplit(url)
+    return (parts.scheme, parts.hostname) == (_APPROVED_ORIGIN_PARTS.scheme, _APPROVED_ORIGIN_PARTS.hostname)
+
+
+class _ApprovedOriginRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Refuse redirects that would leave the approved HTTPS origin."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not _is_approved_url(newurl):
+            raise urllib.error.URLError(f"refusing GHCN redirect off {_APPROVED_ORIGIN}: {newurl}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 def _download_ghcn_csv() -> str:
-    """Download the fixed GHCN-Daily window, rejecting off-origin or oversized responses."""
-    if not _GHCN_ACCESS_URL.startswith(_APPROVED_ORIGIN):
+    """Download the fixed GHCN-Daily window, rejecting off-origin or oversized responses.
+
+    Every redirect is checked before it is followed, and the accepted response
+    URL is checked again, so a refresh can only ever read from the approved
+    origin.
+    """
+    if not _is_approved_url(_GHCN_ACCESS_URL):
         raise ValueError(f"GHCN download must use {_APPROVED_ORIGIN}: {_GHCN_ACCESS_URL}")
-    with urllib.request.urlopen(_GHCN_ACCESS_URL, timeout=180) as response:  # noqa: S310 (fixed NOAA URL)
+    opener = urllib.request.build_opener(_ApprovedOriginRedirectHandler)
+    with opener.open(_GHCN_ACCESS_URL, timeout=180) as response:
+        if not _is_approved_url(response.geturl()):
+            raise ValueError(f"GHCN download left {_APPROVED_ORIGIN}: {response.geturl()}")
         payload = response.read(_MAX_DOWNLOAD_BYTES + 1)
     if len(payload) > _MAX_DOWNLOAD_BYTES:
         raise ValueError(f"GHCN response exceeded {_MAX_DOWNLOAD_BYTES} bytes")
@@ -321,11 +377,16 @@ def _parse_ghcn_rows(text: str) -> tuple[list[str], list[float], list[float]]:
             temperature = float(row["TMAX"]) / _TENTHS_PER_UNIT
         except (TypeError, ValueError) as exc:
             raise ValueError(f"missing or non-numeric PRCP/TMAX on {row['DATE']}") from exc
+        if not (math.isfinite(precipitation) and math.isfinite(temperature)):
+            raise ValueError(f"non-finite PRCP/TMAX on {row['DATE']}")
         dates.append(row["DATE"])
         precipitation_mm.append(precipitation)
         temperature_celsius.append(temperature)
-    if len(dates) != 10958:
-        raise ValueError(f"expected 10958 complete days for {_GHCN_START_DATE}..{_GHCN_END_DATE}, got {len(dates)}")
+    if dates != _GHCN_EXPECTED_DATES:
+        raise ValueError(
+            f"expected the ordered, unique {len(_GHCN_EXPECTED_DATES)} dates "
+            f"{_GHCN_START_DATE}..{_GHCN_END_DATE}, got {len(dates)} rows"
+        )
     return dates, precipitation_mm, temperature_celsius
 
 
@@ -351,8 +412,7 @@ def _write_figure1_fixture(today: str) -> None:
             start=1,
         )
     ]
-    checksum = _write_csv(
-        FIGURE1_DIR / "figure1.csv",
+    csv_text, checksum = _csv_text(
         [
             "day",
             "precipitation_in",
@@ -363,7 +423,9 @@ def _write_figure1_fixture(today: str) -> None:
         ],
         rows,
     )
-    _write_provenance(
+    _write_bundle(
+        FIGURE1_DIR / "figure1.csv",
+        csv_text,
         FIGURE1_DIR / "provenance.json",
         {
             "source": "Keetch and Byram (1968), A Drought Index for Forest Fire Control, Research Paper SE-38, Figure 1 sample record (pp. 11-13)",
@@ -409,12 +471,13 @@ def _write_ghcn_fixture(today: str, text: str, raw_sha256: str) -> None:
             dates, precipitation_mm, temperature_celsius, expected, strict=True
         )
     ]
-    checksum = _write_csv(
-        GHCN_DIR / "fresno_1991_2020.csv",
+    csv_text, checksum = _csv_text(
         ["date", "precipitation_mm", "maximum_temperature_c", "kbdi_mm"],
         rows,
     )
-    _write_provenance(
+    _write_bundle(
+        GHCN_DIR / "fresno_1991_2020.csv",
+        csv_text,
         GHCN_DIR / "provenance.json",
         {
             "source": "NOAA NCEI GHCN-Daily, station USW00093193 (Fresno Yosemite International Airport, California)",
@@ -452,10 +515,12 @@ def _write_ghcn_fixture(today: str, text: str, raw_sha256: str) -> None:
 
 def main() -> None:
     today = dt.date.today().isoformat()
+    # Download before touching either committed bundle: a failed request must
+    # leave the working tree's fixtures exactly as they were.
+    text = _download_ghcn_csv()
     FIGURE1_DIR.mkdir(parents=True, exist_ok=True)
     GHCN_DIR.mkdir(parents=True, exist_ok=True)
     _write_figure1_fixture(today)
-    text = _download_ghcn_csv()
     _write_ghcn_fixture(today, text, _sha256(text.encode()))
     print(f"wrote {FIGURE1_DIR} and {GHCN_DIR}")
 

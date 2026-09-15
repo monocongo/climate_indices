@@ -109,6 +109,23 @@ def test_se38_figure1_net_rain_matches_the_published_wet_spell_rule() -> None:
     np.testing.assert_allclose(_se38_net_rain_in(precipitation), published_net_rain, atol=0.005)
 
 
+def test_se38_figure1_drought_factors_reproduce_the_published_series() -> None:
+    """Audit the published Table 4 drought-factor column against the published KBDI series.
+
+    The SE-38 table workflow reduces the index by the net rain and then adds
+    that day's Table 4 factor, all in hundredths of an inch, starting from the
+    published previous-day KBDI of 164. Reconstructing the series this way
+    catches any transcription error in the factor column without touching
+    production code, which is what the fixture provenance claims.
+    """
+    rows = _read_csv(_FIGURE1_DIR / "figure1.csv")
+    kbdi = 164.0
+    for row in rows:
+        net_rain = round(float(row["net_rain_in"]) * 100)
+        kbdi = max(0.0, kbdi - net_rain) + int(row["table_drought_factor"])
+        assert kbdi == float(row["published_kbdi_hundredths_in"]), f"day {row['day']}"
+
+
 def test_se38_figure1_matches_the_published_series() -> None:
     """Reproduce the published Figure 1 KBDI series with the continuous equation.
 
@@ -172,12 +189,15 @@ def test_wfas_operational_values_are_close() -> None:
     variant, initialization, or rounding; a disagreement is a review trigger,
     never evidence that WFAS is the more correct formulation.
     """
-    if not all((_WFAS_DIR / name).exists() for name in _WFAS_REQUIRED_FILES):
+    missing = [name for name in _WFAS_REQUIRED_FILES if not (_WFAS_DIR / name).exists()]
+    if len(missing) == len(_WFAS_REQUIRED_FILES):
         pytest.skip(
             f"WFAS point fixtures not found at {_WFAS_DIR}; WFAS publishes operational maps, not a "
             "reproducible point-input/output archive. Provide provenance.json, metadata.json, and "
             "station_kbdi.csv to enable this cross-check."
         )
+    if missing:
+        pytest.fail(f"incomplete WFAS fixture at {_WFAS_DIR}; missing {', '.join(missing)}")
 
     with (_WFAS_DIR / "metadata.json").open() as handle:
         metadata = json.load(handle)
