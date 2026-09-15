@@ -264,3 +264,39 @@ def test_failed_run_preserves_existing_output(e2e_data, monkeypatch):
     monkeypatch.undo()
     with xr.open_zarr(output) as actual:
         xr.testing.assert_equal(actual, sentinel)
+
+
+def test_interrupted_publish_preserves_previous_generation(e2e_data, monkeypatch):
+    """A crash during the rename swap must not destroy the previous output.
+
+    Guards against a delete-before-rename publish (the store is deleted
+    outright, with no recovery) by requiring the previous generation to
+    survive at the documented path or at its backup name.
+    """
+    data_root, _ = e2e_data
+    output = data_root / "climate_indices_output.zarr"
+    sentinel = xr.Dataset({"old": (("x",), [1.0])})
+    sentinel.to_zarr(output, mode="w", zarr_format=2)
+
+    namespace: dict = {}
+    sources = _executable_cells()
+    write_index = next(i for i, source in enumerate(sources) if "to_zarr" in source)
+    _exec_cells(namespace, sources[:write_index])
+
+    original_rename = Path.rename
+
+    def flaky_rename(self, target):
+        if ".staging-" in self.name:
+            raise RuntimeError("simulated crash during publish")
+        return original_rename(self, target)
+
+    monkeypatch.setattr(Path, "rename", flaky_rename)
+    with pytest.raises(RuntimeError, match="simulated crash during publish"):
+        _exec_cells(namespace, sources[write_index : write_index + 1])
+    monkeypatch.undo()
+
+    backup = data_root / f".{output.name}.previous"
+    recovered = output if output.exists() else backup
+    assert recovered.exists(), "previous generation lost after an interrupted publish"
+    with xr.open_zarr(recovered) as actual:
+        xr.testing.assert_equal(actual, sentinel)
