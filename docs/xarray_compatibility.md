@@ -53,6 +53,24 @@ no coordinates.
   (`xr.apply_ufunc(..., dask="parallelized")`), one full time chunk with spatial
   chunks driving task parallelism, and precipitation/PET exact-aligned at
   preparation time so SPEI never relies on coordinate intersection.
+- Persist results to a separate consolidated Zarr v2 store rather than back into
+  the prepared inputs. The notebook's `data/e2e/climate_indices_output.zarr` is
+  the sample path: `float32` index variables keep the API's `long_name`,
+  dimensionless `units`, `references`, `scale`, `distribution`, Calibration
+  Period years, `climate_indices_version`, and appended `history`, plus a
+  `periodicity` attribute that names the Timescale unit. CF defines no
+  `standard_name` for drought indices, so inherited input names such as
+  `precipitation_amount` are dropped rather than mislabeling the result.
+- Rerun persistence is a local, single-writer replacement: stage beside the
+  target, then rename the previous output aside and swap, so a failed
+  calculation or write leaves the completed store intact. Close readers before
+  rerunning, keep input/output/staging paths non-overlapping, and do not run
+  concurrent writers against one output path; the final directory swap is not
+  crash-atomic.
+- Reopen persisted results with `xr.open_zarr(..., consolidated=True)` in a fresh
+  handle: inspect metadata and chunks without loading data, compute only the
+  selected diagnostics, then close the handle. The reopened store is independent
+  of the prepared inputs, so analysis does not recompute SPI/SPEI.
 - Run the notebook CI command before publishing examples:
   `uv run jupyter nbconvert --execute --to notebook --inplace notebooks/xarray_getting_started.ipynb notebooks/palmer_indices_xarray.ipynb notebooks/eddi_xarray.ipynb`.
   That command and the CI `notebooks` job cover only the three notebooks
