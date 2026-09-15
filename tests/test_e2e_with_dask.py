@@ -14,7 +14,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from climate_indices import compute, exceptions, indices
+from climate_indices import __version__, compute, exceptions, indices
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 NOTEBOOK = REPO_ROOT / "notebooks" / "zarr_dask_spi_spei.ipynb"
@@ -178,11 +178,118 @@ def test_notebook_pipeline_end_to_end(e2e_data):
         # Meaningful zero precipitation (index 100, land pixel) stays a real value, not NaN.
         assert np.isfinite(actual.spi_3[100, 0, 0])
         assert np.isfinite(actual.spei_3[100, 0, 0])
+        # Coordinates and dimensions survive the write and reopen.
+        assert dict(actual.sizes) == dict(ds.sizes)
         xr.testing.assert_equal(actual.time, ds.time)
+        np.testing.assert_array_equal(actual.lat.values, ds.lat.values)
+        np.testing.assert_array_equal(actual.lon.values, ds.lon.values)
         # The typed API computes in float64; the on-disk store must stay float32
         # (matching the float32 mm inputs) rather than silently doubling in size.
         assert actual.spi_3.dtype == np.float32
         assert actual.spei_3.dtype == np.float32
+
+        # The public API's per-variable metadata must survive the write and reopen;
+        # "periodicity" is added by the notebook so the Timescale unit is explicit.
+        expected_metadata = {
+            "spi_3": {
+                "long_name": "Standardized Precipitation Index",
+                "units": "dimensionless",
+                "scale": 3,
+                "distribution": "gamma",
+                "calibration_year_initial": 1981,
+                "calibration_year_final": 2010,
+                "periodicity": "monthly",
+                "climate_indices_version": __version__,
+            },
+            "spei_3": {
+                "long_name": "Standardized Precipitation Evapotranspiration Index",
+                "units": "dimensionless",
+                "scale": 3,
+                "distribution": "pearson",
+                "calibration_year_initial": 1981,
+                "calibration_year_final": 2010,
+                "periodicity": "monthly",
+                "climate_indices_version": __version__,
+            },
+        }
+        for variable_name, expected_attrs in expected_metadata.items():
+            attrs = actual[variable_name].attrs
+            for key, value in expected_attrs.items():
+                assert attrs.get(key) == value, f"{variable_name}.{key}"
+            # CF defines no drought-index standard_name, so precipitation's
+            # inherited precipitation_amount must not describe the result.
+            assert "standard_name" not in attrs
+            assert variable_name.split("_")[0].upper() in attrs["history"]
+            assert __version__ in attrs["history"]
+        assert "McKee" in actual.spi_3.attrs["references"]
+        assert "Vicente-Serrano" in actual.spei_3.attrs["references"]
+
+
+def test_notebook_reopens_saved_output_with_a_fresh_lazy_handle():
+    """Diagnostics must select from the saved store, not the calculated dataset."""
+    source = "\n".join(_code_cells())
+    tree = ast.parse(source)
+    out_ds_assignment = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "out_ds" for target in node.targets)
+    )
+    expected_open = ast.parse("xr.open_zarr(final_output_zarr, consolidated=True)", mode="eval").body
+    assert ast.dump(out_ds_assignment.value) == ast.dump(expected_open)
+    diagnostic_start = next(
+        node.lineno
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "spi_index" for target in node.targets)
+    )
+    diagnostic_sources = {
+        target.id: node.value.value.id
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Subscript)
+        and isinstance(node.value.value, ast.Name)
+        for target in node.targets
+        if isinstance(target, ast.Name) and target.id in {"spi_index", "spei_index"}
+    }
+    assert diagnostic_sources == {"spi_index": "out_ds", "spei_index": "out_ds"}
+    assert not any(
+        isinstance(node, ast.Name) and node.id == "ds_output" and node.lineno >= diagnostic_start
+        for node in ast.walk(tree)
+    )
+    assert "out_ds.close()" in source
+
+
+def test_reopened_output_is_lazy_and_independent_of_prepared_inputs(e2e_data):
+    """Reopened results stay lazy and self-contained after the inputs are gone."""
+    data_root, _ = e2e_data
+    _exec_cells({}, _executable_cells())
+    (data_root / "current").unlink()
+    with xr.open_zarr(data_root / "climate_indices_output.zarr", consolidated=True) as reopened:
+        assert reopened["spi_3"].chunks is not None
+        assert reopened["spei_3"].chunks is not None
+        selected = reopened["spi_3"].isel(time=-1, lat=0, lon=0).compute()
+        assert np.isfinite(selected.item())
+
+
+def test_rerun_replaces_previous_output(e2e_data):
+    """A successful rerun replaces the previous completed output store."""
+    data_root, _ = e2e_data
+    output = data_root / "climate_indices_output.zarr"
+    xr.Dataset({"stale": (("x",), [1.0])}).to_zarr(output, mode="w", zarr_format=2)
+    _exec_cells({}, _executable_cells())
+    with xr.open_zarr(output, consolidated=True) as actual:
+        assert set(actual.data_vars) == {"spi_3", "spei_3"}
+
+
+def test_notebook_rejects_overlapping_output_and_input(e2e_data):
+    """Overlapping input/output/staging paths fail before anything is written."""
+    data_root, _ = e2e_data
+    output = data_root / "climate_indices_output.zarr"
+    output.symlink_to(data_root / "current" / "cache_prepared_input.zarr", target_is_directory=True)
+    with pytest.raises(exceptions.InvalidArgumentError, match="must not overlap"):
+        _exec_cells({}, _executable_cells())
+    assert output.is_symlink()
 
 
 def test_notebook_missing_prepared_inputs_is_actionable(tmp_path, monkeypatch):
@@ -275,15 +382,11 @@ def test_failed_run_preserves_existing_output(e2e_data, monkeypatch):
     monkeypatch.undo()
     with xr.open_zarr(output) as actual:
         xr.testing.assert_equal(actual, sentinel)
+    assert not list(data_root.glob(f".{output.name}.staging-*"))
 
 
-def test_interrupted_publish_preserves_previous_generation(e2e_data, monkeypatch):
-    """A crash during the rename swap must not destroy the previous output.
-
-    Guards against a delete-before-rename publish (the store is deleted
-    outright, with no recovery) by requiring the previous generation to
-    survive at the documented path or at its backup name.
-    """
+def test_interrupted_publish_restores_previous_output(e2e_data, monkeypatch):
+    """A failed publish rename restores the previous output at its final path."""
     data_root, _ = e2e_data
     output = data_root / "climate_indices_output.zarr"
     sentinel = xr.Dataset({"old": (("x",), [1.0])})
@@ -307,9 +410,10 @@ def test_interrupted_publish_preserves_previous_generation(e2e_data, monkeypatch
     monkeypatch.undo()
 
     backup = data_root / f".{output.name}.previous"
-    recovered = output if output.exists() else backup
-    assert recovered.exists(), "previous generation lost after an interrupted publish"
-    with xr.open_zarr(recovered) as actual:
+    assert output.exists(), "previous generation was not restored after an interrupted publish"
+    assert not backup.exists()
+    assert not list(data_root.glob(f".{output.name}.staging-*"))
+    with xr.open_zarr(output) as actual:
         xr.testing.assert_equal(actual, sentinel)
 
 
