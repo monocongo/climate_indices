@@ -30,9 +30,11 @@ def _code_cells() -> list[str]:
 
 
 def _executable_cells() -> list[str]:
-    # The Dask Client cell is execution mechanics (#829's remit); without it Dask
-    # falls back to the local scheduler, which keeps CI memory bounded.
-    return [source for source in _code_cells() if "dask.distributed" not in source]
+    # The Dask Client cell is execution mechanics (#829's remit), and without
+    # matplotlib the minimum-dependency job cannot render plots (#830/#831);
+    # without them Dask falls back to the local scheduler and coverage of the
+    # calculation path is unchanged.
+    return [source for source in _code_cells() if "dask.distributed" not in source and ".plot(" not in source]
 
 
 def _exec_cells(namespace: dict, sources: list[str]) -> None:
