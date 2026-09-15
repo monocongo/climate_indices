@@ -408,6 +408,7 @@ User Guides
 
    quickstart
    algorithms
+   wildfire_applications
    pypi_release
    xarray_migration
    deprecations/index

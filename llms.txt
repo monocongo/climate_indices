@@ -59,6 +59,7 @@ This is a developmental/forked version of code that was originally developed by 
 See [drought.gov](https://www.drought.gov/drought/python-climate-indices).
 
 - [__Documentation__](https://climate-indices.readthedocs.io/en/latest/)
+- [Climate Indices for Wildfire Applications](https://climate-indices.readthedocs.io/en/latest/wildfire_applications.html)
 - [__License__](https://github.com/monocongo/climate_indices/blob/main/LICENSE)
 - [__Disclaimer__](https://github.com/monocongo/climate_indices/blob/main/DISCLAIMER)
 
