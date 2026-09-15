@@ -871,7 +871,7 @@ Missing prepared inputs
 
 .. warning::
 
-   **Error:** ``FileNotFoundError: Prepared inputs not found: ../data/e2e/current. Generate them once with: uv run --with h5py --with zarr scripts/prepare_e2e_inputs.py``
+   **Error:** ``FileNotFoundError: Prepared inputs not found: ../data/e2e/current. Generate them once with: uv run --group dev scripts/prepare_e2e_inputs.py``
 
    **Cause:** ``data/e2e/`` is gitignored and no generation has been published
    yet, or ``CLIMATE_INDICES_E2E_DATA`` points at a directory without a
@@ -881,12 +881,14 @@ Missing prepared inputs
 
    .. code-block:: bash
 
-      uv run --with h5py --with zarr scripts/prepare_e2e_inputs.py
+      uv run --group dev scripts/prepare_e2e_inputs.py
 
    Then restart the kernel and rerun. The default ``../data/e2e`` resolves
-   against the notebook's own directory, and ``CLIMATE_INDICES_E2E_DATA``
-   overrides it (the test suite uses that override), so a kernel started in
-   another directory does not move the default path.
+   against the kernel's working directory, which is ``notebooks/`` for the
+   documented launch commands; a kernel started elsewhere moves that default.
+   ``CLIMATE_INDICES_E2E_DATA`` overrides it (the test suite uses that
+   override), so set it to an absolute path when running from another
+   directory.
 
 Input preparation and checksum failures
 ---------------------------------------

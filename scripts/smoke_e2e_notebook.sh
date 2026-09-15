@@ -10,10 +10,15 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-uv run --no-build --with h5py --with zarr scripts/prepare_e2e_inputs.py
+# Preparation publishes to the repository's data/e2e, and the notebook honours
+# CLIMATE_INDICES_E2E_DATA; pin both stages to that same root so an inherited
+# override cannot make execution read a store other than the prepared one.
+export CLIMATE_INDICES_E2E_DATA="$repo_root/data/e2e"
+
+uv run --no-build --group dev scripts/prepare_e2e_inputs.py
 
 scratch="$(mktemp -d)"
-uv run --no-build jupyter nbconvert --execute --to notebook \
+uv run --no-build --group dev jupyter nbconvert --execute --to notebook \
   --output-dir "$scratch" \
   notebooks/zarr_dask_spi_spei.ipynb
 echo "Executed notebook written to ${scratch}/zarr_dask_spi_spei.ipynb"
