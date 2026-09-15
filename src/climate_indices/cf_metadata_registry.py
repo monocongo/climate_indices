@@ -1,8 +1,10 @@
 """CF Convention metadata registry for climate indices.
 
-Centralizes CF-compliant metadata (long_name, units, references) for all
-climate indices that produce xarray DataArray output. Each entry follows
-the CF Conventions (https://cfconventions.org/) attribute model.
+Centralizes CF-compliant metadata (long_name, units, references) for
+climate indices, including some without an xarray adapter yet: an entry may
+land ahead of its adapter (see docs/design/fire-subsystem.md), but no
+adapter ships before its entry. Each entry follows the CF Conventions
+(https://cfconventions.org/) attribute model.
 
 This module is a leaf dependency with no local imports, ensuring it can
 be safely imported by any module without circular dependency risk.
@@ -25,12 +27,18 @@ class CFAttributes(_CFAttributesRequired, total=False):
     """CF Convention metadata attributes for a climate index.
 
     Required keys: long_name, units, references.
-    Optional keys: standard_name (only when officially defined in CF conventions).
+    Optional keys: standard_name (only when officially defined in CF
+    conventions), description (free-text detail such as value range or a
+    resolved-ambiguity note), climate_indices_variant (distinguishes entries
+    for one index that has more than one output convention, e.g. KBDI's
+    metric and imperial unit scales).
 
     .. note:: Part of the beta xarray adapter layer. See :doc:`xarray_migration`.
     """
 
     standard_name: str
+    description: str
+    climate_indices_variant: str
 
 
 CF_METADATA: dict[str, CFAttributes] = {
@@ -152,6 +160,66 @@ CF_METADATA: dict[str, CFAttributes] = {
             "Palmer, W. C. (1965). "
             "Meteorological Drought. Research Paper No. 45. "
             "U.S. Department of Commerce, Weather Bureau, Washington, D.C."
+        ),
+    },
+    # Fire-weather indices (#793). Only entries for indices implemented in
+    # `climate_indices.fire` are added here; CFFWIS (ffmc, dmc, dc, isi, bui,
+    # fwi, dsr, #803/#804) and the Haines Index (#810) are deferred to their
+    # own tickets, where unit and variant decisions can be validated against
+    # real output rather than guessed ahead of implementation. None of the
+    # fire indices has an official CF standard_name.
+    "kbdi": {
+        "long_name": "Keetch-Byram Drought Index",
+        "units": "mm",
+        "description": ("Cumulative soil moisture deficit, metric scale, range [0, 203.2]."),
+        "climate_indices_variant": "metric",
+        "references": (
+            "Keetch, J. J., & Byram, G. M. (1968). "
+            "A Drought Index for Forest Fire Control. "
+            "USDA Forest Service Research Paper SE-38. "
+            "https://research.fs.usda.gov/treesearch/40; "
+            "Alexander, M. E. (1990). "
+            "Computer calculation of the Keetch-Byram Drought Index - "
+            "programmers beware! Fire Management Notes, 51(4), 23-25."
+        ),
+    },
+    "kbdi_imperial": {
+        "long_name": "Keetch-Byram Drought Index",
+        "units": "0.01 in",
+        "description": (
+            "Cumulative soil moisture deficit, imperial scale, hundredths of "
+            "an inch, range [0, 800] — the exact conversion of the metric "
+            "[0, 203.2] mm scale."
+        ),
+        "climate_indices_variant": "imperial",
+        "references": (
+            "Keetch, J. J., & Byram, G. M. (1968). "
+            "A Drought Index for Forest Fire Control. "
+            "USDA Forest Service Research Paper SE-38. "
+            "https://research.fs.usda.gov/treesearch/40; "
+            "Alexander, M. E. (1990). "
+            "Computer calculation of the Keetch-Byram Drought Index - "
+            "programmers beware! Fire Management Notes, 51(4), 23-25."
+        ),
+    },
+    "ffwi": {
+        "long_name": "Fosberg Fire Weather Index",
+        "units": "dimensionless",
+        "description": "Weather-only fire-danger index, conventionally capped at 100.",
+        "references": (
+            "Fosberg, M. A. (1978). "
+            "Weather in wildland fire management: the fire weather index. "
+            "Conference on Sierra Nevada Meteorology, Lake Tahoe, CA, 1-4."
+        ),
+    },
+    "hdw": {
+        "long_name": "Hot-Dry-Windy Index",
+        "units": "hPa m s-1",
+        "description": ("Maximum over the lowest 500 m above ground level of vapor pressure deficit times wind speed."),
+        "references": (
+            "Srock, A. F., Charney, J. J., Potter, B. E., & Goodrick, S. L. (2018). "
+            "The Hot-Dry-Windy Index: A New Fire Weather Index. "
+            "Atmosphere, 9(7), 279. https://doi.org/10.3390/atmos9070279"
         ),
     },
 }
