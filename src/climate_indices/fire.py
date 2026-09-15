@@ -39,16 +39,32 @@ Index - programmers beware! Fire Management Notes, 51(4), 23-25.
 from __future__ import annotations
 
 import time
+import warnings
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, overload
 
 import numpy as np
 import numpy.typing as npt
+import xarray as xr
 
 from climate_indices import pm_eto
-from climate_indices.exceptions import DataShapeError, InvalidArgumentError
+from climate_indices.cf_metadata_registry import CF_METADATA
+from climate_indices.exceptions import (
+    CoordinateValidationError,
+    DataShapeError,
+    InputAlignmentWarning,
+    InvalidArgumentError,
+)
 from climate_indices.logging_config import get_logger
 from climate_indices.performance import check_large_array_memory
+from climate_indices.xarray_adapter import (
+    InputType,
+    _build_output_attrs,
+    _validate_dask_chunks,
+    _validate_time_dimension,
+    _validate_time_monotonicity,
+    detect_input_type,
+)
 
 # retrieve structlog logger for this module
 _logger = get_logger(__name__)
@@ -115,9 +131,15 @@ class KBDIState:
 
 @dataclass(frozen=True)
 class KBDIResult:
-    """KBDI values and final state returned by :func:`kbdi`."""
+    """KBDI values and final state returned by :func:`kbdi`.
 
-    values: npt.NDArray[np.float64]
+    ``values`` is an ``xr.DataArray`` when :func:`kbdi` was called with xarray
+    input, else a NumPy array. ``state`` is always NumPy: state types stay
+    algorithm-specific frozen dataclasses, never xarray objects, per
+    ``docs/adr/0006-fire-recursive-state-and-execution.md``.
+    """
+
+    values: npt.NDArray[np.float64] | xr.DataArray
     state: KBDIState
 
 
@@ -210,6 +232,7 @@ def _kbdi_state_arrays(
     return kbdi_value, wet_spell, trailing_gap_days
 
 
+@overload
 def kbdi(
     precipitation: npt.ArrayLike,
     maximum_temperature: npt.ArrayLike,
@@ -222,8 +245,52 @@ def kbdi(
     spin_up: int = 0,
     nan_policy: Literal["propagate", "bridge"] = "propagate",
     max_gap_days: int = 0,
-) -> npt.NDArray[np.float64] | KBDIResult:
+    time_dim: str = "time",
+) -> npt.NDArray[np.float64] | KBDIResult: ...
+
+
+@overload
+def kbdi(
+    precipitation: xr.DataArray,
+    maximum_temperature: xr.DataArray,
+    mean_annual_precipitation: npt.ArrayLike | xr.DataArray | None = None,
+    *,
+    units: Literal["metric", "imperial"] = "metric",
+    initial_kbdi: npt.ArrayLike | xr.DataArray | None = None,
+    initial_state: KBDIState | None = None,
+    return_state: bool = False,
+    spin_up: int = 0,
+    nan_policy: Literal["propagate", "bridge"] = "propagate",
+    max_gap_days: int = 0,
+    time_dim: str = "time",
+) -> xr.DataArray | KBDIResult: ...
+
+
+def kbdi(
+    precipitation: npt.ArrayLike | xr.DataArray,
+    maximum_temperature: npt.ArrayLike | xr.DataArray,
+    mean_annual_precipitation: npt.ArrayLike | xr.DataArray | None = None,
+    *,
+    units: Literal["metric", "imperial"] = "metric",
+    initial_kbdi: npt.ArrayLike | xr.DataArray | None = None,
+    initial_state: KBDIState | None = None,
+    return_state: bool = False,
+    spin_up: int = 0,
+    nan_policy: Literal["propagate", "bridge"] = "propagate",
+    max_gap_days: int = 0,
+    time_dim: str = "time",
+) -> npt.NDArray[np.float64] | KBDIResult | xr.DataArray:
     """Compute the Keetch-Byram Drought Index (KBDI).
+
+    This function accepts both NumPy arrays and xarray DataArrays. Type
+    checkers narrow the return type based on the input type.
+
+    .. warning:: **Beta Feature (xarray path only)** -- When called with
+       ``xr.DataArray`` input, this function uses the beta xarray adapter
+       layer: per-call CF metadata resolution (``kbdi`` vs. ``kbdi_imperial``
+       by ``units``), CF ``units``-attribute unit inference, and Dask
+       spatial-chunk parallelism with a required single ``time`` chunk. The
+       NumPy array interface and underlying computation are stable.
 
     The implementation evaluates the corrected continuous Equation 18 of
     Keetch and Byram (1968), using Alexander's (1990) corrected 8.30
@@ -260,17 +327,49 @@ def kbdi(
             day; ``"bridge"`` skips gaps up to ``max_gap_days``.
         max_gap_days: Maximum bridged consecutive missing days. Must be zero
             for ``"propagate"`` and positive for ``"bridge"``.
+        time_dim: Name of the time dimension. Only used for xarray inputs.
 
     Returns:
         KBDI with the same time-first shape as the broadcast weather inputs,
         less ``spin_up`` leading days. Returns ``KBDIResult`` when
-        ``return_state`` is true.
+        ``return_state`` is true. For xarray input, ``values`` is a
+        ``DataArray`` carrying CF metadata from the ``kbdi``/``kbdi_imperial``
+        registry entry (chosen by ``units``) and ``state`` stays plain NumPy
+        per :doc:`../docs/adr/0006-fire-recursive-state-and-execution`.
 
     Raises:
         DataShapeError: If the weather inputs have no time dimension.
         InvalidArgumentError: If shapes, configuration, state, or physical
             precipitation inputs are invalid.
+        CoordinateValidationError: xarray input only -- if the time dimension
+            is missing, non-monotonic, split across multiple Dask chunks, or
+            precipitation/maximum_temperature share no overlapping time steps.
+
+    Notes:
+        xarray-only: ``precipitation`` and ``maximum_temperature`` must be the
+        same type (both NumPy or both ``xr.DataArray``); a CF ``units``
+        attribute on either is converted to the scale ``units`` selects (mm/inch
+        for precipitation, including ``kg m-2 s-1``; Celsius/Fahrenheit/Kelvin
+        for temperature), an absent or unrecognized attribute is assumed to
+        already match. Dask-backed input parallelizes over spatial chunks with
+        the ``time`` dimension required to be a single chunk.
     """
+    if detect_input_type(precipitation) != InputType.NUMPY:
+        # narrow for mypy: detect_input_type raises for anything but NUMPY/XARRAY
+        assert isinstance(precipitation, xr.DataArray)
+        return _kbdi_xarray(
+            precipitation,
+            maximum_temperature,
+            mean_annual_precipitation,
+            units=units,
+            initial_kbdi=initial_kbdi,
+            initial_state=initial_state,
+            return_state=return_state,
+            spin_up=spin_up,
+            nan_policy=nan_policy,
+            max_gap_days=max_gap_days,
+            time_dim=time_dim,
+        )
     if units not in ("metric", "imperial"):
         raise InvalidArgumentError(
             "units must be 'metric' or 'imperial'.",
@@ -532,6 +631,291 @@ def kbdi(
             error_message=str(exc),
         )
         raise
+
+
+# CF units-attribute spellings this module recognizes, matching the precedent
+# list in __main__.py's legacy CLI unit handling, plus the CF flux unit the
+# NetCDF/Zarr ecosystem commonly uses for precipitation rate.
+_PRECIP_UNITS_MM = frozenset({"mm", "millimeters", "millimeter", "mm/dy", "mm day-1", "mm/day"})
+_PRECIP_UNITS_INCH = frozenset({"inch", "inches"})
+_PRECIP_UNITS_FLUX = frozenset({"kg m-2 s-1", "kg/m2/s", "kg m^-2 s^-1", "kg.m-2.s-1", "kg/m^2/s"})
+_SECONDS_PER_DAY = 86400.0
+
+_TEMP_UNITS_CELSIUS = frozenset({"c", "celsius", "degree_celsius", "degrees_celsius", "degc"})
+_TEMP_UNITS_FAHRENHEIT = frozenset({"f", "fahrenheit", "degree_fahrenheit", "degrees_fahrenheit", "degf"})
+_TEMP_UNITS_KELVIN = frozenset({"k", "kelvin"})
+_KELVIN_OFFSET_CELSIUS = 273.15
+
+
+def _convert_precipitation_units(data: xr.DataArray, target: Literal["mm", "inch"]) -> xr.DataArray:
+    """Convert a precipitation DataArray to ``target`` from its CF ``units`` attribute.
+
+    An absent or unrecognized ``units`` attribute is assumed to already match
+    ``target`` -- the caller's ``units=`` scale is trusted, never silently
+    overridden. Conversion is xarray arithmetic, so Dask-backed input stays
+    lazy.
+    """
+    raw_units = data.attrs.get("units")
+    normalized = raw_units.strip().lower() if isinstance(raw_units, str) else None
+    if normalized is None:
+        return data
+    if normalized in _PRECIP_UNITS_FLUX:
+        data = data * _SECONDS_PER_DAY
+        source: Literal["mm", "inch"] = "mm"
+    elif normalized in _PRECIP_UNITS_MM:
+        source = "mm"
+    elif normalized in _PRECIP_UNITS_INCH:
+        source = "inch"
+    else:
+        raise InvalidArgumentError(
+            f"Unsupported precipitation units attribute: {raw_units!r}.",
+            argument_name="precipitation.attrs['units']",
+            argument_value=str(raw_units),
+            valid_values="mm / mm day-1, inch(es), or kg m-2 s-1",
+        )
+    if source == target:
+        return data
+    converted: xr.DataArray = data / 25.4 if target == "inch" else data * 25.4
+    return converted
+
+
+def _convert_temperature_units(data: xr.DataArray, target: Literal["celsius", "fahrenheit"]) -> xr.DataArray:
+    """Convert a temperature DataArray to ``target`` from its CF ``units`` attribute.
+
+    An absent or unrecognized ``units`` attribute is assumed to already match
+    ``target``. Conversion is xarray arithmetic, so Dask-backed input stays lazy.
+    """
+    raw_units = data.attrs.get("units")
+    normalized = raw_units.strip().lower() if isinstance(raw_units, str) else None
+    if normalized is None:
+        return data
+    if normalized in _TEMP_UNITS_KELVIN:
+        data = data - _KELVIN_OFFSET_CELSIUS
+        source: Literal["celsius", "fahrenheit"] = "celsius"
+    elif normalized in _TEMP_UNITS_CELSIUS:
+        source = "celsius"
+    elif normalized in _TEMP_UNITS_FAHRENHEIT:
+        source = "fahrenheit"
+    else:
+        raise InvalidArgumentError(
+            f"Unsupported temperature units attribute: {raw_units!r}.",
+            argument_name="maximum_temperature.attrs['units']",
+            argument_value=str(raw_units),
+            valid_values="K, kelvin, C/celsius, or F/fahrenheit",
+        )
+    if source == target:
+        return data
+    converted: xr.DataArray = data * 9.0 / 5.0 + 32.0 if target == "fahrenheit" else (data - 32.0) * 5.0 / 9.0
+    return converted
+
+
+def _kbdi_xarray(
+    precipitation: xr.DataArray,
+    maximum_temperature: xr.DataArray | npt.ArrayLike,
+    mean_annual_precipitation: npt.ArrayLike | xr.DataArray | None,
+    *,
+    units: Literal["metric", "imperial"],
+    initial_kbdi: npt.ArrayLike | xr.DataArray | None,
+    initial_state: KBDIState | None,
+    return_state: bool,
+    spin_up: int,
+    nan_policy: Literal["propagate", "bridge"],
+    max_gap_days: int,
+    time_dim: str,
+) -> xr.DataArray | KBDIResult:
+    """xarray dispatch for :func:`kbdi`. See :func:`kbdi` for the full contract.
+
+    Resolves the ``kbdi``/``kbdi_imperial`` CF registry entry from ``units`` at
+    call time (the KBDI-specific problem named in
+    ``docs/design/fire-subsystem.md``: the same function selects between two
+    registry entries depending on a runtime argument, which a decoration-time
+    ``cf_metadata`` dict cannot do). Delegates the actual recurrence to
+    :func:`kbdi`'s NumPy path via :func:`xarray.apply_ufunc`, one call per
+    Dask spatial chunk with the full ``time`` axis, since :func:`kbdi` already
+    vectorizes over an arbitrary spatial shape internally -- unlike
+    :func:`~climate_indices.xarray_adapter.pet_hargreaves`, this does not need
+    ``vectorize=True`` per-cell looping.
+    """
+    if not isinstance(maximum_temperature, xr.DataArray):
+        raise TypeError(
+            "precipitation and maximum_temperature must be the same type. "
+            f"Got precipitation=DataArray, maximum_temperature={type(maximum_temperature).__name__}. "
+            "Convert both to the same type (both numpy arrays or both xr.DataArray)."
+        )
+    precip_da = precipitation
+    temp_da = maximum_temperature
+
+    _validate_time_dimension(precip_da, time_dim)
+    _validate_time_dimension(temp_da, time_dim)
+    _validate_time_monotonicity(precip_da.coords[time_dim])
+    _validate_time_monotonicity(temp_da.coords[time_dim])
+
+    precip_aligned, temp_aligned = xr.align(precip_da, temp_da, join="inner")
+    aligned_len = precip_aligned.sizes[time_dim]
+    original_len = max(precip_da.sizes[time_dim], temp_da.sizes[time_dim])
+    if aligned_len == 0:
+        raise CoordinateValidationError(
+            message=(
+                f"No overlapping timesteps found between precipitation and maximum_temperature "
+                f"along '{time_dim}'. Cannot compute KBDI."
+            ),
+            coordinate_name=time_dim,
+            reason="empty_intersection_after_alignment",
+        )
+    if aligned_len < original_len:
+        warnings.warn(
+            InputAlignmentWarning(
+                message=(
+                    f"Input alignment: precipitation had {precip_da.sizes[time_dim]} timesteps, "
+                    f"maximum_temperature had {temp_da.sizes[time_dim]} timesteps. "
+                    f"After inner join, {aligned_len} remain."
+                ),
+                original_size=original_len,
+                aligned_size=aligned_len,
+                dropped_count=original_len - aligned_len,
+            ),
+            stacklevel=3,
+        )
+
+    _validate_dask_chunks(precip_aligned, time_dim)
+    _validate_dask_chunks(temp_aligned, time_dim)
+
+    precip_target: Literal["mm", "inch"] = "inch" if units == "imperial" else "mm"
+    temp_target: Literal["celsius", "fahrenheit"] = "fahrenheit" if units == "imperial" else "celsius"
+    precip_aligned = _convert_precipitation_units(precip_aligned, precip_target)
+    temp_aligned = _convert_temperature_units(temp_aligned, temp_target)
+
+    spatial_dims = tuple(d for d in precip_aligned.dims if d != time_dim)
+    spatial_shape = tuple(precip_aligned.sizes[d] for d in spatial_dims)
+
+    def _wrap_spatial(value: npt.ArrayLike | xr.DataArray) -> xr.DataArray:
+        """Broadcast a scalar/array/DataArray to a DataArray on ``spatial_dims``.
+
+        Giving Dask/apply_ufunc real dimension names is what lets it slice
+        this secondary input per spatial chunk instead of broadcasting the
+        whole un-chunked array into every chunk's call.
+        """
+        if isinstance(value, xr.DataArray):
+            return value
+        return xr.DataArray(np.broadcast_to(np.asarray(value, dtype=np.float64), spatial_shape), dims=spatial_dims)
+
+    mean_annual_arg = None if mean_annual_precipitation is None else _wrap_spatial(mean_annual_precipitation)
+    seed_kbdi_arg: xr.DataArray | None = None
+    seed_wet_arg: xr.DataArray | None = None
+    seed_gap_arg: xr.DataArray | None = None
+    if initial_state is not None:
+        gap_source = (
+            initial_state.trailing_gap_days
+            if initial_state.trailing_gap_days is not None
+            else np.full(spatial_shape, -1, dtype=np.int64)
+        )
+        seed_kbdi_arg = _wrap_spatial(initial_state.kbdi)
+        seed_wet_arg = _wrap_spatial(initial_state.wet_spell_precipitation)
+        seed_gap_arg = _wrap_spatial(gap_source)
+    elif initial_kbdi is not None:
+        seed_kbdi_arg = _wrap_spatial(initial_kbdi)
+
+    optional_slots = (mean_annual_arg, seed_kbdi_arg, seed_wet_arg, seed_gap_arg)
+    include_mask = tuple(slot is not None for slot in optional_slots)
+    optional_args = [slot for slot in optional_slots if slot is not None]
+
+    output_time_len = max(aligned_len - spin_up, 0)
+
+    def _kbdi_block(
+        precip_block: np.ndarray, temp_block: np.ndarray, *optional_blocks: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Compute one Dask chunk (or the whole array, eager): time axis last in, last out."""
+        it = iter(optional_blocks)
+        mean_annual_block = next(it) if include_mask[0] else None
+        seed_kbdi_block = next(it) if include_mask[1] else None
+        seed_wet_block = next(it) if include_mask[2] else None
+        seed_gap_block = next(it) if include_mask[3] else None
+
+        # apply_ufunc places core dims (time) last; kbdi()'s NumPy path is time-first.
+        precip_t = np.moveaxis(precip_block, -1, 0).copy()
+        temp_t = np.moveaxis(temp_block, -1, 0).copy()
+
+        call_initial_state = None
+        call_initial_kbdi = None
+        if seed_wet_block is not None:
+            gap = seed_gap_block.astype(np.int64)  # type: ignore[union-attr]
+            call_initial_state = KBDIState(
+                kbdi=seed_kbdi_block.copy(),  # type: ignore[union-attr]
+                wet_spell_precipitation=seed_wet_block.copy(),
+                trailing_gap_days=None if np.all(gap < 0) else gap.copy(),
+                units=units,
+            )
+        elif seed_kbdi_block is not None:
+            call_initial_kbdi = seed_kbdi_block
+
+        result = kbdi(
+            precip_t,
+            temp_t,
+            mean_annual_block,
+            units=units,
+            initial_kbdi=call_initial_kbdi,
+            initial_state=call_initial_state,
+            return_state=True,
+            spin_up=spin_up,
+            nan_policy=nan_policy,
+            max_gap_days=max_gap_days,
+        )
+        assert isinstance(result, KBDIResult)
+        # narrow for mypy: precip_t/temp_t are plain ndarrays, so this call
+        # always takes kbdi()'s NumPy path and result.values is never a DataArray
+        assert isinstance(result.values, np.ndarray)
+        values_out = np.moveaxis(result.values, 0, -1)
+        gap_out = result.state.trailing_gap_days
+        if gap_out is None:
+            gap_out = np.full(precip_t.shape[1:], -1, dtype=np.int64)
+        return values_out, result.state.kbdi, result.state.wet_spell_precipitation, gap_out
+
+    values_result, kbdi_result, wet_result, gap_result = xr.apply_ufunc(
+        _kbdi_block,
+        precip_aligned,
+        temp_aligned,
+        *optional_args,
+        input_core_dims=[[time_dim], [time_dim]] + [[] for _ in optional_args],
+        output_core_dims=[[time_dim], [], [], []],
+        exclude_dims={time_dim},
+        vectorize=False,
+        dask="parallelized",
+        dask_gufunc_kwargs={"output_sizes": {time_dim: output_time_len}},
+        output_dtypes=[float, float, float, np.int64],
+    )
+
+    values_result = values_result.transpose(*precip_aligned.dims)
+    if time_dim in precip_aligned.coords:
+        new_time_values = precip_aligned.coords[time_dim].values[spin_up : spin_up + output_time_len]
+        values_result = values_result.assign_coords({time_dim: new_time_values})
+
+    cf_key = "kbdi_imperial" if units == "imperial" else "kbdi"
+    values_result.attrs = _build_output_attrs(
+        precip_aligned,
+        cf_metadata=CF_METADATA[cf_key],  # type: ignore[arg-type]
+        # "units" is deliberately excluded here: it's a CF attribute the
+        # registry entry above already sets ("mm" / "0.01 in"), and
+        # _build_output_attrs layers calculation_metadata *over* cf_metadata,
+        # so including it here would silently overwrite the physical unit
+        # with the "metric"/"imperial" mode string.
+        calculation_metadata={"nan_policy": nan_policy},
+        index_name="KBDI",
+    )
+
+    if not return_state:
+        result_da: xr.DataArray = values_result
+        return result_da
+
+    final_gap: npt.NDArray[np.int64] = gap_result.values
+    return KBDIResult(
+        values=values_result,
+        state=KBDIState(
+            kbdi=kbdi_result.values,
+            wet_spell_precipitation=wet_result.values,
+            trailing_gap_days=None if bool(np.all(final_gap < 0)) else final_gap,
+            units=units,
+        ),
+    )
 
 
 def _equilibrium_moisture_content(

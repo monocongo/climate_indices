@@ -13,6 +13,7 @@ may change in a future minor release.
 | `DataArray` inputs for PET Hargreaves | Yes | xarray adapter tests cover aligned daily temperature inputs. |
 | `DataArray` inputs for PNP | Yes | PNP wrapper tests cover scale handling and metadata. |
 | `DataArray` inputs for PCI | Yes | PCI uses a manual scalar-output wrapper. |
+| `DataArray` inputs for KBDI | Yes | `fire.kbdi()` resolves the `kbdi`/`kbdi_imperial` CF entry per call from `units`; supports `return_state`/`initial_state`, `spin_up`, `nan_policy`/`max_gap_days`, and CF `units`-attribute unit inference. See `tests/test_fire_kbdi.py`. |
 | Palmer direct xarray API | No | Use the NumPy Palmer function with `.values`, then rewrap outputs. See `notebooks/palmer_indices_xarray.ipynb`. |
 | Coordinate preservation | Yes | Adapter tests verify time and spatial coordinates are preserved. |
 | CF-style metadata | Yes | `CF_METADATA` registry and adapter tests verify `long_name`, `units`, `references`, version, and history attributes. |
@@ -21,24 +22,29 @@ may change in a future minor release.
 | Automatic temporal inference | Yes | Monthly and daily time-coordinate inference is covered by adapter tests. |
 | Multi-input alignment | Yes | SPEI aligns precipitation and PET with an inner join and emits a warning when timesteps are dropped. |
 
-## Stateful fire indices (planned)
+## Stateful fire indices
 
-KBDI and CFFWIS moisture-code adapters are not yet shipped; this section
-describes the contract they will follow, per
-[ADR-0006](adr/0006-fire-recursive-state-and-execution.md). Only the
-weather-only Fosberg index is available today, via the NumPy layer.
+KBDI's adapter (`fire.kbdi()`) is shipped, following the recursive contract in
+[ADR-0006](adr/0006-fire-recursive-state-and-execution.md). CFFWIS's
+moisture-code adapters are not yet shipped; this section also describes the
+contract they will follow. The weather-only Fosberg and Hot-Dry-Windy indices
+are available today too, via the NumPy layer with no xarray adapter needed
+(they are elementwise, not recursive).
 
-The planned adapters are recursive: each daily value needs its predecessor.
+These adapters are recursive: each daily value needs its predecessor.
 Dask-backed inputs must therefore keep the complete `time` dimension in one
 chunk for every time-varying weather variable. Spatial chunks remain
-supported. Multi-chunk time input will raise `CoordinateValidationError` with
+supported and parallelize: KBDI's NumPy core already vectorizes over an
+arbitrary spatial shape, so its adapter dispatches one call per Dask spatial
+chunk with the full `time` axis, rather than looping per grid cell.
+Multi-chunk time input raises `CoordinateValidationError` with
 `data = data.chunk({'time': -1})`; adapters never rechunk implicitly, because
 doing so can materialize a large daily history.
 
-Callers will use the returned state to append later observations without
+Callers use the returned state to append later observations without
 recomputing the archive. The state is a NumPy-layer value object rather than
 an xarray `Dataset`, so its arrays carry the computational spatial shape but
-no coordinates.
+no coordinates, even when `values` on the same result is a `DataArray`.
 
 Missing observations follow
 [ADR-0007](adr/0007-fire-missing-data-policy.md): nothing is interpolated

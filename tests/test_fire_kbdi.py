@@ -1,4 +1,4 @@
-"""Tests for the Keetch-Byram Drought Index (#799)."""
+"""Tests for the Keetch-Byram Drought Index (#799) and its xarray adapter (#801)."""
 
 from __future__ import annotations
 
@@ -6,12 +6,20 @@ import logging
 import math
 
 import numpy as np
+import pandas as pd
 import pytest
+import xarray as xr
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from climate_indices import fire
-from climate_indices.exceptions import DataShapeError, InvalidArgumentError
+from climate_indices.cf_metadata_registry import CF_METADATA
+from climate_indices.exceptions import (
+    CoordinateValidationError,
+    DataShapeError,
+    InputAlignmentWarning,
+    InvalidArgumentError,
+)
 
 # the corrected Equation 18 contract, restated here so a test failure points at
 # the implementation rather than at a shared helper
@@ -813,3 +821,225 @@ def test_append_resume_round_trip_is_bitwise_identical_per_cell() -> None:
     )
     np.testing.assert_array_equal(np.concatenate((first.values, second.values)), one_shot.values)
     np.testing.assert_array_equal(second.state.kbdi, one_shot.state.kbdi)
+
+
+# ------------------------------------------------------------------------------
+# xarray adapter (#801)
+
+
+def _gridded_inputs(days: int = 120, seed: int = 801) -> tuple[np.ndarray, np.ndarray, np.ndarray, pd.DatetimeIndex]:
+    """A small (time, lat, lon) weather block and matching mean annual precipitation."""
+    rng = np.random.default_rng(seed)
+    shape = (days, 2, 3)
+    precipitation = np.where(rng.random(shape) < 0.3, rng.gamma(2.0, 3.0, shape), 0.0)
+    temperature = rng.uniform(-5.0, 35.0, shape)
+    mean_annual = np.array([[600.0, 900.0, 1200.0], [800.0, 1000.0, 1400.0]])
+    time = pd.date_range("2000-01-01", periods=days, freq="D")
+    return precipitation, temperature, mean_annual, time
+
+
+def _gridded_dataarrays(
+    days: int = 120, seed: int = 801
+) -> tuple[xr.DataArray, xr.DataArray, xr.DataArray, np.ndarray, np.ndarray, np.ndarray]:
+    """DataArray inputs plus the raw NumPy arrays they wrap, for equivalence checks."""
+    precipitation, temperature, mean_annual, time = _gridded_inputs(days, seed)
+    dims = ["time", "lat", "lon"]
+    coords = {"time": time, "lat": [10.0, 20.0], "lon": [30.0, 40.0, 50.0]}
+    precip_da = xr.DataArray(precipitation, dims=dims, coords=coords)
+    temp_da = xr.DataArray(temperature, dims=dims, coords=coords)
+    mean_annual_da = xr.DataArray(mean_annual, dims=["lat", "lon"], coords={"lat": coords["lat"], "lon": coords["lon"]})
+    return precip_da, temp_da, mean_annual_da, precipitation, temperature, mean_annual
+
+
+class TestKBDIXarrayEquivalence:
+    """xarray and NumPy paths must agree exactly on values and final state."""
+
+    def test_values_match_numpy_eager(self) -> None:
+        precip_da, temp_da, mean_annual_da, precipitation, temperature, mean_annual = _gridded_dataarrays()
+        expected = fire.kbdi(precipitation, temperature, mean_annual)
+        result = fire.kbdi(precip_da, temp_da, mean_annual_da)
+        assert isinstance(result, xr.DataArray)
+        np.testing.assert_array_equal(result.values, expected)
+
+    def test_values_and_state_match_numpy_dask(self) -> None:
+        precip_da, temp_da, mean_annual_da, precipitation, temperature, mean_annual = _gridded_dataarrays()
+        expected = fire.kbdi(precipitation, temperature, mean_annual, return_state=True)
+        precip_dask = precip_da.chunk({"time": -1, "lat": 1, "lon": 1})
+        temp_dask = temp_da.chunk({"time": -1, "lat": 1, "lon": 1})
+        result = fire.kbdi(precip_dask, temp_dask, mean_annual_da, return_state=True)
+        assert isinstance(result.values, xr.DataArray)
+        np.testing.assert_array_equal(result.values.values, expected.values)
+        np.testing.assert_array_equal(result.state.kbdi, expected.state.kbdi)
+        np.testing.assert_array_equal(result.state.wet_spell_precipitation, expected.state.wet_spell_precipitation)
+
+    def test_dims_and_coords_preserved(self) -> None:
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays()
+        result = fire.kbdi(precip_da, temp_da, mean_annual_da)
+        assert result.dims == precip_da.dims
+        xr.testing.assert_equal(result.coords["time"], precip_da.coords["time"])
+        xr.testing.assert_equal(result.coords["lat"], precip_da.coords["lat"])
+        xr.testing.assert_equal(result.coords["lon"], precip_da.coords["lon"])
+
+
+class TestKBDIXarrayCFMetadata:
+    """The kbdi/kbdi_imperial registry entry must resolve from the call's `units`, not a fixed constant."""
+
+    def test_metric_uses_kbdi_registry_entry(self) -> None:
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays()
+        result = fire.kbdi(precip_da, temp_da, mean_annual_da, units="metric")
+        assert result.attrs["long_name"] == CF_METADATA["kbdi"]["long_name"]
+        assert result.attrs["units"] == CF_METADATA["kbdi"]["units"] == "mm"
+
+    def test_imperial_uses_kbdi_imperial_registry_entry(self) -> None:
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays()
+        mean_annual_inches_da = mean_annual_da / 25.4
+        result = fire.kbdi(precip_da / 25.4, temp_da * 9.0 / 5.0 + 32.0, mean_annual_inches_da, units="imperial")
+        assert result.attrs["units"] == CF_METADATA["kbdi_imperial"]["units"] == "0.01 in"
+        assert result.attrs["climate_indices_variant"] == "imperial"
+
+    def test_version_and_history_present(self) -> None:
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays()
+        result = fire.kbdi(precip_da, temp_da, mean_annual_da)
+        assert "climate_indices_version" in result.attrs
+        assert "KBDI" in result.attrs["history"]
+
+
+class TestKBDIXarrayUnitInference:
+    """CF `units` attributes on precipitation/maximum_temperature drive conversion, not silent guessing."""
+
+    def test_kelvin_temperature_is_converted(self) -> None:
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays()
+        temp_kelvin = temp_da + 273.15
+        temp_kelvin.attrs["units"] = "K"
+        result = fire.kbdi(precip_da, temp_kelvin, mean_annual_da)
+        expected = fire.kbdi(precip_da, temp_da, mean_annual_da)
+        np.testing.assert_allclose(result.values, expected.values, rtol=1e-10)
+
+    def test_precipitation_flux_units_are_converted(self) -> None:
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays()
+        precip_flux = precip_da / 86400.0
+        precip_flux.attrs["units"] = "kg m-2 s-1"
+        result = fire.kbdi(precip_flux, temp_da, mean_annual_da)
+        expected = fire.kbdi(precip_da, temp_da, mean_annual_da)
+        np.testing.assert_allclose(result.values, expected.values, rtol=1e-10)
+
+    def test_precipitation_inches_are_converted_to_metric(self) -> None:
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays()
+        precip_inches = precip_da / 25.4
+        precip_inches.attrs["units"] = "inches"
+        result = fire.kbdi(precip_inches, temp_da, mean_annual_da)
+        expected = fire.kbdi(precip_da, temp_da, mean_annual_da)
+        np.testing.assert_allclose(result.values, expected.values, rtol=1e-10)
+
+    def test_absent_units_attribute_is_trusted_as_is(self) -> None:
+        """No `units` attribute means the raw values already match the `units=` scale."""
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays()
+        assert "units" not in temp_da.attrs
+        result = fire.kbdi(precip_da, temp_da, mean_annual_da)
+        expected = fire.kbdi(precip_da, temp_da, mean_annual_da)
+        np.testing.assert_array_equal(result.values, expected.values)
+
+    def test_unrecognized_temperature_units_raises(self) -> None:
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays()
+        temp_da = temp_da.copy()
+        temp_da.attrs["units"] = "rankine"
+        with pytest.raises(InvalidArgumentError):
+            fire.kbdi(precip_da, temp_da, mean_annual_da)
+
+    def test_unrecognized_precipitation_units_raises(self) -> None:
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays()
+        precip_da = precip_da.copy()
+        precip_da.attrs["units"] = "furlongs"
+        with pytest.raises(InvalidArgumentError):
+            fire.kbdi(precip_da, temp_da, mean_annual_da)
+
+
+class TestKBDIXarrayDaskChunking:
+    """A chunked time dimension must be rejected explicitly, never silently rechunked."""
+
+    def test_multi_chunked_time_dimension_raises(self) -> None:
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays(days=40)
+        precip_bad = precip_da.chunk({"time": 10})
+        with pytest.raises(CoordinateValidationError) as exc_info:
+            fire.kbdi(precip_bad, temp_da, mean_annual_da)
+        assert "time" in str(exc_info.value)
+
+    def test_spatially_chunked_output_stays_lazy(self) -> None:
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays()
+        precip_dask = precip_da.chunk({"time": -1, "lat": 1, "lon": 1})
+        temp_dask = temp_da.chunk({"time": -1, "lat": 1, "lon": 1})
+        result = fire.kbdi(precip_dask, temp_dask, mean_annual_da)
+        assert result.chunks is not None
+
+
+class TestKBDIXarraySpinUp:
+    """spin_up truncates both the value array and the reattached time coordinate."""
+
+    def test_spin_up_truncates_values_and_time_coord(self) -> None:
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays(days=50)
+        spin_up = 7
+        result = fire.kbdi(precip_da, temp_da, mean_annual_da, spin_up=spin_up)
+        assert result.sizes["time"] == 50 - spin_up
+        assert result.coords["time"].values[0] == precip_da.coords["time"].values[spin_up]
+
+
+class TestKBDIXarrayStateRoundTrip:
+    """Resuming a gridded recurrence from xarray-path state reproduces the one-shot series."""
+
+    def test_append_resume_round_trip_matches_one_shot(self) -> None:
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays(days=60)
+        split = 25
+        one_shot = fire.kbdi(precip_da, temp_da, mean_annual_da)
+        history = fire.kbdi(
+            precip_da.isel(time=slice(0, split)),
+            temp_da.isel(time=slice(0, split)),
+            mean_annual_da,
+            return_state=True,
+        )
+        resumed = fire.kbdi(
+            precip_da.isel(time=slice(split, None)),
+            temp_da.isel(time=slice(split, None)),
+            mean_annual_da,
+            initial_state=history.state,
+            return_state=True,
+        )
+        joined = np.concatenate([history.values.values, resumed.values.values], axis=0)
+        np.testing.assert_array_equal(joined, one_shot.values)
+
+
+class TestKBDIXarrayInputValidation:
+    """xarray-specific validation: type matching, time dimension, and alignment."""
+
+    def test_mismatched_input_types_raises_type_error(self) -> None:
+        precip_da, _temp_da, mean_annual_da, precipitation, temperature, _mean_annual = _gridded_dataarrays()
+        with pytest.raises(TypeError, match="same type"):
+            fire.kbdi(precip_da, temperature, mean_annual_da)
+
+    def test_missing_time_dimension_raises(self) -> None:
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays()
+        precip_no_time = precip_da.rename({"time": "not_time"})
+        with pytest.raises(CoordinateValidationError):
+            fire.kbdi(precip_no_time, temp_da, mean_annual_da)
+
+    def test_non_overlapping_time_raises(self) -> None:
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays()
+        shifted_temp = temp_da.assign_coords(time=temp_da.coords["time"] + pd.Timedelta(days=10_000))
+        with pytest.raises(CoordinateValidationError):
+            fire.kbdi(precip_da, shifted_temp, mean_annual_da)
+
+    def test_partial_overlap_warns_and_uses_intersection(self) -> None:
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays(days=50)
+        shifted_temp = temp_da.assign_coords(time=temp_da.coords["time"] + pd.Timedelta(days=5))
+        with pytest.warns(InputAlignmentWarning):
+            result = fire.kbdi(precip_da, shifted_temp, mean_annual_da)
+        assert result.sizes["time"] == 45
+
+
+class TestKBDIXarrayNumpyPassthrough:
+    """The new dispatch guard must not change NumPy-path behavior or return type."""
+
+    def test_numpy_input_returns_ndarray_not_dataarray(self) -> None:
+        precipitation, temperature, mean_annual, _time = _gridded_inputs()
+        result = fire.kbdi(precipitation, temperature, mean_annual)
+        assert isinstance(result, np.ndarray)
+        assert not isinstance(result, xr.DataArray)
