@@ -163,8 +163,8 @@ CF_METADATA: dict[str, CFAttributes] = {
         ),
     },
     # Fire-weather indices (#793). Only entries for indices implemented in
-    # `climate_indices.fire` are added here; CFFWIS (ffmc, dmc, dc, isi, bui,
-    # fwi, dsr, #803/#804) and the Haines Index (#810) are deferred to their
+    # `climate_indices.fire` are added here; the CFFWIS behavior indices (isi,
+    # bui, fwi, dsr, #804) and the Haines Index (#810) are deferred to their
     # own tickets, where unit and variant decisions can be validated against
     # real output rather than guessed ahead of implementation. None of the
     # fire indices has an official CF standard_name.
@@ -220,6 +220,48 @@ CF_METADATA: dict[str, CFAttributes] = {
             "Srock, A. F., Charney, J. J., Potter, B. E., & Goodrick, S. L. (2018). "
             "The Hot-Dry-Windy Index: A New Fire Weather Index. "
             "Atmosphere, 9(7), 279. https://doi.org/10.3390/atmos9070279"
+        ),
+    },
+    "ffmc": {
+        "long_name": "Fine Fuel Moisture Code",
+        "units": "dimensionless",
+        "description": (
+            "Moisture content of fine surface litter and other fine fuels, a dimensionless code in [0, 101]."
+        ),
+        "climate_indices_variant": "cffwis_classic",
+        "references": (
+            "Van Wagner, C. E., & Pickett, T. L. (1985). "
+            "Equations and FORTRAN program for the Canadian Forest Fire Weather Index System. "
+            "Canadian Forestry Service, Forestry Technical Report 33."
+        ),
+    },
+    "dmc": {
+        "long_name": "Duff Moisture Code",
+        "units": "dimensionless",
+        "description": (
+            "Moisture content of loosely compacted organic layers of moderate depth, "
+            "a dimensionless code floored at zero with no upper bound."
+        ),
+        "climate_indices_variant": "cffwis_classic",
+        "references": (
+            "Van Wagner, C. E., & Pickett, T. L. (1985). "
+            "Equations and FORTRAN program for the Canadian Forest Fire Weather Index System. "
+            "Canadian Forestry Service, Forestry Technical Report 33."
+        ),
+    },
+    "dc": {
+        "long_name": "Drought Code",
+        "units": "dimensionless",
+        "description": (
+            "Moisture content of deep, compact organic layers, a dimensionless code "
+            "floored at zero with no upper bound; the CFFWIS component only, distinct "
+            "from the package's drought indices."
+        ),
+        "climate_indices_variant": "cffwis_classic",
+        "references": (
+            "Van Wagner, C. E., & Pickett, T. L. (1985). "
+            "Equations and FORTRAN program for the Canadian Forest Fire Weather Index System. "
+            "Canadian Forestry Service, Forestry Technical Report 33."
         ),
     },
 }
