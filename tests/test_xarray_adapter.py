@@ -894,7 +894,7 @@ def _finalize_numpy_result(
 
 
 class TestFinalizeOutputResult:
-    """Unit tests for _finalize_ufunc_result() coordinate preservation (NumPy rewrap path)."""
+    """Unit tests for _finalize_ufunc_result() coordinate preservation."""
 
     def test_dimension_coords_preserved(self, coord_rich_1d_da):
         """All dimension coordinates present with identical values."""
@@ -998,6 +998,28 @@ class TestFinalizeOutputResult:
         output = _finalize_numpy_result(coord_rich_1d_da, result_values)
 
         assert output.name == coord_rich_1d_da.name
+
+    def test_dataarray_branch_restores_dimension_order(self, gridded_monthly_precip_3d):
+        """DataArray branch: dims moved by apply_ufunc are transposed back."""
+        input_da = gridded_monthly_precip_3d.rename("precip")
+        # simulate apply_ufunc, which moves the core time dim to the end
+        shuffled = xr.DataArray(np.ones_like(input_da.values), coords=input_da.coords, dims=input_da.dims).transpose(
+            "lat", "lon", "time"
+        )
+
+        output = _finalize_ufunc_result(
+            shuffled,
+            input_da,
+            {},
+            cf_metadata=None,
+            calculation_metadata_keys=None,
+            index_display_name="SPI",
+            func_name="spi",
+        )
+
+        assert output.dims == input_da.dims
+        assert output.name == "precip"
+        assert "SPI calculated" in output.attrs["history"]
 
     def test_coord_attrs_deep_copied(self, coord_rich_1d_da):
         """Mutating input coord attrs after call does not affect output."""
