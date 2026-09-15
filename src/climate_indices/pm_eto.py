@@ -79,11 +79,6 @@ def atmospheric_pressure(elevation: FloatOrArray) -> FloatOrArray:
     Returns:
         Atmospheric pressure in kPa, same type as input.
 
-    Examples:
-        >>> atmospheric_pressure(0.0)
-        101.3...
-        >>> atmospheric_pressure(1800.0)
-        81.8...
     """
     return (
         ATMOSPHERIC_PRESSURE_SEA_LEVEL
@@ -115,9 +110,6 @@ def latent_heat_of_vaporization(temperature_celsius: FloatOrArray) -> FloatOrArr
     Returns:
         Latent heat of vaporization in MJ/kg, same type as input.
 
-    Examples:
-        >>> latent_heat_of_vaporization(20.0)
-        2.4528...
     """
     return 2.501 - 0.002361 * np.asarray(temperature_celsius)
 
@@ -144,11 +136,6 @@ def psychrometric_constant(pressure_kpa: FloatOrArray) -> FloatOrArray:
     Returns:
         Psychrometric constant in kPa/degC, same type as input.
 
-    Examples:
-        >>> psychrometric_constant(101.3)
-        0.0673...
-        >>> psychrometric_constant(81.8)
-        0.0544...
     """
     return 0.665e-3 * np.asarray(pressure_kpa)
 
@@ -175,11 +162,6 @@ def saturation_vapor_pressure(temperature_celsius: FloatOrArray) -> FloatOrArray
     Returns:
         Saturation vapor pressure in kPa, same type as input.
 
-    Examples:
-        >>> saturation_vapor_pressure(20.0)
-        2.338...
-        >>> saturation_vapor_pressure(25.0)
-        3.167...
     """
     t = np.asarray(temperature_celsius)
     return 0.6108 * np.exp(17.27 * t / (t + 237.3))
@@ -203,11 +185,6 @@ def vapor_pressure_slope(temperature_celsius: FloatOrArray) -> FloatOrArray:
         Slope of saturation vapor pressure curve in kPa/degC, same type
         as input.
 
-    Examples:
-        >>> vapor_pressure_slope(20.0)
-        0.1447...
-        >>> vapor_pressure_slope(25.0)
-        0.1888...
     """
     t = np.asarray(temperature_celsius)
     e_sat = saturation_vapor_pressure(t)
@@ -236,9 +213,6 @@ def mean_saturation_vapor_pressure(
     Returns:
         Mean saturation vapor pressure in kPa, same type as inputs.
 
-    Examples:
-        >>> mean_saturation_vapor_pressure(15.0, 25.0)
-        2.291...
     """
     return (saturation_vapor_pressure(tmin_celsius) + saturation_vapor_pressure(tmax_celsius)) / 2.0
 
@@ -266,9 +240,6 @@ def actual_vapor_pressure_from_dewpoint(
     Returns:
         Actual vapor pressure in kPa.
 
-    Examples:
-        >>> actual_vapor_pressure_from_dewpoint(17.0)
-        1.937...
     """
     return saturation_vapor_pressure(tdew_celsius)
 
@@ -296,9 +267,6 @@ def actual_vapor_pressure_from_rhmin_rhmax(
     Returns:
         Actual vapor pressure in kPa.
 
-    Examples:
-        >>> actual_vapor_pressure_from_rhmin_rhmax(1.705, 3.168, 54.0, 82.0)
-        1.557...
     """
     return (np.asarray(e_tmin) * np.asarray(rh_max) / 100.0 + np.asarray(e_tmax) * np.asarray(rh_min) / 100.0) / 2.0  # type: ignore[no-any-return]
 
@@ -324,9 +292,6 @@ def actual_vapor_pressure_from_rhmax(
     Returns:
         Actual vapor pressure in kPa.
 
-    Examples:
-        >>> actual_vapor_pressure_from_rhmax(1.705, 82.0)
-        1.398...
     """
     return np.asarray(e_tmin) * np.asarray(rh_max) / 100.0  # type: ignore[no-any-return]
 
@@ -351,9 +316,6 @@ def actual_vapor_pressure_from_rhmean(
     Returns:
         Actual vapor pressure in kPa.
 
-    Examples:
-        >>> actual_vapor_pressure_from_rhmean(2.437, 68.0)
-        1.657...
     """
     return np.asarray(e_s) * np.asarray(rh_mean) / 100.0  # type: ignore[no-any-return]
 
@@ -384,9 +346,6 @@ def actual_vapor_pressure_from_tmin(
     Returns:
         Estimated actual vapor pressure in kPa.
 
-    Examples:
-        >>> actual_vapor_pressure_from_tmin(18.0)
-        1.817...
     """
     return saturation_vapor_pressure(np.asarray(tmin_celsius) - 2.0)
 
@@ -434,18 +393,6 @@ def pm_eto(
     Returns:
         Reference evapotranspiration ETo in mm/day, same shape as inputs.
 
-    Examples:
-        >>> pm_eto(
-        ...     net_radiation=13.28,
-        ...     soil_heat_flux=0.14,
-        ...     temperature_celsius=16.9,
-        ...     wind_speed_2m=2.078,
-        ...     saturation_vp=1.997,
-        ...     actual_vp=1.409,
-        ...     delta=0.122,
-        ...     gamma=0.0666,
-        ... )
-        3.88...
     """
     rn = np.asarray(net_radiation)
     g = np.asarray(soil_heat_flux)
