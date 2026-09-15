@@ -172,6 +172,13 @@ def test_notebook_missing_prepared_inputs_is_actionable(tmp_path, monkeypatch):
         _exec_cells({}, _executable_cells())
 
 
+def test_notebook_missing_manifest_is_actionable(e2e_data):
+    data_root, _ = e2e_data
+    (data_root / "current" / "manifest.json").unlink()
+    with pytest.raises(FileNotFoundError, match="prepare_e2e_inputs"):
+        _exec_cells({}, _executable_cells())
+
+
 def test_notebook_rejects_stale_data_start_year(e2e_data):
     namespace: dict = {}
     setup, calculation = _split_at_calculation(_executable_cells())
