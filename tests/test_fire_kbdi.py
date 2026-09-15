@@ -464,6 +464,33 @@ def test_invalid_state_bookkeeping_raises() -> None:
         )
 
 
+def test_nan_state_kbdi_requires_started_gap_bookkeeping() -> None:
+    """A not-started recurrence holds a number, so NaN kbdi with no started cell is impossible."""
+    precipitation, temperature = _dry_series(2)
+    for trailing_gap_days in (None, np.asarray(-1)):
+        with pytest.raises(InvalidArgumentError, match="trailing_gap_days"):
+            fire.kbdi(
+                precipitation,
+                temperature,
+                1000.0,
+                initial_state=fire.KBDIState(
+                    kbdi=np.asarray(np.nan),
+                    wet_spell_precipitation=np.asarray(0.0),
+                    trailing_gap_days=trailing_gap_days,
+                ),
+            )
+
+
+def test_gap_poisoned_state_is_accepted() -> None:
+    precipitation, temperature = _dry_series(4)
+    precipitation = precipitation.copy()
+    precipitation[2] = np.nan
+    poisoned = fire.kbdi(precipitation, temperature, 1000.0, return_state=True).state
+    assert np.isnan(float(poisoned.kbdi))
+    assert int(poisoned.trailing_gap_days) >= 0
+    assert np.isnan(fire.kbdi([0.0, 0.0], [20.0, 20.0], 1000.0, initial_state=poisoned)).all()
+
+
 # ------------------------------------------------------------------------------
 # mean annual precipitation
 
@@ -501,6 +528,35 @@ def test_nan_mean_annual_precipitation_yields_an_all_nan_cell() -> None:
     assert np.isnan(values[:, 1]).all()
 
 
+def test_nan_mean_annual_precipitation_is_not_treated_as_a_missing_weather_day() -> None:
+    """An unavailable static cell has no recurrence, so it cannot advance or poison gap state."""
+    precipitation, temperature = _dry_series(3)
+    started = fire.kbdi(precipitation, temperature, 1000.0, return_state=True).state
+
+    unavailable = fire.kbdi(precipitation, temperature, np.nan, initial_state=started, return_state=True)
+    assert np.isnan(unavailable.values).all()
+    np.testing.assert_array_equal(unavailable.state.kbdi, started.kbdi)
+    assert int(unavailable.state.trailing_gap_days) == 0
+
+    bridged = fire.kbdi(
+        precipitation,
+        temperature,
+        np.nan,
+        initial_state=started,
+        nan_policy="bridge",
+        max_gap_days=1,
+        return_state=True,
+    )
+    np.testing.assert_array_equal(bridged.state.kbdi, started.kbdi)
+    assert int(bridged.state.trailing_gap_days) == 0
+
+    resumed = fire.kbdi(precipitation, temperature, 1000.0, initial_state=unavailable.state)
+    np.testing.assert_array_equal(
+        resumed,
+        fire.kbdi(precipitation, temperature, 1000.0, initial_state=started),
+    )
+
+
 def test_mean_annual_precipitation_broadcasts_to_cells() -> None:
     """The climate factor advances the index faster where the mean annual rainfall is higher."""
     precipitation = np.zeros((3, 2))
@@ -534,6 +590,25 @@ def test_incompatible_shapes_raise() -> None:
 def test_negative_precipitation_raises() -> None:
     with pytest.raises(InvalidArgumentError, match="precipitation"):
         fire.kbdi([0.0, -1.0], [20.0, 20.0], 1000.0)
+
+
+@pytest.mark.parametrize("bound_infinity", [np.inf, -np.inf])
+@pytest.mark.parametrize("argument", ["precipitation", "maximum_temperature"])
+def test_infinite_weather_values_raise(bound_infinity: float, argument: str) -> None:
+    """Infinity is an invalid observation, not a missing day."""
+    precipitation, temperature = _dry_series(2)
+    weather = {"precipitation": precipitation.tolist(), "maximum_temperature": temperature.tolist()}
+    weather[argument][0] = bound_infinity
+    with pytest.raises(InvalidArgumentError, match="finite"):
+        fire.kbdi(weather["precipitation"], weather["maximum_temperature"], 1000.0)
+
+
+def test_imperial_values_that_overflow_the_metric_conversion_raise() -> None:
+    huge = np.finfo(np.float64).max / 25.0
+    with pytest.raises(InvalidArgumentError, match="metric"):
+        fire.kbdi([0.0, huge], [70.0, 70.0], 40.0, units="imperial")
+    with pytest.raises(InvalidArgumentError, match="metric"):
+        fire.kbdi(np.zeros(2), np.full(2, 70.0), huge, units="imperial")
 
 
 @pytest.mark.parametrize(

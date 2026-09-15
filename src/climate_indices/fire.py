@@ -103,7 +103,8 @@ class KBDIState:
     ``kbdi`` and ``wet_spell_precipitation`` use ``units``. A
     ``trailing_gap_days`` value of ``None`` means no valid day has started the
     recurrence. For spatial arrays, ``-1`` marks individual cells that have
-    not started yet.
+    not started yet. A NaN ``kbdi`` is only valid where ``trailing_gap_days``
+    shows that a gap has started the cell; a not-started cell holds a number.
     """
 
     kbdi: npt.NDArray[np.float64]
@@ -198,6 +199,14 @@ def _kbdi_state_arrays(
             )
         trailing_gap_days = trailing.astype(np.int64)
 
+    if np.any(np.isnan(kbdi_value) & (trailing_gap_days < 0)):
+        raise InvalidArgumentError(
+            "initial_state.kbdi may be NaN only where trailing_gap_days shows a gap has started.",
+            argument_name="initial_state.kbdi",
+            argument_value="NaN KBDI where initial_state.trailing_gap_days is -1 or None",
+            valid_values="A finite KBDI in a not-started cell; NaN only after a gap has started the cell",
+        )
+
     return kbdi_value, wet_spell, trailing_gap_days
 
 
@@ -231,9 +240,11 @@ def kbdi(
 
     Args:
         precipitation: Daily precipitation, time-first. Metric values are mm;
-            imperial values are inches.
+            imperial values are inches. Must be finite or NaN: infinity is
+            rejected rather than treated as a missing day.
         maximum_temperature: Daily maximum temperature, time-first. Metric
             values are degrees Celsius; imperial values are degrees Fahrenheit.
+            Must be finite or NaN.
         mean_annual_precipitation: Long-term mean annual precipitation, scalar
             or spatial field. If omitted, it is derived from at least 10,950
             finite daily precipitation values per cell as their mean times
@@ -327,6 +338,13 @@ def kbdi(
             argument_value="negative value",
             valid_values="Non-negative daily precipitation",
         )
+    if np.any(np.isinf(precipitation_array)) or np.any(np.isinf(temperature_array)):
+        raise InvalidArgumentError(
+            "precipitation and maximum_temperature must be finite or NaN: infinity is not a missing observation.",
+            argument_name="precipitation/maximum_temperature",
+            argument_value="infinite value",
+            valid_values="Finite values or NaN",
+        )
 
     spatial_shape = precipitation_array.shape[1:]
     # A single time series has no spatial axis; give the recurrence one so
@@ -379,11 +397,19 @@ def kbdi(
         )
 
     if units == "imperial":
-        precipitation_array = precipitation_array * 25.4
-        temperature_array = (temperature_array - 32.0) * 5.0 / 9.0
-        mean_annual = mean_annual * 25.4
-        kbdi_value = kbdi_value * _KBDI_MM_PER_POINT
-        wet_spell = wet_spell * 25.4
+        with np.errstate(over="ignore"):
+            precipitation_array = precipitation_array * 25.4
+            temperature_array = (temperature_array - 32.0) * 5.0 / 9.0
+            mean_annual = mean_annual * 25.4
+            kbdi_value = kbdi_value * _KBDI_MM_PER_POINT
+            wet_spell = wet_spell * 25.4
+        if np.any(np.isinf(precipitation_array)) or np.any(np.isinf(mean_annual)) or np.any(np.isinf(wet_spell)):
+            raise InvalidArgumentError(
+                "Imperial inputs must be representable in metric units: the conversion overflows float64.",
+                argument_name="precipitation/mean_annual_precipitation/initial_state.wet_spell_precipitation",
+                argument_value="finite value too large to convert to metric units",
+                valid_values="Finite values that do not overflow the metric conversion",
+            )
 
     log = _logger.bind(
         index_type="kbdi",
@@ -395,16 +421,23 @@ def kbdi(
     memory_metrics = check_large_array_memory(precipitation_array, temperature_array, mean_annual)
 
     try:
-        values = np.full(precipitation_array.shape, np.nan, dtype=np.float64)
+        n_days = precipitation_array.shape[0]
+        # Spin-up days are evaluated for the state they leave behind but never
+        # stored, so the output only allocates the days the caller receives.
+        values = np.full((max(n_days - spin_up, 0), *internal_spatial_shape), np.nan, dtype=np.float64)
         static_valid = np.isfinite(mean_annual)
         started = trailing_gap_days >= 0
         poisoned = np.isnan(kbdi_value)
 
-        for day in range(precipitation_array.shape[0]):
+        for day in range(n_days):
             precipitation_day = precipitation_array[day]
             temperature_day = temperature_array[day]
-            valid = np.isfinite(precipitation_day) & np.isfinite(temperature_day) & static_valid
-            missing_started = ~valid & (started | poisoned)
+            weather_valid = np.isfinite(precipitation_day) & np.isfinite(temperature_day)
+            valid = weather_valid & static_valid
+            # A cell whose static climatology is unavailable has no recurrence
+            # to gap-manage: its output is NaN and its carried state is left
+            # as it was, so a NaN climatology is never an elapsed missing day.
+            missing_started = ~weather_valid & static_valid & (started | poisoned)
 
             if nan_policy == "propagate":
                 kbdi_value[missing_started] = np.nan
@@ -447,7 +480,8 @@ def kbdi(
                     * 1e-3
                 )
             kbdi_value[active] = np.minimum(_KBDI_MAX_MM, after_rain[active] + np.maximum(drying[active], 0.0))
-            values[day] = np.where(active, kbdi_value, np.nan)
+            if day >= spin_up:
+                values[day - spin_up] = np.where(active, kbdi_value, np.nan)
 
         state_gap_days: npt.NDArray[np.int64] | None
         if np.any(started | poisoned):
@@ -463,7 +497,7 @@ def kbdi(
             returned_kbdi = kbdi_value
             returned_wet_spell = wet_spell
 
-        result = returned_values[spin_up:].reshape(-1, *spatial_shape)
+        result = returned_values.reshape(-1, *spatial_shape)
         duration_ms = (time.perf_counter() - t0) * 1000.0
         log.info(
             "calculation_completed",
