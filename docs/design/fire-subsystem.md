@@ -9,6 +9,7 @@ src/climate_indices/fire/
     __init__.py   public facade
     _cffwis.py    Canadian Forest Fire Weather Index System
     _fosberg.py   Fosberg FFWI
+    _haines.py    Haines Index
     _hdw.py       Hot-Dry-Windy Index
     _kbdi.py      Keetch-Byram Drought Index
     _common.py    shared coercion, seed, and gap-policy helpers
@@ -110,6 +111,16 @@ xarray operation from logging once per Dask block. `level_dim`, like KBDI's
 `time` if present, is an ordinary passthrough. Inputs are matched with
 xarray's exact join, so shared dimensions must carry identical, identically
 ordered coordinate labels; unlike KBDI, HDW does not align or reindex them.
+
+Haines' adapter is elementwise, like Fosberg's, but it goes through
+`xr.apply_ufunc` — with no core dimension and therefore no chunk constraint
+— rather than the generic `@xarray_adapter` decorator, which treats `time` as
+the core dimension and would demand a time axis Haines does not have. The
+silent kernel `_haines_from_levels` is the apply_ufunc target for the
+same observability reason as HDW's, and the registry entry is resolved from
+the validated `variant` at call time, the KBDI pattern. Elevation-driven
+variant selection stays in the NumPy layer (`haines_index_from_profile()`),
+where the pressure axis is explicit.
 
 ## Stateful recurrence contract
 
@@ -264,14 +275,33 @@ kernels.
 | `daily_severity_rating(cffwis_fwi)` | Canadian FWI | dimensionless DSR |
 | `cffwis(temperature_celsius, relative_humidity_percent, wind_speed_meters_per_second, precipitation_mm, latitude_degrees_north=None, month=None, *, initial_ffmc=None, initial_dmc=None, initial_dc=None, initial_state=None, return_state=False, spin_up=0, nan_policy="propagate", max_gap_days=0, outputs=None, time_dim="time")` | CFFWIS weather inputs above; `initial_*`, `spin_up`, and `nan_policy`/`max_gap_days` follow the shared stateful contract, and `month` is required for NumPy input by the DMC/DC day-length tables (inferred from the time coordinate on the xarray route) | `CFFWISResult` with the requested subset of the seven named outputs (`None` for names not requested) plus the combined `CFFWISState` when `return_state=True`; the xarray counterpart (#807)<br>accepts the same weather inputs as DataArrays, with `latitude_degrees_north` and `month` inferable from coordinates, and returns a `Dataset` (or a `CFFWISResult` when `return_state=True`) |
 | `hot_dry_windy(temperature_celsius, relative_humidity_percent, wind_speed_meters_per_second, height_agl_meters, *, level_axis=-1)` | vertical profiles in °C, %, m s⁻¹, m AGL | hPa m s⁻¹; all levels must identify the lowest 500 m AGL |
-| `haines_index(temperature_lower_celsius, temperature_upper_celsius, dewpoint_lower_celsius, *, variant)` | pressure-level °C inputs selected by `variant` | integer 2–6; `variant` is `"low"`, `"mid"`, or `"high"`, never inferred by default |
+| `haines_index(temperature_lower_celsius, temperature_upper_celsius, dewpoint_celsius, *, variant, surface_pressure_hpa=None)` | pressure-level °C inputs selected so that each sits at the level its `variant` names (see below), plus optional hPa surface pressure | integer-valued float 2–6; `variant` is `"low"`, `"mid"`, or `"high"`, never inferred by default. Where `surface_pressure_hpa` lies below the variant's lower stability level the cell is NaN rather than scored from a below-ground level |
+| `haines_index_from_profile(temperature_celsius, dewpoint_celsius, pressure_hpa, elevation_meters, *, pressure_axis=-1)` | vertical profiles in °C on one pressure axis, strictly decreasing pressures in hPa, and a terrain elevation in m | integer-valued float 2–6; selects the variant per cell from the elevation bands (low below 305 m, mid to 914 m, high above) and interpolates the profiles to the variant's levels in log pressure. The opt-in automatic form of the row above |
+
+Haines level assignments, named by the variants' stability layers (the
+moisture term pairs its dewpoint with whichever supplied temperature sits at
+the moisture level):
+
+| `variant` | `temperature_lower_celsius` | `temperature_upper_celsius` | `dewpoint_celsius` |
+| --- | --- | --- | --- |
+| `low` | 950 hPa | 850 hPa | 850 hPa |
+| `mid` | 850 hPa | 700 hPa | 850 hPa |
+| `high` | 700 hPa | 500 hPa | 700 hPa |
+
+The variants' stability cut points are (4, 8), (6, 11), and (18, 22) °C and
+their moisture cut points (6, 10), (6, 13), and (15, 21) °C, scored as
+half-open bins (below the first cut point scores 1, below the second scores 2,
+at or above it scores 3) so that non-integer lapse rates and depressions land
+where the published integer tables put them. NWS's AWIPS GFE smart-init and
+NOAA's LAPS `hainesindex.f` agree on every cut point, and LAPS is also the
+precedent for withholding the index when a variant's levels lie below the
+surface pressure.
 
 `fosberg_ffwi()`, `hot_dry_windy()`, `kbdi()`, `ffmc()`,
 `duff_moisture_code()`, `drought_code()`, `overwinter_drought_code()`,
 `initial_spread_index()`, `buildup_index()`, `cffwis_fwi()`,
-`daily_severity_rating()`, and `cffwis()`
-are implemented today; the Haines row is a planned contract (#810), not yet
-callable. The stateful rows
+`daily_severity_rating()`, `cffwis()`, `haines_index()`, and
+`haines_index_from_profile()` are implemented today. The stateful rows
 accept the keyword-only missing-data arguments `nan_policy="propagate"` and
 `max_gap_days=0` described above, and `drought_code()` additionally accepts the
 `in_season` mask.
@@ -304,9 +334,12 @@ entries for the indices implemented today: `kbdi` (metric), `kbdi_imperial`,
 `kbdi()` returns two different unit scales from the same function;
 `climate_indices_variant` distinguishes them, and the CFFWIS entries all
 carry `cffwis_classic` to distinguish them from a future FWI2025 variant.
-The Haines Index (`haines`, #810) has no registry entry yet — its elevation
-variant is an open question best resolved against a real implementation, not
-guessed ahead of it. FWI is registered as the CFFWIS output name; the
+The Haines Index has one entry per elevation variant -- `haines_low`,
+`haines_mid`, and `haines_high`, each carrying `low`, `mid`, or `high` as its
+`climate_indices_variant` -- because the variant is chosen per call and
+decides which pressure layers the output describes. The adapter resolves the
+entry from the `variant` argument at call time, as KBDI's does from `units`.
+FWI is registered as the CFFWIS output name; the
 Fosberg index stays `ffwi`. No adapter for an index ships before its registry
 entry lands.
 

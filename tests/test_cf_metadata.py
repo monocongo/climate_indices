@@ -36,11 +36,29 @@ EXPECTED_KEYS = {
     "bui",
     "fwi",
     "dsr",
+    "haines_low",
+    "haines_mid",
+    "haines_high",
 }
 
 REQUIRED_FIELDS = {"long_name", "units", "references"}
 
-FIRE_KEYS = ("kbdi", "kbdi_imperial", "ffwi", "hdw", "ffmc", "dmc", "dc", "isi", "bui", "fwi", "dsr")
+FIRE_KEYS = (
+    "kbdi",
+    "kbdi_imperial",
+    "ffwi",
+    "hdw",
+    "ffmc",
+    "dmc",
+    "dc",
+    "isi",
+    "bui",
+    "fwi",
+    "dsr",
+    "haines_low",
+    "haines_mid",
+    "haines_high",
+)
 
 # (entry, field, expected value) rows: one row per literal registry assertion.
 ENTRY_VALUE_ROWS = [
@@ -99,6 +117,15 @@ ENTRY_VALUE_ROWS = [
     ("dsr", "long_name", "Daily Severity Rating"),
     ("dsr", "units", "dimensionless"),
     ("dsr", "climate_indices_variant", "cffwis_classic"),
+    ("haines_low", "long_name", "Haines Index"),
+    ("haines_low", "units", "dimensionless"),
+    ("haines_low", "climate_indices_variant", "low"),
+    ("haines_mid", "long_name", "Haines Index"),
+    ("haines_mid", "units", "dimensionless"),
+    ("haines_mid", "climate_indices_variant", "mid"),
+    ("haines_high", "long_name", "Haines Index"),
+    ("haines_high", "units", "dimensionless"),
+    ("haines_high", "climate_indices_variant", "high"),
 ]
 
 ENTRY_VALUES = [
@@ -131,6 +158,9 @@ REFERENCE_ROWS = [
     ("fwi", ("Van Wagner", "1985")),
     # DSR is Eq. 31 of the 1987 report, not the 1985 equations report
     ("dsr", ("Van Wagner", "1987")),
+    ("haines_low", ("Haines", "1988")),
+    ("haines_mid", ("Haines", "1988")),
+    ("haines_high", ("Haines", "1988")),
 ]
 
 REFERENCE_CASES = [pytest.param(entry, fragments, id=entry) for entry, fragments in REFERENCE_ROWS]
