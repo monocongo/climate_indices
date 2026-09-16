@@ -125,7 +125,7 @@ spi = "climate_indices.__spi__:main"
   - Dask array support with chunking validation
   - PET computation (Thornthwaite, Hargreaves)
 
-- **`indices.py`** (856 lines): Legacy numpy API
+- **`indices.py`** (1210 lines): Legacy numpy API
   - Backward-compatible function signatures
   - Direct numpy array inputs/outputs
   - Distribution enum (`Distribution.gamma`, `Distribution.pearson`)
@@ -140,9 +140,10 @@ spi = "climate_indices.__spi__:main"
 **Purpose**: Core mathematical algorithms for climate index calculation.
 
 **Modules**:
-- **`compute.py`** (1278 lines): Core computation functions
+- **`compute.py`** (1669 lines): Core computation functions
   - `prepare_scaled()`: Shared flatten/clip/roll-sum/reshape preparation for the fitting-based indices
   - `scale_values()`: Rolling sum computation for temporal scaling (wrapper over `prepare_scaled()`)
+  - `fit_and_standardize()`: Shared parameter normalization, gamma/Pearson dispatch, and Pearson→gamma fall-back seam for SPI and SPEI
   - `gamma_parameters()`, `pearson_parameters()`: Distribution fitting
   - `transform_fitted_gamma()`, `transform_fitted_pearson()`: CDF transformation
   - `sum_to_scale()`: Optimized sliding window summation
@@ -174,6 +175,10 @@ spi = "climate_indices.__spi__:main"
    - **Pearson Type III**: L-moments (location, scale, skew parameters)
    - **Calibration period**: Default 30+ years, user-configurable
    - **Handling zeros**: Probability of zero tracked separately
+   - **Fall-back policy**: SPI falls back from a failed (or mostly-missing) Pearson Type III
+     fit to gamma; SPEI propagates the failure. `compute.fit_and_standardize()` takes this
+     as `fallback_to_gamma`, so the divergence is a parameter of one seam rather than a
+     copy of the fit/dispatch branch in each index function.
 
 #### 4. Math/Statistics Layer
 **Purpose**: Low-level mathematical and statistical functions.
@@ -324,6 +329,10 @@ climate_indices/
 │  - Pearson: loc, scale, skew parameters (L-moments)             │
 │  - Fit on calibration period only                               │
 │  - Track probability of zero separately                         │
+│  - One seam (compute.fit_and_standardize) normalizes fitting    │
+│    parameters and dispatches on the distribution                │
+│  - SPI falls back from a failed Pearson fit to gamma, SPEI      │
+│    propagates the failure (fallback_to_gamma)                   │
 └───────────────────────┬─────────────────────────────────────────┘
                         │
                         ▼

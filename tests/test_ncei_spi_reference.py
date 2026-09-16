@@ -105,13 +105,13 @@ def pearson_fallbacks(monkeypatch) -> list[str]:
     observe and reject that fallback rather than comparing gamma values.
     """
     fallbacks: list[str] = []
-    original = indices._fallback_strategy.log_fallback_warning
+    original = compute._default_fallback_strategy.log_fallback_warning
 
     def spy(reason: str, context: str = "") -> None:
         fallbacks.append(reason)
         original(reason, context)
 
-    monkeypatch.setattr(indices._fallback_strategy, "log_fallback_warning", spy)
+    monkeypatch.setattr(compute._default_fallback_strategy, "log_fallback_warning", spy)
     return fallbacks
 
 

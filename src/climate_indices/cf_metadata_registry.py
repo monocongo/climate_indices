@@ -58,8 +58,9 @@ _VAN_WAGNER_1987 = (
 )
 
 # The three Haines elevation variants score different pressure layers of the
-# same 1988 publication; keep the rendered `references` text identical across
-# the three entries that cite it.
+# same 1988 publication; keep the rendered `long_name` and `references` text
+# identical across the three entries that cite it.
+_HAINES_INDEX_LONG_NAME = "Haines Index"
 _HAINES_1988 = (
     "Haines, D. A. (1988). "
     "A lower atmospheric severity index for wildland fires. "
@@ -317,7 +318,7 @@ CF_METADATA: dict[str, CFAttributes] = {
         "references": _VAN_WAGNER_1987,
     },
     "haines_low": {
-        "long_name": "Haines Index",
+        "long_name": _HAINES_INDEX_LONG_NAME,
         "units": "dimensionless",
         "description": (
             "Lower-atmosphere severity index, low elevation variant: stability from the "
@@ -327,7 +328,7 @@ CF_METADATA: dict[str, CFAttributes] = {
         "references": _HAINES_1988,
     },
     "haines_mid": {
-        "long_name": "Haines Index",
+        "long_name": _HAINES_INDEX_LONG_NAME,
         "units": "dimensionless",
         "description": (
             "Lower-atmosphere severity index, mid elevation variant: stability from the "
@@ -337,7 +338,7 @@ CF_METADATA: dict[str, CFAttributes] = {
         "references": _HAINES_1988,
     },
     "haines_high": {
-        "long_name": "Haines Index",
+        "long_name": _HAINES_INDEX_LONG_NAME,
         "units": "dimensionless",
         "description": (
             "Lower-atmosphere severity index, high elevation variant: stability from the "

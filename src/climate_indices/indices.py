@@ -55,46 +55,6 @@ _PCI_MONTH_STARTS: dict[int, np.ndarray] = {
     366: np.array([0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]),
 }
 
-# Import fallback strategy for consistent behavior
-_fallback_strategy = compute.DistributionFallbackStrategy()
-
-
-def _norm_fitdict(params: dict[str, Any] | None) -> dict[str, Any] | None:
-    """
-    Compatibility shim. Convert old accepted parameter dictionaries
-    into new, consistently keyed parameter dictionaries. If given
-    a None object, None is returned.
-
-    See https://github.com/monocongo/climate_indices/issues/449
-    """
-    if params is None:
-        return params
-
-    normed = {}
-    for name, altname in _fit_altnames:
-        val = params.get(name, None)
-        if val is None:
-            if altname not in params:
-                continue
-            _logger.warning(
-                "Using deprecated fitting parameter key %s. Use %s instead.",
-                altname,
-                name,
-            )
-            val = params[altname]
-        normed[name] = val
-    return normed
-
-
-_fit_altnames = (
-    ("alpha", "alphas"),
-    ("beta", "betas"),
-    ("skew", "skews"),
-    ("scale", "scales"),
-    ("loc", "locs"),
-    ("prob_zero", "probabilities_of_zero"),
-)
-
 
 def _validate_scale(scale: int) -> None:
     """Validate that scale is an integer within the valid range.
@@ -498,7 +458,8 @@ def spi(
         fitting parameters, if the distribution is gamma then this dict should
         contain two arrays, keyed as "alpha" and "beta", and if the
         distribution is Pearson then this dict should contain four arrays keyed
-        as "prob_zero", "loc", "scale", and "skew". For spatial input a 1-D
+        as "prob_zero", "loc", "scale", and "skew". Older keys such as
+        "alphas" and "probabilities_of_zero" are deprecated. For spatial input a 1-D
         parameter array is read as one value per calendar period and broadcast
         across cells.
     :param spatial_time_major: read ``values`` as a time-major block of independent
@@ -530,6 +491,10 @@ def spi(
     memory_metrics = check_large_array_memory(values)
 
     try:
+        # normalize any deprecated fitting-parameter aliases once, before the per-cell
+        # Pearson dispatch below, so the diagnostic stays bounded per spatial operation
+        fitting_params = compute._normalize_fitting_params(fitting_params)
+
         # remember the original length and shape of the array, in order to facilitate
         # returning an array of the same size and layout
         original_length = values.size
@@ -582,72 +547,20 @@ def spi(
             )
             return values
 
-        if distribution == Distribution.gamma:
-            # get (optional) fitting parameters if provided
-            if fitting_params is not None:
-                alphas = fitting_params["alpha"]
-                betas = fitting_params["beta"]
-            else:
-                alphas = None
-                betas = None
-
-            # fit the scaled values to a gamma distribution
-            # and transform to corresponding normalized sigmas
-            values = compute.transform_fitted_gamma(
-                values,
-                data_start_year,
-                calibration_year_initial,
-                calibration_year_final,
-                periodicity,
-                alphas,
-                betas,
-            )
-        elif distribution == Distribution.pearson:
-            # get (optional) fitting parameters if provided
-            if fitting_params is not None:
-                probabilities_of_zero = fitting_params["prob_zero"]
-                locs = fitting_params["loc"]
-                scales = fitting_params["scale"]
-                skews = fitting_params["skew"]
-            else:
-                probabilities_of_zero = None
-                locs = None
-                scales = None
-                skews = None
-
-            try:
-                # fit the scaled values to a Pearson Type III distribution
-                # and transform to corresponding normalized sigmas
-                values = compute.transform_fitted_pearson(
-                    values,
-                    data_start_year,
-                    calibration_year_initial,
-                    calibration_year_final,
-                    periodicity,
-                    probabilities_of_zero,
-                    locs,
-                    scales,
-                    skews,
-                )
-
-                # Check if fallback is needed due to excessive NaN values
-                if _fallback_strategy.should_fallback_from_excessive_nans(values):
-                    raise ValueError("Pearson distribution fitting resulted in excessive missing values")
-
-            except (ValueError, Warning, compute.DistributionFittingError) as e:
-                # Use centralized fallback strategy for consistent logging and behavior
-                _fallback_strategy.log_fallback_warning(str(e), context="SPI computation")
-
-                # Use Gamma distribution as fallback
-                values = compute.transform_fitted_gamma(
-                    values,
-                    data_start_year,
-                    calibration_year_initial,
-                    calibration_year_final,
-                    periodicity,
-                    alphas=None,
-                    betas=None,
-                )
+        # fit the scaled values to the specified distribution and transform to
+        # corresponding normalized sigmas, falling back to gamma when a Pearson
+        # Type III fit fails
+        values = compute.fit_and_standardize(
+            values,
+            distribution,
+            data_start_year,
+            calibration_year_initial,
+            calibration_year_final,
+            periodicity,
+            fitting_params,
+            fallback_to_gamma=True,
+            fallback_context="SPI computation",
+        )
 
         # clip values to within the valid range
         values = np.clip(values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX)
@@ -758,9 +671,9 @@ def spei(
     memory_metrics = check_large_array_memory(precips_mm, pet_mm)
 
     try:
-        # Normalize fitting param keys
-        fitting_params_normalized = _norm_fitdict(fitting_params)
-        fitting_params = fitting_params_normalized
+        # normalize any deprecated fitting-parameter aliases once, before the per-cell
+        # Pearson dispatch below, so the diagnostic stays bounded per spatial operation
+        fitting_params = compute._normalize_fitting_params(fitting_params)
 
         # if we're passed all missing values then we can't compute anything,
         # so we return the same array of missing values
@@ -853,53 +766,18 @@ def spei(
             spatial_time_major=spatial_time_major,
         )
 
-        if distribution is Distribution.gamma:
-            # get (optional) fitting parameters if provided
-            if fitting_params is not None:
-                alphas = fitting_params["alpha"]
-                betas = fitting_params["beta"]
-            else:
-                alphas = None
-                betas = None
-
-            # fit the scaled values to a gamma distribution and
-            # transform to corresponding normalized sigmas
-            transformed_fitted_values = compute.transform_fitted_gamma(
-                scaled_values,
-                data_start_year,
-                calibration_year_initial,
-                calibration_year_final,
-                periodicity,
-                alphas,
-                betas,
-            )
-
-        elif distribution is Distribution.pearson:
-            # get (optional) filtering parameters if provided
-            if fitting_params is not None:
-                probabilities_of_zero = fitting_params["prob_zero"]
-                locs = fitting_params["loc"]
-                scales = fitting_params["scale"]
-                skews = fitting_params["skew"]
-            else:
-                probabilities_of_zero = None
-                locs = None
-                scales = None
-                skews = None
-
-            # fit the scaled values to a Pearson Type III distribution
-            # and transform to corresponding normalized sigmas
-            transformed_fitted_values = compute.transform_fitted_pearson(
-                scaled_values,
-                data_start_year,
-                calibration_year_initial,
-                calibration_year_final,
-                periodicity,
-                probabilities_of_zero,
-                locs,
-                scales,
-                skews,
-            )
+        # fit the scaled values to the specified distribution and transform to
+        # corresponding normalized sigmas
+        transformed_fitted_values = compute.fit_and_standardize(
+            scaled_values,
+            distribution,
+            data_start_year,
+            calibration_year_initial,
+            calibration_year_final,
+            periodicity,
+            fitting_params,
+            fallback_to_gamma=False,
+        )
 
         # clip values to within the valid range
         values = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX)
