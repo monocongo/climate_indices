@@ -1,4 +1,5 @@
 import logging
+from unittest import mock
 
 import numpy as np
 import pytest
@@ -280,6 +281,28 @@ def test_pnp_3d_input_raises():
         indices.percentage_of_normal(
             values,
             1,
+            1900,
+            1900,
+            1901,
+            compute.Periodicity.monthly,
+        )
+
+
+def test_spi_3d_input_raises():
+    """An input array with more than two dimensions raises ValueError.
+
+    Unlike eddi()/percentage_of_normal(), spi()'s dimension errors are pinned to
+    plain ValueError by tests/test_backward_compat.py::TestErrorHierarchyDocumented,
+    so this stays on the shared preparation seam's ValueError rather than switching
+    to DataShapeError.
+    """
+    values = np.zeros((2, 3, 4))
+
+    with pytest.raises(ValueError, match="Invalid shape of input array"):
+        indices.spi(
+            values,
+            1,
+            indices.Distribution.gamma,
             1900,
             1900,
             1901,
@@ -724,3 +747,67 @@ def test_pci(
 
     # confirm that an invalid number of days raises an error
     np.testing.assert_raises(InvalidArgumentError, indices.pci, np.array(list(range(300))))
+
+
+@pytest.mark.usefixtures(
+    "precips_mm_monthly",
+    "pet_thornthwaite_mm",
+    "data_year_start_monthly",
+    "calibration_year_start_monthly",
+    "calibration_year_end_monthly",
+)
+def test_fitting_indices_share_one_preparation_seam(
+    precips_mm_monthly,
+    pet_thornthwaite_mm,
+    data_year_start_monthly,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+):
+    """SPI, SPEI, EDDI, and PNP all prepare their scaled values through one seam."""
+    precips = precips_mm_monthly.flatten()
+    pet = pet_thornthwaite_mm.flatten()
+
+    with mock.patch.object(compute, "prepare_scaled", wraps=compute.prepare_scaled) as prepare_scaled:
+        indices.spi(
+            precips,
+            3,
+            indices.Distribution.gamma,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            compute.Periodicity.monthly,
+        )
+        indices.spei(
+            precips,
+            pet,
+            3,
+            indices.Distribution.gamma,
+            compute.Periodicity.monthly,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+        )
+        indices.eddi(
+            pet_thornthwaite_mm,
+            3,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            compute.Periodicity.monthly,
+        )
+        indices.percentage_of_normal(
+            precips,
+            3,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            compute.Periodicity.monthly,
+        )
+
+    # SPI and EDDI prepare with the defaults; SPEI and PNP opt out of clipping and reshaping
+    assert prepare_scaled.call_count == 4
+    default_calls = [call for call in prepare_scaled.call_args_list if not call.kwargs]
+    kwargs_calls = [call for call in prepare_scaled.call_args_list if call.kwargs]
+    assert len(default_calls) == 2
+    assert len(kwargs_calls) == 2
+    assert all(call.kwargs == {"clip_negatives": False, "reshape": False} for call in kwargs_calls)

@@ -8,7 +8,7 @@ from typing import Any, cast
 
 import numpy as np
 
-from climate_indices import compute, eto, utils
+from climate_indices import compute, eto
 from climate_indices.exceptions import DataShapeError, InvalidArgumentError
 from climate_indices.logging_config import get_logger
 from climate_indices.performance import check_large_array_memory
@@ -164,6 +164,23 @@ def _validate_periodicity(periodicity: compute.Periodicity) -> None:
         )
 
 
+def _raise_if_unsupported_shape(values: np.ndarray) -> None:
+    """Raise the DataShapeError this module has always raised for unsupported input shapes.
+
+    Args:
+        values: The input array to validate
+
+    Raises:
+        DataShapeError: If the array is not 1-D or 2-D
+    """
+    if values.ndim not in (1, 2):
+        raise DataShapeError(
+            f"Invalid shape of input array: {values.shape} -- only 1-D and 2-D arrays are supported",
+            expected_shape="(N,) or (years, periods)",
+            actual_shape=values.shape,
+        )
+
+
 def _hastings_inverse_normal(probability: np.ndarray) -> np.ndarray:
     """Convert cumulative probabilities to z-scores using the Hastings approximation.
 
@@ -251,22 +268,18 @@ def eddi(
     memory_metrics = check_large_array_memory(pet_values)
 
     try:
-        # accept 1-D or 2-D arrays (flatten 2-D), reject 3-D+
-        shape = pet_values.shape
-        if len(shape) == 2:
-            pet_values = pet_values.flatten()
-        elif len(shape) != 1:
-            message = f"Invalid shape of input array: {shape} -- only 1-D and 2-D arrays are supported"
-            _logger.error(message)
-            raise DataShapeError(
-                message,
-                expected_shape="(N,) or (years, periods)",
-                actual_shape=shape,
-            )
+        # remember the original length of the array
+        original_length = pet_values.size
 
-        # if we're passed all missing values then we can't compute
-        # anything, so we return the same array of missing values
-        if (isinstance(pet_values, np.ma.MaskedArray) and pet_values.mask.all()) or np.all(np.isnan(pet_values)):
+        # input shapes other than 1-D/2-D keep this index's legacy DataShapeError
+        _raise_if_unsupported_shape(pet_values)
+
+        # flatten, clip negatives to zero, and scale/reshape in the shared preparation seam
+        pet_values = compute.prepare_scaled(pet_values, scale, periodicity)
+        num_periods = periodicity.period_length
+
+        # an all-missing input comes back un-reshaped, so there's nothing to compute
+        if pet_values.ndim == 1:
             duration_ms = (time.perf_counter() - t0) * 1000.0
             log.info(
                 "calculation_completed",
@@ -275,26 +288,6 @@ def eddi(
                 **(memory_metrics or {}),
             )
             return pet_values
-
-        # clip any negative values to zero
-        if np.amin(pet_values) < 0.0:
-            _logger.warning("Input contains negative values -- all negatives clipped to zero")
-            pet_values = np.clip(pet_values, a_min=0.0, a_max=None)
-
-        # remember the original length of the array
-        original_length = pet_values.size
-
-        # get a sliding sums array, with each time step's value scaled
-        # by the specified number of time steps
-        pet_values = compute.sum_to_scale(pet_values, scale)
-
-        # reshape PET values to (years, periods)
-        if periodicity == compute.Periodicity.monthly:
-            pet_values = utils.reshape_to_2d(pet_values, 12)
-            num_periods = 12
-        elif periodicity == compute.Periodicity.daily:
-            pet_values = utils.reshape_to_2d(pet_values, 366)
-            num_periods = 366
 
         # NOAA ranks left-padded scale values below valid observations.
         leading_scale_pads = np.zeros(pet_values.shape, dtype=bool)
@@ -468,19 +461,19 @@ def spi(
     memory_metrics = check_large_array_memory(values)
 
     try:
-        # we expect to operate upon a 1-D array, so if we've been passed a 2-D array
-        # then we flatten it, otherwise raise an error
-        shape = values.shape
-        if len(shape) == 2:
-            values = values.flatten()
-        elif len(shape) != 1:
-            message = f"Invalid shape of input array: {shape} -- only 1-D and 2-D arrays are supported"
-            _logger.error(message)
-            raise ValueError(message)
+        # remember the original length of the array, in order to facilitate
+        # returning an array of the same size
+        original_length = values.size
 
-        # if we're passed all missing values then we can't compute
-        # anything, so we return the same array of missing values
-        if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
+        # flatten, short-circuit all-missing input, clip negatives to zero,
+        # and scale/reshape in the shared preparation seam. Shape errors raise the
+        # plain ValueError from prepare_scaled -- spi()'s dimension errors are pinned
+        # to ValueError by tests/test_backward_compat.py::TestErrorHierarchyDocumented,
+        # unlike eddi()/percentage_of_normal() which use DataShapeError.
+        values = compute.prepare_scaled(values, scale, periodicity)
+
+        # an all-missing input comes back un-reshaped, so there's nothing to compute
+        if values.ndim == 1:
             duration_ms = (time.perf_counter() - t0) * 1000.0
             log.info(
                 "calculation_completed",
@@ -489,25 +482,6 @@ def spi(
                 **(memory_metrics or {}),
             )
             return values
-
-        # clip any negative values to zero
-        if np.amin(values) < 0.0:
-            _logger.warning("Input contains negative values -- all negatives clipped to zero")
-            values = np.clip(values, a_min=0.0, a_max=None)
-
-        # remember the original length of the array, in order to facilitate
-        # returning an array of the same size
-        original_length = values.size
-
-        # get a sliding sums array, with each time step's value scaled
-        # by the specified number of time steps
-        values = compute.sum_to_scale(values, scale)
-
-        # reshape precipitation values to (years, 12) for monthly, or to (years, 366) for daily
-        if periodicity == compute.Periodicity.monthly:
-            values = utils.reshape_to_2d(values, 12)
-        elif periodicity == compute.Periodicity.daily:
-            values = utils.reshape_to_2d(values, 366)
 
         if distribution == Distribution.gamma:
             # get (optional) fitting parameters if provided
@@ -685,8 +659,8 @@ def spei(
             _logger.error(message)
             raise ValueError(message)
 
-        # clip any negative values to zero
-        if np.amin(precips_mm) < 0.0:
+        # clip any negative values to zero. np.any(...) is NaN-safe, unlike np.amin.
+        if bool(np.any(precips_mm < 0.0)):
             _logger.warning("Input contains negative values -- all negatives clipped to zero")
             precips_mm = np.clip(precips_mm, a_min=0.0, a_max=None)
 
@@ -699,8 +673,15 @@ def spei(
         original_length = precips_mm.size
 
         # get a sliding sums array, with each element's value
-        # scaled by the specified number of time steps
-        scaled_values = compute.sum_to_scale(p_minus_pet, scale)
+        # scaled by the specified number of time steps. The scale is applied to the
+        # PET-adjusted values, which the fitting transform reshapes itself.
+        scaled_values = compute.prepare_scaled(
+            p_minus_pet,
+            scale,
+            periodicity,
+            clip_negatives=False,
+            reshape=False,
+        )
 
         if distribution is Distribution.gamma:
             # get (optional) fitting parameters if provided
@@ -828,32 +809,14 @@ def percentage_of_normal(
 
     try:
         # we expect to operate upon a 1-D array, so if we've been passed a 2-D array
-        # then we flatten it, otherwise raise an error
-        shape = values.shape
-        if len(shape) == 2:
+        # then we flatten it, otherwise raise an error. Input shapes other than 1-D/2-D
+        # keep this index's legacy DataShapeError.
+        _raise_if_unsupported_shape(values)
+        if values.ndim == 2:
             values = values.flatten()
-        elif len(shape) != 1:
-            message = f"Invalid shape of input array: {shape} -- only 1-D and 2-D arrays are supported"
-            log.error(message)
-            raise DataShapeError(
-                message,
-                expected_shape="(N,) or (years, periods)",
-                actual_shape=shape,
-            )
 
-        # if doing monthly then we'll use 12 periods, corresponding to calendar
-        # months, if daily assume years w/366 days
-        if periodicity == compute.Periodicity.monthly:
-            period_length = 12
-        elif periodicity == compute.Periodicity.daily:
-            period_length = 366
-        else:
-            raise InvalidArgumentError(
-                f"Unsupported periodicity: {periodicity}. Must be 'monthly' or 'daily'.",
-                argument_name="periodicity",
-                argument_value=str(periodicity),
-                valid_values="Periodicity.monthly or Periodicity.daily",
-            )
+        # calendar months for monthly data (12 periods), or days for daily data (366)
+        period_length = periodicity.period_length
 
         # bypass processing if all values are masked
         if isinstance(values, np.ma.MaskedArray) and values.mask.all():
@@ -875,6 +838,10 @@ def percentage_of_normal(
                 argument_value=str(calibration_start_year),
                 valid_values=f">= data_start_year ({data_start_year})",
             )
+
+        # note: this check counts 12 time steps per year regardless of periodicity,
+        # as it always has. Tightening it to period_length would reject Gregorian
+        # daily input (365/366 days per year), which is a separate behavior change.
         if ((calibration_end_year - calibration_start_year + 1) * 12) > values.size:
             raise InvalidArgumentError(
                 "Invalid calibration period: total calibration years exceeds the "
@@ -890,11 +857,16 @@ def percentage_of_normal(
         # scale -- i.e. if the scale is 3 then the first two elements will be
         # np.nan, since we need 3 elements to get a sum, and then from the third
         # element to the end the values will equal the sum of the corresponding
-        # time step plus the values of the two previous time steps
-        scale_sums = compute.sum_to_scale(values, scale)
-        # treat masked values as the missing (NaN) values they represent
-        if np.ma.isMaskedArray(scale_sums):
-            scale_sums = np.ma.filled(scale_sums.astype(float), np.nan)
+        # time step plus the values of the two previous time steps. Negatives are
+        # left alone and the sums stay 1-D, since the calendar-period averages
+        # below are computed over the un-reshaped scale sums.
+        scale_sums = compute.prepare_scaled(
+            values,
+            scale,
+            periodicity,
+            clip_negatives=False,
+            reshape=False,
+        )
 
         # extract the timesteps over which we'll compute the normal
         # average for each time step of the year
