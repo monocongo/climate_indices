@@ -21,7 +21,7 @@ import pytest
 
 from climate_indices import compute, indices, palmer
 from climate_indices.eto import eto_hargreaves
-from climate_indices.exceptions import InvalidArgumentError
+from climate_indices.exceptions import DataShapeError, InvalidArgumentError
 from climate_indices.logging_config import (
     ENV_LOG_LEVEL,
     _reset_logging_for_testing,
@@ -270,6 +270,34 @@ class TestCalculationLifecycle:
         assert completed[0]["duration_ms"] > 0
         assert tuple(completed[0]["output_shape"]) == result.shape
 
+    def test_eddi(
+        self,
+        pet_thornthwaite_mm,
+        data_year_start_monthly,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
+    ) -> None:
+        stream = _capture_stream(log_level="INFO")
+        result = indices.eddi(
+            pet_values=pet_thornthwaite_mm,
+            scale=6,
+            data_start_year=data_year_start_monthly,
+            calibration_year_initial=calibration_year_start_monthly,
+            calibration_year_final=calibration_year_end_monthly,
+            periodicity=compute.Periodicity.monthly,
+        )
+
+        started = _events_named(stream, "calculation_started")
+        completed = _events_named(stream, "calculation_completed")
+        assert len(started) == 1
+        assert len(completed) == 1
+        assert started[0]["index_type"] == "eddi"
+        assert started[0]["scale"] == 6
+        assert "distribution" not in started[0]
+        assert "input_shape" in started[0]
+        assert completed[0]["duration_ms"] > 0
+        assert tuple(completed[0]["output_shape"]) == result.shape
+
     def test_percentage_of_normal(
         self,
         precips_mm_monthly,
@@ -388,9 +416,97 @@ class TestCalculationLifecycle:
         assert completed[0]["duration_ms"] > 0
         assert completed[0]["output_elements"] == result[0].size
 
+    def test_scpdsi(
+        self,
+        palmer_division_precip_pet,
+        data_year_start_monthly,
+        calibration_year_start_palmer,
+        calibration_year_end_palmer,
+    ) -> None:
+        precips, pet = palmer_division_precip_pet
+        stream = _capture_stream(log_level="INFO")
+        result = palmer.scpdsi(
+            precips,
+            pet,
+            4.5,
+            data_year_start_monthly,
+            calibration_year_start_palmer,
+            calibration_year_end_palmer,
+        )
+
+        started = _events_named(stream, "calculation_started")
+        completed = _events_named(stream, "calculation_completed")
+        assert len(started) == 1
+        assert len(completed) == 1
+        assert started[0]["index_type"] == "scpdsi"
+        assert tuple(started[0]["input_shape"]) == precips.shape
+        assert completed[0]["duration_ms"] > 0
+        assert completed[0]["output_elements"] == result[0].size
+
+
+class TestAllMissingLifecycle:
+    """All-missing input is a successful early return, not a failure."""
+
+    @staticmethod
+    def _assert_all_missing(stream: StringIO, result: np.ndarray, index_type: str) -> None:
+        assert np.all(np.isnan(result))
+        started = _events_named(stream, "calculation_started")
+        completed = _events_named(stream, "calculation_completed")
+        assert len(started) == 1
+        assert len(completed) == 1
+        assert started[0]["index_type"] == index_type
+        assert "duration_ms" in completed[0]
+        assert len(_events_named(stream, "calculation_failed")) == 0
+
+    def test_spi(self) -> None:
+        stream = _capture_stream(log_level="INFO")
+        result = indices.spi(
+            values=np.full(240, np.nan),
+            scale=3,
+            distribution=indices.Distribution.gamma,
+            data_start_year=2000,
+            calibration_year_initial=2000,
+            calibration_year_final=2019,
+            periodicity=compute.Periodicity.monthly,
+        )
+        self._assert_all_missing(stream, result, "spi")
+
+    def test_spei(self) -> None:
+        stream = _capture_stream(log_level="INFO")
+        result = indices.spei(
+            precips_mm=np.full(240, np.nan),
+            pet_mm=np.full(240, np.nan),
+            scale=3,
+            distribution=indices.Distribution.gamma,
+            periodicity=compute.Periodicity.monthly,
+            data_start_year=2000,
+            calibration_year_initial=2000,
+            calibration_year_final=2019,
+        )
+        self._assert_all_missing(stream, result, "spei")
+
+    def test_pet_thornthwaite(self, latitude_degrees) -> None:
+        stream = _capture_stream(log_level="INFO")
+        result = indices.pet(
+            temperature_celsius=np.full(240, np.nan),
+            latitude_degrees=latitude_degrees,
+            data_start_year=2000,
+        )
+        self._assert_all_missing(stream, result, "pet_thornthwaite")
+
+    def test_pci(self) -> None:
+        stream = _capture_stream(log_level="INFO")
+        result = indices.pci(rainfall_mm=np.full(366, np.nan))
+        self._assert_all_missing(stream, result, "pci")
+
 
 class TestCalculationFailureContext:
-    """Every public index emits one calculation_failed event carrying context."""
+    """Failure paths emit one calculation_failed event carrying error context.
+
+    Asserted for the indices whose failure payload includes error fields;
+    Palmer's event carries no error context (ADR-0008), so its payload is
+    intentionally not asserted here.
+    """
 
     def test_spi_gamma_failure(
         self,
@@ -553,6 +669,28 @@ class TestCalculationFailureContext:
         assert event["error_type"] == "RuntimeError"
         assert "Reshape failed" in event["error_message"]
 
+    def test_eddi_invalid_shape(self) -> None:
+        stream = _capture_stream(log_level="INFO")
+        with pytest.raises(DataShapeError, match="Invalid shape of input array"):
+            indices.eddi(
+                pet_values=np.random.rand(10, 12, 5),
+                scale=1,
+                data_start_year=2000,
+                calibration_year_initial=2000,
+                calibration_year_final=2019,
+                periodicity=compute.Periodicity.monthly,
+            )
+
+        failed = _events_named(stream, "calculation_failed")
+        assert len(failed) == 1
+        event = failed[0]
+        assert event["index_type"] == "eddi"
+        assert event["scale"] == 1
+        assert "distribution" not in event
+        assert event["error_type"] == "DataShapeError"
+        assert "Invalid shape of input array" in event["error_message"]
+        assert event["calibration_period"] == "2000-2019"
+
 
 class TestFailureLifecycle:
     """Failure paths still honor the lifecycle contract and never leak data."""
@@ -606,6 +744,41 @@ class TestFailureLifecycle:
         assert result.size == precips_mm_monthly.size
         assert len(_events_named(stream, "calculation_failed")) == 0
         assert len(_events_named(stream, "calculation_completed")) == 1
+
+    def test_pearson_and_gamma_fallback_failure_emits_failed(
+        self,
+        precips_mm_monthly,
+        data_year_start_monthly,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
+    ) -> None:
+        stream = _capture_stream(log_level="INFO")
+        with mock.patch(
+            "climate_indices.compute.transform_fitted_pearson",
+            side_effect=compute.DistributionFittingError("Pearson failed"),
+        ):
+            with mock.patch(
+                "climate_indices.compute.transform_fitted_gamma",
+                side_effect=RuntimeError("Gamma fallback failed"),
+            ):
+                with pytest.raises(RuntimeError, match="Gamma fallback failed"):
+                    indices.spi(
+                        values=precips_mm_monthly,
+                        scale=6,
+                        distribution=indices.Distribution.pearson,
+                        data_start_year=data_year_start_monthly,
+                        calibration_year_initial=calibration_year_start_monthly,
+                        calibration_year_final=calibration_year_end_monthly,
+                        periodicity=compute.Periodicity.monthly,
+                    )
+
+        failed = _events_named(stream, "calculation_failed")
+        assert len(failed) == 1
+        assert failed[0]["index_type"] == "spi"
+        assert failed[0]["distribution"] == "pearson"
+        assert failed[0]["error_type"] == "RuntimeError"
+        assert "Gamma fallback failed" in failed[0]["error_message"]
+        assert len(_events_named(stream, "calculation_completed")) == 0
 
     def test_logs_never_contain_input_values(
         self,
