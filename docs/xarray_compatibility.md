@@ -129,18 +129,26 @@ Three rules fix the shape of a chunked input:
    block plus its per-period intermediates, so the working set grows with the
    cells in a block, not with the size of the grid. The PET spatial kernels take
    one block per call as well, so the same block sizing applies to them.
-3. **Chunk the inputs of a multi-input index the same way.** SPEI aligns
-   precipitation and PET with an inner join on their coordinates and validates
-   each input's `time` chunking independently, but neither step makes the two
-   inputs' spatial chunking agree. When the two inputs are chunked differently,
-   `xr.apply_ufunc(..., dask="parallelized")` makes Dask unify them, inserting a
+3. **Chunk the shared dimensions of a multi-input index the same way.** SPEI
+   aligns precipitation and PET with `xr.align(join="inner")`, which intersects
+   every indexed coordinate the inputs share, so partially overlapping grids
+   are cropped on `lat`/`lon` as well as `time`; the adapter's
+   `InputAlignmentWarning` reports dropped `time` steps only. That join does not
+   rechunk, and each input's `time` chunking is validated independently, so a
+   mismatch on a shared dimension survives to the compute: `xr.apply_ufunc(...,
+   dask="parallelized")` makes Dask unify the chunks, inserting a
    `rechunk-merge` stage that copies the data when the graph computes — an extra
-   copy inside every index that consumes the mismatched pair. Give both inputs
-   the layout prepared by `notebooks/zarr_dask_spi_spei.ipynb`:
+   copy inside every index that consumes the mismatched pair. Give PET the
+   layout of the dimensions it shares with precipitation (the one
+   `notebooks/zarr_dask_spi_spei.ipynb` stores):
 
    ```python
-   pet = pet.chunk(precip.chunksizes)
+   pet = pet.chunk({dim: blocks for dim, blocks in precip.chunksizes.items() if dim in pet.dims})
    ```
+
+   PET inputs with fewer dimensions than precipitation broadcast, so a
+   `(time,)` series or a `(time, lat)` field needs no chunking on the dimensions
+   it lacks.
 
 For the 40-year monthly gamma SPI/SPEI path the fit's working set is about
 60 KB per cell — roughly 16x the 3.84 KB the cell's own 480-step float64 series
