@@ -720,3 +720,29 @@ def test_prepare_scaled_rejects_unsupported_shapes():
     """
     with pytest.raises(ValueError, match="Invalid shape of input array"):
         compute.prepare_scaled(np.zeros((2, 3, 4)), 1, compute.Periodicity.monthly)
+
+
+def test_prepare_scaled_clips_negatives_alongside_missing_values():
+    """
+    A negative value must be clipped even when the array also contains unmasked NaN
+    or masked entries, since np.amin/np.nanmin either miss the negative (a NaN in the
+    array makes np.amin return NaN, so `NaN < 0.0` is False) or reach under the mask.
+    """
+    # scale == 1 short-circuits sum_to_scale, so the negative reaches the output
+    # unmodified if it isn't clipped -- this is the path the bug hid on
+    values = np.array([-3.0, np.nan, 2.0])
+    computed = compute.prepare_scaled(values, 1, compute.Periodicity.monthly, reshape=False)
+    assert computed[0] == 0.0
+    assert np.isnan(computed[1])
+
+    # masked entries must not be mistaken for the negative, or reported as clipped
+    masked = np.ma.array([-3.0, 5.0, 2.0], mask=[False, True, False])
+    computed_masked = compute.prepare_scaled(masked, 1, compute.Periodicity.monthly, reshape=False)
+    assert computed_masked[0] == 0.0
+    assert np.isnan(computed_masked[1])
+
+    # the summed path (scale > 1) must also clip before summing, with a NaN elsewhere
+    # in the array (np.amin would return NaN here, hiding the negative under the bug)
+    with_nan = np.array([-3.0, 4.0, np.nan, 2.0])
+    summed = compute.prepare_scaled(with_nan, 2, compute.Periodicity.monthly, reshape=False)
+    assert summed[1] == 0.0 + 4.0

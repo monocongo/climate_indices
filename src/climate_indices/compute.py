@@ -1061,15 +1061,18 @@ def prepare_scaled(
     in order to short-circuit. Shape errors are raised as ``ValueError``, the convention
     established by ``_validate_array`` and ``utils.reshape_to_2d``.
 
-    :param values: the array of values, either 1-D or 2-D (years, periods)
-    :param scale: the number of values for which each sliding summation will encompass
-    :param periodicity: specifies whether data is monthly (12 time steps per year) or daily
-    :param clip_negatives: whether negative values are clipped to zero, defaults to True
-    :param reshape: whether the scaled values are reshaped to (years, period_length),
-        defaults to True. ``indices.percentage_of_normal`` passes False, since it averages
-        the un-reshaped 1-D sums over each calendar period.
-    :return: the scaled values, either 2-D with shape (years, periodicity.period_length)
-        or 1-D when an all-missing input or ``reshape=False``
+    Args:
+        values: The array of values, either 1-D or 2-D (years, periods).
+        scale: The number of values for which each sliding summation will encompass.
+        periodicity: Specifies whether data is monthly (12 time steps per year) or daily.
+        clip_negatives: Whether negative values are clipped to zero, defaults to True.
+        reshape: Whether the scaled values are reshaped to (years, period_length),
+            defaults to True. ``indices.percentage_of_normal`` passes False, since it
+            averages the un-reshaped 1-D sums over each calendar period.
+
+    Returns:
+        The scaled values, either 2-D with shape (years, periodicity.period_length)
+        or 1-D when an all-missing input or ``reshape=False``.
     """
     _logger.debug("scaling_started", operation="prepare_scaled", scale=scale, periodicity=str(periodicity))
 
@@ -1092,8 +1095,10 @@ def prepare_scaled(
     if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
         return values
 
-    # clip any negative values to zero
-    if clip_negatives and np.amin(values) < 0.0:
+    # clip any negative values to zero. np.any(values < 0.0) is NaN-safe (NaN < 0
+    # is False) and mask-safe (MaskedArray.any() ignores masked entries), unlike
+    # np.amin/np.nanmin which either miss negatives behind a NaN or reach under a mask.
+    if clip_negatives and bool(np.any(values < 0.0)):
         _logger.warning("negative_values_clipped", operation="prepare_scaled")
         values = np.clip(values, a_min=0.0, a_max=None)
 
@@ -1126,10 +1131,13 @@ def scale_values(
     Thin wrapper over ``prepare_scaled``, which owns the preparation pipeline for
     every fitting-based index.
 
-    :param values: the array of values, either 1-D or 2-D (years, periods)
-    :param scale: the number of values for which each sliding summation will encompass
-    :param periodicity: specifies whether data is monthly (12 time steps per year) or daily
-    :return: the scaled values, reshaped to (years, periodicity.period_length)
+    Args:
+        values: The array of values, either 1-D or 2-D (years, periods).
+        scale: The number of values for which each sliding summation will encompass.
+        periodicity: Specifies whether data is monthly (12 time steps per year) or daily.
+
+    Returns:
+        The scaled values, reshaped to (years, periodicity.period_length).
     """
     return prepare_scaled(values, scale, periodicity)
 

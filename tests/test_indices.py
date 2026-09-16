@@ -288,6 +288,28 @@ def test_pnp_3d_input_raises():
         )
 
 
+def test_spi_3d_input_raises():
+    """An input array with more than two dimensions raises ValueError.
+
+    Unlike eddi()/percentage_of_normal(), spi()'s dimension errors are pinned to
+    plain ValueError by tests/test_backward_compat.py::TestErrorHierarchyDocumented,
+    so this stays on the shared preparation seam's ValueError rather than switching
+    to DataShapeError.
+    """
+    values = np.zeros((2, 3, 4))
+
+    with pytest.raises(ValueError, match="Invalid shape of input array"):
+        indices.spi(
+            values,
+            1,
+            indices.Distribution.gamma,
+            1900,
+            1900,
+            1901,
+            compute.Periodicity.monthly,
+        )
+
+
 @pytest.mark.usefixtures(
     "precips_mm_monthly",
     "precips_mm_daily",

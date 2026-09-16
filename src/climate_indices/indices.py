@@ -466,7 +466,10 @@ def spi(
         original_length = values.size
 
         # flatten, short-circuit all-missing input, clip negatives to zero,
-        # and scale/reshape in the shared preparation seam
+        # and scale/reshape in the shared preparation seam. Shape errors raise the
+        # plain ValueError from prepare_scaled -- spi()'s dimension errors are pinned
+        # to ValueError by tests/test_backward_compat.py::TestErrorHierarchyDocumented,
+        # unlike eddi()/percentage_of_normal() which use DataShapeError.
         values = compute.prepare_scaled(values, scale, periodicity)
 
         # an all-missing input comes back un-reshaped, so there's nothing to compute
@@ -656,8 +659,8 @@ def spei(
             _logger.error(message)
             raise ValueError(message)
 
-        # clip any negative values to zero
-        if np.amin(precips_mm) < 0.0:
+        # clip any negative values to zero. np.any(...) is NaN-safe, unlike np.amin.
+        if bool(np.any(precips_mm < 0.0)):
             _logger.warning("Input contains negative values -- all negatives clipped to zero")
             precips_mm = np.clip(precips_mm, a_min=0.0, a_max=None)
 
