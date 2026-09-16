@@ -947,9 +947,10 @@ def _run_cffwis_recurrence(
                 max_gap_days=max_gap_days,
             )
 
+            all_active = active.all()
             if np.any(active):
                 with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
-                    updated = step(day, None if active.all() else active)
+                    updated = step(day, None if all_active else active)
                 if np.any(~np.isfinite(updated)):
                     raise InvalidArgumentError(
                         f"{index_type} produced a non-finite value from finite inputs.",
@@ -957,12 +958,15 @@ def _run_cffwis_recurrence(
                         argument_value="non-finite result",
                         valid_values="Finite inputs whose result stays within float64",
                     )
-                if active.all():
+                if all_active:
                     state_value[:] = updated
                 else:
                     state_value[active] = updated
             if day >= spin_up:
-                values[day - spin_up] = np.where(active, state_value, np.nan)
+                if all_active:
+                    values[day - spin_up] = state_value
+                else:
+                    values[day - spin_up] = np.where(active, state_value, np.nan)
 
         state_gap_days = trailing_gap_days.copy() if np.any(started | poisoned) else None
         duration_ms = (time.perf_counter() - t0) * 1000.0
@@ -1005,27 +1009,29 @@ def _ffmc_next(
     moisture = np.where(rained, np.minimum(moisture + rain_moisture, _FFMC_MOISTURE_CAP), moisture)
 
     # Eqs. 4 and 5: equilibrium moisture content for drying and wetting
+    temperature_term = 0.18 * (21.1 - temperature_celsius) * (1.0 - np.exp(-0.115 * relative_humidity_percent))
     drying_equilibrium = (
         0.942 * relative_humidity_percent**0.679
         + 11.0 * np.exp((relative_humidity_percent - 100.0) / 10.0)
-        + 0.18 * (21.1 - temperature_celsius) * (1.0 - np.exp(-0.115 * relative_humidity_percent))
+        + temperature_term
     )
     wetting_equilibrium = (
         0.618 * relative_humidity_percent**0.753
         + 10.0 * np.exp((relative_humidity_percent - 100.0) / 10.0)
-        + 0.18 * (21.1 - temperature_celsius) * (1.0 - np.exp(-0.115 * relative_humidity_percent))
+        + temperature_term
     )
 
     # Eqs. 6-9: dry toward the drying equilibrium or wet toward the wetting
     # equilibrium, whichever side of it the fuel is on
     humidity_fraction = relative_humidity_percent / 100.0
     wind_root = np.sqrt(wind_speed_kilometers_per_hour)
-    drying_rate = (0.424 * (1.0 - humidity_fraction**1.7) + 0.0694 * wind_root * (1.0 - humidity_fraction**8)) * (
-        0.581 * np.exp(0.0365 * temperature_celsius)
-    )
+    temperature_scale = 0.581 * np.exp(0.0365 * temperature_celsius)
+    drying_rate = (
+        0.424 * (1.0 - humidity_fraction**1.7) + 0.0694 * wind_root * (1.0 - humidity_fraction**8)
+    ) * temperature_scale
     wetting_rate = (
         0.424 * (1.0 - (1.0 - humidity_fraction) ** 1.7) + 0.0694 * wind_root * (1.0 - (1.0 - humidity_fraction) ** 8)
-    ) * (0.581 * np.exp(0.0365 * temperature_celsius))
+    ) * temperature_scale
     dried = drying_equilibrium + (moisture - drying_equilibrium) * 10.0**-drying_rate
     wetted = wetting_equilibrium - (wetting_equilibrium - moisture) * 10.0**-wetting_rate
     moisture = np.where(
