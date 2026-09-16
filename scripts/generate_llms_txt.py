@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import posixpath
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,9 +42,29 @@ def _read(path: str) -> str:
     return "\n".join(line.rstrip() for line in text.splitlines())
 
 
+# The optional title group is anchored by whitespace so it cannot overlap the
+# link-target group; without that anchor the engine retries every split point
+# between them (super-linear backtracking on malformed input).
+_RELATIVE_LINK = re.compile(r"\]\((?!https?://|\#|mailto:)([^)\s]+)((?:\s[^)]*)?)\)")
+
+
+def _rebuild_links(path: str, text: str) -> str:
+    """Resolve a source file's relative links from the repository root.
+
+    Bundles inline documents at the repository root, where a link that is valid
+    in its source directory (e.g. ``adr/0003.md`` under ``docs/``) would not
+    resolve.
+    """
+    base = Path(path).parent.as_posix()
+    return _RELATIVE_LINK.sub(
+        lambda match: f"]({posixpath.normpath(posixpath.join(base, match.group(1)))}{match.group(2)})",
+        text,
+    )
+
+
 def _section(path: str) -> str:
     """Render one source file as an llms.txt markdown section."""
-    return f"## {path}\n\n{_read(path)}\n"
+    return f"## {path}\n\n{_rebuild_links(path, _read(path))}\n"
 
 
 def _render(sources: list[str]) -> str:
