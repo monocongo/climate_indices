@@ -1554,7 +1554,7 @@ def _normalize_fitting_params(params: dict[str, Any] | None) -> dict[str, Any] |
 
 def fit_and_standardize(
     values: np.ndarray,
-    distribution: Distribution,
+    distribution: "Distribution",
     data_start_year: int,
     calibration_start_year: int,
     calibration_end_year: int,
