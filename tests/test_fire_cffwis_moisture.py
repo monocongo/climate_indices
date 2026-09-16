@@ -980,11 +980,11 @@ def test_shared_time_series_broadcasts_over_spatial_fields() -> None:
 def test_shared_calendar_months_stay_a_broadcast_view() -> None:
     """Shared scalar and (time,) months must not materialize a full grid-sized int64 copy."""
     shared = np.asarray([1, 2, 3])
-    result = fire._month_array(shared, (3, 4, 5))
+    result = fire._cffwis._month_array(shared, (3, 4, 5))
     assert result.shape == (3, 4, 5)
     assert 0 in result.strides
     np.testing.assert_array_equal(result[:, 0, 0], shared)
-    assert fire._month_array(7, (3, 4, 5)).strides == (0, 0, 0)
+    assert fire._cffwis._month_array(7, (3, 4, 5)).strides == (0, 0, 0)
 
 
 def test_output_allocation_failure_emits_lifecycle_events(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -998,8 +998,8 @@ def test_output_allocation_failure_emits_lifecycle_events(monkeypatch: pytest.Mo
             raise MemoryError("simulated output allocation failure")
         return real_full(*args, **kwargs)  # type: ignore[call-overload]
 
-    monkeypatch.setattr(fire.np, "full", fail_output_allocation)
-    with mock.patch.object(fire, "_logger") as mocked_logger:
+    monkeypatch.setattr(fire._cffwis.np, "full", fail_output_allocation)
+    with mock.patch.object(fire._cffwis, "_logger") as mocked_logger:
         with pytest.raises(MemoryError):
             _run_ffmc(weather)
     bound = mocked_logger.bind.return_value

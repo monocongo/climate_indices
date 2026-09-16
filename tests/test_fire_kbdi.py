@@ -1070,7 +1070,7 @@ class TestKBDIXarrayDaskChunking:
             calls.append(1)
             return real_kbdi(*args, **kwargs)
 
-        monkeypatch.setattr(fire, "kbdi", counting_kbdi)
+        monkeypatch.setattr(fire._kbdi, "kbdi", counting_kbdi)
         result = real_kbdi(precip_dask, temp_dask, mean_annual_da, return_state=True)
         assert isinstance(result, fire.KBDIResult)
         # 2 lat x 3 lon chunks: exactly one recurrence execution per chunk,
