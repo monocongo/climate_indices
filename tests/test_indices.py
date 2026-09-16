@@ -288,15 +288,19 @@ def test_pnp_3d_input_raises():
         )
 
 
-def test_spi_3d_input_raises():
-    """An input array with more than two dimensions raises ValueError.
+def test_spi_ambiguous_3d_input_raises():
+    """A gridded array whose first cell axis is the period length raises ValueError.
+
+    That shape is equally readable as time-major (time, 12, *cells) and as the legacy
+    (years, periods, *cells) layout, so it must be declared with spatial_time_major=True
+    instead of being silently re-read along the wrong axis (#923).
 
     Unlike eddi()/percentage_of_normal(), spi()'s dimension errors are pinned to
     plain ValueError by tests/test_backward_compat.py::TestErrorHierarchyDocumented,
     so this stays on the shared preparation seam's ValueError rather than switching
     to DataShapeError.
     """
-    values = np.zeros((2, 3, 4))
+    values = np.zeros((2, 12, 4))
 
     with pytest.raises(ValueError, match="Invalid shape of input array"):
         indices.spi(
@@ -429,11 +433,12 @@ def test_spi(
             compute.Periodicity.monthly,
         )
 
-    # input array argument that's neither 1-D nor 2-D should raise a ValueError
+    # a gridded array whose first cell axis is the period length is ambiguous with a
+    # (years, periods, *cells) array, so it has to be declared rather than read
     np.testing.assert_raises(
         ValueError,
         indices.spi,
-        np.array(np.zeros((4, 4, 8))),
+        np.array(np.zeros((4, 366, 8))),
         6,
         indices.Distribution.gamma,
         data_year_start_monthly,
@@ -804,10 +809,13 @@ def test_fitting_indices_share_one_preparation_seam(
             compute.Periodicity.monthly,
         )
 
-    # SPI and EDDI prepare with the defaults; SPEI and PNP opt out of clipping and reshaping
+    # SPI and EDDI prepare with the defaults; SPEI and PNP opt out of clipping and
+    # reshaping. The spatial-block declaration is not part of that contract, so only
+    # those two keywords are compared.
     assert prepare_scaled.call_count == 4
-    default_calls = [call for call in prepare_scaled.call_args_list if not call.kwargs]
-    kwargs_calls = [call for call in prepare_scaled.call_args_list if call.kwargs]
-    assert len(default_calls) == 2
-    assert len(kwargs_calls) == 2
-    assert all(call.kwargs == {"clip_negatives": False, "reshape": False} for call in kwargs_calls)
+    prep_kwargs = [
+        {key: value for key, value in call.kwargs.items() if key in {"clip_negatives", "reshape"}}
+        for call in prepare_scaled.call_args_list
+    ]
+    assert prep_kwargs.count({}) == 2
+    assert [call for call in prep_kwargs if call] == [{"clip_negatives": False, "reshape": False}] * 2
