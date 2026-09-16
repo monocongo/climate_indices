@@ -14,7 +14,7 @@ remain the package's cross-cutting contract; how it is verified changed.
 
 `tests/test_pattern_compliance.py` is deleted as a pytest suite. Nothing replaces
 the source-text, AST-count, or test-file-content assertions: "the source contains
-this string" is not evidence about the public API, and the epic's testing
+this string" is not evidence about the public API, and the #908 epic's testing
 decisions forbid asserting log prose and private call order.
 
 The 42-point NFR list is preserved here for audit. Seven indices, six patterns:
@@ -37,7 +37,7 @@ Each pattern is now verified as follows:
 | Pattern | Verification |
 | --- | --- |
 | xarray adapter | `tests/test_typed_public_api.py`, `tests/test_xarray_adapter.py`, `tests/test_xarray_equivalence.py`, `tests/test_pci_xarray.py`, `tests/test_pnp_xarray.py` — DataArray in, DataArray out, values equal the NumPy path |
-| `typed_public_api` overloads | `tests/test_typed_public_api.py` exercises the NumPy and DataArray overloads; `uv run mypy src/` rejects an overload set whose implementation is inconsistent. Deleting an overload set is not caught — mypy only checks overloads that exist, and the deleted suite's AST count for "every index declares at least two" is deliberately not replaced |
+| `typed_public_api` overloads | `tests/test_typed_public_api.py` exercises the NumPy and DataArray overloads for SPI and SPEI; `tests/test_pci_xarray.py` and `tests/test_pnp_xarray.py` exercise the PCI and PNP DataArray paths; the PET typed wrappers are exercised for callability only, in `tests/test_release_integrity.py`. `uv run mypy src/` rejects an overload set whose implementation is inconsistent. Deleting an overload set is not caught — mypy only checks overloads that exist, and the deleted suite's AST count for "every index declares at least two" is deliberately not replaced |
 | CF metadata registry | `tests/test_cf_metadata.py` (keys and required fields); `tests/test_xarray_adapter.py` asserts registry metadata lands on output DataArrays |
 | structlog lifecycle logging | `tests/test_calculation_event_logging.py` asserts `calculation_started`/`calculation_completed` are emitted with index context for SPI, SPEI, PNP, PET, and PCI, and `tests/test_error_context_logging.py` asserts `calculation_failed` on the failure paths. These assert emitted events, not source text. Palmer has no event test; if its event names become a contract, #915 owns adding one while consolidating observability tests |
 | structured exceptions | `tests/test_exceptions.py` (hierarchy and catchability) plus the per-index `InvalidArgumentError` assertions in `tests/test_input_validation.py`, `tests/test_indices.py`, and `tests/test_eto.py` |
