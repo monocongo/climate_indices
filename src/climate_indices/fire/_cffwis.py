@@ -2161,6 +2161,43 @@ def _warn_if_not_noon_referenced(weather_inputs: tuple[xr.DataArray, ...], time_
     )
 
 
+def _broadcast_topology(weather: tuple[xr.DataArray, ...]) -> tuple[tuple[str, ...], dict[str, int]]:
+    """Return the dims and sizes ``xr.broadcast`` would produce, without broadcasting data.
+
+    The broadcast dims come in order of appearance across the inputs, exactly
+    as ``xarray.core.variable._unified_dims`` orders them; ``xr.align`` has
+    already matched the sizes of the shared dims.
+    """
+    dims: list[str] = []
+    sizes: dict[str, int] = {}
+    for data in weather:
+        for dim in data.dims:
+            name = str(dim)
+            if name not in sizes:
+                dims.append(name)
+                sizes[name] = data.sizes[dim]
+    return tuple(dims), sizes
+
+
+def _spatial_chunk_targets(
+    weather: tuple[xr.DataArray, ...], spatial_dims: tuple[str, ...]
+) -> dict[str, tuple[int, ...]]:
+    """The finest spatial chunking the Dask-backed weather inputs carry.
+
+    Static spatial operands (seeds, resumed state) are partitioned to this
+    chunking so ``apply_ufunc`` hands a worker only its own tile instead of the
+    whole grid. Empty when no weather input is Dask-backed.
+    """
+    targets: dict[str, tuple[int, ...]] = {}
+    for dim in spatial_dims:
+        chunkings = [
+            data.chunks[data.dims.index(dim)] for data in weather if data.chunks is not None and dim in data.dims
+        ]
+        if chunkings:
+            targets[dim] = min(chunkings, key=len)
+    return targets
+
+
 def _align_cffwis_inputs(
     temperature_celsius: xr.DataArray,
     relative_humidity_percent: xr.DataArray,
@@ -2385,13 +2422,13 @@ def _resolve_cffwis_latitude(
 
 def _resolve_cffwis_month(
     month: npt.ArrayLike | xr.DataArray | None,
-    temperature: xr.DataArray,
+    time_coord: xr.DataArray | None,
     time_dim: str,
     time_length: int,
 ) -> xr.DataArray:
-    """Resolve the month series from the call's argument or the time coordinate."""
+    """Resolve the month series from the call's argument or the weather time coordinate."""
     if month is None:
-        if time_dim not in temperature.coords:
+        if time_coord is None:
             raise InvalidArgumentError(
                 f"month is required when the weather inputs carry no '{time_dim}' coordinate to infer it from.",
                 argument_name="month",
@@ -2399,7 +2436,7 @@ def _resolve_cffwis_month(
                 valid_values=f"An explicit month, or a datetime '{time_dim}' coordinate",
             )
         try:
-            inferred = temperature.coords[time_dim].dt.month
+            inferred = time_coord.dt.month
         except (AttributeError, TypeError) as exc:
             raise InvalidArgumentError(
                 f"month cannot be inferred from the non-datetime '{time_dim}' coordinate. Supply month explicitly.",
@@ -2419,7 +2456,7 @@ def _resolve_cffwis_month(
                 valid_values=f"A scalar, a 1-D time series, or a DataArray on '{time_dim}'",
             )
         if time_dim in month.coords:
-            if time_dim not in temperature.coords:
+            if time_coord is None:
                 raise InvalidArgumentError(
                     f"month carries a '{time_dim}' coordinate but the weather inputs do not; drop the "
                     "coordinate or give the weather inputs matching time coordinates.",
@@ -2432,7 +2469,7 @@ def _resolve_cffwis_month(
             # positionally
             try:
                 # mypy loses the isinstance narrowing across xarray's Self-returning reindex
-                month = cast(xr.DataArray, month.reindex({time_dim: temperature.coords[time_dim]}))
+                month = cast(xr.DataArray, month.reindex({time_dim: time_coord}))
             except (KeyError, TypeError, ValueError) as exc:
                 raise InvalidArgumentError(
                     f"month's '{time_dim}' coordinate cannot be matched to the weather inputs' "
@@ -2538,22 +2575,31 @@ def _cffwis_xarray(
 
     temperature = _convert_temperature_units(temperature, "celsius", argument_name="temperature_celsius.attrs['units']")
     precipitation = _convert_precipitation_units(precipitation, "mm")
-    # one shared spatial topology: a time-only input must broadcast to the
-    # others' grid before apply_ufunc and the final transpose see its dims
-    temperature, humidity, wind, precipitation = xr.broadcast(temperature, humidity, wind, precipitation)
-    spatial_dims = tuple(str(dim) for dim in temperature.dims if dim != time_dim)
-    spatial_shape = tuple(temperature.sizes[dim] for dim in spatial_dims)
-    time_length = temperature.sizes[time_dim]
+    weather = (temperature, humidity, wind, precipitation)
+    # one shared spatial topology: a time-only input joins the others' grid.
+    # apply_ufunc performs that broadcast per block, so the adapter must not
+    # xr.broadcast first: expanding a Dask input over the new spatial
+    # dimensions places the whole grid in a single task, which is exactly what
+    # the bounded spatial-block execution exists to avoid.
+    broadcast_dims, broadcast_sizes = _broadcast_topology(weather)
+    spatial_dims = tuple(dim for dim in broadcast_dims if dim != time_dim)
+    spatial_shape = tuple(broadcast_sizes[dim] for dim in spatial_dims)
+    spatial_chunks = _spatial_chunk_targets(weather, spatial_dims)
+    time_length = broadcast_sizes[time_dim]
     output_time_length = max(time_length - spin_up, 0)
 
     latitude = _resolve_cffwis_latitude(
         latitude_degrees_north,
-        (temperature, humidity, wind, precipitation),
+        weather,
         time_dim,
         spatial_dims,
         spatial_shape,
     )
-    month_data = _resolve_cffwis_month(month, temperature, time_dim, time_length)
+    # a not-yet-broadcast input may not carry the time coordinate another one
+    # does; the aligned weather inputs share it, so infer month and trim the
+    # output from the same first coordinate-bearing input
+    time_coord = next((data.coords[time_dim] for data in weather if time_dim in data.coords), None)
+    month_data = _resolve_cffwis_month(month, time_coord, time_dim, time_length)
 
     internal_spatial_shape = spatial_shape or (1,)
 
@@ -2601,8 +2647,8 @@ def _cffwis_xarray(
     _validate_seed(initial_dc, None if initial_state is None else initial_state.dc, DCState, "dc", 15.0, None)
 
     def _wrap_spatial_arg(value: npt.ArrayLike | xr.DataArray) -> xr.DataArray:
-        """Bind this adapter's spatial shape to the shared static-operand wrapper."""
-        return _wrap_spatial(value, spatial_shape, spatial_dims)
+        """Bind this adapter's spatial shape and blocks to the shared static-operand wrapper."""
+        return _wrap_spatial(value, spatial_shape, spatial_dims, chunks=spatial_chunks)
 
     optional_kinds: list[str] = []
     optional_args: list[xr.DataArray] = []
@@ -2688,7 +2734,12 @@ def _cffwis_xarray(
             outputs=selected,
         )
         assert isinstance(result, CFFWISResult)
-        block_spatial_shape = temperature_block.shape[:-1]
+        block_spatial_shape = np.broadcast_shapes(
+            temperature_block.shape[:-1],
+            humidity_block.shape[:-1],
+            wind_block.shape[:-1],
+            precipitation_block.shape[:-1],
+        )
         computed: list[np.ndarray] = []
         for name in active_components:
             component = getattr(result, name)
@@ -2735,16 +2786,16 @@ def _cffwis_xarray(
     )
     result_arrays = apply_results if isinstance(apply_results, tuple) else (apply_results,)
 
-    output_dims = tuple(str(dim) for dim in temperature.dims)
+    output_dims = broadcast_dims
     variable_results: dict[str, xr.DataArray] = {}
     for position, name in enumerate(active_components):
         variable = result_arrays[position]
         if variable.dims != output_dims:
             variable = variable.transpose(*output_dims)
-        if time_dim in temperature.coords:
+        if time_coord is not None:
             # slice the coordinate rather than its values so CF coordinate
             # attributes (calendar, axis, ...) survive spin-up trimming
-            trimmed = temperature.coords[time_dim].isel({time_dim: slice(spin_up, spin_up + output_time_length)})
+            trimmed = time_coord.isel({time_dim: slice(spin_up, spin_up + output_time_length)})
             variable = variable.assign_coords({time_dim: trimmed})
         variable.attrs = _build_output_attrs(
             temperature_celsius,

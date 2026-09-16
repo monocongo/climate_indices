@@ -36,6 +36,7 @@ from climate_indices.exceptions import (
     InvalidArgumentError,
 )
 from climate_indices.fire import _cffwis
+from climate_indices.fire._common import _wrap_spatial
 
 # the weather series behind every reference vector, with distinct dry, rainy,
 # cold, and wetting days plus a month sequence that exercises all four table
@@ -1008,6 +1009,34 @@ def _assert_matches_numpy(inputs: _GriddedInputs, result: xr.Dataset, **options:
         np.testing.assert_array_equal(result[name].values, getattr(expected, name))
 
 
+def _full_grid_graph_arrays(variable: xr.DataArray, spatial_shape: tuple[int, ...]) -> list[tuple[int, ...]]:
+    """Spatial arrays embedded whole in a Dask graph, which every worker would receive."""
+    found: list[tuple[int, ...]] = []
+
+    def scan(task: object) -> None:
+        if isinstance(task, tuple):
+            for item in task:
+                scan(item)
+        elif isinstance(task, np.ndarray) and task.shape == spatial_shape:
+            found.append(task.shape)
+
+    for layer in variable.data.__dask_graph__().layers.values():
+        for task in layer.values():
+            scan(task)
+    return found
+
+
+def _chunked_inputs(inputs: _GriddedInputs, *, lat: int = 1, lon: int = 1) -> _GriddedInputs:
+    """The gridded inputs with a single time chunk and small spatial blocks."""
+    return replace(
+        inputs,
+        temperature=inputs.temperature.chunk({"time": -1, "lat": lat, "lon": lon}),
+        humidity=inputs.humidity.chunk({"time": -1, "lat": lat, "lon": lon}),
+        wind=inputs.wind.chunk({"time": -1, "lat": lat, "lon": lon}),
+        precipitation=inputs.precipitation.chunk({"time": -1, "lat": lat, "lon": lon}),
+    )
+
+
 class TestCFFWISXarrayEquivalence:
     """The xarray and NumPy paths must agree exactly on values, latitude inference, and chunking."""
 
@@ -1100,6 +1129,63 @@ class TestCFFWISXarrayEquivalence:
         assert isinstance(result, xr.Dataset)
         for name in _GRID_VARIABLES:
             np.testing.assert_array_equal(result[name].values, getattr(expected, name))
+
+
+class TestCFFWISXarrayDaskBlocks:
+    """Dask spatial blocks stay bounded: no operand is materialized as the whole grid (#953 review)."""
+
+    def test_time_only_dask_input_is_broadcast_per_block(self) -> None:
+        """A time-only Dask input must reach each block as its bare time axis, not the grid."""
+        inputs = _gridded_inputs(days=10)
+        time = inputs.temperature.coords["time"]
+        temperature = xr.DataArray(inputs.temperature.values[:, 1, 0], dims=("time",), coords={"time": time})
+        chunked = replace(_chunked_inputs(inputs), temperature=temperature.chunk({"time": -1}))
+        block_shapes: list[tuple[int, ...]] = []
+        original = _cffwis.cffwis
+
+        def record(*args: object, **kwargs: object) -> object:
+            block_shapes.append(np.shape(args[0]))
+            return original(*args, **kwargs)
+
+        with mock.patch.object(_cffwis, "cffwis", side_effect=record):
+            result = _xarray_cffwis(chunked, latitude_degrees_north=46.0)
+            assert isinstance(result, xr.Dataset)
+            result.load()
+
+        assert block_shapes
+        assert all(shape == (inputs.temperature.sizes["time"],) for shape in block_shapes)
+        expected = fire.cffwis(
+            temperature.values,
+            inputs.humidity.values[:, 1, 0],
+            inputs.wind.values[:, 1, 0],
+            inputs.precipitation.values[:, 1, 0],
+            46.0,
+            inputs.month,
+        )
+        for name in _GRID_VARIABLES:
+            np.testing.assert_array_equal(result[name].values[:, 1, 0], getattr(expected, name))
+
+    def test_static_seeds_and_state_are_not_embedded_whole(self) -> None:
+        """Seeds and resumed state must arrive as block tiles, not as one full-grid array."""
+        inputs = _gridded_inputs(days=6)
+        chunked = _chunked_inputs(inputs)
+        seeded = _xarray_cffwis(chunked, initial_ffmc=np.full(inputs.latitude_grid.shape, 85.0))
+        assert isinstance(seeded, xr.Dataset)
+        assert _full_grid_graph_arrays(seeded["fwi"], inputs.latitude_grid.shape) == []
+
+        state_result = _xarray_cffwis(inputs, return_state=True)
+        assert isinstance(state_result, fire.CFFWISResult)
+        assert state_result.state is not None
+        resumed = _xarray_cffwis(chunked, initial_state=state_result.state)
+        assert isinstance(resumed, xr.Dataset)
+        assert _full_grid_graph_arrays(resumed["fwi"], inputs.latitude_grid.shape) == []
+        _assert_matches_numpy(inputs, resumed, initial_state=state_result.state)
+
+    def test_static_operand_wrapper_partitions_to_blocks(self) -> None:
+        """The shared wrapper chunks a static operand to the caller's spatial blocks."""
+        assert _wrap_spatial(np.zeros((3, 2)), (3, 2), ("lat", "lon")).chunks is None
+        wrapped = _wrap_spatial(np.zeros((3, 2)), (3, 2), ("lat", "lon"), chunks={"lat": (2, 1), "lon": (2,)})
+        assert wrapped.chunks == ((2, 1), (2,))
 
 
 class TestCFFWISXarrayCoordinates:
