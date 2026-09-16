@@ -71,6 +71,8 @@ applies per cell along the time axis.
   the full `time` axis in that block. Chunk size is also the memory lever — one block
   is held whole inside the fit, with a few `O(years x periods x cells)` temporaries,
   so a dense continental grid passed in one piece costs several times its own size.
+  See [Chunking guidance for gridded indices](#chunking-guidance-for-gridded-indices)
+  for measured block sizes.
 - The canonical lazy xarray/Dask SPI/SPEI workflow is the teaching notebook
   `notebooks/zarr_dask_spi_spei.ipynb`: the public typed API on Dask-backed DataArrays
   (`xr.apply_ufunc(..., dask="parallelized")`), one full time chunk with spatial
@@ -103,3 +105,50 @@ applies per cell along the time axis.
   tutorial only via `tests/test_e2e_with_dask.py`, which runs its cells against
   a synthetic store; that suite deliberately skips the Dask Client cell (#829),
   so this local run is the only full-notebook check.
+
+## Chunking guidance for gridded indices
+
+Two rules fix the shape of a chunked input:
+
+1. **Keep `time` in a single chunk.** Distribution fitting needs each cell's
+   complete series, so the typed index adapters reject a split `time` with
+   `CoordinateValidationError` ([ADR-0003](adr/0003-dask-time-dimension-single-chunk.md)),
+   and the stateful fire adapters require the same for their weather inputs.
+2. **Spatial chunks are the parallelism and memory lever.** A Dask block is
+   fitted whole, and the fit materializes the reshaped `(years, periods, *cells)`
+   block plus its per-period intermediates, so the working set grows with the
+   cells in a block, not with the size of the grid.
+
+For the 40-year monthly gamma SPI/SPEI path the fit's working set is about
+60 KB per cell — roughly 16x the 3.84 KB the cell's own 480-step float64 series
+occupies. On the #893 reference grid (38 x 87 = 3,306 cells, 480 months, Python
+3.13.13, macOS arm64, `scheduler="synchronous"`, peak RSS measured above a
+dry-run baseline of the same process):
+
+| Spatial chunk | Blocks | Working set | SPI-3 wall time |
+| --- | ---: | ---: | ---: |
+| `38 x 87` (one block) | 1 | 205 MB | 0.98 s |
+| `20 x 20` | 10 | 24 MB | 0.30 s |
+| `10 x 10` | 36 | 6 MB | 0.32 s |
+| `5 x 5` | 144 | 3 MB | 0.36 s |
+
+Recommendations for monthly grids:
+
+- Keep each block under roughly 100 MB of working set — around 1,500 cells at
+  this per-cell cost. The 38 x 87 reference grid is not large, but as one block
+  it costs 205 MB and is about 3x slower than the same grid in `10 x 10` blocks.
+- Chunk both spatial dimensions (`10 x 10` to `20 x 20`) rather than long rows:
+  square-ish blocks keep the per-period reductions proportionate and spread the
+  work over more tasks.
+- Leave a few blocks per worker so the scheduler has tasks to balance; the
+  scaling harness re-chunks spatial dims for the worker count it is given (see
+  `benchmarks/parallel_scaling.py`).
+- Daily grids carry up to 366 steps per cell-year instead of 12, so the per-cell
+  working set is proportionally larger and cells per block should shrink with it.
+
+Rechunk once, at read or prepare time, when the stored layout differs from the
+shape the computation wants — a Zarr store with one `time` chunk per year, or a
+single chunk spanning the whole grid. Rechunking is a data copy, so pay it once
+before the index calls rather than on every call. The teaching notebook
+`notebooks/zarr_dask_spi_spei.ipynb` prepares its store with `time` as one chunk
+and `10 x 10` spatial blocks, the layout the table above measures.
