@@ -1237,7 +1237,12 @@ def main():  # type: () -> None
     # scheduled for removal in 3.0.0 (see https://github.com/moncongo/climate_indices/issues/919)
     emit_deprecation_warning(
         feature="The 'spi' console script",
-        alternative="Use 'climate_indices --index spi' instead",
+        alternative=(
+            "Use 'climate_indices --index spi' for runs that do not use "
+            "'--save_params'/'--load_params' (not yet supported there, see #957) "
+            "or process many scales in one batch, since the replacement re-reads "
+            "the precipitation input once per scale"
+        ),
         deprecated_in="2.4.0",
         removal_version="3.0.0",
     )

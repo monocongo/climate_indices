@@ -12,6 +12,9 @@ def test_main_emits_deprecation_warning(monkeypatch):
     """Invoking the legacy SPI CLI warns that it is scheduled for removal."""
     monkeypatch.setattr(sys, "argv", ["spi", "--help"])
 
-    with pytest.warns(ClimateIndicesDeprecationWarning, match="deprecated since version 2.4.0"):
+    with pytest.warns(
+        ClimateIndicesDeprecationWarning,
+        match=r"deprecated since version 2\.4\.0.*save_params.*re-reads the precipitation input once per scale",
+    ):
         with pytest.raises(SystemExit):
             __spi__.main()
