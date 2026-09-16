@@ -104,15 +104,21 @@ per-cell pass is 3306 calls.
 
 | site | invocation | loop dimensions | calls per adapter call |
 |---|---|---|---|
-| `xarray_adapter.py:1717` (`xarray_adapter`, Dask branch) | wrapped `spi`/`spei`/`eddi`/`percentage_of_normal` | `lat x lon`, once per Dask block | 3306 |
+| `xarray_adapter.py:1717` (`xarray_adapter`, Dask branch) | wrapped `spi`/`spei`/`eddi`/`percentage_of_normal` | `lat x lon`, one call per cell across all blocks | 3306 |
 | `xarray_adapter.py:1808` (`xarray_adapter`, in-memory branch) | same | `lat x lon` | 3306 |
 | `xarray_adapter.py:2084` (`pet_thornthwaite`) | `indices.pet` | `lat x lon` | 3306 |
 | `xarray_adapter.py:2353` (`pet_hargreaves`) | `eto.eto_hargreaves` | `lat x lon` | 3306 |
 
-All four pass `vectorize=True` to `xr.apply_ufunc`, which loops the non-core
-(spatial) dimensions in Python. On a Dask-backed input `dask="parallelized"`
-splits the same 3306 calls across blocks, so the count per full pass is
-unchanged and only wall time improves. Counts multiply per invocation, one call
+All four pass `vectorize=True` to `xr.apply_ufunc`, so the wrapped 1-D kernel
+runs once per combination of the non-core (broadcast) dimensions, one call per
+cell: 3306 for the 38 x 87 reference grid, and extra non-core dimensions
+multiply that count. On a Dask-backed input `dask="parallelized"` schedules
+those calls as per-block tasks: chunking the spatial dimensions changes task
+count and wall time, not the per-cell total. The core dimension (`time`) must be
+a single chunk on the generic adapter path (`_validate_dask_chunks` at `:1658`,
+and `apply_ufunc` raises without `allow_rechunk`); the two PET paths pass
+`dask_gufunc_kwargs={"allow_rechunk": True}` (`:2086`, `:2355`) so they can
+rechunk a split time dimension. Counts multiply per invocation, one call
 per index, scale, and distribution: a 14-pass SPI run over
 `--scales 1 2 3 6 9 12 24` and both distributions is 46,284 per-cell calls,
 whether it goes through this adapter or through the CLI's own scale and
@@ -137,7 +143,8 @@ not reduce total per-cell Python cost.
 
 | site | invocation | loop dimensions | calls |
 |---|---|---|---|
-| `__main__.py:1289` (`_apply_along_axis`) | `_spi`/`_pnp` via `np.apply_along_axis(axis=2)` | `lat x lon`, looped by `np.apply_along_axis` in Python | 3306 per scale x distribution |
+| `__main__.py:1289` (`_apply_along_axis`) | `_spi` via `np.apply_along_axis(axis=2)` | `lat x lon`, looped by `np.apply_along_axis` in Python | 3306 per scale x distribution (`:1519-1520`) |
+| `__main__.py:1289` (`_apply_along_axis`) | `_pnp` via `np.apply_along_axis(axis=2)` | same | 3306 per scale only (`:1609`, no distribution loop) |
 | `__main__.py:1347,1349` (`_apply_along_axis_double`, loop at `:1343,1345`) | `_spei`/`_pet` | `lat x lon` | 3306 |
 | `__main__.py:1412` (`_apply_along_axis_palmers`, loop at `:1409,1411`) | `_palmers` -> `palmer.pdsi` | `lat x lon` | 3306, four outputs each |
 | `__spi__.py:1021` (`_apply_to_subarray_spi`, loop at `:1004`) | `indices.spi` transform | `lat x lon` | 3306 per scale x distribution |
@@ -155,10 +162,11 @@ CLI and a baseline measured through the canonical path are not interchangeable.
   (`_hdw_xarray`) omits it: those kernels loop over time (or the level dimension)
   and operate on whole block arrays, so cells are handled by NumPy operations
   rather than a Python call per cell.
-- The core kernels are vectorized over cells by construction: given a 1-D series
-  they return a 1-D series, and their internal loops are over time steps rather
-  than over grid cells (`compute.py:797`, `compute.py:869` check goodness of fit
-  per calibration time step; `indices.py:352` ranks EDDI per period).
+- The core kernels take one 1-D temporal series, not a cell axis: they are
+  vectorized within that series, and their internal loops are over time steps
+  rather than over grid cells (`compute.py:797`, `compute.py:869` check goodness
+  of fit per calibration time step; `indices.py:352` ranks EDDI per period).
+  Support for a spatial/cell axis comes only from the dispatch sites above.
   `indices.pci` is a single-year scalar with no loop at all.
 
 ### Per-cell calendar transforms (not index kernels, cost not accounted for)
