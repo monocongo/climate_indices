@@ -407,6 +407,7 @@ may change in a future minor release.
 | `DataArray` inputs for PCI | Yes | PCI uses a manual scalar-output wrapper. |
 | `DataArray` inputs for KBDI | Yes | `fire.kbdi()` resolves the `kbdi`/`kbdi_imperial` CF entry per call from `units`; supports `return_state`/`initial_state`, `spin_up`, `nan_policy`/`max_gap_days`, and CF `units`-attribute unit inference for the weather inputs and an attributed mean annual climatology. An attached time coordinate must be consecutive daily observations per input; a dimension-only time axis is aligned positionally. Overlapping timesteps are inner-aligned, dropped timesteps emit `InputAlignmentWarning`, and alignment that would drop non-time coordinates is rejected. See `tests/test_fire_kbdi.py`. |
 | `DataArray` inputs for HDW | Yes | `fire.hot_dry_windy()` reduces the caller-named `level_dim` (default `"level"`) to the layer maximum via `xr.apply_ufunc`; CF metadata comes from the `hdw` registry entry, and a CF `units` attribute on temperature is converted to Celsius. Not recursive: every other dimension, including `time` if present, is a plain passthrough with no cadence requirement. Dimensions shared by the inputs must carry identical, identically ordered coordinate labels, because the inputs are matched with xarray's exact join rather than aligned or reindexed. `level_dim` must be a single Dask chunk; other dimensions chunk freely. See `tests/test_fire.py`. |
+| `DataArray` inputs for CFFWIS | Yes | `fire.cffwis()` returns one `Dataset` variable per selected output (`ffmc`, `dmc`, `dc`, `isi`, `bui`, `fwi`, `dsr`), each carrying its own registry CF metadata. Latitude is inferred from a `lat`/`latitude` coordinate when not supplied and month from the datetime `time` coordinate; CF `units` attributes on temperature and precipitation are converted. Per-cell day-length bands come from broadcasting latitude through `xr.apply_ufunc`, one call per Dask spatial block. A daily coordinate clearly not at noon emits `ClimateIndicesWarning`, while sub-daily coordinates and a multi-chunk `time` dimension are rejected. With `return_state=True` the result is a `CFFWISResult` whose selected fields are DataArrays (`None` for components omitted from `outputs`) and whose state stays NumPy. See `tests/test_fire_cffwis_behavior.py`. |
 | Palmer direct xarray API | No | Use the NumPy Palmer function with `.values`, then rewrap outputs. See `notebooks/palmer_indices_xarray.ipynb`. |
 | Coordinate preservation | Yes | Adapter tests verify time and spatial coordinates are preserved. |
 | CF-style metadata | Yes | `CF_METADATA` registry and adapter tests verify `long_name`, `units`, `references`, version, and history attributes. |
@@ -418,22 +419,21 @@ may change in a future minor release.
 
 ## Stateful fire indices
 
-KBDI's adapter (`fire.kbdi()`) is shipped, following the recursive contract in
-[ADR-0006](adr/0006-fire-recursive-state-and-execution.md). CFFWIS's
-moisture-code adapters are not yet shipped; this section also describes the
-contract they will follow. The weather-only Fosberg Fire Weather Index is
-available today too, via the NumPy layer with no xarray adapter needed (it is
-elementwise with no dimension to reduce). Hot-Dry-Windy's adapter (see the
-main table above) is not recursive either, but it does reduce a named
-vertical dimension, so it does not follow the stateful contract below; it
-needs only that dimension in a single Dask chunk.
+KBDI's adapter (`fire.kbdi()`) and the CFFWIS adapter (`fire.cffwis()`, #807)
+are shipped, following the recursive contract in
+[ADR-0006](adr/0006-fire-recursive-state-and-execution.md). The weather-only
+Fosberg Fire Weather Index is available today too, via the NumPy layer with
+no xarray adapter needed (it is elementwise with no dimension to reduce).
+Hot-Dry-Windy's adapter (see the main table above) is not recursive either,
+but it does reduce a named vertical dimension, so it does not follow the
+stateful contract below; it needs only that dimension in a single Dask chunk.
 
 These adapters are recursive: each daily value needs its predecessor.
 Dask-backed inputs must therefore keep the complete `time` dimension in one
 chunk for every time-varying weather variable. Spatial chunks remain
-supported and parallelize: KBDI's NumPy core already vectorizes over an
-arbitrary spatial shape, so its adapter dispatches one call per Dask spatial
-chunk with the full `time` axis, rather than looping per grid cell.
+supported and parallelize: KBDI's and CFFWIS's NumPy cores already vectorize
+over an arbitrary spatial shape, so their adapters dispatch one call per Dask
+spatial chunk with the full `time` axis, rather than looping per grid cell.
 Multi-chunk time input raises `CoordinateValidationError` with
 `data = data.chunk({'time': -1})`; adapters never rechunk implicitly, because
 doing so can materialize a large daily history.
