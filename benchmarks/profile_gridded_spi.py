@@ -23,7 +23,6 @@ from __future__ import annotations
 import argparse
 import cProfile
 import logging
-import os
 import platform
 import pstats
 import time
@@ -114,14 +113,20 @@ def profile(top: int) -> tuple[float, float, float]:
     profiled = _time_spi(precip)
     profiler.disable()
 
+    # record the level the library actually applied: configure_logging falls
+    # back to INFO for unset or invalid CLIMATE_INDICES_LOG_LEVEL values
+    log_level = logging.getLevelName(logging.getLogger().level)
+
     # repeat at WARNING: the difference isolates the per-cell logging volume
     # that the profile attributes to the adapter
     logging.getLogger().setLevel(logging.WARNING)
     quiet = _time_spi(precip)
 
+    # write to a temporary file and replace it only once the full report is on
+    # disk, so an interrupted write never truncates the existing evidence
     DEFAULT_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    log_level = os.environ.get("CLIMATE_INDICES_LOG_LEVEL", "INFO")
-    with DEFAULT_OUTPUT.open("w") as stream:
+    tmp_output = DEFAULT_OUTPUT.with_suffix(DEFAULT_OUTPUT.suffix + ".tmp")
+    with tmp_output.open("w") as stream:
         print(
             f"grid: time={precip.sizes['time']} lat={precip.sizes['lat']} "
             f"lon={precip.sizes['lon']}; scale={SCALE}; "
@@ -141,6 +146,7 @@ def profile(top: int) -> tuple[float, float, float]:
             print(f"\n--- sorted by {sort_key} ---", file=stream)
             stats = pstats.Stats(profiler, stream=stream).strip_dirs().sort_stats(sort_key)
             stats.print_stats(top)
+    tmp_output.replace(DEFAULT_OUTPUT)
     return baseline, profiled, quiet
 
 
