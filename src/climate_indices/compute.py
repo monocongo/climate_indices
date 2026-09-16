@@ -1211,27 +1211,36 @@ def prepare_scaled(
 
     This is the single owner of the preparation pipeline shared by the fitting-based
     indices (SPI, SPEI, EDDI, PNP) and the specialized CLI, so a policy change lands
-    in every index at once. An all-missing input is returned as a flattened array
-    without computing anything, which callers can detect with ``prepared.ndim == 1``
-    in order to short-circuit. Shape errors are raised as ``ValueError``, the convention
-    established by ``_validate_array`` and ``utils.reshape_to_2d``.
+    in every index at once. An all-missing 1-D or 2-D input is returned as a flattened
+    array without computing anything, which callers can detect with
+    ``prepared.ndim == 1`` in order to short-circuit; an all-missing time-major spatial
+    input is returned with its (time, *cells) shape. Shape errors are raised as
+    ``ValueError``, the convention established by ``_validate_array`` and
+    ``utils.reshape_to_2d``.
 
     Args:
-        values: The array of values, either 1-D or 2-D (years, periods).
+        values: The array of values, either 1-D, 2-D (years, periods), or a time-major
+            spatial array with shape (time, *cells) and three or more dimensions,
+            whose trailing cell dimensions are preserved.
         scale: The number of values for which each sliding summation will encompass.
         periodicity: Specifies whether data is monthly (12 time steps per year) or daily.
         clip_negatives: Whether negative values are clipped to zero, defaults to True.
         reshape: Whether the scaled values are reshaped to (years, period_length),
-            defaults to True. ``indices.percentage_of_normal`` passes False, since it
-            averages the un-reshaped 1-D sums over each calendar period.
-        spatial_time_major: Read ``values`` as a time-major block of independent time
-            series, shaped (time, *cells), and scale every cell in one pass. The xarray
-            adapter sets this for gridded input; without it a gridded array raises a
-            ``ValueError`` rather than being read axis by axis.
+            defaults to True. For a time-major spatial input the result is
+            (years, period_length, *cells). ``indices.percentage_of_normal`` passes
+            False, since it averages the un-reshaped 1-D sums over each calendar period.
+        spatial_time_major: Declares that a three-or-more-dimensional ``values`` is a
+            time-major block of independent time series, shaped (time, *cells). That is
+            how a block is read anyway, except when the first cell axis is itself the
+            period length, which makes the shape equally readable as a
+            (years, periods, *cells) array; there the caller has to say which it means.
+            ``xarray_adapter`` sets this for every block it packs.
 
     Returns:
-        The scaled values, either 2-D with shape (years, periodicity.period_length)
-        or 1-D when an all-missing input or ``reshape=False``.
+        The scaled values, either 2-D with shape (years, periodicity.period_length),
+        three or more dimensions with shape (years, periodicity.period_length, *cells)
+        for a time-major spatial input, or 1-D when an all-missing input or
+        ``reshape=False``.
     """
     _logger.debug("scaling_started", operation="prepare_scaled", scale=scale, periodicity=str(periodicity))
 
@@ -1250,7 +1259,10 @@ def prepare_scaled(
     if len(shape) == 2:
         values = values.flatten()
     elif len(shape) > 2:
-        if not spatial_time_major:
+        # every array with three or more dimensions is read as a time-major block, except
+        # when its first cell axis is itself the period length: that shape is equally
+        # readable as a (years, periods, *cells) array, so it must be declared
+        if not spatial_time_major and shape[1] == periodicity.period_length:
             _logger.error(
                 "validation_error",
                 operation="prepare_scaled",
@@ -1258,8 +1270,9 @@ def prepare_scaled(
                 shape=str(shape),
             )
             raise ValueError(
-                f"Invalid shape of input array: {shape} -- only 1-D and 2-D arrays are supported; "
-                "a time-major spatial block must be declared with spatial_time_major=True"
+                f"Invalid shape of input array: {shape} -- a (time, *cells) block whose first cell axis "
+                f"equals the {periodicity.period_length}-step period length is ambiguous with a "
+                "(years, periods, *cells) array; declare it with spatial_time_major=True"
             )
     elif len(shape) != 1:
         _logger.error(
@@ -1329,23 +1342,6 @@ def scale_values(
     return prepare_scaled(values, scale, periodicity)
 
 
-def _period_params(params: np.ndarray | None, ndim: int) -> np.ndarray | None:
-    """
-    Align a 1-D per-period parameter array with the period axis of a spatial array.
-
-    A caller's parameter array holds one value per calendar period, so for a
-    (years, periods, *cells) array it must be reshaped to (periods, 1, ..., 1); left
-    1-D it would broadcast against the trailing cell axis instead.
-
-    :param params: the parameter array as supplied, or None
-    :param ndim: the number of dimensions of the values being transformed
-    :return: the parameter array, reshaped for spatial values
-    """
-    if params is None or params.ndim > 1:
-        return params
-    return params.reshape((params.shape[0],) + (1,) * (ndim - 2))
-
-
 def transform_fitted_gamma(
     values: np.ndarray,
     data_start_year: int,
@@ -1396,10 +1392,18 @@ def transform_fitted_gamma(
     # validate (and possibly reshape) the input array
     values = _validate_array(values, periodicity)
 
-    # per-period parameter arrays are kept on the period axis of spatial values
+    # a period-only fit, shape (periods,), is shared by every cell of a time-major
+    # spatial array: give it singleton cell axes so NumPy broadcasts it along axis 1
+    # rather than aligning it with the trailing cell axes
     if values.ndim > 2:
-        alphas = _period_params(alphas, values.ndim)
-        betas = _period_params(betas, values.ndim)
+        if alphas is not None:
+            alphas = np.asarray(alphas)
+            if alphas.ndim == 1:
+                alphas = alphas.reshape(1, -1, *([1] * (values.ndim - 2)))
+        if betas is not None:
+            betas = np.asarray(betas)
+            if betas.ndim == 1:
+                betas = betas.reshape(1, -1, *([1] * (values.ndim - 2)))
 
     # Replace zeros with NaNs for fitting (zeros are excluded from gamma fitting)
     # and get mask of zero positions for later probability calculations

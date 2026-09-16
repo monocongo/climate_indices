@@ -716,25 +716,30 @@ def test_prepare_scaled_returns_all_missing_input_unreshaped():
 
 def test_prepare_scaled_rejects_unsupported_shapes():
     """
-    Input with no time axis, and undeclared spatial input, raise a ValueError.
+    Input with no time axis, and ambiguous spatial input, raise a ValueError.
 
-    A (time, *cells) block has to be declared, so that a (years, periods, *cells)
-    array is never silently re-read along the wrong axis (#923).
+    Three or more dimensions are read as a time-major (time, *cells) block, except when
+    the first cell axis is itself the period length: that shape is equally readable as a
+    (years, periods, *cells) array, so it has to be declared (#923).
     """
     with pytest.raises(ValueError, match="Invalid shape of input array"):
         compute.prepare_scaled(np.array(0.0), 1, compute.Periodicity.monthly)
 
-    with pytest.raises(ValueError, match="Invalid shape of input array"):
-        compute.prepare_scaled(np.zeros((2, 3, 4)), 1, compute.Periodicity.monthly)
+    with pytest.raises(ValueError, match="ambiguous"):
+        compute.prepare_scaled(np.zeros((24, 12, 2)), 1, compute.Periodicity.monthly)
 
-    # declared spatial input is read as time-major (time, *cells)
+    # unambiguous spatial input is read as time-major (time, *cells) without a declaration
+    spatial = compute.prepare_scaled(np.zeros((24, 2, 2)), 1, compute.Periodicity.monthly)
+    assert spatial.shape == (2, 12, 2, 2)
+
+    # and the ambiguous shape folds the same way once it is declared
     declared = compute.prepare_scaled(
-        np.zeros((24, 2, 2)),
+        np.zeros((24, 12, 2)),
         1,
         compute.Periodicity.monthly,
         spatial_time_major=True,
     )
-    assert declared.shape == (2, 12, 2, 2)
+    assert declared.shape == (2, 12, 12, 2)
 
 
 def test_prepare_scaled_rejects_unsupported_periodicity_when_unreshaped():

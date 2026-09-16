@@ -423,19 +423,30 @@ class TestSpatialKernelEquivalence:
         assert result.shape == all_missing.shape
         assert np.all(np.isnan(result))
 
-    def test_undeclared_gridded_input_raises(self, gridded_monthly_precip):
-        """A raw gridded array is rejected: the adapter declares the block it packs."""
-        for gridded in (gridded_monthly_precip.values, gridded_monthly_precip.values.transpose(1, 2, 0)):
-            with pytest.raises(ValueError, match="Invalid shape of input array"):
-                indices.spi(
-                    gridded,
-                    scale=3,
-                    distribution=indices.Distribution.gamma,
-                    data_start_year=1980,
-                    calibration_year_initial=_CALIBRATION_START,
-                    calibration_year_final=_CALIBRATION_END,
-                    periodicity=compute.Periodicity.monthly,
-                )
+    def test_ambiguous_gridded_input_must_be_declared(self, gridded_monthly_precip):
+        """A block whose first cell axis is the period length has to be declared.
+
+        That shape reads equally as time-major (time, 12, *cells) and as the legacy
+        (years, periods, *cells) layout, so it is the one gridded shape the core will
+        not read by inference; declaring it takes the time-major reading, which is what
+        the xarray adapter does for every block it packs.
+        """
+        ambiguous = np.asarray(gridded_monthly_precip.values[: 40 * 12, :1, :1]).repeat(12, axis=1)
+        kwargs = {
+            "scale": 3,
+            "distribution": indices.Distribution.gamma,
+            "data_start_year": 1980,
+            "calibration_year_initial": _CALIBRATION_START,
+            "calibration_year_final": _CALIBRATION_END,
+            "periodicity": compute.Periodicity.monthly,
+        }
+
+        with pytest.raises(ValueError, match="ambiguous"):
+            indices.spi(ambiguous, **kwargs)
+
+        declared = indices.spi(ambiguous, spatial_time_major=True, **kwargs)
+
+        assert declared.shape == ambiguous.shape
 
     def test_daily_grid_matches_per_cell_adapter(self, spatial_spi, per_cell_spi):
         """The 366-day calendar plan converts a whole grid, partial final year included."""
@@ -470,44 +481,6 @@ class TestSpatialKernelEquivalence:
             per_cell_result.values,
             atol=1e-8,
             rtol=1e-7,
-            equal_nan=True,
-        )
-
-
-class TestSpatialKernelFittingParams:
-    """Caller-supplied fitting parameters must stay on the period axis."""
-
-    @pytest.fixture
-    def twelve_lon_grid(self) -> xr.DataArray:
-        """40 years of monthly precipitation over 3 x 12 cells, cell axis last at 12."""
-        time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
-        rng = np.random.default_rng(13)
-        values = rng.gamma(shape=2.0, scale=2.0, size=(time.size, 3, 12))
-        return xr.DataArray(
-            values,
-            coords={"time": time, "lat": [10.0, 20.0, 30.0], "lon": np.arange(12.0)},
-            dims=["time", "lat", "lon"],
-        )
-
-    def test_per_period_params_match_per_cell_path(self, twelve_lon_grid, spatial_spi, per_cell_spi):
-        """1-D params of one value per calendar period are not broadcast over the cells."""
-        params = {"alpha": np.linspace(1.5, 2.5, 12), "beta": np.linspace(0.5, 1.5, 12)}
-        kwargs = {
-            "scale": 3,
-            "distribution": indices.Distribution.gamma,
-            "calibration_year_initial": _CALIBRATION_START,
-            "calibration_year_final": _CALIBRATION_END,
-            "fitting_params": params,
-        }
-
-        spatial_result = spatial_spi(twelve_lon_grid, **kwargs)
-        per_cell_result = per_cell_spi(twelve_lon_grid, **kwargs)
-
-        np.testing.assert_allclose(
-            spatial_result.values,
-            per_cell_result.values,
-            atol=1e-12,
-            rtol=0,
             equal_nan=True,
         )
 
@@ -608,4 +581,97 @@ class TestSpatialGoodnessOfFitParity:
             atol=1e-8,
             rtol=1e-7,
             equal_nan=True,
+        )
+
+
+def _cell_series(data: np.ndarray):
+    """Yield ((lat, lon), 1-D series) for every cell of a (time, lat, lon) array."""
+    for latitude in range(data.shape[1]):
+        for longitude in range(data.shape[2]):
+            yield (latitude, longitude), data[:, latitude, longitude]
+
+
+def _spatial_gamma_params(data: np.ndarray) -> dict[str, np.ndarray]:
+    """Per-cell gamma fits packed as (period, lat, lon)."""
+    alphas = np.empty((12, *data.shape[1:]))
+    betas = np.empty((12, *data.shape[1:]))
+    for (latitude, longitude), series in _cell_series(data):
+        alphas[:, latitude, longitude], betas[:, latitude, longitude] = compute.gamma_parameters(
+            series, 1980, _CALIBRATION_START, _CALIBRATION_END, compute.Periodicity.monthly
+        )
+    return {"alpha": alphas, "beta": betas}
+
+
+def _spatial_pearson_params(data: np.ndarray) -> dict[str, np.ndarray]:
+    """Per-cell Pearson Type III fits packed as (period, lat, lon)."""
+    stacked = {key: np.empty((12, *data.shape[1:])) for key in ("prob_zero", "loc", "scale", "skew")}
+    for (latitude, longitude), series in _cell_series(data):
+        probabilities_of_zero, locs, scales, skews = compute.pearson_parameters(
+            series, 1980, _CALIBRATION_START, _CALIBRATION_END, compute.Periodicity.monthly
+        )
+        stacked["prob_zero"][:, latitude, longitude] = probabilities_of_zero
+        stacked["loc"][:, latitude, longitude] = locs
+        stacked["scale"][:, latitude, longitude] = scales
+        stacked["skew"][:, latitude, longitude] = skews
+    return stacked
+
+
+class TestSpatialFittingParameters:
+    """Supplied fitting parameters must stay associated with their own cell (#944)."""
+
+    @staticmethod
+    def _assert_matches_pointwise(data, spatial_params, distribution, pointwise_params):
+        result = indices.spi(
+            data,
+            scale=3,
+            distribution=distribution,
+            data_start_year=1980,
+            calibration_year_initial=_CALIBRATION_START,
+            calibration_year_final=_CALIBRATION_END,
+            periodicity=compute.Periodicity.monthly,
+            fitting_params=spatial_params,
+        )
+
+        for (latitude, longitude), series in _cell_series(data):
+            expected = indices.spi(
+                series,
+                scale=3,
+                distribution=distribution,
+                data_start_year=1980,
+                calibration_year_initial=_CALIBRATION_START,
+                calibration_year_final=_CALIBRATION_END,
+                periodicity=compute.Periodicity.monthly,
+                fitting_params=pointwise_params(latitude, longitude),
+            )
+            np.testing.assert_allclose(result[:, latitude, longitude], expected, atol=1e-8, rtol=1e-7, equal_nan=True)
+
+    def test_gamma_spatial_params_match_pointwise(self, gridded_monthly_precip):
+        """Gamma parameters shaped (period, *cells) are sliced to the current cell."""
+        data = gridded_monthly_precip.values
+        params = _spatial_gamma_params(data)
+        self._assert_matches_pointwise(
+            data,
+            params,
+            indices.Distribution.gamma,
+            lambda latitude, longitude: {key: value[:, latitude, longitude] for key, value in params.items()},
+        )
+
+    def test_gamma_period_params_are_shared_by_every_cell(self, gridded_monthly_precip):
+        """Legacy (period,) gamma parameters broadcast over all cells, not the last cell axis."""
+        data = gridded_monthly_precip.values
+        alphas, betas = compute.gamma_parameters(
+            data[:, 0, 0], 1980, _CALIBRATION_START, _CALIBRATION_END, compute.Periodicity.monthly
+        )
+        params = {"alpha": alphas, "beta": betas}
+        self._assert_matches_pointwise(data, params, indices.Distribution.gamma, lambda *_: params)
+
+    def test_pearson_spatial_params_match_pointwise(self, gridded_monthly_precip):
+        """Pearson parameters shaped (period, *cells) follow the per-cell fit loop."""
+        data = gridded_monthly_precip.values
+        params = _spatial_pearson_params(data)
+        self._assert_matches_pointwise(
+            data,
+            params,
+            indices.Distribution.pearson,
+            lambda latitude, longitude: {key: value[:, latitude, longitude] for key, value in params.items()},
         )

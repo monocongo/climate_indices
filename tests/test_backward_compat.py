@@ -644,9 +644,9 @@ class TestErrorHierarchyDocumented:
         data_year_end_monthly,
     ) -> None:
         """Dimension mismatch errors still raise ValueError (unchanged behavior)."""
-        # 3-D array should raise ValueError: gridded input is declared as such by the
-        # xarray adapter (spatial_time_major=True) rather than read from a raw ndarray
-        three_d_array = np.zeros((4, 4, 8))
+        # a gridded array whose first cell axis is the period length is ambiguous with a
+        # (years, periods, *cells) array and must be declared, so it still raises
+        three_d_array = np.zeros((4, 12, 8))
 
         with pytest.raises(ValueError):
             indices.spi(

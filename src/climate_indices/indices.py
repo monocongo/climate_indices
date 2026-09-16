@@ -186,6 +186,7 @@ def _raise_if_unsupported_shape(values: np.ndarray) -> None:
 def _apply_per_cell(
     func: Callable[..., np.ndarray],
     *cell_arrays: np.ndarray,
+    fitting_params: dict[str, Any] | None = None,
 ) -> np.ndarray:
     """Run a single-series kernel once per cell of time-major spatial arrays.
 
@@ -197,14 +198,26 @@ def _apply_per_cell(
     Args:
         func: Kernel taking one 1-D series per array and returning its 1-D result.
         cell_arrays: Time-major arrays of identical shape, (time, *cells).
+        fitting_params: Optional pre-computed fitting parameters. An array carrying
+            the cell dimensions after its period axis, i.e. (period, *cells), is
+            sliced down to the current cell; a period-only array is shared by every
+            cell and passed through unchanged.
 
     Returns:
         The kernel results, packed like the input arrays.
     """
+    cells = cell_arrays[0].shape[1:]
     result = np.empty(cell_arrays[0].shape, dtype=float)
-    for cell_index in np.ndindex(cell_arrays[0].shape[1:]):
+    for cell_index in np.ndindex(*cells):
         position = (slice(None), *cell_index)
-        result[position] = np.ma.filled(func(*[array[position] for array in cell_arrays]), np.nan)
+        cell_params = fitting_params
+        if fitting_params is not None:
+            cell_params = {
+                key: (value[(slice(None), *cell_index)] if getattr(value, "shape", ())[1:] == cells else value)
+                for key, value in fitting_params.items()
+            }
+        cell_result = func(*[array[position] for array in cell_arrays], fitting_params=cell_params)
+        result[position] = np.ma.filled(cell_result, np.nan)
     return result
 
 
@@ -451,7 +464,16 @@ def spi(
 
     :param values: 1-D numpy array of precipitation values, in any units,
         first value assumed to correspond to January of the initial year if
-        the periodicity is monthly, or January 1st of the initial year if daily
+        the periodicity is monthly, or January 1st of the initial year if daily.
+        A time-major spatial array with shape (time, *cells), i.e. three or more
+        dimensions, is also accepted, and then every cell is scaled and fitted in
+        one pass; that layout steps outside the per-cell path for the gamma
+        distribution only, since the Pearson Type III fit still runs once per series.
+        Two-dimensional input is still read as the legacy (years, periods) layout
+        and flattened into a single series, not treated as a (time, cells) grid.
+        When the first cell axis is itself the period length the shape is equally
+        readable as a (years, periods, *cells) array, and then this has to be declared
+        with ``spatial_time_major``; the xarray adapter declares every block it packs.
     :param scale: number of time steps over which the values should be scaled
         before the index is computed
     :param distribution: distribution type to be used for the internal
@@ -508,10 +530,11 @@ def spi(
         # arrived, and the Pearson Type III fit still runs once per cell (see #940), so
         # those two cases leave this function's main flow alone.
         if values.ndim > 2:
-            if not spatial_time_major:
+            if not spatial_time_major and values.shape[1] == periodicity.period_length:
                 raise ValueError(
-                    f"Invalid shape of input array: {values.shape} -- only 1-D and 2-D arrays are "
-                    "supported; use the xarray API for gridded input"
+                    f"Invalid shape of input array: {values.shape} -- a (time, *cells) block whose first "
+                    f"cell axis equals the {periodicity.period_length}-step period length is ambiguous with "
+                    "a (years, periods, *cells) array; declare it with spatial_time_major=True"
                 )
             if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
                 return values
@@ -525,9 +548,9 @@ def spi(
                         calibration_year_initial=calibration_year_initial,
                         calibration_year_final=calibration_year_final,
                         periodicity=periodicity,
-                        fitting_params=fitting_params,
                     ),
                     values,
+                    fitting_params=fitting_params,
                 )
 
         # flatten, short-circuit all-missing input, clip negatives to zero,
@@ -667,7 +690,16 @@ def spei(
     precipitation time series.
 
     :param precips_mm: an array of monthly total precipitation values,
-        in millimeters, should be of the same size (and shape?) as the input PET array
+        in millimeters, should be of the same size (and shape?) as the input PET array.
+        A time-major spatial array with shape (time, *cells), i.e. three or more
+        dimensions, is also accepted, and then every cell is scaled and fitted in
+        one pass; that layout steps outside the per-cell path for the gamma
+        distribution only, since the Pearson Type III fit still runs once per series.
+        Two-dimensional input is still read as the legacy (years, periods) layout
+        and flattened into a single series, not treated as a (time, cells) grid.
+        When the first cell axis is itself the period length the shape is equally
+        readable as a (years, periods, *cells) array, and then this has to be declared
+        with ``spatial_time_major``; the xarray adapter declares every block it packs.
     :param pet_mm: an array of monthly PET values, in millimeters,
         should be of the same size (and shape?) as the input precipitation array
     :param scale: the number of months over which the values should be scaled
@@ -740,10 +772,11 @@ def spei(
         # is the caller that packs it that way. An all-missing block returned above, and
         # the Pearson Type III fit still runs once per cell (see #940).
         if precips_mm.ndim > 2:
-            if not spatial_time_major:
+            if not spatial_time_major and precips_mm.shape[1] == periodicity.period_length:
                 raise ValueError(
-                    f"Invalid shape of input array: {precips_mm.shape} -- only 1-D and 2-D arrays are "
-                    "supported; use the xarray API for gridded input"
+                    f"Invalid shape of input array: {precips_mm.shape} -- a (time, *cells) block whose first "
+                    f"cell axis equals the {periodicity.period_length}-step period length is ambiguous with "
+                    "a (years, periods, *cells) array; declare it with spatial_time_major=True"
                 )
             if distribution is Distribution.pearson:
                 return _apply_per_cell(
@@ -755,10 +788,10 @@ def spei(
                         data_start_year=data_start_year,
                         calibration_year_initial=calibration_year_initial,
                         calibration_year_final=calibration_year_final,
-                        fitting_params=fitting_params,
                     ),
                     precips_mm,
                     pet_mm,
+                    fitting_params=fitting_params,
                 )
 
         # clip any negative values to zero. np.any(...) is NaN-safe, unlike np.amin.

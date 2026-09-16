@@ -288,19 +288,19 @@ def test_pnp_3d_input_raises():
         )
 
 
-def test_spi_3d_input_raises():
-    """An input array with more than two dimensions raises ValueError.
+def test_spi_ambiguous_3d_input_raises():
+    """A gridded array whose first cell axis is the period length raises ValueError.
 
-    Gridded input reaches the core through the xarray adapter, which declares its
-    (time, *cells) block with spatial_time_major=True; reading a raw 3-D array as
-    time-major instead would silently re-read a (years, periods, *cells) array.
+    That shape is equally readable as time-major (time, 12, *cells) and as the legacy
+    (years, periods, *cells) layout, so it must be declared with spatial_time_major=True
+    instead of being silently re-read along the wrong axis (#923).
 
     Unlike eddi()/percentage_of_normal(), spi()'s dimension errors are pinned to
     plain ValueError by tests/test_backward_compat.py::TestErrorHierarchyDocumented,
     so this stays on the shared preparation seam's ValueError rather than switching
     to DataShapeError.
     """
-    values = np.zeros((2, 3, 4))
+    values = np.zeros((2, 12, 4))
 
     with pytest.raises(ValueError, match="Invalid shape of input array"):
         indices.spi(
@@ -433,12 +433,12 @@ def test_spi(
             compute.Periodicity.monthly,
         )
 
-    # input array argument that's neither 1-D nor 2-D should raise a ValueError;
-    # gridded input goes through the xarray adapter instead
+    # a gridded array whose first cell axis is the period length is ambiguous with a
+    # (years, periods, *cells) array, so it has to be declared rather than read
     np.testing.assert_raises(
         ValueError,
         indices.spi,
-        np.array(np.zeros((4, 4, 8))),
+        np.array(np.zeros((4, 366, 8))),
         6,
         indices.Distribution.gamma,
         data_year_start_monthly,
