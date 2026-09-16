@@ -12,6 +12,7 @@ test importorskip("matplotlib").
 import ast
 import json
 import linecache
+import traceback
 from collections import Counter
 from pathlib import Path
 
@@ -391,8 +392,10 @@ def test_notebook_rejects_stale_data_start_year(e2e_data):
     setup, calculation = _split_at_calculation(_executable_cells())
     _exec_cells(namespace, setup)
     namespace["pipeline_config"].update({"data_start_year": 1990, "cal_start_year": 1990, "cal_end_year": 1991})
-    with pytest.raises(exceptions.InvalidArgumentError):
+    with pytest.raises(exceptions.InvalidArgumentError) as exc_info:
         _exec_cells(namespace, calculation)
+    # A failing cell must name its notebook position in the traceback (#917).
+    assert ":cell[" in "".join(traceback.format_exception(exc_info.value))
 
 
 def test_notebook_rejects_calibration_outside_data_range(e2e_data):
