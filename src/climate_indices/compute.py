@@ -1076,6 +1076,12 @@ def prepare_scaled(
     """
     _logger.debug("scaling_started", operation="prepare_scaled", scale=scale, periodicity=str(periodicity))
 
+    # periodicity must be validated regardless of whether the result is reshaped,
+    # since reshape_values() is the only other place this is checked and it's
+    # skipped entirely when reshape=False
+    if periodicity is not Periodicity.monthly and periodicity is not Periodicity.daily:
+        raise ValueError(f"Invalid periodicity argument: {periodicity}")
+
     # we expect to operate upon a 1-D array, so if we've been passed a 2-D array
     # then we flatten it, otherwise raise an error
     shape = values.shape

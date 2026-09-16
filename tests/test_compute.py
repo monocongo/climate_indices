@@ -722,6 +722,15 @@ def test_prepare_scaled_rejects_unsupported_shapes():
         compute.prepare_scaled(np.zeros((2, 3, 4)), 1, compute.Periodicity.monthly)
 
 
+def test_prepare_scaled_rejects_unsupported_periodicity_when_unreshaped():
+    """
+    An invalid periodicity must be rejected even with reshape=False, since
+    reshape_values() -- the only other periodicity check -- is skipped in that case.
+    """
+    with pytest.raises(ValueError, match="Invalid periodicity argument"):
+        compute.prepare_scaled(np.arange(12, dtype=float), 3, "monthly", reshape=False)
+
+
 def test_prepare_scaled_clips_negatives_alongside_missing_values():
     """
     A negative value must be clipped even when the array also contains unmasked NaN
