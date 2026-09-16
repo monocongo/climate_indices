@@ -51,6 +51,7 @@ _wrapped_spi = xarray_adapter(
     cf_metadata=CF_METADATA["spi"],  # type: ignore[arg-type]
     index_display_name="SPI",
     calculation_metadata_keys=["scale", "distribution", "calibration_year_initial", "calibration_year_final"],
+    spatial_kernel=True,
 )(indices.spi)
 
 _wrapped_spei = xarray_adapter(
@@ -58,6 +59,7 @@ _wrapped_spei = xarray_adapter(
     index_display_name="SPEI",
     calculation_metadata_keys=["scale", "distribution", "calibration_year_initial", "calibration_year_final"],
     additional_input_names=["pet_mm"],
+    spatial_kernel=True,
 )(indices.spei)
 
 _wrapped_eddi = xarray_adapter(

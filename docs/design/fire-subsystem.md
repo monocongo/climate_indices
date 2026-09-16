@@ -173,9 +173,53 @@ callers fill inputs upstream so the fill stays visible. A day is missing when
 any time-varying weather input is NaN or elementwise-invalid for the index
 (relative humidity outside [0, 100], negative wind speed); infinity raises
 `InvalidArgumentError` instead. Sub-freezing and inactive-index days are valid
-observations, and off-season periods must use the seasonal state
-carry from #806 rather than NaN. Each stateful implementation must carry the
+observations, and off-season periods use the seasonal state
+carry rather than NaN (see [Seasonal carry and overwintering](#seasonal-carry-and-overwintering)).
+Each stateful implementation must carry the
 parametrized gap matrix recorded in ADR-0007.
+
+## Seasonal carry and overwintering
+
+The fire season is a caller-supplied policy, not a property of the weather
+data: the DC has no calendar, no snow input, and no single threshold that fits
+every region. `drought_code()` therefore takes a keyword-only
+`in_season` boolean mask, time-first and broadcast against the weather inputs,
+and the seasonal carry contract is
+[ADR-0008](../adr/0008-seasonal-carry-is-an-explicit-mask.md). `None` treats
+every day as in-season, which is the default and leaves the recurrence
+unchanged.
+
+Off-season days are neither observations nor missing days. The recurrence
+state is frozen, the output emits the carried DC rather than a NaN, and the
+mask is the only record of which is which — so NaN keeps its ADR-0007 meaning
+of missing or poisoned. An off-season day never counts against
+`max_gap_days` and never poisons, and off-season weather has no effect on the
+code. A cell whose recurrence has not started yet has no carried value, so it
+stays NaN, as any day before its first valid observation does.
+
+Overwintering is the start-up half and is separate from the recurrence:
+`overwinter_drought_code()` applies the Lawson and Armitage (2008)
+overwintering method to the final autumn DC and the overwinter precipitation
+total, and the caller passes its result back as `initial_dc` (or the state's
+`dc`) for the next season. Chaining seasons this way is the ADR-0006 append
+contract, and overwintering is opt-in: a caller who supplies neither a mask
+nor a start-up value gets the same series as before. Only the DC is
+overwintered; the FFMC and DMC are assumed to reach saturation over winter.
+
+```python
+fall = fire.drought_code(temperature, precipitation, latitude, month,
+                         in_season=season_mask, return_state=True)
+spring_dc = fire.overwinter_drought_code(fall.state.dc, winter_precipitation_mm)
+next_season = fire.drought_code(temperature_next, precipitation_next,
+                                latitude, month_next, initial_dc=spring_dc)
+```
+
+A single continuous call with `in_season` freezes the DC over the off-season
+but does not apply the overwintering equation, so the next season resumes from
+the autumn DC. That is the correct carry for a caller who wants the recurrence
+uninterrupted across a season boundary; it is not overwintering, and the
+spring start-up it produces is the one the overwintering step exists to
+replace.
 
 ## Xarray chunking
 
@@ -198,7 +242,8 @@ kernels.
 | `kbdi(precipitation, maximum_temperature, mean_annual_precipitation=None, *, units="metric")` | metric: mm day⁻¹, °C, mm year⁻¹; omitting the mean derives it from at least 30 years of record | metric moisture deficit in mm, range 0–203.2 (the exact conversion of 0–800 hundredths of an inch); `units="imperial"` accepts inches day⁻¹, °F, inches year⁻¹ and returns 0–800 hundredths of an inch |
 | `ffmc(temperature_celsius, relative_humidity_percent, wind_speed_meters_per_second, precipitation_mm)` | noon-LST °C, %, 10 m m s⁻¹, 24 h mm | dimensionless Fine Fuel Moisture Code |
 | `duff_moisture_code(temperature_celsius, relative_humidity_percent, precipitation_mm, latitude_degrees_north, month)` | noon-LST °C, %, 24 h mm, degrees north, calendar month | dimensionless DMC |
-| `drought_code(temperature_celsius, precipitation_mm, latitude_degrees_north, month)` | noon-LST °C, 24 h mm, degrees north, calendar month | dimensionless DC; distinct from package drought indices |
+| `drought_code(temperature_celsius, precipitation_mm, latitude_degrees_north, month, *, in_season=None)` | noon-LST °C, 24 h mm, degrees north, calendar month, boolean season mask | dimensionless DC; distinct from package drought indices |
+| `overwinter_drought_code(final_fall_dc, overwinter_precipitation, *, carry_over_fraction=0.75, wetting_efficiency=0.75)` | previous season's final DC, overwinter precipitation total in mm | spring start-up DC, constrained to the seed 15 |
 | `initial_spread_index(ffmc, wind_speed_meters_per_second)` | FFMC, 10 m m s⁻¹ | dimensionless ISI |
 | `buildup_index(dmc, dc)` | DMC, DC | dimensionless BUI |
 | `cffwis_fwi(isi, bui)` | ISI, BUI | dimensionless Canadian Fire Weather Index |
@@ -208,12 +253,14 @@ kernels.
 | `haines_index(temperature_lower_celsius, temperature_upper_celsius, dewpoint_lower_celsius, *, variant)` | pressure-level °C inputs selected by `variant` | integer 2–6; `variant` is `"low"`, `"mid"`, or `"high"`, never inferred by default |
 
 `fosberg_ffwi()`, `hot_dry_windy()`, `kbdi()`, `ffmc()`,
-`duff_moisture_code()`, `drought_code()`, `initial_spread_index()`,
-`buildup_index()`, `cffwis_fwi()`, `daily_severity_rating()`, and `cffwis()`
+`duff_moisture_code()`, `drought_code()`, `overwinter_drought_code()`,
+`initial_spread_index()`, `buildup_index()`, `cffwis_fwi()`,
+`daily_severity_rating()`, and `cffwis()`
 are implemented today; the Haines row is a planned contract (#810), not yet
 callable. The stateful rows
 accept the keyword-only missing-data arguments `nan_policy="propagate"` and
-`max_gap_days=0` described above.
+`max_gap_days=0` described above, and `drought_code()` additionally accepts the
+`in_season` mask.
 
 `fosberg_ffwi()` is weather-only and elementwise. KBDI, FFMC, DMC, DC, and
 CFFWIS are daily recursive functions; their weather inputs must be ordered in

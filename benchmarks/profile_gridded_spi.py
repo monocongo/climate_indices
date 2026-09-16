@@ -6,9 +6,9 @@ of monthly precipitation) under ``cProfile`` and writes the raw report plus the
 timings that contextualize it.
 
 This exercises the numpy-backed (in-memory) adapter branch, the serial baseline
-for gridded SPI. A Dask-backed input returns a lazy result from the same
-per-cell ``apply_ufunc`` loop; Dask scheduling and multi-core scaling belong to
-#927 and #928.
+for gridded SPI. Since #923 that call takes the spatial path, so a rerun measures
+one kernel call per block rather than the per-cell loop the committed report was
+captured from; Dask scheduling and multi-core scaling belong to #927 and #928.
 
 Run from the repository root::
 

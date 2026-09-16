@@ -1134,74 +1134,37 @@ class TestCoordinatePreservationRoundTrip:
         assert result.coords["year"].attrs == {}
 
 
-class TestSerializeAttrValue:
-    """Test _serialize_attr_value() helper function."""
+# (value, expected serialized value, expected Python type) rows: one per coercion rule.
+SERIALIZE_ATTR_ROWS = [
+    pytest.param(indices.Distribution.gamma, "gamma", str, id="enum-to-name"),
+    pytest.param(compute.Periodicity.monthly, "monthly", str, id="periodicity-enum-to-name"),
+    pytest.param("test_string", "test_string", str, id="string-passthrough"),
+    pytest.param(42, 42, int, id="int-passthrough"),
+    pytest.param(3.14, 3.14, float, id="float-passthrough"),
+    pytest.param(True, True, bool, id="bool-passthrough"),
+    pytest.param(np.int64(42), 42, int, id="numpy-int-to-python-int"),
+    pytest.param(np.float64(3.14), 3.14, float, id="numpy-float-to-python-float"),
+    pytest.param({"key": "value", "number": 42}, '{"key": "value", "number": 42}', str, id="dict-to-json-string"),
+    pytest.param([1, 2, 3], None, TypeError, id="list-rejected"),
+]
 
-    def test_enum_to_name_string(self):
-        """Enum instances serialize to their .name string."""
-        result = _serialize_attr_value(indices.Distribution.gamma)
-        assert result == "gamma"
-        assert isinstance(result, str)
 
-    def test_enum_periodicity(self):
-        """Periodicity enum serializes correctly."""
-        result = _serialize_attr_value(compute.Periodicity.monthly)
-        assert result == "monthly"
-        assert isinstance(result, str)
+@pytest.mark.parametrize(("value", "expected", "expected_type"), SERIALIZE_ATTR_ROWS)
+def test_serialize_attr_value_coerces_to_xarray_serializable_types(
+    value: object,
+    expected: object,
+    expected_type: type,
+) -> None:
+    """Exact Python types keep numpy scalars and non-serializable objects out of attrs."""
+    if expected_type is TypeError:
+        with pytest.raises(TypeError, match="Cannot serialize"):
+            _serialize_attr_value(value)
+        return
 
-    def test_string_passthrough(self):
-        """String values pass through unchanged."""
-        result = _serialize_attr_value("test_string")
-        assert result == "test_string"
-        assert isinstance(result, str)
+    result = _serialize_attr_value(value)
 
-    def test_int_passthrough(self):
-        """Integer values pass through unchanged."""
-        result = _serialize_attr_value(42)
-        assert result == 42
-        assert isinstance(result, int)
-
-    def test_float_passthrough(self):
-        """Float values pass through unchanged."""
-        result = _serialize_attr_value(3.14)
-        assert result == pytest.approx(3.14)
-        assert isinstance(result, float)
-
-    def test_bool_passthrough(self):
-        """Boolean values pass through unchanged."""
-        result = _serialize_attr_value(True)
-        assert result is True
-        assert isinstance(result, bool)
-
-    def test_numpy_int_to_python_int(self):
-        """NumPy integer scalars convert to Python int."""
-        result = _serialize_attr_value(np.int64(42))
-        assert result == 42
-        assert isinstance(result, int)
-        assert not isinstance(result, np.integer)
-
-    def test_numpy_float_to_python_float(self):
-        """NumPy float scalars convert to Python float."""
-        result = _serialize_attr_value(np.float64(3.14))
-        assert result == pytest.approx(3.14)
-        assert isinstance(result, float)
-        assert not isinstance(result, np.floating)
-
-    def test_dict_to_json_string(self):
-        """Dict values serialize to JSON strings."""
-        result = _serialize_attr_value({"key": "value", "number": 42})
-        assert isinstance(result, str)
-        # verify it's valid JSON by parsing it back
-        import json
-
-        parsed = json.loads(result)
-        assert parsed == {"key": "value", "number": 42}
-
-    def test_list_raises_typeerror(self):
-        """List values raise TypeError."""
-        with pytest.raises(TypeError) as exc_info:
-            _serialize_attr_value([1, 2, 3])
-        assert "Cannot serialize" in str(exc_info.value)
+    assert result == expected
+    assert type(result) is expected_type
 
 
 class TestCalculationMetadata:
@@ -1415,86 +1378,43 @@ class TestEndToEndIntegration:
         assert result.shape == sample_monthly_precip_da.shape
 
 
-class TestBuildHistoryEntry:
-    """Test history entry generation for provenance tracking."""
+# (calculation metadata, expected description suffix, fragments that must be absent) rows.
+HISTORY_ENTRY_ROWS = [
+    pytest.param(
+        {"scale": 3, "distribution": indices.Distribution.gamma},
+        "SPI-3 calculated using gamma distribution",
+        (),
+        id="scale-and-distribution",
+    ),
+    pytest.param({"scale": 6}, "SPI-6 calculated", ("distribution",), id="scale-only"),
+    pytest.param(None, "SPI calculated", (), id="no-metadata"),
+    pytest.param({}, "SPI calculated", (), id="empty-metadata"),
+    pytest.param(
+        {"scale": 3, "distribution": indices.Distribution.pearson},
+        "SPI-3 calculated using pearson distribution",
+        ("Distribution.pearson",),
+        id="enum-distribution-serialized",
+    ),
+]
 
-    def test_entry_with_scale_and_distribution(self) -> None:
-        """History entry should include scale and distribution when both are provided."""
-        entry = _build_history_entry(
-            index_name="SPI",
-            version="2.0.0",
-            calculation_metadata={"scale": 3, "distribution": indices.Distribution.gamma},
-        )
 
-        assert "SPI-3 calculated using gamma distribution" in entry
-        assert "(climate_indices v2.0.0)" in entry
+@pytest.mark.parametrize(("calculation_metadata", "description", "absent"), HISTORY_ENTRY_ROWS)
+def test_build_history_entry_formats_provenance(
+    calculation_metadata: dict[str, object] | None,
+    description: str,
+    absent: tuple[str, ...],
+) -> None:
+    """One row per history shape; timestamp, description, and version are the visible contract."""
+    entry = _build_history_entry(
+        index_name="SPI",
+        version="1.2.3",
+        calculation_metadata=calculation_metadata,
+    )
 
-    def test_entry_with_scale_only(self) -> None:
-        """History entry should include scale but not distribution when only scale provided."""
-        entry = _build_history_entry(
-            index_name="SPI",
-            version="2.0.0",
-            calculation_metadata={"scale": 6},
-        )
-
-        assert "SPI-6 calculated" in entry
-        assert "distribution" not in entry
-        assert "(climate_indices v2.0.0)" in entry
-
-    def test_entry_no_params(self) -> None:
-        """History entry should have basic format when no calculation metadata provided."""
-        entry = _build_history_entry(
-            index_name="SPI",
-            version="2.0.0",
-            calculation_metadata=None,
-        )
-
-        assert "SPI calculated" in entry
-        assert "(climate_indices v2.0.0)" in entry
-
-    def test_entry_empty_metadata(self) -> None:
-        """History entry should handle empty metadata dict same as None."""
-        entry = _build_history_entry(
-            index_name="SPI",
-            version="2.0.0",
-            calculation_metadata={},
-        )
-
-        assert "SPI calculated" in entry
-        assert "(climate_indices v2.0.0)" in entry
-
-    def test_timestamp_is_iso8601_utc(self) -> None:
-        """History entry timestamp should match ISO 8601 UTC format."""
-        entry = _build_history_entry(
-            index_name="SPI",
-            version="2.0.0",
-        )
-
-        # check for ISO 8601 timestamp pattern: YYYY-MM-DDTHH:MM:SSZ
-        pattern = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"
-        assert re.search(pattern, entry) is not None
-
-    def test_entry_contains_version(self) -> None:
-        """History entry should contain the library version string."""
-        test_version = "1.2.3"
-        entry = _build_history_entry(
-            index_name="SPI",
-            version=test_version,
-        )
-
-        assert f"climate_indices v{test_version}" in entry
-
-    def test_enum_distribution_serialized(self) -> None:
-        """Enum distribution values should be serialized to their .name attribute."""
-        entry = _build_history_entry(
-            index_name="SPI",
-            version="2.0.0",
-            calculation_metadata={"scale": 3, "distribution": indices.Distribution.pearson},
-        )
-
-        # should use enum .name, not the enum object
-        assert "pearson distribution" in entry
-        assert "Distribution.pearson" not in entry
+    assert re.search(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", entry)
+    assert entry.endswith(f": {description} (climate_indices v1.2.3)")
+    for fragment in absent:
+        assert fragment not in entry
 
 
 class TestAppendHistory:
