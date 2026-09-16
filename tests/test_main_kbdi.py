@@ -14,7 +14,7 @@ import pytest
 import xarray as xr
 
 from climate_indices import __main__ as cli_main
-from climate_indices import compute
+from climate_indices import _cli, compute
 
 # KBDI derives mean annual precipitation from at least 30 * 365 days of record
 _DAILY_PERIODS = 11000
@@ -232,6 +232,7 @@ class TestKBDIProcessing:
             assert dataset["kbdi"].sizes["lon"] == n_lon
             assert np.isfinite(dataset["kbdi"].values).all()
 
+    @pytest.mark.filterwarnings("ignore:The specified chunks separate the stored chunks")
     def test_chunked_inputs_keep_time_whole_and_copy_input_chunksizes(self, monkeypatch, tmp_path):
         time = xr.date_range("1990-01-01", periods=_DAILY_PERIODS, freq="D")
         rng = np.random.default_rng(42)
@@ -251,6 +252,10 @@ class TestKBDIProcessing:
 
         captured = {}
         original_kbdi = cli_main.fire.kbdi
+
+        # a budget too small to hold one element splits the auto-chunked spatial
+        # axes, so the assertions below fail if the CLI stops applying the default
+        monkeypatch.setattr(_cli, "DEFAULT_ARRAY_CHUNK_SIZE", "1 B")
 
         def _capture_kbdi(*args, **kwargs):
             # the xarray adapter calls this same module-level name for each
@@ -273,9 +278,11 @@ class TestKBDIProcessing:
         )
 
         # gridded inputs must reach fire.kbdi() as Dask arrays with the full
-        # time axis in one chunk (fire.py's recurrence constraint)
+        # time axis in one chunk (fire.py's recurrence constraint) and the
+        # library's default chunk budget driving the auto-chunked spatial axes
         assert captured["precip"].chunks is not None
         assert captured["temp"].chunks is not None
+        assert len(captured["precip"].chunks[captured["precip"].dims.index("lat")]) > 1
         assert len(captured["precip"].chunks[captured["precip"].dims.index("time")]) == 1
 
         with xr.open_dataset(tmp_path / "out_kbdi.nc", engine="h5netcdf") as dataset:
