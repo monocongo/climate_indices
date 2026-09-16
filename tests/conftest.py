@@ -234,7 +234,22 @@ def _palmer_division_dirs() -> tuple[str, ...]:
     return tuple(os.path.join(root, name) for name in sorted(os.listdir(root)) if name.isdigit())
 
 
-def _palmer_sweep(entry_point: str, awcs: dict) -> dict[str, tuple]:
+class _PalmerSweep(dict[str, tuple | Exception]):
+    """Division-keyed sweep results, re-raising a stored division failure on read.
+
+    A division that raises is recorded rather than propagated by the sweep, so
+    the remaining divisions still compute and only the tests that read the
+    failed division fail, naming it.
+    """
+
+    def __getitem__(self, division: str) -> tuple:
+        result = super().__getitem__(division)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+
+def _palmer_sweep(entry_point: str, awcs: dict) -> _PalmerSweep:
     """Run one Palmer entry point across every fixture climate division.
 
     The session-scoped fixtures below cache the result so the 344-division
@@ -245,11 +260,13 @@ def _palmer_sweep(entry_point: str, awcs: dict) -> dict[str, tuple]:
     touches a sweep computes it in full, even when only a subset of divisions
     is selected. The cache costs ~35 MiB extra peak RSS on the sweep tests,
     while the full validation suite peak does not increase (measured
-    305.9 -> 289.8 MiB in #909).
+    305.9 -> 289.8 MiB in #909). A division failure ends only that division:
+    the sweep keeps going and the failure resurfaces where its division is
+    read, so one bad division cannot turn every consumer into a setup error.
     """
     from climate_indices import palmer
 
-    results = {}
+    results: _PalmerSweep = _PalmerSweep()
     for division_dir in _palmer_division_dirs():
         division = os.path.basename(division_dir)
         try:
@@ -262,17 +279,19 @@ def _palmer_sweep(entry_point: str, awcs: dict) -> dict[str, tuple]:
                 _CALIBRATION_YEAR_END_PALMER,
             )
         except Exception as error:
-            raise RuntimeError(f"palmer.{entry_point}() failed for division {division}") from error
+            failure = RuntimeError(f"palmer.{entry_point}() failed for division {division}")
+            failure.__cause__ = error
+            results[division] = failure
     return results
 
 
 @pytest.fixture(scope="session")
-def palmer_pdsi_results(palmer_awcs) -> dict[str, tuple]:
+def palmer_pdsi_results(palmer_awcs) -> _PalmerSweep:
     return _palmer_sweep("pdsi", palmer_awcs)
 
 
 @pytest.fixture(scope="session")
-def palmer_scpdsi_results(palmer_awcs) -> dict[str, tuple]:
+def palmer_scpdsi_results(palmer_awcs) -> _PalmerSweep:
     return _palmer_sweep("scpdsi", palmer_awcs)
 
 

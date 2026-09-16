@@ -21,7 +21,8 @@ def test_pdsi(
     palmer_awcs,
 ):
     # Run test for each climate division, reusing the session-cached pdsi() sweep
-    for test_id, (pdsi, phdi, pmdi, zindex, params) in palmer_pdsi_results.items():
+    for test_id in palmer_pdsi_results:
+        pdsi, phdi, pmdi, zindex, params = palmer_pdsi_results[test_id]
         testpath = os.path.join(_FIXTURE_ROOT, test_id)
         awc = palmer_awcs[test_id]
         alphas = np.load(f"{testpath}/alphas.npy")
