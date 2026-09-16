@@ -779,7 +779,8 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
             raise ValueError(f"Invalid 'input_type' keyword argument: {input_type}")
     # Since multiple variables can be in the same file, de-duplicate the filelist.
     dataset = xr.open_mfdataset(list(set(files)), chunks=chunks)
-    output_chunksizes = {}
+    output_chunksizes: tuple[int, ...] = ()
+    chunksizes_dims: tuple[Any, ...] = ()
     if keyword_arguments["chunksizes"] == "input":
         # Find the first variable with chunksizes set and use that
         # Note that the netcdf spec doesn't require that all data variables
@@ -788,6 +789,7 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
             if not da.encoding.get("contiguous", True):
                 # tuple of chunksizes, respectively by dimension
                 output_chunksizes = da.encoding.get("chunksizes", ())
+                chunksizes_dims = da.dims
             if output_chunksizes:
                 break
 
@@ -820,6 +822,21 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
         raise ValueError(
             "Unable to determine output dimensions, no precipitation or temperature variable name was specified."
         )
+
+    # the copied chunksizes follow the source variable's dimension order, which
+    # can differ from the output variable's -- reorder by dimension name so that
+    # each chunk length corresponds to the correct output dimension
+    if output_chunksizes and chunksizes_dims != tuple(output_dims):
+        chunksizes_by_dim = dict(zip(chunksizes_dims, output_chunksizes, strict=False))
+        if set(chunksizes_by_dim) == set(output_dims):
+            output_chunksizes = tuple(chunksizes_by_dim[dim] for dim in output_dims)
+        else:
+            _logger.warning(
+                "Ignoring '--chunksizes input': chunked variable dimensions %s do not match output dimensions %s",
+                chunksizes_dims,
+                output_dims,
+            )
+            output_chunksizes = ()
 
     # convert data into the appropriate units, if necessary
     # precipitation and PET should be in millimeters
