@@ -16,7 +16,7 @@ import xarray as xr
 
 from climate_indices import compute, indices
 from climate_indices.cf_metadata_registry import CF_METADATA
-from climate_indices.exceptions import GoodnessOfFitWarning
+from climate_indices.exceptions import GoodnessOfFitWarning, InvalidArgumentError
 from climate_indices.xarray_adapter import xarray_adapter
 
 _CALIBRATION_START = 1981
@@ -807,6 +807,8 @@ def gridded_daily_temps() -> tuple[xr.DataArray, xr.DataArray]:
     time = pd.date_range("2019-01-01", periods=1096, freq="D")
     rng = np.random.default_rng(12)
     tmin_values = rng.uniform(-5.0, 15.0, size=(time.size, 2, 2))
+    # a missing stretch in one cell, to pin NaN propagation through the block path
+    tmin_values[100:110, 1, 1] = np.nan
     tmax_values = tmin_values + rng.uniform(5.0, 15.0, size=(time.size, 2, 2))
     coords = {"time": time, "lat": [30.0, 45.0], "lon": [0.0, 10.0]}
     return (
@@ -988,3 +990,92 @@ class TestSpatialPETKernels:
             rtol=1e-7,
             equal_nan=True,
         )
+
+    def test_thornthwaite_transposed_cell_dims_match_pointwise(self):
+        """A (time, lon, lat) grid gets each cell's own latitude, not a transposed reading."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+        rng = np.random.default_rng(22)
+        temperatures = xr.DataArray(
+            rng.uniform(-5.0, 28.0, size=(time.size, 2, 3)),
+            coords={"time": time, "lon": [0.0, 10.0], "lat": [10.0, 20.0, 30.0]},
+            dims=["time", "lon", "lat"],
+        )
+        latitudes = xr.DataArray([10.0, 20.0, 30.0], dims=["lat"])
+        expected = np.full(temperatures.shape, np.nan)
+        for latitude_index, latitude in enumerate([10.0, 20.0, 30.0]):
+            for longitude_index in range(2):
+                point = pet_thornthwaite(temperatures.isel(lon=longitude_index, lat=latitude_index), latitude)
+                expected[:, longitude_index, latitude_index] = point.values
+
+        result = pet_thornthwaite(temperatures, latitudes)
+
+        assert result.dims == temperatures.dims
+        np.testing.assert_allclose(result.values, expected, atol=1e-8, rtol=1e-7, equal_nan=True)
+
+    def test_thornthwaite_partial_final_year_matches_pointwise(self):
+        """A block ending mid-year matches the per-cell path without leaking padded months."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        time = pd.date_range("1980-01-01", periods=24 + 5, freq="MS")
+        rng = np.random.default_rng(23)
+        temperatures = xr.DataArray(
+            rng.uniform(-5.0, 28.0, size=(time.size, 2, 2)),
+            coords={"time": time, "lat": [15.0, 35.0], "lon": [0.0, 10.0]},
+            dims=["time", "lat", "lon"],
+        )
+        latitudes = xr.DataArray([15.0, 35.0], dims=["lat"])
+        expected = np.full(temperatures.shape, np.nan)
+        for latitude_index, latitude in enumerate([15.0, 35.0]):
+            for longitude_index in range(2):
+                point = pet_thornthwaite(temperatures.isel(lat=latitude_index, lon=longitude_index), latitude)
+                expected[:, latitude_index, longitude_index] = point.values
+
+        result = pet_thornthwaite(temperatures, latitudes)
+
+        np.testing.assert_array_equal(np.isnan(result.values), np.isnan(expected))
+        np.testing.assert_allclose(result.values, expected, atol=1e-8, rtol=1e-7, equal_nan=True)
+
+    def test_dask_blocks_reach_the_kernel_once_per_block(self, gridded_monthly_temps, monkeypatch):
+        """The Dask path hands each block over once, not once per grid cell."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        calls: list[tuple[int, ...]] = []
+        original = indices.pet
+
+        def counting_pet(values, *args, **kwargs):
+            calls.append(np.shape(values))
+            return original(values, *args, **kwargs)
+
+        monkeypatch.setattr(indices, "pet", counting_pet)
+
+        chunked = gridded_monthly_temps.chunk({"lat": 1, "lon": 1})
+        result = pet_thornthwaite(chunked, xr.DataArray([10.0, 20.0, 30.0], dims=["lat"])).compute()
+
+        assert result.shape == gridded_monthly_temps.shape
+        cell_count = gridded_monthly_temps.sizes["lat"] * gridded_monthly_temps.sizes["lon"]
+        assert len(calls) == cell_count, f"expected one call per Dask block, saw {len(calls)}"
+        assert all(shape[0] == gridded_monthly_temps.sizes["time"] for shape in calls)
+
+    def test_block_latitude_that_cannot_broadcast_raises(self):
+        """A block latitude that does not fit the cell dimensions is rejected, not read askew."""
+        temperatures = np.full((24, 2, 3), 15.0)
+
+        with pytest.raises(InvalidArgumentError, match="does not broadcast"):
+            indices.pet(temperatures, np.array([10.0, 20.0]), 2000, spatial_time_major=True)
+
+        # a per-latitude column does broadcast, and matches the per-cell path
+        latitudes = np.full((2, 1), 20.0)
+        result = indices.pet(temperatures, latitudes, 2000, spatial_time_major=True)
+
+        assert result.shape == temperatures.shape
+        for latitude_index in range(2):
+            for longitude_index in range(3):
+                np.testing.assert_allclose(
+                    result[:, latitude_index, longitude_index],
+                    indices.pet(temperatures[:, latitude_index, longitude_index], 20.0, 2000),
+                    atol=1e-8,
+                    rtol=1e-7,
+                    equal_nan=True,
+                )

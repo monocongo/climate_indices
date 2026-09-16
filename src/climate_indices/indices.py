@@ -1125,14 +1125,15 @@ def pet(
             values, in degrees Celsius.
         latitude_degrees (float | numpy.ndarray): The latitude of the location,
             in degrees north. Must be within range [-90.0 ... 90.0] (inclusive).
-            When ``spatial_time_major`` is declared this may be an array of
-            per-cell latitudes.
+            When ``spatial_time_major`` is declared for a three-or-more-dimensional
+            input this may be an array of per-cell latitudes broadcastable to the
+            trailing cell dimensions.
         data_start_year (int): The initial year of the input dataset.
         spatial_time_major (bool): Read a three-or-more-dimensional
             ``temperature_celsius`` as a time-major spatial block, i.e. with the
             time steps first and the cells in the trailing dimensions, and
             ``latitude_degrees`` as the per-cell latitude array matching those
-            trailing dimensions.
+            trailing dimensions. A 1-D or 2-D input ignores the declaration.
 
     Returns:
         numpy.ndarray: A 1-D array of float PET values, of the same size and
@@ -1143,7 +1144,8 @@ def pet(
         ValueError: If ``latitude_degrees`` is an empty array, None, NaN, or a
             scalar outside [-90.0 ... 90.0] (inclusive).
         InvalidArgumentError: If a per-cell ``latitude_degrees`` array under
-            ``spatial_time_major`` holds a value outside [-90.0 ... 90.0] (inclusive).
+            ``spatial_time_major`` holds a value outside [-90.0 ... 90.0] (inclusive),
+            or carries more dimensions than the input block has cell dimensions.
     """
     # bind context and emit calculation_started event
     log = _logger.bind(
@@ -1167,7 +1169,7 @@ def pet(
                 message = "Invalid latitude value: empty latitude array (must contain at least one value)"
                 _logger.error(message)
                 raise ValueError(message)
-            if not spatial_time_major:
+            if not (spatial_time_major and temperature_celsius.ndim > 2):
                 latitude_degrees = cast(float, latitude_degrees.flat[0])
 
         # make sure we're not dealing with a NaN or out-of-range latitude value;

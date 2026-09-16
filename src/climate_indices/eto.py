@@ -252,8 +252,8 @@ def eto_thornthwaite(
         are supported. A time-major spatial block of shape (time, *cells), as
         declared with ``spatial_time_major``, is also supported.
     :param latitude_degrees: latitude of the location, in degrees north (-90..90),
-        as a scalar or as an array of per-cell latitudes matching a time-major
-        spatial block
+        as a scalar or as an array of per-cell latitudes broadcastable to the trailing
+        cell dimensions of a time-major spatial block
     :param data_start_year: year corresponding to the start of the dataset
     :param spatial_time_major: read a three-or-more-dimensional input as a
         time-major spatial block, i.e. with the time steps first and the cells in
@@ -281,6 +281,14 @@ def eto_thornthwaite(
     if spatial_block and not values.flags.writeable:
         values = values.copy()
 
+    # convert the latitude from degrees to radians: the 1-D/2-D path takes a scalar,
+    # while a spatial block keeps an array of per-cell latitudes
+    if spatial_block and isinstance(latitude_degrees, np.ndarray):
+        latitude_radians = np.radians(latitude_degrees)
+    else:
+        # float() keeps a non-numeric latitude raising the TypeError it always has
+        latitude_radians = math.radians(float(latitude_degrees))
+
     # adjust negative temperature values to zero, since negative
     # values aren't allowed (no evaporation below freezing)
     # TODO this sometimes throws a RuntimeWarning for invalid value,
@@ -298,39 +306,48 @@ def eto_thornthwaite(
     # calculate the coefficient
     a = (6.75e-07 * heat_index**3) - (7.71e-05 * heat_index**2) + (1.792e-02 * heat_index) + 0.49239
 
-    # get mean daylight hours for both normal and leap years, per cell when
-    # we've been given an array of per-cell latitudes
-    if isinstance(latitude_degrees, np.ndarray):
-        latitude_radians = np.radians(latitude_degrees)
-    else:
-        # float() keeps a non-numeric latitude raising the TypeError it always has
-        latitude_radians = math.radians(float(latitude_degrees))
-    mean_daylight_hours_nonleap = np.asarray(_monthly_mean_daylight_hours(latitude_radians, False))
-    mean_daylight_hours_leap = np.asarray(_monthly_mean_daylight_hours(latitude_radians, True))
-
-    # the leap year selection is per year, and the day-length and month-length terms
-    # carry the month axis and one axis per remaining cell dimension, so that a scalar
-    # latitude's (12,) day-length array broadcasts over the cells rather than the months
+    # get mean daylight hours for both normal and leap years. The day-length term
+    # carries the month axis and one axis per cell dimension, so that a day-length array
+    # with fewer axes than the cells broadcasts right-aligned, as numpy does.
     cell_axes = (1,) * (values.ndim - 2)
-    if np.ndim(latitude_degrees) == 0:
-        mean_daylight_hours_nonleap = mean_daylight_hours_nonleap.reshape(12, *cell_axes)
-        mean_daylight_hours_leap = mean_daylight_hours_leap.reshape(12, *cell_axes)
-
-    years = values.shape[0]
-    leap_years = np.array([calendar.isleap(data_start_year + year) for year in range(years)])
-    mean_daylight_hours = np.where(
-        leap_years.reshape(years, 1, *cell_axes),
-        mean_daylight_hours_leap[None],
-        mean_daylight_hours_nonleap[None],
+    latitude_rank = np.ndim(latitude_radians)
+    if latitude_rank > 0:
+        cell_shape = values.shape[2:]
+        latitude_shape = np.shape(latitude_radians)
+        try:
+            fits_cells = np.broadcast_shapes(latitude_shape, cell_shape) == cell_shape
+        except ValueError:
+            fits_cells = False
+        if not fits_cells:
+            raise InvalidArgumentError(
+                f"Latitude array with shape {latitude_shape} does not broadcast to the "
+                f"{cell_shape} cell dimensions of the input block.",
+                argument_name="latitude_degrees",
+                argument_value=str(latitude_shape),
+                valid_values=f"broadcastable to {cell_shape}",
+            )
+    daylight_cell_axes = (1,) * (len(cell_axes) - latitude_rank)
+    mean_daylight_hours_nonleap = np.asarray(_monthly_mean_daylight_hours(latitude_radians, False)).reshape(
+        12, *daylight_cell_axes, *np.shape(latitude_radians)
     )
-    month_days = np.where(
-        leap_years.reshape(years, 1),
-        _MONTH_DAYS_LEAP.reshape(1, 12),
-        _MONTH_DAYS_NONLEAP.reshape(1, 12),
-    ).reshape(years, 12, *cell_axes)
+    mean_daylight_hours_leap = np.asarray(_monthly_mean_daylight_hours(latitude_radians, True)).reshape(
+        12, *daylight_cell_axes, *np.shape(latitude_radians)
+    )
 
-    # calculate the Thornthwaite equation, one term per year, month, and cell
-    pet: np.ndarray = 16 * (mean_daylight_hours / 12.0) * (month_days / 30.0) * ((10.0 * values / heat_index) ** a)
+    # allocate the PET array we'll fill, then calculate the Thornthwaite equation in
+    # one term per year, month, and cell, per year so that only the year's slice is live
+    pet = np.full(values.shape, np.nan)
+    for year in range(values.shape[0]):
+        if calendar.isleap(data_start_year + year):
+            month_days = _MONTH_DAYS_LEAP.reshape(12, *cell_axes)
+            mean_daylight_hours = mean_daylight_hours_leap
+        else:
+            month_days = _MONTH_DAYS_NONLEAP.reshape(12, *cell_axes)
+            mean_daylight_hours = mean_daylight_hours_nonleap
+
+        pet[year, ...] = (
+            16 * (mean_daylight_hours / 12.0) * (month_days / 30.0) * ((10.0 * values[year, ...] / heat_index) ** a)
+        )
 
     if spatial_block:
         # (years, 12, *cells) back to the time-major input layout, dropping any
@@ -366,7 +383,8 @@ def eto_hargreaves(
     :param daily_tmean_celsius: array of daily mean temperature values,
         in degrees Celsius
     :param latitude_degrees: latitude of location, in degrees north, as a scalar
-        or as an array of per-cell latitudes matching a time-major spatial block
+        or as an array of per-cell latitudes broadcastable to the trailing cell
+        dimensions of a time-major spatial block
     :param spatial_time_major: read a three-or-more-dimensional input as a
         time-major spatial block, i.e. with the time steps first and the cells in
         the trailing dimensions, so the calculation runs once per cell set
