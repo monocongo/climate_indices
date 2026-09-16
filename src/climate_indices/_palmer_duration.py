@@ -87,6 +87,8 @@ class DurationFactors:
             or not np.isfinite(dry_denominator)
             or dry_denominator <= 0.0
             or not np.isfinite(dry_coefficient_denominator)
+            # mirrors _palmer_wells._is_exact_zero, inlined because that module
+            # imports this one; a negative cross denominator is not rejected here.
             or dry_coefficient_denominator == 0.0  # NOSONAR
         ):
             raise ConvergenceError(

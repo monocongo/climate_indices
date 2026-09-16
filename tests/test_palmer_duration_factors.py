@@ -39,6 +39,13 @@ def test_duration_factor_c_rejects_zero_factor_sum():
         DurationFactors.weighting_fraction(1.0, -1.0)
 
 
+def test_weighting_fraction_keeps_the_division_form():
+    """The pdi.f lineage divides, so its coefficient is ``b / (m + b)`` exactly."""
+    m, b = 1.7, 2.3
+
+    assert DurationFactors.weighting_fraction(m, b) == b / (m + b)
+
+
 def test_select_duration_factors_uses_wet_factors_when_x3_is_zero():
     data = _blank_data()
     data["wetm"], data["wetb"] = 1.0, 2.0
