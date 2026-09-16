@@ -40,10 +40,15 @@ def test_duration_factor_c_rejects_zero_factor_sum():
 
 
 def test_weighting_fraction_keeps_the_division_form():
-    """The pdi.f lineage divides, so its coefficient is ``b / (m + b)`` exactly."""
-    m, b = 1.7, 2.3
+    """The pdi.f lineage divides, so its coefficient is ``b / (m + b)`` exactly.
+
+    These constants make the division form differ bitwise from the complement
+    form, so the test fails if the implementation switches forms.
+    """
+    m, b = 0.1, 0.2
 
     assert DurationFactors.weighting_fraction(m, b) == b / (m + b)
+    assert DurationFactors.weighting_fraction(m, b) != 1.0 - m / (m + b)
 
 
 def test_select_duration_factors_uses_wet_factors_when_x3_is_zero():
@@ -181,20 +186,31 @@ def test_statement_200_px1_always_uses_wet_factors_px2_always_dry():
 
 
 def test_calc_cafec_zindex_writes_cafec_and_zindex():
-    """The shared CAFEC/Z-index step serves both the PDSI and scPDSI recursions."""
+    """The shared CAFEC/Z-index step serves both the PDSI and scPDSI recursions.
+
+    Expected values are recomputed with the pre-refactor named-intermediate
+    grouping and compared exactly: the recursion branches on exact comparisons
+    downstream, so a 1-ulp reassociation is a behavior change. The constants are
+    chosen so that common reassociations (swapping the CAFEC terms, distributing
+    ``ak`` over the departure) change the last bit.
+    """
     data = _blank_data()
-    for name, coefficient in (("alpha", 1.0), ("beta", 2.0), ("gamma", 3.0), ("delta", 4.0)):
+    for name, coefficient in (("alpha", 3.24), ("beta", 1.52), ("gamma", 6.51), ("delta", 0.73)):
         data[name] = np.full((12,), coefficient)
     data["ak"] = np.full((12,), 6.0)
-    for name in ("pet", "prdat", "spdat", "pldat"):
-        data[name][0, 0] = 1.0
-    data["precips"][0, 0] = 10.0
+    for name, value in (("pet", 5.36), ("prdat", 3.66), ("spdat", 0.59), ("pldat", 5.07)):
+        data[name][0, 0] = value
+    data["precips"][0, 0] = 0.3
 
     palmer._calc_cafec_zindex(data, 0, 0)
 
-    # 1*1 + 2*1 + 3*1 - 4*1 = 2, departure 10 - 2 = 8, z = 6 * 8
-    assert data["cp"][0, 0] == pytest.approx(2.0)
-    assert data["z"][0, 0] == pytest.approx(48.0)
+    cet = data["alpha"][0] * data["pet"][0, 0]
+    cr = data["beta"][0] * data["prdat"][0, 0]
+    cro = data["gamma"][0] * data["spdat"][0, 0]
+    cl = data["delta"][0] * data["pldat"][0, 0]
+    expected_cafec = cet + cr + cro - cl
+    assert data["cp"][0, 0] == expected_cafec
+    assert data["z"][0, 0] == data["ak"][0] * (data["precips"][0, 0] - expected_cafec)
 
 
 def _run_zindex_pipeline(precips: np.ndarray, pet: np.ndarray, awc: float) -> dict:

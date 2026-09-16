@@ -116,7 +116,9 @@ def test_infinite_z_values_raise_convergence_error(z_value):
     ],
 )
 def test_invalid_duration_factor_denominators_raise_convergence_error(wetm, wetb, drym, dryb):
-    with pytest.raises(ConvergenceError, match="duration factors"):
+    # anchored to the end so the coefficient-magnitude branch (whose message
+    # continues with ": <name> = ...") cannot stand in for this check
+    with pytest.raises(ConvergenceError, match="recursion$"):
         _run([0.0], wetm=wetm, wetb=wetb, drym=drym, dryb=dryb)
 
 
@@ -150,13 +152,13 @@ def test_duration_factor_magnitude_at_or_above_one_raises_convergence_error(wetm
 def test_fitted_coefficients_keep_the_wells_complement_form():
     """The Wells coefficients are derived as ``1 - m / (m + b)``, not as ``b / (m + b)``.
 
-    The two forms agree in exact arithmetic but not in the last bit of the float,
-    and the recurrence branches on exact comparisons, so the derivation form is
-    load-bearing (see the ``_palmer_duration`` module docstring). Fitted factors
-    give ``wetb != dryb``, which is what pins the cross denominator ``drym + wetb``
-    behind ``dryc``.
+    The two forms agree in exact arithmetic but can differ in the last bit of the
+    float, and the recurrence branches on exact comparisons, so the derivation form
+    is load-bearing (see the ``_palmer_duration`` module docstring). These constants
+    make all three forms differ bitwise, and ``wetb != dryb`` additionally pins the
+    cross denominator ``drym + wetb`` behind ``dryc``.
     """
-    wetm, wetb, drym, dryb = 1.7, 2.3, 0.9, 4.1
+    wetm, wetb, drym, dryb = 0.1, 0.2, 0.1, 0.3
 
     factors = DurationFactors.from_fitted(wetm, wetb, drym, dryb)
 

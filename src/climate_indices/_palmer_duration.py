@@ -7,7 +7,7 @@ fraction differently: the NCEI ``pdi.f`` lineage followed by
 :mod:`climate_indices.palmer` divides it out (``c = b / (m + b)``), while the
 Wells lineage followed by :mod:`climate_indices._palmer_wells` subtracts the
 complement (``c = 1 - m / (m + b)``). The forms agree in exact arithmetic but
-not in the last bit of the float, and both recursions branch on exact
+may differ in the last bit of the float, and both recursions branch on exact
 comparisons against spell severity, so each lineage keeps its own expression
 here rather than perturbing the other's state machine.
 
@@ -127,7 +127,7 @@ class DurationFactors:
 
     @staticmethod
     def weighting_fraction(m: float, b: float) -> float:
-        """The CAFEC weighting fraction ``c = b / (m + b)`` as the pdi.f lineage computes it.
+        """The duration-factor weighting fraction ``c = b / (m + b)`` as the pdi.f lineage computes it.
 
         :param m: duration-factor slope
         :param b: duration-factor intercept
