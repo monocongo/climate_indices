@@ -13,6 +13,7 @@ import xarray as xr
 
 from climate_indices import compute, indices, utils
 from climate_indices._cli import _add_common_spi_arguments, _prepare_file
+from climate_indices.exceptions import emit_deprecation_warning
 
 # variable names for the distribution fitting parameters
 _FITTING_VARIABLES = ("alpha", "beta", "skew", "loc", "scale", "prob_zero")
@@ -1232,6 +1233,19 @@ def main():  # type: () -> None
     # --netcdf_precip example_data/nclimgrid_prcp_lowres.nc
     # --var_name_precip prcp
     # --output_file_base ~/data/test/spi/nclimgrid_lowres
+
+    # scheduled for removal in 3.0.0 (see https://github.com/moncongo/climate_indices/issues/919)
+    emit_deprecation_warning(
+        feature="The 'spi' console script",
+        alternative=(
+            "Use 'climate_indices --index spi' for runs that do not use "
+            "'--save_params'/'--load_params' (not yet supported there, see #957) "
+            "or process many scales in one batch, since the replacement re-reads "
+            "the precipitation input once per scale"
+        ),
+        deprecated_in="2.4.0",
+        removal_version="3.0.0",
+    )
 
     try:
         # log some timing info, used later for elapsed time
