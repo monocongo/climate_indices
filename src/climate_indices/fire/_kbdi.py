@@ -22,6 +22,7 @@ from climate_indices.fire._common import (
     _as_float_array,
     _static_spatial_array,
     _validate_recurrence_options,
+    _wrap_spatial,
 )
 from climate_indices.fire._units import (
     _convert_precipitation_units,
@@ -680,17 +681,6 @@ def _kbdi_xarray(
         # a DataArray seed may be Dask-backed; validating it eagerly would compute it
         _kbdi_initial_value(initial_kbdi, internal_spatial_shape, maximum)
 
-    def _wrap_spatial(value: npt.ArrayLike | xr.DataArray) -> xr.DataArray:
-        """Broadcast a scalar/array/DataArray to a DataArray on ``spatial_dims``.
-
-        Giving Dask/apply_ufunc real dimension names is what lets it slice
-        this secondary input per spatial chunk instead of broadcasting the
-        whole un-chunked array into every chunk's call.
-        """
-        if isinstance(value, xr.DataArray):
-            return value
-        return xr.DataArray(np.broadcast_to(np.asarray(value, dtype=np.float64), spatial_shape), dims=spatial_dims)
-
     mean_annual_arg: xr.DataArray | None = None
     if mean_annual_precipitation is not None:
         if isinstance(mean_annual_precipitation, xr.DataArray):
@@ -700,7 +690,7 @@ def _kbdi_xarray(
                 argument_name="mean_annual_precipitation.attrs['units']",
                 annual=True,
             )
-        mean_annual_arg = _wrap_spatial(mean_annual_precipitation)
+        mean_annual_arg = _wrap_spatial(mean_annual_precipitation, spatial_shape, spatial_dims)
     seed_kbdi_arg: xr.DataArray | None = None
     seed_wet_arg: xr.DataArray | None = None
     seed_gap_arg: xr.DataArray | None = None
@@ -710,11 +700,11 @@ def _kbdi_xarray(
             if initial_state.trailing_gap_days is not None
             else np.full(spatial_shape, -1, dtype=np.int64)
         )
-        seed_kbdi_arg = _wrap_spatial(initial_state.kbdi)
-        seed_wet_arg = _wrap_spatial(initial_state.wet_spell_precipitation)
-        seed_gap_arg = _wrap_spatial(gap_source)
+        seed_kbdi_arg = _wrap_spatial(initial_state.kbdi, spatial_shape, spatial_dims)
+        seed_wet_arg = _wrap_spatial(initial_state.wet_spell_precipitation, spatial_shape, spatial_dims)
+        seed_gap_arg = _wrap_spatial(gap_source, spatial_shape, spatial_dims)
     elif initial_kbdi is not None:
-        seed_kbdi_arg = _wrap_spatial(initial_kbdi)
+        seed_kbdi_arg = _wrap_spatial(initial_kbdi, spatial_shape, spatial_dims)
 
     optional_slots = (mean_annual_arg, seed_kbdi_arg, seed_wet_arg, seed_gap_arg)
     include_mask = tuple(slot is not None for slot in optional_slots)

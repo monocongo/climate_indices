@@ -57,12 +57,25 @@ The one multi-output exception is CFFWIS: NumPy returns a named
 `isi`, `bui`, `fwi`, and `dsr` variables. `fwi` is an output variable required
 by CFFWIS terminology, not a callable. There is no `fire.fwi()`.
 
-The current `xarray_adapter` finalizes a single `DataArray`, so the CFFWIS
-xarray route cannot use it as-is. It requires a multi-output extension that
-calls the shared NumPy core once, then rewraps each of the seven variables
-with its own `CF_METADATA` entry under the same validation and one-time-chunk
-guarantees. Independent per-output adapters are not a substitute: CFFWIS is
-one shared computation, not seven.
+The CFFWIS xarray route (#807) is a manual multi-output adapter in
+`_cffwis.py`, following the KBDI/HDW precedent rather than widening the
+generic decorator: one `xr.apply_ufunc` call runs the shared NumPy core once
+per Dask spatial block, and each selected output is rewrapped with its own
+`CF_METADATA` entry under the same validation and one-time-chunk guarantees.
+Independent per-output adapters are not a substitute: CFFWIS is one shared
+computation, not seven. The adapter infers `month` from the time coordinate
+and latitude from a `lat`/`latitude` coordinate, converts CF `units`
+attributes on temperature and precipitation, and warns when a daily time
+coordinate is clearly not noon-referenced.
+
+The design table's planned xarray names (`tas`, `hurs`, `sfcWind`, `pr`, `lat`)
+are not the shipped signature: one `fire.cffwis()` serves both routes, so the
+DataArray path keeps the NumPy parameter names (`temperature_celsius`,
+`relative_humidity_percent`, `wind_speed_meters_per_second`,
+`precipitation_mm`, `latitude_degrees_north`), with `latitude_degrees_north`
+and `month` optional only when they can be inferred from coordinates. A
+second set of CF short names would have meant two public spellings for the
+same call.
 
 State initialization, final-state extraction, spin-up, and wet-spell state
 follow [ADR-0006](../adr/0006-fire-recursive-state-and-execution.md). No index
@@ -223,7 +236,8 @@ replace.
 
 ## Xarray chunking
 
-Future stateful xarray fire adapters validate every time-varying input with
+Stateful xarray fire adapters -- KBDI (#801) and CFFWIS (#807) today --
+validate every time-varying input with
 `xarray_adapter._validate_dask_chunks()`. A Dask `time` dimension must be one
 chunk, while spatial dimensions may remain chunked. The adapter raises
 `CoordinateValidationError` with a rechunk command rather than silently
@@ -248,7 +262,7 @@ kernels.
 | `buildup_index(dmc, dc)` | DMC, DC | dimensionless BUI |
 | `cffwis_fwi(isi, bui)` | ISI, BUI | dimensionless Canadian Fire Weather Index |
 | `daily_severity_rating(cffwis_fwi)` | Canadian FWI | dimensionless DSR |
-| `cffwis(temperature_celsius, relative_humidity_percent, wind_speed_meters_per_second, precipitation_mm, latitude_degrees_north, month, *, initial_ffmc=None, initial_dmc=None, initial_dc=None, initial_state=None, return_state=False, spin_up=0, nan_policy="propagate", max_gap_days=0, outputs=None)` | CFFWIS weather inputs above; `initial_*`, `spin_up`, and `nan_policy`/`max_gap_days` follow the shared stateful contract, and `month` is required by the DMC/DC day-length tables | `CFFWISResult` with the requested subset of the seven named outputs (`None` for names not requested) plus the combined `CFFWISState` when `return_state=True`; the xarray counterpart (planned, #807) accepts `tas`, `hurs`, `sfcWind`, `pr`, and optional `lat`, returning `Dataset` |
+| `cffwis(temperature_celsius, relative_humidity_percent, wind_speed_meters_per_second, precipitation_mm, latitude_degrees_north=None, month=None, *, initial_ffmc=None, initial_dmc=None, initial_dc=None, initial_state=None, return_state=False, spin_up=0, nan_policy="propagate", max_gap_days=0, outputs=None, time_dim="time")` | CFFWIS weather inputs above; `initial_*`, `spin_up`, and `nan_policy`/`max_gap_days` follow the shared stateful contract, and `month` is required for NumPy input by the DMC/DC day-length tables (inferred from the time coordinate on the xarray route) | `CFFWISResult` with the requested subset of the seven named outputs (`None` for names not requested) plus the combined `CFFWISState` when `return_state=True`; the xarray counterpart (#807)<br>accepts the same weather inputs as DataArrays, with `latitude_degrees_north` and `month` inferable from coordinates, and returns a `Dataset` (or a `CFFWISResult` when `return_state=True`) |
 | `hot_dry_windy(temperature_celsius, relative_humidity_percent, wind_speed_meters_per_second, height_agl_meters, *, level_axis=-1)` | vertical profiles in °C, %, m s⁻¹, m AGL | hPa m s⁻¹; all levels must identify the lowest 500 m AGL |
 | `haines_index(temperature_lower_celsius, temperature_upper_celsius, dewpoint_lower_celsius, *, variant)` | pressure-level °C inputs selected by `variant` | integer 2–6; `variant` is `"low"`, `"mid"`, or `"high"`, never inferred by default |
 
@@ -278,6 +292,10 @@ output. Do not add fire-specific exception classes.
 Fire outputs have no CF `standard_name`. Xarray metadata comes exclusively from
 `CF_METADATA`: each adapter's `long_name`, units, description, and references
 come from its registry entry, never hand-written in an adapter.
+`xarray_adapter._build_output_attrs` drops a `standard_name` inherited from
+the input attributes when the registry entry defines none, so a source
+variable's name (for example `air_temperature`) never misdescribes a computed
+fire output.
 [#798](https://github.com/monocongo/climate_indices/issues/798) extended
 `CFAttributes` with `description` and `climate_indices_variant`, and added
 entries for the indices implemented today: `kbdi` (metric), `kbdi_imperial`,
