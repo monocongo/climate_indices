@@ -429,41 +429,7 @@ def _validate_kbdi_configuration(
             argument_value=str(units),
             valid_values="'metric', 'imperial'",
         )
-    if nan_policy not in ("propagate", "bridge"):
-        raise InvalidArgumentError(
-            "nan_policy must be 'propagate' or 'bridge'.",
-            argument_name="nan_policy",
-            argument_value=str(nan_policy),
-            valid_values="'propagate', 'bridge'",
-        )
-    if isinstance(max_gap_days, bool) or not isinstance(max_gap_days, int) or max_gap_days < 0:
-        raise InvalidArgumentError(
-            "max_gap_days must be a non-negative integer.",
-            argument_name="max_gap_days",
-            argument_value=str(max_gap_days),
-            valid_values="A non-negative integer",
-        )
-    if (nan_policy == "propagate" and max_gap_days != 0) or (nan_policy == "bridge" and max_gap_days < 1):
-        raise InvalidArgumentError(
-            "max_gap_days must be zero for 'propagate' and positive for 'bridge'.",
-            argument_name="max_gap_days",
-            argument_value=str(max_gap_days),
-            valid_values="0 for 'propagate'; at least 1 for 'bridge'",
-        )
-    if isinstance(spin_up, bool) or not isinstance(spin_up, int) or spin_up < 0:
-        raise InvalidArgumentError(
-            "spin_up must be a non-negative integer.",
-            argument_name="spin_up",
-            argument_value=str(spin_up),
-            valid_values="A non-negative integer",
-        )
-    if initial_kbdi is not None and initial_state is not None:
-        raise InvalidArgumentError(
-            "initial_kbdi cannot be combined with initial_state.",
-            argument_name="initial_kbdi/initial_state",
-            argument_value="both supplied",
-            valid_values="Supply at most one initial condition",
-        )
+    _validate_recurrence_options(nan_policy, max_gap_days, spin_up, "initial_kbdi", initial_kbdi, initial_state)
 
 
 @overload
