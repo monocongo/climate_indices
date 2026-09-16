@@ -14,44 +14,45 @@ import pytest
 
 from climate_indices import ClimateIndicesError, compute, exceptions
 
-# (class, parent, expected) rows. A parent given as a tuple compares exact
-# __bases__; expected False pins the branch separation (warnings are not
-# exceptions and vice versa).
+# (class, parent, expected) rows. A tuple parent compares exact __bases__ and
+# so pins the documented immediate base; a class parent checks ancestry.
+# expected False pins the branch separation (warnings are not exceptions and
+# vice versa).
 HIERARCHY_CASES = [
-    # every custom exception derives from the library base
-    (ClimateIndicesError, Exception, True),
-    (exceptions.DistributionFittingError, ClimateIndicesError, True),
+    # each class declares the documented immediate base, without an intervening
+    # type silently changing the MRO
+    (ClimateIndicesError, (Exception,), True),
+    (exceptions.DistributionFittingError, (ClimateIndicesError,), True),
+    (exceptions.InsufficientDataError, (exceptions.DistributionFittingError,), True),
+    (exceptions.PearsonFittingError, (exceptions.DistributionFittingError,), True),
+    (exceptions.DimensionMismatchError, (ClimateIndicesError,), True),
+    (exceptions.CoordinateValidationError, (ClimateIndicesError,), True),
+    (exceptions.InputTypeError, (ClimateIndicesError,), True),
+    (exceptions.InvalidArgumentError, (ClimateIndicesError,), True),
+    (exceptions.ConvergenceError, (exceptions.DistributionFittingError,), True),
+    (exceptions.PeriodicityError, (exceptions.InvalidArgumentError,), True),
+    (exceptions.DataShapeError, (ClimateIndicesError,), True),
+    # indirect fitting-domain ancestry; ConvergenceError covers iterative fitting
+    # failures, not general convergence outside the fitting domain
     (exceptions.InsufficientDataError, ClimateIndicesError, True),
     (exceptions.PearsonFittingError, ClimateIndicesError, True),
-    (exceptions.DimensionMismatchError, ClimateIndicesError, True),
-    (exceptions.CoordinateValidationError, ClimateIndicesError, True),
-    (exceptions.InputTypeError, ClimateIndicesError, True),
-    (exceptions.InvalidArgumentError, ClimateIndicesError, True),
     (exceptions.ConvergenceError, ClimateIndicesError, True),
     (exceptions.PeriodicityError, ClimateIndicesError, True),
-    (exceptions.DataShapeError, ClimateIndicesError, True),
-    # fitting-domain subtypes; ConvergenceError covers iterative fitting failures,
-    # not general convergence outside the fitting domain
-    (exceptions.InsufficientDataError, exceptions.DistributionFittingError, True),
-    (exceptions.PearsonFittingError, exceptions.DistributionFittingError, True),
-    (exceptions.ConvergenceError, exceptions.DistributionFittingError, True),
-    # non-fitting exception types are direct children of the base
+    # non-fitting exception types are not under DistributionFittingError
     (exceptions.DimensionMismatchError, exceptions.DistributionFittingError, False),
     (exceptions.CoordinateValidationError, exceptions.DistributionFittingError, False),
     (exceptions.InputTypeError, exceptions.DistributionFittingError, False),
     (exceptions.InvalidArgumentError, exceptions.DistributionFittingError, False),
     (exceptions.DataShapeError, exceptions.DistributionFittingError, False),
     (exceptions.DataShapeError, exceptions.DimensionMismatchError, False),
-    (exceptions.PeriodicityError, exceptions.InvalidArgumentError, True),
     # custom warnings stay on their own branch, rooted at UserWarning
-    (exceptions.ClimateIndicesWarning, UserWarning, True),
-    (exceptions.MissingDataWarning, exceptions.ClimateIndicesWarning, True),
-    (exceptions.ShortCalibrationWarning, exceptions.ClimateIndicesWarning, True),
-    (exceptions.GoodnessOfFitWarning, exceptions.ClimateIndicesWarning, True),
-    (exceptions.InputAlignmentWarning, exceptions.ClimateIndicesWarning, True),
-    (exceptions.BetaFeatureWarning, exceptions.ClimateIndicesWarning, True),
-    (exceptions.ClimateIndicesDeprecationWarning, exceptions.ClimateIndicesWarning, True),
-    (exceptions.ClimateIndicesDeprecationWarning, DeprecationWarning, True),
+    (exceptions.ClimateIndicesWarning, (UserWarning,), True),
+    (exceptions.MissingDataWarning, (exceptions.ClimateIndicesWarning,), True),
+    (exceptions.ShortCalibrationWarning, (exceptions.ClimateIndicesWarning,), True),
+    (exceptions.GoodnessOfFitWarning, (exceptions.ClimateIndicesWarning,), True),
+    (exceptions.InputAlignmentWarning, (exceptions.ClimateIndicesWarning,), True),
+    (exceptions.BetaFeatureWarning, (exceptions.ClimateIndicesWarning,), True),
+    (exceptions.ClimateIndicesDeprecationWarning, (exceptions.ClimateIndicesWarning, DeprecationWarning), True),
     (exceptions.ClimateIndicesWarning, ClimateIndicesError, False),
     (exceptions.MissingDataWarning, ClimateIndicesError, False),
     (exceptions.ShortCalibrationWarning, ClimateIndicesError, False),
@@ -62,9 +63,6 @@ HIERARCHY_CASES = [
     (ClimateIndicesError, exceptions.ClimateIndicesWarning, False),
     (exceptions.DistributionFittingError, exceptions.ClimateIndicesWarning, False),
     (exceptions.InsufficientDataError, exceptions.ClimateIndicesWarning, False),
-    # direct bases pin the warning classes that add no mixin
-    (exceptions.MissingDataWarning, (exceptions.ClimateIndicesWarning,), True),
-    (exceptions.ShortCalibrationWarning, (exceptions.ClimateIndicesWarning,), True),
 ]
 
 # (class, base, is_warning) rows: what a user catches each type as.
@@ -99,8 +97,10 @@ LIBRARY_WARNINGS = [
 ]
 
 # (class, init kwargs, attributes always set on a bare instance, fields copied
-# to other fields) rows covering every context attribute contract.
+# to other fields) rows covering every context attribute contract. The base
+# error has no context attributes but pins its repr contract here.
 ATTRIBUTE_CASES = [
+    (ClimateIndicesError, {}, {}, {}),
     (
         exceptions.InsufficientDataError,
         {"non_zero_count": 5, "required_count": 10},
