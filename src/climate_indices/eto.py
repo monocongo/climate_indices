@@ -397,7 +397,6 @@ def eto_hargreaves(
     )
     log.info("calculation_started")
     t0 = time.perf_counter()
-    memory_metrics = check_large_array_memory(daily_tmin_celsius, daily_tmax_celsius, daily_tmean_celsius)
 
     try:
         # validate temperature relationships: tmin <= tmean <= tmax
@@ -417,22 +416,21 @@ def eto_hargreaves(
 
         # keep the original length for conversion back to original size
         original_length = daily_tmean_celsius.size
-        original_time_length = daily_tmean_celsius.shape[0]
         spatial_block = spatial_time_major and daily_tmean_celsius.ndim > 2
 
-        # fold a declared time-major spatial block to (years, 366, *cells), otherwise
-        # reshape to 2-D with 366 days per year if not already in this shape
-        if spatial_block:
-            daily_tmin_celsius = compute._reshape_time_major(daily_tmin_celsius, compute.Periodicity.daily)
-            daily_tmax_celsius = compute._reshape_time_major(daily_tmax_celsius, compute.Periodicity.daily)
-            daily_tmean_celsius = compute._reshape_time_major(daily_tmean_celsius, compute.Periodicity.daily)
-        else:
-            daily_tmin_celsius = utils.reshape_to_2d(daily_tmin_celsius, 366)
-            daily_tmax_celsius = utils.reshape_to_2d(daily_tmax_celsius, 366)
-            daily_tmean_celsius = utils.reshape_to_2d(daily_tmean_celsius, 366)
+        # a declared time-major spatial block is read as given, one time step per row,
+        # while a 1-D/2-D series is folded onto (years, 366) as it always was and then
+        # read flat: the days of the year below cycle over that same year-major order.
+        # Folding a block onto whole years would copy each of the three inputs in full
+        # whenever the block ends mid-year, so the trailing partial year is indexed
+        # where it lies rather than padded out into a whole year of its own.
+        if not spatial_block:
+            daily_tmin_celsius = utils.reshape_to_2d(daily_tmin_celsius, 366).reshape(-1)
+            daily_tmax_celsius = utils.reshape_to_2d(daily_tmax_celsius, 366).reshape(-1)
+            daily_tmean_celsius = utils.reshape_to_2d(daily_tmean_celsius, 366).reshape(-1)
 
-        # at this point we assume that our dataset array has shape (years, 366, *cells)
-        # where each row is a year with 366 columns of daily values
+        # at this point we can read each array as one time step per row,
+        # i.e. (total days) for a 1-D/2-D input and (time, *cells) for a spatial block
 
         # convert the latitude from degrees to radians, keeping any per-cell axes
         if isinstance(latitude_degrees, np.ndarray):
@@ -440,9 +438,11 @@ def eto_hargreaves(
         else:
             latitude = math.radians(latitude_degrees)
 
-        # allocate the PET array we'll fill
+        # allocate the PET array we'll fill, and account for it alongside the input
+        # arrays: nothing above is padded, so these four arrays are the peak footprint
         pet = np.full(daily_tmean_celsius.shape, np.nan)
-        for day_of_year in range(1, daily_tmean_celsius.shape[1] + 1):
+        memory_metrics = check_large_array_memory(daily_tmin_celsius, daily_tmax_celsius, daily_tmean_celsius, pet)
+        for day_of_year in range(1, 367):
             # calculate the angle of solar declination and sunset hour angle
             solar_declination = _solar_declination(day_of_year)
             sunset_hour_angle = _sunset_hour_angle(latitude, solar_declination)
@@ -458,23 +458,22 @@ def eto_hargreaves(
             tmp3 = np.cos(latitude) * np.cos(solar_declination) * np.sin(sunset_hour_angle)
             et_radiation = tmp1 * _SOLAR_CONSTANT * inv_rel_distance * (tmp2 + tmp3)
 
-            # calculate the Hargreaves equation for every year and cell of this day;
-            # the day axis sits between the year axis and any cell axes
-            pet[:, day_of_year - 1, ...] = (
+            # the rows holding this day of the year: one per whole year, plus the
+            # trailing partial year's row once it reaches this day
+            positions = np.arange(day_of_year - 1, daily_tmean_celsius.shape[0], 366)
+
+            # calculate the Hargreaves equation for every year and cell of this day
+            pet[positions] = (
                 0.0023
-                * (daily_tmean_celsius[:, day_of_year - 1, ...] + 17.8)
-                * (daily_tmax_celsius[:, day_of_year - 1, ...] - daily_tmin_celsius[:, day_of_year - 1, ...]) ** 0.5
+                * (daily_tmean_celsius[positions] + 17.8)
+                * (daily_tmax_celsius[positions] - daily_tmin_celsius[positions]) ** 0.5
                 * 0.408
                 * et_radiation
             )
 
-        # reshape the dataset from (years, 366, *cells) into (total days) for a
-        # 1-D/2-D input, or back into the time-major input layout for a spatial
-        # block, and truncate to the original length
-        if spatial_block:
-            result = pet.reshape(-1, *pet.shape[2:])[0:original_time_length]
-        else:
-            result = pet.reshape(-1)[0:original_length]
+        # a spatial block is returned in its input layout, while a 1-D/2-D input is
+        # read flat and is truncated to its original length, dropping any padding
+        result = pet if spatial_block else pet[0:original_length]
         duration_ms = (time.perf_counter() - t0) * 1000.0
         log.info(
             "calculation_completed",

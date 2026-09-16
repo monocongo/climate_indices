@@ -918,6 +918,27 @@ class TestSpatialPETKernels:
         np.testing.assert_array_equal(np.isnan(result.values), np.isnan(expected))
         np.testing.assert_allclose(result.values, expected, atol=1e-8, rtol=1e-7, equal_nan=True)
 
+    def test_partial_year_hargreaves_block_is_not_padded(self, monkeypatch):
+        """A block ending mid-year indexes its inputs in place instead of padding them."""
+        from climate_indices import eto
+
+        def no_padding(*args, **kwargs):
+            raise AssertionError("Hargreaves padded a temperature input to a whole year")
+
+        monkeypatch.setattr(np, "pad", no_padding)
+
+        time_length = 2 * 366 + 100
+        rng = np.random.default_rng(31)
+        tmin = rng.uniform(-5.0, 15.0, size=(time_length, 2, 2))
+        tmax = tmin + rng.uniform(5.0, 15.0, size=(time_length, 2, 2))
+        tmean = (tmin + tmax) / 2.0
+
+        block = eto.eto_hargreaves(tmin, tmax, tmean, np.full((2, 2), 30.0), spatial_time_major=True)
+        scalar = eto.eto_hargreaves(tmin, tmax, tmean, 30.0, spatial_time_major=True)
+
+        assert block.shape == tmin.shape
+        np.testing.assert_array_equal(block, scalar)
+
     def test_gridded_thornthwaite_scalar_latitude_matches_pointwise(self, gridded_monthly_temps):
         """A scalar latitude reaches every cell of a gridded run."""
         from climate_indices.xarray_adapter import pet_thornthwaite
