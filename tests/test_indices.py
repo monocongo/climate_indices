@@ -855,7 +855,7 @@ def test_fitting_indices_share_one_fit_seam(
 
     assert fit_and_standardize.call_count == 2
     # SPI falls back from a failed Pearson Type III fit to gamma, SPEI does not
-    assert [call.kwargs.get("fallback_to_gamma", False) for call in fit_and_standardize.call_args_list] == [
+    assert [call.kwargs["fallback_to_gamma"] for call in fit_and_standardize.call_args_list] == [
         True,
         False,
     ]
@@ -919,7 +919,7 @@ def test_spi_accepts_deprecated_fitting_parameter_keys(
             calibration_year_end_monthly,
             compute.Periodicity.monthly,
         )
-        assert not np.array_equal(computed[0], refitted)
+        assert not np.array_equal(computed[0], refitted, equal_nan=True)
 
 
 def test_spei_accepts_explicit_none_fitting_parameters(

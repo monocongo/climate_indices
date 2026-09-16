@@ -847,6 +847,30 @@ def test_fit_and_standardize_normalizes_fitting_parameter_keys():
     )
     np.testing.assert_array_equal(explicit_none, from_the_data)
 
+    # a key absent from a partial parameter set reads as None rather than raising KeyError:
+    # gamma refits from the data, and Pearson Type III still reports its incomplete set
+    partial_gamma = compute.fit_and_standardize(
+        values,
+        indices.Distribution.gamma,
+        2000,
+        2000,
+        2009,
+        compute.Periodicity.monthly,
+        {"alpha": alphas},
+    )
+    np.testing.assert_array_equal(partial_gamma, from_the_data)
+
+    with pytest.raises(ValueError, match="either none or all"):
+        compute.fit_and_standardize(
+            values,
+            indices.Distribution.pearson,
+            2000,
+            2000,
+            2009,
+            compute.Periodicity.monthly,
+            {"prob_zero": np.full(12, 0.1)},
+        )
+
 
 def test_fit_and_standardize_falls_back_to_gamma_only_when_asked():
     """

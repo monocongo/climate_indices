@@ -776,6 +776,7 @@ def spei(
             calibration_year_final,
             periodicity,
             fitting_params,
+            fallback_to_gamma=False,
         )
 
         # clip values to within the valid range

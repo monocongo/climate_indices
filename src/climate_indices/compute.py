@@ -1608,8 +1608,8 @@ def fit_and_standardize(
     params = _normalize_fitting_params(fitting_params)
 
     if distribution.value == "gamma":
-        alphas = None if params is None else params["alpha"]
-        betas = None if params is None else params["beta"]
+        alphas = None if params is None else params.get("alpha")
+        betas = None if params is None else params.get("beta")
         return transform_fitted_gamma(
             values,
             data_start_year,
@@ -1623,10 +1623,10 @@ def fit_and_standardize(
     if distribution.value != "pearson":
         raise ValueError(f"Unsupported distribution: {distribution}")
 
-    probabilities_of_zero = None if params is None else params["prob_zero"]
-    locs = None if params is None else params["loc"]
-    scales = None if params is None else params["scale"]
-    skews = None if params is None else params["skew"]
+    probabilities_of_zero = None if params is None else params.get("prob_zero")
+    locs = None if params is None else params.get("loc")
+    scales = None if params is None else params.get("scale")
+    skews = None if params is None else params.get("skew")
 
     if not fallback_to_gamma:
         return transform_fitted_pearson(
