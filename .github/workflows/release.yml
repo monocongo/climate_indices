@@ -176,9 +176,56 @@ jobs:
         path: dist/
         retention-days: 30
 
+  # The `test` matrix above proves behavior from source on every supported
+  # Python. This job proves the artifact users download installs from PyPI and
+  # exposes its console scripts, on the oldest and newest supported versions.
+  # It is deliberately not a full Python matrix: the wheel is pure Python and
+  # re-running the whole suite here would duplicate `test`.
+  wheel-check:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python-version: '3.10'
+          - python-version: '3.14'
+
+    steps:
+    - name: Download build artifacts
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      with:
+        name: dist
+        path: dist/
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Test wheel installation
+      run: |
+        WHEEL="$(find "${GITHUB_WORKSPACE}/dist" -maxdepth 1 -type f -name '*.whl' -print -quit)"
+        if [ -z "${WHEEL}" ]; then
+          echo "::error::No wheel found in dist/"
+          exit 1
+        fi
+        python -m venv "${RUNNER_TEMP}/wheel-check"
+        "${RUNNER_TEMP}/wheel-check/bin/python" -m pip install --upgrade pip
+        "${RUNNER_TEMP}/wheel-check/bin/python" -m pip install "${WHEEL}"
+        cd "${RUNNER_TEMP}"
+        "${RUNNER_TEMP}/wheel-check/bin/python" -c \
+          "from climate_indices import eddi, pci, percentage_of_normal, pet_hargreaves, pet_thornthwaite, spei, spi; \
+          assert all(map(callable, (eddi, pci, percentage_of_normal, pet_hargreaves, pet_thornthwaite, spei, spi)))"
+        for entry_point in climate_indices process_climate_indices spi; do
+          "${RUNNER_TEMP}/wheel-check/bin/${entry_point}" --help > /dev/null
+        done
+
   # Keep the environment-gated OIDC token limited to the publish-only job
   publish:
-    needs: build
+    needs: [build, wheel-check]
     runs-on: ubuntu-latest
     environment: release  # Requires manual approval
     permissions:
