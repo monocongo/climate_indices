@@ -100,6 +100,9 @@ The daily recursive moisture content of loosely compacted organic layers of mode
 **DC (Drought Code)**:
 The daily recursive moisture content of deep, compact organic layers, from noon temperature and 24-hour rain; computed by `fire.drought_code()`. Potential evapotranspiration scales with the month- and latitude-dependent day length, and the dimensionless code is floored at zero with no upper bound. The CFFWIS component only, distinct from SPI, SPEI, PDSI, and the other drought indices.
 
+**CFFWIS (Canadian Forest Fire Weather Index System)**:
+The Canadian Forest Service's fire-weather system. Its three moisture codes are computed by `fire.ffmc()`, `fire.duff_moisture_code()`, and `fire.drought_code()`; the behavior indices ISI, BUI, FWI, and DSR and the `fire.cffwis()` orchestrator that returns them together are planned contracts in the design doc.
+
 The CFFWIS behavior indices (ISI, BUI, FWI, DSR) and Haines are planned contracts in the design doc.
 
 ### Statistics

@@ -117,11 +117,15 @@ _KBDI_DRYING_TEMPERATURE_CELSIUS = 10.0
 _KBDI_MINIMUM_MEAN_ANNUAL_RECORD_DAYS = 30 * 365
 
 # The CFFWIS moisture codes (#803) follow Van Wagner and Pickett (1985) as
-# implemented by the NRCan reference code (cffdrs). All equations are
-# evaluated in the source's operational units: km/h wind, mm rain, degrees
-# Celsius. The published FFMC equations print 147.2 for the moisture-content
-# conversion; the reference code uses the exact 250 * 59.5 / 101, applied in
-# both directions, and this implementation matches the reference code.
+# implemented by the NRCan reference code: `cffdrs_r` and its Python port
+# `cffdrs_py` (the frozen test vectors pin commit 0f57fcca of the latter). All
+# equations are evaluated in the source's operational units: km/h wind, mm
+# rain, degrees Celsius. The published FFMC equations print 147.2 for the
+# moisture-content conversion; the reference code uses the exact
+# 250 * 59.5 / 101, applied in both directions, and this implementation
+# matches the reference code. DMC's post-rain conversion likewise uses the
+# reference code's more accurate 43.43 * (5.6348 - ln(Wmr - 20)) form of
+# Eq. 15 rather than the printed 244.72 - 43.43 * ln(Wmr - 20).
 _FFMC_COEFFICIENT = 250.0 * 59.5 / 101.0
 _FFMC_MAXIMUM = 101.0
 _FFMC_MOISTURE_CAP = 250.0
@@ -1072,6 +1076,7 @@ def _dmc_next(
         ),
     )
     moisture_after = moisture_before + 1000.0 * effective_rain / (48.77 + slope * effective_rain)
+    # Eq. 15 in the reference code's more accurate form
     after_rain = np.maximum(43.43 * (5.6348 - np.log(moisture_after - 20.0)), 0.0)
 
     previous = np.where(rained, after_rain, dmc_previous)
@@ -1148,10 +1153,8 @@ def ffmc(
 
     The equations are evaluated in the source's operational units, so the
     wind speed is converted from meters per second to km/h here and nowhere
-    else. The moisture-content conversion uses the NRCan reference code's
-    exact ``250 * 59.5 / 101`` rather than the ``147.2`` printed in the
-    report, to match the reference implementation rather than the printed
-    constant.
+    else. The moisture-content conversion uses the reference code's exact
+    ``250 * 59.5 / 101`` rather than the ``147.2`` printed in the report.
 
     The source's open choices are resolved here as: only rain above 0.5 mm
     rewets the fuel, moisture content is capped at 250 percent, the code is

@@ -19,7 +19,11 @@ re-exported as unqualified package functions: use
 Keep the module flat until it exceeds roughly 1,500 lines or CFFWIS recurrence
 state needs isolated implementation modules. At that point, promote it to a
 `fire` package without changing `from climate_indices import fire` or any
-public function name. No fire CLI is part of this subsystem.
+public function name. No fire CLI is part of this subsystem. `fire.py` passed
+that line count with the CFFWIS moisture codes (#803); promotion is deferred to
+a dedicated mechanical refactor tracked against the remaining CFFWIS work
+(#804), so the flat module is a deliberate, recorded deferral rather than a
+silent departure from the trigger.
 
 This family covers meteorological and climatological indices only. It excludes
 NFDRS components such as ERC, BI, SC, and IC; fuel models; fire behaviour;
@@ -97,6 +101,24 @@ The implementation vectorizes each daily update over spatial cells and loops
 only over time. It has a required pure-NumPy baseline; `numba` is not an
 optional dependency unless later benchmark evidence justifies its support cost.
 
+The moisture codes evaluate the published equations in the source's
+operational units (km/h wind, mm rain, degrees Celsius) and follow the NRCan
+reference implementation where it departs from the printed report: FFMC's
+moisture-content conversion uses the exact `250 * 59.5 / 101` rather than the
+printed `147.2`, in both directions, and DMC's post-rain conversion uses the
+reference code's `43.43 * (5.6348 - ln(Wmr - 20))` form of Eq. 15. The
+reference lineage is `cffdrs_r` and its Python port `cffdrs_py`; the frozen
+vectors in `tests/test_fire_cffwis_moisture.py` pin that port's commit.
+
+The CFFWIS moisture codes select their month- and latitude-dependent tables per
+cell. DMC uses five effective-day-length rows: 46 N (`latitude > 30`), 20 N
+(`10 < latitude <= 30`), the equator (`-10 < latitude <= 10`), 20 S
+(`-30 < latitude <= -10`), and 40 S (`latitude <= -30`). DC uses three
+day-length-adjustment rows: north (`latitude > 20`), equator
+(`-20 < latitude <= 20`), and south (`latitude <= -20`). A NaN latitude means
+the cell has no usable day-length band, so its output stays NaN and its
+recurrence never starts — the same treatment as a NaN KBDI climatology.
+
 ## Missing data and gaps
 
 Missing days are governed by [ADR-0007](../adr/0007-fire-missing-data-policy.md).
@@ -113,8 +135,10 @@ bridged or poisons exactly as the one-shot series would. Leading missing days
 are unbounded only before the recurrence starts. Interpolation is deliberately
 not a policy:
 callers fill inputs upstream so the fill stays visible. A day is missing when
-any time-varying weather input is NaN; sub-freezing and inactive-index days
-are valid observations, and off-season periods must use the seasonal state
+any time-varying weather input is NaN or elementwise-invalid for the index
+(relative humidity outside [0, 100], negative wind speed); infinity raises
+`InvalidArgumentError` instead. Sub-freezing and inactive-index days are valid
+observations, and off-season periods must use the seasonal state
 carry from #806 rather than NaN. Each stateful implementation must carry the
 parametrized gap matrix recorded in ADR-0007.
 
@@ -144,7 +168,7 @@ kernels.
 | `buildup_index(dmc, dc)` | DMC, DC | dimensionless BUI |
 | `cffwis_fwi(isi, bui)` | ISI, BUI | dimensionless Canadian Fire Weather Index |
 | `daily_severity_rating(cffwis_fwi)` | Canadian FWI | dimensionless DSR |
-| `cffwis(temperature_celsius, relative_humidity_percent, wind_speed_meters_per_second, precipitation_mm, latitude_degrees_north, *, initial_ffmc=85.0, initial_dmc=6.0, initial_dc=15.0, spin_up=None, return_state=False)` | CFFWIS weather inputs above; `initial_*` and `spin_up` follow the shared state contract | `CFFWISResult` plus final state when `return_state=True`; xarray counterpart accepts `tas`, `hurs`, `sfcWind`, `pr`, and optional `lat`, returning `Dataset` |
+| `cffwis(temperature_celsius, relative_humidity_percent, wind_speed_meters_per_second, precipitation_mm, latitude_degrees_north, *, initial_ffmc=85.0, initial_dmc=6.0, initial_dc=15.0, spin_up=0, return_state=False)` | CFFWIS weather inputs above; `initial_*` and `spin_up` follow the shared state contract | `CFFWISResult` plus final state when `return_state=True`; xarray counterpart accepts `tas`, `hurs`, `sfcWind`, `pr`, and optional `lat`, returning `Dataset` |
 | `hot_dry_windy(temperature_celsius, relative_humidity_percent, wind_speed_meters_per_second, height_agl_meters, *, level_axis=-1)` | vertical profiles in °C, %, m s⁻¹, m AGL | hPa m s⁻¹; all levels must identify the lowest 500 m AGL |
 | `haines_index(temperature_lower_celsius, temperature_upper_celsius, dewpoint_lower_celsius, *, variant)` | pressure-level °C inputs selected by `variant` | integer 2–6; `variant` is `"low"`, `"mid"`, or `"high"`, never inferred by default |
 

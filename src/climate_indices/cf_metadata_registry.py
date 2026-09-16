@@ -31,7 +31,9 @@ class CFAttributes(_CFAttributesRequired, total=False):
     conventions), description (free-text detail such as value range or a
     resolved-ambiguity note), climate_indices_variant (distinguishes entries
     for one index that has more than one output convention, e.g. KBDI's
-    metric and imperial unit scales).
+    metric and imperial unit scales, or reserves an entry against a future
+    convention, e.g. the CFFWIS moisture codes' `cffwis_classic` against a
+    future FWI2025 variant).
 
     .. note:: Part of the beta xarray adapter layer. See :doc:`xarray_migration`.
     """

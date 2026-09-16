@@ -3,9 +3,13 @@
 The frozen reference vectors in this module were produced with the NRCan
 reference implementation (``cffdrs_py`` commit 0f57fcca2a6a84b69fe8d50f29d947f0be34d5f6,
 2026-08-06), a port of the Canadian Forest Service code that the full
-cross-implementation validation in #805 targets. They pin the equations, the
-latitude-band tables, and the month-dependent day lengths; they are
-regression fixtures, not an independent scientific validation.
+cross-implementation validation in #805 targets. That commit's ``cffdrs/fwi.py``
+holds ``fine_fuel_moisture_code``, ``duff_moisture_code``, and ``drought_code``;
+each vector is the daily recurrence driven one day at a time through those
+functions with the weather series below (wind in km/h, which this module takes
+in SI), the literature seeds 85/6/15, and the latitude each case names. They pin
+the equations, the latitude-band tables, and the month-dependent day lengths;
+they are regression fixtures, not an independent scientific validation.
 """
 
 from __future__ import annotations
@@ -113,7 +117,7 @@ _DC_SOUTH_REFERENCE = np.array(
 )
 
 # one day from the literature seed, T=25 C, RH=40 %, no rain: (latitude, expected).
-# Bands: 46 N (latitude > 30), 20 N (10, 30], equator [-10, 10], 20 S [-30, -10), 40 S (< -30).
+# Bands: 46 N (latitude > 30), 20 N (10, 30], equator (-10, 10], 20 S (-30, -10], 40 S (<= -30).
 _DMC_LATITUDE_CASES = [
     (50.0, 9.67784496),
     (30.0, 8.99566404),
@@ -125,7 +129,7 @@ _DMC_LATITUDE_CASES = [
     (-30.0, 7.9279026),
     (-45.0, 7.9279026),
 ]
-# (latitude, expected) for DC. Bands: north (> 20), equator [-20, 20], south (< -20).
+# (latitude, expected) for DC. Bands: north (> 20), equator (-20, 20], south (<= -20).
 _DC_LATITUDE_CASES = [
     (50.0, 23.204),
     (20.0, 20.704),
