@@ -1196,6 +1196,51 @@ def gamma_parameters(
     return alphas, betas
 
 
+def _prepare_input_shape(values: np.ndarray, spatial_time_major: bool) -> np.ndarray:
+    """
+    Flatten a 2-D input, pass a declared time-major spatial block through unchanged,
+    and reject any other shape.
+
+    We expect to operate upon a 1-D array, so a 2-D array is flattened. A time-major
+    spatial block keeps its trailing cell dims, so that the scaling and everything
+    downstream runs once per cell set rather than per cell, but only when the caller
+    says the block is time-major: reading it by default would silently re-read a
+    (years, periods, *cells) array along the wrong axis.
+    """
+    shape = values.shape
+    if len(shape) == 2:
+        return values.flatten()
+    if len(shape) > 2:
+        # every array with three or more dimensions is read as a time-major block, except
+        # when its first cell axis is a calendar period length: that shape is equally
+        # readable as a (years, periods, *cells) array, so it must be declared
+        if not spatial_time_major and shape[1] in _PERIOD_LENGTHS:
+            _logger.error(
+                "validation_error",
+                operation="prepare_scaled",
+                reason="ambiguous_spatial_shape",
+                shape=str(shape),
+            )
+            raise ValueError(
+                f"Invalid shape of input array: {shape} -- a (time, *cells) block whose first cell axis "
+                "is a calendar period length is ambiguous with a (years, periods, *cells) array; "
+                "declare it with spatial_time_major=True"
+            )
+        return values
+    if len(shape) != 1:
+        _logger.error(
+            "validation_error",
+            operation="prepare_scaled",
+            reason="invalid_shape",
+            shape=str(shape),
+        )
+        raise ValueError(
+            f"Invalid shape of input array: {shape} -- only 1-D arrays, 2-D (years, periods) "
+            "arrays, and declared time-major spatial blocks are supported"
+        )
+    return values
+
+
 def prepare_scaled(
     values: np.ndarray,
     scale: int,
@@ -1250,41 +1295,7 @@ def prepare_scaled(
     if periodicity is not Periodicity.monthly and periodicity is not Periodicity.daily:
         raise ValueError(f"Invalid periodicity argument: {periodicity}")
 
-    # we expect to operate upon a 1-D array, so if we've been passed a 2-D array then we
-    # flatten it. A time-major spatial block keeps its trailing cell dims, so that the
-    # scaling and everything downstream runs once per cell set rather than per cell, but
-    # only when the caller says the block is time-major: reading it by default would
-    # silently re-read a (years, periods, *cells) array along the wrong axis.
-    shape = values.shape
-    if len(shape) == 2:
-        values = values.flatten()
-    elif len(shape) > 2:
-        # every array with three or more dimensions is read as a time-major block, except
-        # when its first cell axis is a calendar period length: that shape is equally
-        # readable as a (years, periods, *cells) array, so it must be declared
-        if not spatial_time_major and shape[1] in _PERIOD_LENGTHS:
-            _logger.error(
-                "validation_error",
-                operation="prepare_scaled",
-                reason="ambiguous_spatial_shape",
-                shape=str(shape),
-            )
-            raise ValueError(
-                f"Invalid shape of input array: {shape} -- a (time, *cells) block whose first cell axis "
-                "is a calendar period length is ambiguous with a (years, periods, *cells) array; "
-                "declare it with spatial_time_major=True"
-            )
-    elif len(shape) != 1:
-        _logger.error(
-            "validation_error",
-            operation="prepare_scaled",
-            reason="invalid_shape",
-            shape=str(shape),
-        )
-        raise ValueError(
-            f"Invalid shape of input array: {shape} -- only 1-D arrays, 2-D (years, periods) "
-            "arrays, and declared time-major spatial blocks are supported"
-        )
+    values = _prepare_input_shape(values, spatial_time_major)
 
     # if we're passed all missing values then we can't compute anything,
     # so we return the same array of missing values
@@ -1342,6 +1353,30 @@ def scale_values(
     return prepare_scaled(values, scale, periodicity)
 
 
+def _broadcast_fitting_parameters(
+    values: np.ndarray, alphas: np.ndarray | None, betas: np.ndarray | None
+) -> tuple[np.ndarray | None, np.ndarray | None]:
+    """
+    Reshape period-only fit parameters, shape (periods,), so that NumPy broadcasts
+    them along axis 1 of a time-major spatial array instead of aligning them with the
+    trailing cell axes.
+    """
+    if values.ndim <= 2:
+        return alphas, betas
+
+    if alphas is not None:
+        alphas = np.asarray(alphas)
+        if alphas.ndim == 1:
+            alphas = alphas.reshape(1, -1, *([1] * (values.ndim - 2)))
+
+    if betas is not None:
+        betas = np.asarray(betas)
+        if betas.ndim == 1:
+            betas = betas.reshape(1, -1, *([1] * (values.ndim - 2)))
+
+    return alphas, betas
+
+
 def transform_fitted_gamma(
     values: np.ndarray,
     data_start_year: int,
@@ -1392,18 +1427,7 @@ def transform_fitted_gamma(
     # validate (and possibly reshape) the input array
     values = _validate_array(values, periodicity)
 
-    # a period-only fit, shape (periods,), is shared by every cell of a time-major
-    # spatial array: give it singleton cell axes so NumPy broadcasts it along axis 1
-    # rather than aligning it with the trailing cell axes
-    if values.ndim > 2:
-        if alphas is not None:
-            alphas = np.asarray(alphas)
-            if alphas.ndim == 1:
-                alphas = alphas.reshape(1, -1, *([1] * (values.ndim - 2)))
-        if betas is not None:
-            betas = np.asarray(betas)
-            if betas.ndim == 1:
-                betas = betas.reshape(1, -1, *([1] * (values.ndim - 2)))
+    alphas, betas = _broadcast_fitting_parameters(values, alphas, betas)
 
     # Replace zeros with NaNs for fitting (zeros are excluded from gamma fitting)
     # and get mask of zero positions for later probability calculations
