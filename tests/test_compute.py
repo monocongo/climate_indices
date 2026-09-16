@@ -804,31 +804,37 @@ def test_fit_and_standardize_dispatches_on_distribution():
 
 def test_fit_and_standardize_normalizes_fitting_parameter_keys():
     """
-    Deprecated fitting-parameter aliases are accepted, and an explicit None for a
-    canonical key means "fit this parameter from the data".
+    Fitting parameters are normalized: the canonical spellings and the deprecated
+    aliases that mean the same thing are both used, an explicit None for a canonical
+    key means "fit this parameter from the data", and a canonical key that is None
+    defers to a deprecated alias that carries a value.
     """
     values = np.arange(1.0, 121.0).reshape(10, 12)
-    alphas, betas = compute.gamma_parameters(values, 2000, 2000, 2009, compute.Periodicity.monthly)
+    alphas = np.full(12, 4.0)
+    betas = np.full(12, 8.0)
+    with_supplied = compute.transform_fitted_gamma(values, 2000, 2000, 2009, compute.Periodicity.monthly, alphas, betas)
+    from_the_data = compute.transform_fitted_gamma(values, 2000, 2000, 2009, compute.Periodicity.monthly)
 
-    canonical = compute.fit_and_standardize(
-        values,
-        indices.Distribution.gamma,
-        2000,
-        2000,
-        2009,
-        compute.Periodicity.monthly,
+    # the supplied parameters are distinguishable from the fitted ones, so a seam that
+    # ignored fitting_params would fail the assertions below
+    assert not np.array_equal(with_supplied, from_the_data)
+
+    parameters = (
         {"alpha": alphas, "beta": betas},
-    )
-    deprecated = compute.fit_and_standardize(
-        values,
-        indices.Distribution.gamma,
-        2000,
-        2000,
-        2009,
-        compute.Periodicity.monthly,
         {"alphas": alphas, "betas": betas},
+        {"alpha": None, "alphas": alphas, "beta": None, "betas": betas},
     )
-    np.testing.assert_array_equal(canonical, deprecated)
+    for fitting_params in parameters:
+        computed = compute.fit_and_standardize(
+            values,
+            indices.Distribution.gamma,
+            2000,
+            2000,
+            2009,
+            compute.Periodicity.monthly,
+            fitting_params,
+        )
+        np.testing.assert_array_equal(computed, with_supplied)
 
     explicit_none = compute.fit_and_standardize(
         values,
@@ -839,7 +845,7 @@ def test_fit_and_standardize_normalizes_fitting_parameter_keys():
         compute.Periodicity.monthly,
         {"alpha": None, "beta": None},
     )
-    np.testing.assert_array_equal(explicit_none, canonical)
+    np.testing.assert_array_equal(explicit_none, from_the_data)
 
 
 def test_fit_and_standardize_falls_back_to_gamma_only_when_asked():

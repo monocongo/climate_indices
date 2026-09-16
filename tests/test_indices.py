@@ -868,18 +868,28 @@ def test_spi_accepts_deprecated_fitting_parameter_keys(
     calibration_year_end_monthly,
 ):
     """SPI normalizes its fitting parameters through the shared seam, so the deprecated
-    aliases that SPEI accepts work here too."""
+    aliases that SPEI accepts work here too, and the parameters given are the ones used."""
     precips = precips_mm_monthly.flatten()
     parameters = (
         (
             indices.Distribution.gamma,
-            {"alpha": None, "beta": None},
-            {"alphas": None, "betas": None},
+            {"alpha": np.full(12, 4.0), "beta": np.full(12, 8.0)},
+            {"alphas": np.full(12, 4.0), "betas": np.full(12, 8.0)},
         ),
         (
             indices.Distribution.pearson,
-            {"prob_zero": None, "loc": None, "scale": None, "skew": None},
-            {"probabilities_of_zero": None, "locs": None, "scales": None, "skews": None},
+            {
+                "prob_zero": np.full(12, 0.1),
+                "loc": np.full(12, 1.0),
+                "scale": np.full(12, 2.0),
+                "skew": np.full(12, 0.5),
+            },
+            {
+                "probabilities_of_zero": np.full(12, 0.1),
+                "locs": np.full(12, 1.0),
+                "scales": np.full(12, 2.0),
+                "skews": np.full(12, 0.5),
+            },
         ),
     )
 
@@ -898,3 +908,50 @@ def test_spi_accepts_deprecated_fitting_parameter_keys(
             for fitting_params in (canonical, deprecated)
         ]
         np.testing.assert_array_equal(computed[0], computed[1])
+
+        # the supplied parameters are the ones used, rather than refitted from the data
+        refitted = indices.spi(
+            precips,
+            6,
+            distribution,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            compute.Periodicity.monthly,
+        )
+        assert not np.array_equal(computed[0], refitted)
+
+
+def test_spei_accepts_explicit_none_fitting_parameters(
+    precips_mm_monthly,
+    pet_thornthwaite_mm,
+    data_year_start_monthly,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+):
+    """An explicit None for a canonical fitting-parameter key means "fit it from the
+    data" rather than dropping the key, which used to raise KeyError."""
+    precips = precips_mm_monthly.flatten()
+    pet = pet_thornthwaite_mm.flatten()
+    with_explicit_none = indices.spei(
+        precips,
+        pet,
+        6,
+        indices.Distribution.gamma,
+        compute.Periodicity.monthly,
+        data_year_start_monthly,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
+        {"alpha": None, "beta": None},
+    )
+    without_parameters = indices.spei(
+        precips,
+        pet,
+        6,
+        indices.Distribution.gamma,
+        compute.Periodicity.monthly,
+        data_year_start_monthly,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
+    )
+    np.testing.assert_array_equal(with_explicit_none, without_parameters)
