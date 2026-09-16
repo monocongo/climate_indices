@@ -193,9 +193,8 @@ jobs:
           notebooks/palmer_indices_xarray.ipynb
           notebooks/eddi_xarray.ipynb
 
-      - name: Smoke-execute the Zarr/Dask SPI/SPEI tutorial
-        timeout-minutes: 15
-        run: bash scripts/smoke_e2e_notebook.sh
+      # The Zarr/Dask tutorial is owned by tests/test_e2e_with_dask.py in the
+      # core suite; do not re-add a notebook-execution step here (#917).
 
   security-audit:
     permissions:

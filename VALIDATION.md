@@ -14,7 +14,7 @@ guarded only by internal fixtures.
 | Lint | `uv run ruff check src/ tests/` | No lint findings. |
 | Format | `uv run ruff format --check src/ tests/` | No formatting changes needed. |
 | Notebooks | `uv run jupyter nbconvert --execute --to notebook --inplace notebooks/xarray_getting_started.ipynb notebooks/palmer_indices_xarray.ipynb notebooks/eddi_xarray.ipynb` | All v2.5 notebooks execute from a clean checkout. |
-| Notebook smoke (Zarr/Dask tutorial) | `bash scripts/smoke_e2e_notebook.sh` | `notebooks/zarr_dask_spi_spei.ipynb` executes end to end from a fresh kernel against the prepared sample inputs. |
+| Notebook smoke (Zarr/Dask tutorial, local only) | `bash scripts/smoke_e2e_notebook.sh` | `notebooks/zarr_dask_spi_spei.ipynb` executes end to end from a fresh kernel against the prepared sample inputs. |
 
 ## Per-Index Evidence
 
