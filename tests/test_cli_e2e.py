@@ -17,7 +17,6 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from climate_indices import __main__ as cli_main
 from climate_indices import compute, indices, palmer
 from climate_indices.__main__ import main
 
@@ -28,17 +27,6 @@ _CALIBRATION_END_YEAR = 2010
 _DIVISION = "0101"
 _LATITUDES = [25.0, 35.0]
 _LONGITUDES = [250.0, 260.0]
-
-
-@pytest.fixture(autouse=True)
-def _fresh_shared_arrays(monkeypatch):
-    """Reset the module's shared-array cache so each test starts a clean CLI run.
-
-    ``_compute_write_index()`` reuses any result array already present in
-    ``_global_shared_arrays``, which is correct for a one-shot CLI process but
-    would leak a previous test's shape into the next test's computation.
-    """
-    monkeypatch.setattr(cli_main, "_global_shared_arrays", {})
 
 
 def _months(periods: int):
