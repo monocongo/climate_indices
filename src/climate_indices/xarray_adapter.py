@@ -2135,17 +2135,10 @@ def pet_thornthwaite(
             time_coord_first=str(time_coord.values[0]),
         )
 
-    # normalize latitude for xr.apply_ufunc
-    # convert scalar numpy types to python float for compatibility
-    if isinstance(latitude, float | int | np.floating | np.integer):
-        lat_for_ufunc: float | int | np.floating | np.integer | xr.DataArray = float(latitude)
-    else:
-        # assume it's already an xr.DataArray
-        lat_for_ufunc = latitude
-
-    # a gridded input reaches indices.pet as one time-major block with the latitude per
-    # cell, instead of one call per grid cell; the latitude is aligned with the
-    # temperature's cell axes so the kernel reads them in the block's order
+    # normalize latitude for xr.apply_ufunc: a gridded input reaches indices.pet as one
+    # time-major block with the latitude per cell, instead of one call per grid cell; the
+    # latitude is aligned with the temperature's cell axes so the kernel reads them in the
+    # block's order
     use_spatial_kernel, lat_for_ufunc = _spatial_kernel_latitude(temp_da, latitude, time_dim)
 
     # wrapper functions to handle read-only array views from apply_ufunc
@@ -2414,16 +2407,10 @@ def pet_hargreaves(
     # derive tmean
     tmean_da = (tmin_aligned + tmax_aligned) / 2.0
 
-    # normalize latitude for xr.apply_ufunc
-    if isinstance(latitude, float | int | np.floating | np.integer):
-        lat_for_ufunc: float | int | np.floating | np.integer | xr.DataArray = float(latitude)
-    else:
-        # assume it's already an xr.DataArray
-        lat_for_ufunc = latitude
-
-    # a gridded input reaches eto.eto_hargreaves as one time-major block with the
-    # latitude per cell, instead of one call per grid cell; the latitude is aligned
-    # with the temperature's cell axes so the kernel reads them in the block's order
+    # normalize latitude for xr.apply_ufunc: a gridded input reaches eto.eto_hargreaves as
+    # one time-major block with the latitude per cell, instead of one call per grid cell;
+    # the latitude is aligned with the temperature's cell axes so the kernel reads them in
+    # the block's order
     use_spatial_kernel, lat_for_ufunc = _spatial_kernel_latitude(tmin_aligned, latitude, time_dim)
 
     # wrapper functions to handle read-only array views from apply_ufunc

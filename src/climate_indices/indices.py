@@ -1112,6 +1112,53 @@ def percentage_of_normal(
         raise
 
 
+def _pet_latitude(
+    latitude_degrees: float | np.ndarray,
+    temperature_celsius: np.ndarray,
+    spatial_time_major: bool,
+) -> float | np.ndarray:
+    """Resolve the PET latitude argument, validating a scalar against its range.
+
+    An array of latitudes resolves to its first value -- useful when applying PET with
+    xarray.GroupBy or numpy.apply_along_axis(), where the latitudes are duplicated over a
+    3-D array to match a 3-D temperature array. A declared time-major spatial block keeps
+    the per-cell latitudes instead, so the calculation runs once per cell set rather than
+    per cell; those arrays are validated by ``eto.eto_thornthwaite()``.
+
+    Args:
+        latitude_degrees: Latitude in degrees north, either scalar or per-cell
+        temperature_celsius: The temperature block the latitude applies to
+        spatial_time_major: Whether the temperature is a time-major spatial block
+
+    Returns:
+        The scalar latitude, or the per-cell latitude array of a spatial block
+
+    Raises:
+        ValueError: If the latitude array is empty, or a scalar latitude is None, NaN,
+            or outside [-90.0 ... 90.0] (inclusive)
+    """
+    if isinstance(latitude_degrees, np.ndarray):
+        if latitude_degrees.size == 0:
+            message = "Invalid latitude value: empty latitude array (must contain at least one value)"
+            _logger.error(message)
+            raise ValueError(message)
+        if not (spatial_time_major and temperature_celsius.ndim > 2):
+            latitude_degrees = cast(float, latitude_degrees.flat[0])
+
+    if not isinstance(latitude_degrees, np.ndarray) and (
+        (latitude_degrees is None) or np.isnan(latitude_degrees) or not (-90.0 <= latitude_degrees <= 90.0)
+    ):
+        message = (
+            f"Invalid latitude value: {latitude_degrees}"
+            + " (must be in degrees north, between -90.0 and "
+            + "90.0 inclusive)"
+        )
+        _logger.error(message)
+        raise ValueError(message)
+
+    return latitude_degrees
+
+
 def pet(
     temperature_celsius: np.ndarray,
     latitude_degrees: float | np.ndarray,
@@ -1158,32 +1205,7 @@ def pet(
     memory_metrics = check_large_array_memory(temperature_celsius)
 
     try:
-        # If we've been passed an array of latitude values then just use
-        # the first one -- useful when applying this function with xarray.GroupBy
-        # or numpy.apply_along_axis() where we've had to duplicate values in a 3-D
-        # array of latitudes in order to correspond with a 3-D array of temperatures.
-        # A declared time-major spatial block keeps the per-cell latitudes instead,
-        # so that the calculation runs once per cell set rather than per cell.
-        if isinstance(latitude_degrees, np.ndarray):
-            if latitude_degrees.size == 0:
-                message = "Invalid latitude value: empty latitude array (must contain at least one value)"
-                _logger.error(message)
-                raise ValueError(message)
-            if not (spatial_time_major and temperature_celsius.ndim > 2):
-                latitude_degrees = cast(float, latitude_degrees.flat[0])
-
-        # make sure we're not dealing with a NaN or out-of-range latitude value;
-        # per-cell latitude arrays are validated by eto.eto_thornthwaite()
-        if not isinstance(latitude_degrees, np.ndarray) and (
-            (latitude_degrees is None) or np.isnan(latitude_degrees) or not (-90.0 <= latitude_degrees <= 90.0)
-        ):
-            message = (
-                f"Invalid latitude value: {latitude_degrees}"
-                + " (must be in degrees north, between -90.0 and "
-                + "90.0 inclusive)"
-            )
-            _logger.error(message)
-            raise ValueError(message)
+        latitude_degrees = _pet_latitude(latitude_degrees, temperature_celsius, spatial_time_major)
 
         # make sure we're not dealing with all NaN values
         if np.ma.isMaskedArray(temperature_celsius) and (temperature_celsius.count() == 0):
