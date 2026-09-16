@@ -675,3 +675,112 @@ class TestSpatialFittingParameters:
             indices.Distribution.pearson,
             lambda latitude, longitude: {key: value[:, latitude, longitude] for key, value in params.items()},
         )
+
+
+class TestSpatialBlockContracts:
+    """Input contracts that the spatial path has to keep from the per-cell path."""
+
+    def test_one_dimensional_pet_secondary_broadcasts_over_cells(self, spatial_spei, per_cell_spei):
+        """A single PET time series serves every cell, as it does on the per-cell path."""
+        time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+        rng = np.random.default_rng(23)
+        precip_values = rng.gamma(shape=2.0, scale=2.0, size=(time.size, 2, 2))
+        precip = xr.DataArray(
+            precip_values,
+            coords={"time": time, "lat": [10.0, 20.0], "lon": [0.0, 5.0]},
+            dims=["time", "lat", "lon"],
+        )
+        pet = rng.gamma(shape=2.0, scale=1.0, size=(time.size,))
+        kwargs = {
+            "pet_mm": pet,
+            "scale": 3,
+            "distribution": indices.Distribution.gamma,
+            "calibration_year_initial": _CALIBRATION_START,
+            "calibration_year_final": _CALIBRATION_END,
+        }
+
+        spatial_result = spatial_spei(precip, **kwargs)
+        per_cell_result = per_cell_spei(precip, **kwargs)
+
+        np.testing.assert_array_equal(np.isnan(spatial_result.values), np.isnan(per_cell_result.values))
+        np.testing.assert_allclose(
+            spatial_result.values,
+            per_cell_result.values,
+            atol=1e-8,
+            rtol=1e-7,
+            equal_nan=True,
+        )
+
+    def test_mismatched_parameter_cells_raise(self, gridded_monthly_precip):
+        """A parameter array carrying the wrong cell dimensions is rejected, not ignored."""
+        data = np.asarray(gridded_monthly_precip.values)
+        params = {
+            "prob_zero": np.zeros((12, 4, 4)),
+            "loc": np.zeros((12, 4, 4)),
+            "scale": np.ones((12, 4, 4)),
+            "skew": np.zeros((12, 4, 4)),
+        }
+
+        with pytest.raises(ValueError, match="do not match the input's cells"):
+            indices.spi(
+                data,
+                scale=3,
+                distribution=indices.Distribution.pearson,
+                data_start_year=1980,
+                calibration_year_initial=_CALIBRATION_START,
+                calibration_year_final=_CALIBRATION_END,
+                periodicity=compute.Periodicity.monthly,
+                fitting_params=params,
+            )
+
+    def test_kernel_without_the_spatial_contract_fails_loudly(self, gridded_monthly_precip):
+        """An index registered as a spatial kernel must accept the declaration keyword."""
+        unregistered = xarray_adapter(index_display_name="PNP", spatial_kernel=True)(indices.percentage_of_normal)
+
+        with pytest.raises(TypeError, match="spatial_time_major"):
+            unregistered(
+                gridded_monthly_precip,
+                scale=3,
+                calibration_year_initial=_CALIBRATION_START,
+                calibration_year_final=_CALIBRATION_END,
+            )
+
+    def test_masked_pearson_cells_return_missing(self, gridded_monthly_precip):
+        """A fully masked cell becomes NaN instead of the mask's fill value."""
+        data = np.ma.masked_array(
+            np.asarray(gridded_monthly_precip.values, dtype=float),
+            mask=False,
+        )
+        data.mask[:, 1, 1] = True
+
+        result = indices.spi(
+            data,
+            scale=3,
+            distribution=indices.Distribution.pearson,
+            data_start_year=1980,
+            calibration_year_initial=_CALIBRATION_START,
+            calibration_year_final=_CALIBRATION_END,
+            periodicity=compute.Periodicity.monthly,
+        )
+
+        assert not np.ma.isMaskedArray(result)
+        assert np.all(np.isnan(result[:, 1, 1]))
+        assert np.isfinite(result[100, 0, 0])
+
+    def test_incompatible_pet_cell_axes_raise(self, spatial_spei):
+        """PET cell axes that cannot broadcast with the precipitation block are rejected."""
+        precip = xr.DataArray(
+            np.zeros((24, 2, 2)),
+            coords={"time": pd.date_range("1980-01-01", periods=24, freq="MS"), "lat": [10.0, 20.0], "lon": [0.0, 5.0]},
+            dims=["time", "lat", "lon"],
+        )
+
+        with pytest.raises(ValueError, match="Incompatible precipitation and PET arrays"):
+            spatial_spei(
+                precip,
+                pet_mm=np.zeros((24, 3)),
+                scale=3,
+                distribution=indices.Distribution.gamma,
+                calibration_year_initial=_CALIBRATION_START,
+                calibration_year_final=_CALIBRATION_END,
+            )

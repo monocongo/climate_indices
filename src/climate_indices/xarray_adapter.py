@@ -513,8 +513,8 @@ def _make_calendar_aware_numpy_wrapper(
             time-major block rather than a plain time series.
     """
     if core_axis_first:
-        # spatial kernels only read a (time, *cells) block when told to, which keeps the
-        # NumPy API rejecting gridded arrays instead of re-reading their axes
+        # a block whose first cell axis is a calendar period length is ambiguous with a
+        # (years, periods, *cells) array, so the kernel is told which reading this is
         valid_kwargs = {**valid_kwargs, "spatial_time_major": True}
 
     def wrapper(*numpy_arrays: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:

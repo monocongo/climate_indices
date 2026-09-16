@@ -125,7 +125,7 @@ Linear-combination-of-order-statistics summary measures of a sample's location, 
 ### Gridded execution
 
 **Spatial Block** (spelled time-major in code):
-A gridded input array shaped `(time, *cells)` — the time axis first, every trailing axis an independent cell — that the fitting-based indices scale, fit, and transform in one pass. Any array with three or more dimensions is read this way; 1-D input stays a series and 2-D input stays the legacy `(years, periods)` layout. The one ambiguous shape is a block whose first cell axis equals the period length, which is indistinguishable from a `(years, periods, *cells)` array; that shape has to be declared with `spatial_time_major=True`, which `xarray_adapter` sets for every block it packs. See [ADR-0008](../../docs/adr/0008-spatial-block-declaration.md).
+A gridded input array shaped `(time, *cells)` — the time axis first, every trailing axis an independent cell — that the fitting-based indices scale, fit, and transform in one pass. Any array with three or more dimensions is read this way; 1-D input stays a series and 2-D input stays the legacy `(years, periods)` layout. The one ambiguous shape is a block whose first cell axis is a calendar period length (12 or 366), which is indistinguishable from a `(years, periods, *cells)` array; that shape has to be declared with `spatial_time_major=True`, which `xarray_adapter` sets for every block it packs. See [ADR-0008](../../docs/adr/0008-spatial-block-declaration.md).
 _Avoid_: time-major block (the code spelling, not the prose term)
 
 **Spatial Kernel**:

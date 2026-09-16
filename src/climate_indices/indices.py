@@ -212,10 +212,19 @@ def _apply_per_cell(
         position = (slice(None), *cell_index)
         cell_params = fitting_params
         if fitting_params is not None:
-            cell_params = {
-                key: (value[(slice(None), *cell_index)] if getattr(value, "shape", ())[1:] == cells else value)
-                for key, value in fitting_params.items()
-            }
+            cell_params = {}
+            for key, value in fitting_params.items():
+                param_shape = getattr(value, "shape", ())
+                if len(param_shape) < 2:
+                    # a period-only parameter array is shared by every cell
+                    cell_params[key] = value
+                elif param_shape[1:] == cells:
+                    cell_params[key] = value[(slice(None), *cell_index)]
+                else:
+                    raise ValueError(
+                        f"Fitting parameter '{key}' has shape {param_shape}, which carries cell dimensions "
+                        f"{param_shape[1:]} that do not match the input's cells {cells}"
+                    )
         cell_result = func(*[array[position] for array in cell_arrays], fitting_params=cell_params)
         result[position] = np.ma.filled(cell_result, np.nan)
     return result
@@ -471,9 +480,10 @@ def spi(
         distribution only, since the Pearson Type III fit still runs once per series.
         Two-dimensional input is still read as the legacy (years, periods) layout
         and flattened into a single series, not treated as a (time, cells) grid.
-        When the first cell axis is itself the period length the shape is equally
-        readable as a (years, periods, *cells) array, and then this has to be declared
-        with ``spatial_time_major``; the xarray adapter declares every block it packs.
+        When the first cell axis is a calendar period length (12 or 366) the shape is
+        equally readable as a (years, periods, *cells) array, and then the reading has to
+        be declared with ``spatial_time_major``; the xarray adapter declares every block
+        it packs, and only that ambiguous shape raises without a declaration.
     :param scale: number of time steps over which the values should be scaled
         before the index is computed
     :param distribution: distribution type to be used for the internal
@@ -530,11 +540,11 @@ def spi(
         # arrived, and the Pearson Type III fit still runs once per cell (see #940), so
         # those two cases leave this function's main flow alone.
         if values.ndim > 2:
-            if not spatial_time_major and values.shape[1] == periodicity.period_length:
+            if not spatial_time_major and values.shape[1] in compute._PERIOD_LENGTHS:
                 raise ValueError(
                     f"Invalid shape of input array: {values.shape} -- a (time, *cells) block whose first "
-                    f"cell axis equals the {periodicity.period_length}-step period length is ambiguous with "
-                    "a (years, periods, *cells) array; declare it with spatial_time_major=True"
+                    "cell axis is a calendar period length is ambiguous with a (years, periods, *cells) "
+                    "array; declare it with spatial_time_major=True"
                 )
             if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
                 return values
@@ -697,9 +707,10 @@ def spei(
         distribution only, since the Pearson Type III fit still runs once per series.
         Two-dimensional input is still read as the legacy (years, periods) layout
         and flattened into a single series, not treated as a (time, cells) grid.
-        When the first cell axis is itself the period length the shape is equally
-        readable as a (years, periods, *cells) array, and then this has to be declared
-        with ``spatial_time_major``; the xarray adapter declares every block it packs.
+        When the first cell axis is a calendar period length (12 or 366) the shape is
+        equally readable as a (years, periods, *cells) array, and then the reading has to
+        be declared with ``spatial_time_major``; the xarray adapter declares every block
+        it packs, and only that ambiguous shape raises without a declaration.
     :param pet_mm: an array of monthly PET values, in millimeters,
         should be of the same size (and shape?) as the input precipitation array
     :param scale: the number of months over which the values should be scaled
@@ -761,8 +772,23 @@ def spei(
             )
             return precips_mm
 
-        # validate that the two input arrays are compatible
-        if precips_mm.size != pet_mm.size or (precips_mm.ndim > 2 and precips_mm.shape != pet_mm.shape):
+        # a single PET time series is one series for every cell: give it singleton cell
+        # axes so it broadcasts across a spatial block rather than looking mismatched
+        if precips_mm.ndim > 2 and pet_mm.ndim == 1 and pet_mm.size == precips_mm.shape[0]:
+            pet_mm = pet_mm.reshape((pet_mm.shape[0],) + (1,) * (precips_mm.ndim - 1))
+
+        # validate that the two input arrays are compatible: a spatial block needs matching
+        # time lengths and cell axes that broadcast together, while the series path keeps
+        # its size-based check
+        if precips_mm.ndim > 2 or pet_mm.ndim > 2:
+            try:
+                np.broadcast_shapes(precips_mm.shape, pet_mm.shape)
+                compatible = True
+            except ValueError:
+                compatible = False
+        else:
+            compatible = precips_mm.size == pet_mm.size
+        if not compatible:
             message = "Incompatible precipitation and PET arrays"
             _logger.error(message)
             raise ValueError(message)
@@ -772,11 +798,11 @@ def spei(
         # is the caller that packs it that way. An all-missing block returned above, and
         # the Pearson Type III fit still runs once per cell (see #940).
         if precips_mm.ndim > 2:
-            if not spatial_time_major and precips_mm.shape[1] == periodicity.period_length:
+            if not spatial_time_major and precips_mm.shape[1] in compute._PERIOD_LENGTHS:
                 raise ValueError(
                     f"Invalid shape of input array: {precips_mm.shape} -- a (time, *cells) block whose first "
-                    f"cell axis equals the {periodicity.period_length}-step period length is ambiguous with "
-                    "a (years, periods, *cells) array; declare it with spatial_time_major=True"
+                    "cell axis is a calendar period length is ambiguous with a (years, periods, *cells) "
+                    "array; declare it with spatial_time_major=True"
                 )
             if distribution is Distribution.pearson:
                 return _apply_per_cell(

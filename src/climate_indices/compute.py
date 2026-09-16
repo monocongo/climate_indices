@@ -1231,8 +1231,8 @@ def prepare_scaled(
             False, since it averages the un-reshaped 1-D sums over each calendar period.
         spatial_time_major: Declares that a three-or-more-dimensional ``values`` is a
             time-major block of independent time series, shaped (time, *cells). That is
-            how a block is read anyway, except when the first cell axis is itself the
-            period length, which makes the shape equally readable as a
+            how a block is read anyway, except when the first cell axis is a calendar
+            period length (12 or 366), which makes the shape equally readable as a
             (years, periods, *cells) array; there the caller has to say which it means.
             ``xarray_adapter`` sets this for every block it packs.
 
@@ -1260,9 +1260,9 @@ def prepare_scaled(
         values = values.flatten()
     elif len(shape) > 2:
         # every array with three or more dimensions is read as a time-major block, except
-        # when its first cell axis is itself the period length: that shape is equally
+        # when its first cell axis is a calendar period length: that shape is equally
         # readable as a (years, periods, *cells) array, so it must be declared
-        if not spatial_time_major and shape[1] == periodicity.period_length:
+        if not spatial_time_major and shape[1] in _PERIOD_LENGTHS:
             _logger.error(
                 "validation_error",
                 operation="prepare_scaled",
@@ -1271,8 +1271,8 @@ def prepare_scaled(
             )
             raise ValueError(
                 f"Invalid shape of input array: {shape} -- a (time, *cells) block whose first cell axis "
-                f"equals the {periodicity.period_length}-step period length is ambiguous with a "
-                "(years, periods, *cells) array; declare it with spatial_time_major=True"
+                "is a calendar period length is ambiguous with a (years, periods, *cells) array; "
+                "declare it with spatial_time_major=True"
             )
     elif len(shape) != 1:
         _logger.error(

@@ -643,7 +643,7 @@ class TestErrorHierarchyDocumented:
         data_year_start_monthly,
         data_year_end_monthly,
     ) -> None:
-        """Dimension mismatch errors still raise ValueError (unchanged behavior)."""
+        """Undeclared ambiguous gridded input still raises ValueError."""
         # a gridded array whose first cell axis is the period length is ambiguous with a
         # (years, periods, *cells) array and must be declared, so it still raises
         three_d_array = np.zeros((4, 12, 8))
