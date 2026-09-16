@@ -106,6 +106,23 @@ def test_llms_bundle_matches_configured_sources(output: Path, sources: list[str]
     )
 
 
+def test_section_resolves_relative_links_from_repository_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bundled links should resolve from the repository root, not the source directory."""
+    monkeypatch.setattr(generate_llms_txt, "ROOT", tmp_path)
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "guide.md").write_text(
+        "[ADR](adr/0003.md) [root](../README.md) [web](https://example.com) [anchor](#chunking)\n",
+        encoding="utf-8",
+    )
+
+    section = generate_llms_txt._section("docs/guide.md")
+
+    assert "[ADR](docs/adr/0003.md)" in section
+    assert "[root](README.md)" in section
+    assert "[web](https://example.com)" in section
+    assert "[anchor](#chunking)" in section
+
+
 def test_render_builds_header_and_ordered_sections(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """_render should emit the fixed preamble followed by sections in source order."""
     monkeypatch.setattr(generate_llms_txt, "ROOT", tmp_path)

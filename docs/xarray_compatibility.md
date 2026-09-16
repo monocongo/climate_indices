@@ -137,11 +137,18 @@ dry-run baseline of the same process):
 Recommendations for monthly grids:
 
 - Keep each block under roughly 100 MB of working set — around 1,600 cells at
-  this per-cell cost. The 38 x 87 reference grid is not large, but as one block
-  it costs 205 MB and is about 3x slower than the same grid in `10 x 10` blocks.
-- Chunk both spatial dimensions (`10 x 10` to `20 x 20`) rather than long rows:
-  square-ish blocks keep the per-period reductions proportionate and spread the
-  work over more tasks.
+  this per-cell cost. That figure is a per-block measurement taken with
+  `scheduler="synchronous"`, one block resident at a time; a threaded or
+  distributed worker can hold several ready blocks plus their inputs and
+  outputs, so budget from the memory a worker can spare per block it runs at
+  once. The 38 x 87 reference grid is not large, but as one block it costs
+  205 MB and is about 3x slower than the same grid in `10 x 10` blocks.
+- Size blocks by cell count rather than shape: the fit's working set grows with
+  the cells a block holds, and with a fixed per-block budget the task count
+  comes from the grid size, so aspect ratio changes neither. Chunk both spatial
+  dimensions (the `10 x 10` to `20 x 20` range here) rather than long rows so
+  the block size tracks the budget; chunking a single dimension ties it to the
+  grid's row length, which can overshoot the budget on wide grids.
 - Leave at least a few blocks per worker so the scheduler has work to balance;
   `benchmarks/parallel_scaling.py` re-chunks spatial dims to one block per
   worker for its strong-scaling runs.
@@ -151,8 +158,11 @@ Recommendations for monthly grids:
 
 Rechunk once, at read or prepare time, when the stored layout differs from the
 shape the computation wants — a Zarr store with one `time` chunk per year, or a
-single chunk spanning the whole grid. Rechunking is a data copy, so pay it once
-before the index calls rather than on every call. The teaching notebook
+single chunk spanning the whole grid. `.chunk(...)` only sets the layout of a
+lazy graph; the copy happens when the graph is computed, so persist the array
+(or write the rechunked layout back to the store) before the index calls to pay
+the copy once. Without that, every separate index graph that consumes the array
+can reread and redo the rechunk work. The teaching notebook
 `notebooks/zarr_dask_spi_spei.ipynb` prepares its store with `time` as one chunk
 and `10 x 10` spatial blocks, the layout the table above measures. The
 `{"lat": 50, "lon": 50}` shape in ADR-0003 is legal chunking, not a size

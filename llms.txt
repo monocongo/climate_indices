@@ -412,8 +412,8 @@ may change in a future minor release.
 | Coordinate preservation | Yes | Adapter tests verify time and spatial coordinates are preserved. |
 | CF-style metadata | Yes | `CF_METADATA` registry and adapter tests verify `long_name`, `units`, `references`, version, and history attributes. |
 | Dask-backed arrays | Yes, constrained | The time dimension must be a single chunk. Adapter tests verify detection and validation. |
-| Spatial (gridded) kernels | Yes, for SPI, SPEI, and PET | `spi`/`spei` receive a time-major `(time, *cells)` block and fit every cell in one pass, so a gridded gamma run costs one kernel call per Dask block instead of one call per cell ([ADR-0008](adr/0008-spatial-block-declaration.md)). The PET entry points (`pet_thornthwaite`, `pet_hargreaves`) hand `indices.pet` and `eto.eto_hargreaves` the same block layout with the per-cell latitude array, so a gridded PET run costs one call per block ([#941](https://github.com/monocongo/climate_indices/issues/941)). The NumPy API keeps 2-D input on the legacy `(years, periods)` reading, and rejects the one gridded shape that is ambiguous with it (a first cell axis of 12 or 366). Inputs with a single non-core dimension keep the per-cell path, as do EDDI and percentage-of-normal ([#942](https://github.com/monocongo/climate_indices/issues/942)) and the Pearson Type III fit ([#940](https://github.com/monocongo/climate_indices/issues/940)). See `tests/test_spatial_kernel.py`. |
-| Calendar semantics | Yes, constrained | Standard/gregorian/proleptic_gregorian `datetime64` only; monthly input must begin in January and daily input on January 1. Daily values are converted to the 366-day calendar (February 29 synthesized from February 28 and March 1) and restored afterward. A partial final year is supported; `cftime` calendars are rejected. See [ADR-0004](adr/0004-xarray-calendar-semantics.md). |
+| Spatial (gridded) kernels | Yes, for SPI, SPEI, and PET | `spi`/`spei` receive a time-major `(time, *cells)` block and fit every cell in one pass, so a gridded gamma run costs one kernel call per Dask block instead of one call per cell ([ADR-0008](docs/adr/0008-spatial-block-declaration.md)). The PET entry points (`pet_thornthwaite`, `pet_hargreaves`) hand `indices.pet` and `eto.eto_hargreaves` the same block layout with the per-cell latitude array, so a gridded PET run costs one call per block ([#941](https://github.com/monocongo/climate_indices/issues/941)). The NumPy API keeps 2-D input on the legacy `(years, periods)` reading, and rejects the one gridded shape that is ambiguous with it (a first cell axis of 12 or 366). Inputs with a single non-core dimension keep the per-cell path, as do EDDI and percentage-of-normal ([#942](https://github.com/monocongo/climate_indices/issues/942)) and the Pearson Type III fit ([#940](https://github.com/monocongo/climate_indices/issues/940)). See `tests/test_spatial_kernel.py`. |
+| Calendar semantics | Yes, constrained | Standard/gregorian/proleptic_gregorian `datetime64` only; monthly input must begin in January and daily input on January 1. Daily values are converted to the 366-day calendar (February 29 synthesized from February 28 and March 1) and restored afterward. A partial final year is supported; `cftime` calendars are rejected. See [ADR-0004](docs/adr/0004-xarray-calendar-semantics.md). |
 | Automatic temporal inference | Yes | Monthly and daily time-coordinate inference is covered by adapter tests. |
 | Multi-input alignment | Yes | SPEI aligns precipitation and PET with an inner join and emits a warning when timesteps are dropped. |
 
@@ -421,7 +421,7 @@ may change in a future minor release.
 
 KBDI's adapter (`fire.kbdi()`) and the CFFWIS adapter (`fire.cffwis()`, #807)
 are shipped, following the recursive contract in
-[ADR-0006](adr/0006-fire-recursive-state-and-execution.md). The weather-only
+[ADR-0006](docs/adr/0006-fire-recursive-state-and-execution.md). The weather-only
 Fosberg Fire Weather Index is available today too, via the NumPy layer with
 no xarray adapter needed (it is elementwise with no dimension to reduce).
 Hot-Dry-Windy's adapter (see the main table above) is not recursive either,
@@ -444,7 +444,7 @@ an xarray `Dataset`, so its arrays carry the computational spatial shape but
 no coordinates, even when `values` on the same result is a `DataArray`.
 
 Missing observations follow
-[ADR-0007](adr/0007-fire-missing-data-policy.md): nothing is interpolated
+[ADR-0007](docs/adr/0007-fire-missing-data-policy.md): nothing is interpolated
 implicitly. The default `nan_policy="propagate"` poisons the state at the
 first interior gap and yields NaN outputs from there on;
 `nan_policy="bridge"` with `max_gap_days=N` skips runs of at most `N` missing
@@ -505,7 +505,7 @@ Two rules fix the shape of a chunked input:
 1. **Keep `time` in a single chunk.** Distribution fitting needs each cell's
    complete series, so the SPI/SPEI adapter path rejects a split `time` with
    `CoordinateValidationError`
-   ([ADR-0003](adr/0003-dask-time-dimension-single-chunk.md)) and the stateful
+   ([ADR-0003](docs/adr/0003-dask-time-dimension-single-chunk.md)) and the stateful
    fire adapters require the same for their weather inputs. The PET adapters are
    the exception: they pass `allow_rechunk=True` and rechunk a split `time`
    internally.
@@ -529,11 +529,18 @@ dry-run baseline of the same process):
 Recommendations for monthly grids:
 
 - Keep each block under roughly 100 MB of working set — around 1,600 cells at
-  this per-cell cost. The 38 x 87 reference grid is not large, but as one block
-  it costs 205 MB and is about 3x slower than the same grid in `10 x 10` blocks.
-- Chunk both spatial dimensions (`10 x 10` to `20 x 20`) rather than long rows:
-  square-ish blocks keep the per-period reductions proportionate and spread the
-  work over more tasks.
+  this per-cell cost. That figure is a per-block measurement taken with
+  `scheduler="synchronous"`, one block resident at a time; a threaded or
+  distributed worker can hold several ready blocks plus their inputs and
+  outputs, so budget from the memory a worker can spare per block it runs at
+  once. The 38 x 87 reference grid is not large, but as one block it costs
+  205 MB and is about 3x slower than the same grid in `10 x 10` blocks.
+- Size blocks by cell count rather than shape: the fit's working set grows with
+  the cells a block holds, and with a fixed per-block budget the task count
+  comes from the grid size, so aspect ratio changes neither. Chunk both spatial
+  dimensions (the `10 x 10` to `20 x 20` range here) rather than long rows so
+  the block size tracks the budget; chunking a single dimension ties it to the
+  grid's row length, which can overshoot the budget on wide grids.
 - Leave at least a few blocks per worker so the scheduler has work to balance;
   `benchmarks/parallel_scaling.py` re-chunks spatial dims to one block per
   worker for its strong-scaling runs.
@@ -543,8 +550,11 @@ Recommendations for monthly grids:
 
 Rechunk once, at read or prepare time, when the stored layout differs from the
 shape the computation wants — a Zarr store with one `time` chunk per year, or a
-single chunk spanning the whole grid. Rechunking is a data copy, so pay it once
-before the index calls rather than on every call. The teaching notebook
+single chunk spanning the whole grid. `.chunk(...)` only sets the layout of a
+lazy graph; the copy happens when the graph is computed, so persist the array
+(or write the rechunked layout back to the store) before the index calls to pay
+the copy once. Without that, every separate index graph that consumes the array
+can reread and redo the rechunk work. The teaching notebook
 `notebooks/zarr_dask_spi_spei.ipynb` prepares its store with `time` as one chunk
 and `10 x 10` spatial blocks, the layout the table above measures. The
 `{"lat": 50, "lon": 50}` shape in ADR-0003 is legal chunking, not a size
