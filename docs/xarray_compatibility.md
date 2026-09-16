@@ -99,7 +99,7 @@ applies per cell along the time axis.
 - Execute the end-to-end tutorial from a fresh kernel before publishing it:
   `bash scripts/smoke_e2e_notebook.sh` prepares the pinned sample inputs and
   runs `notebooks/zarr_dask_spi_spei.ipynb` end to end into a scratch directory,
-  so a local run never rewrites the committed notebook. The CI `notebooks` job
-  runs both commands. `tests/test_e2e_with_dask.py` keeps offline coverage by
-  executing the notebook's cells against a synthetic store, so ordinary test
-  jobs need no download.
+  so a local run never rewrites the committed notebook. CI executes the
+  tutorial only via `tests/test_e2e_with_dask.py`, which runs its cells against
+  a synthetic store; that suite deliberately skips the Dask Client cell (#829),
+  so this local run is the only full-notebook check.

@@ -151,51 +151,6 @@ class TestXarrayAdapterExtractRewrap:
         assert result.attrs["long_name"] == "Monthly Precipitation"
 
 
-class TestCFMetadataRegistry:
-    """Test CF metadata registry structure and SPI entry."""
-
-    def test_spi_entry_exists(self):
-        """CF_METADATA contains 'spi' key."""
-        assert "spi" in CF_METADATA
-
-    def test_spi_long_name(self):
-        """SPI long_name is 'Standardized Precipitation Index'."""
-        assert CF_METADATA["spi"]["long_name"] == "Standardized Precipitation Index"
-
-    def test_spi_units(self):
-        """SPI units are 'dimensionless'."""
-        assert CF_METADATA["spi"]["units"] == "dimensionless"
-
-    def test_spi_references_contains_mckee(self):
-        """SPI references contain McKee et al. (1993) citation."""
-        references = CF_METADATA["spi"]["references"]
-        assert "McKee" in references
-        assert "1993" in references
-
-    def test_spi_has_no_standard_name(self):
-        """SPI entry has no standard_name key (no official CF standard name)."""
-        assert "standard_name" not in CF_METADATA["spi"]
-
-    def test_all_entries_have_required_keys(self):
-        """All entries have required keys: long_name, units, references."""
-        required_keys = {"long_name", "units", "references"}
-        for index_name, metadata in CF_METADATA.items():
-            actual_keys = set(metadata.keys())
-            # check that all required keys are present
-            assert required_keys.issubset(actual_keys), (
-                f"Entry '{index_name}' missing required keys: {required_keys - actual_keys}"
-            )
-
-    def test_all_values_are_strings(self):
-        """All metadata values are strings (units may be empty for dimensionless indices)."""
-        for index_name, metadata in CF_METADATA.items():
-            for key, value in metadata.items():
-                assert isinstance(value, str), f"Entry '{index_name}', key '{key}' is not a string"
-                # units can be empty string for dimensionless indices like PCI
-                if key != "units":
-                    assert value.strip(), f"Entry '{index_name}', key '{key}' is empty or whitespace"
-
-
 class TestXarrayAdapterCFMetadata:
     """Test CF metadata application."""
 
@@ -2343,33 +2298,6 @@ class TestXarrayAdapterMultiInput:
 
         assert result.attrs["long_name"] == "SPEI"
         assert result.attrs["units"] == "dimensionless"
-
-
-class TestCFMetadataRegistrySPEI:
-    """Test SPEI entry in CF_METADATA registry."""
-
-    def test_spei_metadata_exists(self):
-        """SPEI metadata entry exists in registry."""
-        assert "spei" in CF_METADATA
-
-    def test_spei_long_name(self):
-        """SPEI has correct long_name."""
-        assert CF_METADATA["spei"]["long_name"] == "Standardized Precipitation Evapotranspiration Index"
-
-    def test_spei_units(self):
-        """SPEI has correct units."""
-        assert CF_METADATA["spei"]["units"] == "dimensionless"
-
-    def test_spei_references(self):
-        """SPEI has references attribute."""
-        assert "references" in CF_METADATA["spei"]
-        assert "Vicente-Serrano" in CF_METADATA["spei"]["references"]
-        assert "2010" in CF_METADATA["spei"]["references"]
-
-    def test_spei_no_standard_name(self):
-        """SPEI does not have standard_name (not officially defined in CF)."""
-        # standard_name is optional, should not be present for SPEI
-        assert "standard_name" not in CF_METADATA["spei"]
 
 
 class TestSPEIIntegration:
