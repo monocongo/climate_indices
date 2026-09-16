@@ -725,6 +725,13 @@ def _daily_weather_arrays(
 ) -> tuple[npt.NDArray[np.float64], ...]:
     """Coerce and broadcast time-first daily weather inputs, rejecting infinity."""
     arrays = tuple(_as_float_array(value) for value in values)
+    # Time-first arrays are left-aligned: a shorter input is shared across every
+    # trailing axis, so a (time,) series spans the whole spatial grid instead of
+    # NumPy aligning it with the final axis.
+    ndim = max(array.ndim for array in arrays)
+    arrays = tuple(
+        array if array.ndim == ndim else array.reshape(array.shape + (1,) * (ndim - array.ndim)) for array in arrays
+    )
     try:
         broadcast = np.broadcast_arrays(*arrays)
     except ValueError as exc:
@@ -763,11 +770,14 @@ def _month_array(month: npt.ArrayLike, weather_shape: tuple[int, ...]) -> npt.ND
             argument_value="a non-finite, non-integral, or out-of-range value",
             valid_values="Integer values in [1, 12]",
         )
+    months = months.astype(np.int64)
     if months.ndim == 1 and len(weather_shape) > 1 and months.shape[0] == weather_shape[0]:
         # a calendar month series is shared across every spatial cell
         months = months.reshape((months.shape[0],) + (1,) * (len(weather_shape) - 1))
     try:
-        broadcast = np.broadcast_to(months, weather_shape)
+        # the shared scalar and (time,) forms stay broadcast views instead of
+        # retaining an int64 value for every time-cell
+        result: npt.NDArray[np.int64] = np.broadcast_to(months, weather_shape)
     except ValueError as exc:
         raise InvalidArgumentError(
             "month must broadcast to the time-first weather shape.",
@@ -775,7 +785,6 @@ def _month_array(month: npt.ArrayLike, weather_shape: tuple[int, ...]) -> npt.ND
             argument_value=f"shape {months.shape}",
             valid_values=f"A scalar or an array broadcastable to {weather_shape}",
         ) from exc
-    result: npt.NDArray[np.int64] = broadcast.astype(np.int64)
     return result
 
 
@@ -908,9 +917,6 @@ def _run_cffwis_recurrence(
     stays NaN and its state is untouched.
     """
     n_days = weather_valid.shape[0]
-    values = np.full((max(n_days - spin_up, 0), *weather_valid.shape[1:]), np.nan, dtype=np.float64)
-    started = trailing_gap_days >= 0
-    poisoned = np.isnan(state_value)
 
     log = _logger.bind(
         index_type=index_type,
@@ -919,9 +925,14 @@ def _run_cffwis_recurrence(
     )
     log.info("calculation_started")
     t0 = time.perf_counter()
-    memory_metrics = check_large_array_memory(*memory_arrays, weather_valid, values)
-
     try:
+        # the allocation is inside the try so an output-allocation failure
+        # still reports the recurrence lifecycle
+        values = np.full((max(n_days - spin_up, 0), *weather_valid.shape[1:]), np.nan, dtype=np.float64)
+        started = trailing_gap_days >= 0
+        poisoned = np.isnan(state_value)
+        memory_metrics = check_large_array_memory(*memory_arrays, weather_valid, values)
+
         for day in range(n_days):
             # A cell whose static input is unusable has no recurrence to
             # gap-manage: it never starts, so it is not an elapsed missing day.

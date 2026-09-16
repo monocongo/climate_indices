@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, fields, replace
+from unittest import mock
 
 import numpy as np
 import pytest
@@ -868,6 +869,52 @@ def test_month_may_be_a_time_axis_shared_across_cells() -> None:
     values = _run_dmc(weather)
     assert values.shape == (days, 3)
     np.testing.assert_array_equal(values[:, 0], values[:, 2])
+
+
+def test_shared_time_series_broadcasts_over_spatial_fields() -> None:
+    """A (time,) input shares across a gridded input instead of aligning with its final axis."""
+    days = 6
+    base = _series(days)
+    gridded = replace(
+        base,
+        temperature=np.tile(base.temperature[:, None], (1, 4)),
+        latitude=np.full(4, 46.0),
+    )
+    for runner in (_run_ffmc, _run_dmc, _run_dc):
+        values = runner(gridded)
+        assert values.shape == (days, 4)
+        expected = runner(base)
+        for column in range(4):
+            np.testing.assert_allclose(values[:, column], expected)
+
+
+def test_shared_calendar_months_stay_a_broadcast_view() -> None:
+    """Shared scalar and (time,) months must not materialize a full grid-sized int64 copy."""
+    shared = np.asarray([1, 2, 3])
+    result = fire._month_array(shared, (3, 4, 5))
+    assert result.shape == (3, 4, 5)
+    assert 0 in result.strides
+    np.testing.assert_array_equal(result[:, 0, 0], shared)
+    assert fire._month_array(7, (3, 4, 5)).strides == (0, 0, 0)
+
+
+def test_output_allocation_failure_emits_lifecycle_events(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failure to allocate the recurrence output still reports started and failed."""
+    real_full = np.full
+
+    def fail_output_allocation(*args: object, **kwargs: object) -> np.ndarray:
+        fill_value = args[1] if len(args) > 1 else kwargs.get("fill_value")
+        if isinstance(fill_value, float) and np.isnan(fill_value):
+            raise MemoryError("simulated output allocation failure")
+        return real_full(*args, **kwargs)  # type: ignore[call-overload]
+
+    monkeypatch.setattr(fire.np, "full", fail_output_allocation)
+    with mock.patch.object(fire, "_logger") as mocked_logger:
+        with pytest.raises(MemoryError):
+            _run_ffmc(_series(3))
+    bound = mocked_logger.bind.return_value
+    bound.info.assert_called_once_with("calculation_started")
+    assert bound.error.call_args.args[0] == "calculation_failed"
 
 
 @pytest.mark.parametrize("latitude", [91.0, -91.0, np.inf])
