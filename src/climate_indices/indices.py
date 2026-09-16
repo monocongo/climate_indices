@@ -491,6 +491,10 @@ def spi(
     memory_metrics = check_large_array_memory(values)
 
     try:
+        # normalize any deprecated fitting-parameter aliases once, before the per-cell
+        # Pearson dispatch below, so the diagnostic stays bounded per spatial operation
+        fitting_params = compute._normalize_fitting_params(fitting_params)
+
         # remember the original length and shape of the array, in order to facilitate
         # returning an array of the same size and layout
         original_length = values.size
@@ -667,6 +671,10 @@ def spei(
     memory_metrics = check_large_array_memory(precips_mm, pet_mm)
 
     try:
+        # normalize any deprecated fitting-parameter aliases once, before the per-cell
+        # Pearson dispatch below, so the diagnostic stays bounded per spatial operation
+        fitting_params = compute._normalize_fitting_params(fitting_params)
+
         # if we're passed all missing values then we can't compute anything,
         # so we return the same array of missing values
         if (isinstance(precips_mm, np.ma.MaskedArray) and precips_mm.mask.all()) or np.all(np.isnan(precips_mm)):

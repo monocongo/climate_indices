@@ -955,3 +955,44 @@ def test_spei_accepts_explicit_none_fitting_parameters(
         calibration_year_end_monthly,
     )
     np.testing.assert_array_equal(with_explicit_none, without_parameters)
+
+
+def test_spatial_pearson_deprecated_fitting_keys_warn_once(
+    precips_mm_monthly,
+    data_year_start_monthly,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+):
+    """A deprecated fitting-parameter key warns once per top-level spatial operation,
+    not once for every cell the Pearson Type III dispatch fits."""
+    block = np.asarray(precips_mm_monthly).reshape(-1, 1, 1) * np.ones((1, 3, 2))
+    deprecated = {"probabilities_of_zero": None, "locs": None, "scales": None, "skews": None}
+
+    with mock.patch.object(compute, "_logger") as warning_logger:
+        indices.spi(
+            block,
+            6,
+            indices.Distribution.pearson,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            compute.Periodicity.monthly,
+            deprecated,
+            spatial_time_major=True,
+        )
+    assert warning_logger.warning.call_count == len(deprecated)
+
+    with mock.patch.object(compute, "_logger") as warning_logger:
+        indices.spei(
+            block,
+            np.full_like(block, 10.0),
+            6,
+            indices.Distribution.pearson,
+            compute.Periodicity.monthly,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            deprecated,
+            spatial_time_major=True,
+        )
+    assert warning_logger.warning.call_count == len(deprecated)
