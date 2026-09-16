@@ -1197,7 +1197,7 @@ climate_indices/
 │   ├── test_property_based.py    # Property-based invariant tests
 │   ├── test_backward_compat.py   # Backward compatibility suite
 │   ├── test_exceptions.py        # Exception handling tests
-│   ├── test_logging.py           # Logging behavior tests
+│   ├── test_observability.py     # Logging behavior and lifecycle tests
 │   ├── test_metadata_validation.py # CF metadata validation tests
 │   ├── test_benchmark_*.py       # Performance regression tests
 │   └── fixture/                  # Test data (numpy arrays, JSON)
@@ -1353,10 +1353,7 @@ tests/
 │   └── test_input_type_detection.py # Type detection tests
 │
 ├── Observability Tests
-│   ├── test_logging.py              # Structured logging tests
-│   ├── test_logging_config.py       # Logger configuration tests
-│   ├── test_error_context_logging.py # Error context tests
-│   ├── test_calculation_event_logging.py # Calc event logs
+│   ├── test_observability.py        # Logging config, lifecycle events
 │   └── test_performance_metrics.py  # Performance tracking tests
 │
 ├── Performance Tests (Benchmarks)
