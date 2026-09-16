@@ -81,8 +81,8 @@ def run_spi(precip: xr.DataArray) -> xr.DataArray:
     )
 
 
-def profile(output: Path, top: int) -> float:
-    """Profile SPI on the reference grid, writing the raw report to ``output``.
+def profile(top: int) -> float:
+    """Profile SPI on the reference grid, writing the raw report to ``DEFAULT_OUTPUT``.
 
     Returns:
         Wall-clock seconds spent inside the profiled SPI call.
@@ -100,9 +100,9 @@ def profile(output: Path, top: int) -> float:
     profiler.disable()
     elapsed = time.perf_counter() - start
 
-    output.parent.mkdir(parents=True, exist_ok=True)
+    DEFAULT_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     log_level = os.environ.get("CLIMATE_INDICES_LOG_LEVEL", "INFO")
-    with output.open("w") as stream:
+    with DEFAULT_OUTPUT.open("w") as stream:
         print(
             f"grid: time={precip.sizes['time']} lat={precip.sizes['lat']} "
             f"lon={precip.sizes['lon']}; scale={SCALE}; "
@@ -124,12 +124,11 @@ def profile(output: Path, top: int) -> float:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT, help="raw cProfile report path")
     parser.add_argument("--top", type=int, default=30, help="number of hottest entries per sort order")
     args = parser.parse_args()
 
-    elapsed = profile(args.output, args.top)
-    print(f"reference-grid SPI: {elapsed:.1f}s -> {args.output}")
+    elapsed = profile(args.top)
+    print(f"reference-grid SPI: {elapsed:.1f}s -> {DEFAULT_OUTPUT}")
 
 
 if __name__ == "__main__":
