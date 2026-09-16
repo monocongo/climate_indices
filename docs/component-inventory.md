@@ -664,7 +664,7 @@ def scpdsi(
 #### Dependencies
 
 - Core: `numpy`
-- Internal: `_palmer_wells`, `self_calibration`, `utils`
+- Internal: `_palmer_duration`, `_palmer_wells`, `self_calibration`, `utils`
 
 ---
 
@@ -1016,7 +1016,7 @@ def log_performance_metrics(
 | **`xarray_adapter.py`** | compute, indices, exceptions | numpy, xarray, dask |
 | **`indices.py`** | compute, eto, exceptions, utils | numpy, scipy |
 | **`compute.py`** | lmoments, exceptions, utils | numpy, scipy |
-| **`palmer.py`** | _palmer_wells, exceptions | numpy, structlog |
+| **`palmer.py`** | _palmer_duration, _palmer_wells, exceptions | numpy, structlog |
 | _(continued)_ | logging_config, self_calibration, utils | _(see above)_ |
 | **`eto.py`** | exceptions, logging_config, performance, utils | numpy |
 | **`lmoments.py`** | utils | numpy |

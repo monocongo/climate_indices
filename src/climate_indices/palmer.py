@@ -8,6 +8,7 @@ import numpy as np
 from structlog.stdlib import BoundLogger
 
 from climate_indices import _palmer_wells, self_calibration, utils
+from climate_indices._palmer_duration import DurationFactors
 from climate_indices.exceptions import ConvergenceError
 from climate_indices.logging_config import get_logger
 
@@ -19,42 +20,7 @@ __all__ = ["pdsi", "scpdsi"]
 AWCTOP = 1.0
 K8_SIZE = 40
 
-# Palmer's (1965) fixed national duration-factor parameters. Standard PDSI
-# uses these directly; self-calibrating PDSI (scPDSI) fits per-location
-# replacements via the same m/b/c relationship (see palmer's scpdsi()).
-_PALMER_DURATION_P = 0.897
-_PALMER_DURATION_Q = 1.0 / 3.0
-
 _PalmerResult = tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any] | None]
-
-
-def _default_duration_factors() -> tuple[float, float]:
-    """
-    Palmer's (1965) fixed national duration-factor slope and intercept,
-    derived from the published p and q constants.
-
-    :return a tuple of (m, b), the duration-factor slope and intercept
-    :rtype: tuple[float, float]
-    """
-    m = (1.0 - _PALMER_DURATION_P) / _PALMER_DURATION_Q
-    b = _PALMER_DURATION_P / _PALMER_DURATION_Q
-    return m, b
-
-
-def _duration_factor_c(m: float, b: float) -> float:
-    """
-    The CAFEC-style weighting fraction implied by a pair of duration factors.
-
-    :param m: duration-factor slope
-    :param b: duration-factor intercept
-    :return the weighting fraction c = b / (m + b)
-    :rtype: float
-    :raises ValueError: if the duration factors sum to zero
-    """
-    denominator = m + b
-    if denominator == 0:
-        raise ValueError("duration-factor slope and intercept must not sum to zero")
-    return b / denominator
 
 
 def _select_duration_factors(data: dict[str, Any]) -> tuple[float, float]:
@@ -360,17 +326,35 @@ def _calc_scpdsi_k_factors(data: dict[str, Any]) -> None:
     data["ak"] = k_prime
 
 
+def _calc_cafec_zindex(data: dict[str, Any], year: int, month: int) -> None:
+    """
+    Calculate one month's CAFEC (climatically appropriate for existing
+    conditions) precipitation and raw Z-index, writing both into the data
+    dictionary.
+
+    The standard PDSI recursion (_calc_zindex) and the scPDSI recursion
+    (_calc_scpdsi_raw_zindex) compute these identically; only the recurrences
+    downstream of them differ.
+
+    :param data: dictionary of parameters (intialized in pdsi)
+    :param year: row index into the monthly arrays
+    :param month: month index, 0 = January
+    """
+    cafec = (
+        data["alpha"][month] * data["pet"][year, month]
+        + data["beta"][month] * data["prdat"][year, month]
+        + data["gamma"][month] * data["spdat"][year, month]
+        - data["delta"][month] * data["pldat"][year, month]
+    )
+    data["cp"][year, month] = cafec
+    data["z"][year, month] = data["ak"][month] * (data["precips"][year, month] - cafec)
+
+
 def _calc_scpdsi_raw_zindex(data: dict[str, Any]) -> None:
     """Calculate raw Z-index values for the entire input record."""
     for year in range(data["n_years"]):
         for month in range(12):
-            cet = data["alpha"][month] * data["pet"][year, month]
-            cr = data["beta"][month] * data["prdat"][year, month]
-            cro = data["gamma"][month] * data["spdat"][year, month]
-            cl = data["delta"][month] * data["pldat"][year, month]
-            data["cp"][year, month] = cet + cr + cro - cl
-            departure = data["precips"][year, month] - data["cp"][year, month]
-            data["z"][year, month] = data["ak"][month] * departure
+            _calc_cafec_zindex(data, year, month)
 
 
 def _calibration_values(data: dict[str, Any], values: np.ndarray) -> np.ndarray:
@@ -542,7 +526,7 @@ def _statement_210(data: dict[str, Any]) -> None:
     data["px2"][year, month] = 0.0
     data["ppr"][year, month] = 0.0
     m, b = _select_duration_factors(data)
-    data["px3"][year, month] = _duration_factor_c(m, b) * data["x3"] + data["z"][year, month] / (m + b)
+    data["px3"][year, month] = DurationFactors.weighting_fraction(m, b) * data["x3"] + data["z"][year, month] / (m + b)
     data["x"][year, month] = data["px3"][year, month]
 
     if data["k8"] == 0:
@@ -578,7 +562,7 @@ def _statement_200(data: dict[str, Any]) -> None:
     month = data["month"]
     wetm, wetb = data["wetm"], data["wetb"]
     data["px1"][year, month] = max(
-        0, _duration_factor_c(wetm, wetb) * data["x1"] + data["z"][year, month] / (wetm + wetb)
+        0, DurationFactors.weighting_fraction(wetm, wetb) * data["x1"] + data["z"][year, month] / (wetm + wetb)
     )
 
     # if no existing wet spell or drought
@@ -594,7 +578,7 @@ def _statement_200(data: dict[str, Any]) -> None:
 
     drym, dryb = data["drym"], data["dryb"]
     data["px2"][year, month] = min(
-        0.0, _duration_factor_c(drym, dryb) * data["x2"] + data["z"][year, month] / (drym + dryb)
+        0.0, DurationFactors.weighting_fraction(drym, dryb) * data["x2"] + data["z"][year, month] / (drym + dryb)
     )
 
     # if no existing wet spell or drought x2 becomes the new x3
@@ -670,7 +654,9 @@ def _statement_190(data: dict[str, Any]) -> None:
         data["px3"][year, month] = 0
     else:
         m, b = _select_duration_factors(data)
-        data["px3"][year, month] = _duration_factor_c(m, b) * data["x3"] + data["z"][year, month] / (m + b)
+        data["px3"][year, month] = DurationFactors.weighting_fraction(m, b) * data["x3"] + data["z"][year, month] / (
+            m + b
+        )
 
     _statement_200(data)
 
@@ -740,13 +726,7 @@ def _calc_zindex(data: dict[str, Any]) -> None:
             data["ze"] = 0.0
             data["ud"] = 0.0
             data["uw"] = 0.0
-            cet = data["alpha"][month] * data["pet"][year, month]
-            cr = data["beta"][month] * data["prdat"][year, month]
-            cro = data["gamma"][month] * data["spdat"][year, month]
-            cl = data["delta"][month] * data["pldat"][year, month]
-            data["cp"][year, month] = cet + cr + cro - cl
-            cd = data["precips"][year, month] - data["cp"][year, month]
-            data["z"][year, month] = data["ak"][month] * cd
+            _calc_cafec_zindex(data, year, month)
 
             # No abatement underway, wet or drought will end if -.5 <= X3 <= .5
             if (data["pro"] == 100) or (data["pro"] == 0):
@@ -947,9 +927,9 @@ def _initialize_data(
     # duration factors: default to Palmer's fixed national values. scPDSI
     # (see palmer.scpdsi()) overrides these four keys with per-location
     # fitted values after calling this function.
-    default_m, default_b = _default_duration_factors()
-    data["wetm"], data["wetb"] = default_m, default_b
-    data["drym"], data["dryb"] = default_m, default_b
+    duration_factors = DurationFactors.from_defaults()
+    data["wetm"], data["wetb"] = duration_factors.wetm, duration_factors.wetb
+    data["drym"], data["dryb"] = duration_factors.drym, duration_factors.dryb
 
     _validate_fitting_params(data, fitting_params)
 
