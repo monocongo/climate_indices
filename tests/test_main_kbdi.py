@@ -246,8 +246,8 @@ class TestKBDIProcessing:
         )
         precip_path = tmp_path / "precip.nc"
         temp_path = tmp_path / "temp.nc"
-        precip.to_netcdf(precip_path, encoding={"precip": {"chunksizes": (2, 3, 1000)}})
-        temperature.to_netcdf(temp_path, encoding={"tmax": {"chunksizes": (1000, 2, 3)}})
+        precip.to_netcdf(precip_path, encoding={"precip": {"chunksizes": (2, 3, 1000)}}, engine="h5netcdf")
+        temperature.to_netcdf(temp_path, encoding={"tmax": {"chunksizes": (1000, 2, 3)}}, engine="h5netcdf")
 
         captured = {}
         original_kbdi = cli_main.fire.kbdi
@@ -278,6 +278,6 @@ class TestKBDIProcessing:
         assert captured["temp"].chunks is not None
         assert len(captured["precip"].chunks[captured["precip"].dims.index("time")]) == 1
 
-        with xr.open_dataset(tmp_path / "out_kbdi.nc") as dataset:
+        with xr.open_dataset(tmp_path / "out_kbdi.nc", engine="h5netcdf") as dataset:
             assert dataset["kbdi"].encoding["chunksizes"] == (2, 3, 1000)
             assert np.isfinite(dataset["kbdi"].values).all()

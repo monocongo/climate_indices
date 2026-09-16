@@ -6,7 +6,7 @@ import multiprocessing
 import os
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import scipy.constants
@@ -879,6 +879,9 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
     args = _build_arguments(keyword_arguments)
 
     output_encodings = {"chunksizes": output_chunksizes} if output_chunksizes else None
+    # a chunksizes encoding is only honored by an HDF5-backed engine, and the
+    # supported xarray versions still default to scipy when netCDF4 is absent
+    output_engine: Literal["h5netcdf"] | None = "h5netcdf" if output_chunksizes else None
 
     # add output variable arrays into the shared memory arrays dictionary
     if keyword_arguments["index"] == "palmers":
@@ -976,7 +979,7 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
 
         # write the dataset as NetCDF
         netcdf_file_name = keyword_arguments["output_file_base"] + "_" + var_name_pdsi + ".nc"
-        dataset.to_netcdf(netcdf_file_name)
+        dataset.to_netcdf(netcdf_file_name, engine=output_engine)
 
         # create a new variable to contain the PHDI values, assign into the dataset
         long_name = "Palmer Hydrological Drought Index"
@@ -994,7 +997,7 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
 
         # write the dataset as NetCDF
         netcdf_file_name = keyword_arguments["output_file_base"] + "_" + var_name_phdi + ".nc"
-        dataset.to_netcdf(netcdf_file_name)
+        dataset.to_netcdf(netcdf_file_name, engine=output_engine)
 
         # create a new variable to contain the PMDI values, assign into the dataset
         long_name = "Palmer Modified Drought Index"
@@ -1012,7 +1015,7 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
 
         # write the dataset as NetCDF
         netcdf_file_name = keyword_arguments["output_file_base"] + "_" + var_name_pmdi + ".nc"
-        dataset.to_netcdf(netcdf_file_name)
+        dataset.to_netcdf(netcdf_file_name, engine=output_engine)
 
         # create a new variable to contain the Z-Index values, assign into the dataset
         long_name = "Palmer Z-Index"
@@ -1030,7 +1033,7 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
 
         # write the dataset as NetCDF
         netcdf_file_name = keyword_arguments["output_file_base"] + "_" + var_name_zindex + ".nc"
-        dataset.to_netcdf(netcdf_file_name)
+        dataset.to_netcdf(netcdf_file_name, engine=output_engine)
         return None
 
     else:
@@ -1134,7 +1137,7 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
 
         # write the dataset as NetCDF
         netcdf_file_name = keyword_arguments["output_file_base"] + "_" + output_var_name + ".nc"
-        dataset.to_netcdf(netcdf_file_name)
+        dataset.to_netcdf(netcdf_file_name, engine=output_engine)
 
         return netcdf_file_name, output_var_name
 
@@ -1653,14 +1656,19 @@ def process_climate_indices(
                 output_file = f"{arguments.output_file_base}_{kbdi_values.name}.nc"
 
                 # honor --chunksizes input by copying the precipitation
-                # variable's on-disk chunks to the output variable
+                # variable's on-disk chunks to the output variable; a chunksizes
+                # encoding is only honored by an HDF5-backed engine, and the
+                # supported xarray versions still default to scipy when
+                # netCDF4 is absent
+                output_engine: Literal["h5netcdf"] | None = None
                 if arguments.chunksizes == "input":
                     input_chunksizes = dataset_precip[arguments.var_name_precip].encoding.get("chunksizes")
                     if input_chunksizes:
                         kbdi_values.encoding["chunksizes"] = input_chunksizes
+                        output_engine = "h5netcdf"
 
                 _logger.info("Writing KBDI values to file: %s", output_file)
-                kbdi_values.to_netcdf(output_file)
+                kbdi_values.to_netcdf(output_file, engine=output_engine)
 
         # compute SPI if specified
         if arguments.index in ["spi", "scaled", "all"]:
