@@ -1,21 +1,28 @@
-"""Profile the canonical gridded SPI workflow on the reference grid.
+"""Profile the gridded SPI workflow on the #893 reference grid.
 
 Runs ``climate_indices.spi`` on a deterministic synthetic grid matching the
 reference shape from the #893 performance epic (38x87 spatial cells, 40 years
-of monthly precipitation) under ``cProfile`` and writes the raw report.
+of monthly precipitation) under ``cProfile`` and writes the raw report plus the
+timings that contextualize it.
+
+This exercises the numpy-backed (in-memory) adapter branch, the serial baseline
+for gridded SPI. A Dask-backed input returns a lazy result from the same
+per-cell ``apply_ufunc`` loop; Dask scheduling and multi-core scaling belong to
+#927 and #928.
 
 Run from the repository root::
 
     uv run benchmarks/profile_gridded_spi.py
 
-The Numba kernels are compiled on a small warm-up grid first, so JIT
-compilation does not dominate the profile.
+The fitting/transform path is exercised on a small warm-up grid first, so
+first-call imports and caches do not dominate the measurement window.
 """
 
 from __future__ import annotations
 
 import argparse
 import cProfile
+import logging
 import os
 import platform
 import pstats
@@ -33,6 +40,8 @@ from climate_indices.indices import Distribution
 REFERENCE_LAT = 38
 REFERENCE_LON = 87
 REFERENCE_YEARS = 40
+WARMUP_LAT = 2
+WARMUP_LON = 2
 DATA_START_YEAR = 1980
 CALIBRATION_PERIOD = (1981, 2010)
 SCALE = 3
@@ -69,7 +78,7 @@ def build_grid(lat: int, lon: int, years: int) -> xr.DataArray:
 
 
 def run_spi(precip: xr.DataArray) -> xr.DataArray:
-    """Run the canonical xarray SPI path with the epic's reference parameters."""
+    """Run the in-memory xarray SPI path with the epic's reference parameters."""
     return spi(
         values=precip,
         scale=SCALE,
@@ -81,24 +90,34 @@ def run_spi(precip: xr.DataArray) -> xr.DataArray:
     )
 
 
-def profile(top: int) -> float:
+def _time_spi(precip: xr.DataArray) -> float:
+    """Run SPI once and return the elapsed seconds."""
+    start = time.perf_counter()
+    run_spi(precip)
+    return time.perf_counter() - start
+
+
+def profile(top: int) -> tuple[float, float, float]:
     """Profile SPI on the reference grid, writing the raw report to ``DEFAULT_OUTPUT``.
 
     Returns:
-        Wall-clock seconds spent inside the profiled SPI call.
+        Baseline seconds at INFO, profiled seconds at INFO, baseline seconds at WARNING
     """
-    # compile the Numba kernels on a small grid first: JIT time is not part of
-    # the steady-state bottleneck this script exists to measure
-    warmup = build_grid(lat=2, lon=2, years=CALIBRATION_PERIOD[1] - DATA_START_YEAR + 1)
-    run_spi(warmup)
+    # exercise imports and first-call caches before measuring
+    run_spi(build_grid(lat=WARMUP_LAT, lon=WARMUP_LON, years=REFERENCE_YEARS))
 
     precip = build_grid(lat=REFERENCE_LAT, lon=REFERENCE_LON, years=REFERENCE_YEARS)
+    baseline = _time_spi(precip)
+
     profiler = cProfile.Profile()
-    start = time.perf_counter()
     profiler.enable()
-    run_spi(precip)
+    profiled = _time_spi(precip)
     profiler.disable()
-    elapsed = time.perf_counter() - start
+
+    # repeat at WARNING: the difference isolates the per-cell logging volume
+    # that the profile attributes to the adapter
+    logging.getLogger().setLevel(logging.WARNING)
+    quiet = _time_spi(precip)
 
     DEFAULT_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     log_level = os.environ.get("CLIMATE_INDICES_LOG_LEVEL", "INFO")
@@ -106,20 +125,23 @@ def profile(top: int) -> float:
         print(
             f"grid: time={precip.sizes['time']} lat={precip.sizes['lat']} "
             f"lon={precip.sizes['lon']}; scale={SCALE}; "
-            f"calibration={CALIBRATION_PERIOD[0]}-{CALIBRATION_PERIOD[1]}; "
-            f"elapsed={elapsed:.1f}s",
+            f"calibration={CALIBRATION_PERIOD[0]}-{CALIBRATION_PERIOD[1]}",
             file=stream,
         )
         print(
             f"environment: python {platform.python_version()}; {platform.platform()}; "
-            f"climate_indices log level {log_level}",
+            f"climate_indices log level {log_level} (WARNING for the quiet run)",
+            file=stream,
+        )
+        print(
+            f"timings: baseline={baseline:.1f}s profiled={profiled:.1f}s warning={quiet:.1f}s",
             file=stream,
         )
         for sort_key in ("cumulative", "tottime"):
             print(f"\n--- sorted by {sort_key} ---", file=stream)
             stats = pstats.Stats(profiler, stream=stream).strip_dirs().sort_stats(sort_key)
             stats.print_stats(top)
-    return elapsed
+    return baseline, profiled, quiet
 
 
 def main() -> None:
@@ -127,8 +149,10 @@ def main() -> None:
     parser.add_argument("--top", type=int, default=30, help="number of hottest entries per sort order")
     args = parser.parse_args()
 
-    elapsed = profile(args.top)
-    print(f"reference-grid SPI: {elapsed:.1f}s -> {DEFAULT_OUTPUT}")
+    baseline, profiled, quiet = profile(args.top)
+    print(
+        f"reference-grid SPI: baseline={baseline:.1f}s profiled={profiled:.1f}s warning={quiet:.1f}s -> {DEFAULT_OUTPUT}"
+    )
 
 
 if __name__ == "__main__":
