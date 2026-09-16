@@ -4,8 +4,9 @@ Story 4.2 (FR-TEST-002): Validates the full metadata contract when calling
 the public API (spi(), spei()) with xarray DataArray inputs.
 
 This file focuses on integration-level testing with real computations through
-the typed_public_api.py entry points. Unit-level metadata tests (CF_METADATA dict
-structure, _serialize_attr_value, _build_history_entry) are in test_xarray_adapter.py.
+the typed_public_api.py entry points. The CF_METADATA dict contract is owned by
+test_cf_metadata.py; unit-level tests of _serialize_attr_value and
+_build_history_entry are in test_xarray_adapter.py.
 
 Test organization:
 - Module-scoped fixtures cache expensive SPI/SPEI computation results
