@@ -1371,6 +1371,11 @@ def _build_output_attrs(
     # apply CF metadata overrides to DA-level attrs only
     if cf_metadata is not None:
         output_attrs.update(cf_metadata)
+        if "standard_name" not in cf_metadata:
+            # CF Standard Name Omission: an index with no registered standard
+            # name must not inherit the input's (e.g. air_temperature), which
+            # would misdescribe the computed result.
+            output_attrs.pop("standard_name", None)
 
     # add calculation metadata (e.g., scale, distribution)
     if calculation_metadata is not None:

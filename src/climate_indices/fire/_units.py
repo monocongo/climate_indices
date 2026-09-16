@@ -113,7 +113,7 @@ def _convert_temperature_units(data: xr.DataArray, target: Literal["celsius", "f
 
 
 def _validate_daily_time_coordinate(data: xr.DataArray, time_dim: str) -> None:
-    """Require consecutive daily samples: the KBDI recurrence is defined per day.
+    """Require consecutive daily samples: the fire recurrences are defined per day.
 
     Called only when the time coordinate is attached; a dimension-only time
     axis has no cadence metadata to check.
@@ -135,7 +135,7 @@ def _validate_daily_time_coordinate(data: xr.DataArray, time_dim: str) -> None:
     if np.any(deltas != np.timedelta64(1, "D")):
         raise CoordinateValidationError(
             message=(
-                f"KBDI requires consecutive daily '{time_dim}' steps, but '{time_dim}' is not daily. "
+                f"Fire-weather indices require consecutive daily '{time_dim}' steps, but '{time_dim}' is not daily. "
                 "Aggregate the observations to daily totals and daily maxima before calling."
             ),
             coordinate_name=time_dim,
