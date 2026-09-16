@@ -239,13 +239,15 @@ The options for the entry point script are described below:
 +------------------------+-------------------------------------------------+
 | save_params            | Save distribution fitting variables to this file|
 |                        | path. The fittings NetCDF is to be used as input|
-|                        | when using the `load_params` option. [NOTE:     |
-|                        | only for use with the `spi` entrypoint for SPI.]|
+|                        | when using the `load_params` option.            |
+|                        | [NOTE: only via the `spi` entrypoint, which is  |
+|                        | deprecated in 2.4.0 and removed in 3.0.0.]      |
 +------------------------+-------------------------------------------------+
 | load_params            | Load distribution fitting variables from this   |
 |                        | filepath. The fittings NetCDF file is one that  |
-|                        | was created by the `save_params` option. [NOTE: |
-|                        | only for use with the `spi` entrypoint for SPI.]|
+|                        | was created by the `save_params` option.        |
+|                        | [NOTE: only via the `spi` entrypoint, which is  |
+|                        | deprecated in 2.4.0 and removed in 3.0.0.]      |
 +------------------------+-------------------------------------------------+
 
 Example Input and Output Datasets
