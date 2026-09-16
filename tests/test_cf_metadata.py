@@ -42,68 +42,68 @@ REQUIRED_FIELDS = {"long_name", "units", "references"}
 
 FIRE_KEYS = ("kbdi", "kbdi_imperial", "ffwi", "hdw", "ffmc", "dmc", "dc", "isi", "bui", "fwi", "dsr")
 
-
-def _field_cases(rows) -> list:
-    """Give each (entry, field, expected) row a readable parametrize id."""
-    return [pytest.param(entry, field, expected, id=f"{entry}-{field}") for entry, field, expected in rows]
-
-
 # (entry, field, expected value) rows: one row per literal registry assertion.
-ENTRY_VALUES = _field_cases(
-    [
-        ("spi", "long_name", "Standardized Precipitation Index"),
-        ("spi", "units", "dimensionless"),
-        ("spei", "long_name", "Standardized Precipitation Evapotranspiration Index"),
-        ("pet_thornthwaite", "long_name", "Potential Evapotranspiration (Thornthwaite method)"),
-        ("pet_hargreaves", "long_name", "Potential Evapotranspiration (Hargreaves method)"),
-        ("percentage_of_normal", "long_name", "Percent of Normal Precipitation"),
-        ("percentage_of_normal", "units", "%"),
-        ("pci", "long_name", "Precipitation Concentration Index"),
-        ("pci", "units", ""),
-        ("pnp", "long_name", "Percent of Normal Precipitation"),
-        ("pnp", "units", "%"),
-        ("eddi", "long_name", "Evaporative Demand Drought Index"),
-        ("eddi", "units", "dimensionless"),
-        ("pdsi", "long_name", "Palmer Drought Severity Index"),
-        ("pdsi", "units", "dimensionless"),
-        ("phdi", "long_name", "Palmer Hydrological Drought Index"),
-        ("phdi", "units", "dimensionless"),
-        ("pmdi", "long_name", "Palmer Modified Drought Index"),
-        ("pmdi", "units", "dimensionless"),
-        ("z_index", "long_name", "Palmer Z-Index"),
-        ("z_index", "units", "dimensionless"),
-        ("kbdi", "long_name", "Keetch-Byram Drought Index"),
-        ("kbdi", "units", "mm"),
-        ("kbdi", "climate_indices_variant", "metric"),
-        ("kbdi_imperial", "units", "0.01 in"),
-        ("kbdi_imperial", "climate_indices_variant", "imperial"),
-        ("ffwi", "long_name", "Fosberg Fire Weather Index"),
-        ("ffwi", "units", "dimensionless"),
-        ("hdw", "long_name", "Hot-Dry-Windy Index"),
-        ("hdw", "units", "hPa m s-1"),
-        ("ffmc", "long_name", "Fine Fuel Moisture Code"),
-        ("ffmc", "units", "dimensionless"),
-        ("ffmc", "climate_indices_variant", "cffwis_classic"),
-        ("dmc", "long_name", "Duff Moisture Code"),
-        ("dmc", "units", "dimensionless"),
-        ("dmc", "climate_indices_variant", "cffwis_classic"),
-        ("dc", "long_name", "Drought Code"),
-        ("dc", "units", "dimensionless"),
-        ("dc", "climate_indices_variant", "cffwis_classic"),
-        ("isi", "long_name", "Initial Spread Index"),
-        ("isi", "units", "dimensionless"),
-        ("isi", "climate_indices_variant", "cffwis_classic"),
-        ("bui", "long_name", "Buildup Index"),
-        ("bui", "units", "dimensionless"),
-        ("bui", "climate_indices_variant", "cffwis_classic"),
-        ("fwi", "long_name", "Canadian Fire Weather Index"),
-        ("fwi", "units", "dimensionless"),
-        ("fwi", "climate_indices_variant", "cffwis_classic"),
-        ("dsr", "long_name", "Daily Severity Rating"),
-        ("dsr", "units", "dimensionless"),
-        ("dsr", "climate_indices_variant", "cffwis_classic"),
-    ]
-)
+ENTRY_VALUE_ROWS = [
+    ("spi", "long_name", "Standardized Precipitation Index"),
+    ("spi", "units", "dimensionless"),
+    ("spei", "long_name", "Standardized Precipitation Evapotranspiration Index"),
+    ("spei", "units", "dimensionless"),
+    ("pet_thornthwaite", "long_name", "Potential Evapotranspiration (Thornthwaite method)"),
+    ("pet_thornthwaite", "units", "mm/month"),
+    ("pet_hargreaves", "long_name", "Potential Evapotranspiration (Hargreaves method)"),
+    ("pet_hargreaves", "units", "mm/day"),
+    ("percentage_of_normal", "long_name", "Percent of Normal Precipitation"),
+    ("percentage_of_normal", "units", "%"),
+    ("pci", "long_name", "Precipitation Concentration Index"),
+    ("pci", "units", ""),
+    ("pnp", "long_name", "Percent of Normal Precipitation"),
+    ("pnp", "units", "%"),
+    ("eddi", "long_name", "Evaporative Demand Drought Index"),
+    ("eddi", "units", "dimensionless"),
+    ("pdsi", "long_name", "Palmer Drought Severity Index"),
+    ("pdsi", "units", "dimensionless"),
+    ("phdi", "long_name", "Palmer Hydrological Drought Index"),
+    ("phdi", "units", "dimensionless"),
+    ("pmdi", "long_name", "Palmer Modified Drought Index"),
+    ("pmdi", "units", "dimensionless"),
+    ("z_index", "long_name", "Palmer Z-Index"),
+    ("z_index", "units", "dimensionless"),
+    ("kbdi", "long_name", "Keetch-Byram Drought Index"),
+    ("kbdi", "units", "mm"),
+    ("kbdi", "climate_indices_variant", "metric"),
+    ("kbdi_imperial", "long_name", "Keetch-Byram Drought Index"),
+    ("kbdi_imperial", "units", "0.01 in"),
+    ("kbdi_imperial", "climate_indices_variant", "imperial"),
+    ("ffwi", "long_name", "Fosberg Fire Weather Index"),
+    ("ffwi", "units", "dimensionless"),
+    ("hdw", "long_name", "Hot-Dry-Windy Index"),
+    ("hdw", "units", "hPa m s-1"),
+    ("ffmc", "long_name", "Fine Fuel Moisture Code"),
+    ("ffmc", "units", "dimensionless"),
+    ("ffmc", "climate_indices_variant", "cffwis_classic"),
+    ("dmc", "long_name", "Duff Moisture Code"),
+    ("dmc", "units", "dimensionless"),
+    ("dmc", "climate_indices_variant", "cffwis_classic"),
+    ("dc", "long_name", "Drought Code"),
+    ("dc", "units", "dimensionless"),
+    ("dc", "climate_indices_variant", "cffwis_classic"),
+    ("isi", "long_name", "Initial Spread Index"),
+    ("isi", "units", "dimensionless"),
+    ("isi", "climate_indices_variant", "cffwis_classic"),
+    ("bui", "long_name", "Buildup Index"),
+    ("bui", "units", "dimensionless"),
+    ("bui", "climate_indices_variant", "cffwis_classic"),
+    ("fwi", "long_name", "Canadian Fire Weather Index"),
+    ("fwi", "units", "dimensionless"),
+    ("fwi", "climate_indices_variant", "cffwis_classic"),
+    ("dsr", "long_name", "Daily Severity Rating"),
+    ("dsr", "units", "dimensionless"),
+    ("dsr", "climate_indices_variant", "cffwis_classic"),
+]
+
+ENTRY_VALUES = [
+    pytest.param(entry, field, expected, id=f"{entry}-{field}") for entry, field, expected in ENTRY_VALUE_ROWS
+]
 
 # (entry, reference fragments) rows: every fragment must appear in the entry's references.
 REFERENCE_CASES = [
@@ -134,6 +134,10 @@ REFERENCE_CASES = [
 def test_registry_has_exactly_the_expected_keys() -> None:
     """An added, renamed, or removed index fails here rather than in twenty value tests."""
     assert set(CF_METADATA) == EXPECTED_KEYS
+    documented = {(entry, field) for entry, field, _ in ENTRY_VALUE_ROWS}
+    for index_name in EXPECTED_KEYS:
+        assert (index_name, "long_name") in documented, f"'{index_name}' has no documented long_name row"
+        assert (index_name, "units") in documented, f"'{index_name}' has no documented units row"
 
 
 @pytest.mark.parametrize("index_name", sorted(EXPECTED_KEYS))

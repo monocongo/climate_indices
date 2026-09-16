@@ -260,6 +260,7 @@ PICKLE_CASES = [
         ("alignment needed",),
         {"original_size": 100, "aligned_size": 80, "dropped_count": 20},
     ),
+    (exceptions.BetaFeatureWarning, ("beta feature",), {}),
     (
         exceptions.ClimateIndicesDeprecationWarning,
         ("deprecated feature",),
@@ -398,9 +399,9 @@ def test_context_attributes_are_stored(cls, init_kwargs, defaults, copies) -> No
     ids=lambda value: getattr(value, "__name__", None),
 )
 def test_context_attributes_default_to_none(cls, init_kwargs, defaults, copies) -> None:
-    """A bare instance leaves every optional context attribute unset."""
+    """A bare instance leaves constructor attributes unset, except values the subclass pins."""
     context = cls("context check")
-    for name in init_kwargs:
+    for name in set(init_kwargs) | set(defaults):
         if name in defaults:
             assert getattr(context, name) == defaults[name]
         else:
@@ -435,7 +436,7 @@ def test_pickle_roundtrip_preserves_type_message_and_context(cls, init_args, ini
 
 
 def test_module_all_lists_exactly_the_public_types_and_helper() -> None:
-    """__all__ is the public surface: complete, and every name resolves."""
+    """__all__ is the public surface: complete, resolvable, and covered by the contract tables."""
     expected_names = {
         "ClimateIndicesError",
         "ConvergenceError",
@@ -461,6 +462,13 @@ def test_module_all_lists_exactly_the_public_types_and_helper() -> None:
     for name in exceptions.__all__:
         exported = getattr(exceptions, name)
         assert isinstance(exported, type) or callable(exported), f"{name} is neither a class nor callable"
+
+    # a new public type must join the hierarchy and pickle tables, not slip in untested
+    public_types = {
+        getattr(exceptions, name) for name in exceptions.__all__ if isinstance(getattr(exceptions, name), type)
+    }
+    assert public_types <= {row[0] for row in HIERARCHY_CASES}
+    assert public_types <= {row[0] for row in PICKLE_CASES}
 
 
 @pytest.mark.parametrize(("url_kwargs", "expected_fragments"), EMIT_CASES)
