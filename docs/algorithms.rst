@@ -30,9 +30,7 @@ The SPI computation follows these steps:
 
 1. **Input validation and preprocessing**
 
-   - Accept 1-D or 2-D arrays of precipitation values (any units), or a time-major
-     spatial array with shape (time, *cells) so every grid cell is scaled and
-     fitted in one pass
+   - Accept 1-D or 2-D arrays of precipitation values (any units)
    - Clip negative precipitation values to zero
    - Handle missing data appropriately
 

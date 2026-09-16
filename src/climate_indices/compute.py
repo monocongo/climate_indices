@@ -202,7 +202,7 @@ def _validate_array(
             )
             raise ValueError(message)
 
-    elif values.shape[1] not in _PERIOD_LENGTHS:
+    elif len(values.shape) < 2 or values.shape[1] not in _PERIOD_LENGTHS:
         # not a 1-D array, and no valid period axis: an already-reshaped spatial
         # array carries its periods along axis 1, i.e. (years, periods, *cells)
         message = f"Invalid input array with shape: {values.shape}"
@@ -916,6 +916,9 @@ def _check_goodness_of_fit_gamma_spatial(
     :param calibration_values: Calibration data with shape (years, time_steps, ...)
     :param alphas: Shape parameters, with shape (time_steps, ...)
     :param betas: Scale parameters, with shape (time_steps, ...)
+
+    Peak memory is a few O(years x time_steps x cells) temporaries, so spatial blocks
+    decide the footprint: chunk large grids rather than passing one dense block.
     """
     num_years = calibration_values.shape[0]
     time_steps = calibration_values.shape[1]
@@ -927,11 +930,16 @@ def _check_goodness_of_fit_gamma_spatial(
 
     # the D statistic is a maximum over the ranked sample positions, evaluated here
     # for every (time step, cell) at once; positions beyond a cell's valid count and
-    # samples with invalid parameters fall outside the comparison
+    # samples whose fitted parameters are invalid fall outside the comparison, matching
+    # the per-series check's own guards. The float64 cast matches that check's arithmetic.
     ranks = np.arange(1, num_years + 1).reshape((-1,) + (1,) * (calibration_values.ndim - 1))
-    valid_positions = ranks <= valid_counts
+    valid_positions = (ranks <= valid_counts) & np.isfinite(alphas[np.newaxis]) & np.isfinite(betas[np.newaxis])
+    valid_positions &= (alphas[np.newaxis] > 0) & (betas[np.newaxis] > 0)
     with np.errstate(divide="ignore", invalid="ignore"):
-        cdf_values = scipy.special.gammainc(alphas[np.newaxis], sorted_values / betas[np.newaxis])
+        cdf_values = scipy.special.gammainc(
+            alphas[np.newaxis].astype(float),
+            sorted_values.astype(float) / betas[np.newaxis].astype(float),
+        )
         upper = np.where(valid_positions, ranks / valid_counts - cdf_values, -np.inf)
         lower = np.where(valid_positions, cdf_values - (ranks - 1) / valid_counts, -np.inf)
     d_statistics = np.maximum(np.max(upper, axis=0), np.max(lower, axis=0))
@@ -952,13 +960,17 @@ def _check_goodness_of_fit_gamma_spatial(
         step_index = int(candidate[0])
         valid_count = int(valid_counts[candidate])
         sorted_column = sorted_values[(slice(0, valid_count), *candidate)]
-        p_value = _ks_poor_fit_p_value(
-            sorted_column,
-            scipy.special.gammainc(
-                float(alphas[candidate]),
-                sorted_column.astype(float) / float(betas[candidate]),
-            ),
-        )
+        try:
+            p_value = _ks_poor_fit_p_value(
+                sorted_column,
+                scipy.special.gammainc(
+                    float(alphas[candidate]),
+                    sorted_column.astype(float) / float(betas[candidate]),
+                ),
+            )
+        except Exception:
+            # ignore fitting errors during goodness-of-fit check, as the per-series path does
+            continue
         if p_value is not None:
             poor_fits.append((step_index, p_value))
 
@@ -1191,6 +1203,7 @@ def prepare_scaled(
     *,
     clip_negatives: bool = True,
     reshape: bool = True,
+    spatial_time_major: bool = False,
 ) -> np.ndarray:
     """
     Prepare an array of values for distribution fitting by flattening, clipping,
@@ -1211,6 +1224,10 @@ def prepare_scaled(
         reshape: Whether the scaled values are reshaped to (years, period_length),
             defaults to True. ``indices.percentage_of_normal`` passes False, since it
             averages the un-reshaped 1-D sums over each calendar period.
+        spatial_time_major: Read ``values`` as a time-major block of independent time
+            series, shaped (time, *cells), and scale every cell in one pass. The xarray
+            adapter sets this for gridded input; without it a gridded array raises a
+            ``ValueError`` rather than being read axis by axis.
 
     Returns:
         The scaled values, either 2-D with shape (years, periodicity.period_length)
@@ -1224,13 +1241,27 @@ def prepare_scaled(
     if periodicity is not Periodicity.monthly and periodicity is not Periodicity.daily:
         raise ValueError(f"Invalid periodicity argument: {periodicity}")
 
-    # we expect to operate upon a 1-D array, so if we've been passed a 2-D array
-    # then we flatten it. A time-major spatial array keeps its trailing cell dims, so
-    # that the scaling and everything downstream runs once per cell set, not per cell.
+    # we expect to operate upon a 1-D array, so if we've been passed a 2-D array then we
+    # flatten it. A time-major spatial block keeps its trailing cell dims, so that the
+    # scaling and everything downstream runs once per cell set rather than per cell, but
+    # only when the caller says the block is time-major: reading it by default would
+    # silently re-read a (years, periods, *cells) array along the wrong axis.
     shape = values.shape
     if len(shape) == 2:
         values = values.flatten()
-    elif len(shape) == 0:
+    elif len(shape) > 2:
+        if not spatial_time_major:
+            _logger.error(
+                "validation_error",
+                operation="prepare_scaled",
+                reason="ambiguous_spatial_shape",
+                shape=str(shape),
+            )
+            raise ValueError(
+                f"Invalid shape of input array: {shape} -- only 1-D and 2-D arrays are supported; "
+                "a time-major spatial block must be declared with spatial_time_major=True"
+            )
+    elif len(shape) != 1:
         _logger.error(
             "validation_error",
             operation="prepare_scaled",
@@ -1239,7 +1270,7 @@ def prepare_scaled(
         )
         raise ValueError(
             f"Invalid shape of input array: {shape} -- only 1-D arrays, 2-D (years, periods) "
-            "arrays, and time-major spatial arrays are supported"
+            "arrays, and declared time-major spatial blocks are supported"
         )
 
     # if we're passed all missing values then we can't compute anything,
@@ -1298,6 +1329,23 @@ def scale_values(
     return prepare_scaled(values, scale, periodicity)
 
 
+def _period_params(params: np.ndarray | None, ndim: int) -> np.ndarray | None:
+    """
+    Align a 1-D per-period parameter array with the period axis of a spatial array.
+
+    A caller's parameter array holds one value per calendar period, so for a
+    (years, periods, *cells) array it must be reshaped to (periods, 1, ..., 1); left
+    1-D it would broadcast against the trailing cell axis instead.
+
+    :param params: the parameter array as supplied, or None
+    :param ndim: the number of dimensions of the values being transformed
+    :return: the parameter array, reshaped for spatial values
+    """
+    if params is None or params.ndim > 1:
+        return params
+    return params.reshape((params.shape[0],) + (1,) * (ndim - 2))
+
+
 def transform_fitted_gamma(
     values: np.ndarray,
     data_start_year: int,
@@ -1347,6 +1395,11 @@ def transform_fitted_gamma(
 
     # validate (and possibly reshape) the input array
     values = _validate_array(values, periodicity)
+
+    # per-period parameter arrays are kept on the period axis of spatial values
+    if values.ndim > 2:
+        alphas = _period_params(alphas, values.ndim)
+        betas = _period_params(betas, values.ndim)
 
     # Replace zeros with NaNs for fitting (zeros are excluded from gamma fitting)
     # and get mask of zero positions for later probability calculations

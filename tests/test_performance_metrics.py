@@ -331,13 +331,13 @@ class TestInputElementsInLogs:
         precips_mm_monthly,
     ):
         """input_elements appears in calculation_failed events (context-bound)."""
-        # trigger failure with unsupported array shape (an array with no time axis;
-        # 3-D input is a supported spatial layout since #923)
+        # trigger failure with unsupported array shape (3D array; gridded input is
+        # declared through the xarray adapter)
         # this error occurs after logger is bound, inside the try block
-        invalid_array = np.array(0.0)
+        invalid_3d_array = np.zeros((10, 10, 10))
         with pytest.raises(ValueError, match="Invalid shape"):
             indices.spi(
-                values=invalid_array,
+                values=invalid_3d_array,
                 scale=6,
                 distribution=indices.Distribution.gamma,
                 data_start_year=1895,
@@ -352,7 +352,7 @@ class TestInputElementsInLogs:
         assert len(failed_events) >= 1
         failed = failed_events[0]
         assert "input_elements" in failed
-        assert failed["input_elements"] == invalid_array.size
+        assert failed["input_elements"] == invalid_3d_array.size
 
 
 class TestMemoryMetricsInLogs:

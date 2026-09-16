@@ -644,13 +644,13 @@ class TestErrorHierarchyDocumented:
         data_year_end_monthly,
     ) -> None:
         """Dimension mismatch errors still raise ValueError (unchanged behavior)."""
-        # a scalar array has no time axis to read: 3-D input is a supported spatial
-        # layout as of #923, so this is the remaining shape the core rejects
-        scalar_array = np.array(0.0)
+        # 3-D array should raise ValueError: gridded input is declared as such by the
+        # xarray adapter (spatial_time_major=True) rather than read from a raw ndarray
+        three_d_array = np.zeros((4, 4, 8))
 
         with pytest.raises(ValueError):
             indices.spi(
-                scalar_array,
+                three_d_array,
                 6,
                 Distribution.gamma,
                 data_year_start_monthly,

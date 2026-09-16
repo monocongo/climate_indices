@@ -288,21 +288,23 @@ def test_pnp_3d_input_raises():
         )
 
 
-def test_spi_scalar_input_raises():
-    """An input array with no time axis raises ValueError.
+def test_spi_3d_input_raises():
+    """An input array with more than two dimensions raises ValueError.
 
-    3-D and higher input is a supported spatial layout as of #923 (see
-    tests/test_spatial_kernel.py), so a scalar array is the remaining shape the
-    preparation seam cannot read.
+    Gridded input reaches the core through the xarray adapter, which declares its
+    (time, *cells) block with spatial_time_major=True; reading a raw 3-D array as
+    time-major instead would silently re-read a (years, periods, *cells) array.
 
     Unlike eddi()/percentage_of_normal(), spi()'s dimension errors are pinned to
     plain ValueError by tests/test_backward_compat.py::TestErrorHierarchyDocumented,
     so this stays on the shared preparation seam's ValueError rather than switching
     to DataShapeError.
     """
+    values = np.zeros((2, 3, 4))
+
     with pytest.raises(ValueError, match="Invalid shape of input array"):
         indices.spi(
-            np.array(0.0),
+            values,
             1,
             indices.Distribution.gamma,
             1900,
@@ -431,13 +433,12 @@ def test_spi(
             compute.Periodicity.monthly,
         )
 
-    # input array arguments that cannot be read as a time series or as a time-major
-    # spatial array should raise a ValueError; 3-D input is a supported spatial layout
-    # as of #923, so a scalar array is the remaining unsupported shape
+    # input array argument that's neither 1-D nor 2-D should raise a ValueError;
+    # gridded input goes through the xarray adapter instead
     np.testing.assert_raises(
         ValueError,
         indices.spi,
-        np.array(0.0),
+        np.array(np.zeros((4, 4, 8))),
         6,
         indices.Distribution.gamma,
         data_year_start_monthly,
@@ -808,10 +809,13 @@ def test_fitting_indices_share_one_preparation_seam(
             compute.Periodicity.monthly,
         )
 
-    # SPI and EDDI prepare with the defaults; SPEI and PNP opt out of clipping and reshaping
+    # SPI and EDDI prepare with the defaults; SPEI and PNP opt out of clipping and
+    # reshaping. The spatial-block declaration is not part of that contract, so only
+    # those two keywords are compared.
     assert prepare_scaled.call_count == 4
-    default_calls = [call for call in prepare_scaled.call_args_list if not call.kwargs]
-    kwargs_calls = [call for call in prepare_scaled.call_args_list if call.kwargs]
-    assert len(default_calls) == 2
-    assert len(kwargs_calls) == 2
-    assert all(call.kwargs == {"clip_negatives": False, "reshape": False} for call in kwargs_calls)
+    prep_kwargs = [
+        {key: value for key, value in call.kwargs.items() if key in {"clip_negatives", "reshape"}}
+        for call in prepare_scaled.call_args_list
+    ]
+    assert prep_kwargs.count({}) == 2
+    assert [call for call in prep_kwargs if call] == [{"clip_negatives": False, "reshape": False}] * 2

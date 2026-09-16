@@ -7,6 +7,8 @@ guarantee, the equivalence with the single-series path, and the NaN/shape contra
 the existing adapter tests already cover for the per-cell path.
 """
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -14,6 +16,7 @@ import xarray as xr
 
 from climate_indices import compute, indices
 from climate_indices.cf_metadata_registry import CF_METADATA
+from climate_indices.exceptions import GoodnessOfFitWarning
 from climate_indices.xarray_adapter import xarray_adapter
 
 _CALIBRATION_START = 1981
@@ -94,15 +97,22 @@ class TestSpatialKernelSkipsPerCellLoop:
     """The gridded path must not call the fitting kernel once per grid cell."""
 
     def test_spi_gamma_fits_once_for_gridded_input(self, gridded_monthly_precip, spatial_spi, monkeypatch):
-        """A 3 x 2 grid runs the gamma fit once, not once per cell."""
-        calls: list[tuple[int, ...]] = []
-        original = compute.transform_fitted_gamma
+        """A 3 x 2 grid runs the gamma fit and transform once, not once per cell."""
+        transforms: list[tuple[int, ...]] = []
+        fits: list[tuple[int, ...]] = []
+        original_transform = compute.transform_fitted_gamma
+        original_fit = compute.gamma_parameters
 
         def counting_transform(values, *args, **kwargs):
-            calls.append(np.shape(values))
-            return original(values, *args, **kwargs)
+            transforms.append(np.shape(values))
+            return original_transform(values, *args, **kwargs)
+
+        def counting_fit(values, *args, **kwargs):
+            fits.append(np.shape(values))
+            return original_fit(values, *args, **kwargs)
 
         monkeypatch.setattr(compute, "transform_fitted_gamma", counting_transform)
+        monkeypatch.setattr(compute, "gamma_parameters", counting_fit)
 
         result = spatial_spi(
             gridded_monthly_precip,
@@ -113,7 +123,10 @@ class TestSpatialKernelSkipsPerCellLoop:
         )
 
         assert result.shape == gridded_monthly_precip.shape
-        assert len(calls) == 1, f"expected one vectorized fit, saw {len(calls)} calls"
+        assert len(transforms) == 1, f"expected one vectorized transform, saw {len(transforms)} calls"
+        assert len(fits) == 1, f"expected one vectorized fit, saw {len(fits)} calls"
+        # the fit sees the folded (years, periods, *cells) block, cells intact
+        assert fits[0] == (40, 12, 3, 2)
 
     def test_spei_gamma_fits_once_for_gridded_input(self, gridded_monthly_precip, spatial_spei, monkeypatch):
         """SPEI over the same grid also runs the gamma fit once."""
@@ -404,10 +417,25 @@ class TestSpatialKernelEquivalence:
             calibration_year_initial=_CALIBRATION_START,
             calibration_year_final=_CALIBRATION_END,
             periodicity=compute.Periodicity.monthly,
+            spatial_time_major=True,
         )
 
         assert result.shape == all_missing.shape
         assert np.all(np.isnan(result))
+
+    def test_undeclared_gridded_input_raises(self, gridded_monthly_precip):
+        """A raw gridded array is rejected: the adapter declares the block it packs."""
+        for gridded in (gridded_monthly_precip.values, gridded_monthly_precip.values.transpose(1, 2, 0)):
+            with pytest.raises(ValueError, match="Invalid shape of input array"):
+                indices.spi(
+                    gridded,
+                    scale=3,
+                    distribution=indices.Distribution.gamma,
+                    data_start_year=1980,
+                    calibration_year_initial=_CALIBRATION_START,
+                    calibration_year_final=_CALIBRATION_END,
+                    periodicity=compute.Periodicity.monthly,
+                )
 
     def test_daily_grid_matches_per_cell_adapter(self, spatial_spi, per_cell_spi):
         """The 366-day calendar plan converts a whole grid, partial final year included."""
@@ -436,6 +464,143 @@ class TestSpatialKernelEquivalence:
         )
 
         assert spatial_result.shape == daily.shape
+        np.testing.assert_array_equal(np.isnan(spatial_result.values), np.isnan(per_cell_result.values))
+        np.testing.assert_allclose(
+            spatial_result.values,
+            per_cell_result.values,
+            atol=1e-8,
+            rtol=1e-7,
+            equal_nan=True,
+        )
+
+
+class TestSpatialKernelFittingParams:
+    """Caller-supplied fitting parameters must stay on the period axis."""
+
+    @pytest.fixture
+    def twelve_lon_grid(self) -> xr.DataArray:
+        """40 years of monthly precipitation over 3 x 12 cells, cell axis last at 12."""
+        time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+        rng = np.random.default_rng(13)
+        values = rng.gamma(shape=2.0, scale=2.0, size=(time.size, 3, 12))
+        return xr.DataArray(
+            values,
+            coords={"time": time, "lat": [10.0, 20.0, 30.0], "lon": np.arange(12.0)},
+            dims=["time", "lat", "lon"],
+        )
+
+    def test_per_period_params_match_per_cell_path(self, twelve_lon_grid, spatial_spi, per_cell_spi):
+        """1-D params of one value per calendar period are not broadcast over the cells."""
+        params = {"alpha": np.linspace(1.5, 2.5, 12), "beta": np.linspace(0.5, 1.5, 12)}
+        kwargs = {
+            "scale": 3,
+            "distribution": indices.Distribution.gamma,
+            "calibration_year_initial": _CALIBRATION_START,
+            "calibration_year_final": _CALIBRATION_END,
+            "fitting_params": params,
+        }
+
+        spatial_result = spatial_spi(twelve_lon_grid, **kwargs)
+        per_cell_result = per_cell_spi(twelve_lon_grid, **kwargs)
+
+        np.testing.assert_allclose(
+            spatial_result.values,
+            per_cell_result.values,
+            atol=1e-12,
+            rtol=0,
+            equal_nan=True,
+        )
+
+
+class TestSpatialPearsonDeferral:
+    """The Pearson Type III path still fits one series per cell (#940)."""
+
+    def test_spei_pearson_matches_pointwise(self, gridded_monthly_precip, spatial_spei):
+        """Gridded SPEI with the deferred pearson fit matches the NumPy API per cell."""
+        pet = xr.full_like(gridded_monthly_precip, 0.5)
+        result = spatial_spei(
+            gridded_monthly_precip,
+            pet_mm=pet,
+            scale=3,
+            distribution=indices.Distribution.pearson,
+            calibration_year_initial=_CALIBRATION_START,
+            calibration_year_final=_CALIBRATION_END,
+        )
+
+        expected = np.empty(gridded_monthly_precip.shape, dtype=float)
+        for latitude in range(gridded_monthly_precip.shape[1]):
+            for longitude in range(gridded_monthly_precip.shape[2]):
+                expected[:, latitude, longitude] = indices.spei(
+                    gridded_monthly_precip.values[:, latitude, longitude],
+                    pet.values[:, latitude, longitude],
+                    scale=3,
+                    distribution=indices.Distribution.pearson,
+                    periodicity=compute.Periodicity.monthly,
+                    data_start_year=1980,
+                    calibration_year_initial=_CALIBRATION_START,
+                    calibration_year_final=_CALIBRATION_END,
+                )
+
+        np.testing.assert_array_equal(np.isnan(result.values), np.isnan(expected))
+        np.testing.assert_allclose(result.values, expected, atol=1e-8, rtol=1e-7, equal_nan=True)
+
+
+class TestSpatialGoodnessOfFitParity:
+    """The vectorized goodness-of-fit prefilter flags the same cells as the per-series check."""
+
+    def test_poor_fit_counts_match_per_cell_path(self, spatial_spi, per_cell_spi):
+        """A uniform per-period sample gives the same poor-fit count on both paths."""
+        time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+        rng = np.random.default_rng(123)
+        values = rng.uniform(0.1, 10.0, size=(time.size, 2, 3))
+        grid = xr.DataArray(
+            values,
+            coords={"time": time, "lat": [10.0, 20.0], "lon": [0.0, 5.0, 10.0]},
+            dims=["time", "lat", "lon"],
+        )
+        kwargs = {
+            "scale": 1,
+            "distribution": indices.Distribution.gamma,
+            "calibration_year_initial": _CALIBRATION_START,
+            "calibration_year_final": _CALIBRATION_END,
+        }
+
+        with warnings.catch_warnings(record=True) as spatial_warnings:
+            warnings.simplefilter("always")
+            spatial_spi(grid, **kwargs)
+        with warnings.catch_warnings(record=True) as cell_warnings:
+            warnings.simplefilter("always")
+            per_cell_spi(grid, **kwargs)
+
+        spatial_fits = [w for w in spatial_warnings if issubclass(w.category, GoodnessOfFitWarning)]
+        cell_fits = [w for w in cell_warnings if issubclass(w.category, GoodnessOfFitWarning)]
+        assert len(spatial_fits) == 1, "the spatial check aggregates one warning per call"
+        # the same (time step, cell) pairs are flagged on both paths; the spatial warning
+        # counts comparisons, while each per-cell warning counts its own time steps
+        assert spatial_fits[0].message.poor_fit_count == sum(w.message.poor_fit_count for w in cell_fits)
+        assert spatial_fits[0].message.total_steps == 12 * 2 * 3
+
+    def test_daily_spei_grid_matches_per_cell_adapter(self, spatial_spei, per_cell_spei):
+        """A daily grid with a PET secondary converts both inputs through the calendar plan."""
+        time = pd.date_range("1980-01-01", "1999-06-30", freq="D")
+        rng = np.random.default_rng(17)
+        precip_values = rng.gamma(shape=2.0, scale=2.0, size=(time.size, 2, 2))
+        pet_values = rng.gamma(shape=2.0, scale=1.0, size=(time.size, 2, 2))
+        coords = {"time": time, "lat": [10.0, 20.0], "lon": [0.0, 5.0]}
+        precip = xr.DataArray(precip_values, coords=coords, dims=["time", "lat", "lon"])
+        pet = xr.DataArray(pet_values, coords=coords, dims=["time", "lat", "lon"])
+        kwargs = {
+            "pet_mm": pet,
+            "scale": 30,
+            "distribution": indices.Distribution.gamma,
+            "calibration_year_initial": _CALIBRATION_START,
+            "calibration_year_final": _CALIBRATION_END,
+        }
+
+        spatial_result = spatial_spei(precip, **kwargs)
+        per_cell_result = per_cell_spei(precip, **kwargs)
+
+        assert spatial_result.shape == precip.shape
         np.testing.assert_array_equal(np.isnan(spatial_result.values), np.isnan(per_cell_result.values))
         np.testing.assert_allclose(
             spatial_result.values,

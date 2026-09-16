@@ -501,23 +501,28 @@ def _make_calendar_aware_numpy_wrapper(
     func: Callable[..., np.ndarray[Any, Any]],
     valid_kwargs: dict[str, Any],
     calendar_plan: _DailyCalendarPlan | None,
-    core_axis_last: bool = False,
+    core_axis_first: bool = False,
 ) -> Callable[..., np.ndarray[Any, Any]]:
     """Build an apply_ufunc callable that restores Gregorian daily output.
 
     Args:
-        core_axis_last: True when ``func`` is a spatial kernel that reads the core
+        core_axis_first: True when ``func`` is a spatial kernel that reads the core
             dimension first, packed as ``(time, *cells)``. apply_ufunc always hands
             the core dimension over last, so the arrays are transposed into the
-            kernel's layout here and the result transposed back.
+            kernel's layout here, and the kernel is told that its input is a declared
+            time-major block rather than a plain time series.
     """
+    if core_axis_first:
+        # spatial kernels only read a (time, *cells) block when told to, which keeps the
+        # NumPy API rejecting gridded arrays instead of re-reading their axes
+        valid_kwargs = {**valid_kwargs, "spatial_time_major": True}
 
     def wrapper(*numpy_arrays: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
         # every positional argument here is a time series: _collect_input_dataarrays
         # yields only DataArrays, and apply_ufunc is called with one [time_dim] entry
         # in input_core_dims per collected array, so a non-time-series positional
         # would fail inside apply_ufunc before ever reaching this wrapper
-        adapted = tuple(np.moveaxis(array, -1, 0) for array in numpy_arrays) if core_axis_last else numpy_arrays
+        adapted = tuple(np.moveaxis(array, -1, 0) for array in numpy_arrays) if core_axis_first else numpy_arrays
         result = _compute_with_daily_calendar_plan(
             func,
             adapted,
@@ -526,7 +531,7 @@ def _make_calendar_aware_numpy_wrapper(
             set(range(len(adapted))),
             set(),
         )
-        return np.moveaxis(result, 0, -1) if core_axis_last else result
+        return np.moveaxis(result, 0, -1) if core_axis_first else result
 
     return wrapper
 
@@ -1554,8 +1559,10 @@ def xarray_adapter(
             dimension alongside any number of cell dimensions, packed as
             ``(time, *cells)``, so ``apply_ufunc`` makes one call per non-core block
             instead of one call per grid cell. Only inputs with more than one non-core
-            dimension are packed this way; a 2-D input keeps the per-cell path. Indices
-            whose kernels still loop over cells leave this False (see #941, #942).
+            dimension are packed this way; a 2-D input keeps the per-cell path. The
+            kernel is told the block is time-major through a ``spatial_time_major``
+            keyword, which it must accept. Indices whose kernels still loop over cells
+            leave this False (see #941, #942).
 
     Returns:
         Decorator function that wraps index computation functions
@@ -1581,8 +1588,8 @@ def xarray_adapter(
           ``time_dim``, and Dask-backed inputs must keep that dimension in a single chunk
           (see :doc:`xarray_migration`)
         - With ``spatial_kernel=True``, spatial DataArrays (more than one non-core
-          dimension) reach the wrapped function as one ``(time, *cells)`` block instead
-          of one time series per cell
+          dimension) reach the wrapped function as one ``(time, *cells)`` block, flagged
+          through its ``spatial_time_major`` keyword, instead of one time series per cell
         - Uses inspect.signature() for generic parameter mapping (works with any function)
     """
 
@@ -1732,7 +1739,7 @@ def xarray_adapter(
 
                 # create a calendar-aware callable for apply_ufunc
                 _numpy_func_wrapper = _make_calendar_aware_numpy_wrapper(
-                    func, valid_kwargs, calendar_plan, core_axis_last=use_spatial_kernel
+                    func, valid_kwargs, calendar_plan, core_axis_first=use_spatial_kernel
                 )
 
                 # call apply_ufunc with Dask support
@@ -1834,7 +1841,7 @@ def xarray_adapter(
 
                 # create a calendar-aware callable for apply_ufunc
                 _numpy_func_wrapper = _make_calendar_aware_numpy_wrapper(
-                    func, valid_kwargs, calendar_plan, core_axis_last=use_spatial_kernel
+                    func, valid_kwargs, calendar_plan, core_axis_first=use_spatial_kernel
                 )
 
                 # call apply_ufunc without Dask support (in-memory execution)
@@ -1864,7 +1871,7 @@ def xarray_adapter(
                     "input_shape": input_da.shape,
                     "output_shape": result_da.shape,
                     "inferred_params": infer_params,
-                    "vectorized": True,
+                    "vectorized": not use_spatial_kernel,
                     "spatial_kernel": use_spatial_kernel,
                 }
                 if nan_assessment["has_nan"]:

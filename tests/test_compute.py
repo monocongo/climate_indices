@@ -716,13 +716,25 @@ def test_prepare_scaled_returns_all_missing_input_unreshaped():
 
 def test_prepare_scaled_rejects_unsupported_shapes():
     """
-    Input with no time axis raises a ValueError.
+    Input with no time axis, and undeclared spatial input, raise a ValueError.
 
-    Arrays with more than two dimensions are time-major spatial input, packed as
-    (time, *cells), since #923.
+    A (time, *cells) block has to be declared, so that a (years, periods, *cells)
+    array is never silently re-read along the wrong axis (#923).
     """
     with pytest.raises(ValueError, match="Invalid shape of input array"):
         compute.prepare_scaled(np.array(0.0), 1, compute.Periodicity.monthly)
+
+    with pytest.raises(ValueError, match="Invalid shape of input array"):
+        compute.prepare_scaled(np.zeros((2, 3, 4)), 1, compute.Periodicity.monthly)
+
+    # declared spatial input is read as time-major (time, *cells)
+    declared = compute.prepare_scaled(
+        np.zeros((24, 2, 2)),
+        1,
+        compute.Periodicity.monthly,
+        spatial_time_major=True,
+    )
+    assert declared.shape == (2, 12, 2, 2)
 
 
 def test_prepare_scaled_rejects_unsupported_periodicity_when_unreshaped():

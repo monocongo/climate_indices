@@ -122,6 +122,18 @@ The Haines Index is a planned contract in the design doc.
 **L-Moments**:
 Linear-combination-of-order-statistics summary measures of a sample's location, scale, and skew — used here as a more robust alternative to conventional moments for fitting the Pearson Type III distribution.
 
+### Gridded execution
+
+**Spatial Block** (spelled time-major in code):
+A gridded input array shaped `(time, *cells)` — the time axis first, every trailing axis an independent cell — that the fitting-based indices scale, fit, and transform in one pass. It is declared to the NumPy core with `spatial_time_major=True`, which `xarray_adapter` sets when it packs a block; the core answers an undeclared gridded array with `ValueError`, because a `(time, *cells)` array whose first cell axis is 12 or 366 is indistinguishable from a `(years, periods, *cells)` array. See [ADR-0008](../../docs/adr/0008-spatial-block-declaration.md).
+_Avoid_: time-major block (the code spelling, not the prose term)
+
+**Spatial Kernel**:
+An index whose NumPy core accepts a Spatial Block, declared per index with `spatial_kernel=True` at its adapter call site. Such an index runs one `xr.apply_ufunc` call per non-core block instead of one per grid cell; indices whose cores still loop over cells keep the Per-Cell Path.
+
+**Per-Cell Path**:
+The alternative dispatch, `xr.apply_ufunc(..., vectorize=True)`, which calls the kernel once per grid cell over 1-D time series. Still used for inputs with a single non-core dimension, and for the index families listed in [ADR-0008](../../docs/adr/0008-spatial-block-declaration.md) (#940, #941, #942, #937).
+
 ### Metadata & provenance
 
 **Fixture Provenance**:

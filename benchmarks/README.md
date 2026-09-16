@@ -17,7 +17,10 @@ on the numpy-backed (in-memory) adapter branch — the serial baseline for
 gridded SPI. A Dask-backed input returns a lazy result; Dask scheduling and
 multi-core scaling belong to #927 and #928. Gridded SPI/SPEI now reach the NumPy
 core one spatial block at a time (#923, see the conversion status below), so the
-figures here describe the per-cell path this harness was built to measure.
+figures here describe the per-cell path this harness was built to measure. Reruns
+now measure the spatial path instead and will replace the committed report with
+lower timings; the tables above and their interpretation stand as the pre-#923
+baseline until #929 republishes them.
 
 Each run measures three things and always rewrites
 `benchmarks/results/profile_gridded_spi.txt`:
