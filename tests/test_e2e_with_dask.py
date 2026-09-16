@@ -37,7 +37,9 @@ def _code_cells() -> list[str]:
 def _executable_cells() -> list[str]:
     # The Dask Client cell is execution mechanics out of scope here (#829) and
     # stays untested; local Dask falls back to the threaded scheduler without
-    # it, so calculation-path coverage is unaffected. The write cell's guarded
+    # it, so calculation-path coverage is unaffected. It runs only via
+    # scripts/smoke_e2e_notebook.sh locally, since pytest is the single CI
+    # owner of notebook execution (#917). The write cell's guarded
     # `client.close()` is skipped whenever no client exists in the namespace.
     # The plot cells are excluded from every test that reuses this list
     # because matplotlib isn't guaranteed present (e.g. the minimum-dependency
@@ -51,8 +53,11 @@ def _cells_excluding_client() -> list[str]:
 
 
 def _exec_cells(namespace: dict, sources: list[str]) -> None:
+    # Compile each cell under a per-cell pseudo-filename so a failing cell's
+    # traceback names the offending notebook cell, not just the notebook path.
+    cells = _code_cells()
     for source in sources:
-        exec(compile(source, str(NOTEBOOK), "exec"), namespace)
+        exec(compile(source, f"{NOTEBOOK}:cell[{cells.index(source)}]", "exec"), namespace)
 
 
 def _split_at_calculation(sources: list[str]) -> tuple[list[str], list[str]]:
