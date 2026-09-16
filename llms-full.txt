@@ -412,7 +412,7 @@ may change in a future minor release.
 | Palmer direct xarray API | No | Use the NumPy Palmer function with `.values`, then rewrap outputs. See `notebooks/palmer_indices_xarray.ipynb`. |
 | Coordinate preservation | Yes | Adapter tests verify time and spatial coordinates are preserved. |
 | CF-style metadata | Yes | `CF_METADATA` registry and adapter tests verify `long_name`, `units`, `references`, version, and history attributes. |
-| Dask-backed arrays | Yes, constrained | The time dimension must be a single chunk. Adapter tests verify detection and validation. |
+| Dask-backed arrays | Yes, constrained | The time dimension must be a single chunk. Adapter tests verify detection and validation. Chunk axes the CLI leaves to Dask (`"auto"`, the KBDI grid and division inputs) resolve against a 100 MB array chunk budget rather than Dask's own default; axes pinned with `-1` are unaffected. |
 | Spatial (gridded) kernels | Yes, for SPI, SPEI, and PET | `spi`/`spei` receive a time-major `(time, *cells)` block and fit every cell in one pass, so a gridded gamma run costs one kernel call per Dask block instead of one call per cell ([ADR-0008](docs/adr/0008-spatial-block-declaration.md)). The PET entry points (`pet_thornthwaite`, `pet_hargreaves`) hand `indices.pet` and `eto.eto_hargreaves` the same block layout with the per-cell latitude array, so a gridded PET run costs one call per block ([#941](https://github.com/monocongo/climate_indices/issues/941)). The NumPy API keeps 2-D input on the legacy `(years, periods)` reading, and rejects the one gridded shape that is ambiguous with it (a first cell axis of 12 or 366). Inputs with a single non-core dimension keep the per-cell path, as do EDDI and percentage-of-normal ([#942](https://github.com/monocongo/climate_indices/issues/942)) and the Pearson Type III fit ([#940](https://github.com/monocongo/climate_indices/issues/940)). See `tests/test_spatial_kernel.py`. |
 | Calendar semantics | Yes, constrained | Standard/gregorian/proleptic_gregorian `datetime64` only; monthly input must begin in January and daily input on January 1. Daily values are converted to the 366-day calendar (February 29 synthesized from February 28 and March 1) and restored afterward. A partial final year is supported; `cftime` calendars are rejected. See [ADR-0004](docs/adr/0004-xarray-calendar-semantics.md). |
 | Automatic temporal inference | Yes | Monthly and daily time-coordinate inference is covered by adapter tests. |
@@ -470,6 +470,13 @@ applies per cell along the time axis.
   so a dense continental grid passed in one piece costs several times its own size.
   See [Chunking guidance for gridded indices](#chunking-guidance-for-gridded-indices)
   for measured block sizes.
+- Axes the CLI leaves to Dask (`"auto"`, currently the KBDI grid and division inputs)
+  resolve against a 100 MB array chunk budget
+  (`climate_indices._cli.DEFAULT_ARRAY_CHUNK_SIZE`) instead of Dask's own 128 MiB
+  default; axes pinned with `-1` are unaffected. Change the budget with explicit
+  `chunks` when opening your own dataset, with the `DASK_ARRAY__CHUNK_SIZE`
+  environment variable, or with `dask.config.set({"array.chunk-size": ...})` — a
+  configured budget is honored rather than overwritten.
 - The canonical lazy xarray/Dask SPI/SPEI workflow is the teaching notebook
   `notebooks/zarr_dask_spi_spei.ipynb`: the public typed API on Dask-backed DataArrays
   (`xr.apply_ufunc(..., dask="parallelized")`), one full time chunk with spatial
@@ -1142,7 +1149,7 @@ spi = "climate_indices.__spi__:main"
   - Dask array support with chunking validation
   - PET computation (Thornthwaite, Hargreaves)
 
-- **`indices.py`** (856 lines): Legacy numpy API
+- **`indices.py`** (1210 lines): Legacy numpy API
   - Backward-compatible function signatures
   - Direct numpy array inputs/outputs
   - Distribution enum (`Distribution.gamma`, `Distribution.pearson`)
@@ -1157,9 +1164,10 @@ spi = "climate_indices.__spi__:main"
 **Purpose**: Core mathematical algorithms for climate index calculation.
 
 **Modules**:
-- **`compute.py`** (1278 lines): Core computation functions
+- **`compute.py`** (1669 lines): Core computation functions
   - `prepare_scaled()`: Shared flatten/clip/roll-sum/reshape preparation for the fitting-based indices
   - `scale_values()`: Rolling sum computation for temporal scaling (wrapper over `prepare_scaled()`)
+  - `fit_and_standardize()`: Shared parameter normalization, gamma/Pearson dispatch, and Pearson→gamma fall-back seam for SPI and SPEI
   - `gamma_parameters()`, `pearson_parameters()`: Distribution fitting
   - `transform_fitted_gamma()`, `transform_fitted_pearson()`: CDF transformation
   - `sum_to_scale()`: Optimized sliding window summation
@@ -1191,6 +1199,10 @@ spi = "climate_indices.__spi__:main"
    - **Pearson Type III**: L-moments (location, scale, skew parameters)
    - **Calibration period**: Default 30+ years, user-configurable
    - **Handling zeros**: Probability of zero tracked separately
+   - **Fall-back policy**: SPI falls back from a failed (or mostly-missing) Pearson Type III
+     fit to gamma; SPEI propagates the failure. `compute.fit_and_standardize()` takes this
+     as `fallback_to_gamma`, so the divergence is a parameter of one seam rather than a
+     copy of the fit/dispatch branch in each index function.
 
 #### 4. Math/Statistics Layer
 **Purpose**: Low-level mathematical and statistical functions.
@@ -1341,6 +1353,10 @@ climate_indices/
 │  - Pearson: loc, scale, skew parameters (L-moments)             │
 │  - Fit on calibration period only                               │
 │  - Track probability of zero separately                         │
+│  - One seam (compute.fit_and_standardize) normalizes fitting    │
+│    parameters and dispatches on the distribution                │
+│  - SPI falls back from a failed Pearson fit to gamma, SPEI      │
+│    propagates the failure (fallback_to_gamma)                   │
 └───────────────────────┬─────────────────────────────────────────┘
                         │
                         ▼
@@ -2026,7 +2042,7 @@ CF_METADATA = {
 
 ### `indices.py` - Legacy NumPy API (STABLE)
 **Location**: `src/climate_indices/indices.py`
-**Lines**: 856
+**Lines**: 1210
 **Purpose**: Backward-compatible numpy interface.
 
 #### Stability Guarantee
@@ -2106,7 +2122,7 @@ class Distribution(Enum):
 
 ### `compute.py` - Mathematical Core
 **Location**: `src/climate_indices/compute.py`
-**Lines**: 1278
+**Lines**: 1669
 **Purpose**: Core algorithms for climate index calculation.
 
 #### Periodicity Enum
@@ -2224,6 +2240,32 @@ def transform_fitted_pearson(
     """Transform via Pearson Type III CDF → standard normal."""
 ```
 
+##### Fit and Standardize
+**`fit_and_standardize()`**
+```python
+def fit_and_standardize(
+    values: np.ndarray,
+    distribution: Distribution,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
+    fitting_params: dict[str, Any] | None = None,
+    *,
+    fallback_to_gamma: bool = False,
+    fallback_context: str = "",
+) -> np.ndarray:
+    """Fit to the given distribution and transform to standard normal."""
+```
+**Algorithm**: The single fit/dispatch seam shared by SPI and SPEI. Normalizes
+fitting-parameter keys (accepting the deprecated aliases), dispatches on the
+distribution to `transform_fitted_gamma()` or `transform_fitted_pearson()`, and owns the
+Pearson Type III → gamma fall-back. `fallback_to_gamma` makes that policy a parameter of
+the call: SPI passes `True`, SPEI leaves it `False` and propagates the fitting failure.
+A failed Pearson call falls back on the scaled input; a Pearson result that is mostly
+missing is treated as a failure and falls back on that result (the behavior SPI has
+always had).
+
 #### Algorithm Details
 1. **Scaling**: `sum_to_scale()` applies rolling window
 2. **Fitting**: Fit distribution parameters per calendar month/day on calibration period
@@ -2296,7 +2338,7 @@ def scpdsi(
 #### Dependencies
 
 - Core: `numpy`
-- Internal: `_palmer_wells`, `self_calibration`, `utils`
+- Internal: `_palmer_duration`, `_palmer_wells`, `self_calibration`, `utils`
 
 ---
 
@@ -2648,7 +2690,7 @@ def log_performance_metrics(
 | **`xarray_adapter.py`** | compute, indices, exceptions | numpy, xarray, dask |
 | **`indices.py`** | compute, eto, exceptions, utils | numpy, scipy |
 | **`compute.py`** | lmoments, exceptions, utils | numpy, scipy |
-| **`palmer.py`** | _palmer_wells, exceptions | numpy, structlog |
+| **`palmer.py`** | _palmer_duration, _palmer_wells, exceptions | numpy, structlog |
 | _(continued)_ | logging_config, self_calibration, utils | _(see above)_ |
 | **`eto.py`** | exceptions, logging_config, performance, utils | numpy |
 | **`lmoments.py`** | utils | numpy |

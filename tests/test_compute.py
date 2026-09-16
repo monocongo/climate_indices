@@ -1,9 +1,10 @@
 import logging
+from unittest import mock
 
 import numpy as np
 import pytest
 
-from climate_indices import compute
+from climate_indices import compute, indices
 
 # disable logging messages
 logging.disable(logging.CRITICAL)
@@ -775,3 +776,155 @@ def test_prepare_scaled_clips_negatives_alongside_missing_values():
     with_nan = np.array([-3.0, 4.0, np.nan, 2.0])
     summed = compute.prepare_scaled(with_nan, 2, compute.Periodicity.monthly, reshape=False)
     assert summed[1] == 0.0 + 4.0
+
+
+def test_fit_and_standardize_dispatches_on_distribution():
+    """
+    Each distribution is fitted and transformed by its own transform, with no
+    parameters to normalize first.
+    """
+    values = np.arange(1.0, 121.0).reshape(10, 12)
+
+    gamma = compute.fit_and_standardize(
+        values, indices.Distribution.gamma, 2000, 2000, 2009, compute.Periodicity.monthly
+    )
+    np.testing.assert_array_equal(
+        gamma,
+        compute.transform_fitted_gamma(values, 2000, 2000, 2009, compute.Periodicity.monthly),
+    )
+
+    pearson = compute.fit_and_standardize(
+        values, indices.Distribution.pearson, 2000, 2000, 2009, compute.Periodicity.monthly
+    )
+    np.testing.assert_array_equal(
+        pearson,
+        compute.transform_fitted_pearson(values, 2000, 2000, 2009, compute.Periodicity.monthly),
+    )
+
+
+def test_fit_and_standardize_normalizes_fitting_parameter_keys():
+    """
+    Fitting parameters are normalized: the canonical spellings and the deprecated
+    aliases that mean the same thing are both used, an explicit None for a canonical
+    key means "fit this parameter from the data", and a canonical key that is None
+    defers to a deprecated alias that carries a value.
+    """
+    values = np.arange(1.0, 121.0).reshape(10, 12)
+    alphas = np.full(12, 4.0)
+    betas = np.full(12, 8.0)
+    with_supplied = compute.transform_fitted_gamma(values, 2000, 2000, 2009, compute.Periodicity.monthly, alphas, betas)
+    from_the_data = compute.transform_fitted_gamma(values, 2000, 2000, 2009, compute.Periodicity.monthly)
+
+    # the supplied parameters are distinguishable from the fitted ones, so a seam that
+    # ignored fitting_params would fail the assertions below
+    assert not np.array_equal(with_supplied, from_the_data)
+
+    parameters = (
+        {"alpha": alphas, "beta": betas},
+        {"alphas": alphas, "betas": betas},
+        {"alpha": None, "alphas": alphas, "beta": None, "betas": betas},
+    )
+    for fitting_params in parameters:
+        computed = compute.fit_and_standardize(
+            values,
+            indices.Distribution.gamma,
+            2000,
+            2000,
+            2009,
+            compute.Periodicity.monthly,
+            fitting_params,
+        )
+        np.testing.assert_array_equal(computed, with_supplied)
+
+    explicit_none = compute.fit_and_standardize(
+        values,
+        indices.Distribution.gamma,
+        2000,
+        2000,
+        2009,
+        compute.Periodicity.monthly,
+        {"alpha": None, "beta": None},
+    )
+    np.testing.assert_array_equal(explicit_none, from_the_data)
+
+    # a key absent from a partial parameter set reads as None rather than raising KeyError:
+    # gamma refits from the data, and Pearson Type III still reports its incomplete set
+    partial_gamma = compute.fit_and_standardize(
+        values,
+        indices.Distribution.gamma,
+        2000,
+        2000,
+        2009,
+        compute.Periodicity.monthly,
+        {"alpha": alphas},
+    )
+    np.testing.assert_array_equal(partial_gamma, from_the_data)
+
+    with pytest.raises(ValueError, match="either none or all"):
+        compute.fit_and_standardize(
+            values,
+            indices.Distribution.pearson,
+            2000,
+            2000,
+            2009,
+            compute.Periodicity.monthly,
+            {"prob_zero": np.full(12, 0.1)},
+        )
+
+
+def test_fit_and_standardize_falls_back_to_gamma_only_when_asked():
+    """
+    A failed Pearson Type III fit falls back to gamma when the caller asked for the
+    fall back, and propagates the failure to the caller when it did not.
+    """
+    values = np.arange(1.0, 121.0).reshape(10, 12)
+    failed_pearson = mock.patch(
+        "climate_indices.compute.transform_fitted_pearson",
+        side_effect=compute.DistributionFittingError("Pearson failed", distribution_name="pearson3"),
+    )
+
+    with failed_pearson:
+        with pytest.raises(compute.DistributionFittingError):
+            compute.fit_and_standardize(
+                values, indices.Distribution.pearson, 2000, 2000, 2009, compute.Periodicity.monthly
+            )
+
+    with failed_pearson:
+        fell_back = compute.fit_and_standardize(
+            values,
+            indices.Distribution.pearson,
+            2000,
+            2000,
+            2009,
+            compute.Periodicity.monthly,
+            fallback_to_gamma=True,
+        )
+
+    # a failed fit leaves the scaled values in place, so the fall back fits gamma to those
+    np.testing.assert_array_equal(
+        fell_back,
+        compute.transform_fitted_gamma(values, 2000, 2000, 2009, compute.Periodicity.monthly),
+    )
+
+
+def test_fit_and_standardize_falls_back_when_pearson_leaves_excessive_nans():
+    """
+    A Pearson Type III result that is mostly missing counts as a fitting failure and
+    falls back to gamma.
+    """
+    values = np.arange(1.0, 121.0).reshape(10, 12)
+
+    with mock.patch("climate_indices.compute.transform_fitted_pearson", return_value=np.full(values.shape, np.nan)):
+        with mock.patch("climate_indices.compute.transform_fitted_gamma", return_value=np.ones(values.shape)) as gamma:
+            computed = compute.fit_and_standardize(
+                values,
+                indices.Distribution.pearson,
+                2000,
+                2000,
+                2009,
+                compute.Periodicity.monthly,
+                fallback_to_gamma=True,
+            )
+
+    assert gamma.call_count == 1
+    np.testing.assert_array_equal(computed, np.ones(values.shape))
