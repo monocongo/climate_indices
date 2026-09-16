@@ -111,6 +111,8 @@ _KBDI_RAIN_THRESHOLD_MM = 5.08
 _KBDI_DRYING_TEMPERATURE_CELSIUS = 10.0
 _KBDI_MINIMUM_MEAN_ANNUAL_RECORD_DAYS = 30 * 365
 
+_ARG_INITIAL_STATE_KBDI = "initial_state.kbdi"
+
 
 @dataclass(frozen=True)
 class KBDIState:
@@ -200,7 +202,7 @@ def _kbdi_state_arrays(
             valid_values=units,
         )
 
-    kbdi_value = _kbdi_static_array(state.kbdi, spatial_shape, "initial_state.kbdi")
+    kbdi_value = _kbdi_static_array(state.kbdi, spatial_shape, _ARG_INITIAL_STATE_KBDI)
     wet_spell = _kbdi_static_array(
         state.wet_spell_precipitation,
         spatial_shape,
@@ -213,7 +215,7 @@ def _kbdi_state_arrays(
     ):
         raise InvalidArgumentError(
             f"initial_state.kbdi must be NaN or within [0, {maximum:g}].",
-            argument_name="initial_state.kbdi",
+            argument_name=_ARG_INITIAL_STATE_KBDI,
             argument_value="values outside the valid KBDI range",
             valid_values=f"NaN or [0, {maximum:g}]",
         )
@@ -241,7 +243,7 @@ def _kbdi_state_arrays(
     if np.any(np.isnan(kbdi_value) & (trailing_gap_days < 0)):
         raise InvalidArgumentError(
             "initial_state.kbdi may be NaN only where trailing_gap_days shows a gap has started.",
-            argument_name="initial_state.kbdi",
+            argument_name=_ARG_INITIAL_STATE_KBDI,
             argument_value="NaN KBDI where initial_state.trailing_gap_days is -1 or None",
             valid_values="A finite KBDI in a not-started cell; NaN only after a gap has started the cell",
         )
