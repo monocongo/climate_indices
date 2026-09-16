@@ -39,8 +39,11 @@ jobs:
       - name: Check ruff formatting
         run: uv run --no-sync --no-build ruff format --check src/ tests/
 
+      # tests/test_type_checking.py holds the assert_type() checks for the
+      # typed_public_api overloads. pytest only runs its call bodies; without
+      # it here the assert_type() calls are never verified.
       - name: Run mypy type checker
-        run: uv run --no-sync --no-build mypy src/
+        run: uv run --no-sync --no-build mypy src/ tests/test_type_checking.py
 
   test:
     runs-on: ${{ matrix.os }}

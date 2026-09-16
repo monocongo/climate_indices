@@ -1,10 +1,11 @@
 """Static type verification tests for mypy.
 
 These tests use typing.assert_type() to verify that mypy correctly infers
-return types for the overloaded spi() and spei() functions. The tests are
-checked by mypy, not by pytest.
+return types for the overloaded public API functions. The tests are checked
+by mypy, not by pytest.
 
-Run with: uv run mypy tests/test_type_checking.py
+Enforced by the `lint` CI job (`mypy src/ tests/test_type_checking.py`); the
+`meta` job also runs them under pytest so the calls execute at runtime.
 
 Note: These tests are designed to be checked by mypy for type inference.
 They include proper test data so they can also run successfully in pytest.
@@ -43,7 +44,7 @@ def test_spi_numpy_return_type() -> None:
         calibration_year_final=2019,
         periodicity=Periodicity.monthly,
     )
-    assert_type(result, np.ndarray)
+    assert_type(result, npt.NDArray[np.float64])
 
 
 def test_spi_xarray_return_type() -> None:
@@ -79,7 +80,7 @@ def test_spei_numpy_return_type() -> None:
         calibration_year_initial=1980,
         calibration_year_final=2019,
     )
-    assert_type(result, np.ndarray)
+    assert_type(result, npt.NDArray[np.float64])
 
 
 def test_spei_xarray_return_type() -> None:
@@ -121,7 +122,7 @@ def test_kbdi_numpy_return_type() -> None:
     # return type is always a union with KBDIResult, even when return_state
     # defaults to False.
     result = fire.kbdi(precipitation, temperature, 1000.0)
-    assert_type(result, np.ndarray | fire.KBDIResult)
+    assert_type(result, npt.NDArray[np.float64] | fire.KBDIResult)
 
 
 def test_kbdi_xarray_return_type() -> None:
