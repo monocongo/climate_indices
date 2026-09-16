@@ -253,8 +253,10 @@ def test_invalid_scale_raises_and_writes_no_output(tmp_path, precips_mm_monthly)
     _write_timeseries(precip_path, precips_mm_monthly.reshape(-1))
     output_base = tmp_path / "no_output"
 
+    arguments = _spi_arguments(precip_path, output_base, scales=("-6",))
+
     with pytest.raises(ValueError, match="negative scale"):
-        main(_spi_arguments(precip_path, output_base, scales=("-6",)))
+        main(arguments)
 
     assert not list(tmp_path.glob("no_output*"))
 
