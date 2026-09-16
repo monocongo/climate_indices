@@ -1,4 +1,5 @@
 import logging
+from unittest import mock
 
 import numpy as np
 import pytest
@@ -724,3 +725,61 @@ def test_pci(
 
     # confirm that an invalid number of days raises an error
     np.testing.assert_raises(InvalidArgumentError, indices.pci, np.array(list(range(300))))
+
+
+@pytest.mark.usefixtures(
+    "precips_mm_monthly",
+    "pet_thornthwaite_mm",
+    "data_year_start_monthly",
+    "calibration_year_start_monthly",
+    "calibration_year_end_monthly",
+)
+def test_fitting_indices_share_one_preparation_seam(
+    precips_mm_monthly,
+    pet_thornthwaite_mm,
+    data_year_start_monthly,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+):
+    """SPI, SPEI, EDDI, and PNP all prepare their scaled values through one seam."""
+    precips = precips_mm_monthly.flatten()
+    pet = pet_thornthwaite_mm.flatten()
+
+    with mock.patch.object(compute, "prepare_scaled", wraps=compute.prepare_scaled) as prepare_scaled:
+        indices.spi(
+            precips,
+            3,
+            indices.Distribution.gamma,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            compute.Periodicity.monthly,
+        )
+        indices.spei(
+            precips,
+            pet,
+            3,
+            indices.Distribution.gamma,
+            compute.Periodicity.monthly,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+        )
+        indices.eddi(
+            pet_thornthwaite_mm,
+            3,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            compute.Periodicity.monthly,
+        )
+        indices.percentage_of_normal(
+            precips,
+            3,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            compute.Periodicity.monthly,
+        )
+
+    assert prepare_scaled.call_count == 4

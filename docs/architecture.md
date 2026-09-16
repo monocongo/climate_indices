@@ -141,11 +141,12 @@ spi = "climate_indices.__spi__:main"
 
 **Modules**:
 - **`compute.py`** (1328 lines): Core computation functions
-  - `scale_values()`: Rolling sum computation for temporal scaling
+  - `prepare_scaled()`: Shared flatten/clip/roll-sum/reshape preparation for the fitting-based indices
+  - `scale_values()`: Rolling sum computation for temporal scaling (wrapper over `prepare_scaled()`)
   - `gamma_parameters()`, `pearson_parameters()`: Distribution fitting
   - `transform_fitted_gamma()`, `transform_fitted_pearson()`: CDF transformation
   - `sum_to_scale()`: Optimized sliding window summation
-  - `Periodicity` enum: `monthly` (12 steps/year), `daily` (366 steps/year)
+  - `Periodicity` enum: `monthly` (12 steps/year), `daily` (366 steps/year), with a `period_length` property and a `unit()` method
 
 - **`palmer.py`**: Palmer Drought Index family
   - PDSI (Palmer Drought Severity Index)

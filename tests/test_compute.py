@@ -616,3 +616,69 @@ def test_sum_to_scale():
         sum_by6,
         err_msg=UNEXPECTED_SLIDING_SUMS_MESSAGE,
     )
+
+
+def test_periodicity_period_length():
+    """
+    Each periodicity reports the number of time steps in one year of data.
+    """
+    assert compute.Periodicity.monthly.period_length == 12
+    assert compute.Periodicity.daily.period_length == 366
+
+
+def test_prepare_scaled_flattens_clips_and_reshapes():
+    """
+    2-D input is flattened, negative values are clipped, and the result is reshaped.
+    """
+    values = np.arange(24, dtype=float).reshape(2, 12)
+    values[0, 0] = -5.0
+
+    computed = compute.prepare_scaled(values, 1, compute.Periodicity.monthly)
+
+    expected = np.clip(values.flatten(), 0.0, None).reshape(2, 12)
+    assert computed.shape == (2, 12)
+    np.testing.assert_array_equal(computed, expected)
+
+    # clipping is optional, and nothing else about the preparation changes
+    unclipped = compute.prepare_scaled(values, 1, compute.Periodicity.monthly, clip_negatives=False)
+    np.testing.assert_array_equal(unclipped, values)
+
+
+def test_prepare_scaled_sums_over_the_scale():
+    """
+    The scale sums each time step, and the reshape to (years, periods) is optional.
+    """
+    values = np.arange(1.0, 25.0)
+
+    unreshaped = compute.prepare_scaled(values, 3, compute.Periodicity.monthly, reshape=False)
+    np.testing.assert_array_equal(unreshaped, compute.sum_to_scale(values, 3))
+    assert unreshaped.shape == (24,)
+
+    reshaped = compute.prepare_scaled(values, 3, compute.Periodicity.monthly)
+    assert reshaped.shape == (2, 12)
+
+
+def test_prepare_scaled_returns_all_missing_input_unreshaped():
+    """
+    All-missing input is handed back flattened and un-reshaped so that callers can short-circuit.
+    """
+    computed = compute.prepare_scaled(np.full((2, 12), np.nan), 3, compute.Periodicity.monthly)
+    assert computed.ndim == 1
+    assert np.all(np.isnan(computed))
+
+    computed_masked = compute.prepare_scaled(
+        np.ma.array(np.zeros((2, 12)), mask=True),
+        3,
+        compute.Periodicity.monthly,
+    )
+    assert np.ma.isMaskedArray(computed_masked)
+    assert computed_masked.ndim == 1
+    assert computed_masked.mask.all()
+
+
+def test_prepare_scaled_rejects_unsupported_shapes():
+    """
+    Input that is neither 1-D nor 2-D raises a ValueError.
+    """
+    with pytest.raises(ValueError, match="Invalid shape of input array"):
+        compute.prepare_scaled(np.zeros((2, 3, 4)), 1, compute.Periodicity.monthly)
