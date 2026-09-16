@@ -152,8 +152,10 @@ _DC_MONTH_CASES = [
 _FFMC_RAIN_REFERENCE = np.array([89.1896214799, 88.7924137871, 87.2245824186, 71.8779804228])
 # (temperature, expected) for the DMC temperature floor at 46 N, July
 _DMC_FLOOR_REFERENCE = np.array([6.0, 6.15500496])
-# (temperature, expected) for the DC midwinter evapotranspiration floor
-_DC_FLOOR_REFERENCE = np.array([100.0, 100.0])
+# (temperature, expected) for the DC midwinter evapotranspiration floor at 46 N,
+# plus a mid-summer day at the temperature floor, where the evapotranspiration
+# term is positive and the floor location is pinned
+_DC_FLOOR_REFERENCE = np.array([100.0, 100.0, 103.2])
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -278,6 +280,14 @@ _SEED_NAMES = [
     pytest.param(_run_dmc, "initial_dmc", id="dmc"),
     pytest.param(_run_dc, "initial_dc", id="dc"),
 ]
+
+_STATE_TYPES = [
+    pytest.param(_run_ffmc, fire.FFMCState, "ffmc", id="ffmc"),
+    pytest.param(_run_dmc, fire.DMCState, "dmc", id="dmc"),
+    pytest.param(_run_dc, fire.DCState, "dc", id="dc"),
+]
+
+_SEEDS = {_run_ffmc: 85.0, _run_dmc: 6.0, _run_dc: 15.0}
 
 
 def test_public_api_is_namespaced() -> None:
@@ -412,9 +422,20 @@ def test_dc_temperature_floor_and_evapotranspiration_floor() -> None:
     """At top latitudes in midwinter the potential evapotranspiration stays at zero."""
     weather = _series(1, month=1)
     weather.temperature[:] = -10.0
-    assert _run_dc(weather, initial_dc=100.0) == pytest.approx(_DC_FLOOR_REFERENCE[0])
+    np.testing.assert_allclose(
+        _run_dc(weather, initial_dc=100.0), _DC_FLOOR_REFERENCE[0], rtol=0.0, atol=_REFERENCE_TOLERANCE
+    )
     weather.temperature[:] = -2.8
-    assert _run_dc(weather, initial_dc=100.0) == pytest.approx(_DC_FLOOR_REFERENCE[1])
+    np.testing.assert_allclose(
+        _run_dc(weather, initial_dc=100.0), _DC_FLOOR_REFERENCE[1], rtol=0.0, atol=_REFERENCE_TOLERANCE
+    )
+    # at the floor in mid-summer the day-length term is positive, so the floor
+    # has to sit exactly at -2.8 C for this value to come out
+    weather = _series(1, month=7)
+    weather.temperature[:] = -2.8
+    np.testing.assert_allclose(
+        _run_dc(weather, initial_dc=100.0), _DC_FLOOR_REFERENCE[2], rtol=0.0, atol=_REFERENCE_TOLERANCE
+    )
 
 
 def test_heavy_rain_lowers_ffmc_sharply_but_dc_slowly() -> None:
@@ -508,6 +529,22 @@ def test_seed_changes_the_recurrence(seed_name: str, seed: float) -> None:
     assert not np.allclose(seeded, default)
 
 
+@pytest.mark.parametrize(("runner", "seed_name"), _SEED_NAMES)
+def test_spatial_seed_array_is_applied_per_cell(runner: object, seed_name: str) -> None:
+    """An array seed is per-cell; a scalar seed keeps every cell on that value."""
+    weather = _series(3)
+    weather.temperature = np.tile(weather.temperature[:, None], (1, 2))
+    weather.humidity = np.tile(weather.humidity[:, None], (1, 2))
+    weather.wind = np.tile(weather.wind[:, None], (1, 2))
+    weather.precipitation = np.tile(weather.precipitation[:, None], (1, 2))
+    weather.month = np.tile(weather.month[:, None], (1, 2))
+    high = _SEEDS[runner] + 5.0
+    seeded = runner(weather, **{seed_name: np.asarray([_SEEDS[runner], high])})
+    np.testing.assert_array_equal(seeded[:, 0], runner(weather, **{seed_name: _SEEDS[runner]})[:, 0])
+    np.testing.assert_array_equal(seeded[:, 1], runner(weather, **{seed_name: high})[:, 1])
+    assert seeded.shape == (3, 2)
+
+
 @pytest.mark.parametrize("runner", _RUNNERS)
 def test_append_resume_round_trip_is_bitwise_identical(runner: object) -> None:
     """Resuming from the returned state must equal one continuous run (ADR-0006)."""
@@ -578,6 +615,34 @@ def test_spin_up_longer_than_the_input_yields_an_empty_result(runner: object) ->
     assert values.shape == (0,)
 
 
+@pytest.mark.parametrize("runner", _RUNNERS)
+def test_spin_up_with_initial_state_matches_the_continuous_run(runner: object) -> None:
+    """ADR-0007: spin_up shortens the output window only, not the recurrence."""
+    weather = _reference_weather()
+    first = runner(_slice(weather, 0, 4), return_state=True)
+    resumed = runner(_slice(weather, 4, 12), initial_state=first.state, spin_up=2, return_state=True)
+    whole = runner(weather, return_state=True)
+    np.testing.assert_array_equal(resumed.values, whole.values[6:])
+    np.testing.assert_array_equal(_state_code(resumed.state), _state_code(whole.state))
+
+
+@pytest.mark.parametrize("runner", _RUNNERS)
+def test_gap_inside_the_spin_up_window_follows_the_policy(runner: object) -> None:
+    """ADR-0007: the same gap rule applies to days omitted from the output."""
+    gapped = _with_missing(_series(5), 1, 3)
+    assert np.isnan(runner(gapped, spin_up=3)).all()
+    assert np.isfinite(runner(gapped, spin_up=3, nan_policy="bridge", max_gap_days=2)).all()
+    assert np.isnan(runner(gapped, spin_up=3, nan_policy="bridge", max_gap_days=1)).all()
+
+
+@pytest.mark.parametrize("runner", _RUNNERS)
+def test_empty_series_returns_an_empty_output_and_an_unstarted_state(runner: object) -> None:
+    result = runner(_series(0), return_state=True)
+    assert result.values.shape == (0,)
+    assert result.state.trailing_gap_days is None
+    assert float(_state_code(result.state)) == pytest.approx(_SEEDS[runner])
+
+
 @pytest.mark.parametrize(("runner", "seed_name"), _SEED_NAMES)
 def test_seed_and_state_cannot_be_combined(runner: object, seed_name: str) -> None:
     weather = _reference_weather()
@@ -606,6 +671,24 @@ def test_nan_state_requires_started_gap_bookkeeping(runner: object) -> None:
     state = state_type(**{value_name: np.asarray(np.nan), "trailing_gap_days": np.asarray(-1)})
     with pytest.raises(InvalidArgumentError, match="NaN"):
         runner(weather, initial_state=state)
+
+
+_OUT_OF_RANGE_STATE_VALUES = {_run_ffmc: 150.0, _run_dmc: -1.0, _run_dc: -1.0}
+
+
+@pytest.mark.parametrize(("runner", "state_type", "value_name"), _STATE_TYPES)
+def test_out_of_range_initial_state_value_raises(runner: object, state_type: type, value_name: str) -> None:
+    state = state_type(**{value_name: np.asarray(_OUT_OF_RANGE_STATE_VALUES[runner]), "trailing_gap_days": None})
+    with pytest.raises(InvalidArgumentError, match=f"initial_state.{value_name}"):
+        runner(_series(2), initial_state=state)
+
+
+@pytest.mark.parametrize(("runner", "state_type", "value_name"), _STATE_TYPES)
+@pytest.mark.parametrize("trailing", [-2.0, 0.5])
+def test_invalid_trailing_gap_days_raise(runner: object, state_type: type, value_name: str, trailing: float) -> None:
+    state = state_type(**{value_name: np.asarray(_SEEDS[runner]), "trailing_gap_days": np.asarray(trailing)})
+    with pytest.raises(InvalidArgumentError, match="trailing_gap_days"):
+        runner(_series(2), initial_state=state)
 
 
 # ------------------------------------------------------------------------------
@@ -977,8 +1060,15 @@ def test_missing_days_count_all_three_weather_inputs() -> None:
     assert np.isnan(_run_dc(weather)[1:]).all()
 
 
-def test_out_of_range_humidity_counts_as_a_missing_day() -> None:
+@pytest.mark.parametrize("humidity", [101.0, -1.0])
+def test_out_of_range_humidity_counts_as_a_missing_day(humidity: float) -> None:
     weather = _series(4)
-    weather.humidity = np.asarray([45.0, 101.0, 45.0, 45.0])
+    weather.humidity = np.asarray([45.0, humidity, 45.0, 45.0])
     assert np.isnan(_run_ffmc(weather)[1:]).all()
     assert np.isnan(_run_dmc(weather)[1:]).all()
+
+
+def test_negative_wind_counts_as_a_missing_day() -> None:
+    weather = _series(4)
+    weather.wind = np.asarray([3.0, -1.0, 3.0, 3.0])
+    assert np.isnan(_run_ffmc(weather)[1:]).all()
