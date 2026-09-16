@@ -136,15 +136,18 @@ def _haines_from_levels(
     # NaN pressure counts as masked: a caller who supplies pressure but does not
     # know it must not receive a below-ground level scored as if it were valid
     below_ground = ~(surface_pressure_hpa >= spec.lower_hpa)
+    result: npt.NDArray[np.float64] = np.asarray(np.where(below_ground, np.nan, index), dtype=np.float64)
     if warn:
-        below_ground_count = int(np.count_nonzero(below_ground))
-        if below_ground_count > 0:
+        # count the cells the mask withheld, not the mask's own elements: the
+        # xarray path hands the kernel a scalar pressure alongside a grid, and
+        # counting those elements would report one withheld cell for many
+        withheld = int(np.count_nonzero(np.isnan(result) & ~np.isnan(index)))
+        if withheld > 0:
             _logger.warning(
-                f"Found {below_ground_count} values with surface pressure below the "
+                f"Found {withheld} values with surface pressure below the "
                 f"{spec.lower_hpa:.0f} hPa level required by the {variant!r} variant; "
                 "the Haines Index is NaN there rather than extrapolated."
             )
-    result: npt.NDArray[np.float64] = np.asarray(np.where(below_ground, np.nan, index), dtype=np.float64)
     return result
 
 
@@ -695,7 +698,17 @@ def _haines_xarray(
         if isinstance(surface_pressure_hpa, xr.DataArray):
             inputs = inputs + (surface_pressure_hpa,)
         elif np.ndim(surface_pressure_hpa) == 0:
-            inputs = inputs + (np.asarray(surface_pressure_hpa, dtype=np.float64),)
+            # numeric only, as the NumPy path's _as_float_array enforces; a
+            # numeric string is not coerced here either
+            pressure_scalar = np.asarray(surface_pressure_hpa)
+            if pressure_scalar.dtype.kind not in "biuf":
+                raise InputTypeError(
+                    f"surface_pressure_hpa must be numeric, got {type(surface_pressure_hpa).__name__} "
+                    f"with dtype {pressure_scalar.dtype}.",
+                    expected_type=float,
+                    actual_type=pressure_scalar.dtype.type,
+                )
+            inputs = inputs + (pressure_scalar.astype(np.float64),)
         else:
             raise InvalidArgumentError(
                 "surface_pressure_hpa must be an xr.DataArray or a scalar when temperature_lower_celsius "

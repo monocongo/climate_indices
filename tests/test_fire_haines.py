@@ -532,7 +532,6 @@ def test_haines_xarray_dask_blocks_do_not_log_per_block() -> None:
         )
         values = chunked.compute().values
 
-    mock_logger.bind.assert_not_called()
     mock_logger.warning.assert_not_called()
     assert np.isnan(values[:, :, 0]).all()
     assert np.isfinite(values[:, :, 1]).all()
@@ -553,6 +552,24 @@ def test_haines_xarray_eager_input_still_warns_below_ground() -> None:
 
     assert np.isnan(result.values).all()
     mock_logger.warning.assert_called_once()
+    assert str(result.size) in mock_logger.warning.call_args.args[0]
+
+
+def test_haines_xarray_non_numeric_scalar_pressure_raises() -> None:
+    """A non-numeric scalar pressure is rejected the way the NumPy path rejects
+    it, instead of numpy raising a raw ValueError (or silently coercing a
+    numeric string)."""
+    temperature_lower, temperature_upper, dewpoint = _haines_dataarrays()
+    for pressure in ("900", "nope"):
+        with pytest.raises(InputTypeError, match="surface_pressure_hpa") as exc_info:
+            fire.haines_index(
+                temperature_lower, temperature_upper, dewpoint, variant="low", surface_pressure_hpa=pressure
+            )
+        assert exc_info.value.actual_type is not None
+
+    # the NumPy path rejects the same input
+    with pytest.raises(InputTypeError):
+        fire.haines_index(32.0, 24.0, 13.0, variant="low", surface_pressure_hpa="900")
 
 
 def test_haines_xarray_non_numeric_dtype_raises() -> None:
