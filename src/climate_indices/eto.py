@@ -27,7 +27,7 @@ import time
 
 import numpy as np
 
-from climate_indices import utils
+from climate_indices import compute, utils
 from climate_indices.exceptions import InvalidArgumentError
 from climate_indices.logging_config import get_logger
 from climate_indices.performance import check_large_array_memory
@@ -58,22 +58,26 @@ _SOLAR_DECLINATION_RADIANS_MAX = np.deg2rad(23.45)
 
 
 def _sunset_hour_angle(
-    latitude_radians: float,
-    solar_declination_radians: float,
-) -> float:
+    latitude_radians: float | np.ndarray,
+    solar_declination_radians: float | np.ndarray,
+) -> float | np.ndarray:
     """
     Calculate sunset hour angle (*Ws*) from latitude and solar declination.
 
     Based on FAO equation 25 in Allen et al (1998).
 
-    :param float latitude_radians: latitude in radians
-    :param float solar_declination_radians: angle of solar declination in radians
+    :param latitude_radians: latitude in radians, as a scalar or an array of
+        per-cell latitudes
+    :param solar_declination_radians: angle of solar declination in radians, as a
+        scalar or an array broadcastable against the latitude
     :return: sunset hour angle in radians
-    :rtype: float
+    :rtype: float, or an array of the broadcast latitude/declination shape
     """
 
-    # validate the latitude argument
-    if not _LATITUDE_RADIANS_MIN <= latitude_radians <= _LATITUDE_RADIANS_MAX:
+    # validate the latitude argument, element-wise when given per-cell latitudes
+    if np.any(np.isnan(latitude_radians)) or not np.all(
+        (_LATITUDE_RADIANS_MIN <= latitude_radians) & (latitude_radians <= _LATITUDE_RADIANS_MAX)
+    ):
         raise InvalidArgumentError(
             f"Latitude outside valid range [{_LATITUDE_RADIANS_MIN!r} to {_LATITUDE_RADIANS_MAX!r}]. "
             f"Received: {latitude_radians!r}",
@@ -85,7 +89,10 @@ def _sunset_hour_angle(
     # validate the solar declination angle argument, which can vary between
     # -23.45 and +23.45 degrees see Goswami (2015) p.40, and
     # http://www.itacanet.org/the-sun-as-a-source-of-energy/part-1-solar-astronomy/
-    if not _SOLAR_DECLINATION_RADIANS_MIN <= solar_declination_radians <= _SOLAR_DECLINATION_RADIANS_MAX:
+    if np.any(np.isnan(solar_declination_radians)) or not np.all(
+        (_SOLAR_DECLINATION_RADIANS_MIN <= solar_declination_radians)
+        & (solar_declination_radians <= _SOLAR_DECLINATION_RADIANS_MAX)
+    ):
         raise InvalidArgumentError(
             f"Solar declination angle outside valid range "
             f"[{_SOLAR_DECLINATION_RADIANS_MIN} to {_SOLAR_DECLINATION_RADIANS_MAX}]. "
@@ -97,30 +104,31 @@ def _sunset_hour_angle(
 
     # calculate the cosine of the sunset hour angle (*Ws* in FAO 25)
     # from latitude and solar declination
-    cos_sunset_hour_angle = -math.tan(latitude_radians) * math.tan(solar_declination_radians)
+    cos_sunset_hour_angle = -np.tan(latitude_radians) * np.tan(solar_declination_radians)
 
     # If the cosine of the sunset hour angle is >= 1 there is no sunrise, i.e. 24 hours of darkness
     # If the cosine of the sunset hour angle is <= -1 there is no sunset, i.e. 24 hours of daylight
     # See http://www.itacanet.org/the-sun-as-a-source-of-energy/part-3-calculating-solar-angles/
     # Domain of acos is -1 <= x <= 1 radians (this is not mentioned in FAO-56!)
-    return math.acos(min(max(cos_sunset_hour_angle, -1.0), 1.0))
+    sunset_hour_angle: float | np.ndarray = np.arccos(np.clip(cos_sunset_hour_angle, -1.0, 1.0))
+    return sunset_hour_angle
 
 
 def _solar_declination(
-    day_of_year: int,
-) -> float:
+    day_of_year: int | np.ndarray,
+) -> float | np.ndarray:
     """
     Calculate the angle of solar declination from day of the year.
 
     Based on FAO equation 24 in Allen et al (1998).
 
     :param day_of_year: day of year integer between 1 and 365 (or 366,
-        in the case of a leap year)
+        in the case of a leap year), or an array of such integers
     :return: solar declination [radians]
-    :rtype: float
+    :rtype: float, or an array of the same shape as the day of year input
     :raise ValueError: if the day of year value is not within the range [1-366]
     """
-    if not 1 <= day_of_year <= 366:
+    if np.any(np.isnan(day_of_year)) or not np.all((1 <= day_of_year) & (day_of_year <= 366)):
         raise InvalidArgumentError(
             f"Day of the year must be in the range [1, 366]. Received: {day_of_year!r}",
             argument_name="day_of_year",
@@ -128,27 +136,30 @@ def _solar_declination(
             valid_values="[1, 366]",
         )
 
-    return 0.409 * math.sin((2.0 * math.pi / 365.0) * day_of_year - 1.39)
+    return 0.409 * np.sin((2.0 * np.pi / 365.0) * day_of_year - 1.39)
 
 
 def _daylight_hours(
-    sunset_hour_angle_radians: float,
-) -> float:
+    sunset_hour_angle_radians: float | np.ndarray,
+) -> float | np.ndarray:
     """
     Calculate daylight hours from a sunset hour angle.
 
     Based on FAO equation 34 in Allen et al (1998).
 
-    :param sunset_hour_angle_radians: sunset hour angle, in radians
+    :param sunset_hour_angle_radians: sunset hour angle, in radians, as a scalar
+        or an array of per-cell values
     :return: number of daylight hours corresponding to the sunset hour angle
-    :rtype: float
+    :rtype: float, or an array of the same shape as the sunset hour angle input
     :raise ValueError: if the sunset hour angle is not within valid range
     """
 
     # validate the sunset hour angle argument, which has a valid
     # range of 0 to pi radians (180 degrees), inclusive
     # see http://mypages.iit.edu/~maslanka/SolarGeo.pdf
-    if not 0.0 <= sunset_hour_angle_radians <= math.pi:
+    if np.any(np.isnan(sunset_hour_angle_radians)) or not np.all(
+        (0.0 <= sunset_hour_angle_radians) & (sunset_hour_angle_radians <= math.pi)
+    ):
         raise InvalidArgumentError(
             f"Sunset hour angle outside valid range [0.0 to {math.pi}]. Received: {sunset_hour_angle_radians}",
             argument_name="sunset_hour_angle_radians",
@@ -157,20 +168,22 @@ def _daylight_hours(
         )
 
     # calculate daylight hours from the sunset hour angle
-    return (24.0 / math.pi) * sunset_hour_angle_radians
+    return (24.0 / np.pi) * sunset_hour_angle_radians
 
 
 def _monthly_mean_daylight_hours(
-    latitude_radians: float,
+    latitude_radians: float | np.ndarray,
     leap: bool = False,
 ) -> np.ndarray:
     """
     Computes the monthly mean daylight hours at the specified latitude.
 
-    :param latitude_radians: latitude in radians
+    :param latitude_radians: latitude in radians, as a scalar or an array of
+        per-cell latitudes
     :param leap: whether values should be computed specific to leap years or not
     :return: the mean daily daylight hours for each calendar month of a year
-    :rtype: numpy.ndarray of floats, 1-D with shape: (12,)
+    :rtype: numpy.ndarray of floats with shape (12,) for a scalar latitude, or
+        (12, *latitude shape) for an array of per-cell latitudes
     """
 
     # get the array of days for each month based
@@ -180,19 +193,20 @@ def _monthly_mean_daylight_hours(
     else:
         month_days = _MONTH_DAYS_LEAP
 
-    # allocate an array of daylight hours for each of the 12 months of the year
-    monthly_mean_dlh = np.zeros((12,))
+    # allocate an array of daylight hours for each of the 12 months of the year,
+    # with one cell axis per latitude value (none for a scalar latitude)
+    monthly_mean_dlh = np.zeros((12, *np.shape(latitude_radians)))
 
     # keep a count of the day of the year
     day_of_year = 1
 
     # loop over each calendar month to calculate the daylight hours for the month
     for i, days_in_month in enumerate(month_days):
-        cumulative_daylight_hours = 0.0  # cumulative daylight hours for the month
+        cumulative_daylight_hours: float | np.ndarray = 0.0  # cumulative daylight hours for the month
         for _ in range(1, days_in_month + 1):
             daily_solar_declination = _solar_declination(day_of_year)
             daily_sunset_hour_angle = _sunset_hour_angle(latitude_radians, daily_solar_declination)
-            cumulative_daylight_hours += _daylight_hours(daily_sunset_hour_angle)
+            cumulative_daylight_hours = cumulative_daylight_hours + _daylight_hours(daily_sunset_hour_angle)
             day_of_year += 1
 
         # calculate the mean daylight hours of the month
@@ -203,8 +217,9 @@ def _monthly_mean_daylight_hours(
 
 def eto_thornthwaite(
     monthly_temps_celsius: np.ndarray,
-    latitude_degrees: float,
+    latitude_degrees: float | np.ndarray,
     data_start_year: int,
+    spatial_time_major: bool = False,
 ) -> np.ndarray:
     """
     Compute monthly potential evapotranspiration (PET) using the
@@ -234,79 +249,115 @@ def eto_thornthwaite(
         steps) of mean daily air temperatures in degrees Celsius. This input
         dataset is assumed to start at January of the initial year, and can have
         any length. Both 1-D (months) and 2-D (years, 12) input datasets
-        are supported.
-    :param latitude_degrees: latitude of the location, in degrees north (-90..90)
+        are supported. A time-major spatial block of shape (time, *cells), as
+        declared with ``spatial_time_major``, is also supported.
+    :param latitude_degrees: latitude of the location, in degrees north (-90..90),
+        as a scalar or as an array of per-cell latitudes matching a time-major
+        spatial block
     :param data_start_year: year corresponding to the start of the dataset
+    :param spatial_time_major: read a three-or-more-dimensional input as a
+        time-major spatial block, i.e. with the time steps first and the cells in
+        the trailing dimensions, so the calculation runs once per cell set
     :return: estimated potential evapotranspiration, in millimeters/month
-    :rtype: 1-D numpy.ndarray of floats with shape: (total # of months)
+    :rtype: 1-D numpy.ndarray of floats with shape: (total # of months), or a
+        time-major block of shape (time, *cells)
     """
-    original_length = monthly_temps_celsius.size
+    original_size = monthly_temps_celsius.size
+    original_time_length = monthly_temps_celsius.shape[0]
 
-    # validate the input data array
-    monthly_temps_celsius = utils.reshape_to_2d(monthly_temps_celsius, 12)
+    # validate (and fold) the input data array: a declared time-major block folds
+    # into (years, 12, *cells), a 1-D/2-D series into (years, 12)
+    spatial_block = spatial_time_major and monthly_temps_celsius.ndim > 2
+    if spatial_block:
+        values = compute._reshape_time_major(monthly_temps_celsius, compute.Periodicity.monthly)
+    else:
+        values = utils.reshape_to_2d(monthly_temps_celsius, 12)
 
-    # at this point we assume that our dataset array has shape (years, 12) where
+    # at this point we assume that our dataset array has shape (years, 12, *cells) where
     # each row is a year with 12 columns of monthly values (Jan, Feb, ..., Dec)
 
-    # convert the latitude from degrees to radians
-    latitude_radians = math.radians(float(latitude_degrees))
+    # a (time, *cells) block can be a read-only view of the caller's array, and the
+    # negative-value adjustment below writes in place
+    if spatial_block and not values.flags.writeable:
+        values = values.copy()
 
     # adjust negative temperature values to zero, since negative
     # values aren't allowed (no evaporation below freezing)
     # TODO this sometimes throws a RuntimeWarning for invalid value,
     #  perhaps as a result of a NaN, somehow use masking and/or NaN
     #  pre-check to eliminate the cause of this warning
-    monthly_temps_celsius[monthly_temps_celsius < 0] = 0.0
+    values[values < 0] = 0.0
 
-    # mean the monthly temperature values over the month axis,
-    # giving us 12 monthly means for the period of record
-    mean_monthly_temps = np.nanmean(monthly_temps_celsius, axis=0)
+    # mean the monthly temperature values over the year axis, giving us 12 monthly
+    # means for the period of record, one set per cell for a spatial block
+    mean_monthly_temps = np.nanmean(values, axis=0)
 
     # calculate the heat index (I)
-    heat_index = np.sum(np.power(mean_monthly_temps / 5.0, 1.514))
+    heat_index = np.sum(np.power(mean_monthly_temps / 5.0, 1.514), axis=0)
 
     # calculate the coefficient
     a = (6.75e-07 * heat_index**3) - (7.71e-05 * heat_index**2) + (1.792e-02 * heat_index) + 0.49239
 
-    # get mean daylight hours for both normal and leap years
-    mean_daylight_hours_nonleap = np.array(_monthly_mean_daylight_hours(latitude_radians, False))
-    mean_daylight_hours_leap = np.array(_monthly_mean_daylight_hours(latitude_radians, True))
+    # get mean daylight hours for both normal and leap years, per cell when
+    # we've been given an array of per-cell latitudes
+    if isinstance(latitude_degrees, np.ndarray):
+        latitude_radians = np.radians(latitude_degrees)
+    else:
+        # float() keeps a non-numeric latitude raising the TypeError it always has
+        latitude_radians = math.radians(float(latitude_degrees))
+    mean_daylight_hours_nonleap = np.asarray(_monthly_mean_daylight_hours(latitude_radians, False))
+    mean_daylight_hours_leap = np.asarray(_monthly_mean_daylight_hours(latitude_radians, True))
 
-    # allocate the PET array we'll fill
-    pet = np.full(monthly_temps_celsius.shape, np.nan)
-    for year in range(monthly_temps_celsius.shape[0]):
-        if calendar.isleap(data_start_year + year):
-            month_days = _MONTH_DAYS_LEAP
-            mean_daylight_hours = mean_daylight_hours_leap
-        else:
-            month_days = _MONTH_DAYS_NONLEAP
-            mean_daylight_hours = mean_daylight_hours_nonleap
+    # the leap year selection is per year, and the day-length and month-length terms
+    # carry the month axis and one axis per remaining cell dimension, so that a scalar
+    # latitude's (12,) day-length array broadcasts over the cells rather than the months
+    cell_axes = (1,) * (values.ndim - 2)
+    if np.ndim(latitude_degrees) == 0:
+        mean_daylight_hours_nonleap = mean_daylight_hours_nonleap.reshape(12, *cell_axes)
+        mean_daylight_hours_leap = mean_daylight_hours_leap.reshape(12, *cell_axes)
 
-        # calculate the Thornthwaite equation
-        pet[year, :] = (
-            16
-            * (mean_daylight_hours / 12.0)
-            * (month_days / 30.0)
-            * ((10.0 * monthly_temps_celsius[year, :] / heat_index) ** a)
-        )
+    years = values.shape[0]
+    leap_years = np.array([calendar.isleap(data_start_year + year) for year in range(years)])
+    mean_daylight_hours = np.where(
+        leap_years.reshape(years, 1, *cell_axes),
+        mean_daylight_hours_leap[None],
+        mean_daylight_hours_nonleap[None],
+    )
+    month_days = np.where(
+        leap_years.reshape(years, 1),
+        _MONTH_DAYS_LEAP.reshape(1, 12),
+        _MONTH_DAYS_NONLEAP.reshape(1, 12),
+    ).reshape(years, 12, *cell_axes)
+
+    # calculate the Thornthwaite equation, one term per year, month, and cell
+    pet: np.ndarray = 16 * (mean_daylight_hours / 12.0) * (month_days / 30.0) * ((10.0 * values / heat_index) ** a)
+
+    if spatial_block:
+        # (years, 12, *cells) back to the time-major input layout, dropping any
+        # padded time steps beyond the original number of them
+        return pet.reshape(-1, *values.shape[2:])[0:original_time_length]
 
     # reshape the dataset from (years, 12) into (months),
     # i.e. convert from 2-D to 1-D, and truncate to the original length
-    return pet.reshape(-1)[0:original_length]
+    return pet.reshape(-1)[0:original_size]
 
 
 def eto_hargreaves(
     daily_tmin_celsius: np.ndarray,
     daily_tmax_celsius: np.ndarray,
     daily_tmean_celsius: np.ndarray,
-    latitude_degrees: float,
+    latitude_degrees: float | np.ndarray,
+    spatial_time_major: bool = False,
 ) -> np.ndarray:
     """
     Compute daily potential evapotranspiration (PET) using the Hargreaves
     (1985) method. Based on equation 52 in Allen et al (1998).
 
     Input arrays are assumed to be 1-D (an arbitrary number of days) or 2-D
-    (years x 366 days per year).
+    (years x 366 days per year). A time-major spatial block of shape
+    (time, *cells), as declared with ``spatial_time_major``, is also supported,
+    in which case the per-day extraterrestrial radiation is computed once per
+    cell instead of once per grid cell.
 
     :param daily_tmin_celsius: array of daily minimum temperature values,
         in degrees Celsius
@@ -314,9 +365,13 @@ def eto_hargreaves(
         in degrees Celsius
     :param daily_tmean_celsius: array of daily mean temperature values,
         in degrees Celsius
-    :param latitude_degrees: latitude of location, in degrees north
+    :param latitude_degrees: latitude of location, in degrees north, as a scalar
+        or as an array of per-cell latitudes matching a time-major spatial block
+    :param spatial_time_major: read a three-or-more-dimensional input as a
+        time-major spatial block, i.e. with the time steps first and the cells in
+        the trailing dimensions, so the calculation runs once per cell set
     :return: 1-D array of potential evapotranspiration over grass (ETo),
-        in millimeters per day
+        in millimeters per day, or a time-major block of shape (time, *cells)
     """
 
     # validate the input data arrays
@@ -362,17 +417,28 @@ def eto_hargreaves(
 
         # keep the original length for conversion back to original size
         original_length = daily_tmean_celsius.size
+        original_time_length = daily_tmean_celsius.shape[0]
+        spatial_block = spatial_time_major and daily_tmean_celsius.ndim > 2
 
-        # reshape to 2-D with 366 days per year, if not already in this shape
-        daily_tmin_celsius = utils.reshape_to_2d(daily_tmin_celsius, 366)
-        daily_tmax_celsius = utils.reshape_to_2d(daily_tmax_celsius, 366)
-        daily_tmean_celsius = utils.reshape_to_2d(daily_tmean_celsius, 366)
+        # fold a declared time-major spatial block to (years, 366, *cells), otherwise
+        # reshape to 2-D with 366 days per year if not already in this shape
+        if spatial_block:
+            daily_tmin_celsius = compute._reshape_time_major(daily_tmin_celsius, compute.Periodicity.daily)
+            daily_tmax_celsius = compute._reshape_time_major(daily_tmax_celsius, compute.Periodicity.daily)
+            daily_tmean_celsius = compute._reshape_time_major(daily_tmean_celsius, compute.Periodicity.daily)
+        else:
+            daily_tmin_celsius = utils.reshape_to_2d(daily_tmin_celsius, 366)
+            daily_tmax_celsius = utils.reshape_to_2d(daily_tmax_celsius, 366)
+            daily_tmean_celsius = utils.reshape_to_2d(daily_tmean_celsius, 366)
 
-        # at this point we assume that our dataset array has shape (years, 366)
+        # at this point we assume that our dataset array has shape (years, 366, *cells)
         # where each row is a year with 366 columns of daily values
 
-        # convert the latitude from degrees to radians
-        latitude = math.radians(latitude_degrees)
+        # convert the latitude from degrees to radians, keeping any per-cell axes
+        if isinstance(latitude_degrees, np.ndarray):
+            latitude = np.radians(latitude_degrees)
+        else:
+            latitude = math.radians(latitude_degrees)
 
         # allocate the PET array we'll fill
         pet = np.full(daily_tmean_celsius.shape, np.nan)
@@ -384,24 +450,31 @@ def eto_hargreaves(
             # calculate the inverse relative distance between earth and sun
             # from the day of the year, based on FAO equation 23 in
             # Allen et al (1998).
-            inv_rel_distance = 1 + (0.033 * math.cos((2.0 * math.pi / 365.0) * day_of_year))
+            inv_rel_distance = 1 + (0.033 * np.cos((2.0 * np.pi / 365.0) * day_of_year))
 
             # extraterrestrial radiation
-            tmp1 = (24.0 * 60.0) / math.pi
-            tmp2 = sunset_hour_angle * math.sin(latitude) * math.sin(solar_declination)
-            tmp3 = math.cos(latitude) * math.cos(solar_declination) * math.sin(sunset_hour_angle)
+            tmp1 = (24.0 * 60.0) / np.pi
+            tmp2 = sunset_hour_angle * np.sin(latitude) * np.sin(solar_declination)
+            tmp3 = np.cos(latitude) * np.cos(solar_declination) * np.sin(sunset_hour_angle)
             et_radiation = tmp1 * _SOLAR_CONSTANT * inv_rel_distance * (tmp2 + tmp3)
 
-            for year in range(daily_tmean_celsius.shape[0]):
-                # calculate the Hargreaves equation
-                tmin = daily_tmin_celsius[year, day_of_year - 1]
-                tmax = daily_tmax_celsius[year, day_of_year - 1]
-                tmean = daily_tmean_celsius[year, day_of_year - 1]
-                pet[year, day_of_year - 1] = 0.0023 * (tmean + 17.8) * (tmax - tmin) ** 0.5 * 0.408 * et_radiation
+            # calculate the Hargreaves equation for every year and cell of this day;
+            # the day axis sits between the year axis and any cell axes
+            pet[:, day_of_year - 1, ...] = (
+                0.0023
+                * (daily_tmean_celsius[:, day_of_year - 1, ...] + 17.8)
+                * (daily_tmax_celsius[:, day_of_year - 1, ...] - daily_tmin_celsius[:, day_of_year - 1, ...]) ** 0.5
+                * 0.408
+                * et_radiation
+            )
 
-        # reshape the dataset from (years, 366) into (total days),
-        # i.e. convert from 2-D to 1-D, and truncate to the original length
-        result = pet.reshape(-1)[0:original_length]
+        # reshape the dataset from (years, 366, *cells) into (total days) for a
+        # 1-D/2-D input, or back into the time-major input layout for a spatial
+        # block, and truncate to the original length
+        if spatial_block:
+            result = pet.reshape(-1, *pet.shape[2:])[0:original_time_length]
+        else:
+            result = pet.reshape(-1)[0:original_length]
         duration_ms = (time.perf_counter() - t0) * 1000.0
         log.info(
             "calculation_completed",

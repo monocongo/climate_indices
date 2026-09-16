@@ -140,12 +140,21 @@ transposes the core dimension, so one `(time, *cells)` block reaches the NumPy c
 and the gamma fitting, transform, and goodness-of-fit check run once per block
 instead of once per cell. `tests/test_spatial_kernel.py` pins the call count, the
 equivalence with the single-series path, and the NaN, partial-final-year, and daily
-calendar contracts. The remaining per-cell sites above are owned by follow-ups:
+calendar contracts.
+
+The PET entry points own their `xr.apply_ufunc` calls rather than the shared decorator,
+because latitude is a broadcast input rather than a secondary time series. They now
+forward `vectorize=False` too, handing `indices.pet` and `eto.eto_hargreaves` a
+`(time, *cells)` block with the per-cell latitude array (#941), so Thornthwaite's
+monthly day-length term and Hargreaves' daily radiation are computed once per block
+instead of once per grid cell. A 2-D input, or a latitude carrying a dimension the
+temperature does not, stays on the per-cell path.
+
+The remaining per-cell sites above are owned by follow-ups:
 
 | remaining site | owner |
 | --- | --- |
 | `indices.spi`/`indices.spei` with `Distribution.pearson` (per-series L-moment fit) | #940 |
-| `pet_thornthwaite`, `pet_hargreaves` (latitude-dependent day length) | #941 |
 | `indices.eddi` (per-period, per-year ranking loop), `indices.percentage_of_normal` | #942 |
 | `palmer.pdsi`/`palmer.scpdsi` (no adapter layer at all) | #937 |
 

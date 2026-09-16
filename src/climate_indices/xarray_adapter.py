@@ -2043,8 +2043,9 @@ def pet_thornthwaite(
 
     Notes:
         - The underlying indices.pet() function expects 1-D temperature arrays and
-          scalar latitude. For gridded inputs, xr.apply_ufunc with vectorize=True
-          automatically loops over non-time dimensions.
+          scalar latitude. For gridded inputs, a (time, *cells) block reaches it with
+          the per-cell latitude array, so a 3-D or higher input costs one call per
+          block rather than one xr.apply_ufunc call per grid cell.
         - Dask-backed DataArrays remain lazy (dask="parallelized")
         - CF Convention metadata and provenance history are automatically applied
           to xarray outputs
@@ -2108,26 +2109,40 @@ def pet_thornthwaite(
         # assume it's already an xr.DataArray
         lat_for_ufunc = latitude
 
-    # wrapper function to handle read-only array views from apply_ufunc
+    # a gridded input reaches indices.pet as one time-major block with the latitude
+    # per cell, instead of one call per grid cell. A 2-D input has only a single
+    # dimension to broadcast over, and a latitude carrying a dimension the temperature
+    # does not is left to the per-cell path as well.
+    latitude_dims = set(latitude.dims) if isinstance(latitude, xr.DataArray) else set()
+    use_spatial_kernel = temp_da.ndim > 2 and latitude_dims <= (set(temp_da.dims) - {time_dim})
+
+    # wrapper functions to handle read-only array views from apply_ufunc
     # the underlying eto.eto_thornthwaite modifies the temp array in-place,
     # so we must create a writable copy
     def _pet_with_copy(temps: np.ndarray, lat: float, year: int) -> np.ndarray:
         """Wrapper for indices.pet that creates a writable copy of temps."""
         return indices.pet(temps.copy(), lat, year)
 
+    def _pet_block(temps: np.ndarray, lat: np.ndarray, year: int) -> np.ndarray:
+        """Wrapper for indices.pet that reads a (time, *cells) block with per-cell latitudes."""
+        pet = indices.pet(np.moveaxis(temps, -1, 0).copy(), lat, year, spatial_time_major=True)
+        return np.moveaxis(pet, 0, -1)
+
     # compute using xr.apply_ufunc with spatial broadcasting
-    # input_core_dims: temperature's time dim is "core", latitude and year are scalars per iteration
+    # input_core_dims: temperature's time dim is "core"; latitude and year arrive as
+    #   scalars per iteration on the per-cell path and as cell arrays on the other
     # output_core_dims: preserve time dimension in output
-    # vectorize=True: loop over non-core dims (lat, lon) calling indices.pet per gridpoint
+    # vectorize=True: loop over non-core dims (lat, lon) calling indices.pet per gridpoint,
+    # whereas the spatial kernel path hands the whole (time, *cells) block over at once
     # dask_gufunc_kwargs: allow_rechunk=True permits chunked core dimensions (for dask arrays)
     result = xr.apply_ufunc(
-        _pet_with_copy,
+        _pet_block if use_spatial_kernel else _pet_with_copy,
         temp_da,
         lat_for_ufunc,
         data_start_year,
         input_core_dims=[[time_dim], [], []],
         output_core_dims=[[time_dim]],
-        vectorize=True,
+        vectorize=not use_spatial_kernel,
         dask="parallelized",
         dask_gufunc_kwargs={"allow_rechunk": True},
         output_dtypes=[float],
@@ -2270,7 +2285,9 @@ def pet_hargreaves(
 
     Notes:
         - The underlying eto.eto_hargreaves() expects 1-D arrays and scalar latitude.
-          For gridded inputs, xr.apply_ufunc with vectorize=True loops over spatial dims.
+          For gridded inputs, a (time, *cells) block reaches it with the per-cell
+          latitude array, so a 3-D or higher input costs one call per block rather
+          than one xr.apply_ufunc call per grid cell.
         - For xarray inputs with misaligned time coordinates, xr.align(join='inner')
           is automatically applied, and InputAlignmentWarning is emitted if timesteps differ.
         - Mean temperature is auto-derived: tmean = (tmin + tmax) / 2
@@ -2387,16 +2404,40 @@ def pet_hargreaves(
             set(),
         )
 
+    def _hargreaves_block(tmin: np.ndarray, tmax: np.ndarray, tmean: np.ndarray, lat: np.ndarray) -> np.ndarray:
+        """Compute Hargreaves ETo once per (time, *cells) block, with per-cell latitudes."""
+        block = _compute_with_daily_calendar_plan(
+            eto.eto_hargreaves,
+            (
+                np.moveaxis(tmin, -1, 0),
+                np.moveaxis(tmax, -1, 0),
+                np.moveaxis(tmean, -1, 0),
+                lat,
+            ),
+            {"spatial_time_major": True},
+            calendar_plan,
+            {0, 1, 2},
+            set(),
+        )
+        return np.moveaxis(block, 0, -1)
+
+    # a gridded input reaches eto.eto_hargreaves as one time-major block with the
+    # latitude per cell, instead of one call per grid cell. A 2-D input has only a
+    # single dimension to broadcast over, and a latitude carrying a dimension the
+    # temperature does not is left to the per-cell path as well.
+    latitude_dims = set(latitude.dims) if isinstance(latitude, xr.DataArray) else set()
+    use_spatial_kernel = tmin_aligned.ndim > 2 and latitude_dims <= (set(tmin_aligned.dims) - {time_dim})
+
     # compute using xr.apply_ufunc with spatial broadcasting
     result = xr.apply_ufunc(
-        _hargreaves_with_copy,
+        _hargreaves_block if use_spatial_kernel else _hargreaves_with_copy,
         tmin_aligned,
         tmax_aligned,
         tmean_da,
         lat_for_ufunc,
         input_core_dims=[[time_dim], [time_dim], [time_dim], []],
         output_core_dims=[[time_dim]],
-        vectorize=True,
+        vectorize=not use_spatial_kernel,
         dask="parallelized",
         dask_gufunc_kwargs={"allow_rechunk": True},
         output_dtypes=[float],

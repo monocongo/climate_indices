@@ -1116,6 +1116,7 @@ def pet(
     temperature_celsius: np.ndarray,
     latitude_degrees: float | np.ndarray,
     data_start_year: int,
+    spatial_time_major: bool = False,
 ) -> np.ndarray:
     """Compute potential evapotranspiration (PET) using Thornthwaite's equation.
 
@@ -1124,16 +1125,25 @@ def pet(
             values, in degrees Celsius.
         latitude_degrees (float | numpy.ndarray): The latitude of the location,
             in degrees north. Must be within range [-90.0 ... 90.0] (inclusive).
+            When ``spatial_time_major`` is declared this may be an array of
+            per-cell latitudes.
         data_start_year (int): The initial year of the input dataset.
+        spatial_time_major (bool): Read a three-or-more-dimensional
+            ``temperature_celsius`` as a time-major spatial block, i.e. with the
+            time steps first and the cells in the trailing dimensions, and
+            ``latitude_degrees`` as the per-cell latitude array matching those
+            trailing dimensions.
 
     Returns:
         numpy.ndarray: A 1-D array of float PET values, of the same size and
             shape as the input temperature values array, in millimeters/time
-            step.
+            step. A time-major spatial block returns in the same layout.
 
     Raises:
-        ValueError: If ``latitude_degrees`` is empty, None, NaN, or outside
-            [-90.0 ... 90.0] (inclusive).
+        ValueError: If ``latitude_degrees`` is an empty array, None, NaN, or a
+            scalar outside [-90.0 ... 90.0] (inclusive).
+        InvalidArgumentError: If a per-cell ``latitude_degrees`` array under
+            ``spatial_time_major`` holds a value outside [-90.0 ... 90.0] (inclusive).
     """
     # bind context and emit calculation_started event
     log = _logger.bind(
@@ -1150,15 +1160,21 @@ def pet(
         # the first one -- useful when applying this function with xarray.GroupBy
         # or numpy.apply_along_axis() where we've had to duplicate values in a 3-D
         # array of latitudes in order to correspond with a 3-D array of temperatures.
+        # A declared time-major spatial block keeps the per-cell latitudes instead,
+        # so that the calculation runs once per cell set rather than per cell.
         if isinstance(latitude_degrees, np.ndarray):
             if latitude_degrees.size == 0:
                 message = "Invalid latitude value: empty latitude array (must contain at least one value)"
                 _logger.error(message)
                 raise ValueError(message)
-            latitude_degrees = cast(float, latitude_degrees.flat[0])
+            if not spatial_time_major:
+                latitude_degrees = cast(float, latitude_degrees.flat[0])
 
-        # make sure we're not dealing with a NaN or out-of-range latitude value
-        if (latitude_degrees is None) or np.isnan(latitude_degrees) or not (-90.0 <= latitude_degrees <= 90.0):
+        # make sure we're not dealing with a NaN or out-of-range latitude value;
+        # per-cell latitude arrays are validated by eto.eto_thornthwaite()
+        if not isinstance(latitude_degrees, np.ndarray) and (
+            (latitude_degrees is None) or np.isnan(latitude_degrees) or not (-90.0 <= latitude_degrees <= 90.0)
+        ):
             message = (
                 f"Invalid latitude value: {latitude_degrees}"
                 + " (must be in degrees north, between -90.0 and "
@@ -1196,6 +1212,7 @@ def pet(
             temperature_celsius,
             latitude_degrees,
             data_start_year,
+            spatial_time_major=spatial_time_major,
         )
         duration_ms = (time.perf_counter() - t0) * 1000.0
         log.info(

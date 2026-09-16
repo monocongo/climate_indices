@@ -55,5 +55,11 @@ window.
 
 The Pearson Type III branch keeps [the per-cell path](../xarray_compatibility.md); its L-moment fit
 is per series, so `Distribution.pearson` still re-enters the single-series kernel once per cell
-(issue #940). EDDI and percentage-of-normal have no cell axis in their kernels yet (#942), the PET
-entry points do not use the adapter decorator (#941), and Palmer has no adapter layer at all (#937).
+(issue #940). EDDI and percentage-of-normal have no cell axis in their kernels yet (#942), and
+Palmer has no adapter layer at all (#937).
+
+The PET entry points do not use the adapter decorator, because latitude arrives as a broadcast
+input rather than a secondary time series. They forward `vectorize=False` themselves and hand
+`indices.pet` and `eto.eto_hargreaves` the same `(time, *cells)` block, with the latitude as a
+per-cell array for the day-length and radiation terms (#941); a 2-D input, or a latitude carrying a
+dimension the temperature does not, keeps the per-cell path.
