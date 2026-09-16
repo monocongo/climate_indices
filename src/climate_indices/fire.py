@@ -310,23 +310,6 @@ def _validate_kbdi_configuration(
 
 @overload
 def kbdi(
-    precipitation: npt.ArrayLike,
-    maximum_temperature: npt.ArrayLike,
-    mean_annual_precipitation: npt.ArrayLike | None = None,
-    *,
-    units: Literal["metric", "imperial"] = "metric",
-    initial_kbdi: npt.ArrayLike | None = None,
-    initial_state: KBDIState | None = None,
-    return_state: bool = False,
-    spin_up: int = 0,
-    nan_policy: Literal["propagate", "bridge"] = "propagate",
-    max_gap_days: int = 0,
-    time_dim: str = "time",
-) -> npt.NDArray[np.float64] | KBDIResult: ...
-
-
-@overload
-def kbdi(
     precipitation: xr.DataArray,
     maximum_temperature: xr.DataArray,
     mean_annual_precipitation: npt.ArrayLike | xr.DataArray | None = None,
@@ -340,6 +323,23 @@ def kbdi(
     max_gap_days: int = 0,
     time_dim: str = "time",
 ) -> xr.DataArray | KBDIResult: ...
+
+
+@overload
+def kbdi(
+    precipitation: npt.ArrayLike,
+    maximum_temperature: npt.ArrayLike,
+    mean_annual_precipitation: npt.ArrayLike | None = None,
+    *,
+    units: Literal["metric", "imperial"] = "metric",
+    initial_kbdi: npt.ArrayLike | None = None,
+    initial_state: KBDIState | None = None,
+    return_state: bool = False,
+    spin_up: int = 0,
+    nan_policy: Literal["propagate", "bridge"] = "propagate",
+    max_gap_days: int = 0,
+    time_dim: str = "time",
+) -> npt.NDArray[np.float64] | KBDIResult: ...
 
 
 def kbdi(

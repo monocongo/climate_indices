@@ -880,6 +880,24 @@ class TestKBDIXarrayEquivalence:
         xr.testing.assert_equal(result.coords["lat"], precip_da.coords["lat"])
         xr.testing.assert_equal(result.coords["lon"], precip_da.coords["lon"])
 
+    def test_derived_mean_annual_precipitation_matches_numpy(self) -> None:
+        """Omitting mean_annual_precipitation (derive-from-record path) matches NumPy on the xarray path too.
+
+        This changes _kbdi_xarray's conditional optional-args list (one fewer
+        apply_ufunc argument), the specific plumbing this omission exercises.
+        """
+        days = 30 * 365 + 5  # just over the 10,950-day minimum
+        precipitation, temperature, _mean_annual, time = _gridded_inputs(days=days, seed=802)
+        dims = ["time", "lat", "lon"]
+        coords = {"time": time, "lat": [10.0, 20.0], "lon": [30.0, 40.0, 50.0]}
+        precip_da = xr.DataArray(precipitation, dims=dims, coords=coords)
+        temp_da = xr.DataArray(temperature, dims=dims, coords=coords)
+
+        expected = fire.kbdi(precipitation, temperature)
+        result = fire.kbdi(precip_da, temp_da)
+        assert isinstance(result, xr.DataArray)
+        np.testing.assert_array_equal(result.values, expected)
+
 
 class TestKBDIXarrayCFMetadata:
     """The kbdi/kbdi_imperial registry entry must resolve from the call's `units`, not a fixed constant."""
@@ -1054,7 +1072,7 @@ class TestKBDIXarrayStateRoundTrip:
     def test_append_resume_round_trip_matches_one_shot(self) -> None:
         precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays(days=60)
         split = 25
-        one_shot = fire.kbdi(precip_da, temp_da, mean_annual_da)
+        one_shot = fire.kbdi(precip_da, temp_da, mean_annual_da, return_state=True)
         history = fire.kbdi(
             precip_da.isel(time=slice(0, split)),
             temp_da.isel(time=slice(0, split)),
@@ -1069,7 +1087,96 @@ class TestKBDIXarrayStateRoundTrip:
             return_state=True,
         )
         joined = np.concatenate([history.values.values, resumed.values.values], axis=0)
-        np.testing.assert_array_equal(joined, one_shot.values)
+        np.testing.assert_array_equal(joined, one_shot.values.values)
+        np.testing.assert_array_equal(resumed.state.kbdi, one_shot.state.kbdi)
+        np.testing.assert_array_equal(resumed.state.wet_spell_precipitation, one_shot.state.wet_spell_precipitation)
+
+    def test_dask_chunked_resume_matches_eager_resume_per_cell(self) -> None:
+        """Each spatial chunk must resume from its OWN cell's state, not a broadcast whole-grid array.
+
+        Distinct per-cell climatology makes a per-chunk state-slicing bug (the
+        wrong cell's seed applied to another cell) change values rather than
+        just shift them uniformly.
+        """
+        precip_da, temp_da, _mean_annual_da, *_ = _gridded_dataarrays(days=60)
+        rng = np.random.default_rng(4242)
+        mean_annual_distinct = xr.DataArray(
+            rng.uniform(400.0, 1600.0, (2, 3)),
+            dims=["lat", "lon"],
+            coords={"lat": precip_da.coords["lat"], "lon": precip_da.coords["lon"]},
+        )
+        split = 25
+
+        history = fire.kbdi(
+            precip_da.isel(time=slice(0, split)),
+            temp_da.isel(time=slice(0, split)),
+            mean_annual_distinct,
+            return_state=True,
+        )
+        resumed_eager = fire.kbdi(
+            precip_da.isel(time=slice(split, None)),
+            temp_da.isel(time=slice(split, None)),
+            mean_annual_distinct,
+            initial_state=history.state,
+            return_state=True,
+        )
+
+        precip_dask = precip_da.isel(time=slice(split, None)).chunk({"time": -1, "lat": 1, "lon": 1})
+        temp_dask = temp_da.isel(time=slice(split, None)).chunk({"time": -1, "lat": 1, "lon": 1})
+        resumed_dask = fire.kbdi(
+            precip_dask, temp_dask, mean_annual_distinct, initial_state=history.state, return_state=True
+        )
+
+        assert resumed_eager.state.kbdi.std() > 1e-6, "fixture too uniform to catch a per-chunk broadcast bug"
+        np.testing.assert_array_equal(resumed_dask.values.values, resumed_eager.values)
+        np.testing.assert_array_equal(resumed_dask.state.kbdi, resumed_eager.state.kbdi)
+        np.testing.assert_array_equal(
+            resumed_dask.state.wet_spell_precipitation, resumed_eager.state.wet_spell_precipitation
+        )
+
+    def test_bridge_nan_policy_round_trip_matches_one_shot(self) -> None:
+        """nan_policy='bridge' state (trailing_gap_days) resumes correctly through the xarray path."""
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays(days=40)
+        precip_da = precip_da.copy()
+        precip_da.values[10:13] = np.nan  # a 3-day gap, bridgeable with max_gap_days=3
+        split = 15
+
+        one_shot = fire.kbdi(precip_da, temp_da, mean_annual_da, nan_policy="bridge", max_gap_days=3, return_state=True)
+        history = fire.kbdi(
+            precip_da.isel(time=slice(0, split)),
+            temp_da.isel(time=slice(0, split)),
+            mean_annual_da,
+            nan_policy="bridge",
+            max_gap_days=3,
+            return_state=True,
+        )
+        resumed = fire.kbdi(
+            precip_da.isel(time=slice(split, None)),
+            temp_da.isel(time=slice(split, None)),
+            mean_annual_da,
+            initial_state=history.state,
+            nan_policy="bridge",
+            max_gap_days=3,
+            return_state=True,
+        )
+        joined = np.concatenate([history.values.values, resumed.values.values], axis=0)
+        np.testing.assert_array_equal(joined, one_shot.values.values)
+        np.testing.assert_array_equal(resumed.state.trailing_gap_days, one_shot.state.trailing_gap_days)
+
+    def test_initial_kbdi_seeds_the_xarray_recurrence(self) -> None:
+        """initial_kbdi on the xarray path matches an equivalent initial_state seed."""
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays(days=20)
+        seed = 50.0
+        via_initial_kbdi = fire.kbdi(precip_da, temp_da, mean_annual_da, initial_kbdi=seed)
+
+        zeros_state = fire.KBDIState(
+            kbdi=np.full((2, 3), seed),
+            wet_spell_precipitation=np.zeros((2, 3)),
+            trailing_gap_days=None,
+            units="metric",
+        )
+        via_initial_state = fire.kbdi(precip_da, temp_da, mean_annual_da, initial_state=zeros_state)
+        np.testing.assert_array_equal(via_initial_kbdi.values, via_initial_state.values)
 
 
 class TestKBDIXarrayInputValidation:
