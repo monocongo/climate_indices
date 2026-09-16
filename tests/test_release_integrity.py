@@ -332,6 +332,22 @@ def test_release_workflow_smoke_tests_built_wheel() -> None:
     )
 
 
+def test_release_workflow_installs_wheel_on_boundary_pythons() -> None:
+    """The wheel must install and expose console scripts on the oldest and newest supported
+    Pythons, and that check must gate publishing.
+    """
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    wheel_check = workflow.split("\n  wheel-check:", maxsplit=1)[1].split("\n  publish:", maxsplit=1)[0]
+    versions = _declared_python_versions()
+
+    assert wheel_check.count("- python-version:") == 2, "wheel checks must stay at the boundary versions"
+    assert f"- python-version: '{versions[0]}'" in wheel_check
+    assert f"- python-version: '{versions[-1]}'" in wheel_check
+    for entry_point in ("climate_indices", "process_climate_indices", "spi"):
+        assert entry_point in wheel_check
+    assert "needs: [build, wheel-check]" in workflow, "publishing must wait for the wheel installation check"
+
+
 def test_minimum_dependency_job_preserves_resolved_environment() -> None:
     """Minimum-dependency tests must not resynchronize to the normal lock."""
     workflow = (ROOT / ".github" / "workflows" / "unit-tests-workflow.yml").read_text(encoding="utf-8")
