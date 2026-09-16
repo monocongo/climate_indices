@@ -128,16 +128,15 @@ Three rules fix the shape of a chunked input:
    fitted whole, and the fit materializes the reshaped `(years, periods, *cells)`
    block plus its per-period intermediates, so the working set grows with the
    cells in a block, not with the size of the grid. The PET spatial kernels take
-   one `(time, *cells)` block per call as well, so the same block sizing applies
-   to them.
+   one block per call as well, so the same block sizing applies to them.
 3. **Chunk the inputs of a multi-input index the same way.** SPEI aligns
    precipitation and PET with an inner join on their coordinates and validates
-   each input's `time` chunking independently, but neither step touches spatial
-   chunks. When the two inputs are chunked differently,
+   each input's `time` chunking independently, but neither step makes the two
+   inputs' spatial chunking agree. When the two inputs are chunked differently,
    `xr.apply_ufunc(..., dask="parallelized")` makes Dask unify them, inserting a
    `rechunk-merge` stage that copies the data when the graph computes — an extra
    copy inside every index that consumes the mismatched pair. Give both inputs
-   the layout the notebook prepares:
+   the layout prepared by `notebooks/zarr_dask_spi_spei.ipynb`:
 
    ```python
    pet = pet.chunk(precip.chunksizes)
