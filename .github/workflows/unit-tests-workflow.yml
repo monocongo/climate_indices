@@ -31,7 +31,7 @@ jobs:
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
 
       - name: Install dependencies
-        run: uv sync --locked --dev
+        run: uv sync --locked --dev --no-build
 
       - name: Run ruff linter
         run: uv run --no-sync --no-build ruff check src/ tests/
@@ -69,22 +69,74 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
 
+      # `--no-build` is not usable here: Python 3.10 resolves zarr 2.x, whose
+      # asciitree dependency ships as an sdist-only release.
       - name: Install dependencies
         run: uv sync --locked --dev
 
+      # Repo/meta checks are owned by the single `meta` job; validation by
+      # the single `validation` job. Do not reintroduce them here: the
+      # version/distro matrix exists to exercise behavior on each interpreter.
       - name: Run core tests
-        run: uv run --no-sync --no-build pytest -m "not benchmark and not validation"
+        run: >
+          uv run --no-sync --no-build pytest
+          --ignore=tests/test_release_integrity.py
+          --ignore=tests/test_review_scripts.py
+          --ignore=tests/test_type_checking.py
+          --ignore=tests/test_pattern_compliance.py
 
-      # Run even when core tests fail: these cover disjoint test sets, and a
-      # core failure would otherwise report them as "skipped" rather than as
-      # the pass/fail they actually are.
+  validation:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
+
+      - name: Install dependencies
+        run: uv sync --locked --dev --no-build
+
       - name: Run validation tests
-        if: ${{ !cancelled() }}
         run: uv run --no-sync --no-build pytest -m validation
 
-      - name: Pattern compliance check
-        if: ${{ !cancelled() }}
-        run: uv run --no-sync --no-build pytest tests/test_pattern_compliance.py -v
+  meta:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # Minimum supported Python: keeps the tomllib/tomli and
+      # typing_extensions compatibility branches exercised on every PR.
+      - name: Set up Python 3.10
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: '3.10'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
+
+      # `--no-install-package`: the meta checks never import zarr, and Python
+      # 3.10 resolves zarr 2.x, whose asciitree dependency is sdist-only.
+      - name: Install dependencies
+        run: uv sync --locked --dev --no-build --no-install-package zarr --no-install-package asciitree
+
+      - name: Run repo and meta checks
+        run: >
+          uv run --no-sync --no-build pytest
+          tests/test_release_integrity.py
+          tests/test_review_scripts.py
+          tests/test_type_checking.py
+          tests/test_pattern_compliance.py
 
   test-minimum-deps:
     runs-on: ubuntu-latest
@@ -102,16 +154,18 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
 
+      # `--no-build` is not usable here: Python 3.10 resolves zarr 2.x, whose
+      # asciitree dependency ships as an sdist-only release.
       - name: Install minimum dependencies
         run: uv sync --no-dev --group test --resolution lowest-direct
 
       - name: Run core tests with minimum dependencies
-        run: uv run --no-sync --no-build pytest -m "not benchmark and not validation"
-
-      # See the note on the same step in the `test` job above.
-      - name: Run validation tests with minimum dependencies
-        if: ${{ !cancelled() }}
-        run: uv run --no-sync --no-build pytest -m validation
+        run: >
+          uv run --no-sync --no-build pytest
+          --ignore=tests/test_release_integrity.py
+          --ignore=tests/test_review_scripts.py
+          --ignore=tests/test_type_checking.py
+          --ignore=tests/test_pattern_compliance.py
 
   notebooks:
     runs-on: ubuntu-latest
@@ -130,7 +184,7 @@ jobs:
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
 
       - name: Install dependencies
-        run: uv sync --locked --dev
+        run: uv sync --locked --dev --no-build
 
       - name: Execute v2.5 notebooks
         timeout-minutes: 10
@@ -173,7 +227,7 @@ jobs:
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
 
       - name: Install dependencies
-        run: uv sync --locked --only-group security
+        run: uv sync --locked --only-group security --no-build
 
       - name: Export runtime requirements
         run: uv export --locked --no-dev --no-emit-project --format requirements.txt --output-file runtime-requirements.txt
