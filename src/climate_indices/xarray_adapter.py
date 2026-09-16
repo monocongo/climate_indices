@@ -675,13 +675,12 @@ def _validate_latitude_range(
 
 
 def _build_latitude_attr(
-    latitude: float | int | np.floating | np.integer | np.ndarray | xr.DataArray,
+    latitude: float | int | np.floating | np.integer | xr.DataArray,
 ) -> str | int | float | bool:
     """Serialize latitude for storage as a DataArray attribute.
 
     Args:
-        latitude: Latitude value as a scalar, an array of per-cell latitudes, or an
-            xr.DataArray
+        latitude: Latitude value as a scalar or xr.DataArray
 
     Returns:
         Serialized latitude suitable for xarray attribute storage
@@ -693,13 +692,6 @@ def _build_latitude_attr(
             "shape": tuple(int(s) for s in latitude.shape),
             "min": float(latitude.min().values),
             "max": float(latitude.max().values),
-        }
-        return _serialize_attr_value(lat_metadata)
-    elif isinstance(latitude, np.ndarray):
-        lat_metadata = {
-            "shape": tuple(int(s) for s in latitude.shape),
-            "min": float(np.min(latitude)),
-            "max": float(np.max(latitude)),
         }
         return _serialize_attr_value(lat_metadata)
     else:
@@ -1985,9 +1977,9 @@ def xarray_adapter(
 
 def _spatial_kernel_latitude(
     data: xr.DataArray,
-    latitude: float | int | np.floating | np.integer | np.ndarray | xr.DataArray,
+    latitude: float | int | np.floating | np.integer | xr.DataArray,
     time_dim: str,
-) -> tuple[bool, float | int | np.floating | np.integer | np.ndarray | xr.DataArray]:
+) -> tuple[bool, float | int | np.floating | np.integer | xr.DataArray]:
     """Decide whether ``data`` reaches a spatial (per-block) kernel, and with which latitude.
 
     Returns ``(use_spatial_kernel, latitude_to_pass)``. The block path is skipped, and
@@ -2146,7 +2138,7 @@ def pet_thornthwaite(
     # normalize latitude for xr.apply_ufunc
     # convert scalar numpy types to python float for compatibility
     if isinstance(latitude, float | int | np.floating | np.integer):
-        lat_for_ufunc: float | int | np.floating | np.integer | np.ndarray | xr.DataArray = float(latitude)
+        lat_for_ufunc: float | int | np.floating | np.integer | xr.DataArray = float(latitude)
     else:
         # assume it's already an xr.DataArray
         lat_for_ufunc = latitude
@@ -2424,7 +2416,7 @@ def pet_hargreaves(
 
     # normalize latitude for xr.apply_ufunc
     if isinstance(latitude, float | int | np.floating | np.integer):
-        lat_for_ufunc: float | int | np.floating | np.integer | np.ndarray | xr.DataArray = float(latitude)
+        lat_for_ufunc: float | int | np.floating | np.integer | xr.DataArray = float(latitude)
     else:
         # assume it's already an xr.DataArray
         lat_for_ufunc = latitude

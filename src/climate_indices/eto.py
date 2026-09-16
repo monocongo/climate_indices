@@ -215,6 +215,43 @@ def _monthly_mean_daylight_hours(
     return monthly_mean_dlh
 
 
+def _validate_latitude_cells(
+    latitude_radians: float | np.ndarray,
+    cell_shape: tuple[int, ...],
+) -> int:
+    """Validate a per-cell latitude against a block's cell dimensions, and return its rank.
+
+    A latitude array may carry fewer axes than the block's cells: the missing leading
+    axes broadcast, as numpy's right-aligned rules do. A latitude that cannot broadcast
+    to the cell dimensions is rejected here rather than reported as a shape mismatch
+    inside the PET arithmetic.
+
+    :param latitude_radians: latitude in radians, as a scalar or an array of per-cell
+        latitudes
+    :param cell_shape: trailing cell dimensions of the time-major spatial block
+    :return: the number of dimensions the latitude carries
+    :raise InvalidArgumentError: if a latitude array does not broadcast to the cells
+    """
+    latitude_rank = np.ndim(latitude_radians)
+    if latitude_rank == 0:
+        return 0
+
+    latitude_shape = np.shape(latitude_radians)
+    try:
+        fits_cells = np.broadcast_shapes(latitude_shape, cell_shape) == cell_shape
+    except ValueError:
+        fits_cells = False
+    if not fits_cells:
+        raise InvalidArgumentError(
+            f"Latitude array with shape {latitude_shape} does not broadcast to the "
+            f"{cell_shape} cell dimensions of the input block.",
+            argument_name="latitude_degrees",
+            argument_value=str(latitude_shape),
+            valid_values=f"broadcastable to {cell_shape}",
+        )
+    return latitude_rank
+
+
 def eto_thornthwaite(
     monthly_temps_celsius: np.ndarray,
     latitude_degrees: float | np.ndarray,
@@ -310,22 +347,7 @@ def eto_thornthwaite(
     # carries the month axis and one axis per cell dimension, so that a day-length array
     # with fewer axes than the cells broadcasts right-aligned, as numpy does.
     cell_axes = (1,) * (values.ndim - 2)
-    latitude_rank = np.ndim(latitude_radians)
-    if latitude_rank > 0:
-        cell_shape = values.shape[2:]
-        latitude_shape = np.shape(latitude_radians)
-        try:
-            fits_cells = np.broadcast_shapes(latitude_shape, cell_shape) == cell_shape
-        except ValueError:
-            fits_cells = False
-        if not fits_cells:
-            raise InvalidArgumentError(
-                f"Latitude array with shape {latitude_shape} does not broadcast to the "
-                f"{cell_shape} cell dimensions of the input block.",
-                argument_name="latitude_degrees",
-                argument_value=str(latitude_shape),
-                valid_values=f"broadcastable to {cell_shape}",
-            )
+    latitude_rank = _validate_latitude_cells(latitude_radians, values.shape[2:])
     daylight_cell_axes = (1,) * (len(cell_axes) - latitude_rank)
     mean_daylight_hours_nonleap = np.asarray(_monthly_mean_daylight_hours(latitude_radians, False)).reshape(
         12, *daylight_cell_axes, *np.shape(latitude_radians)
@@ -450,11 +472,15 @@ def eto_hargreaves(
         # at this point we can read each array as one time step per row,
         # i.e. (total days) for a 1-D/2-D input and (time, *cells) for a spatial block
 
-        # convert the latitude from degrees to radians, keeping any per-cell axes
-        if isinstance(latitude_degrees, np.ndarray):
+        # convert the latitude from degrees to radians: the 1-D/2-D path takes a scalar,
+        # while a spatial block keeps an array of per-cell latitudes
+        if spatial_block and isinstance(latitude_degrees, np.ndarray):
+            # the latitude is read as the per-cell array of a (time, *cells) block
+            _validate_latitude_cells(np.radians(latitude_degrees), daily_tmean_celsius.shape[1:])
             latitude = np.radians(latitude_degrees)
         else:
-            latitude = math.radians(latitude_degrees)
+            # float() keeps a non-numeric latitude raising the TypeError it always has
+            latitude = math.radians(float(latitude_degrees))
 
         # allocate the PET array we'll fill, and account for it alongside the input
         # arrays: nothing above is padded, so these four arrays are the peak footprint
