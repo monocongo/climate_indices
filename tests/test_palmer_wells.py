@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from climate_indices import _palmer_wells
+from climate_indices._palmer_duration import DurationFactors
 from climate_indices.exceptions import ConvergenceError
 
 
@@ -151,10 +152,10 @@ def test_dry_candidate_clamp_does_not_bound_magnitude():
 
     ``_candidate_values`` applies ``min(0.0, ...)`` to x2. That caps it at zero
     but leaves negative values free to grow, so a non-contracting ``dryc`` makes
-    x2 diverge. This pins the mechanism the ``_validated_factors`` docstring
+    x2 diverge. This pins the mechanism the ``DurationFactors.from_fitted`` docstring
     cites as the justification for rejecting ``|dryc| >= 1``.
     """
-    factors = _palmer_wells._Factors(
+    factors = DurationFactors(
         wetm=1.0,
         wetb=1.0,
         drym=1.0,

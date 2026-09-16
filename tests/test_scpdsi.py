@@ -231,7 +231,7 @@ def test_climate_division_matches_scpdsi_oracle(division_dir, palmer_scpdsi_resu
 def test_fitted_duration_factor_coefficients_stay_contractions():
     """Real-data duration factors must keep the Wells coefficients contracting.
 
-    ``_palmer_wells._validated_factors`` rejects any coefficient with magnitude
+    ``DurationFactors.from_fitted`` rejects any coefficient with magnitude
     >= 1. Across these 344 divisions the coefficients peak at ~0.983, i.e. only
     ~1.7% of margin. This pins that margin: erosion fails here, with the worst
     division named, rather than surfacing later as a ConvergenceError on user
