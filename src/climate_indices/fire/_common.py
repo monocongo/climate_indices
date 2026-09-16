@@ -84,6 +84,7 @@ def _apply_gap_policy(
     *,
     nan_policy: Literal["propagate", "bridge"],
     max_gap_days: int,
+    in_season: npt.NDArray[np.bool_] | None = None,
 ) -> npt.NDArray[np.bool_]:
     """Apply one day of the ADR-0007 missing-day policy, returning the active cells.
 
@@ -92,9 +93,18 @@ def _apply_gap_policy(
     observation. A cell whose static input is unusable never starts and is not
     an elapsed missing day. A valid day is the return point's last day, so any
     earlier run is closed.
+
+    ``in_season`` optionally restricts the policy to the cells inside the fire
+    season: an off-season day is neither an observation nor a missing day, so
+    it never advances the recurrence and never counts against the gap
+    allowance (``docs/adr/0008-seasonal-carry-is-an-explicit-mask.md``).
     """
-    valid = day_weather_valid & static_valid
-    missing_started = ~day_weather_valid & static_valid & (started | poisoned)
+    if in_season is None:
+        valid = day_weather_valid & static_valid
+        missing_started = ~day_weather_valid & static_valid & (started | poisoned)
+    else:
+        valid = day_weather_valid & static_valid & in_season
+        missing_started = ~day_weather_valid & static_valid & in_season & (started | poisoned)
 
     if nan_policy == "propagate":
         state_value[missing_started] = np.nan

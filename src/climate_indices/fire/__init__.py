@@ -10,7 +10,8 @@ recorded in ``docs/adr/0006-fire-recursive-state-and-execution.md`` and the
 missing-data policy recorded in ``docs/adr/0007-fire-missing-data-policy.md``;
 the CFFWIS behavior indices (#804) use the same contract, and the
 :func:`cffwis` orchestrator threads all three moisture codes through a single
-time loop.
+time loop. :func:`overwinter_drought_code` carries the DC across the fire
+season's off-season shutdown.
 
 References
 ----------
@@ -62,6 +63,7 @@ from climate_indices.fire._cffwis import (
     duff_moisture_code,
     ffmc,
     initial_spread_index,
+    overwinter_drought_code,
 )
 from climate_indices.fire._fosberg import fosberg_ffwi
 from climate_indices.fire._hdw import hot_dry_windy
@@ -90,4 +92,5 @@ __all__ = [
     "hot_dry_windy",
     "initial_spread_index",
     "kbdi",
+    "overwinter_drought_code",
 ]
