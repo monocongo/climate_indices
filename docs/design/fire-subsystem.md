@@ -236,7 +236,7 @@ replace.
 
 ## Xarray chunking
 
-Future stateful xarray fire adapters -- KBDI (#801) and CFFWIS (#807) today --
+Stateful xarray fire adapters -- KBDI (#801) and CFFWIS (#807) today --
 validate every time-varying input with
 `xarray_adapter._validate_dask_chunks()`. A Dask `time` dimension must be one
 chunk, while spatial dimensions may remain chunked. The adapter raises
@@ -262,10 +262,7 @@ kernels.
 | `buildup_index(dmc, dc)` | DMC, DC | dimensionless BUI |
 | `cffwis_fwi(isi, bui)` | ISI, BUI | dimensionless Canadian Fire Weather Index |
 | `daily_severity_rating(cffwis_fwi)` | Canadian FWI | dimensionless DSR |
-| `cffwis(temperature_celsius, relative_humidity_percent, wind_speed_meters_per_second, precipitation_mm, latitude_degrees_north=None, month=None, *, initial_ffmc=None, initial_dmc=None, initial_dc=None, initial_state=None, return_state=False, spin_up=0, nan_policy="propagate", max_gap_days=0, outputs=None, time_dim="time")` | CFFWIS weather inputs above; `initial_*`, `spin_up`, and `nan_policy`/`max_gap_days` follow the shared stateful contract, and `month` is required for NumPy input by the DMC/DC day-length tables (inferred from the time coordinate on the xarray route) | `CFFWISResult` with the requested subset of the seven named outputs (`None` for names not requested) plus the combined `CFFWISState` when `return_state=True`; the xarray counterpart (#807)
-accepts the same weather inputs as DataArrays, with `latitude_degrees_north`
-and `month` inferable from coordinates, and returns a `Dataset` (or a
-`CFFWISResult` when `return_state=True`) |
+| `cffwis(temperature_celsius, relative_humidity_percent, wind_speed_meters_per_second, precipitation_mm, latitude_degrees_north=None, month=None, *, initial_ffmc=None, initial_dmc=None, initial_dc=None, initial_state=None, return_state=False, spin_up=0, nan_policy="propagate", max_gap_days=0, outputs=None, time_dim="time")` | CFFWIS weather inputs above; `initial_*`, `spin_up`, and `nan_policy`/`max_gap_days` follow the shared stateful contract, and `month` is required for NumPy input by the DMC/DC day-length tables (inferred from the time coordinate on the xarray route) | `CFFWISResult` with the requested subset of the seven named outputs (`None` for names not requested) plus the combined `CFFWISState` when `return_state=True`; the xarray counterpart (#807)<br>accepts the same weather inputs as DataArrays, with `latitude_degrees_north` and `month` inferable from coordinates, and returns a `Dataset` (or a `CFFWISResult` when `return_state=True`) |
 | `hot_dry_windy(temperature_celsius, relative_humidity_percent, wind_speed_meters_per_second, height_agl_meters, *, level_axis=-1)` | vertical profiles in °C, %, m s⁻¹, m AGL | hPa m s⁻¹; all levels must identify the lowest 500 m AGL |
 | `haines_index(temperature_lower_celsius, temperature_upper_celsius, dewpoint_lower_celsius, *, variant)` | pressure-level °C inputs selected by `variant` | integer 2–6; `variant` is `"low"`, `"mid"`, or `"high"`, never inferred by default |
 

@@ -1009,23 +1009,6 @@ def _assert_matches_numpy(inputs: _GriddedInputs, result: xr.Dataset, **options:
         np.testing.assert_array_equal(result[name].values, getattr(expected, name))
 
 
-def _full_grid_graph_arrays(variable: xr.DataArray, spatial_shape: tuple[int, ...]) -> list[tuple[int, ...]]:
-    """Spatial arrays embedded whole in a Dask graph, which every worker would receive."""
-    found: list[tuple[int, ...]] = []
-
-    def scan(task: object) -> None:
-        if isinstance(task, tuple):
-            for item in task:
-                scan(item)
-        elif isinstance(task, np.ndarray) and task.shape == spatial_shape:
-            found.append(task.shape)
-
-    for layer in variable.data.__dask_graph__().layers.values():
-        for task in layer.values():
-            scan(task)
-    return found
-
-
 def _chunked_inputs(inputs: _GriddedInputs, *, lat: int = 1, lon: int = 1) -> _GriddedInputs:
     """The gridded inputs with a single time chunk and small spatial blocks."""
     return replace(
@@ -1165,20 +1148,39 @@ class TestCFFWISXarrayDaskBlocks:
         for name in _GRID_VARIABLES:
             np.testing.assert_array_equal(result[name].values[:, 1, 0], getattr(expected, name))
 
-    def test_static_seeds_and_state_are_not_embedded_whole(self) -> None:
+    def test_static_seeds_and_state_arrive_per_block(self) -> None:
         """Seeds and resumed state must arrive as block tiles, not as one full-grid array."""
         inputs = _gridded_inputs(days=6)
         chunked = _chunked_inputs(inputs)
-        seeded = _xarray_cffwis(chunked, initial_ffmc=np.full(inputs.latitude_grid.shape, 85.0))
-        assert isinstance(seeded, xr.Dataset)
-        assert _full_grid_graph_arrays(seeded["fwi"], inputs.latitude_grid.shape) == []
+        seed_shapes: list[tuple[int, ...]] = []
+        state_shapes: list[tuple[int, ...]] = []
+        original = _cffwis.cffwis
+
+        def record(*args: object, **kwargs: object) -> object:
+            seed = kwargs.get("initial_ffmc")
+            if seed is not None:
+                seed_shapes.append(np.shape(seed))
+            state = kwargs.get("initial_state")
+            if state is not None:
+                assert isinstance(state, fire.CFFWISState)
+                state_shapes.append(np.shape(state.ffmc.ffmc))
+            return original(*args, **kwargs)
 
         state_result = _xarray_cffwis(inputs, return_state=True)
         assert isinstance(state_result, fire.CFFWISResult)
         assert state_result.state is not None
-        resumed = _xarray_cffwis(chunked, initial_state=state_result.state)
-        assert isinstance(resumed, xr.Dataset)
-        assert _full_grid_graph_arrays(resumed["fwi"], inputs.latitude_grid.shape) == []
+
+        with mock.patch.object(_cffwis, "cffwis", side_effect=record):
+            seeded = _xarray_cffwis(chunked, initial_ffmc=np.full(inputs.latitude_grid.shape, 85.0))
+            assert isinstance(seeded, xr.Dataset)
+            seeded.load()
+            resumed = _xarray_cffwis(chunked, initial_state=state_result.state)
+            assert isinstance(resumed, xr.Dataset)
+            resumed.load()
+
+        block_shape = chunked.temperature.chunksizes["lat"][0], chunked.temperature.chunksizes["lon"][0]
+        assert seed_shapes and all(shape == block_shape for shape in seed_shapes)
+        assert state_shapes and all(shape == block_shape for shape in state_shapes)
         _assert_matches_numpy(inputs, resumed, initial_state=state_result.state)
 
     def test_static_operand_wrapper_partitions_to_blocks(self) -> None:
@@ -1437,6 +1439,7 @@ class TestCFFWISXarrayOutputs:
         for name in _GRID_VARIABLES:
             value = getattr(result, name)
             assert isinstance(value, xr.DataArray)
+            assert value.chunks is not None, f"{name} must stay Dask-backed until computed"
             np.testing.assert_array_equal(value.values, getattr(expected, name))
 
     def test_dask_month_stays_lazy_and_matches_numpy(self) -> None:

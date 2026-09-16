@@ -1642,28 +1642,6 @@ def _run_cffwis_system(
 
 @overload
 def cffwis(
-    temperature_celsius: npt.ArrayLike,  # NOSONAR (S107) the public API mirrors the per-code helpers
-    relative_humidity_percent: npt.ArrayLike,
-    wind_speed_meters_per_second: npt.ArrayLike,
-    precipitation_mm: npt.ArrayLike,
-    latitude_degrees_north: npt.ArrayLike | None = None,
-    month: npt.ArrayLike | None = None,
-    *,
-    initial_ffmc: npt.ArrayLike | None = None,
-    initial_dmc: npt.ArrayLike | None = None,
-    initial_dc: npt.ArrayLike | None = None,
-    initial_state: CFFWISState | None = None,
-    return_state: bool = False,
-    spin_up: int = 0,
-    nan_policy: Literal["propagate", "bridge"] = "propagate",
-    max_gap_days: int = 0,
-    outputs: Collection[_CFFWISComponent] | str | None = None,
-    time_dim: str = "time",
-) -> CFFWISResult: ...
-
-
-@overload
-def cffwis(
     temperature_celsius: xr.DataArray,  # NOSONAR (S107) the public API mirrors the per-code helpers
     relative_humidity_percent: xr.DataArray,
     wind_speed_meters_per_second: xr.DataArray,
@@ -1682,6 +1660,28 @@ def cffwis(
     outputs: Collection[_CFFWISComponent] | str | None = None,
     time_dim: str = "time",
 ) -> xr.Dataset | CFFWISResult: ...
+
+
+@overload
+def cffwis(
+    temperature_celsius: npt.ArrayLike,  # NOSONAR (S107) the public API mirrors the per-code helpers
+    relative_humidity_percent: npt.ArrayLike,
+    wind_speed_meters_per_second: npt.ArrayLike,
+    precipitation_mm: npt.ArrayLike,
+    latitude_degrees_north: npt.ArrayLike | None = None,
+    month: npt.ArrayLike | None = None,
+    *,
+    initial_ffmc: npt.ArrayLike | None = None,
+    initial_dmc: npt.ArrayLike | None = None,
+    initial_dc: npt.ArrayLike | None = None,
+    initial_state: CFFWISState | None = None,
+    return_state: bool = False,
+    spin_up: int = 0,
+    nan_policy: Literal["propagate", "bridge"] = "propagate",
+    max_gap_days: int = 0,
+    outputs: Collection[_CFFWISComponent] | str | None = None,
+    time_dim: str = "time",
+) -> CFFWISResult: ...
 
 
 def cffwis(
