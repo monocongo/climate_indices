@@ -1,10 +1,7 @@
 import os
-from glob import glob
 
 import numpy as np
 import pytest
-
-from climate_indices import palmer
 
 # Tests for `climate_indices.palmer.py`
 ATOL = 5e-5
@@ -12,28 +9,21 @@ RTOL = 0
 
 pytestmark = pytest.mark.validation
 
+_FIXTURE_ROOT = os.path.join(os.path.split(__file__)[0], "fixture", "palmer")
+
 
 # ---------------------------------------------------------------------------------------
-@pytest.mark.usefixtures(
-    "data_year_start_monthly",
-    "calibration_year_start_palmer",
-    "calibration_year_end_palmer",
-    "palmer_awcs",
-)
 def test_pdsi(
+    palmer_pdsi_results,
     data_year_start_monthly,
     calibration_year_start_palmer,
     calibration_year_end_palmer,
     palmer_awcs,
 ):
-    # Run test for each climate division (skip non-numeric entries like provenance.json)
-    for testpath in glob(os.path.join(os.path.split(__file__)[0], "fixture", "palmer", "*")):
-        if not os.path.basename(testpath).isdigit():
-            continue
-        test_id = testpath[-4:]
+    # Run test for each climate division, reusing the session-cached pdsi() sweep
+    for test_id, (pdsi, phdi, pmdi, zindex, params) in palmer_pdsi_results.items():
+        testpath = os.path.join(_FIXTURE_ROOT, test_id)
         awc = palmer_awcs[test_id]
-        precips = np.load(f"{testpath}/precips.npy")
-        pet = np.load(f"{testpath}/pet.npy")
         alphas = np.load(f"{testpath}/alphas.npy")
         betas = np.load(f"{testpath}/betas.npy")
         gammas = np.load(f"{testpath}/gammas.npy")
@@ -42,15 +32,6 @@ def test_pdsi(
         noaa_phdi = np.load(f"{testpath}/phdi.npy")
         noaa_pmdi = np.load(f"{testpath}/pmdi.npy")
         noaa_zindex = np.load(f"{testpath}/zindex.npy")
-
-        pdsi, phdi, pmdi, zindex, params = palmer.pdsi(
-            precips,
-            pet,
-            awc,
-            data_year_start_monthly,
-            calibration_year_start_palmer,
-            calibration_year_end_palmer,
-        )
 
         np.testing.assert_allclose(
             pdsi,

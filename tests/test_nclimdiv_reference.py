@@ -33,7 +33,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from climate_indices import palmer, self_calibration
+from climate_indices import self_calibration
 
 _FIXTURE_ROOT = Path(__file__).parent / "fixture"
 _PALMER_ROOT = _FIXTURE_ROOT / "palmer"
@@ -88,11 +88,6 @@ def division_dirs() -> tuple[Path, ...]:
 
 
 @pytest.fixture(scope="module")
-def awcs(palmer_awcs) -> dict:
-    return palmer_awcs
-
-
-@pytest.fixture(scope="module")
 def row_by_division() -> dict[str, int]:
     divisions = json.loads((_NCLIMDIV_ROOT / "divisions.json").read_text(encoding="utf-8"))
     return {division: row for row, division in enumerate(divisions)}
@@ -129,19 +124,12 @@ def _summarize(all_diffs: dict[str, list[np.ndarray]]) -> dict[str, dict[str, fl
     return summary
 
 
-def _collect_diffs(function, division_dirs, awcs, row_by_division, nclimdiv) -> dict[str, dict[str, float]]:
+def _summarize_diffs(entry_point, results, division_dirs, row_by_division, nclimdiv) -> dict[str, dict[str, float]]:
     all_diffs: dict[str, list[np.ndarray]] = {name: [] for name in _SERIES}
     for division_dir in division_dirs:
         division = division_dir.name
-        values = function(
-            np.load(division_dir / "precips.npy"),
-            np.load(division_dir / "pet.npy"),
-            awcs[division],
-            _DATA_START_YEAR,
-            _CALIBRATION_YEAR_INITIAL,
-            _CALIBRATION_YEAR_FINAL,
-        )
-        assert values[4] is not None, f"{division}: {function.__name__}() returned no fitted parameters"
+        values = results[division]
+        assert values[4] is not None, f"{division}: {entry_point}() returned no fitted parameters"
         row = row_by_division[division]
         for offset, name in enumerate(_SERIES):
             all_diffs[name].append(_abs_diffs(values[offset], nclimdiv[name][row]))
@@ -174,11 +162,13 @@ def test_ceilings_keep_documented_headroom():
 
 @pytest.mark.validation
 @pytest.mark.parametrize(
-    ("function", "ceilings"),
-    [(palmer.pdsi, _PDSI_CEILINGS), (palmer.scpdsi, _SCPDSI_CEILINGS)],
+    ("entry_point", "ceilings"),
+    [("pdsi", _PDSI_CEILINGS), ("scpdsi", _SCPDSI_CEILINGS)],
     ids=["pdsi", "scpdsi"],
 )
-def test_palmer_vs_noaa_nclimdiv_characterization(function, ceilings, division_dirs, awcs, row_by_division, nclimdiv):
+def test_palmer_vs_noaa_nclimdiv_characterization(
+    request, entry_point, ceilings, division_dirs, row_by_division, nclimdiv
+):
     """Aggregate agreement between a Palmer entry point and the NOAA nClimDiv arrays.
 
     ``pdsi()`` uses the same fixed, nationally uniform duration/K factors as
@@ -191,14 +181,20 @@ def test_palmer_vs_noaa_nclimdiv_characterization(function, ceilings, division_d
     K-factors, so the two diverge substantially by design -- expected
     divergence, not a defect -- and its ceilings are correspondingly wider.
     """
-    summary = _collect_diffs(function, division_dirs, awcs, row_by_division, nclimdiv)
+    summary = _summarize_diffs(
+        entry_point,
+        request.getfixturevalue(f"palmer_{entry_point}_results"),
+        division_dirs,
+        row_by_division,
+        nclimdiv,
+    )
     for series, stats in ceilings.items():
         for stat, ceiling in stats.items():
             assert summary[series][stat] < ceiling, f"{series} {stat}: {summary[series]}"
 
 
 @pytest.mark.validation
-def test_scpdsi_calibration_anchor_lands_on_target(division_dirs, awcs):
+def test_scpdsi_calibration_anchor_lands_on_target(division_dirs, palmer_scpdsi_results):
     """Calibration-period 2nd/98th percentiles of scPDSI should land on -/+4.
 
     This is the defining property of Wells self-calibration, and the source of
@@ -214,14 +210,7 @@ def test_scpdsi_calibration_anchor_lands_on_target(division_dirs, awcs):
     high_deviations = []
     for division_dir in division_dirs:
         division = division_dir.name
-        scpdsi_values = palmer.scpdsi(
-            np.load(division_dir / "precips.npy"),
-            np.load(division_dir / "pet.npy"),
-            awcs[division],
-            _DATA_START_YEAR,
-            _CALIBRATION_YEAR_INITIAL,
-            _CALIBRATION_YEAR_FINAL,
-        )[0]
+        scpdsi_values = palmer_scpdsi_results[division][0]
         window = scpdsi_values[start:end]
         low_deviations.append(abs(self_calibration.nan_safe_percentile(window, 0.02) - (-4.0)))
         high_deviations.append(abs(self_calibration.nan_safe_percentile(window, 0.98) - 4.0))
