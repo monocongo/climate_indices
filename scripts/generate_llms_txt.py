@@ -42,7 +42,10 @@ def _read(path: str) -> str:
     return "\n".join(line.rstrip() for line in text.splitlines())
 
 
-_RELATIVE_LINK = re.compile(r"\]\((?!https?://|\#|mailto:)([^)\s]+)([^)]*)\)")
+# The optional title group is anchored by whitespace so it cannot overlap the
+# link-target group; without that anchor the engine retries every split point
+# between them (super-linear backtracking on malformed input).
+_RELATIVE_LINK = re.compile(r"\]\((?!https?://|\#|mailto:)([^)\s]+)((?:\s[^)]*)?)\)")
 
 
 def _rebuild_links(path: str, text: str) -> str:

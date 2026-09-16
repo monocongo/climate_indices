@@ -111,7 +111,8 @@ def test_section_resolves_relative_links_from_repository_root(tmp_path: Path, mo
     monkeypatch.setattr(generate_llms_txt, "ROOT", tmp_path)
     (tmp_path / "docs").mkdir()
     (tmp_path / "docs" / "guide.md").write_text(
-        "[ADR](adr/0003.md) [root](../README.md) [web](https://example.com) [anchor](#chunking)\n",
+        "[ADR](adr/0003.md) [root](../README.md) [web](https://example.com) [anchor](#chunking)\n"
+        '[titled](adr/0004.md "ADR title")\n',
         encoding="utf-8",
     )
 
@@ -121,6 +122,7 @@ def test_section_resolves_relative_links_from_repository_root(tmp_path: Path, mo
     assert "[root](README.md)" in section
     assert "[web](https://example.com)" in section
     assert "[anchor](#chunking)" in section
+    assert '[titled](docs/adr/0004.md "ADR title")' in section
 
 
 def test_render_builds_header_and_ordered_sections(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
