@@ -92,6 +92,27 @@ def test_default_chunk_size_drives_auto_chunking(monkeypatch, tmp_path):
     assert dask.config.get("array.chunk-size") == configured
 
 
+def test_configured_chunk_size_overrides_the_default(monkeypatch, tmp_path):
+    """A caller-configured array chunk size wins over the library default."""
+    dataset = xr.Dataset(
+        {"precip": (("time", "lat", "lon"), np.ones((4, 20, 20), dtype="float32"))},
+    )
+    path = str(tmp_path / "precip.nc")
+    dataset.to_netcdf(path)
+
+    # the library's own budget is far too large to split these axes
+    monkeypatch.setattr(_cli, "DEFAULT_ARRAY_CHUNK_SIZE", "100 MB")
+    with dask.config.set({"array.chunk-size": "1 kB"}):
+        with _cli._open_with_default_chunks(
+            xr.open_dataset,
+            path,
+            chunks={"lat": "auto", "lon": "auto", "time": -1},
+        ) as opened:
+            assert len(opened["precip"].chunks[1]) > 1
+            assert len(opened["precip"].chunks[2]) > 1
+            assert dask.config.get("array.chunk-size") == "1 kB"
+
+
 def test_common_arguments_parse():
     parser = argparse.ArgumentParser()
     _add_common_spi_arguments(parser)

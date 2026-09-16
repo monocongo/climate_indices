@@ -779,7 +779,7 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
         else:
             raise ValueError(f"Invalid 'input_type' keyword argument: {input_type}")
     # Since multiple variables can be in the same file, de-duplicate the filelist.
-    dataset = _open_with_default_chunks(xr.open_mfdataset, list(set(files)), chunks=chunks)
+    dataset = xr.open_mfdataset(list(set(files)), chunks=chunks)
     output_chunksizes: tuple[int, ...] = ()
     chunksizes_dims: tuple[Any, ...] = ()
     if keyword_arguments["chunksizes"] == "input":

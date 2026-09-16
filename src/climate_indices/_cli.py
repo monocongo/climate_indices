@@ -15,9 +15,12 @@ _logger = utils.get_logger(__name__, logging.INFO)
 
 _DEFAULT_SCALES_HELP = "Timestep scales over which the PNP, SPI, and SPEI values are to be computed"
 
-# Dask array chunk budget the CLI entry points apply when chunk shapes are left
-# to Dask ("auto"); users override it with explicit chunks or dask configuration
+# Dask array chunk budget the CLI applies when chunk shapes are left to Dask
+# ("auto"); a budget the caller configured is honored rather than overwritten
 DEFAULT_ARRAY_CHUNK_SIZE = "100 MB"
+
+# the array.chunk-size Dask ships in its own configuration
+_DASK_ARRAY_CHUNK_SIZE_DEFAULT = dask.config.defaults[0]["array"]["chunk-size"]
 
 
 def _open_with_default_chunks(
@@ -30,7 +33,10 @@ def _open_with_default_chunks(
 
     Only the open call runs under the configured chunk size, since Dask resolves
     ``"auto"`` chunk shapes as the array is created; the caller's own dask
-    configuration is restored once the dataset and its chunk layout exist.
+    configuration is restored once the dataset and its chunk layout exist. A
+    caller-configured ``array.chunk-size`` — an environment variable, a dask
+    configuration file, or ``dask.config.set()`` — is left in place instead of
+    being overwritten by the default.
 
     Args:
         opener: dataset opener, e.g. ``xarray.open_dataset`` or
@@ -41,6 +47,9 @@ def _open_with_default_chunks(
     Returns:
         The dataset returned by the opener.
     """
+    if dask.config.get("array.chunk-size") != _DASK_ARRAY_CHUNK_SIZE_DEFAULT:
+        return opener(*args, **kwargs)
+
     with dask.config.set({"array.chunk-size": DEFAULT_ARRAY_CHUNK_SIZE}):
         return opener(*args, **kwargs)
 
