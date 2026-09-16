@@ -288,6 +288,15 @@ the moisture level):
 | `mid` | 850 hPa | 700 hPa | 850 hPa |
 | `high` | 700 hPa | 500 hPa | 700 hPa |
 
+This table replaced the pre-implementation sketch in #810, which named the
+third parameter `dewpoint_lower_celsius`. That name was wrong for the `low`
+variant, where the moisture level (850 hPa) is the *upper* level of the
+stability pair; a caller following it would have passed the 950 hPa dewpoint
+and been scored silently. The sketch also could not express the issue's
+automatic variant selection -- with three caller-chosen level values there is
+nothing for the function to infer the variant from -- so that lives in
+`haines_index_from_profile()`.
+
 The variants' stability cut points are (4, 8), (6, 11), and (18, 22) °C and
 their moisture cut points (6, 10), (6, 13), and (15, 21) °C, scored as
 half-open bins (below the first cut point scores 1, below the second scores 2,

@@ -118,8 +118,6 @@ A dimensionless, state-free CFFWIS behavior index combining ISI and BUI; compute
 **DSR (Daily Severity Rating)**:
 The `0.0272 * FWI ** 1.77` transform of the Canadian FWI that makes seasonal averaging meaningful; computed by `fire.daily_severity_rating()`.
 
-The Haines Index is a planned contract in the design doc.
-
 ### Statistics
 
 **L-Moments**:
