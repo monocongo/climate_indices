@@ -244,7 +244,8 @@ def _palmer_sweep(entry_point: str, awcs: dict) -> dict[str, tuple]:
     touching only one entry point pays only for that sweep; any run that
     touches a sweep computes it in full, even when only a subset of divisions
     is selected. The cache costs ~35 MiB extra peak RSS on the sweep tests,
-    while the full validation suite peak is unchanged (measured in #909).
+    while the full validation suite peak does not increase (measured
+    305.9 -> 289.8 MiB in #909).
     """
     from climate_indices import palmer
 

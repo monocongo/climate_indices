@@ -181,6 +181,7 @@ def test_palmer_vs_noaa_nclimdiv_characterization(
     K-factors, so the two diverge substantially by design -- expected
     divergence, not a defect -- and its ceilings are correspondingly wider.
     """
+    # entry_point names both palmer.<entry_point> and the cached palmer_<entry_point>_results fixture
     summary = _summarize_diffs(
         entry_point,
         request.getfixturevalue(f"palmer_{entry_point}_results"),
