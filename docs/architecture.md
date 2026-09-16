@@ -140,7 +140,7 @@ spi = "climate_indices.__spi__:main"
 **Purpose**: Core mathematical algorithms for climate index calculation.
 
 **Modules**:
-- **`compute.py`** (1264 lines): Core computation functions
+- **`compute.py`** (1278 lines): Core computation functions
   - `prepare_scaled()`: Shared flatten/clip/roll-sum/reshape preparation for the fitting-based indices
   - `scale_values()`: Rolling sum computation for temporal scaling (wrapper over `prepare_scaled()`)
   - `gamma_parameters()`, `pearson_parameters()`: Distribution fitting
@@ -313,6 +313,8 @@ climate_indices/
 │  - Rolling sum over N months/days                               │
 │  - Handles NaN propagation                                      │
 │  - Output: scaled_values (same shape as input)                  │
+│  - Except an all-missing input: returned unreshaped, so a       │
+│    2-D all-missing input comes back 1-D                         │
 └───────────────────────┬─────────────────────────────────────────┘
                         │
                         ▼

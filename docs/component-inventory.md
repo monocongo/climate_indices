@@ -448,7 +448,7 @@ class Distribution(Enum):
 
 ### `compute.py` - Mathematical Core
 **Location**: `src/climate_indices/compute.py`
-**Lines**: 1328
+**Lines**: 1278
 **Purpose**: Core algorithms for climate index calculation.
 
 #### Periodicity Enum
