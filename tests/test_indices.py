@@ -821,6 +821,183 @@ def test_fitting_indices_share_one_preparation_seam(
     assert [call for call in prep_kwargs if call] == [{"clip_negatives": False, "reshape": False}] * 2
 
 
+def test_fitting_indices_share_one_fit_seam(
+    precips_mm_monthly,
+    pet_thornthwaite_mm,
+    data_year_start_monthly,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+):
+    """SPI and SPEI both fit and standardize through one seam, stating the fall-back policy."""
+    precips = precips_mm_monthly.flatten()
+    pet = pet_thornthwaite_mm.flatten()
+
+    with mock.patch.object(compute, "fit_and_standardize", wraps=compute.fit_and_standardize) as fit_and_standardize:
+        indices.spi(
+            precips,
+            3,
+            indices.Distribution.gamma,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            compute.Periodicity.monthly,
+        )
+        indices.spei(
+            precips,
+            pet,
+            3,
+            indices.Distribution.gamma,
+            compute.Periodicity.monthly,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+        )
+
+    assert fit_and_standardize.call_count == 2
+    # SPI falls back from a failed Pearson Type III fit to gamma, SPEI does not
+    assert [call.kwargs["fallback_to_gamma"] for call in fit_and_standardize.call_args_list] == [
+        True,
+        False,
+    ]
+
+
+def test_spi_accepts_deprecated_fitting_parameter_keys(
+    precips_mm_monthly,
+    data_year_start_monthly,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+):
+    """SPI normalizes its fitting parameters through the shared seam, so the deprecated
+    aliases that SPEI accepts work here too, and the parameters given are the ones used."""
+    precips = precips_mm_monthly.flatten()
+    parameters = (
+        (
+            indices.Distribution.gamma,
+            {"alpha": np.full(12, 4.0), "beta": np.full(12, 8.0)},
+            {"alphas": np.full(12, 4.0), "betas": np.full(12, 8.0)},
+        ),
+        (
+            indices.Distribution.pearson,
+            {
+                "prob_zero": np.full(12, 0.1),
+                "loc": np.full(12, 1.0),
+                "scale": np.full(12, 2.0),
+                "skew": np.full(12, 0.5),
+            },
+            {
+                "probabilities_of_zero": np.full(12, 0.1),
+                "locs": np.full(12, 1.0),
+                "scales": np.full(12, 2.0),
+                "skews": np.full(12, 0.5),
+            },
+        ),
+    )
+
+    for distribution, canonical, deprecated in parameters:
+        computed = [
+            indices.spi(
+                precips,
+                6,
+                distribution,
+                data_year_start_monthly,
+                calibration_year_start_monthly,
+                calibration_year_end_monthly,
+                compute.Periodicity.monthly,
+                fitting_params,
+            )
+            for fitting_params in (canonical, deprecated)
+        ]
+        np.testing.assert_array_equal(computed[0], computed[1])
+
+        # the supplied parameters are the ones used, rather than refitted from the data
+        refitted = indices.spi(
+            precips,
+            6,
+            distribution,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            compute.Periodicity.monthly,
+        )
+        assert not np.array_equal(computed[0], refitted, equal_nan=True)
+
+
+def test_spei_accepts_explicit_none_fitting_parameters(
+    precips_mm_monthly,
+    pet_thornthwaite_mm,
+    data_year_start_monthly,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+):
+    """An explicit None for a canonical fitting-parameter key means "fit it from the
+    data" rather than dropping the key, which used to raise KeyError."""
+    precips = precips_mm_monthly.flatten()
+    pet = pet_thornthwaite_mm.flatten()
+    with_explicit_none = indices.spei(
+        precips,
+        pet,
+        6,
+        indices.Distribution.gamma,
+        compute.Periodicity.monthly,
+        data_year_start_monthly,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
+        {"alpha": None, "beta": None},
+    )
+    without_parameters = indices.spei(
+        precips,
+        pet,
+        6,
+        indices.Distribution.gamma,
+        compute.Periodicity.monthly,
+        data_year_start_monthly,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
+    )
+    np.testing.assert_array_equal(with_explicit_none, without_parameters)
+
+
+def test_spatial_pearson_deprecated_fitting_keys_warn_once(
+    precips_mm_monthly,
+    data_year_start_monthly,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+):
+    """A deprecated fitting-parameter key warns once per top-level spatial operation,
+    not once for every cell the Pearson Type III dispatch fits."""
+    block = np.asarray(precips_mm_monthly).reshape(-1, 1, 1) * np.ones((1, 3, 2))
+    deprecated = {"probabilities_of_zero": None, "locs": None, "scales": None, "skews": None}
+
+    with mock.patch.object(compute, "_logger") as warning_logger:
+        indices.spi(
+            block,
+            6,
+            indices.Distribution.pearson,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            compute.Periodicity.monthly,
+            deprecated,
+            spatial_time_major=True,
+        )
+    assert warning_logger.warning.call_count == len(deprecated)
+
+    with mock.patch.object(compute, "_logger") as warning_logger:
+        indices.spei(
+            block,
+            np.full_like(block, 10.0),
+            6,
+            indices.Distribution.pearson,
+            compute.Periodicity.monthly,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            deprecated,
+            spatial_time_major=True,
+        )
+    assert warning_logger.warning.call_count == len(deprecated)
+
+
 @pytest.mark.usefixtures(
     "data_year_start_monthly",
     "calibration_year_start_monthly",

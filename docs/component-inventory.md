@@ -368,7 +368,7 @@ CF_METADATA = {
 
 ### `indices.py` - Legacy NumPy API (STABLE)
 **Location**: `src/climate_indices/indices.py`
-**Lines**: 856
+**Lines**: 1210
 **Purpose**: Backward-compatible numpy interface.
 
 #### Stability Guarantee
@@ -448,7 +448,7 @@ class Distribution(Enum):
 
 ### `compute.py` - Mathematical Core
 **Location**: `src/climate_indices/compute.py`
-**Lines**: 1278
+**Lines**: 1669
 **Purpose**: Core algorithms for climate index calculation.
 
 #### Periodicity Enum
@@ -565,6 +565,32 @@ def transform_fitted_pearson(
 ) -> np.ndarray:
     """Transform via Pearson Type III CDF → standard normal."""
 ```
+
+##### Fit and Standardize
+**`fit_and_standardize()`**
+```python
+def fit_and_standardize(
+    values: np.ndarray,
+    distribution: Distribution,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
+    fitting_params: dict[str, Any] | None = None,
+    *,
+    fallback_to_gamma: bool = False,
+    fallback_context: str = "",
+) -> np.ndarray:
+    """Fit to the given distribution and transform to standard normal."""
+```
+**Algorithm**: The single fit/dispatch seam shared by SPI and SPEI. Normalizes
+fitting-parameter keys (accepting the deprecated aliases), dispatches on the
+distribution to `transform_fitted_gamma()` or `transform_fitted_pearson()`, and owns the
+Pearson Type III → gamma fall-back. `fallback_to_gamma` makes that policy a parameter of
+the call: SPI passes `True`, SPEI leaves it `False` and propagates the fitting failure.
+A failed Pearson call falls back on the scaled input; a Pearson result that is mostly
+missing is treated as a failure and falls back on that result (the behavior SPI has
+always had).
 
 #### Algorithm Details
 1. **Scaling**: `sum_to_scale()` applies rolling window

@@ -5,6 +5,7 @@ Common classes and functions used to compute the various climate indices.
 import functools
 import warnings
 from enum import Enum
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import scipy.special
@@ -21,9 +22,15 @@ from climate_indices.exceptions import (
 )
 from climate_indices.logging_config import get_logger
 
+if TYPE_CHECKING:
+    # only for typing: climate_indices.indices imports this module, so importing
+    # Distribution here at runtime would be circular
+    from climate_indices.indices import Distribution
+
 # declare the function names that should be included in the public API for this module
 __all__ = [
     "Periodicity",
+    "fit_and_standardize",
     "prepare_scaled",
     "scale_values",
     "sum_to_scale",
@@ -1507,3 +1514,166 @@ def transform_fitted_gamma(
             suggestion="Try using pearson3 distribution instead",
             underlying_error=e,
         ) from e
+
+
+# normalized fitting-parameter keys, paired with the deprecated alias accepted for each
+_FIT_ALTNAMES = (
+    ("alpha", "alphas"),
+    ("beta", "betas"),
+    ("skew", "skews"),
+    ("scale", "scales"),
+    ("loc", "locs"),
+    ("prob_zero", "probabilities_of_zero"),
+)
+
+
+def _normalize_fitting_params(params: dict[str, Any] | None) -> dict[str, Any] | None:
+    """
+    Compatibility shim. Convert old accepted parameter dictionaries
+    into new, consistently keyed parameter dictionaries. If given
+    a None object, None is returned.
+
+    See https://github.com/monocongo/climate_indices/issues/449
+    """
+    if params is None:
+        return params
+
+    normed = {}
+    for name, altname in _FIT_ALTNAMES:
+        if params.get(name) is not None:
+            normed[name] = params[name]
+        elif altname in params:
+            _logger.warning(
+                "Using deprecated fitting parameter key %s. Use %s instead.",
+                altname,
+                name,
+            )
+            normed[name] = params[altname]
+        elif name in params:
+            # an explicit None means "fit this parameter from the data", so the key is
+            # kept rather than dropped
+            normed[name] = params[name]
+    return normed
+
+
+def fit_and_standardize(
+    values: np.ndarray,
+    distribution: "Distribution",
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
+    fitting_params: dict[str, Any] | None = None,
+    *,
+    fallback_to_gamma: bool = False,
+    fallback_context: str = "",
+) -> np.ndarray:
+    """
+    Fit values to the specified distribution and transform the values to the
+    corresponding normalized sigmas.
+
+    This is the single seam where the fitting-based indices (SPI, SPEI) own the
+    fitting-parameter normalization, the gamma/Pearson dispatch, and the policy of
+    falling back from a failed Pearson Type III fit to gamma. ``fallback_to_gamma``
+    makes that policy a parameter of the call rather than a copy of this branch in
+    each index function; the indices pass ``False`` unless they intend to fall back.
+
+    Args:
+        values: 2-D array of scaled values, with each row typically representing a
+            year containing twelve columns representing the respective calendar
+            months, or 366 days per column as if all years were leap years; a
+            time-major spatial block with more than two dimensions is also accepted.
+        distribution: The distribution to fit the values to.
+        data_start_year: The initial year of the input values array.
+        calibration_start_year: The initial year to use for the calibration period.
+        calibration_end_year: The final year to use for the calibration period.
+        periodicity: The type of time series represented by the input data, either
+            monthly (12 time steps per year) or daily (366 time steps per year).
+        fitting_params: Optional dictionary of pre-computed distribution fitting
+            parameters, with the keys "alpha" and "beta" when fitting to gamma and
+            "prob_zero", "loc", "scale", and "skew" when fitting to Pearson Type III.
+            Deprecated aliases such as "alphas" and "probabilities_of_zero" are
+            accepted, and an explicit None means "fit this parameter from the data".
+        fallback_to_gamma: Whether to fall back to the gamma distribution when a
+            Pearson Type III fit fails or leaves too many missing values.
+        fallback_context: Context included in the fall-back warning log message.
+
+    Returns:
+        2-D array of transformed/fitted values, corresponding in size and shape to
+        the input array.
+
+    Raises:
+        ValueError: If the distribution is neither gamma nor Pearson Type III.
+    """
+    params = _normalize_fitting_params(fitting_params)
+
+    if distribution.value == "gamma":
+        alphas = None if params is None else params.get("alpha")
+        betas = None if params is None else params.get("beta")
+        return transform_fitted_gamma(
+            values,
+            data_start_year,
+            calibration_start_year,
+            calibration_end_year,
+            periodicity,
+            alphas,
+            betas,
+        )
+
+    if distribution.value != "pearson":
+        raise ValueError(f"Unsupported distribution: {distribution}")
+
+    probabilities_of_zero = None if params is None else params.get("prob_zero")
+    locs = None if params is None else params.get("loc")
+    scales = None if params is None else params.get("scale")
+    skews = None if params is None else params.get("skew")
+
+    if not fallback_to_gamma:
+        return transform_fitted_pearson(
+            values,
+            data_start_year,
+            calibration_start_year,
+            calibration_end_year,
+            periodicity,
+            probabilities_of_zero,
+            locs,
+            scales,
+            skews,
+        )
+
+    # the fall back is fitted to whatever the Pearson attempt left behind, as the
+    # indices have always done it: a failed call leaves the scaled input in place,
+    # while an excessive-NaN result takes that result as the fall-back input
+    standardized = values
+    try:
+        standardized = transform_fitted_pearson(
+            values,
+            data_start_year,
+            calibration_start_year,
+            calibration_end_year,
+            periodicity,
+            probabilities_of_zero,
+            locs,
+            scales,
+            skews,
+        )
+
+        # check if fallback is needed due to excessive NaN values
+        if _default_fallback_strategy.should_fallback_from_excessive_nans(standardized):
+            raise ValueError("Pearson distribution fitting resulted in excessive missing values")
+
+    except (ValueError, Warning, DistributionFittingError) as e:
+        # use the centralized fallback strategy for consistent logging and behavior
+        _default_fallback_strategy.log_fallback_warning(str(e), context=fallback_context)
+
+        return transform_fitted_gamma(
+            standardized,
+            data_start_year,
+            calibration_start_year,
+            calibration_end_year,
+            periodicity,
+            alphas=None,
+            betas=None,
+        )
+
+    return standardized

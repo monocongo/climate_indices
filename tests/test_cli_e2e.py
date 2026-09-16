@@ -221,6 +221,15 @@ def test_palmers_writes_all_four_outputs_matching_in_process_computation(
         with xr.open_dataset(tmp_path / f"palmers_{variable_name}.nc") as dataset:
             np.testing.assert_allclose(dataset[variable_name].values[0], expected, equal_nan=True)
 
+    # self-calibration isn't implemented (CONTEXT.md / issue #716), so the CLI
+    # must write the four outputs and no fifth scpdsi file
+    assert {path.name for path in tmp_path.glob("palmers_*.nc")} == {
+        "palmers_pdsi.nc",
+        "palmers_phdi.nc",
+        "palmers_pmdi.nc",
+        "palmers_zindex.nc",
+    }
+
 
 def test_invalid_scale_raises_and_writes_no_output(tmp_path, precips_mm_monthly):
     precip_path = tmp_path / "precip.nc"
