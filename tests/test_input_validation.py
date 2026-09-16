@@ -1,7 +1,8 @@
-"""Tests for input validation in public API functions.
+"""Table-driven tests for input validation in the public index APIs.
 
-This test module validates the error handling behavior introduced in Story 1.2,
-focusing on scale, distribution, and periodicity parameter validation.
+Each row drives a real public API call (``spi``, ``spei``,
+``percentage_of_normal``) through one invalid argument, so the tables are the
+single owner of the scale/distribution/periodicity validation contract.
 """
 
 from __future__ import annotations
@@ -25,440 +26,191 @@ def valid_pet_data():
     return np.random.rand(12 * 10) * 50
 
 
-class TestScaleValidation:
-    """Test scale parameter validation."""
+# (call, argument name, argument value) rows. Calls take (precip, pet) so the
+# same table drives every public entry point.
+INVALID_ARGUMENT_CASES = [
+    pytest.param(
+        lambda p, pet: indices.spi(p, 0, indices.Distribution.gamma, 2000, 2000, 2009, compute.Periodicity.monthly),
+        "scale",
+        "0",
+        id="spi-scale-zero",
+    ),
+    pytest.param(
+        lambda p, pet: indices.spi(p, 73, indices.Distribution.gamma, 2000, 2000, 2009, compute.Periodicity.monthly),
+        "scale",
+        "73",
+        id="spi-scale-above-maximum",
+    ),
+    pytest.param(
+        lambda p, pet: indices.spi(p, -5, indices.Distribution.gamma, 2000, 2000, 2009, compute.Periodicity.monthly),
+        "scale",
+        "-5",
+        id="spi-scale-negative",
+    ),
+    pytest.param(
+        lambda p, pet: indices.percentage_of_normal(p, None, 2000, 2000, 2009, compute.Periodicity.monthly),
+        "scale",
+        "None",
+        id="percentage-of-normal-scale-none",
+    ),
+    pytest.param(
+        lambda p, pet: indices.percentage_of_normal(p, -1, 2000, 2000, 2009, compute.Periodicity.monthly),
+        "scale",
+        "-1",
+        id="percentage-of-normal-scale-negative",
+    ),
+    pytest.param(
+        lambda p, pet: indices.spei(
+            p, pet, 0, indices.Distribution.gamma, compute.Periodicity.monthly, 2000, 2000, 2009
+        ),
+        "scale",
+        "0",
+        id="spei-scale-zero",
+    ),
+    pytest.param(
+        lambda p, pet: indices.spi(p, 6, None, 2000, 2000, 2009, compute.Periodicity.monthly),
+        "distribution",
+        "None",
+        id="spi-distribution-none",
+    ),
+    pytest.param(
+        lambda p, pet: indices.spi(p, 6, "gamma", 2000, 2000, 2009, compute.Periodicity.monthly),
+        "distribution",
+        "gamma",
+        id="spi-distribution-string",
+    ),
+    pytest.param(
+        lambda p, pet: indices.spei(p, pet, 6, "invalid", compute.Periodicity.monthly, 2000, 2000, 2009),
+        "distribution",
+        "invalid",
+        id="spei-distribution-invalid",
+    ),
+    pytest.param(
+        lambda p, pet: indices.spei(p, pet, 6, None, compute.Periodicity.monthly, 2000, 2000, 2009),
+        "distribution",
+        "None",
+        id="spei-distribution-none",
+    ),
+    pytest.param(
+        lambda p, pet: indices.spi(p, 6, indices.Distribution.gamma, 2000, 2000, 2009, "monthly"),
+        "periodicity",
+        "monthly",
+        id="spi-periodicity-string",
+    ),
+    pytest.param(
+        lambda p, pet: indices.spi(p, 6, indices.Distribution.gamma, 2000, 2000, 2009, "invalid"),
+        "periodicity",
+        "invalid",
+        id="spi-periodicity-invalid",
+    ),
+    pytest.param(
+        lambda p, pet: indices.percentage_of_normal(p, 6, 2000, 2000, 2009, None),
+        "periodicity",
+        "None",
+        id="percentage-of-normal-periodicity-none",
+    ),
+    pytest.param(
+        lambda p, pet: indices.percentage_of_normal(p, 6, 2000, 2000, 2009, "daily"),
+        "periodicity",
+        "daily",
+        id="percentage-of-normal-periodicity-daily",
+    ),
+    pytest.param(
+        lambda p, pet: indices.spei(p, pet, 6, indices.Distribution.gamma, "monthly", 2000, 2000, 2009),
+        "periodicity",
+        "monthly",
+        id="spei-periodicity-string",
+    ),
+    pytest.param(
+        lambda p, pet: indices.spei(p, pet, 6, indices.Distribution.gamma, "unsupported", 2000, 2000, 2009),
+        "periodicity",
+        "unsupported",
+        id="spei-periodicity-unsupported",
+    ),
+]
 
-    def test_scale_below_minimum(self, valid_precip_data):
-        """scale=0 raises InvalidArgumentError."""
-        with pytest.raises(InvalidArgumentError) as exc_info:
-            indices.spi(
-                valid_precip_data,
-                0,
-                indices.Distribution.gamma,
-                2000,
-                2000,
-                2009,
-                compute.Periodicity.monthly,
-            )
-        assert exc_info.value.argument_name == "scale"
-        assert exc_info.value.argument_value == "0"
+# (call, message fragments, valid_values) rows: the remediation text users act on.
+INVALID_ARGUMENT_MESSAGE_CASES = [
+    pytest.param(
+        lambda p, pet: indices.spi(p, 0, indices.Distribution.gamma, 2000, 2000, 2009, compute.Periodicity.monthly),
+        ("[1, 72]", "1 (monthly)", "3 (seasonal)", "6 (half-year)", "12 (annual)"),
+        "[1, 72]",
+        id="scale",
+    ),
+    pytest.param(
+        lambda p, pet: indices.spi(p, 6, None, 2000, 2000, 2009, compute.Periodicity.monthly),
+        ("gamma", "pearson", "indices.Distribution.gamma", "indices.Distribution.pearson"),
+        "gamma, pearson",
+        id="distribution",
+    ),
+    pytest.param(
+        lambda p, pet: indices.spi(p, 6, indices.Distribution.gamma, 2000, 2000, 2009, "monthly"),
+        ("monthly", "daily", "compute.Periodicity.monthly", "compute.Periodicity.daily"),
+        "monthly, daily",
+        id="periodicity",
+    ),
+]
 
-    def test_scale_above_maximum(self, valid_precip_data):
-        """scale=73 raises InvalidArgumentError."""
-        with pytest.raises(InvalidArgumentError) as exc_info:
-            indices.spi(
-                valid_precip_data,
-                73,
-                indices.Distribution.gamma,
-                2000,
-                2000,
-                2009,
-                compute.Periodicity.monthly,
-            )
-        assert exc_info.value.argument_name == "scale"
-        assert exc_info.value.argument_value == "73"
-
-    def test_scale_none(self, valid_precip_data):
-        """scale=None raises InvalidArgumentError."""
-        with pytest.raises(InvalidArgumentError) as exc_info:
-            indices.percentage_of_normal(
-                valid_precip_data,
-                None,
-                2000,
-                2000,
-                2009,
-                compute.Periodicity.monthly,
-            )
-        assert exc_info.value.argument_name == "scale"
-
-    def test_scale_at_minimum_boundary(self, valid_precip_data):
-        """scale=1 passes (no error)."""
-        # should not raise
-        indices.spi(
-            valid_precip_data,
-            1,
-            indices.Distribution.gamma,
-            2000,
-            2000,
-            2009,
-            compute.Periodicity.monthly,
-        )
-
-    def test_scale_at_maximum_boundary(self, valid_precip_data):
-        """scale=72 passes (no error)."""
-        # should not raise
-        indices.spi(
-            valid_precip_data,
-            72,
-            indices.Distribution.gamma,
-            2000,
-            2000,
-            2009,
-            compute.Periodicity.monthly,
-        )
-
-    def test_scale_error_message_includes_valid_range(self, valid_precip_data):
-        """Verify message contains "[1, 72]"."""
-        with pytest.raises(InvalidArgumentError) as exc_info:
-            indices.spi(
-                valid_precip_data,
-                0,
-                indices.Distribution.gamma,
-                2000,
-                2000,
-                2009,
-                compute.Periodicity.monthly,
-            )
-        assert "[1, 72]" in str(exc_info.value)
-        assert exc_info.value.valid_values == "[1, 72]"
-
-    def test_scale_error_message_includes_remediation(self, valid_precip_data):
-        """Verify message contains common scale examples."""
-        with pytest.raises(InvalidArgumentError) as exc_info:
-            indices.spi(
-                valid_precip_data,
-                0,
-                indices.Distribution.gamma,
-                2000,
-                2000,
-                2009,
-                compute.Periodicity.monthly,
-            )
-        message = str(exc_info.value)
-        assert "1 (monthly)" in message
-        assert "3 (seasonal)" in message
-        assert "6 (half-year)" in message
-        assert "12 (annual)" in message
-
-    def test_scale_error_attributes(self, valid_precip_data):
-        """Verify argument_name="scale" and argument_value set."""
-        with pytest.raises(InvalidArgumentError) as exc_info:
-            indices.spi(
-                valid_precip_data,
-                -5,
-                indices.Distribution.gamma,
-                2000,
-                2000,
-                2009,
-                compute.Periodicity.monthly,
-            )
-        assert exc_info.value.argument_name == "scale"
-        assert exc_info.value.argument_value == "-5"
-        assert exc_info.value.valid_values is not None
-
-
-class TestDistributionValidation:
-    """Test distribution parameter validation."""
-
-    def test_distribution_none(self, valid_precip_data):
-        """None raises InvalidArgumentError."""
-        with pytest.raises(InvalidArgumentError) as exc_info:
-            indices.spi(
-                valid_precip_data,
-                6,
-                None,
-                2000,
-                2000,
-                2009,
-                compute.Periodicity.monthly,
-            )
-        assert exc_info.value.argument_name == "distribution"
-
-    def test_distribution_string(self, valid_precip_data):
-        """'gamma' string raises InvalidArgumentError."""
-        with pytest.raises(InvalidArgumentError) as exc_info:
-            indices.spi(
-                valid_precip_data,
-                6,
-                "gamma",
-                2000,
-                2000,
-                2009,
-                compute.Periodicity.monthly,
-            )
-        assert exc_info.value.argument_name == "distribution"
-        assert exc_info.value.argument_value == "gamma"
-
-    def test_distribution_error_message_includes_valid_values(self, valid_precip_data):
-        """Message lists gamma, pearson."""
-        with pytest.raises(InvalidArgumentError) as exc_info:
-            indices.spi(
-                valid_precip_data,
-                6,
-                None,
-                2000,
-                2000,
-                2009,
-                compute.Periodicity.monthly,
-            )
-        message = str(exc_info.value)
-        assert "gamma" in message
-        assert "pearson" in message
-        assert "gamma, pearson" in exc_info.value.valid_values
-
-    def test_distribution_error_message_includes_remediation(self, valid_precip_data):
-        """Message suggests Distribution.gamma."""
-        with pytest.raises(InvalidArgumentError) as exc_info:
-            indices.spi(
-                valid_precip_data,
-                6,
-                None,
-                2000,
-                2000,
-                2009,
-                compute.Periodicity.monthly,
-            )
-        message = str(exc_info.value)
-        assert "Distribution.gamma" in message or "indices.Distribution.gamma" in message
-        assert "Distribution.pearson" in message or "indices.Distribution.pearson" in message
-
-    def test_distribution_error_attributes(self, valid_precip_data):
-        """Verify argument_name="distribution" set."""
-        with pytest.raises(InvalidArgumentError) as exc_info:
-            indices.spei(
-                valid_precip_data,
-                valid_precip_data,
-                6,
-                "invalid",
-                compute.Periodicity.monthly,
-                2000,
-                2000,
-                2009,
-            )
-        assert exc_info.value.argument_name == "distribution"
-        assert exc_info.value.argument_value == "invalid"
+# (call, argument name) rows proving every validator routes through the base error.
+CATCH_ALL_CASES = [
+    pytest.param(
+        lambda p, pet: indices.spi(p, 0, indices.Distribution.gamma, 2000, 2000, 2009, compute.Periodicity.monthly),
+        "scale",
+        id="scale",
+    ),
+    pytest.param(
+        lambda p, pet: indices.spi(p, 6, None, 2000, 2000, 2009, compute.Periodicity.monthly),
+        "distribution",
+        id="distribution",
+    ),
+    pytest.param(
+        lambda p, pet: indices.percentage_of_normal(p, 6, 2000, 2000, 2009, "unsupported"),
+        "periodicity",
+        id="periodicity",
+    ),
+]
 
 
-class TestPeriodicityValidation:
-    """Test periodicity parameter validation."""
-
-    def test_periodicity_string(self, valid_precip_data):
-        """'monthly' string raises InvalidArgumentError."""
-        with pytest.raises(InvalidArgumentError) as exc_info:
-            indices.spi(
-                valid_precip_data,
-                6,
-                indices.Distribution.gamma,
-                2000,
-                2000,
-                2009,
-                "monthly",
-            )
-        assert exc_info.value.argument_name == "periodicity"
-        assert exc_info.value.argument_value == "monthly"
-
-    def test_periodicity_none(self, valid_precip_data):
-        """None raises InvalidArgumentError."""
-        with pytest.raises(InvalidArgumentError) as exc_info:
-            indices.percentage_of_normal(
-                valid_precip_data,
-                6,
-                2000,
-                2000,
-                2009,
-                None,
-            )
-        assert exc_info.value.argument_name == "periodicity"
-
-    def test_periodicity_error_message_includes_valid_values(self, valid_precip_data):
-        """Message lists monthly, daily."""
-        with pytest.raises(InvalidArgumentError) as exc_info:
-            indices.spi(
-                valid_precip_data,
-                6,
-                indices.Distribution.gamma,
-                2000,
-                2000,
-                2009,
-                "invalid",
-            )
-        message = str(exc_info.value)
-        assert "monthly" in message
-        assert "daily" in message
-        assert "monthly, daily" in exc_info.value.valid_values
-
-    def test_periodicity_error_message_includes_remediation(self, valid_precip_data):
-        """Suggests Periodicity.monthly."""
-        with pytest.raises(InvalidArgumentError) as exc_info:
-            indices.spi(
-                valid_precip_data,
-                6,
-                indices.Distribution.gamma,
-                2000,
-                2000,
-                2009,
-                "monthly",
-            )
-        message = str(exc_info.value)
-        assert "Periodicity.monthly" in message
-        assert "Periodicity.daily" in message
-
-    def test_periodicity_error_attributes(self, valid_precip_data):
-        """Verify argument_name="periodicity" set."""
-        with pytest.raises(InvalidArgumentError) as exc_info:
-            indices.spei(
-                valid_precip_data,
-                valid_precip_data,
-                6,
-                indices.Distribution.gamma,
-                "unsupported",
-                2000,
-                2000,
-                2009,
-            )
-        assert exc_info.value.argument_name == "periodicity"
-        assert exc_info.value.argument_value == "unsupported"
+@pytest.mark.parametrize(("call", "argument_name", "argument_value"), INVALID_ARGUMENT_CASES)
+def test_invalid_arguments_raise_invalid_argument_error(
+    valid_precip_data, valid_pet_data, call, argument_name, argument_value
+) -> None:
+    """Each invalid argument raises one structured error naming the offending value."""
+    with pytest.raises(InvalidArgumentError) as exc_info:
+        call(valid_precip_data, valid_pet_data)
+    assert exc_info.value.argument_name == argument_name
+    assert exc_info.value.argument_value == argument_value
 
 
-class TestValidatorsAreCalledByPublicAPI:
-    """Verify that validators are called by each public API function."""
+@pytest.mark.parametrize(("call", "expected_fragments", "expected_valid_values"), INVALID_ARGUMENT_MESSAGE_CASES)
+def test_invalid_argument_message_names_the_value_and_remediation(
+    valid_precip_data, valid_pet_data, call, expected_fragments, expected_valid_values
+) -> None:
+    """Error messages carry the valid range and the remediation users should apply."""
+    with pytest.raises(InvalidArgumentError) as exc_info:
+        call(valid_precip_data, valid_pet_data)
+    message = str(exc_info.value)
+    for fragment in expected_fragments:
+        assert fragment in message
+    assert exc_info.value.valid_values == expected_valid_values
 
-    def test_spi_validates_scale(self, valid_precip_data):
-        """spi with scale=0 raises InvalidArgumentError."""
-        with pytest.raises(InvalidArgumentError) as exc_info:
-            indices.spi(
-                valid_precip_data,
-                0,
-                indices.Distribution.gamma,
-                2000,
-                2000,
-                2009,
-                compute.Periodicity.monthly,
-            )
-        assert exc_info.value.argument_name == "scale"
 
-    def test_spi_validates_distribution(self, valid_precip_data):
-        """spi with None distribution raises."""
-        with pytest.raises(InvalidArgumentError) as exc_info:
-            indices.spi(
-                valid_precip_data,
-                6,
-                None,
-                2000,
-                2000,
-                2009,
-                compute.Periodicity.monthly,
-            )
-        assert exc_info.value.argument_name == "distribution"
+@pytest.mark.parametrize("scale", [1, 72])
+def test_scale_boundary_values_are_accepted(valid_precip_data, scale: int) -> None:
+    """The documented scale range is inclusive on both ends."""
+    indices.spi(
+        valid_precip_data,
+        scale,
+        indices.Distribution.gamma,
+        2000,
+        2000,
+        2009,
+        compute.Periodicity.monthly,
+    )
 
-    def test_spi_validates_periodicity(self, valid_precip_data):
-        """spi with string periodicity raises."""
-        with pytest.raises(InvalidArgumentError) as exc_info:
-            indices.spi(
-                valid_precip_data,
-                6,
-                indices.Distribution.gamma,
-                2000,
-                2000,
-                2009,
-                "monthly",
-            )
-        assert exc_info.value.argument_name == "periodicity"
 
-    def test_spei_validates_scale(self, valid_precip_data, valid_pet_data):
-        """spei with scale=0 raises."""
-        with pytest.raises(InvalidArgumentError) as exc_info:
-            indices.spei(
-                valid_precip_data,
-                valid_pet_data,
-                0,
-                indices.Distribution.gamma,
-                compute.Periodicity.monthly,
-                2000,
-                2000,
-                2009,
-            )
-        assert exc_info.value.argument_name == "scale"
-
-    def test_spei_validates_distribution(self, valid_precip_data, valid_pet_data):
-        """spei with None distribution raises."""
-        with pytest.raises(InvalidArgumentError) as exc_info:
-            indices.spei(
-                valid_precip_data,
-                valid_pet_data,
-                6,
-                None,
-                compute.Periodicity.monthly,
-                2000,
-                2000,
-                2009,
-            )
-        assert exc_info.value.argument_name == "distribution"
-
-    def test_spei_validates_periodicity(self, valid_precip_data, valid_pet_data):
-        """spei with string raises."""
-        with pytest.raises(InvalidArgumentError) as exc_info:
-            indices.spei(
-                valid_precip_data,
-                valid_pet_data,
-                6,
-                indices.Distribution.gamma,
-                "monthly",
-                2000,
-                2000,
-                2009,
-            )
-        assert exc_info.value.argument_name == "periodicity"
-
-    def test_percentage_of_normal_validates_scale(self, valid_precip_data):
-        """percentage_of_normal with scale=-1 raises."""
-        with pytest.raises(InvalidArgumentError) as exc_info:
-            indices.percentage_of_normal(
-                valid_precip_data,
-                -1,
-                2000,
-                2000,
-                2009,
-                compute.Periodicity.monthly,
-            )
-        assert exc_info.value.argument_name == "scale"
-
-    def test_percentage_of_normal_validates_periodicity(self, valid_precip_data):
-        """percentage_of_normal with string raises."""
-        with pytest.raises(InvalidArgumentError) as exc_info:
-            indices.percentage_of_normal(
-                valid_precip_data,
-                6,
-                2000,
-                2000,
-                2009,
-                "daily",
-            )
-        assert exc_info.value.argument_name == "periodicity"
-
-    def test_all_validation_errors_catchable_as_base(self, valid_precip_data):
-        """All catchable via ClimateIndicesError."""
-        # scale validation
-        with pytest.raises(ClimateIndicesError):
-            indices.spi(
-                valid_precip_data,
-                0,
-                indices.Distribution.gamma,
-                2000,
-                2000,
-                2009,
-                compute.Periodicity.monthly,
-            )
-
-        # distribution validation
-        with pytest.raises(ClimateIndicesError):
-            indices.spi(
-                valid_precip_data,
-                6,
-                None,
-                2000,
-                2000,
-                2009,
-                compute.Periodicity.monthly,
-            )
-
-        # periodicity validation
-        with pytest.raises(ClimateIndicesError):
-            indices.percentage_of_normal(
-                valid_precip_data,
-                6,
-                2000,
-                2000,
-                2009,
-                "unsupported",
-            )
+@pytest.mark.parametrize(("call", "argument_name"), CATCH_ALL_CASES)
+def test_validation_errors_are_catchable_as_the_base(valid_precip_data, valid_pet_data, call, argument_name) -> None:
+    """Callers can catch every validation failure as the library base error."""
+    with pytest.raises(ClimateIndicesError):
+        call(valid_precip_data, valid_pet_data)

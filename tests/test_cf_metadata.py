@@ -1,7 +1,8 @@
-"""Tests for the CF metadata registry module.
+"""Table-driven tests for the CF metadata registry.
 
-Validates registry structure, required keys, and specific entry values
-for all climate indices that produce xarray DataArray output.
+Each table below is the single owner of one contract: the exact key set, the
+per-entry structure, the documented field values, and the reference
+attributions. Adding an index means adding table rows, not new test functions.
 """
 
 from __future__ import annotations
@@ -39,287 +40,152 @@ EXPECTED_KEYS = {
 
 REQUIRED_FIELDS = {"long_name", "units", "references"}
 
-
-class TestRegistryStructure:
-    """Validate overall registry structure and completeness."""
-
-    def test_registry_contains_all_expected_keys(self) -> None:
-        """Registry has entries for all indices."""
-        assert set(CF_METADATA.keys()) == EXPECTED_KEYS
-
-    @pytest.mark.parametrize("index_name", sorted(EXPECTED_KEYS))
-    def test_entry_has_required_fields(self, index_name: str) -> None:
-        """Each entry contains long_name, units, and references."""
-        entry = CF_METADATA[index_name]
-        actual_keys = set(entry.keys())
-        assert REQUIRED_FIELDS.issubset(actual_keys), (
-            f"Entry '{index_name}' missing required keys: {REQUIRED_FIELDS - actual_keys}"
-        )
-
-    @pytest.mark.parametrize("index_name", sorted(EXPECTED_KEYS))
-    def test_all_values_are_strings(self, index_name: str) -> None:
-        """All metadata values are strings (units may be empty for dimensionless indices)."""
-        for key, value in CF_METADATA[index_name].items():
-            assert isinstance(value, str), f"'{index_name}'.'{key}' is not a string"
-            # units can be empty string for dimensionless indices like PCI
-            if key != "units":
-                assert value.strip(), f"'{index_name}'.'{key}' is empty or whitespace"
-
-
-class TestPercentageOfNormalEntry:
-    """Validate percentage_of_normal registry entry."""
-
-    def test_long_name(self) -> None:
-        assert CF_METADATA["percentage_of_normal"]["long_name"] == "Percent of Normal Precipitation"
-
-    def test_units(self) -> None:
-        assert CF_METADATA["percentage_of_normal"]["units"] == "%"
-
-    def test_references_contains_willeke(self) -> None:
-        references = CF_METADATA["percentage_of_normal"]["references"]
-        assert "Willeke" in references
-        assert "1994" in references
-
-
-class TestPCIEntry:
-    """Validate PCI registry entry."""
-
-    def test_long_name(self) -> None:
-        assert CF_METADATA["pci"]["long_name"] == "Precipitation Concentration Index"
-
-    def test_units(self) -> None:
-        assert CF_METADATA["pci"]["units"] == ""
-
-    def test_references_contains_oliver(self) -> None:
-        references = CF_METADATA["pci"]["references"]
-        assert "Oliver" in references
-        assert "1980" in references
-
-
-class TestPNPEntry:
-    """Validate PNP registry entry (alias for percentage_of_normal)."""
-
-    def test_long_name(self) -> None:
-        assert CF_METADATA["pnp"]["long_name"] == "Percent of Normal Precipitation"
-
-    def test_units(self) -> None:
-        assert CF_METADATA["pnp"]["units"] == "%"
-
-    def test_pnp_matches_percentage_of_normal(self) -> None:
-        """PNP and percentage_of_normal share identical metadata."""
-        pnp = CF_METADATA["pnp"]
-        pon = CF_METADATA["percentage_of_normal"]
-        assert pnp["long_name"] == pon["long_name"]
-        assert pnp["units"] == pon["units"]
-        assert pnp["references"] == pon["references"]
-
-
-class TestEDDIEntry:
-    """Validate EDDI registry entry."""
-
-    def test_long_name(self) -> None:
-        assert CF_METADATA["eddi"]["long_name"] == "Evaporative Demand Drought Index"
-
-    def test_units(self) -> None:
-        assert CF_METADATA["eddi"]["units"] == "dimensionless"
-
-    def test_references_contains_hobbins(self) -> None:
-        references = CF_METADATA["eddi"]["references"]
-        assert "Hobbins" in references
-        assert "2016" in references
-
-
-class TestPDSIEntry:
-    """Validate PDSI registry entry."""
-
-    def test_long_name(self) -> None:
-        assert CF_METADATA["pdsi"]["long_name"] == "Palmer Drought Severity Index"
-
-    def test_units(self) -> None:
-        assert CF_METADATA["pdsi"]["units"] == "dimensionless"
-
-    def test_references_contains_palmer(self) -> None:
-        references = CF_METADATA["pdsi"]["references"]
-        assert "Palmer" in references
-        assert "1965" in references
-
-
-class TestPHDIEntry:
-    """Validate PHDI registry entry."""
-
-    def test_long_name(self) -> None:
-        assert CF_METADATA["phdi"]["long_name"] == "Palmer Hydrological Drought Index"
-
-    def test_units(self) -> None:
-        assert CF_METADATA["phdi"]["units"] == "dimensionless"
-
-    def test_references_contains_palmer(self) -> None:
-        references = CF_METADATA["phdi"]["references"]
-        assert "Palmer" in references
-        assert "1965" in references
-
-
-class TestPMDIEntry:
-    """Validate PMDI registry entry."""
-
-    def test_long_name(self) -> None:
-        assert CF_METADATA["pmdi"]["long_name"] == "Palmer Modified Drought Index"
-
-    def test_units(self) -> None:
-        assert CF_METADATA["pmdi"]["units"] == "dimensionless"
-
-    def test_references_contains_heddinghaus(self) -> None:
-        references = CF_METADATA["pmdi"]["references"]
-        assert "Heddinghaus" in references
-        assert "1991" in references
-
-
-class TestZIndexEntry:
-    """Validate Z-Index registry entry."""
-
-    def test_long_name(self) -> None:
-        assert CF_METADATA["z_index"]["long_name"] == "Palmer Z-Index"
-
-    def test_units(self) -> None:
-        assert CF_METADATA["z_index"]["units"] == "dimensionless"
-
-    def test_references_contains_palmer(self) -> None:
-        references = CF_METADATA["z_index"]["references"]
-        assert "Palmer" in references
-        assert "1965" in references
-
-
-class TestFireEntries:
-    """Validate fire-weather registry entries (#798)."""
-
-    FIRE_KEYS = ("kbdi", "kbdi_imperial", "ffwi", "hdw", "ffmc", "dmc", "dc", "isi", "bui", "fwi", "dsr")
-
-    def test_kbdi_long_name(self) -> None:
-        assert CF_METADATA["kbdi"]["long_name"] == "Keetch-Byram Drought Index"
-
-    def test_kbdi_units(self) -> None:
-        assert CF_METADATA["kbdi"]["units"] == "mm"
-
-    def test_kbdi_variant(self) -> None:
-        assert CF_METADATA["kbdi"]["climate_indices_variant"] == "metric"
-
-    def test_kbdi_imperial_units(self) -> None:
-        """0.01 in, not a bare "1": the imperial scale is a physical length, not dimensionless."""
-        assert CF_METADATA["kbdi_imperial"]["units"] == "0.01 in"
-
-    def test_kbdi_imperial_variant(self) -> None:
-        assert CF_METADATA["kbdi_imperial"]["climate_indices_variant"] == "imperial"
-
-    def test_kbdi_variants_share_long_name(self) -> None:
-        """The two KBDI unit scales are the same index, so long_name matches."""
-        assert CF_METADATA["kbdi"]["long_name"] == CF_METADATA["kbdi_imperial"]["long_name"]
-
-    def test_kbdi_variants_differ_in_units_and_variant(self) -> None:
-        assert CF_METADATA["kbdi"]["units"] != CF_METADATA["kbdi_imperial"]["units"]
-        assert CF_METADATA["kbdi"]["climate_indices_variant"] != CF_METADATA["kbdi_imperial"]["climate_indices_variant"]
-
-    def test_ffwi_long_name(self) -> None:
-        assert CF_METADATA["ffwi"]["long_name"] == "Fosberg Fire Weather Index"
-
-    def test_ffwi_units(self) -> None:
-        """Matches the registry's established dimensionless spelling (spi, spei, eddi, ...)."""
-        assert CF_METADATA["ffwi"]["units"] == "dimensionless"
-
-    def test_ffwi_references_contains_fosberg(self) -> None:
-        references = CF_METADATA["ffwi"]["references"]
-        assert "Fosberg" in references
-        assert "1978" in references
-
-    def test_hdw_long_name(self) -> None:
-        assert CF_METADATA["hdw"]["long_name"] == "Hot-Dry-Windy Index"
-
-    def test_hdw_units(self) -> None:
-        assert CF_METADATA["hdw"]["units"] == "hPa m s-1"
-
-    def test_hdw_references_contains_srock(self) -> None:
-        references = CF_METADATA["hdw"]["references"]
-        assert "Srock" in references
-        assert "2018" in references
-
-    def test_ffmc_long_name_and_units(self) -> None:
-        assert CF_METADATA["ffmc"]["long_name"] == "Fine Fuel Moisture Code"
-        assert CF_METADATA["ffmc"]["units"] == "dimensionless"
-
-    def test_dmc_long_name_and_units(self) -> None:
-        assert CF_METADATA["dmc"]["long_name"] == "Duff Moisture Code"
-        assert CF_METADATA["dmc"]["units"] == "dimensionless"
-
-    def test_dc_long_name_and_units(self) -> None:
-        assert CF_METADATA["dc"]["long_name"] == "Drought Code"
-        assert CF_METADATA["dc"]["units"] == "dimensionless"
-
-    def test_behavior_index_long_names_and_units(self) -> None:
-        expected = {
-            "isi": "Initial Spread Index",
-            "bui": "Buildup Index",
-            "fwi": "Canadian Fire Weather Index",
-            "dsr": "Daily Severity Rating",
-        }
-        for index_name, long_name in expected.items():
-            assert CF_METADATA[index_name]["long_name"] == long_name
-            assert CF_METADATA[index_name]["units"] == "dimensionless"
-
-    @pytest.mark.parametrize("index_name", ["ffmc", "dmc", "dc", "isi", "bui", "fwi", "dsr"])
-    def test_cffwis_entries_are_the_classic_variant(self, index_name: str) -> None:
-        assert CF_METADATA[index_name]["climate_indices_variant"] == "cffwis_classic"
-
-    @pytest.mark.parametrize("index_name", ["ffmc", "dmc", "dc", "isi", "bui", "fwi"])
-    def test_cffwis_references_contain_van_wagner(self, index_name: str) -> None:
-        references = CF_METADATA[index_name]["references"]
-        assert "Van Wagner" in references
-        assert "1985" in references
-
-    def test_dsr_references_the_1987_severity_rating_report(self) -> None:
-        """DSR is Eq. 31 of the 1987 report, not the 1985 equations report."""
-        references = CF_METADATA["dsr"]["references"]
-        assert "Van Wagner" in references
-        assert "1987" in references
-
-    @pytest.mark.parametrize("index_name", FIRE_KEYS)
-    def test_fire_entry_has_description(self, index_name: str) -> None:
-        """The design doc requires every fire adapter's description to come from the registry."""
-        assert CF_METADATA[index_name].get("description", "").strip()
-
-    @pytest.mark.parametrize("index_name", FIRE_KEYS)
-    def test_no_fire_entry_has_standard_name(self, index_name: str) -> None:
-        """Fire indices have no official CF standard_name (design doc policy)."""
-        assert "standard_name" not in CF_METADATA[index_name]
-
-
-class TestBackwardCompatibility:
-    """Verify existing SPI/SPEI/PET entries unchanged after extraction."""
-
-    def test_spi_entry_exists(self) -> None:
-        assert "spi" in CF_METADATA
-
-    def test_spi_long_name(self) -> None:
-        assert CF_METADATA["spi"]["long_name"] == "Standardized Precipitation Index"
-
-    def test_spi_units(self) -> None:
-        assert CF_METADATA["spi"]["units"] == "dimensionless"
-
-    def test_spi_references_contains_mckee(self) -> None:
-        assert "McKee" in CF_METADATA["spi"]["references"]
-
-    def test_spei_entry_exists(self) -> None:
-        assert "spei" in CF_METADATA
-
-    def test_spei_long_name(self) -> None:
-        assert CF_METADATA["spei"]["long_name"] == "Standardized Precipitation Evapotranspiration Index"
-
-    def test_pet_thornthwaite_entry_exists(self) -> None:
-        assert "pet_thornthwaite" in CF_METADATA
-
-    def test_pet_hargreaves_entry_exists(self) -> None:
-        assert "pet_hargreaves" in CF_METADATA
-
-    def test_importable_from_xarray_adapter(self) -> None:
-        """CF_METADATA is still importable from xarray_adapter for backward compat."""
-        from climate_indices.xarray_adapter import CF_METADATA as xa_cf_metadata
-
-        assert xa_cf_metadata is CF_METADATA
+FIRE_KEYS = ("kbdi", "kbdi_imperial", "ffwi", "hdw", "ffmc", "dmc", "dc", "isi", "bui", "fwi", "dsr")
+
+
+def _field_cases(rows) -> list:
+    """Give each (entry, field, expected) row a readable parametrize id."""
+    return [pytest.param(entry, field, expected, id=f"{entry}-{field}") for entry, field, expected in rows]
+
+
+# (entry, field, expected value) rows: one row per literal registry assertion.
+ENTRY_VALUES = _field_cases(
+    [
+        ("spi", "long_name", "Standardized Precipitation Index"),
+        ("spi", "units", "dimensionless"),
+        ("spei", "long_name", "Standardized Precipitation Evapotranspiration Index"),
+        ("pet_thornthwaite", "long_name", "Potential Evapotranspiration (Thornthwaite method)"),
+        ("pet_hargreaves", "long_name", "Potential Evapotranspiration (Hargreaves method)"),
+        ("percentage_of_normal", "long_name", "Percent of Normal Precipitation"),
+        ("percentage_of_normal", "units", "%"),
+        ("pci", "long_name", "Precipitation Concentration Index"),
+        ("pci", "units", ""),
+        ("pnp", "long_name", "Percent of Normal Precipitation"),
+        ("pnp", "units", "%"),
+        ("eddi", "long_name", "Evaporative Demand Drought Index"),
+        ("eddi", "units", "dimensionless"),
+        ("pdsi", "long_name", "Palmer Drought Severity Index"),
+        ("pdsi", "units", "dimensionless"),
+        ("phdi", "long_name", "Palmer Hydrological Drought Index"),
+        ("phdi", "units", "dimensionless"),
+        ("pmdi", "long_name", "Palmer Modified Drought Index"),
+        ("pmdi", "units", "dimensionless"),
+        ("z_index", "long_name", "Palmer Z-Index"),
+        ("z_index", "units", "dimensionless"),
+        ("kbdi", "long_name", "Keetch-Byram Drought Index"),
+        ("kbdi", "units", "mm"),
+        ("kbdi", "climate_indices_variant", "metric"),
+        ("kbdi_imperial", "units", "0.01 in"),
+        ("kbdi_imperial", "climate_indices_variant", "imperial"),
+        ("ffwi", "long_name", "Fosberg Fire Weather Index"),
+        ("ffwi", "units", "dimensionless"),
+        ("hdw", "long_name", "Hot-Dry-Windy Index"),
+        ("hdw", "units", "hPa m s-1"),
+        ("ffmc", "long_name", "Fine Fuel Moisture Code"),
+        ("ffmc", "units", "dimensionless"),
+        ("ffmc", "climate_indices_variant", "cffwis_classic"),
+        ("dmc", "long_name", "Duff Moisture Code"),
+        ("dmc", "units", "dimensionless"),
+        ("dmc", "climate_indices_variant", "cffwis_classic"),
+        ("dc", "long_name", "Drought Code"),
+        ("dc", "units", "dimensionless"),
+        ("dc", "climate_indices_variant", "cffwis_classic"),
+        ("isi", "long_name", "Initial Spread Index"),
+        ("isi", "units", "dimensionless"),
+        ("isi", "climate_indices_variant", "cffwis_classic"),
+        ("bui", "long_name", "Buildup Index"),
+        ("bui", "units", "dimensionless"),
+        ("bui", "climate_indices_variant", "cffwis_classic"),
+        ("fwi", "long_name", "Canadian Fire Weather Index"),
+        ("fwi", "units", "dimensionless"),
+        ("fwi", "climate_indices_variant", "cffwis_classic"),
+        ("dsr", "long_name", "Daily Severity Rating"),
+        ("dsr", "units", "dimensionless"),
+        ("dsr", "climate_indices_variant", "cffwis_classic"),
+    ]
+)
+
+# (entry, reference fragments) rows: every fragment must appear in the entry's references.
+REFERENCE_CASES = [
+    pytest.param(entry, fragments, id=entry)
+    for entry, fragments in [
+        ("spi", ("McKee",)),
+        ("percentage_of_normal", ("Willeke", "1994")),
+        ("pci", ("Oliver", "1980")),
+        ("eddi", ("Hobbins", "2016")),
+        ("pdsi", ("Palmer", "1965")),
+        ("phdi", ("Palmer", "1965")),
+        ("pmdi", ("Heddinghaus", "1991")),
+        ("z_index", ("Palmer", "1965")),
+        ("ffwi", ("Fosberg", "1978")),
+        ("hdw", ("Srock", "2018")),
+        ("ffmc", ("Van Wagner", "1985")),
+        ("dmc", ("Van Wagner", "1985")),
+        ("dc", ("Van Wagner", "1985")),
+        ("isi", ("Van Wagner", "1985")),
+        ("bui", ("Van Wagner", "1985")),
+        ("fwi", ("Van Wagner", "1985")),
+        # DSR is Eq. 31 of the 1987 report, not the 1985 equations report
+        ("dsr", ("Van Wagner", "1987")),
+    ]
+]
+
+
+def test_registry_has_exactly_the_expected_keys() -> None:
+    """An added, renamed, or removed index fails here rather than in twenty value tests."""
+    assert set(CF_METADATA) == EXPECTED_KEYS
+
+
+@pytest.mark.parametrize("index_name", sorted(EXPECTED_KEYS))
+def test_entry_structure(index_name: str) -> None:
+    """Every entry declares the required fields as populated strings."""
+    entry = CF_METADATA[index_name]
+    missing = REQUIRED_FIELDS - set(entry)
+    assert not missing, f"Entry '{index_name}' missing required keys: {missing}"
+    for field, value in entry.items():
+        assert isinstance(value, str), f"'{index_name}'.'{field}' is not a string"
+        # units may be empty for dimensionless indices such as PCI
+        if field != "units":
+            assert value.strip(), f"'{index_name}'.'{field}' is empty or whitespace"
+
+
+@pytest.mark.parametrize(("index_name", "field", "expected"), ENTRY_VALUES)
+def test_entry_field_value(index_name: str, field: str, expected: str) -> None:
+    """Each documented (entry, field) value matches the registry exactly."""
+    assert CF_METADATA[index_name][field] == expected
+
+
+@pytest.mark.parametrize(("index_name", "fragments"), REFERENCE_CASES)
+def test_references_cite_their_source(index_name: str, fragments: tuple[str, ...]) -> None:
+    """Each entry's references name the publication it derives from."""
+    references = CF_METADATA[index_name]["references"]
+    for fragment in fragments:
+        assert fragment in references, f"'{index_name}' references lack '{fragment}'"
+
+
+@pytest.mark.parametrize("index_name", FIRE_KEYS)
+def test_fire_entries_describe_themselves_without_inventing_standard_names(index_name: str) -> None:
+    """Fire adapters take their description from the registry; no fire entry claims a CF standard_name."""
+    assert CF_METADATA[index_name].get("description", "").strip()
+    assert "standard_name" not in CF_METADATA[index_name]
+
+
+def test_registry_aliases_and_variants_stay_consistent() -> None:
+    """PNP aliases percentage_of_normal; the two KBDI unit scales remain one index."""
+    pnp = CF_METADATA["pnp"]
+    percentage_of_normal = CF_METADATA["percentage_of_normal"]
+    for field in REQUIRED_FIELDS:
+        assert pnp[field] == percentage_of_normal[field]
+
+    kbdi = CF_METADATA["kbdi"]
+    kbdi_imperial = CF_METADATA["kbdi_imperial"]
+    assert kbdi["long_name"] == kbdi_imperial["long_name"]
+    assert kbdi["units"] != kbdi_imperial["units"]
+    assert kbdi["climate_indices_variant"] != kbdi_imperial["climate_indices_variant"]
+
+
+def test_registry_remains_importable_from_the_adapter() -> None:
+    """CF_METADATA is still importable from xarray_adapter for backward compatibility."""
+    from climate_indices.xarray_adapter import CF_METADATA as adapter_metadata
+
+    assert adapter_metadata is CF_METADATA

@@ -1,4 +1,8 @@
-"""Tests for the custom exception hierarchy in climate_indices.exceptions."""
+"""Table-driven tests for the custom exception and warning hierarchy.
+
+Each table below is the single owner of one contract: the class hierarchy,
+catchability, context attributes, pickling, and the deprecation helper.
+"""
 
 from __future__ import annotations
 
@@ -10,896 +14,493 @@ import pytest
 
 from climate_indices import ClimateIndicesError, compute, exceptions
 
+# (class, parent, expected) rows. A parent given as a tuple compares exact
+# __bases__; expected False pins the branch separation (warnings are not
+# exceptions and vice versa).
+HIERARCHY_CASES = [
+    # every custom exception derives from the library base
+    (ClimateIndicesError, Exception, True),
+    (exceptions.DistributionFittingError, ClimateIndicesError, True),
+    (exceptions.InsufficientDataError, ClimateIndicesError, True),
+    (exceptions.PearsonFittingError, ClimateIndicesError, True),
+    (exceptions.DimensionMismatchError, ClimateIndicesError, True),
+    (exceptions.CoordinateValidationError, ClimateIndicesError, True),
+    (exceptions.InputTypeError, ClimateIndicesError, True),
+    (exceptions.InvalidArgumentError, ClimateIndicesError, True),
+    (exceptions.ConvergenceError, ClimateIndicesError, True),
+    (exceptions.PeriodicityError, ClimateIndicesError, True),
+    (exceptions.DataShapeError, ClimateIndicesError, True),
+    # fitting-domain subtypes; ConvergenceError covers iterative fitting failures,
+    # not general convergence outside the fitting domain
+    (exceptions.InsufficientDataError, exceptions.DistributionFittingError, True),
+    (exceptions.PearsonFittingError, exceptions.DistributionFittingError, True),
+    (exceptions.ConvergenceError, exceptions.DistributionFittingError, True),
+    # non-fitting exception types are direct children of the base
+    (exceptions.DimensionMismatchError, exceptions.DistributionFittingError, False),
+    (exceptions.CoordinateValidationError, exceptions.DistributionFittingError, False),
+    (exceptions.InputTypeError, exceptions.DistributionFittingError, False),
+    (exceptions.InvalidArgumentError, exceptions.DistributionFittingError, False),
+    (exceptions.DataShapeError, exceptions.DistributionFittingError, False),
+    (exceptions.DataShapeError, exceptions.DimensionMismatchError, False),
+    (exceptions.PeriodicityError, exceptions.InvalidArgumentError, True),
+    # custom warnings stay on their own branch, rooted at UserWarning
+    (exceptions.ClimateIndicesWarning, UserWarning, True),
+    (exceptions.MissingDataWarning, exceptions.ClimateIndicesWarning, True),
+    (exceptions.ShortCalibrationWarning, exceptions.ClimateIndicesWarning, True),
+    (exceptions.GoodnessOfFitWarning, exceptions.ClimateIndicesWarning, True),
+    (exceptions.InputAlignmentWarning, exceptions.ClimateIndicesWarning, True),
+    (exceptions.BetaFeatureWarning, exceptions.ClimateIndicesWarning, True),
+    (exceptions.ClimateIndicesDeprecationWarning, exceptions.ClimateIndicesWarning, True),
+    (exceptions.ClimateIndicesDeprecationWarning, DeprecationWarning, True),
+    (exceptions.ClimateIndicesWarning, ClimateIndicesError, False),
+    (exceptions.MissingDataWarning, ClimateIndicesError, False),
+    (exceptions.ShortCalibrationWarning, ClimateIndicesError, False),
+    (exceptions.GoodnessOfFitWarning, ClimateIndicesError, False),
+    (exceptions.InputAlignmentWarning, ClimateIndicesError, False),
+    (exceptions.BetaFeatureWarning, ClimateIndicesError, False),
+    (exceptions.ClimateIndicesDeprecationWarning, ClimateIndicesError, False),
+    (ClimateIndicesError, exceptions.ClimateIndicesWarning, False),
+    (exceptions.DistributionFittingError, exceptions.ClimateIndicesWarning, False),
+    (exceptions.InsufficientDataError, exceptions.ClimateIndicesWarning, False),
+    # direct bases pin the warning classes that add no mixin
+    (exceptions.MissingDataWarning, (exceptions.ClimateIndicesWarning,), True),
+    (exceptions.ShortCalibrationWarning, (exceptions.ClimateIndicesWarning,), True),
+]
 
-class TestExceptionHierarchy:
-    """Verify the exception class hierarchy structure."""
+# (class, base, is_warning) rows: what a user catches each type as.
+CATCHABILITY_CASES = [
+    (exceptions.DistributionFittingError, ClimateIndicesError, False),
+    (exceptions.InsufficientDataError, ClimateIndicesError, False),
+    (exceptions.PearsonFittingError, ClimateIndicesError, False),
+    (exceptions.DimensionMismatchError, ClimateIndicesError, False),
+    (exceptions.CoordinateValidationError, ClimateIndicesError, False),
+    (exceptions.InputTypeError, ClimateIndicesError, False),
+    (exceptions.InvalidArgumentError, ClimateIndicesError, False),
+    (exceptions.ConvergenceError, ClimateIndicesError, False),
+    (exceptions.PeriodicityError, ClimateIndicesError, False),
+    (exceptions.DataShapeError, ClimateIndicesError, False),
+    (exceptions.MissingDataWarning, exceptions.ClimateIndicesWarning, True),
+    (exceptions.ShortCalibrationWarning, exceptions.ClimateIndicesWarning, True),
+    (exceptions.GoodnessOfFitWarning, exceptions.ClimateIndicesWarning, True),
+    (exceptions.InputAlignmentWarning, exceptions.ClimateIndicesWarning, True),
+    (exceptions.BetaFeatureWarning, exceptions.ClimateIndicesWarning, True),
+    (exceptions.ClimateIndicesDeprecationWarning, exceptions.ClimateIndicesWarning, True),
+    (exceptions.ClimateIndicesDeprecationWarning, DeprecationWarning, True),
+]
 
-    def test_all_inherit_from_base(self) -> None:
-        """All custom exceptions should inherit from ClimateIndicesError."""
-        assert issubclass(exceptions.DistributionFittingError, ClimateIndicesError)
-        assert issubclass(exceptions.InsufficientDataError, ClimateIndicesError)
-        assert issubclass(exceptions.PearsonFittingError, ClimateIndicesError)
-        assert issubclass(exceptions.DimensionMismatchError, ClimateIndicesError)
-        assert issubclass(exceptions.CoordinateValidationError, ClimateIndicesError)
-        assert issubclass(exceptions.InputTypeError, ClimateIndicesError)
-        assert issubclass(exceptions.InvalidArgumentError, ClimateIndicesError)
+# (warning class, message) rows emitted when checking base-category filtering.
+LIBRARY_WARNINGS = [
+    (exceptions.MissingDataWarning, "missing data"),
+    (exceptions.ShortCalibrationWarning, "short calibration"),
+    (exceptions.GoodnessOfFitWarning, "poor fit"),
+    (exceptions.InputAlignmentWarning, "alignment needed"),
+    (exceptions.BetaFeatureWarning, "beta feature"),
+    (exceptions.ClimateIndicesDeprecationWarning, "deprecated"),
+]
 
-    def test_distribution_fitting_subtypes(self) -> None:
-        """Distribution fitting errors should have correct parent classes."""
-        assert issubclass(exceptions.InsufficientDataError, exceptions.DistributionFittingError)
-        assert issubclass(exceptions.PearsonFittingError, exceptions.DistributionFittingError)
-        # ConvergenceError is intentionally a DistributionFittingError subtype —
-        # it covers iterative fitting algorithm failures (L-moments, MLE), not
-        # general convergence outside of the fitting domain.
-        assert issubclass(exceptions.ConvergenceError, exceptions.DistributionFittingError)
+# (class, init kwargs, attributes always set on a bare instance, fields copied
+# to other fields) rows covering every context attribute contract.
+ATTRIBUTE_CASES = [
+    (
+        exceptions.InsufficientDataError,
+        {"non_zero_count": 5, "required_count": 10},
+        {},
+        {},
+    ),
+    (
+        exceptions.PearsonFittingError,
+        {"underlying_error": ValueError("original error")},
+        {},
+        {},
+    ),
+    (
+        exceptions.DimensionMismatchError,
+        {"expected_dims": (10, 20), "actual_dims": (10, 15)},
+        {},
+        {},
+    ),
+    (
+        exceptions.CoordinateValidationError,
+        {"coordinate_name": "time", "reason": "Non-monotonic values"},
+        {},
+        {},
+    ),
+    (
+        exceptions.InputTypeError,
+        {"expected_type": int, "actual_type": str},
+        {},
+        {},
+    ),
+    (
+        exceptions.InvalidArgumentError,
+        {"argument_name": "scale", "argument_value": "0", "valid_values": "[1, 72]"},
+        {},
+        {},
+    ),
+    (
+        exceptions.DistributionFittingError,
+        {
+            "distribution_name": "gamma",
+            "input_shape": (10, 12),
+            "parameters": {"alpha": "0.5", "beta": "1.0"},
+            "suggestion": "try pearson3",
+            "underlying_error": ValueError("test error"),
+        },
+        {},
+        {},
+    ),
+    (
+        exceptions.ConvergenceError,
+        {
+            "algorithm": "L-moments",
+            "iterations": 50,
+            "distribution_name": "gamma",
+            "underlying_error": ValueError("numerical overflow"),
+        },
+        {},
+        {},
+    ),
+    (
+        exceptions.PeriodicityError,
+        {"periodicity_value": "weekly"},
+        {
+            "argument_name": "periodicity",
+            "argument_value": None,
+            "valid_values": "Periodicity.monthly, Periodicity.daily",
+        },
+        {"periodicity_value": "argument_value"},
+    ),
+    (
+        exceptions.DataShapeError,
+        {"expected_shape": "(years, 12)", "actual_shape": (100, 13)},
+        {},
+        {},
+    ),
+    (
+        exceptions.InputAlignmentWarning,
+        {"original_size": 100, "aligned_size": 80, "dropped_count": 20},
+        {},
+        {},
+    ),
+    (
+        exceptions.MissingDataWarning,
+        {"missing_ratio": 0.15, "threshold": 0.20},
+        {},
+        {},
+    ),
+    (
+        exceptions.ShortCalibrationWarning,
+        {"actual_years": 25, "required_years": 30},
+        {},
+        {},
+    ),
+    (
+        exceptions.GoodnessOfFitWarning,
+        {"distribution_name": "gamma", "p_value": 0.03, "threshold": 0.05, "poor_fit_count": 15, "total_steps": 100},
+        {},
+        {},
+    ),
+    (
+        exceptions.ClimateIndicesDeprecationWarning,
+        {
+            "deprecated_in": "2.3.0",
+            "removal_version": "3.0.0",
+            "alternative": "Use new_api instead",
+            "migration_url": "https://docs.example.com/migration",
+        },
+        {},
+        {},
+    ),
+]
 
-    def test_new_exceptions_not_under_distribution_fitting(self) -> None:
-        """Exception types outside the fitting domain are direct children of ClimateIndicesError."""
-        assert issubclass(exceptions.DimensionMismatchError, ClimateIndicesError)
-        assert not issubclass(exceptions.DimensionMismatchError, exceptions.DistributionFittingError)
+# (class, positional args) rows: context attributes must be keyword-only.
+KEYWORD_ONLY_CASES = [
+    (exceptions.InvalidArgumentError, ("message", "scale")),
+    (exceptions.ConvergenceError, ("message", "L-moments")),
+    (exceptions.PeriodicityError, ("message", "weekly")),
+    (exceptions.DataShapeError, ("message", "(years, 12)")),
+    (exceptions.MissingDataWarning, ("message", 0.15)),
+    (exceptions.ShortCalibrationWarning, ("message", 25)),
+    (exceptions.GoodnessOfFitWarning, ("message", "gamma")),
+    (exceptions.InputAlignmentWarning, ("message", 100)),
+    (exceptions.ClimateIndicesDeprecationWarning, ("message", "2.3.0")),
+]
 
-        assert issubclass(exceptions.CoordinateValidationError, ClimateIndicesError)
-        assert not issubclass(exceptions.CoordinateValidationError, exceptions.DistributionFittingError)
+# (class, init args, init kwargs) rows: Dask pickles exceptions across workers.
+PICKLE_CASES = [
+    (exceptions.ClimateIndicesError, ("base error",), {}),
+    (exceptions.DistributionFittingError, ("fitting failed",), {}),
+    (exceptions.InsufficientDataError, ("not enough data",), {"non_zero_count": 5, "required_count": 10}),
+    (exceptions.PearsonFittingError, ("pearson failed",), {}),
+    (exceptions.DimensionMismatchError, ("dims don't match",), {"expected_dims": (10, 20), "actual_dims": (10, 30)}),
+    (exceptions.CoordinateValidationError, ("bad coords",), {"coordinate_name": "time", "reason": "not monotonic"}),
+    (exceptions.InputTypeError, ("wrong type",), {"expected_type": type(None), "actual_type": type([])}),
+    (
+        exceptions.InvalidArgumentError,
+        ("bad arg",),
+        {"argument_name": "scale", "argument_value": "-1", "valid_values": "positive integers"},
+    ),
+    (
+        exceptions.ConvergenceError,
+        ("convergence failed",),
+        {"algorithm": "L-moments", "iterations": 100, "distribution_name": "gamma"},
+    ),
+    (exceptions.PeriodicityError, ("invalid periodicity",), {"periodicity_value": "weekly"}),
+    (exceptions.DataShapeError, ("wrong shape",), {"expected_shape": "(years, 12)", "actual_shape": (100, 13)}),
+    (exceptions.ClimateIndicesWarning, ("base warning",), {}),
+    (exceptions.MissingDataWarning, ("missing data",), {"missing_ratio": 0.15, "threshold": 0.20}),
+    (exceptions.ShortCalibrationWarning, ("short calibration",), {"actual_years": 25, "required_years": 30}),
+    (
+        exceptions.GoodnessOfFitWarning,
+        ("poor fit",),
+        {"distribution_name": "gamma", "p_value": 0.03, "threshold": 0.05},
+    ),
+    (
+        exceptions.InputAlignmentWarning,
+        ("alignment needed",),
+        {"original_size": 100, "aligned_size": 80, "dropped_count": 20},
+    ),
+    (
+        exceptions.ClimateIndicesDeprecationWarning,
+        ("deprecated feature",),
+        {
+            "deprecated_in": "2.3.0",
+            "removal_version": "3.0.0",
+            "alternative": "Use new_feature instead",
+            "migration_url": "https://example.com/guide",
+        },
+    ),
+]
 
-        assert issubclass(exceptions.InputTypeError, ClimateIndicesError)
-        assert not issubclass(exceptions.InputTypeError, exceptions.DistributionFittingError)
+# emit_deprecation_warning: (message kwargs, expected message fragments) rows.
+EMIT_CASES = [
+    pytest.param(
+        {},
+        (
+            "Parameter 'old_param'",
+            "deprecated since version 2.3.0",
+            "Use 'new_param' instead",
+            "removed in version 3.0.0",
+            "Migration guide:",
+        ),
+        id="full-message",
+    ),
+    pytest.param(
+        {"migration_url": None},
+        ("https://climate-indices.readthedocs.io/en/stable/deprecations",),
+        id="default-url",
+    ),
+    pytest.param(
+        {"migration_url": "api-changes.html"},
+        ("https://climate-indices.readthedocs.io/en/stable/deprecations/api-changes.html",),
+        id="relative-url",
+    ),
+    pytest.param(
+        {"migration_url": "https://example.com/custom/migration/guide"},
+        ("https://example.com/custom/migration/guide",),
+        id="absolute-url",
+    ),
+]
 
-        assert issubclass(exceptions.InvalidArgumentError, ClimateIndicesError)
-        assert not issubclass(exceptions.InvalidArgumentError, exceptions.DistributionFittingError)
-
-        assert issubclass(exceptions.DataShapeError, ClimateIndicesError)
-        assert not issubclass(exceptions.DataShapeError, exceptions.DistributionFittingError)
-        assert not issubclass(exceptions.DataShapeError, exceptions.DimensionMismatchError)
-
-    def test_periodicity_error_hierarchy(self) -> None:
-        """PeriodicityError should be a specialization of InvalidArgumentError."""
-        assert issubclass(exceptions.PeriodicityError, exceptions.InvalidArgumentError)
-        assert issubclass(exceptions.PeriodicityError, ClimateIndicesError)
-
-    def test_base_inherits_from_exception(self) -> None:
-        """ClimateIndicesError should inherit from Exception."""
-        assert issubclass(ClimateIndicesError, Exception)
-
-
-class TestWarningHierarchy:
-    """Verify the warning class hierarchy structure."""
-
-    def test_all_warnings_inherit_from_base(self) -> None:
-        """All custom warnings should inherit from ClimateIndicesWarning."""
-        assert issubclass(exceptions.MissingDataWarning, exceptions.ClimateIndicesWarning)
-        assert issubclass(exceptions.ShortCalibrationWarning, exceptions.ClimateIndicesWarning)
-        assert issubclass(exceptions.GoodnessOfFitWarning, exceptions.ClimateIndicesWarning)
-        assert issubclass(exceptions.InputAlignmentWarning, exceptions.ClimateIndicesWarning)
-        assert issubclass(exceptions.BetaFeatureWarning, exceptions.ClimateIndicesWarning)
-        assert issubclass(exceptions.ClimateIndicesDeprecationWarning, exceptions.ClimateIndicesWarning)
-
-    def test_base_warning_inherits_from_user_warning(self) -> None:
-        """ClimateIndicesWarning should inherit from UserWarning."""
-        assert issubclass(exceptions.ClimateIndicesWarning, UserWarning)
-
-    def test_warnings_not_subclass_of_exception_base(self) -> None:
-        """Warning classes should NOT inherit from ClimateIndicesError."""
-        assert not issubclass(exceptions.ClimateIndicesWarning, ClimateIndicesError)
-        assert not issubclass(exceptions.MissingDataWarning, ClimateIndicesError)
-        assert not issubclass(exceptions.ShortCalibrationWarning, ClimateIndicesError)
-        assert not issubclass(exceptions.GoodnessOfFitWarning, ClimateIndicesError)
-        assert not issubclass(exceptions.InputAlignmentWarning, ClimateIndicesError)
-        assert not issubclass(exceptions.BetaFeatureWarning, ClimateIndicesError)
-        assert not issubclass(exceptions.ClimateIndicesDeprecationWarning, ClimateIndicesError)
-
-    def test_deprecation_warning_dual_inheritance(self) -> None:
-        """ClimateIndicesDeprecationWarning should inherit from both base warning classes."""
-        assert issubclass(exceptions.ClimateIndicesDeprecationWarning, exceptions.ClimateIndicesWarning)
-        assert issubclass(exceptions.ClimateIndicesDeprecationWarning, DeprecationWarning)
-
-    def test_exceptions_not_subclass_of_warning_base(self) -> None:
-        """Exception classes should NOT inherit from ClimateIndicesWarning."""
-        assert not issubclass(ClimateIndicesError, exceptions.ClimateIndicesWarning)
-        assert not issubclass(exceptions.DistributionFittingError, exceptions.ClimateIndicesWarning)
-        assert not issubclass(exceptions.InsufficientDataError, exceptions.ClimateIndicesWarning)
-
-    def test_missing_data_warning_direct_subclass(self) -> None:
-        """MissingDataWarning should be a direct subclass of ClimateIndicesWarning."""
-        assert exceptions.MissingDataWarning.__bases__ == (exceptions.ClimateIndicesWarning,)
-
-    def test_short_calibration_warning_direct_subclass(self) -> None:
-        """ShortCalibrationWarning should be a direct subclass of ClimateIndicesWarning."""
-        assert exceptions.ShortCalibrationWarning.__bases__ == (exceptions.ClimateIndicesWarning,)
-
-
-class TestExceptionCatchAll:
-    """Verify that ClimateIndicesError can catch all library exceptions."""
-
-    def test_catch_distribution_fitting_error(self) -> None:
-        """ClimateIndicesError should catch DistributionFittingError."""
-        with pytest.raises(ClimateIndicesError):
-            raise exceptions.DistributionFittingError("test error")
-
-    def test_catch_insufficient_data_error(self) -> None:
-        """ClimateIndicesError should catch InsufficientDataError."""
-        with pytest.raises(ClimateIndicesError):
-            raise exceptions.InsufficientDataError("test error")
-
-    def test_catch_pearson_fitting_error(self) -> None:
-        """ClimateIndicesError should catch PearsonFittingError."""
-        with pytest.raises(ClimateIndicesError):
-            raise exceptions.PearsonFittingError("test error")
-
-    def test_catch_dimension_mismatch_error(self) -> None:
-        """ClimateIndicesError should catch DimensionMismatchError."""
-        with pytest.raises(ClimateIndicesError):
-            raise exceptions.DimensionMismatchError("test error")
-
-    def test_catch_coordinate_validation_error(self) -> None:
-        """ClimateIndicesError should catch CoordinateValidationError."""
-        with pytest.raises(ClimateIndicesError):
-            raise exceptions.CoordinateValidationError("test error")
-
-    def test_catch_input_type_error(self) -> None:
-        """ClimateIndicesError should catch InputTypeError."""
-        with pytest.raises(ClimateIndicesError):
-            raise exceptions.InputTypeError("test error")
-
-    def test_catch_invalid_argument_error(self) -> None:
-        """ClimateIndicesError should catch InvalidArgumentError."""
-        with pytest.raises(ClimateIndicesError):
-            raise exceptions.InvalidArgumentError("test error")
-
-    def test_catch_convergence_error(self) -> None:
-        """ClimateIndicesError should catch ConvergenceError."""
-        with pytest.raises(ClimateIndicesError):
-            raise exceptions.ConvergenceError("test error")
-
-    def test_catch_periodicity_error(self) -> None:
-        """ClimateIndicesError should catch PeriodicityError."""
-        with pytest.raises(ClimateIndicesError):
-            raise exceptions.PeriodicityError("test error")
-
-    def test_catch_data_shape_error(self) -> None:
-        """ClimateIndicesError should catch DataShapeError."""
-        with pytest.raises(ClimateIndicesError):
-            raise exceptions.DataShapeError("test error")
+EMIT_BASE_KWARGS = {
+    "feature": "Parameter 'old_param'",
+    "alternative": "Use 'new_param' instead",
+    "deprecated_in": "2.3.0",
+    "removal_version": "3.0.0",
+    "stacklevel": 2,
+}
 
 
-class TestWarningCatchAll:
-    """Verify that ClimateIndicesWarning can catch all library warnings."""
-
-    def test_catch_missing_data_warning(self) -> None:
-        """ClimateIndicesWarning should catch MissingDataWarning."""
-        with pytest.warns(exceptions.ClimateIndicesWarning):
-            warnings.warn("test warning", exceptions.MissingDataWarning, stacklevel=2)
-
-    def test_catch_short_calibration_warning(self) -> None:
-        """ClimateIndicesWarning should catch ShortCalibrationWarning."""
-        with pytest.warns(exceptions.ClimateIndicesWarning):
-            warnings.warn("test warning", exceptions.ShortCalibrationWarning, stacklevel=2)
-
-    def test_catch_goodness_of_fit_warning(self) -> None:
-        """ClimateIndicesWarning should catch GoodnessOfFitWarning."""
-        with pytest.warns(exceptions.ClimateIndicesWarning):
-            warnings.warn("test warning", exceptions.GoodnessOfFitWarning, stacklevel=2)
-
-    def test_catch_input_alignment_warning(self) -> None:
-        """ClimateIndicesWarning should catch InputAlignmentWarning."""
-        with pytest.warns(exceptions.ClimateIndicesWarning):
-            warnings.warn("test warning", exceptions.InputAlignmentWarning, stacklevel=2)
-
-    def test_catch_beta_feature_warning(self) -> None:
-        """ClimateIndicesWarning should catch BetaFeatureWarning."""
-        with pytest.warns(exceptions.ClimateIndicesWarning):
-            warnings.warn("test warning", exceptions.BetaFeatureWarning, stacklevel=2)
-
-    def test_catch_deprecation_warning(self) -> None:
-        """ClimateIndicesWarning should catch ClimateIndicesDeprecationWarning."""
-        with pytest.warns(exceptions.ClimateIndicesWarning):
-            warnings.warn("test warning", exceptions.ClimateIndicesDeprecationWarning, stacklevel=2)
+def _same(actual, expected) -> bool:
+    """Identity first: context values include exceptions, where == is not enough."""
+    return actual is expected or actual == expected
 
 
-class TestWarningFilterability:
-    """Verify that warnings can be filtered using standard Python warning filters."""
+@pytest.mark.parametrize(
+    ("cls", "parent", "expected"),
+    HIERARCHY_CASES,
+    ids=lambda value: getattr(value, "__name__", None),
+)
+def test_hierarchy(cls, parent, expected) -> None:
+    """Each class sits in exactly the documented place in the hierarchy."""
+    matches = cls.__bases__ == parent if isinstance(parent, tuple) else issubclass(cls, parent)
+    assert matches is expected
 
-    def test_filter_all_library_warnings(self) -> None:
-        """Filtering ClimateIndicesWarning should suppress all library warning subclasses."""
-        with warnings.catch_warnings(record=True) as warning_list:
-            warnings.simplefilter("always")
-            warnings.filterwarnings("ignore", category=exceptions.ClimateIndicesWarning)
 
-            # emit all warning types
-            warnings.warn("missing data", exceptions.MissingDataWarning, stacklevel=2)
-            warnings.warn("short calibration", exceptions.ShortCalibrationWarning, stacklevel=2)
-            warnings.warn("poor fit", exceptions.GoodnessOfFitWarning, stacklevel=2)
-            warnings.warn("alignment needed", exceptions.InputAlignmentWarning, stacklevel=2)
-            warnings.warn("beta feature", exceptions.BetaFeatureWarning, stacklevel=2)
+@pytest.mark.parametrize(
+    ("cls", "base", "is_warning"),
+    CATCHABILITY_CASES,
+    ids=lambda value: getattr(value, "__name__", None),
+)
+def test_every_type_is_catchable_as_its_base(cls, base, is_warning) -> None:
+    """Users catch the library base (or stdlib DeprecationWarning) for every library type."""
+    if is_warning:
+        with pytest.warns(base):
+            warnings.warn("test warning", cls, stacklevel=2)
+    else:
+        with pytest.raises(base):
+            raise cls("test error")
+
+
+def test_filtering_the_base_warning_suppresses_every_library_warning() -> None:
+    """One filterwarnings call silences every library warning subtype."""
+    with warnings.catch_warnings(record=True) as recorded:
+        warnings.simplefilter("always")
+        warnings.filterwarnings("ignore", category=exceptions.ClimateIndicesWarning)
+        for warning_class, message in LIBRARY_WARNINGS:
+            warnings.warn(message, warning_class, stacklevel=2)
+        assert recorded == []
+
+
+@pytest.mark.parametrize("category", [exceptions.ClimateIndicesWarning, DeprecationWarning])
+@pytest.mark.parametrize("emit", ["warn", "helper"])
+def test_deprecation_warning_is_filterable_by_both_bases(category: type, emit: str) -> None:
+    """Deprecation warnings, direct or via the helper, respect either base class filter."""
+    with warnings.catch_warnings(record=True) as recorded:
+        warnings.simplefilter("always")
+        warnings.filterwarnings("ignore", category=category)
+        if emit == "warn":
             warnings.warn("deprecated", exceptions.ClimateIndicesDeprecationWarning, stacklevel=2)
-
-            # verify none were recorded (all filtered)
-            assert len(warning_list) == 0
-
-
-class TestDeprecationWarningFilterability:
-    """Verify that deprecation warnings can be filtered by both base classes."""
-
-    def test_filter_via_climate_indices_warning(self) -> None:
-        """Deprecation warnings should be filtered by ClimateIndicesWarning."""
-        with warnings.catch_warnings(record=True) as warning_list:
-            warnings.simplefilter("always")
-            warnings.filterwarnings("ignore", category=exceptions.ClimateIndicesWarning)
-
-            warnings.warn("deprecated", exceptions.ClimateIndicesDeprecationWarning, stacklevel=2)
-
-            assert len(warning_list) == 0
-
-    def test_filter_via_deprecation_warning(self) -> None:
-        """Deprecation warnings should be filtered by DeprecationWarning."""
-        with warnings.catch_warnings(record=True) as warning_list:
-            warnings.simplefilter("always")
-            warnings.filterwarnings("ignore", category=DeprecationWarning)
-
-            warnings.warn("deprecated", exceptions.ClimateIndicesDeprecationWarning, stacklevel=2)
-
-            assert len(warning_list) == 0
-
-    def test_catch_via_climate_indices_warning(self) -> None:
-        """Deprecation warnings should be catchable via ClimateIndicesWarning."""
-        with pytest.warns(exceptions.ClimateIndicesWarning):
-            warnings.warn("deprecated", exceptions.ClimateIndicesDeprecationWarning, stacklevel=2)
-
-    def test_catch_via_deprecation_warning(self) -> None:
-        """Deprecation warnings should be catchable via DeprecationWarning."""
-        with pytest.warns(DeprecationWarning):
-            warnings.warn("deprecated", exceptions.ClimateIndicesDeprecationWarning, stacklevel=2)
-
-
-class TestExceptionContextAttributes:
-    """Verify that custom exception attributes are stored correctly."""
-
-    def test_insufficient_data_error_attributes(self) -> None:
-        """InsufficientDataError should store non_zero_count and required_count."""
-        exc = exceptions.InsufficientDataError("Not enough data", non_zero_count=5, required_count=10)
-        assert exc.non_zero_count == 5
-        assert exc.required_count == 10
-        assert str(exc) == "Not enough data"
-
-    def test_insufficient_data_error_defaults(self) -> None:
-        """InsufficientDataError attributes should default to None."""
-        exc = exceptions.InsufficientDataError("Not enough data")
-        assert exc.non_zero_count is None
-        assert exc.required_count is None
-
-    def test_pearson_fitting_error_attributes(self) -> None:
-        """PearsonFittingError should store underlying_error."""
-        underlying = ValueError("original error")
-        exc = exceptions.PearsonFittingError("Fitting failed", underlying_error=underlying)
-        assert exc.underlying_error is underlying
-        assert str(exc) == "Fitting failed"
-
-    def test_pearson_fitting_error_defaults(self) -> None:
-        """PearsonFittingError underlying_error should default to None."""
-        exc = exceptions.PearsonFittingError("Fitting failed")
-        assert exc.underlying_error is None
-
-    def test_dimension_mismatch_error_attributes(self) -> None:
-        """DimensionMismatchError should store expected_dims and actual_dims."""
-        exc = exceptions.DimensionMismatchError("Shape mismatch", expected_dims=(10, 20), actual_dims=(10, 15))
-        assert exc.expected_dims == (10, 20)
-        assert exc.actual_dims == (10, 15)
-        assert str(exc) == "Shape mismatch"
-
-    def test_dimension_mismatch_error_defaults(self) -> None:
-        """DimensionMismatchError attributes should default to None."""
-        exc = exceptions.DimensionMismatchError("Shape mismatch")
-        assert exc.expected_dims is None
-        assert exc.actual_dims is None
-
-    def test_coordinate_validation_error_attributes(self) -> None:
-        """CoordinateValidationError should store coordinate_name and reason."""
-        exc = exceptions.CoordinateValidationError(
-            "Invalid coordinate",
-            coordinate_name="time",
-            reason="Non-monotonic values",
-        )
-        assert exc.coordinate_name == "time"
-        assert exc.reason == "Non-monotonic values"
-        assert str(exc) == "Invalid coordinate"
-
-    def test_coordinate_validation_error_defaults(self) -> None:
-        """CoordinateValidationError attributes should default to None."""
-        exc = exceptions.CoordinateValidationError("Invalid coordinate")
-        assert exc.coordinate_name is None
-        assert exc.reason is None
-
-    def test_input_type_error_attributes(self) -> None:
-        """InputTypeError should store expected_type and actual_type."""
-        exc = exceptions.InputTypeError("Wrong type", expected_type=int, actual_type=str)
-        assert exc.expected_type is int
-        assert exc.actual_type is str
-        assert str(exc) == "Wrong type"
-
-    def test_input_type_error_defaults(self) -> None:
-        """InputTypeError attributes should default to None."""
-        exc = exceptions.InputTypeError("Wrong type")
-        assert exc.expected_type is None
-        assert exc.actual_type is None
-
-    def test_invalid_argument_error_attributes(self) -> None:
-        """InvalidArgumentError should store argument_name, argument_value, and valid_values."""
-        exc = exceptions.InvalidArgumentError(
-            "Invalid scale",
-            argument_name="scale",
-            argument_value="0",
-            valid_values="[1, 72]",
-        )
-        assert exc.argument_name == "scale"
-        assert exc.argument_value == "0"
-        assert exc.valid_values == "[1, 72]"
-        assert str(exc) == "Invalid scale"
-
-    def test_invalid_argument_error_defaults(self) -> None:
-        """InvalidArgumentError attributes should default to None."""
-        exc = exceptions.InvalidArgumentError("Invalid argument")
-        assert exc.argument_name is None
-        assert exc.argument_value is None
-        assert exc.valid_values is None
-
-    def test_distribution_fitting_error_attributes(self) -> None:
-        """DistributionFittingError should store all structured attributes."""
-        params = {"alpha": "0.5", "beta": "1.0"}
-        underlying = ValueError("test error")
-        exc = exceptions.DistributionFittingError(
-            "Fitting failed",
-            distribution_name="gamma",
-            input_shape=(10, 12),
-            parameters=params,
-            suggestion="try pearson3",
-            underlying_error=underlying,
-        )
-        assert exc.distribution_name == "gamma"
-        assert exc.input_shape == (10, 12)
-        assert exc.parameters == params
-        assert exc.suggestion == "try pearson3"
-        assert exc.underlying_error is underlying
-        assert str(exc) == "Fitting failed"
-
-    def test_distribution_fitting_error_defaults(self) -> None:
-        """DistributionFittingError attributes should default to None."""
-        exc = exceptions.DistributionFittingError("Fitting failed")
-        assert exc.distribution_name is None
-        assert exc.input_shape is None
-        assert exc.parameters is None
-        assert exc.suggestion is None
-        assert exc.underlying_error is None
-
-    def test_convergence_error_attributes(self) -> None:
-        """ConvergenceError should store algorithm and iterations context."""
-        underlying = ValueError("numerical overflow")
-        exc = exceptions.ConvergenceError(
-            "L-moments failed to converge",
-            algorithm="L-moments",
-            iterations=50,
-            distribution_name="gamma",
-            underlying_error=underlying,
-        )
-        assert exc.algorithm == "L-moments"
-        assert exc.iterations == 50
-        assert exc.distribution_name == "gamma"
-        assert exc.underlying_error is underlying
-        assert str(exc) == "L-moments failed to converge"
-
-    def test_convergence_error_defaults(self) -> None:
-        """ConvergenceError attributes should default to None."""
-        exc = exceptions.ConvergenceError("Convergence failed")
-        assert exc.algorithm is None
-        assert exc.iterations is None
-        assert exc.distribution_name is None
-        assert exc.underlying_error is None
-
-    def test_periodicity_error_attributes(self) -> None:
-        """PeriodicityError should store periodicity_value and sync to parent's argument_value."""
-        exc = exceptions.PeriodicityError("Invalid periodicity", periodicity_value="weekly")
-        assert exc.periodicity_value == "weekly"
-        # PeriodicityError forwards periodicity_value to InvalidArgumentError.argument_value
-        assert exc.argument_name == "periodicity"
-        assert exc.argument_value == "weekly"
-        assert exc.valid_values == "Periodicity.monthly, Periodicity.daily"
-        assert str(exc) == "Invalid periodicity"
-
-    def test_periodicity_error_defaults(self) -> None:
-        """PeriodicityError attributes should default to None."""
-        exc = exceptions.PeriodicityError("Invalid periodicity")
-        assert exc.periodicity_value is None
-        assert exc.argument_value is None
-        # argument_name and valid_values are always set by PeriodicityError
-        assert exc.argument_name == "periodicity"
-        assert exc.valid_values == "Periodicity.monthly, Periodicity.daily"
-
-    def test_data_shape_error_attributes(self) -> None:
-        """DataShapeError should store expected_shape and actual_shape."""
-        exc = exceptions.DataShapeError(
-            "Array shape mismatch",
-            expected_shape="(years, 12)",
-            actual_shape=(100, 13),
-        )
-        assert exc.expected_shape == "(years, 12)"
-        assert exc.actual_shape == (100, 13)
-        assert str(exc) == "Array shape mismatch"
-
-    def test_data_shape_error_defaults(self) -> None:
-        """DataShapeError attributes should default to None."""
-        exc = exceptions.DataShapeError("Shape error")
-        assert exc.expected_shape is None
-        assert exc.actual_shape is None
-
-
-class TestKeywordOnlyEnforcement:
-    """Verify that context attributes must be passed as keywords."""
-
-    @pytest.mark.parametrize(
-        "exception_class,positional_args",
-        [
-            (exceptions.InvalidArgumentError, ("message", "scale")),
-            (exceptions.ConvergenceError, ("message", "L-moments")),
-            (exceptions.PeriodicityError, ("message", "weekly")),
-            (exceptions.DataShapeError, ("message", "(years, 12)")),
-            (exceptions.MissingDataWarning, ("message", 0.15)),
-            (exceptions.ShortCalibrationWarning, ("message", 25)),
-            (exceptions.GoodnessOfFitWarning, ("message", "gamma")),
-            (exceptions.InputAlignmentWarning, ("message", 100)),
-            (exceptions.ClimateIndicesDeprecationWarning, ("message", "2.3.0")),
-        ],
-    )
-    def test_positional_arguments_rejected(self, exception_class, positional_args) -> None:
-        """Context attributes should reject positional arguments and require keywords."""
-        with pytest.raises(TypeError, match="positional"):
-            exception_class(*positional_args)
-
-
-class TestBackwardCompatibility:
-    """Verify backward compatibility with imports from compute module."""
-
-    def test_import_identity(self) -> None:
-        """Exceptions imported from compute should be identical to exceptions module."""
-        assert compute.DistributionFittingError is exceptions.DistributionFittingError
-        assert compute.InsufficientDataError is exceptions.InsufficientDataError
-        assert compute.PearsonFittingError is exceptions.PearsonFittingError
-
-    def test_isinstance_across_imports(self) -> None:
-        """isinstance checks should work across different import paths."""
-        # create via compute module import
-        exc = compute.InsufficientDataError("test", non_zero_count=3)
-
-        # verify with exceptions module import
-        assert isinstance(exc, exceptions.InsufficientDataError)
-        assert isinstance(exc, exceptions.DistributionFittingError)
-        assert isinstance(exc, ClimateIndicesError)
-
-    def test_raise_and_catch_via_compute(self) -> None:
-        """Exceptions raised via compute import should be catchable."""
-        with pytest.raises(exceptions.InsufficientDataError):
-            raise compute.InsufficientDataError("test error")
-
-        with pytest.raises(ClimateIndicesError):
-            raise compute.PearsonFittingError("test error")
-
-    def test_existing_code_pattern(self) -> None:
-        """Verify pattern used in existing tests continues to work."""
-        # this is the pattern used in test_zero_precipitation_fix.py
-        try:
-            raise compute.InsufficientDataError("Insufficient data", non_zero_count=5, required_count=10)
-        except compute.InsufficientDataError as e:
-            assert e.non_zero_count == 5
-            assert e.required_count == 10
-
-
-class TestAllExports:
-    """Verify __all__ completeness and correctness."""
-
-    def test_all_contains_expected_names(self) -> None:
-        """__all__ should contain all documented exception and warning classes plus helpers."""
-        expected_names = {
-            "ClimateIndicesError",
-            "ConvergenceError",
-            "DataShapeError",
-            "DistributionFittingError",
-            "InsufficientDataError",
-            "PearsonFittingError",
-            "PeriodicityError",
-            "DimensionMismatchError",
-            "CoordinateValidationError",
-            "InputTypeError",
-            "InvalidArgumentError",
-            "ClimateIndicesWarning",
-            "MissingDataWarning",
-            "ShortCalibrationWarning",
-            "GoodnessOfFitWarning",
-            "InputAlignmentWarning",
-            "BetaFeatureWarning",
-            "ClimateIndicesDeprecationWarning",
-            "emit_deprecation_warning",
-        }
-        assert set(exceptions.__all__) == expected_names
-
-    def test_all_exports_are_classes_or_functions(self) -> None:
-        """Every name in __all__ should resolve to an actual class or function."""
-        for name in exceptions.__all__:
-            obj = getattr(exceptions, name)
-            # should be either a class or a callable function
-            assert isinstance(obj, type) or callable(obj), f"{name} is neither a class nor callable"
-
-
-class TestExceptionPickling:
-    """Verify exceptions can be pickled for Dask multiprocessing.
-
-    Dask uses pickle to serialize exceptions across workers. All custom exceptions
-    must be picklable to support distributed computation error reporting.
-    """
-
-    @pytest.mark.parametrize(
-        "exception_class,init_args,init_kwargs",
-        [
-            (exceptions.ClimateIndicesError, ("base error",), {}),
-            (exceptions.DistributionFittingError, ("fitting failed",), {}),
-            (exceptions.InsufficientDataError, ("not enough data",), {"non_zero_count": 5, "required_count": 10}),
-            (exceptions.PearsonFittingError, ("pearson failed",), {}),
-            (
-                exceptions.DimensionMismatchError,
-                ("dims don't match",),
-                {"expected_dims": (10, 20), "actual_dims": (10, 30)},
-            ),
-            (
-                exceptions.CoordinateValidationError,
-                ("bad coords",),
-                {"coordinate_name": "time", "reason": "not monotonic"},
-            ),
-            (exceptions.InputTypeError, ("wrong type",), {"expected_type": type(None), "actual_type": type([])}),
-            (
-                exceptions.InvalidArgumentError,
-                ("bad arg",),
-                {"argument_name": "scale", "argument_value": "-1", "valid_values": "positive integers"},
-            ),
-            (
-                exceptions.ConvergenceError,
-                ("convergence failed",),
-                {"algorithm": "L-moments", "iterations": 100, "distribution_name": "gamma"},
-            ),
-            (
-                exceptions.PeriodicityError,
-                ("invalid periodicity",),
-                {"periodicity_value": "weekly"},
-            ),
-            (
-                exceptions.DataShapeError,
-                ("wrong shape",),
-                {"expected_shape": "(years, 12)", "actual_shape": (100, 13)},
-            ),
-        ],
-    )
-    # pickle is used here intentionally — Dask serializes exceptions across workers
-    def test_exception_pickle_roundtrip(self, exception_class, init_args, init_kwargs) -> None:
-        """All exception classes should survive pickle roundtrip with attributes intact."""
-        # create exception
-        original = exception_class(*init_args, **init_kwargs)
-
-        # pickle and unpickle
-        pickled = pickle.dumps(original)
-        restored = pickle.loads(pickled)
-
-        # verify type preserved
-        assert type(restored) is type(original)
-
-        # verify message preserved
-        assert str(restored) == str(original)
-
-        # verify custom attributes preserved
-        for attr_name, attr_value in init_kwargs.items():
-            assert hasattr(restored, attr_name)
-            assert getattr(restored, attr_name) == attr_value
-
-
-class TestWarningPickling:
-    """Verify warnings can be pickled for Dask multiprocessing."""
-
-    @pytest.mark.parametrize(
-        "warning_class,init_args,init_kwargs",
-        [
-            (exceptions.ClimateIndicesWarning, ("base warning",), {}),
-            (exceptions.MissingDataWarning, ("missing data",), {"missing_ratio": 0.15, "threshold": 0.20}),
-            (
-                exceptions.ShortCalibrationWarning,
-                ("short calibration",),
-                {"actual_years": 25, "required_years": 30},
-            ),
-            (
-                exceptions.GoodnessOfFitWarning,
-                ("poor fit",),
-                {"distribution_name": "gamma", "p_value": 0.03, "threshold": 0.05},
-            ),
-            (
-                exceptions.InputAlignmentWarning,
-                ("alignment needed",),
-                {"original_size": 100, "aligned_size": 80, "dropped_count": 20},
-            ),
-            (
-                exceptions.ClimateIndicesDeprecationWarning,
-                ("deprecated feature",),
-                {
-                    "deprecated_in": "2.3.0",
-                    "removal_version": "3.0.0",
-                    "alternative": "Use new_feature instead",
-                    "migration_url": "https://example.com/guide",
-                },
-            ),
-        ],
-    )
-    def test_warning_pickle_roundtrip(self, warning_class, init_args, init_kwargs) -> None:
-        """All warning classes should survive pickle roundtrip with attributes intact."""
-        # create warning
-        original = warning_class(*init_args, **init_kwargs)
-
-        # pickle and unpickle
-        pickled = pickle.dumps(original)
-        restored = pickle.loads(pickled)
-
-        # verify type preserved
-        assert type(restored) is type(original)
-
-        # verify message preserved
-        assert str(restored) == str(original)
-
-        # verify custom attributes preserved
-        for attr_name, attr_value in init_kwargs.items():
-            assert hasattr(restored, attr_name)
-            assert getattr(restored, attr_name) == attr_value
-
-
-class TestWarningAttributes:
-    """Verify warning classes store context attributes correctly."""
-
-    def test_input_alignment_warning_attributes(self) -> None:
-        """InputAlignmentWarning should store alignment context."""
-        warning = exceptions.InputAlignmentWarning(
-            "Inputs aligned",
-            original_size=100,
-            aligned_size=80,
-            dropped_count=20,
-        )
-        assert warning.original_size == 100
-        assert warning.aligned_size == 80
-        assert warning.dropped_count == 20
-        assert str(warning) == "Inputs aligned"
-
-    def test_input_alignment_warning_defaults(self) -> None:
-        """InputAlignmentWarning attributes should default to None."""
-        warning = exceptions.InputAlignmentWarning("Aligned")
-        assert warning.original_size is None
-        assert warning.aligned_size is None
-        assert warning.dropped_count is None
-
-    def test_missing_data_warning_attributes(self) -> None:
-        """MissingDataWarning should store missing data ratios."""
-        warning = exceptions.MissingDataWarning("Missing data", missing_ratio=0.15, threshold=0.20)
-        assert warning.missing_ratio == pytest.approx(0.15)
-        assert warning.threshold == pytest.approx(0.20)
-
-    def test_short_calibration_warning_attributes(self) -> None:
-        """ShortCalibrationWarning should store calibration period info."""
-        warning = exceptions.ShortCalibrationWarning(
-            "Short period",
-            actual_years=25,
-            required_years=30,
-        )
-        assert warning.actual_years == 25
-        assert warning.required_years == 30
-
-    def test_goodness_of_fit_warning_attributes(self) -> None:
-        """GoodnessOfFitWarning should store fit statistic info."""
-        warning = exceptions.GoodnessOfFitWarning(
-            "Poor fit",
-            distribution_name="gamma",
-            p_value=0.03,
-            threshold=0.05,
-            poor_fit_count=15,
-            total_steps=100,
-        )
-        assert warning.distribution_name == "gamma"
-        assert warning.p_value == pytest.approx(0.03)
-        assert warning.threshold == pytest.approx(0.05)
-        assert warning.poor_fit_count == 15
-        assert warning.total_steps == 100
-
-    def test_missing_data_warning_defaults(self) -> None:
-        """MissingDataWarning attributes should default to None."""
-        warning = exceptions.MissingDataWarning("Missing data")
-        assert warning.missing_ratio is None
-        assert warning.threshold is None
-
-    def test_short_calibration_warning_defaults(self) -> None:
-        """ShortCalibrationWarning attributes should default to None."""
-        warning = exceptions.ShortCalibrationWarning("Short period")
-        assert warning.actual_years is None
-        assert warning.required_years is None
-
-    def test_goodness_of_fit_warning_defaults(self) -> None:
-        """GoodnessOfFitWarning attributes should default to None."""
-        warning = exceptions.GoodnessOfFitWarning("Poor fit")
-        assert warning.distribution_name is None
-        assert warning.p_value is None
-        assert warning.threshold is None
-        assert warning.poor_fit_count is None
-        assert warning.total_steps is None
-
-    def test_deprecation_warning_attributes(self) -> None:
-        """ClimateIndicesDeprecationWarning should store all context attributes."""
-        warning = exceptions.ClimateIndicesDeprecationWarning(
-            "Feature deprecated",
-            deprecated_in="2.3.0",
-            removal_version="3.0.0",
-            alternative="Use new_api instead",
-            migration_url="https://docs.example.com/migration",
-        )
-        assert warning.deprecated_in == "2.3.0"
-        assert warning.removal_version == "3.0.0"
-        assert warning.alternative == "Use new_api instead"
-        assert warning.migration_url == "https://docs.example.com/migration"
-        assert str(warning) == "Feature deprecated"
-
-    def test_deprecation_warning_defaults(self) -> None:
-        """ClimateIndicesDeprecationWarning attributes should default to None."""
-        warning = exceptions.ClimateIndicesDeprecationWarning("Deprecated")
-        assert warning.deprecated_in is None
-        assert warning.removal_version is None
-        assert warning.alternative is None
-        assert warning.migration_url is None
-
-
-class TestEmitDeprecationWarning:
-    """Verify the emit_deprecation_warning helper function."""
-
-    def test_full_message_content(self) -> None:
-        """Helper should construct standardized deprecation message."""
-        with pytest.warns(exceptions.ClimateIndicesDeprecationWarning) as record:
-            exceptions.emit_deprecation_warning(
-                feature="Parameter 'old_param'",
-                alternative="Use 'new_param' instead",
-                deprecated_in="2.3.0",
-                removal_version="3.0.0",
-            )
-
-        assert len(record) == 1
-        warning_message = str(record[0].message)
-        assert "Parameter 'old_param'" in warning_message
-        assert "deprecated since version 2.3.0" in warning_message
-        assert "Use 'new_param' instead" in warning_message
-        assert "removed in version 3.0.0" in warning_message
-        assert "Migration guide:" in warning_message
-
-    def test_default_migration_url(self) -> None:
-        """Helper should use base docs URL when migration_url is None."""
-        with pytest.warns(exceptions.ClimateIndicesDeprecationWarning) as record:
-            exceptions.emit_deprecation_warning(
-                feature="old_feature",
-                alternative="use new_feature",
-                deprecated_in="2.0.0",
-                removal_version="3.0.0",
-                migration_url=None,
-            )
-
-        warning_message = str(record[0].message)
-        assert "https://climate-indices.readthedocs.io/en/stable/deprecations" in warning_message
-
-    def test_relative_url_construction(self) -> None:
-        """Helper should append relative paths to base URL."""
-        with pytest.warns(exceptions.ClimateIndicesDeprecationWarning) as record:
-            exceptions.emit_deprecation_warning(
-                feature="old_api",
-                alternative="use new_api",
-                deprecated_in="2.1.0",
-                removal_version="3.0.0",
-                migration_url="api-changes.html",
-            )
-
-        warning_message = str(record[0].message)
-        assert "https://climate-indices.readthedocs.io/en/stable/deprecations/api-changes.html" in warning_message
-
-    def test_absolute_url_passthrough(self) -> None:
-        """Helper should pass through absolute URLs unchanged."""
-        custom_url = "https://example.com/custom/migration/guide"
-        with pytest.warns(exceptions.ClimateIndicesDeprecationWarning) as record:
-            exceptions.emit_deprecation_warning(
-                feature="feature_x",
-                alternative="use feature_y",
-                deprecated_in="2.2.0",
-                removal_version="3.0.0",
-                migration_url=custom_url,
-            )
-
-        warning_message = str(record[0].message)
-        assert custom_url in warning_message
-
-    def test_filterability_via_climate_indices_warning(self) -> None:
-        """Warnings emitted by helper should be filterable via ClimateIndicesWarning."""
-        with warnings.catch_warnings(record=True) as warning_list:
-            warnings.simplefilter("always")
-            warnings.filterwarnings("ignore", category=exceptions.ClimateIndicesWarning)
-
+        else:
             exceptions.emit_deprecation_warning(
                 feature="test",
                 alternative="use other",
                 deprecated_in="1.0.0",
                 removal_version="2.0.0",
             )
-
-            assert len(warning_list) == 0
-
-    def test_filterability_via_deprecation_warning(self) -> None:
-        """Warnings emitted by helper should be filterable via DeprecationWarning."""
-        with warnings.catch_warnings(record=True) as warning_list:
-            warnings.simplefilter("always")
-            warnings.filterwarnings("ignore", category=DeprecationWarning)
-
-            exceptions.emit_deprecation_warning(
-                feature="test",
-                alternative="use other",
-                deprecated_in="1.0.0",
-                removal_version="2.0.0",
-            )
-
-            assert len(warning_list) == 0
-
-    def test_keyword_only_enforcement(self) -> None:
-        """All parameters of emit_deprecation_warning must be keyword-only."""
-        sig = inspect.signature(exceptions.emit_deprecation_warning)
-        for name, param in sig.parameters.items():
-            assert param.kind == inspect.Parameter.KEYWORD_ONLY, (
-                f"Parameter '{name}' should be KEYWORD_ONLY, got {param.kind.name}"
-            )
-
-    def test_custom_stacklevel(self) -> None:
-        """Helper should accept custom stacklevel parameter."""
-        with pytest.warns(exceptions.ClimateIndicesDeprecationWarning):
-            exceptions.emit_deprecation_warning(
-                feature="test",
-                alternative="use other",
-                deprecated_in="1.0.0",
-                removal_version="2.0.0",
-                stacklevel=2,
-            )
+        assert recorded == []
 
 
-class TestExceptionReprStr:
-    """Verify repr and str produce useful output for debugging."""
+@pytest.mark.parametrize(
+    ("cls", "init_kwargs", "defaults", "copies"),
+    ATTRIBUTE_CASES,
+    ids=lambda value: getattr(value, "__name__", None),
+)
+def test_context_attributes_are_stored(cls, init_kwargs, defaults, copies) -> None:
+    """Context attributes are stored on the instance and echoed by repr."""
+    message = "context check"
+    context = cls(message, **init_kwargs)
+    assert str(context) == message
+    assert cls.__name__ in repr(context)
+    assert message in repr(context)
+    for name, value in init_kwargs.items():
+        assert _same(getattr(context, name), value)
+    for name, value in defaults.items():
+        if value is not None:
+            assert getattr(context, name) == value
+    for source, target in copies.items():
+        assert getattr(context, target) == init_kwargs[source]
 
-    def test_base_exception_repr(self) -> None:
-        """ClimateIndicesError repr should be informative."""
-        exc = exceptions.ClimateIndicesError("Something went wrong")
-        repr_str = repr(exc)
-        assert "ClimateIndicesError" in repr_str
-        assert "Something went wrong" in repr_str
 
-    def test_insufficient_data_error_repr_with_attrs(self) -> None:
-        """InsufficientDataError repr should include error message."""
-        exc = exceptions.InsufficientDataError("Not enough data", non_zero_count=5, required_count=10)
-        repr_str = repr(exc)
-        assert "InsufficientDataError" in repr_str
-        assert "Not enough data" in repr_str
+@pytest.mark.parametrize(
+    ("cls", "init_kwargs", "defaults", "copies"),
+    ATTRIBUTE_CASES,
+    ids=lambda value: getattr(value, "__name__", None),
+)
+def test_context_attributes_default_to_none(cls, init_kwargs, defaults, copies) -> None:
+    """A bare instance leaves every optional context attribute unset."""
+    context = cls("context check")
+    for name in init_kwargs:
+        if name in defaults:
+            assert getattr(context, name) == defaults[name]
+        else:
+            assert getattr(context, name) is None
 
-    def test_dimension_mismatch_error_repr(self) -> None:
-        """DimensionMismatchError repr should show dimensions."""
-        exc = exceptions.DimensionMismatchError("Dimension mismatch", expected_dims=(10, 20), actual_dims=(10, 30))
-        repr_str = repr(exc)
-        assert "DimensionMismatchError" in repr_str
 
-    def test_str_returns_message(self) -> None:
-        """str(exception) should return the error message."""
-        exc = exceptions.InvalidArgumentError("Invalid scale parameter")
-        assert str(exc) == "Invalid scale parameter"
+@pytest.mark.parametrize(
+    ("cls", "positional_args"),
+    KEYWORD_ONLY_CASES,
+    ids=lambda value: getattr(value, "__name__", None),
+)
+def test_context_attributes_reject_positional_arguments(cls, positional_args) -> None:
+    """Context attributes require keywords, so a stray positional argument cannot shift them."""
+    with pytest.raises(TypeError, match="positional"):
+        cls(*positional_args)
 
-    def test_warning_repr(self) -> None:
-        """Warning repr should be informative."""
-        warning = exceptions.InputAlignmentWarning(
-            "Aligned inputs",
-            original_size=100,
-            aligned_size=80,
-            dropped_count=20,
+
+@pytest.mark.parametrize(
+    ("cls", "init_args", "init_kwargs"),
+    PICKLE_CASES,
+    ids=lambda value: getattr(value, "__name__", None),
+)
+def test_pickle_roundtrip_preserves_type_message_and_context(cls, init_args, init_kwargs) -> None:
+    """Dask serializes these across workers, so pickling must preserve their context."""
+    original = cls(*init_args, **init_kwargs)
+    restored = pickle.loads(pickle.dumps(original))
+    assert type(restored) is type(original)
+    assert str(restored) == str(original)
+    for name, value in init_kwargs.items():
+        assert hasattr(restored, name)
+        assert getattr(restored, name) == value
+
+
+def test_module_all_lists_exactly_the_public_types_and_helper() -> None:
+    """__all__ is the public surface: complete, and every name resolves."""
+    expected_names = {
+        "ClimateIndicesError",
+        "ConvergenceError",
+        "DataShapeError",
+        "DistributionFittingError",
+        "InsufficientDataError",
+        "PearsonFittingError",
+        "PeriodicityError",
+        "DimensionMismatchError",
+        "CoordinateValidationError",
+        "InputTypeError",
+        "InvalidArgumentError",
+        "ClimateIndicesWarning",
+        "MissingDataWarning",
+        "ShortCalibrationWarning",
+        "GoodnessOfFitWarning",
+        "InputAlignmentWarning",
+        "BetaFeatureWarning",
+        "ClimateIndicesDeprecationWarning",
+        "emit_deprecation_warning",
+    }
+    assert set(exceptions.__all__) == expected_names
+    for name in exceptions.__all__:
+        exported = getattr(exceptions, name)
+        assert isinstance(exported, type) or callable(exported), f"{name} is neither a class nor callable"
+
+
+@pytest.mark.parametrize(("url_kwargs", "expected_fragments"), EMIT_CASES)
+def test_emit_deprecation_warning_message(url_kwargs: dict, expected_fragments: tuple[str, ...]) -> None:
+    """The helper builds one standardized message and migrates the URL forms users pass."""
+    with pytest.warns(exceptions.ClimateIndicesDeprecationWarning) as record:
+        exceptions.emit_deprecation_warning(**EMIT_BASE_KWARGS, **url_kwargs)
+    assert len(record) == 1
+    message = str(record[0].message)
+    for fragment in expected_fragments:
+        assert fragment in message
+
+
+def test_emit_deprecation_warning_is_keyword_only() -> None:
+    """All helper parameters are keyword-only, so a call site cannot mis-order them."""
+    for name, parameter in inspect.signature(exceptions.emit_deprecation_warning).parameters.items():
+        assert parameter.kind == inspect.Parameter.KEYWORD_ONLY, (
+            f"Parameter '{name}' should be KEYWORD_ONLY, got {parameter.kind.name}"
         )
-        repr_str = repr(warning)
-        assert "InputAlignmentWarning" in repr_str
+
+
+def test_compute_module_reexports_remain_compatible() -> None:
+    """The legacy compute import path stays identical, isinstance-compatible, and catchable."""
+    assert compute.DistributionFittingError is exceptions.DistributionFittingError
+    assert compute.InsufficientDataError is exceptions.InsufficientDataError
+    assert compute.PearsonFittingError is exceptions.PearsonFittingError
+
+    raised = compute.InsufficientDataError("test", non_zero_count=3)
+    assert isinstance(raised, exceptions.InsufficientDataError)
+    assert isinstance(raised, exceptions.DistributionFittingError)
+    assert isinstance(raised, ClimateIndicesError)
+
+    with pytest.raises(exceptions.InsufficientDataError):
+        raise compute.InsufficientDataError("test error")
+    with pytest.raises(ClimateIndicesError):
+        raise compute.PearsonFittingError("test error")
+
+    # pattern used in test_zero_precipitation_fix.py
+    try:
+        raise compute.InsufficientDataError("Insufficient data", non_zero_count=5, required_count=10)
+    except compute.InsufficientDataError as e:
+        assert e.non_zero_count == 5
+        assert e.required_count == 10
