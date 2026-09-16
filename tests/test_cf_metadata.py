@@ -106,38 +106,45 @@ ENTRY_VALUES = [
 ]
 
 # (entry, reference fragments) rows: every fragment must appear in the entry's references.
-REFERENCE_CASES = [
-    pytest.param(entry, fragments, id=entry)
-    for entry, fragments in [
-        ("spi", ("McKee",)),
-        ("percentage_of_normal", ("Willeke", "1994")),
-        ("pci", ("Oliver", "1980")),
-        ("eddi", ("Hobbins", "2016")),
-        ("pdsi", ("Palmer", "1965")),
-        ("phdi", ("Palmer", "1965")),
-        ("pmdi", ("Heddinghaus", "1991")),
-        ("z_index", ("Palmer", "1965")),
-        ("ffwi", ("Fosberg", "1978")),
-        ("hdw", ("Srock", "2018")),
-        ("ffmc", ("Van Wagner", "1985")),
-        ("dmc", ("Van Wagner", "1985")),
-        ("dc", ("Van Wagner", "1985")),
-        ("isi", ("Van Wagner", "1985")),
-        ("bui", ("Van Wagner", "1985")),
-        ("fwi", ("Van Wagner", "1985")),
-        # DSR is Eq. 31 of the 1987 report, not the 1985 equations report
-        ("dsr", ("Van Wagner", "1987")),
-    ]
+REFERENCE_ROWS = [
+    ("spi", ("McKee",)),
+    ("spei", ("Vicente-Serrano", "2010")),
+    ("pet_thornthwaite", ("Thornthwaite", "1948")),
+    ("pet_hargreaves", ("Hargreaves", "1985")),
+    ("percentage_of_normal", ("Willeke", "1994")),
+    ("pci", ("Oliver", "1980")),
+    ("pnp", ("Willeke", "1994")),
+    ("eddi", ("Hobbins", "2016")),
+    ("pdsi", ("Palmer", "1965")),
+    ("phdi", ("Palmer", "1965")),
+    ("pmdi", ("Heddinghaus", "1991")),
+    ("z_index", ("Palmer", "1965")),
+    ("kbdi", ("Keetch", "1968")),
+    ("kbdi_imperial", ("Keetch", "1968")),
+    ("ffwi", ("Fosberg", "1978")),
+    ("hdw", ("Srock", "2018")),
+    ("ffmc", ("Van Wagner", "1985")),
+    ("dmc", ("Van Wagner", "1985")),
+    ("dc", ("Van Wagner", "1985")),
+    ("isi", ("Van Wagner", "1985")),
+    ("bui", ("Van Wagner", "1985")),
+    ("fwi", ("Van Wagner", "1985")),
+    # DSR is Eq. 31 of the 1987 report, not the 1985 equations report
+    ("dsr", ("Van Wagner", "1987")),
 ]
+
+REFERENCE_CASES = [pytest.param(entry, fragments, id=entry) for entry, fragments in REFERENCE_ROWS]
 
 
 def test_registry_has_exactly_the_expected_keys() -> None:
     """An added, renamed, or removed index fails here rather than in twenty value tests."""
     assert set(CF_METADATA) == EXPECTED_KEYS
     documented = {(entry, field) for entry, field, _ in ENTRY_VALUE_ROWS}
+    referenced = {entry for entry, _ in REFERENCE_ROWS}
     for index_name in EXPECTED_KEYS:
         assert (index_name, "long_name") in documented, f"'{index_name}' has no documented long_name row"
         assert (index_name, "units") in documented, f"'{index_name}' has no documented units row"
+        assert index_name in referenced, f"'{index_name}' has no reference row"
 
 
 @pytest.mark.parametrize("index_name", sorted(EXPECTED_KEYS))

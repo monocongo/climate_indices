@@ -463,12 +463,17 @@ def test_module_all_lists_exactly_the_public_types_and_helper() -> None:
         exported = getattr(exceptions, name)
         assert isinstance(exported, type) or callable(exported), f"{name} is neither a class nor callable"
 
-    # a new public type must join the hierarchy and pickle tables, not slip in untested
+    # a new public type must join the contract tables, not slip in untested
     public_types = {
         getattr(exceptions, name) for name in exceptions.__all__ if isinstance(getattr(exceptions, name), type)
     }
+    abstract_types = {ClimateIndicesError, exceptions.ClimateIndicesWarning}
+    # BetaFeatureWarning is a bare marker warning with no context attributes to check
+    attributable_types = public_types - abstract_types - {exceptions.BetaFeatureWarning}
     assert public_types <= {row[0] for row in HIERARCHY_CASES}
     assert public_types <= {row[0] for row in PICKLE_CASES}
+    assert public_types - abstract_types <= {row[0] for row in CATCHABILITY_CASES}
+    assert attributable_types <= {row[0] for row in ATTRIBUTE_CASES}
 
 
 @pytest.mark.parametrize(("url_kwargs", "expected_fragments"), EMIT_CASES)
