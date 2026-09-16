@@ -1,14 +1,15 @@
-"""CLI regression tests for the Palmers path that end-to-end tests cannot cover.
+"""CLI regression tests for the Palmers path that do not need a full CLI run.
 
 The historical `--index palmers` dispatch bug (`_parallel_process()` had no
 Palmers branch, so every CLI invocation of `--index palmers` raised
 `ValueError` before computing anything) is guarded end-to-end by
 ``tests/test_cli_e2e.py::test_palmers_writes_all_four_outputs_matching_in_process_computation``.
 
-The tests here cover the contracts a full CLI run cannot cheaply exercise: the
-AWC time-dimension rejection, and the multiprocessing worker's shared-array
-writes -- four outputs and no "scpdsi" array, because self-calibration isn't
-implemented (see CONTEXT.md / issue #716).
+Retained here: `_validate_args()` must reject a time-dependent AWC, and a direct
+worker call must write all four Palmer outputs into the shared arrays without
+a `scpdsi` array -- self-calibration isn't implemented (see CONTEXT.md / issue
+#716). The e2e test covers the same contract through the CLI, including the
+absence of a `scpdsi` output file.
 """
 
 import argparse
