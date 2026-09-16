@@ -125,12 +125,15 @@ SPI-1/gamma run.
 ### Legacy CLI path (per-cell loop present, parallel across workers)
 
 `__main__.py` and `__spi__.py` build shared-memory arrays shaped
-`(lat, lon, time)` or `(lon, lat, time)`, split them along axis 0 across a
-`multiprocessing.Pool`, and loop per cell inside each worker. The loops run in
-parallel across processes but are not eliminated, and each worker's per-cell
-call carries the same per-cell overhead the #921 profile measured (per-cell
-`structlog` records and the per-kernel goodness-of-fit check): the Pool divides
-wall clock, it does not reduce total per-cell Python cost.
+`(lat, lon, time)` or `(lon, lat, time)`, split them along axis 0 (latitude for
+those two orders) across a `multiprocessing.Pool`, and loop per cell inside each
+worker. `__spi__.py:98` also accepts `(time, lat, lon)`, a shape that passes
+validation but breaks processing (#932); the counts below assume the two
+canonical orders. The loops run in parallel across processes but are not
+eliminated, and each worker's per-cell call carries the same per-cell overhead
+the #921 profile measured (per-cell `structlog` records and the per-kernel
+goodness-of-fit check): the Pool divides wall clock, it does not reduce total
+per-cell Python cost.
 
 | site | invocation | loop dimensions | calls |
 |---|---|---|---|
@@ -166,9 +169,11 @@ The per-cell `np.apply_along_axis` sites (`__main__.py:569`, `__main__.py:1015`,
 function, so they are outside the #923 conversion. They are still per-cell Python
 calls: `np.apply_along_axis` loops the spatial dimensions in Python, and each
 transform loops over years inside that call (`utils.py:396`, `utils.py:515`). The
-daily adapter path runs the same transforms per cell through
-`_compute_with_daily_calendar_plan` (`xarray_adapter.py:511`), inside the wrapper
-counted above. Unmeasured overhead on both paths; no ticket owns it.
+daily adapter path runs equivalent transforms per cell through
+`_compute_with_daily_calendar_plan` (`xarray_adapter.py:512`), driven by
+`_DailyCalendarPlan.to_all_leap`/`to_gregorian` (`xarray_adapter.py:306`, `:340`)
+and counted inside the wrapper above. Unmeasured overhead on both paths; no
+ticket owns it.
 
 ### Structural blockers
 
@@ -182,7 +187,9 @@ kernel, not an `apply_ufunc` flag. `scpdsi` additionally runs
 `_palmer_wells.calculate` per location (`palmer.py:1035`, `palmer.py:1047`), a
 per-month backtracking state machine, and duration-factor fits
 (`self_calibration.py:342`, `self_calibration.py:394`, `self_calibration.py:449`)
-inside the same per-cell call; standard `pdsi` does not self-calibrate. #899
+inside the same per-location call; the CLI never invokes `scpdsi`, so those fits
+are only reachable through the per-series API, and standard `pdsi` does not
+self-calibrate. #899
 refactors these internals with unchanged output, not into an n-D kernel. The #923
 tasks name SPI, SPEI, and PET (its acceptance criteria name SPI), so Palmer is a
 follow-up rather than part of the conversion, and no open ticket owns the n-D
