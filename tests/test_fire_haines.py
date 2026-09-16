@@ -286,6 +286,52 @@ def test_haines_index_from_profile_withholds_levels_the_profile_does_not_reach()
     assert np.isfinite(result[1])
 
 
+def test_haines_index_from_profile_withholds_levels_above_the_profile_top() -> None:
+    """A high-elevation cell whose profile tops out at 600 hPa is NaN, not
+    extrapolated past the profile's own top."""
+    levels = np.array([1000.0, 850.0, 700.0, 600.0])
+    temperature = np.array([32.0, 24.0, 12.0, 6.0])
+    dewpoint = np.array([26.0, 13.0, 2.0, -4.0])
+    assert np.isnan(float(fire.haines_index_from_profile(temperature, dewpoint, levels, 2000.0)))
+
+
+def test_haines_index_from_profile_unknown_elevation_is_nan() -> None:
+    """An unknown terrain elevation must withhold the cell rather than default
+    to a variant: NaN compares false against every band."""
+    assert np.isnan(
+        float(fire.haines_index_from_profile(_PROFILE_TEMPERATURE, _PROFILE_DEWPOINT, _PROFILE_LEVELS, np.nan))
+    )
+    masked = np.ma.masked_array([100.0, 2000.0], mask=[True, False])
+    result = fire.haines_index_from_profile(
+        np.array([_PROFILE_TEMPERATURE, _PROFILE_TEMPERATURE]),
+        np.array([_PROFILE_DEWPOINT, _PROFILE_DEWPOINT]),
+        np.array(_PROFILE_LEVELS),
+        masked,
+    )
+    assert np.isnan(result[0])
+    assert np.isfinite(result[1])
+
+
+def test_haines_index_from_profile_single_level_profile_raises() -> None:
+    with pytest.raises(DataShapeError, match="at least two") as exc_info:
+        fire.haines_index_from_profile([30.0], [10.0], [950.0], 100.0)
+    assert exc_info.value.expected_shape is not None
+
+
+def test_haines_index_from_profile_non_positive_pressure_raises() -> None:
+    with pytest.raises(InvalidArgumentError, match="strictly positive") as exc_info:
+        fire.haines_index_from_profile(_PROFILE_TEMPERATURE, _PROFILE_DEWPOINT, [950.0, 850.0, 700.0, 0.0], 100.0)
+    assert exc_info.value.argument_name == "pressure_hpa"
+
+
+def test_haines_index_from_profile_elevation_broadcast_failure_raises() -> None:
+    temperature = np.zeros((2, 4))
+    dewpoint = np.zeros((2, 4))
+    with pytest.raises(InvalidArgumentError, match="elevation") as exc_info:
+        fire.haines_index_from_profile(temperature, dewpoint, np.array(_PROFILE_LEVELS), np.zeros(3))
+    assert exc_info.value.argument_name == "elevation_meters"
+
+
 def test_haines_index_from_profile_automatically_selects_per_cell() -> None:
     """A grid of elevations picks a variant per cell in one call."""
     temperature = np.array([_PROFILE_TEMPERATURE, _PROFILE_TEMPERATURE])

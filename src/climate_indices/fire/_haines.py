@@ -170,8 +170,6 @@ def _interpolate_log_pressure(
         Values at the target levels, target level on the last axis.
     """
     target_shape = profile.shape[:-1] + (len(target_levels_hpa),)
-    if pressure_hpa.size < 2:
-        return np.full(target_shape, np.nan)
 
     # log pressure increases upward, so reverse both to make np.searchsorted's
     # increasing-array requirement hold
@@ -201,7 +199,8 @@ def _haines_from_profile(
     All three variants are scored and each cell takes the one its elevation
     selects, so a grid with an elevation field needs no per-cell branching.
     Cells whose selected variant needs a level the profile does not reach are
-    NaN, via the interpolation mask.
+    NaN, via the interpolation mask, and an unknown elevation withholds the
+    cell rather than defaulting to a variant.
     """
     temperature_levels = _interpolate_log_pressure(temperature, pressure_hpa, _HAINES_TEMPERATURE_LEVELS_HPA)
     dewpoint_levels = _interpolate_log_pressure(dewpoint, pressure_hpa, _HAINES_DEWPOINT_LEVELS_HPA)
@@ -224,11 +223,18 @@ def _haines_from_profile(
     high_index = _score(temperature_700 - temperature_500, high.stability_cut_points) + _score(
         temperature_700 - dewpoint_700, high.moisture_cut_points
     )
-    result: npt.NDArray[np.float64] = np.where(
-        elevation_meters < _HAINES_LOW_ELEVATION_MAX_METERS,
-        low_index,
-        np.where(elevation_meters <= _HAINES_MID_ELEVATION_MAX_METERS, mid_index, high_index),
-    ).astype(np.float64, copy=False)
+    result: npt.NDArray[np.float64] = np.asarray(
+        np.where(
+            np.isnan(elevation_meters),
+            np.nan,
+            np.where(
+                elevation_meters < _HAINES_LOW_ELEVATION_MAX_METERS,
+                low_index,
+                np.where(elevation_meters <= _HAINES_MID_ELEVATION_MAX_METERS, mid_index, high_index),
+            ),
+        ),
+        dtype=np.float64,
+    )
     return result
 
 
@@ -491,8 +497,8 @@ def haines_index_from_profile(
             ``temperature_celsius``. It carries the same pressure levels, even
             though only the 850 and 700 hPa values are scored.
         pressure_hpa: Pressure level of each profile entry, hPa, strictly
-            decreasing. One value per level, matching the profile's
-            ``pressure_axis``.
+            decreasing and strictly positive. At least two levels, one value
+            per level, matching the profile's ``pressure_axis``.
         elevation_meters: Terrain elevation, meters, scalar or broadcast
             against the profile with the pressure axis removed. Selects the
             variant per cell.
@@ -509,13 +515,14 @@ def haines_index_from_profile(
 
     Raises:
         InputTypeError: If an input is not numeric (see ``_as_float_array``).
-        DataShapeError: If ``pressure_hpa`` is not one-dimensional, if
-            ``temperature_celsius`` has no profile axis, if ``pressure_axis``
-            is out of range, or if ``pressure_hpa`` does not have one value
-            per profile level.
-        InvalidArgumentError: If ``pressure_hpa`` is not strictly decreasing,
-            or if the temperatures, elevations, and pressures cannot be
-            broadcast together.
+        DataShapeError: If ``pressure_hpa`` is not one-dimensional, has fewer
+            than two levels, if ``temperature_celsius`` has no profile axis,
+            if ``pressure_axis`` is out of range, or if ``pressure_hpa`` does
+            not have one value per profile level.
+        InvalidArgumentError: If ``pressure_hpa`` is not strictly decreasing
+            or not strictly positive, if ``temperature_celsius`` and
+            ``dewpoint_celsius`` cannot be broadcast together, or if
+            ``elevation_meters`` cannot be broadcast against the profile.
 
     Example:
         >>> from climate_indices import fire
@@ -565,12 +572,26 @@ def haines_index_from_profile(
             expected_shape=f"{temperature.shape} with axis {axis} of length {pressure.shape[0]}",
             actual_shape=temperature.shape,
         )
-    if pressure.size > 1 and not np.all(np.diff(pressure) < 0.0):
+    if pressure.shape[0] < 2:
+        raise DataShapeError(
+            f"pressure_hpa has {pressure.shape[0]} levels; the Haines Index needs at least two "
+            "(a stability layer's bottom and top).",
+            expected_shape=f"(levels >= 2,) matching the profile's axis {axis}",
+            actual_shape=pressure.shape,
+        )
+    if not np.all(np.diff(pressure) < 0.0):
         raise InvalidArgumentError(
             "pressure_hpa must be strictly decreasing, from the surface level upward.",
             argument_name="pressure_hpa",
             argument_value=f"levels {pressure[:1]} ... {pressure[-1:]}",
             valid_values="Strictly decreasing pressures in hPa",
+        )
+    if not np.all(pressure > 0.0):
+        raise InvalidArgumentError(
+            "pressure_hpa must be strictly positive; non-positive levels are not pressures.",
+            argument_name="pressure_hpa",
+            argument_value=f"minimum level {float(np.min(pressure))}",
+            valid_values="Strictly positive pressures in hPa",
         )
 
     temperature, dewpoint = _broadcast_inputs(
