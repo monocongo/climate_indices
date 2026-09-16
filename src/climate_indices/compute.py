@@ -1198,23 +1198,30 @@ def prepare_scaled(
 
     This is the single owner of the preparation pipeline shared by the fitting-based
     indices (SPI, SPEI, EDDI, PNP) and the specialized CLI, so a policy change lands
-    in every index at once. An all-missing input is returned as a flattened array
-    without computing anything, which callers can detect with ``prepared.ndim == 1``
-    in order to short-circuit. Shape errors are raised as ``ValueError``, the convention
-    established by ``_validate_array`` and ``utils.reshape_to_2d``.
+    in every index at once. An all-missing 1-D or 2-D input is returned as a flattened
+    array without computing anything, which callers can detect with
+    ``prepared.ndim == 1`` in order to short-circuit; an all-missing time-major spatial
+    input is returned with its (time, *cells) shape. Shape errors are raised as
+    ``ValueError``, the convention established by ``_validate_array`` and
+    ``utils.reshape_to_2d``.
 
     Args:
-        values: The array of values, either 1-D or 2-D (years, periods).
+        values: The array of values, either 1-D, 2-D (years, periods), or a time-major
+            spatial array with shape (time, *cells) and three or more dimensions,
+            whose trailing cell dimensions are preserved.
         scale: The number of values for which each sliding summation will encompass.
         periodicity: Specifies whether data is monthly (12 time steps per year) or daily.
         clip_negatives: Whether negative values are clipped to zero, defaults to True.
         reshape: Whether the scaled values are reshaped to (years, period_length),
-            defaults to True. ``indices.percentage_of_normal`` passes False, since it
-            averages the un-reshaped 1-D sums over each calendar period.
+            defaults to True. For a time-major spatial input the result is
+            (years, period_length, *cells). ``indices.percentage_of_normal`` passes
+            False, since it averages the un-reshaped 1-D sums over each calendar period.
 
     Returns:
-        The scaled values, either 2-D with shape (years, periodicity.period_length)
-        or 1-D when an all-missing input or ``reshape=False``.
+        The scaled values, either 2-D with shape (years, periodicity.period_length),
+        three or more dimensions with shape (years, periodicity.period_length, *cells)
+        for a time-major spatial input, or 1-D when an all-missing input or
+        ``reshape=False``.
     """
     _logger.debug("scaling_started", operation="prepare_scaled", scale=scale, periodicity=str(periodicity))
 
@@ -1347,6 +1354,19 @@ def transform_fitted_gamma(
 
     # validate (and possibly reshape) the input array
     values = _validate_array(values, periodicity)
+
+    # a period-only fit, shape (periods,), is shared by every cell of a time-major
+    # spatial array: give it singleton cell axes so NumPy broadcasts it along axis 1
+    # rather than aligning it with the trailing cell axes
+    if values.ndim > 2:
+        if alphas is not None:
+            alphas = np.asarray(alphas)
+            if alphas.ndim == 1:
+                alphas = alphas.reshape(1, -1, *([1] * (values.ndim - 2)))
+        if betas is not None:
+            betas = np.asarray(betas)
+            if betas.ndim == 1:
+                betas = betas.reshape(1, -1, *([1] * (values.ndim - 2)))
 
     # Replace zeros with NaNs for fitting (zeros are excluded from gamma fitting)
     # and get mask of zero positions for later probability calculations

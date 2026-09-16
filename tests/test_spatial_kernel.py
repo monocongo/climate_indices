@@ -444,3 +444,96 @@ class TestSpatialKernelEquivalence:
             rtol=1e-7,
             equal_nan=True,
         )
+
+
+def _cell_series(data: np.ndarray):
+    """Yield ((lat, lon), 1-D series) for every cell of a (time, lat, lon) array."""
+    for latitude in range(data.shape[1]):
+        for longitude in range(data.shape[2]):
+            yield (latitude, longitude), data[:, latitude, longitude]
+
+
+def _spatial_gamma_params(data: np.ndarray) -> dict[str, np.ndarray]:
+    """Per-cell gamma fits packed as (period, lat, lon)."""
+    alphas = np.empty((12, *data.shape[1:]))
+    betas = np.empty((12, *data.shape[1:]))
+    for (latitude, longitude), series in _cell_series(data):
+        alphas[:, latitude, longitude], betas[:, latitude, longitude] = compute.gamma_parameters(
+            series, 1980, _CALIBRATION_START, _CALIBRATION_END, compute.Periodicity.monthly
+        )
+    return {"alpha": alphas, "beta": betas}
+
+
+def _spatial_pearson_params(data: np.ndarray) -> dict[str, np.ndarray]:
+    """Per-cell Pearson Type III fits packed as (period, lat, lon)."""
+    stacked = {key: np.empty((12, *data.shape[1:])) for key in ("prob_zero", "loc", "scale", "skew")}
+    for (latitude, longitude), series in _cell_series(data):
+        probabilities_of_zero, locs, scales, skews = compute.pearson_parameters(
+            series, 1980, _CALIBRATION_START, _CALIBRATION_END, compute.Periodicity.monthly
+        )
+        stacked["prob_zero"][:, latitude, longitude] = probabilities_of_zero
+        stacked["loc"][:, latitude, longitude] = locs
+        stacked["scale"][:, latitude, longitude] = scales
+        stacked["skew"][:, latitude, longitude] = skews
+    return stacked
+
+
+class TestSpatialFittingParameters:
+    """Supplied fitting parameters must stay associated with their own cell (#944)."""
+
+    @staticmethod
+    def _assert_matches_pointwise(data, spatial_params, distribution, pointwise_params):
+        result = indices.spi(
+            data,
+            scale=3,
+            distribution=distribution,
+            data_start_year=1980,
+            calibration_year_initial=_CALIBRATION_START,
+            calibration_year_final=_CALIBRATION_END,
+            periodicity=compute.Periodicity.monthly,
+            fitting_params=spatial_params,
+        )
+
+        for (latitude, longitude), series in _cell_series(data):
+            expected = indices.spi(
+                series,
+                scale=3,
+                distribution=distribution,
+                data_start_year=1980,
+                calibration_year_initial=_CALIBRATION_START,
+                calibration_year_final=_CALIBRATION_END,
+                periodicity=compute.Periodicity.monthly,
+                fitting_params=pointwise_params(latitude, longitude),
+            )
+            np.testing.assert_allclose(result[:, latitude, longitude], expected, atol=1e-8, rtol=1e-7, equal_nan=True)
+
+    def test_gamma_spatial_params_match_pointwise(self, gridded_monthly_precip):
+        """Gamma parameters shaped (period, *cells) are sliced to the current cell."""
+        data = gridded_monthly_precip.values
+        params = _spatial_gamma_params(data)
+        self._assert_matches_pointwise(
+            data,
+            params,
+            indices.Distribution.gamma,
+            lambda latitude, longitude: {key: value[:, latitude, longitude] for key, value in params.items()},
+        )
+
+    def test_gamma_period_params_are_shared_by_every_cell(self, gridded_monthly_precip):
+        """Legacy (period,) gamma parameters broadcast over all cells, not the last cell axis."""
+        data = gridded_monthly_precip.values
+        alphas, betas = compute.gamma_parameters(
+            data[:, 0, 0], 1980, _CALIBRATION_START, _CALIBRATION_END, compute.Periodicity.monthly
+        )
+        params = {"alpha": alphas, "beta": betas}
+        self._assert_matches_pointwise(data, params, indices.Distribution.gamma, lambda *_: params)
+
+    def test_pearson_spatial_params_match_pointwise(self, gridded_monthly_precip):
+        """Pearson parameters shaped (period, *cells) follow the per-cell fit loop."""
+        data = gridded_monthly_precip.values
+        params = _spatial_pearson_params(data)
+        self._assert_matches_pointwise(
+            data,
+            params,
+            indices.Distribution.pearson,
+            lambda latitude, longitude: {key: value[:, latitude, longitude] for key, value in params.items()},
+        )
