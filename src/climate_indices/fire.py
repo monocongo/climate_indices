@@ -52,7 +52,7 @@ import numpy as np
 import numpy.typing as npt
 
 from climate_indices import pm_eto
-from climate_indices.exceptions import DataShapeError, InvalidArgumentError
+from climate_indices.exceptions import DataShapeError, InputTypeError, InvalidArgumentError
 from climate_indices.logging_config import get_logger
 from climate_indices.performance import check_large_array_memory
 
@@ -223,7 +223,7 @@ def _validate_recurrence_options(
             argument_value=str(nan_policy),
             valid_values="'propagate', 'bridge'",
         )
-    if isinstance(max_gap_days, bool) or not isinstance(max_gap_days, int) or max_gap_days < 0:
+    if isinstance(max_gap_days, bool) or not isinstance(max_gap_days, (int, np.integer)) or max_gap_days < 0:
         raise InvalidArgumentError(
             "max_gap_days must be a non-negative integer.",
             argument_name="max_gap_days",
@@ -237,7 +237,7 @@ def _validate_recurrence_options(
             argument_value=str(max_gap_days),
             valid_values="0 for 'propagate'; at least 1 for 'bridge'",
         )
-    if isinstance(spin_up, bool) or not isinstance(spin_up, int) or spin_up < 0:
+    if isinstance(spin_up, bool) or not isinstance(spin_up, (int, np.integer)) or spin_up < 0:
         raise InvalidArgumentError(
             "spin_up must be a non-negative integer.",
             argument_name="spin_up",
@@ -1636,7 +1636,19 @@ def _ffwi(
 
 
 def _as_float_array(values: npt.ArrayLike) -> npt.NDArray[np.float64]:
-    """Coerce to float64, turning masked elements into NaN instead of dropping the mask."""
+    """Coerce to float64, turning masked elements into NaN instead of dropping the mask.
+
+    Non-numeric inputs are rejected rather than coerced: datetime, string, and
+    object arrays would otherwise arrive as plausible but meaningless numbers,
+    and complex arrays would silently discard their imaginary part.
+    """
+    if np.asarray(values).dtype.kind not in "biuf":
+        raise InputTypeError(
+            "Fire index inputs must be numeric: datetime, string, object, and complex "
+            "arrays are not coerced to float64.",
+            expected_type=float,
+            actual_type=np.asarray(values).dtype.type,
+        )
     filled = np.ma.asarray(values, dtype=np.float64).filled(np.nan)
     return np.asarray(filled, dtype=np.float64)
 

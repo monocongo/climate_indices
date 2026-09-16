@@ -18,7 +18,7 @@ import numpy as np
 import pytest
 
 from climate_indices import fire
-from climate_indices.exceptions import DataShapeError, InvalidArgumentError
+from climate_indices.exceptions import DataShapeError, InputTypeError, InvalidArgumentError
 
 # the weather series behind every reference vector, with distinct dry, rainy,
 # cold, and wetting days plus a month sequence that exercises all four table
@@ -938,6 +938,32 @@ def test_invalid_latitude_raises(latitude: float) -> None:
 def test_out_of_range_seed_raises(runner: object, seed_name: str, seed: float) -> None:
     with pytest.raises(InvalidArgumentError, match=seed_name):
         runner(_series(3), **{seed_name: seed})
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(np.asarray(["2020-01-01"], dtype="datetime64[D]"), id="datetime64"),
+        pytest.param(np.asarray([24.0 + 1j]), id="complex"),
+        pytest.param(np.asarray(["24.0"]), id="string"),
+        pytest.param(np.asarray([object()]), id="object"),
+    ],
+)
+def test_non_numeric_weather_inputs_are_rejected(value: np.ndarray) -> None:
+    """Coercing these would yield plausible but meaningless temperatures."""
+    for runner in (_run_ffmc, _run_dmc, _run_dc):
+        with pytest.raises(InputTypeError):
+            runner(replace(_series(1), temperature=value))
+
+
+def test_numpy_integer_configuration_is_accepted() -> None:
+    weather = _series(3)
+    np.testing.assert_array_equal(_run_ffmc(weather, spin_up=np.int64(1)), _run_ffmc(weather)[1:])
+    gapped = _with_missing(weather, 1, 2)
+    np.testing.assert_array_equal(
+        _run_ffmc(gapped, nan_policy="bridge", max_gap_days=np.int64(1)),
+        _run_ffmc(gapped, nan_policy="bridge", max_gap_days=1),
+    )
 
 
 def test_missing_days_count_all_three_weather_inputs() -> None:
