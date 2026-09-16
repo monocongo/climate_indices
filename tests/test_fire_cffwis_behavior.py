@@ -1179,8 +1179,10 @@ class TestCFFWISXarrayDaskBlocks:
             resumed.load()
 
         block_shape = chunked.temperature.chunksizes["lat"][0], chunked.temperature.chunksizes["lon"][0]
-        assert seed_shapes and all(shape == block_shape for shape in seed_shapes)
-        assert state_shapes and all(shape == block_shape for shape in state_shapes)
+        assert seed_shapes
+        assert all(shape == block_shape for shape in seed_shapes)
+        assert state_shapes
+        assert all(shape == block_shape for shape in state_shapes)
         _assert_matches_numpy(inputs, resumed, initial_state=state_result.state)
 
     def test_static_operand_wrapper_partitions_to_blocks(self) -> None:
