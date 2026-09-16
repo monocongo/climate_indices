@@ -448,18 +448,22 @@ class Distribution(Enum):
 
 ### `compute.py` - Mathematical Core
 **Location**: `src/climate_indices/compute.py`
-**Lines**: 1328
+**Lines**: 1278
 **Purpose**: Core algorithms for climate index calculation.
 
 #### Periodicity Enum
 ```python
 class Periodicity(Enum):
-    monthly = "monthly"  # 12 time steps per year
-    daily = "daily"      # 366 time steps per year
+    monthly = 12   # 12 time steps per year
+    daily = 366    # 366 time steps per year
 
     @staticmethod
     def from_string(value: str) -> "Periodicity":
         """Parse string to Periodicity enum."""
+
+    @property
+    def period_length(self) -> int:
+        """Return 12 (monthly) or 366 (daily)."""
 
     def unit(self) -> str:
         """Return 'month' or 'day'."""
@@ -468,6 +472,23 @@ class Periodicity(Enum):
 #### Key Algorithms
 
 ##### Temporal Scaling
+**`prepare_scaled()`**
+```python
+def prepare_scaled(
+    values: np.ndarray,
+    scale: int,
+    periodicity: Periodicity,
+    *,
+    clip_negatives: bool = True,
+    reshape: bool = True,
+) -> np.ndarray:
+    """Flatten, clip negatives, roll-sum over the scale, and reshape to (years, periods)."""
+```
+**Algorithm**: The single preparation pipeline shared by SPI, SPEI, EDDI, and PNP.
+All-missing input is returned un-reshaped, which callers detect with `ndim == 1`
+in order to short-circuit. `percentage_of_normal` passes `clip_negatives=False`
+and `reshape=False` because it averages the un-reshaped 1-D sums per calendar period.
+
 **`scale_values()`**
 ```python
 def scale_values(
@@ -475,7 +496,7 @@ def scale_values(
     scale: int,
     periodicity: Periodicity,
 ) -> np.ndarray:
-    """Compute rolling sums for temporal scaling."""
+    """Compute rolling sums for temporal scaling. Thin wrapper over prepare_scaled()."""
 ```
 **Algorithm**: Rolling window summation with NaN propagation.
 
