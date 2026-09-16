@@ -1452,12 +1452,12 @@ def test_build_history_entry_formats_provenance(
     """One row per history shape; timestamp, description, and version are the visible contract."""
     entry = _build_history_entry(
         index_name="SPI",
-        version="2.0.0",
+        version="1.2.3",
         calculation_metadata=calculation_metadata,
     )
 
     assert re.search(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", entry)
-    assert entry.endswith(f": {description} (climate_indices v2.0.0)")
+    assert entry.endswith(f": {description} (climate_indices v1.2.3)")
     for fragment in absent:
         assert fragment not in entry
 
