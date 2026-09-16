@@ -57,14 +57,20 @@ State initialization, final-state extraction, spin-up, and wet-spell state
 follow [ADR-0006](../adr/0006-fire-recursive-state-and-execution.md). No index
 may invent a different state-return convention.
 
-KBDI has the same "current adapter can't use it as-is" problem from a
+KBDI had the same "current adapter can't use it as-is" problem from a
 different direction: `kbdi()`'s `units` argument selects between two
 registry entries (`kbdi` for metric, `kbdi_imperial` for imperial) at *call*
 time, but `xarray_adapter`'s `cf_metadata` parameter binds one fixed
-`CFAttributes` dict at *decoration* time (#798). The KBDI xarray adapter
-(#801) needs the adapter to resolve the registry key per call — from the
-caller's `units` argument, not from a decorator-time constant — the same way
-the CFFWIS extension above resolves seven keys from one call.
+`CFAttributes` dict at *decoration* time (#798). Rather than widen the
+generic `@xarray_adapter` decorator, KBDI's adapter (#801) is a manual
+function on `fire.kbdi()` itself — following the precedent of
+`xarray_adapter.pet_thornthwaite`/`pet_hargreaves`, which also bypass the
+decorator — that resolves the registry key per call from `units` and calls
+`xr.apply_ufunc` directly. Unlike those PET functions, it does not need
+`vectorize=True`: `kbdi()`'s NumPy core already vectorizes over an arbitrary
+spatial shape internally, so the adapter dispatches one call per Dask spatial
+chunk with the full `time` axis rather than looping per grid cell. The same
+per-call resolution need will recur for the CFFWIS extension above.
 
 ## Stateful recurrence contract
 
