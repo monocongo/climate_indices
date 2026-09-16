@@ -819,3 +819,82 @@ def test_fitting_indices_share_one_preparation_seam(
     ]
     assert prep_kwargs.count({}) == 2
     assert [call for call in prep_kwargs if call] == [{"clip_negatives": False, "reshape": False}] * 2
+
+
+def test_fitting_indices_share_one_fit_seam(
+    precips_mm_monthly,
+    pet_thornthwaite_mm,
+    data_year_start_monthly,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+):
+    """SPI and SPEI both fit and standardize through one seam, stating the fall-back policy."""
+    precips = precips_mm_monthly.flatten()
+    pet = pet_thornthwaite_mm.flatten()
+
+    with mock.patch.object(compute, "fit_and_standardize", wraps=compute.fit_and_standardize) as fit_and_standardize:
+        indices.spi(
+            precips,
+            3,
+            indices.Distribution.gamma,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            compute.Periodicity.monthly,
+        )
+        indices.spei(
+            precips,
+            pet,
+            3,
+            indices.Distribution.gamma,
+            compute.Periodicity.monthly,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+        )
+
+    assert fit_and_standardize.call_count == 2
+    # SPI falls back from a failed Pearson Type III fit to gamma, SPEI does not
+    assert [call.kwargs.get("fallback_to_gamma", False) for call in fit_and_standardize.call_args_list] == [
+        True,
+        False,
+    ]
+
+
+def test_spi_accepts_deprecated_fitting_parameter_keys(
+    precips_mm_monthly,
+    data_year_start_monthly,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+):
+    """SPI normalizes its fitting parameters through the shared seam, so the deprecated
+    aliases that SPEI accepts work here too."""
+    precips = precips_mm_monthly.flatten()
+    parameters = (
+        (
+            indices.Distribution.gamma,
+            {"alpha": None, "beta": None},
+            {"alphas": None, "betas": None},
+        ),
+        (
+            indices.Distribution.pearson,
+            {"prob_zero": None, "loc": None, "scale": None, "skew": None},
+            {"probabilities_of_zero": None, "locs": None, "scales": None, "skews": None},
+        ),
+    )
+
+    for distribution, canonical, deprecated in parameters:
+        computed = [
+            indices.spi(
+                precips,
+                6,
+                distribution,
+                data_year_start_monthly,
+                calibration_year_start_monthly,
+                calibration_year_end_monthly,
+                compute.Periodicity.monthly,
+                fitting_params,
+            )
+            for fitting_params in (canonical, deprecated)
+        ]
+        np.testing.assert_array_equal(computed[0], computed[1])
