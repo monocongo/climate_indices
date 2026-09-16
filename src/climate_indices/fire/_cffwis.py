@@ -2487,8 +2487,10 @@ def _resolve_cffwis_month(
                     valid_values=f"Months covering every aligned '{time_dim}' step",
                 )
         if month.chunks is not None and time_dim in month.dims:
-            # a lazily-backed month stays lazy: its size is checked from
-            # metadata and the core validates the values against each block
+            # a lazily-backed month stays lazy: apply_ufunc requires a single
+            # core-dim chunk, and the rechunk rewrites the lazy graph without
+            # computing it
+            month = cast(xr.DataArray, month.chunk({time_dim: -1}))
             if month.sizes[time_dim] != time_length:
                 raise InvalidArgumentError(
                     f"month has {month.sizes[time_dim]} entries but the time dimension has {time_length} steps.",

@@ -1437,6 +1437,25 @@ class TestCFFWISXarrayOutputs:
             assert isinstance(value, xr.DataArray)
             np.testing.assert_array_equal(value.values, getattr(expected, name))
 
+    def test_dask_month_stays_lazy_and_matches_numpy(self) -> None:
+        """A time-chunked month is rechunked onto one core chunk, not computed eagerly."""
+        inputs = _gridded_inputs(days=9)
+        dask_month = xr.DataArray(
+            inputs.month, dims=("time",), coords={"time": inputs.temperature.coords["time"]}
+        ).chunk({"time": 3})
+        chunked = replace(
+            inputs,
+            temperature=inputs.temperature.chunk({"time": -1, "lat": 1, "lon": 1}),
+            humidity=inputs.humidity.chunk({"time": -1, "lat": 1, "lon": 1}),
+            wind=inputs.wind.chunk({"time": -1, "lat": 1, "lon": 1}),
+            precipitation=inputs.precipitation.chunk({"time": -1, "lat": 1, "lon": 1}),
+        )
+        result = _xarray_cffwis(chunked, month=dask_month)
+        assert isinstance(result, xr.Dataset)
+        expected = _numpy_cffwis(inputs)
+        for name in _GRID_VARIABLES:
+            np.testing.assert_array_equal(result[name].values, getattr(expected, name))
+
     def test_bridge_gap_matches_numpy(self) -> None:
         inputs = _gridded_inputs()
         gapped = inputs.precipitation.copy()
