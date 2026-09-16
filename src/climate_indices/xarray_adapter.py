@@ -1312,7 +1312,7 @@ def _validate_dask_chunks(data: xr.DataArray, dim: str) -> None:
         )
         _log().error(
             "multi_chunked_time_dimension",
-            time_dim=dim,
+            dim=dim,
             num_chunks=len(dim_chunks),
             chunk_sizes=dim_chunks,
         )

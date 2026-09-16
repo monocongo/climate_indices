@@ -568,16 +568,51 @@ def test_hdw_xarray_matches_numpy_and_drops_level() -> None:
     xr = pytest.importorskip("xarray")
 
     temperature, humidity, wind, height = _hdw_profile_dataarrays(xr)
-    temperature = temperature.assign_coords(time=np.arange(temperature.sizes["time"]))
+    temperature = temperature.assign_coords(
+        time=np.arange(temperature.sizes["time"]), level=np.arange(temperature.sizes["level"])
+    )
 
     result = fire.hot_dry_windy(temperature, humidity, wind, height)
 
     expected = fire.hot_dry_windy(temperature.values, humidity.values, wind.values, height.values, level_axis=-1)
     assert isinstance(result, xr.DataArray)
     assert "level" not in result.dims
+    assert "level" not in result.coords
     assert result.dims == ("time", "y", "x")
     np.testing.assert_allclose(result.values, expected)
     np.testing.assert_array_equal(result.coords["time"].values, temperature.coords["time"].values)
+
+
+def test_hdw_xarray_extra_dimension_on_one_input_broadcasts() -> None:
+    """A dimension present on only one of the four inputs (e.g. an ensemble member
+    axis on wind or height) must broadcast into the output, not crash on transpose."""
+    xr = pytest.importorskip("xarray")
+
+    temperature, humidity, _wind, height = _hdw_profile_dataarrays(xr, shape=(3, 4, 2), dims=("time", "x", "level"))
+    rng = np.random.default_rng(80918)
+    wind = xr.DataArray(rng.uniform(0.0, 30.0, (3, 4, 5, 2)), dims=("time", "x", "member", "level"))
+
+    result = fire.hot_dry_windy(temperature, humidity, wind, height)
+    assert set(result.dims) == {"time", "x", "member"}
+    assert result.shape == (3, 4, 5)
+
+    expected = fire.hot_dry_windy(
+        temperature.values[:, :, None, :],
+        humidity.values[:, :, None, :],
+        wind.values,
+        height.values,
+        level_axis=-1,
+    )
+    np.testing.assert_allclose(result.transpose("time", "x", "member").values, expected)
+
+
+def test_hdw_numpy_input_returns_ndarray_not_dataarray() -> None:
+    """The new xarray dispatch guard must not change NumPy-path behavior or return type."""
+    xr = pytest.importorskip("xarray")
+
+    result = fire.hot_dry_windy([30.0, 26.0], [15.0, 30.0], [8.0, 12.0], [10.0, 400.0])
+    assert isinstance(result, np.ndarray)
+    assert not isinstance(result, xr.DataArray)
 
 
 def test_hdw_xarray_metadata_matches_registry() -> None:

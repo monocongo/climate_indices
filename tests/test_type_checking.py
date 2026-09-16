@@ -15,6 +15,7 @@ from __future__ import annotations
 import sys
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 
 if sys.version_info >= (3, 11):
@@ -136,7 +137,7 @@ def test_kbdi_xarray_return_type() -> None:
 def test_hdw_numpy_return_type() -> None:
     """Verify mypy infers np.ndarray for NumPy input (see test_kbdi_numpy_return_type)."""
     result = fire.hot_dry_windy([30.0, 26.0], [15.0, 30.0], [8.0, 12.0], [10.0, 400.0])
-    assert_type(result, np.ndarray)
+    assert_type(result, npt.NDArray[np.float64])
 
 
 def test_hdw_xarray_return_type() -> None:

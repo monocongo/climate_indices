@@ -1332,7 +1332,17 @@ def _hdw_xarray(
         dask="parallelized",
         output_dtypes=[np.float64],
     )
-    result = result.transpose(*(d for d in temperature.dims if d != level_dim))
+    # apply_ufunc orders output dims by first occurrence across all four inputs
+    # in argument order, not just temperature's: height (or humidity/wind) may
+    # carry a dimension temperature lacks, so the transpose target must be
+    # built the same way, not read off temperature.dims alone.
+    output_dims: list[str] = []
+    for data in (temperature, humidity, wind, height):
+        for dim in data.dims:
+            dim = str(dim)
+            if dim != level_dim and dim not in output_dims:
+                output_dims.append(dim)
+    result = result.transpose(*output_dims)
     result.attrs = _build_output_attrs(
         temperature_celsius,
         cf_metadata=CF_METADATA["hdw"],  # type: ignore[arg-type]
@@ -1442,10 +1452,13 @@ def hot_dry_windy(
         the ``hdw`` registry entry.
 
     Raises:
+        TypeError: If ``temperature_celsius``, ``relative_humidity_percent``,
+            and ``wind_speed_meters_per_second`` are not all the same type.
         InvalidArgumentError: If the inputs cannot be broadcast together,
             ``level_axis`` is out of range for the broadcast shape (NumPy
-            input), or ``level_axis`` is not the default alongside xarray
-            input.
+            input), ``level_axis`` is not the default alongside xarray
+            input, or ``height_agl_meters`` is not an ``xr.DataArray`` or a
+            1-D array-like when the other inputs are ``xr.DataArray``.
         CoordinateValidationError: xarray input only -- if ``level_dim`` is
             missing from any input, or the input is Dask-backed with
             ``level_dim`` split across multiple chunks.
