@@ -107,7 +107,7 @@ ENTRY_VALUES = [
 
 # (entry, reference fragments) rows: every fragment must appear in the entry's references.
 REFERENCE_ROWS = [
-    ("spi", ("McKee",)),
+    ("spi", ("McKee", "1993")),
     ("spei", ("Vicente-Serrano", "2010")),
     ("pet_thornthwaite", ("Thornthwaite", "1948")),
     ("pet_hargreaves", ("Hargreaves", "1985")),
@@ -178,6 +178,12 @@ def test_references_cite_their_source(index_name: str, fragments: tuple[str, ...
 def test_fire_entries_describe_themselves_without_inventing_standard_names(index_name: str) -> None:
     """Fire adapters take their description from the registry; no fire entry claims a CF standard_name."""
     assert CF_METADATA[index_name].get("description", "").strip()
+    assert "standard_name" not in CF_METADATA[index_name]
+
+
+@pytest.mark.parametrize("index_name", sorted(EXPECTED_KEYS))
+def test_entries_claim_no_invented_standard_names(index_name: str) -> None:
+    """No entry invents a CF standard_name; the field is optional and only for officially defined names."""
     assert "standard_name" not in CF_METADATA[index_name]
 
 
