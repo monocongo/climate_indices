@@ -94,6 +94,33 @@ Interpretation:
   path. The canonical path measured here is 1.1 s, so the 10x speedup criterion
   in #893 needs a pinned baseline entry point (#929) before it can be evaluated.
 
+## Parallel scaling of gridded SPI and SPEI (#928)
+
+```bash
+uv run benchmarks/parallel_scaling.py                                 # 1, 2, 4, ... workers up to the CPU count
+uv run benchmarks/parallel_scaling.py --cores 1,2,4,8 --indices spi,spei --repeat 5
+uv run benchmarks/parallel_scaling.py | tee benchmarks/results/parallel_scaling.txt
+```
+
+The script runs the same reference grid through the public xarray API on a
+Dask-backed input with the `processes` scheduler. It re-chunks the spatial
+dimensions for each worker count (time stays a single chunk, per ADR-0003) and
+reports the fastest of `--repeat` runs after a warm-up, plus the block count and
+the parallel efficiency. Speedup is relative to the first `--cores` entry. Every
+`compute()` call creates a fresh process pool, so pool start-up is inside every
+timing, not only the baseline: the harness measures the out-of-the-box
+`processes` scheduler. The serial in-memory number to compare against is the
+#921 baseline above.
+
+The compute call passes `chunksize=1`: Dask's default batches up to six ready
+tasks per submission, which runs a whole six-block batch sequentially on one
+worker and silently flattens the curve.
+
+PET for SPEI is synthetic (a fixed fraction of the precipitation) and per-cell
+logging and goodness-of-fit warnings are disabled, so the timings measure the
+fitting path rather than the log renderer. #929 publishes the before/after table
+built from this script.
+
 ## Per-cell invocation inventory (#922)
 
 Static audit of the index-invocation sites in `src/climate_indices/`, as of
