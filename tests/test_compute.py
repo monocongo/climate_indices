@@ -628,20 +628,26 @@ def test_periodicity_period_length():
 
 def test_prepare_scaled_flattens_clips_and_reshapes():
     """
-    2-D input is flattened, negative values are clipped, and the result is reshaped.
+    2-D input is flattened before summing, negatives are clipped, and the result is reshaped.
     """
     values = np.arange(24, dtype=float).reshape(2, 12)
     values[0, 0] = -5.0
 
-    computed = compute.prepare_scaled(values, 1, compute.Periodicity.monthly)
+    computed = compute.prepare_scaled(values, 3, compute.Periodicity.monthly)
 
-    expected = np.clip(values.flatten(), 0.0, None).reshape(2, 12)
     assert computed.shape == (2, 12)
-    np.testing.assert_array_equal(computed, expected)
+    # the sum crosses the year boundary, i.e. the input was flattened before scaling
+    assert computed[1, 0] == 10.0 + 11.0 + 12.0
+    # the negative value was clipped to zero rather than summed
+    assert computed[0, 2] == 0.0 + 1.0 + 2.0
+    np.testing.assert_array_equal(
+        computed,
+        compute.prepare_scaled(values.flatten(), 3, compute.Periodicity.monthly),
+    )
 
     # clipping is optional, and nothing else about the preparation changes
-    unclipped = compute.prepare_scaled(values, 1, compute.Periodicity.monthly, clip_negatives=False)
-    np.testing.assert_array_equal(unclipped, values)
+    unclipped = compute.prepare_scaled(values, 3, compute.Periodicity.monthly, clip_negatives=False)
+    assert unclipped[0, 2] == -5.0 + 1.0 + 2.0
 
 
 def test_prepare_scaled_sums_over_the_scale():
@@ -656,6 +662,38 @@ def test_prepare_scaled_sums_over_the_scale():
 
     reshaped = compute.prepare_scaled(values, 3, compute.Periodicity.monthly)
     assert reshaped.shape == (2, 12)
+
+
+def test_prepare_scaled_fills_masked_values_with_nan():
+    """
+    Masked values are missing values, so they come back as NaN rather than as raw data.
+    """
+    values = np.ma.array(np.arange(24, dtype=float), mask=False)
+    values.mask[3] = True
+
+    # scale == 1 returns the still-masked values, which the seam makes explicit
+    computed = compute.prepare_scaled(values, 1, compute.Periodicity.monthly)
+
+    assert not np.ma.isMaskedArray(computed)
+    assert computed.shape == (2, 12)
+    assert np.isnan(computed[0, 3])
+    assert computed[0, 4] == 4.0
+
+
+def test_scale_values_delegates_to_prepare_scaled():
+    """
+    The public scaling wrapper keeps its contract by delegating to the shared seam.
+    """
+    values = np.array([-2.0, 3.0, 4.0, 5.0] * 6).reshape(2, 12)
+
+    scaled = compute.scale_values(values, 3, compute.Periodicity.monthly)
+
+    assert scaled.shape == (2, 12)
+    assert scaled[0, 2] == 0.0 + 3.0 + 4.0  # the negative value was clipped before summing
+    np.testing.assert_array_equal(
+        scaled,
+        compute.prepare_scaled(values, 3, compute.Periodicity.monthly),
+    )
 
 
 def test_prepare_scaled_returns_all_missing_input_unreshaped():

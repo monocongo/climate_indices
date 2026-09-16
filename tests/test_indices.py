@@ -782,4 +782,10 @@ def test_fitting_indices_share_one_preparation_seam(
             compute.Periodicity.monthly,
         )
 
+    # SPI and EDDI prepare with the defaults; SPEI and PNP opt out of clipping and reshaping
     assert prepare_scaled.call_count == 4
+    default_calls = [call for call in prepare_scaled.call_args_list if not call.kwargs]
+    kwargs_calls = [call for call in prepare_scaled.call_args_list if call.kwargs]
+    assert len(default_calls) == 2
+    assert len(kwargs_calls) == 2
+    assert all(call.kwargs == {"clip_negatives": False, "reshape": False} for call in kwargs_calls)
