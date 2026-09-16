@@ -287,7 +287,7 @@ def reshape_values(values: np.ndarray, periodicity: Periodicity) -> np.ndarray:
 
 
 def validate_values_shape(values: np.ndarray) -> int:
-    if len(values.shape) != 2 or values.shape[1] not in (12, 366):
+    if len(values.shape) != 2 or values.shape[1] not in _PERIOD_LENGTHS:
         _log_and_raise_shape_error(shape=values.shape)
     return int(values.shape[1])
 
