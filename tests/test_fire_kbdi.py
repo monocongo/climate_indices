@@ -1136,6 +1136,31 @@ class TestKBDIXarrayInputValidation:
             result = fire.kbdi(precip_da, shifted_temp, mean_annual_da)
         assert result.sizes["time"] == 45
 
+    def test_temperature_coordinate_loss_is_rejected(self) -> None:
+        """Inner alignment must not silently shrink temperature's spatial coverage."""
+        precip_da, temp_da, _mean_annual_da, *_ = _gridded_dataarrays(days=40)
+        narrower_precip = precip_da.isel(lon=slice(0, 2))
+        with pytest.raises(CoordinateValidationError, match="lon"):
+            fire.kbdi(narrower_precip, temp_da, 100.0)
+
+    def test_time_only_precipitation_broadcasts_to_the_temperature_grid(self) -> None:
+        """A time-only precipitation series must adopt the temperature's spatial dims."""
+        _precip_da, temp_da, _mean_annual_da, *_ = _gridded_dataarrays(days=40)
+        time_only_precip = xr.DataArray(np.full(40, 5.0), dims=["time"], coords={"time": temp_da.coords["time"]})
+        result = fire.kbdi(time_only_precip, temp_da, 100.0)
+        expected = fire.kbdi(np.full(temp_da.shape, 5.0), temp_da.values, 100.0)
+        assert result.dims == temp_da.dims
+        np.testing.assert_array_equal(result.values, expected)
+
+    def test_time_only_temperature_broadcasts_to_the_precipitation_grid(self) -> None:
+        """A time-only temperature series must adopt the precipitation's spatial dims."""
+        precip_da, _temp_da, _mean_annual_da, *_ = _gridded_dataarrays(days=40)
+        time_only_temp = xr.DataArray(np.full(40, 30.0), dims=["time"], coords={"time": precip_da.coords["time"]})
+        result = fire.kbdi(precip_da, time_only_temp, 100.0)
+        expected = fire.kbdi(precip_da.values, np.full(precip_da.shape, 30.0), 100.0)
+        assert result.dims == precip_da.dims
+        np.testing.assert_array_equal(result.values, expected)
+
 
 class TestKBDIXarrayNumpyPassthrough:
     """The new dispatch guard must not change NumPy-path behavior or return type."""

@@ -859,12 +859,13 @@ def _kbdi_xarray(
     shared_spatial_dims = [str(dim) for dim in precip_da.dims if dim in temp_da.dims and dim != time_dim]
     precip_aligned, temp_aligned = xr.align(precip_da, temp_da, join="inner")
     for dim in sorted(shared_spatial_dims):
-        if precip_aligned.sizes[dim] != precip_da.sizes[dim]:
+        if precip_aligned.sizes[dim] != precip_da.sizes[dim] or temp_aligned.sizes[dim] != temp_da.sizes[dim]:
             raise CoordinateValidationError(
                 message=(
                     f"Input alignment dropped coordinates along non-time dimension '{dim}': "
                     f"precipitation had {precip_da.sizes[dim]}, maximum_temperature had "
-                    f"{temp_da.sizes[dim]}, and {precip_aligned.sizes[dim]} remain after the inner join. "
+                    f"{temp_da.sizes[dim]}; after the inner join they have "
+                    f"{precip_aligned.sizes[dim]} and {temp_aligned.sizes[dim]}. "
                     "Subset or align the inputs explicitly; KBDI never reduces spatial coverage silently."
                 ),
                 coordinate_name=dim,
@@ -903,6 +904,10 @@ def _kbdi_xarray(
     temp_target: Literal["celsius", "fahrenheit"] = "fahrenheit" if units == "imperial" else "celsius"
     precip_aligned = _convert_precipitation_units(precip_aligned, precip_target)
     temp_aligned = _convert_temperature_units(temp_aligned, temp_target)
+
+    # one shared spatial topology: a time-only input must broadcast to the
+    # other's grid before apply_ufunc and the final transpose see its dims
+    precip_aligned, temp_aligned = xr.broadcast(precip_aligned, temp_aligned)
 
     spatial_dims = tuple(d for d in precip_aligned.dims if d != time_dim)
     spatial_shape = tuple(precip_aligned.sizes[d] for d in spatial_dims)
