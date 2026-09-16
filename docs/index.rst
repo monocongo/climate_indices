@@ -462,6 +462,13 @@ later runs. The parameters are then used exactly as supplied: the calibration ye
 still passed to ``indices.spi()`` no longer take part in any fit, so they have to
 match the period the parameters were fitted over.
 
+They also have to come from the same fitting scale and the same series the
+consuming call standardizes. The parameter arrays record neither, and
+``indices.spi()`` does not validate them, so parameters fitted from 3-month scaled
+precipitation are accepted by a 6-month call and silently standardize against the
+wrong distribution. Keep a cached fit next to the scale it was fitted at, and reuse
+it only for that same scale.
+
 Pearson Type III parameters are computed per series from the scaled values with
 ``compute.pearson_parameters()`` and supplied as ``prob_zero``, ``loc``, ``scale``,
 and ``skew``. The parameters of a single series are period-only arrays, shape (12,)
@@ -471,6 +478,13 @@ time-major grid carry the cell dimensions after the period axis, shape
 time-major with three or more dimensions, since two-dimensional input is still read
 as the legacy (years, periods) layout of one series. Note that the command line reads
 gridded input in the opposite dimension order, (lat, lon, time).
+
+The example above is a whole-grid NumPy path: ``.values`` materializes the entire
+input, and the scaling, fit, and transform then add full-grid arrays of their own, so
+the grid has to fit in memory alongside them. For a grid that does not, pass the
+xarray data instead -- :func:`climate_indices.spi` and
+:func:`climate_indices.spei` accept a Dask-backed DataArray chunked over the spatial
+dimensions with time as a single chunk -- see :doc:`xarray_migration`.
 
 
 Tutorials
