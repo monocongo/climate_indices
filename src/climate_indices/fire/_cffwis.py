@@ -1642,7 +1642,7 @@ def _run_cffwis_system(
 
 @overload
 def cffwis(
-    temperature_celsius: npt.ArrayLike,  # NOSONAR: the public API mirrors the per-code helpers
+    temperature_celsius: npt.ArrayLike,  # NOSONAR (S107) the public API mirrors the per-code helpers
     relative_humidity_percent: npt.ArrayLike,
     wind_speed_meters_per_second: npt.ArrayLike,
     precipitation_mm: npt.ArrayLike,
@@ -1664,7 +1664,7 @@ def cffwis(
 
 @overload
 def cffwis(
-    temperature_celsius: xr.DataArray,  # NOSONAR: the public API mirrors the per-code helpers
+    temperature_celsius: xr.DataArray,  # NOSONAR (S107) the public API mirrors the per-code helpers
     relative_humidity_percent: xr.DataArray,
     wind_speed_meters_per_second: xr.DataArray,
     precipitation_mm: xr.DataArray,
@@ -1685,7 +1685,7 @@ def cffwis(
 
 
 def cffwis(
-    temperature_celsius: npt.ArrayLike | xr.DataArray,  # NOSONAR: the public API mirrors the per-code helpers
+    temperature_celsius: npt.ArrayLike | xr.DataArray,  # NOSONAR (S107) the public API mirrors the per-code helpers
     relative_humidity_percent: npt.ArrayLike | xr.DataArray,
     wind_speed_meters_per_second: npt.ArrayLike | xr.DataArray,
     precipitation_mm: npt.ArrayLike | xr.DataArray,
