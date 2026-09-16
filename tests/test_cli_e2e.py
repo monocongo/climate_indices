@@ -61,14 +61,12 @@ def _write_grid(path, values, var_name="precip", units="mm") -> None:
     ).to_netcdf(path)
 
 
-def _spi_arguments(precip_path, output_base, scales=("6",)) -> list[str]:
+def _common_arguments(index, precip_path, output_base) -> list[str]:
     return [
         "--index",
-        "spi",
+        index,
         "--periodicity",
         "monthly",
-        "--scales",
-        *scales,
         "--calibration_start_year",
         str(_CALIBRATION_START_YEAR),
         "--calibration_end_year",
@@ -82,6 +80,10 @@ def _spi_arguments(precip_path, output_base, scales=("6",)) -> list[str]:
         "--multiprocessing",
         "single",
     ]
+
+
+def _spi_arguments(precip_path, output_base, scales=("6",)) -> list[str]:
+    return [*_common_arguments("spi", precip_path, output_base), "--scales", *scales]
 
 
 def test_timeseries_spi_matches_in_process_computation(tmp_path, precips_mm_monthly):
@@ -119,6 +121,8 @@ def test_gridded_spi_matches_in_process_computation(tmp_path, precips_mm_monthly
     with xr.open_dataset(tmp_path / "spi_grid_spi_gamma_06.nc") as dataset:
         written = dataset["spi_gamma_06"].values
         assert written.shape == grid.shape
+        np.testing.assert_array_equal(dataset["lat"].values, _LATITUDES)
+        np.testing.assert_array_equal(dataset["lon"].values, _LONGITUDES)
         for i in range(len(_LATITUDES)):
             for j in range(len(_LONGITUDES)):
                 expected = indices.spi(
@@ -148,28 +152,13 @@ def test_spei_uses_provided_pet_file_and_matches_in_process_computation(
     _write_divisions(pet_path, pet, var_name="pet")
     main(
         [
-            "--index",
-            "spei",
-            "--periodicity",
-            "monthly",
+            *_common_arguments("spei", precip_path, output_base),
             "--scales",
             "6",
-            "--calibration_start_year",
-            str(_CALIBRATION_START_YEAR),
-            "--calibration_end_year",
-            str(_CALIBRATION_END_YEAR),
-            "--netcdf_precip",
-            str(precip_path),
-            "--var_name_precip",
-            "precip",
             "--netcdf_pet",
             str(pet_path),
             "--var_name_pet",
             "pet",
-            "--output_file_base",
-            str(output_base),
-            "--multiprocessing",
-            "single",
         ]
     )
 
@@ -203,18 +192,7 @@ def test_palmers_writes_all_four_outputs_matching_in_process_computation(
 
     main(
         [
-            "--index",
-            "palmers",
-            "--periodicity",
-            "monthly",
-            "--calibration_start_year",
-            str(_CALIBRATION_START_YEAR),
-            "--calibration_end_year",
-            str(_CALIBRATION_END_YEAR),
-            "--netcdf_precip",
-            str(precip_path),
-            "--var_name_precip",
-            "precip",
+            *_common_arguments("palmers", precip_path, output_base),
             "--netcdf_pet",
             str(pet_path),
             "--var_name_pet",
@@ -223,10 +201,6 @@ def test_palmers_writes_all_four_outputs_matching_in_process_computation(
             str(awc_path),
             "--var_name_awc",
             "awc",
-            "--output_file_base",
-            str(output_base),
-            "--multiprocessing",
-            "single",
         ]
     )
 
@@ -267,6 +241,9 @@ def test_output_carries_cf_metadata_and_coordinates(tmp_path, precips_mm_monthly
     output_base = tmp_path / "spi_metadata"
 
     main(_spi_arguments(precip_path, output_base))
+
+    # the CLI computes every distribution, so both output files must exist
+    assert (tmp_path / "spi_metadata_spi_pearson_06.nc").is_file()
 
     with xr.open_dataset(tmp_path / "spi_metadata_spi_gamma_06.nc") as dataset:
         variable = dataset["spi_gamma_06"]
