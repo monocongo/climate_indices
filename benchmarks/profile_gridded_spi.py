@@ -100,13 +100,15 @@ def profile(top: int) -> tuple[float, float, float]:
     """Profile SPI on the reference grid, writing the raw report to ``DEFAULT_OUTPUT``.
 
     Returns:
-        Baseline seconds at INFO, profiled seconds at INFO, baseline seconds at WARNING
+        Fastest baseline seconds at INFO, profiled seconds at INFO, fastest baseline seconds at WARNING
     """
     # exercise imports and first-call caches before measuring
     run_spi(build_grid(lat=WARMUP_LAT, lon=WARMUP_LON, years=REFERENCE_YEARS))
 
     precip = build_grid(lat=REFERENCE_LAT, lon=REFERENCE_LON, years=REFERENCE_YEARS)
-    baseline = _time_spi(precip)
+    # two samples per level, minimum of each: benchmark noise only adds time,
+    # and the quiet run must not simply inherit warmer caches than the baseline
+    baseline = min(_time_spi(precip), _time_spi(precip))
 
     profiler = cProfile.Profile()
     profiler.enable()
@@ -120,7 +122,7 @@ def profile(top: int) -> tuple[float, float, float]:
     # repeat at WARNING: the difference isolates the per-cell logging volume
     # that the profile attributes to the adapter
     logging.getLogger().setLevel(logging.WARNING)
-    quiet = _time_spi(precip)
+    quiet = min(_time_spi(precip), _time_spi(precip))
 
     # write to a temporary file and replace it only once the full report is on
     # disk, so an interrupted write never truncates the existing evidence
@@ -139,7 +141,8 @@ def profile(top: int) -> tuple[float, float, float]:
             file=stream,
         )
         print(
-            f"timings: baseline={baseline:.1f}s profiled={profiled:.1f}s warning={quiet:.1f}s",
+            f"timings: baseline={baseline:.1f}s profiled={profiled:.1f}s warning={quiet:.1f}s "
+            "(baseline and warning are the minimum of two runs)",
             file=stream,
         )
         for sort_key in ("cumulative", "tottime"):

@@ -25,6 +25,9 @@ Each run measures three things and always rewrites
 2. the same run under `cProfile` (the raw report),
 3. an unprofiled baseline with logging at WARNING (isolates the per-cell log cost).
 
+Both baselines are the minimum of two runs, so noise adds time rather than
+flattering whichever level runs first.
+
 Rerunning on another machine therefore replaces the committed reference report;
 check `git diff` before committing a refreshed artifact.
 
@@ -36,43 +39,45 @@ Reference grid: 3306 cells x 480 months.
 |---|---|
 | baseline, INFO logging | 1.1 s |
 | baseline, WARNING logging | 0.7 s |
-| cProfile-instrumented | 2.3 s |
+| cProfile-instrumented | 2.5 s |
 
 Per-cell logging costs ~0.4 s (~35%) of the INFO wall clock. `cProfile` roughly
 doubles the wall clock on this call-heavy path, so the profiled report is for
 relative attribution, not absolute timing.
 
-Hottest paths by cumulative time (2.347 s profiled total):
+Hottest paths by cumulative time (2.493 s profiled total):
 
 | path | calls | cumtime |
 |---|---|---|
-| `numpy._vectorize_call_with_signature` | 1 | 2.346 s |
-| `climate_indices/xarray_adapter.py:507` (`wrapper`, one call per grid cell) | 3306 | 2.336 s |
-| `climate_indices/indices.py:417` (`spi`) | 3306 | 2.332 s |
-| `climate_indices/compute.py:1085` (`transform_fitted_gamma`) | 3306 | 1.826 s |
-| `structlog/stdlib.py:218` (`info`) | 19837 | 1.162 s |
-| `climate_indices/compute.py:942` (`gamma_parameters`) | 3306 | 0.955 s |
-| `climate_indices/compute.py:779` (`_check_goodness_of_fit_gamma`) | 3306 | 0.444 s |
+| `numpy._vectorize_call_with_signature` | 1 | 2.492 s |
+| `climate_indices/xarray_adapter.py:507` (`wrapper`, one call per grid cell) | 3306 | 2.483 s |
+| `climate_indices/indices.py:417` (`spi`) | 3306 | 2.478 s |
+| `climate_indices/compute.py:1085` (`transform_fitted_gamma`) | 3306 | 1.942 s |
+| `structlog/stdlib.py:218` (`info`) | 19837 | 1.229 s |
+| `climate_indices/compute.py:942` (`gamma_parameters`) | 3306 | 1.015 s |
+| `climate_indices/compute.py:779` (`_check_goodness_of_fit_gamma`) | 3306 | 0.473 s |
 
 Hottest paths by self time:
 
 | path | tottime |
 |---|---|
-| `climate_indices/compute.py:779` (`_check_goodness_of_fit_gamma`) | 0.170 s |
-| `structlog/dev.py:296` (console renderer) | 0.140 s |
-| `climate_indices/compute.py:743` (`_ks_poor_fit_p_value`) | 0.104 s |
-| `scipy/stats/_continuous_distns.py:3612` (`_cdf`) | 0.087 s |
-| `structlog/_frames.py:36` (`_find_first_app_frame_and_name`) | 0.047 s |
+| `climate_indices/compute.py:779` (`_check_goodness_of_fit_gamma`) | 0.181 s |
+| `structlog/dev.py:296` (console renderer) | 0.146 s |
+| `climate_indices/compute.py:743` (`_ks_poor_fit_p_value`) | 0.111 s |
+| `scipy/stats/_continuous_distns.py:3612` (`_cdf`) | 0.091 s |
+| `structlog/_frames.py:36` (`_find_first_app_frame_and_name`) | 0.049 s |
 
 Interpretation:
 
 - Per-grid-cell invocation is still real, via
   `xr.apply_ufunc(..., vectorize=True)`: 3306 Python calls into
   `xarray_adapter.py:507`, ~0.7 ms each under the profiler.
-- The adapter emits six `structlog` info records per cell (19837 / 3306). The
-  profiler attributes about half of the profiled total to their rendering and
-  call-site frame inspection; the unprofiled runs put the real cost at ~0.4 s
-  of 1.1 s. This is a logging-volume cost, not an algorithmic one.
+- The adapter path emits six `structlog` info records per cell from
+  `indices.spi`/`compute` (19836 / 3306), plus one run-level
+  `xarray_adapter_completed` record. The profiler attributes about half of the
+  profiled total to their rendering and call-site frame inspection; the
+  unprofiled runs put the real cost at ~0.4 s of 1.1 s. This is a logging-volume
+  cost, not an algorithmic one.
 - The numerical work is a per-cell gamma fit with a Kolmogorov-Smirnov
   goodness-of-fit check (`compute.py:942`, `compute.py:779`) plus scipy `cdf`/`ppf`
   transforms — all serial Python/scipy calls per cell. Compiled scipy internals
