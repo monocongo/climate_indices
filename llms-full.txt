@@ -411,7 +411,7 @@ may change in a future minor release.
 | Palmer direct xarray API | No | Use the NumPy Palmer function with `.values`, then rewrap outputs. See `notebooks/palmer_indices_xarray.ipynb`. |
 | Coordinate preservation | Yes | Adapter tests verify time and spatial coordinates are preserved. |
 | CF-style metadata | Yes | `CF_METADATA` registry and adapter tests verify `long_name`, `units`, `references`, version, and history attributes. |
-| Dask-backed arrays | Yes, constrained | The time dimension must be a single chunk. Adapter tests verify detection and validation. Chunk axes the CLI leaves to Dask (`"auto"`, the KBDI grid and division inputs) resolve against a 100 MB array chunk budget rather than Dask's own default; axes pinned with `-1` are unaffected. |
+| Dask-backed arrays | Yes, constrained | The time dimension must be a single chunk. Adapter tests verify detection and validation. Chunk axes the CLI leaves to Dask (`"auto"`, the KBDI grid and division inputs) resolve against a 100 MB array chunk budget rather than Dask's own default; axes pinned with `-1` are unaffected. See [Chunking guidance for gridded indices](#chunking-guidance-for-gridded-indices) for block sizes. |
 | Spatial (gridded) kernels | Yes, for SPI, SPEI, and PET | `spi`/`spei` receive a time-major `(time, *cells)` block and fit every cell in one pass, so a gridded gamma run costs one kernel call per Dask block instead of one call per cell ([ADR-0008](docs/adr/0008-spatial-block-declaration.md)). The PET entry points (`pet_thornthwaite`, `pet_hargreaves`) hand `indices.pet` and `eto.eto_hargreaves` the same block layout with the per-cell latitude array, so a gridded PET run costs one call per block ([#941](https://github.com/monocongo/climate_indices/issues/941)). The NumPy API keeps 2-D input on the legacy `(years, periods)` reading, and rejects the one gridded shape that is ambiguous with it (a first cell axis of 12 or 366). Inputs with a single non-core dimension keep the per-cell path, as do EDDI and percentage-of-normal ([#942](https://github.com/monocongo/climate_indices/issues/942)) and the Pearson Type III fit ([#940](https://github.com/monocongo/climate_indices/issues/940)). See `tests/test_spatial_kernel.py`. |
 | Calendar semantics | Yes, constrained | Standard/gregorian/proleptic_gregorian `datetime64` only; monthly input must begin in January and daily input on January 1. Daily values are converted to the 366-day calendar (February 29 synthesized from February 28 and March 1) and restored afterward. A partial final year is supported; `cftime` calendars are rejected. See [ADR-0004](docs/adr/0004-xarray-calendar-semantics.md). |
 | Automatic temporal inference | Yes | Monthly and daily time-coordinate inference is covered by adapter tests. |
@@ -507,7 +507,7 @@ applies per cell along the time axis.
 
 ## Chunking guidance for gridded indices
 
-Two rules fix the shape of a chunked input:
+Three rules fix the shape of a chunked input:
 
 1. **Keep `time` in a single chunk.** Distribution fitting needs each cell's
    complete series, so the SPI/SPEI adapter path rejects a split `time` with
@@ -515,11 +515,25 @@ Two rules fix the shape of a chunked input:
    ([ADR-0003](docs/adr/0003-dask-time-dimension-single-chunk.md)) and the stateful
    fire adapters require the same for their weather inputs. The PET adapters are
    the exception: they pass `allow_rechunk=True` and rechunk a split `time`
-   internally.
+   internally, paying that copy inside every call.
 2. **Spatial chunks are the parallelism and memory lever.** A Dask block is
    fitted whole, and the fit materializes the reshaped `(years, periods, *cells)`
    block plus its per-period intermediates, so the working set grows with the
-   cells in a block, not with the size of the grid.
+   cells in a block, not with the size of the grid. The PET spatial kernels take
+   one `(time, *cells)` block per call as well, so the same block sizing applies
+   to them.
+3. **Chunk the inputs of a multi-input index the same way.** SPEI aligns
+   precipitation and PET with an inner join on their coordinates and validates
+   each input's `time` chunking independently, but neither step touches spatial
+   chunks. When the two inputs are chunked differently,
+   `xr.apply_ufunc(..., dask="parallelized")` makes Dask unify them, inserting a
+   `rechunk-merge` stage that copies the data when the graph computes — an extra
+   copy inside every index that consumes the mismatched pair. Give both inputs
+   the layout the notebook prepares:
+
+   ```python
+   pet = pet.chunk(precip.chunksizes)
+   ```
 
 For the 40-year monthly gamma SPI/SPEI path the fit's working set is about
 60 KB per cell — roughly 16x the 3.84 KB the cell's own 480-step float64 series
