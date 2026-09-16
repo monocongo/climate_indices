@@ -351,8 +351,10 @@ def haines_index(
             Where it lies below the variant's lower stability level the level
             is below ground, and the index is NaN there rather than scored
             from whatever the input dataset extrapolated; a NaN pressure is
-            treated the same way. Array-like or ``xr.DataArray`` must
-            broadcast against the temperature inputs.
+            treated the same way. It broadcasts against the temperature
+            inputs, except on the xarray path, where dimensions shared with
+            them must match exactly (see the Notes below) while dimensions
+            unique to it broadcast.
 
     Returns:
         Haines Index, an integer-valued float in [2, 6], with the broadcast
@@ -364,10 +366,13 @@ def haines_index(
 
     Raises:
         TypeError: If the three temperature inputs are not all the same type.
+        InputTypeError: If an input is not numeric (see ``_as_float_array``);
+            the xarray path rejects a non-numeric ``dtype`` before computing.
         InvalidArgumentError: If ``variant`` is not one of the three names, if
-            the inputs cannot be broadcast together, or if
+            the inputs cannot be broadcast together, if
             ``surface_pressure_hpa`` is not a ``DataArray`` or scalar
-            alongside xarray input.
+            alongside xarray input, or if a temperature input's CF ``units``
+            attribute is not recognized.
 
     Notes:
         xarray-only: the three temperature inputs must be the same type (all
@@ -471,8 +476,8 @@ def haines_index(
 
 
 def haines_index_from_profile(
-    temperature_celsius: npt.ArrayLike | xr.DataArray,
-    dewpoint_celsius: npt.ArrayLike | xr.DataArray,
+    temperature_celsius: npt.ArrayLike,
+    dewpoint_celsius: npt.ArrayLike,
     pressure_hpa: npt.ArrayLike,
     elevation_meters: npt.ArrayLike,
     *,
