@@ -28,13 +28,14 @@ deletion of files that actually landed in `main`.
 ```bash
 git fetch origin
 # a new branch off main
-git worktree add ../climate_indices-<topic> -b <prefix>/<topic> origin/main
-# an existing branch, e.g. one with an open PR
-git worktree add ../climate_indices-<pr> -b <branch> origin/<branch>
+git worktree add "../climate_indices-<topic>" -b "<prefix>/<topic>" origin/main
+# an existing branch, e.g. one with an open PR; --guess-remote makes the local
+# branch when only origin has it and refuses one another worktree holds
+git worktree add --guess-remote "../climate_indices-<pr>" "<branch>"
 ```
 
 Do not edit, stage in, or clean a worktree another session is using. Stage the
-paths you changed (`git add <path>`) rather than `git add -A`, so unowned
+paths you changed (`git add "<path>"`) rather than `git add -A`, so unowned
 changes stay out of your commit. Report changes you do not own instead of
 discarding or committing them.
 
