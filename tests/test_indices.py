@@ -819,3 +819,74 @@ def test_fitting_indices_share_one_preparation_seam(
     ]
     assert prep_kwargs.count({}) == 2
     assert [call for call in prep_kwargs if call] == [{"clip_negatives": False, "reshape": False}] * 2
+
+
+@pytest.mark.usefixtures(
+    "data_year_start_monthly",
+    "calibration_year_start_monthly",
+    "calibration_year_end_monthly",
+)
+def test_supplied_fitting_params_reproduce_the_inline_fit(
+    precips_mm_monthly,
+    data_year_start_monthly,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+):
+    """
+    Supplying fitting parameters gives the same values as fitting inline.
+
+    Computing the scaled values' fitting parameters once and handing them back to
+    indices.spi() is the supported replacement for the legacy spi script's
+    --save_params / --load_params distribution fitting cache (#957).
+    """
+    scale = 3
+    periodicity = compute.Periodicity.monthly
+    values = precips_mm_monthly.flatten()
+    kwargs = {
+        "scale": scale,
+        "data_start_year": data_year_start_monthly,
+        "calibration_year_initial": calibration_year_start_monthly,
+        "calibration_year_final": calibration_year_end_monthly,
+        "periodicity": periodicity,
+    }
+
+    def gamma_parameters(scaled_values):
+        alphas, betas = compute.gamma_parameters(
+            scaled_values,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            periodicity,
+        )
+        return {"alpha": alphas, "beta": betas}
+
+    scaled = compute.prepare_scaled(values, scale, periodicity)
+    prob_zero, locs, scales, skews = compute.pearson_parameters(
+        scaled,
+        data_year_start_monthly,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
+        periodicity,
+    )
+    for distribution, fitting_params in (
+        (indices.Distribution.gamma, gamma_parameters(scaled)),
+        (
+            indices.Distribution.pearson,
+            {"prob_zero": prob_zero, "loc": locs, "scale": scales, "skew": skews},
+        ),
+    ):
+        inline = indices.spi(values, distribution=distribution, **kwargs)
+        supplied = indices.spi(values, distribution=distribution, fitting_params=fitting_params, **kwargs)
+        np.testing.assert_allclose(supplied, inline, equal_nan=True)
+
+    # a time-major grid carries one period-by-cell parameter array per cell
+    grid = np.stack([values * factor for factor in (1.0, 1.5, 0.5, 2.0)], axis=-1).reshape(len(values), 2, 2)
+    grid_kwargs = dict(kwargs, spatial_time_major=True)
+    scaled_grid = compute.prepare_scaled(grid, scale, periodicity, spatial_time_major=True)
+    grid_params = gamma_parameters(scaled_grid)
+    assert grid_params["alpha"].shape == grid_params["beta"].shape == (12, 2, 2)
+    np.testing.assert_allclose(
+        indices.spi(grid, distribution=indices.Distribution.gamma, fitting_params=grid_params, **grid_kwargs),
+        indices.spi(grid, distribution=indices.Distribution.gamma, **grid_kwargs),
+        equal_nan=True,
+    )
