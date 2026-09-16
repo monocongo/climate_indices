@@ -332,6 +332,23 @@ def test_haines_index_from_profile_elevation_broadcast_failure_raises() -> None:
     assert exc_info.value.argument_name == "elevation_meters"
 
 
+def test_haines_index_from_profile_emits_lifecycle_events() -> None:
+    """The profile entry point reports the same lifecycle events as its siblings."""
+    from unittest import mock
+
+    mock_logger = mock.MagicMock()
+    mock_logger.bind.return_value = mock_logger
+
+    with mock.patch.object(fire._haines, "_logger", mock_logger):
+        fire.haines_index_from_profile(_PROFILE_TEMPERATURE, _PROFILE_DEWPOINT, _PROFILE_LEVELS, 100.0)
+
+    assert [call.args[0] for call in mock_logger.info.call_args_list] == [
+        "calculation_started",
+        "calculation_completed",
+    ]
+    mock_logger.bind.assert_called_once()
+
+
 def test_haines_index_from_profile_automatically_selects_per_cell() -> None:
     """A grid of elevations picks a variant per cell in one call."""
     temperature = np.array([_PROFILE_TEMPERATURE, _PROFILE_TEMPERATURE])

@@ -434,7 +434,12 @@ def haines_index(
     )
     log.info("calculation_started")
     t0 = time.perf_counter()
-    memory_metrics = check_large_array_memory(temperature_lower, temperature_upper, dewpoint)
+    memory_metrics = check_large_array_memory(
+        temperature_lower,
+        temperature_upper,
+        dewpoint,
+        *(() if pressure is None else (pressure,)),
+    )
 
     try:
         result = _haines_from_levels(
@@ -601,6 +606,18 @@ def haines_index_from_profile(
     # remaining axes keep their original order
     temperature = np.moveaxis(temperature, axis, -1)
     dewpoint = np.moveaxis(dewpoint, axis, -1)
+
+    # bind context and emit calculation_started event
+    log = _logger.bind(
+        index_type="haines_index_from_profile",
+        input_shape=temperature.shape,
+        input_elements=temperature.size,
+        pressure_levels=pressure.shape[0],
+    )
+    log.info("calculation_started")
+    t0 = time.perf_counter()
+    memory_metrics = check_large_array_memory(temperature, dewpoint, pressure, elevation)
+
     try:
         index = _haines_from_profile(temperature, dewpoint, pressure, elevation)
     except ValueError as exc:
@@ -610,7 +627,12 @@ def haines_index_from_profile(
             f"pressure={pressure.shape}, elevation={elevation.shape}. "
             "The elevation must broadcast against the profile with its pressure axis removed."
         )
-        _logger.error(message)
+        log.error(
+            "calculation_failed",
+            exc_info=True,
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+        )
         raise InvalidArgumentError(
             message,
             argument_name="elevation_meters",
@@ -620,10 +642,18 @@ def haines_index_from_profile(
 
     unavailable = int(np.count_nonzero(np.isnan(index)))
     if unavailable > 0:
-        _logger.warning(
+        log.warning(
             f"Found {unavailable} cells whose elevation-selected variant needs a level the "
             "profile does not cover; the Haines Index is NaN there rather than extrapolated."
         )
+
+    duration_ms = (time.perf_counter() - t0) * 1000.0
+    log.info(
+        "calculation_completed",
+        duration_ms=round(duration_ms, 2),
+        output_shape=index.shape,
+        **(memory_metrics or {}),
+    )
     return index
 
 
