@@ -949,6 +949,14 @@ class TestKBDIXarrayUnitInference:
         expected = fire.kbdi(precip_da, temp_da, mean_annual_da)
         np.testing.assert_allclose(result.values, expected.values, rtol=1e-10)
 
+    def test_custom_precipitation_attrs_survive_unit_conversion(self) -> None:
+        """Output provenance comes from the caller's input, not the converted copy."""
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays()
+        precip_inches = (precip_da / 25.4).assign_attrs(units="inches", source="gridded-observations")
+        result = fire.kbdi(precip_inches, temp_da, mean_annual_da)
+        assert result.attrs["source"] == "gridded-observations"
+        assert result.attrs["units"] == "mm"
+
     def test_absent_units_attribute_is_trusted_as_is(self) -> None:
         """No `units` attribute means the raw values already match the `units=` scale."""
         precip_da, temp_da, mean_annual_da, precipitation, temperature, mean_annual = _gridded_dataarrays()
@@ -1051,7 +1059,11 @@ class TestKBDIXarrayDaskChunking:
         monkeypatch.setattr(fire, "kbdi", counting_kbdi)
         result = real_kbdi(precip_dask, temp_dask, mean_annual_da, return_state=True)
         assert isinstance(result, fire.KBDIResult)
-        # 2 lat x 3 lon chunks: exactly one recurrence execution per chunk
+        # 2 lat x 3 lon chunks: exactly one recurrence execution per chunk,
+        # shared by the values and all three state fields
+        assert len(calls) == 6
+        assert isinstance(result.values, xr.DataArray)
+        np.testing.assert_array_equal(result.values.values, result.values.values)
         assert len(calls) == 6
 
 

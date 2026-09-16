@@ -1034,7 +1034,7 @@ def _kbdi_xarray(
 
     cf_key = "kbdi_imperial" if units == "imperial" else "kbdi"
     values_result.attrs = _build_output_attrs(
-        precip_aligned,
+        precip_da,
         cf_metadata=CF_METADATA[cf_key],  # type: ignore[arg-type]
         # "units" is deliberately excluded here: it's a CF attribute the
         # registry entry above already sets ("mm" / "0.01 in"), and
@@ -1049,15 +1049,18 @@ def _kbdi_xarray(
         result_da: xr.DataArray = values_result
         return result_da
 
-    # One compute for all three state fields: they share the recurrence graph,
-    # so separate .values calls would each rerun the whole recurrence.
+    # One compute for the values and all three state fields: they share the
+    # recurrence graph, so separate .values calls would each rerun it.
+    values_name = values_result.name
     final_state = xr.Dataset(
         {
+            "values": values_result,
             "kbdi": kbdi_result,
             "wet_spell_precipitation": wet_result,
             "trailing_gap_days": gap_result,
         }
     ).load()
+    values_result = final_state["values"].rename(values_name)
     final_gap: npt.NDArray[np.int64] = final_state["trailing_gap_days"].values
     return KBDIResult(
         values=values_result,
