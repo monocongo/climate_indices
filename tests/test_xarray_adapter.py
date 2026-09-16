@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import re
+import sys
 from unittest import mock
 
 import numpy as np
@@ -3002,8 +3003,10 @@ class TestValidateDaskChunks:
         data = xr.DataArray(np.zeros((4, 2)), dims=("level", "x")).chunk({"level": 2})
         mock_logger = mock.MagicMock()
 
+        # patch via sys.modules: the package exports the `xarray_adapter` function,
+        # shadowing the submodule attribute that Python 3.10's mock.patch resolves
         with (
-            mock.patch("climate_indices.xarray_adapter._log", return_value=mock_logger),
+            mock.patch.object(sys.modules["climate_indices.xarray_adapter"], "_log", return_value=mock_logger),
             pytest.raises(CoordinateValidationError),
         ):
             _validate_dask_chunks(data, "level")
