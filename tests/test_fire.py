@@ -11,7 +11,8 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from climate_indices import fire, pm_eto
-from climate_indices.exceptions import InvalidArgumentError
+from climate_indices.cf_metadata_registry import CF_METADATA
+from climate_indices.exceptions import CoordinateValidationError, InvalidArgumentError
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -544,6 +545,207 @@ def test_hdw_chunked_time_and_space_match_eager() -> None:
         output_dtypes=[np.float64],
     )
     np.testing.assert_array_equal(chunked.compute().values, eager)
+
+
+def _hdw_profile_dataarrays(xr, *, shape=(6, 3, 2, 4), dims=("time", "y", "x", "level")):  # noqa: ANN001, ANN202
+    """Build temperature/humidity/wind/height DataArrays sharing ``dims``, level last."""
+    rng = np.random.default_rng(80917)
+    level_len = shape[dims.index("level")]
+    arrays = {
+        name: xr.DataArray(values, dims=dims)
+        for name, values in {
+            "temperature": rng.uniform(-5.0, 40.0, shape),
+            "humidity": rng.uniform(0.0, 100.0, shape),
+            "wind": rng.uniform(0.0, 30.0, shape),
+        }.items()
+    }
+    height = xr.DataArray(np.linspace(0.0, 700.0, level_len), dims=("level",))
+    return arrays["temperature"], arrays["humidity"], arrays["wind"], height
+
+
+def test_hdw_xarray_matches_numpy_and_drops_level() -> None:
+    """The adapter's result equals the NumPy core's, with level dropped and other dims/coords kept."""
+    xr = pytest.importorskip("xarray")
+
+    temperature, humidity, wind, height = _hdw_profile_dataarrays(xr)
+    temperature = temperature.assign_coords(
+        time=np.arange(temperature.sizes["time"]), level=np.arange(temperature.sizes["level"])
+    )
+
+    result = fire.hot_dry_windy(temperature, humidity, wind, height)
+
+    expected = fire.hot_dry_windy(temperature.values, humidity.values, wind.values, height.values, level_axis=-1)
+    assert isinstance(result, xr.DataArray)
+    assert "level" not in result.dims
+    assert "level" not in result.coords
+    assert result.dims == ("time", "y", "x")
+    np.testing.assert_allclose(result.values, expected)
+    np.testing.assert_array_equal(result.coords["time"].values, temperature.coords["time"].values)
+
+
+def test_hdw_xarray_extra_dimension_on_one_input_broadcasts() -> None:
+    """A dimension present on only one of the four inputs (e.g. an ensemble member
+    axis on wind or height) must broadcast into the output, not crash on transpose."""
+    xr = pytest.importorskip("xarray")
+
+    temperature, humidity, _wind, height = _hdw_profile_dataarrays(xr, shape=(3, 4, 2), dims=("time", "x", "level"))
+    rng = np.random.default_rng(80918)
+    wind = xr.DataArray(rng.uniform(0.0, 30.0, (3, 4, 5, 2)), dims=("time", "x", "member", "level"))
+
+    result = fire.hot_dry_windy(temperature, humidity, wind, height)
+    assert set(result.dims) == {"time", "x", "member"}
+    assert result.shape == (3, 4, 5)
+
+    expected = fire.hot_dry_windy(
+        temperature.values[:, :, None, :],
+        humidity.values[:, :, None, :],
+        wind.values,
+        height.values,
+        level_axis=-1,
+    )
+    np.testing.assert_allclose(result.transpose("time", "x", "member").values, expected)
+
+
+def test_hdw_numpy_input_returns_ndarray_not_dataarray() -> None:
+    """The new xarray dispatch guard must not change NumPy-path behavior or return type."""
+    xr = pytest.importorskip("xarray")
+
+    result = fire.hot_dry_windy([30.0, 26.0], [15.0, 30.0], [8.0, 12.0], [10.0, 400.0])
+    assert isinstance(result, np.ndarray)
+    assert not isinstance(result, xr.DataArray)
+
+
+def test_hdw_xarray_metadata_matches_registry() -> None:
+    xr = pytest.importorskip("xarray")
+
+    temperature, humidity, wind, height = _hdw_profile_dataarrays(xr)
+    result = fire.hot_dry_windy(temperature, humidity, wind, height)
+
+    for key in ("long_name", "units", "description", "references"):
+        assert result.attrs[key] == CF_METADATA["hdw"][key]
+
+
+def test_hdw_xarray_chunked_matches_eager() -> None:
+    """Chunking every dimension but level through the public adapter changes nothing."""
+    xr = pytest.importorskip("xarray")
+    pytest.importorskip("dask")
+
+    temperature, humidity, wind, height = _hdw_profile_dataarrays(xr)
+    eager = fire.hot_dry_windy(temperature, humidity, wind, height)
+
+    chunked_inputs = (a.chunk({"time": 2, "x": 1}) for a in (temperature, humidity, wind))
+    chunked = fire.hot_dry_windy(*chunked_inputs, height)
+    assert chunked.chunks is not None
+    np.testing.assert_allclose(chunked.compute().values, eager.values)
+
+
+def test_hdw_xarray_dask_blocks_do_not_log_per_block() -> None:
+    """One xarray operation must not emit the public lifecycle events (or the
+    invalid-value warnings) once per Dask block; the silent kernel keeps
+    observability bounded while block exceptions still surface from compute()."""
+    xr = pytest.importorskip("xarray")
+    pytest.importorskip("dask")
+
+    temperature, humidity, wind, height = _hdw_profile_dataarrays(xr)
+    mock_logger = mock.MagicMock()
+    mock_logger.bind.return_value = mock_logger
+
+    with mock.patch.object(fire, "_logger", mock_logger):
+        chunked = fire.hot_dry_windy(
+            *(a.chunk({"time": 2, "x": 1}) for a in (temperature, humidity, wind)),
+            height,
+        )
+        chunked.compute()
+
+    mock_logger.bind.assert_not_called()
+    mock_logger.warning.assert_not_called()
+
+
+def test_hdw_xarray_mismatched_level_labels_raise() -> None:
+    """The documented contract is xarray's exact join: shared dimensions are
+    matched, not aligned, so unequal or reordered labels raise."""
+    xr = pytest.importorskip("xarray")
+
+    temperature, humidity, wind, height = _hdw_profile_dataarrays(xr)
+    levels = np.arange(temperature.sizes["level"], dtype=np.float64)
+    temperature = temperature.assign_coords(level=levels)
+    humidity = humidity.assign_coords(level=levels)
+    wind = wind.assign_coords(level=levels)
+    height = height.assign_coords(level=levels)
+
+    with pytest.raises(ValueError, match="join='exact'"):
+        fire.hot_dry_windy(temperature, humidity, wind, height.isel(level=slice(None, None, -1)))
+
+
+def test_hdw_xarray_level_chunked_raises() -> None:
+    xr = pytest.importorskip("xarray")
+    pytest.importorskip("dask")
+
+    temperature, humidity, wind, height = _hdw_profile_dataarrays(xr)
+    temperature = temperature.chunk({"level": 1})
+
+    with pytest.raises(CoordinateValidationError, match="level"):
+        fire.hot_dry_windy(temperature, humidity, wind, height)
+
+
+def test_hdw_xarray_missing_level_dim_raises() -> None:
+    xr = pytest.importorskip("xarray")
+
+    temperature, humidity, wind, height = _hdw_profile_dataarrays(xr)
+    temperature = temperature.rename({"level": "plev"})
+
+    with pytest.raises(CoordinateValidationError, match="level"):
+        fire.hot_dry_windy(temperature, humidity, wind, height)
+
+
+def test_hdw_xarray_level_axis_non_default_raises() -> None:
+    xr = pytest.importorskip("xarray")
+
+    temperature, humidity, wind, height = _hdw_profile_dataarrays(xr)
+    with pytest.raises(InvalidArgumentError, match="level_axis") as exc_info:
+        fire.hot_dry_windy(temperature, humidity, wind, height, level_axis=0)
+    assert exc_info.value.argument_name == "level_axis"
+
+
+def test_hdw_xarray_mixed_input_types_raise() -> None:
+    xr = pytest.importorskip("xarray")
+
+    temperature, humidity, wind, height = _hdw_profile_dataarrays(xr)
+    with pytest.raises(TypeError, match="same type"):
+        fire.hot_dry_windy(temperature, humidity.values, wind, height)
+
+
+def test_hdw_xarray_height_accepts_1d_list_and_nd_dataarray() -> None:
+    xr = pytest.importorskip("xarray")
+
+    temperature, humidity, wind, height = _hdw_profile_dataarrays(xr)
+
+    from_list = fire.hot_dry_windy(temperature, humidity, wind, list(height.values))
+    np.testing.assert_allclose(from_list.values, fire.hot_dry_windy(temperature, humidity, wind, height).values)
+
+    height_nd = height.broadcast_like(temperature)
+    from_nd = fire.hot_dry_windy(temperature, humidity, wind, height_nd)
+    np.testing.assert_allclose(from_nd.values, fire.hot_dry_windy(temperature, humidity, wind, height).values)
+
+
+def test_hdw_xarray_height_bad_shape_raises() -> None:
+    xr = pytest.importorskip("xarray")
+
+    temperature, humidity, wind, _height = _hdw_profile_dataarrays(xr)
+    with pytest.raises(InvalidArgumentError, match="height_agl_meters"):
+        fire.hot_dry_windy(temperature, humidity, wind, [[1.0, 2.0], [3.0, 4.0]])
+
+
+def test_hdw_xarray_temperature_kelvin_units_converted() -> None:
+    xr = pytest.importorskip("xarray")
+
+    temperature, humidity, wind, height = _hdw_profile_dataarrays(xr)
+    celsius_result = fire.hot_dry_windy(temperature, humidity, wind, height)
+
+    kelvin_temperature = (temperature + 273.15).assign_attrs(units="K")
+    kelvin_result = fire.hot_dry_windy(kelvin_temperature, humidity, wind, height)
+    np.testing.assert_allclose(kelvin_result.values, celsius_result.values)
+    assert kelvin_result.attrs["units"] == CF_METADATA["hdw"]["units"]
 
 
 # ------------------------------------------------------------------------------
