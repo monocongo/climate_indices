@@ -83,7 +83,6 @@ jobs:
           --ignore=tests/test_release_integrity.py
           --ignore=tests/test_review_scripts.py
           --ignore=tests/test_type_checking.py
-          --ignore=tests/test_pattern_compliance.py
 
   validation:
     runs-on: ubuntu-latest
@@ -136,7 +135,6 @@ jobs:
           tests/test_release_integrity.py
           tests/test_review_scripts.py
           tests/test_type_checking.py
-          tests/test_pattern_compliance.py
 
   test-minimum-deps:
     runs-on: ubuntu-latest
@@ -165,7 +163,6 @@ jobs:
           --ignore=tests/test_release_integrity.py
           --ignore=tests/test_review_scripts.py
           --ignore=tests/test_type_checking.py
-          --ignore=tests/test_pattern_compliance.py
 
   notebooks:
     runs-on: ubuntu-latest
