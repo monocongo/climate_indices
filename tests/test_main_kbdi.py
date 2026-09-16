@@ -194,6 +194,44 @@ class TestKBDIProcessing:
             assert dataset[var_name].sizes["time"] == _DAILY_PERIODS
             assert np.isfinite(dataset[var_name].values).all()
 
+    @pytest.mark.parametrize(
+        "dims",
+        [("lat", "lon", "time"), ("time", "lat", "lon")],
+        ids=["lat_lon_time", "time_lat_lon"],
+    )
+    @pytest.mark.parametrize("shape", [(1, 3), (3, 1)], ids=["1xN", "Nx1"])
+    def test_singleton_coordinate_grids(self, monkeypatch, tmp_path, kbdi_datasets, dims, shape):
+        # a singleton latitude or longitude has an empty np.diff(): validation
+        # must still pass so that matching coordinates reach fire.kbdi()
+        time = xr.date_range("1990-01-01", periods=_DAILY_PERIODS, freq="D")
+        rng = np.random.default_rng(7)
+        n_lat, n_lon = shape
+        coords = {"lat": 25.0 + np.arange(n_lat), "lon": -100.0 + np.arange(n_lon), "time": time}
+        sizes = {"lat": n_lat, "lon": n_lon, "time": _DAILY_PERIODS}
+        values_shape = tuple(sizes[dim] for dim in dims)
+        kbdi_datasets["precip.nc"] = xr.DataArray(
+            rng.gamma(2.0, 2.0, values_shape),
+            dims=dims,
+            coords=coords,
+            attrs={"units": "mm"},
+            name="precip",
+        ).to_dataset()
+        kbdi_datasets["temp.nc"] = xr.DataArray(
+            25.0 + 5.0 * rng.random(values_shape),
+            dims=dims,
+            coords=coords,
+            attrs={"units": "degC"},
+            name="tmax",
+        ).to_dataset()
+        _patch_open_dataset(monkeypatch, kbdi_datasets)
+
+        cli_main.process_climate_indices(_kbdi_arguments(output_file_base=str(tmp_path / "out")))
+
+        with xr.open_dataset(tmp_path / "out_kbdi.nc") as dataset:
+            assert dataset["kbdi"].sizes["lat"] == n_lat
+            assert dataset["kbdi"].sizes["lon"] == n_lon
+            assert np.isfinite(dataset["kbdi"].values).all()
+
     def test_chunked_inputs_keep_time_whole_and_copy_input_chunksizes(self, monkeypatch, tmp_path):
         time = xr.date_range("1990-01-01", periods=_DAILY_PERIODS, freq="D")
         rng = np.random.default_rng(42)
