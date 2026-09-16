@@ -95,17 +95,29 @@ def _run_spi(precip: xr.DataArray, pet: xr.DataArray) -> xr.DataArray:
 _RUNNERS: dict[str, _Runner] = {"spi": _run_spi, "spei": run_spei}
 
 
-def _chunk_for_workers(array: xr.DataArray, workers: int) -> xr.DataArray:
-    """Chunk the spatial dimensions so every worker gets a block.
+def _split_cells(cells: int, parts: int) -> tuple[int, ...]:
+    """Split ``cells`` into ``parts`` contiguous chunks of near-equal size."""
+    base, extra = divmod(cells, parts)
+    return tuple(base + 1 if index < extra else base for index in range(parts))
 
-    The time dimension stays a single chunk, as ADR-0003 requires.
+
+def _chunk_for_workers(array: xr.DataArray, workers: int) -> xr.DataArray:
+    """Chunk the spatial dimensions so every worker gets at least one block.
+
+    The time dimension stays a single chunk, as ADR-0003 requires. The chunk
+    sizes are explicit: rounding a uniform integer size can undershoot the
+    requested part count (38 cells over 12 parts is 10 chunks at size 4), which
+    would leave workers idle while their count still scales the reported
+    efficiency.
     """
-    side = math.isqrt(workers - 1) + 1
+    lat_cells, lon_cells = array.sizes["lat"], array.sizes["lon"]
+    lat_parts = min(lat_cells, max(1, round(math.sqrt(workers * lat_cells / lon_cells))))
+    lon_parts = min(lon_cells, max(1, math.ceil(workers / lat_parts)))
     return array.chunk(
         {
             "time": -1,
-            "lat": math.ceil(array.sizes["lat"] / side),
-            "lon": math.ceil(array.sizes["lon"] / side),
+            "lat": _split_cells(lat_cells, lat_parts),
+            "lon": _split_cells(lon_cells, lon_parts),
         }
     )
 
@@ -116,7 +128,8 @@ def _measure(runner: _Runner, precip: xr.DataArray, pet: xr.DataArray, workers: 
     One extra warm-up run keeps parent-side first-call imports out of the timed
     samples. Every ``compute()`` call creates a fresh process pool, so pool
     start-up stays inside every measurement, as it does for any caller of the
-    ``processes`` scheduler.
+    ``processes`` scheduler. The pool initializer installs the goodness-of-fit
+    filter in each worker before any task runs.
     """
     inputs = _chunk_for_workers(precip, workers), _chunk_for_workers(pet, workers)
     timings = []
@@ -124,7 +137,12 @@ def _measure(runner: _Runner, precip: xr.DataArray, pet: xr.DataArray, workers: 
         start = time.perf_counter()
         # chunksize=1: the default batches up to six ready tasks per submission, which
         # runs a whole six-block batch sequentially on one worker
-        result = runner(*inputs).compute(scheduler="processes", num_workers=workers, chunksize=1)
+        result = runner(*inputs).compute(
+            scheduler="processes",
+            num_workers=workers,
+            chunksize=1,
+            initializer=_quiet_worker,
+        )
         timings.append(time.perf_counter() - start)
     values = result.values
     # SPI and SPEI pad the first scale-1 time steps with NaN; anything else non-finite
@@ -141,16 +159,27 @@ def _spatial_blocks(array: xr.DataArray, workers: int) -> int:
 
 
 def _default_workers() -> tuple[int, ...]:
-    """Powers of two from 1 up to the CPU count."""
+    """Powers of two from 1 up to the CPU count, never above the grid's cells."""
+    limit = min(os.cpu_count() or 1, REFERENCE_LAT * REFERENCE_LON)
     counts = [1]
-    while counts[-1] * 2 <= (os.cpu_count() or 1):
+    while counts[-1] * 2 <= limit:
         counts.append(counts[-1] * 2)
     return tuple(counts)
 
 
 def _worker_counts(value: str) -> tuple[int, ...]:
-    """Parse a comma-separated list of worker counts."""
-    return tuple(int(count) for count in value.split(","))
+    """Parse a comma-separated list of worker counts.
+
+    Counts outside ``1..spatial cells`` cannot produce a block per worker, so
+    they are rejected as argument errors rather than failing mid-benchmark.
+    """
+    counts = tuple(int(count) for count in value.split(","))
+    if any(count < 1 for count in counts):
+        raise argparse.ArgumentTypeError("worker counts must be at least 1")
+    cells = REFERENCE_LAT * REFERENCE_LON
+    if any(count > cells for count in counts):
+        raise argparse.ArgumentTypeError(f"worker counts must not exceed the {cells} spatial cells")
+    return counts
 
 
 def _parse_args() -> argparse.Namespace:
@@ -179,15 +208,18 @@ def _parse_args() -> argparse.Namespace:
 def _silence_run_noise() -> None:
     """Keep per-cell logging and goodness-of-fit warnings out of the measurement.
 
-    Both cost more than the computation at this grid size, and both are also
-    emitted inside the Dask workers: the spawned processes inherit the
-    environment (``CLIMATE_INDICES_LOG_LEVEL`` and ``PYTHONWARNINGS``), which
-    they read when they import the library.
+    Both cost more than the computation at this grid size. Workers inherit the
+    log level from the environment, and the pool initializer installs the
+    goodness-of-fit filter in each worker, so unrelated warning categories stay
+    visible on both sides of the pool.
     """
     os.environ[ENV_LOG_LEVEL] = "WARNING"
-    # a dotted warning category is not valid -W syntax, so the workers silence everything
-    os.environ["PYTHONWARNINGS"] = "ignore"
     logging.getLogger().setLevel(logging.WARNING)
+    warnings.filterwarnings("ignore", category=GoodnessOfFitWarning)
+
+
+def _quiet_worker() -> None:
+    """Silence goodness-of-fit warnings inside a Dask worker process."""
     warnings.filterwarnings("ignore", category=GoodnessOfFitWarning)
 
 
