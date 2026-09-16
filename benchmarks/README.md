@@ -200,5 +200,4 @@ are only reachable through the per-series API, and standard `pdsi` does not
 self-calibrate. #899
 refactors these internals with unchanged output, not into an n-D kernel. The #923
 tasks name SPI, SPEI, and PET (its acceptance criteria name SPI), so Palmer is a
-follow-up rather than part of the conversion, and no open ticket owns the n-D
-kernel.
+follow-up rather than part of the conversion; the n-D kernel is tracked in #937.
