@@ -8,7 +8,9 @@ Fuel Moisture Code, the Duff Moisture Code, and the Drought Code. Stateful
 functions follow the execution, state-ownership, and append/resume contract
 recorded in ``docs/adr/0006-fire-recursive-state-and-execution.md`` and the
 missing-data policy recorded in ``docs/adr/0007-fire-missing-data-policy.md``;
-the CFFWIS behavior indices (#804) will use the same contract.
+the CFFWIS behavior indices (#804) use the same contract, and the
+:func:`cffwis` orchestrator threads all three moisture codes through a single
+time loop.
 
 References
 ----------
@@ -44,15 +46,22 @@ Forestry Technical Report 33.
 from __future__ import annotations
 
 from climate_indices.fire._cffwis import (
+    CFFWISResult,
+    CFFWISState,
     DCResult,
     DCState,
     DMCResult,
     DMCState,
     FFMCResult,
     FFMCState,
+    buildup_index,
+    cffwis,
+    cffwis_fwi,
+    daily_severity_rating,
     drought_code,
     duff_moisture_code,
     ffmc,
+    initial_spread_index,
 )
 from climate_indices.fire._fosberg import fosberg_ffwi
 from climate_indices.fire._hdw import hot_dry_windy
@@ -60,6 +69,8 @@ from climate_indices.fire._kbdi import KBDIResult, KBDIState, kbdi
 
 # declare the function names that should be included in the public API for this package
 __all__ = [
+    "CFFWISResult",
+    "CFFWISState",
     "DCResult",
     "DCState",
     "DMCResult",
@@ -68,10 +79,15 @@ __all__ = [
     "FFMCState",
     "KBDIResult",
     "KBDIState",
+    "buildup_index",
+    "cffwis",
+    "cffwis_fwi",
+    "daily_severity_rating",
     "drought_code",
     "duff_moisture_code",
     "ffmc",
     "fosberg_ffwi",
     "hot_dry_windy",
+    "initial_spread_index",
     "kbdi",
 ]

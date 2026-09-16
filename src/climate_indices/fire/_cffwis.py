@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -74,6 +74,11 @@ _DC_DAY_LENGTH_ADJUSTMENT = np.array(
         [6.4, 5.0, 2.4, 0.4, -1.6, -1.6, -1.6, -1.6, -1.6, 0.9, 3.8, 5.8],
     ]
 )
+
+# The seven CFFWIS outputs, in the order shared by CFFWISResult and the
+# xarray Dataset planned in #807.
+_CFFWISComponent = Literal["ffmc", "dmc", "dc", "isi", "bui", "fwi", "dsr"]
+_CFFWIS_COMPONENTS: tuple[_CFFWISComponent, ...] = ("ffmc", "dmc", "dc", "isi", "bui", "fwi", "dsr")
 
 
 # Canadian Forest Fire Weather Index System moisture codes (#803)
@@ -1001,4 +1006,754 @@ def drought_code(
             dc=state_value.reshape(spatial_shape).copy(),
             trailing_gap_days=None if state_gap_days is None else state_gap_days.reshape(spatial_shape),
         ),
+    )
+
+
+# CFFWIS behavior indices and Daily Severity Rating (#804)
+#
+# ISI, BUI, and the Canadian FWI are concurrent-input derivatives of the
+# moisture codes above, not recurrences: they carry no state, broadcast
+# elementwise, and have no missing-data policy of their own. Invalid inputs
+# follow the Fosberg/HDW convention -- NaN with a logged warning rather than a
+# raise. DSR is the power transform that makes the FWI seasonally averageable.
+
+
+@dataclass(frozen=True)
+class CFFWISState:
+    """Combined final state of the three CFFWIS moisture codes.
+
+    Each nested state follows its single-code contract
+    (:class:`FFMCState`, :class:`DMCState`, :class:`DCState`), including the
+    per-code ``trailing_gap_days`` bookkeeping, so resuming from a combined
+    state reproduces exactly what the three separate functions would.
+    """
+
+    ffmc: FFMCState
+    dmc: DMCState
+    dc: DCState
+
+
+@dataclass(frozen=True)
+class CFFWISResult:
+    """The seven CFFWIS outputs and, when requested, the combined final state.
+
+    ``ffmc``, ``dmc``, ``dc``, ``isi``, ``bui``, ``fwi``, and ``dsr`` are
+    time-first NumPy arrays. A field is ``None`` when its name was not
+    selected through :func:`cffwis`'s ``outputs``; ``state`` is ``None``
+    unless ``return_state=True``.
+    """
+
+    ffmc: npt.NDArray[np.float64] | None
+    dmc: npt.NDArray[np.float64] | None
+    dc: npt.NDArray[np.float64] | None
+    isi: npt.NDArray[np.float64] | None
+    bui: npt.NDArray[np.float64] | None
+    fwi: npt.NDArray[np.float64] | None
+    dsr: npt.NDArray[np.float64] | None
+    state: CFFWISState | None = None
+
+
+def _resolve_outputs(outputs: Collection[_CFFWISComponent] | str | None) -> frozenset[_CFFWISComponent]:
+    """Resolve the requested CFFWIS component names, defaulting to all seven."""
+    if outputs is None:
+        return frozenset(_CFFWIS_COMPONENTS)
+    requested: tuple[_CFFWISComponent, ...]
+    if isinstance(outputs, str):
+        # one-name shorthand; membership is validated below
+        requested = (cast(_CFFWISComponent, outputs),)
+    else:
+        requested = tuple(outputs)
+    unknown = sorted(name for name in requested if name not in _CFFWIS_COMPONENTS)
+    if unknown:
+        raise InvalidArgumentError(
+            f"Unknown CFFWIS output name(s): {', '.join(repr(name) for name in unknown)}.",
+            argument_name="outputs",
+            argument_value=", ".join(repr(name) for name in unknown),
+            valid_values=", ".join(repr(name) for name in _CFFWIS_COMPONENTS),
+        )
+    if not requested:
+        raise InvalidArgumentError(
+            "outputs must name at least one CFFWIS component.",
+            argument_name="outputs",
+            argument_value="empty",
+            valid_values=", ".join(repr(name) for name in _CFFWIS_COMPONENTS),
+        )
+    return frozenset(requested)
+
+
+def _broadcast_elementwise(
+    index_name: str,
+    argument_names: tuple[str, ...],
+    *values: npt.ArrayLike,
+) -> tuple[npt.NDArray[np.float64], ...]:
+    """Coerce and broadcast elementwise fire-index inputs, rejecting shape mismatches."""
+    arrays = tuple(_as_float_array(value) for value in values)
+    try:
+        broadcast = np.broadcast_arrays(*arrays)
+    except ValueError as exc:
+        message = (
+            f"Incompatible array shapes for {index_name}: "
+            + ", ".join(f"{name}={array.shape}" for name, array in zip(argument_names, arrays, strict=True))
+            + ". The inputs must broadcast together."
+        )
+        _logger.error(message)
+        raise InvalidArgumentError(
+            message,
+            argument_name="/".join(argument_names),
+            argument_value=f"shapes {', '.join(str(array.shape) for array in arrays)}",
+            valid_values="Arrays broadcastable to a common shape",
+        ) from exc
+    result: tuple[npt.NDArray[np.float64], ...] = tuple(broadcast)
+    return result
+
+
+def _elementwise_result(
+    index_name: str,
+    inputs: tuple[npt.NDArray[np.float64], ...],
+    evaluate: Callable[[], npt.NDArray[np.float64]],
+    *,
+    invalid: npt.NDArray[np.bool_],
+    invalid_description: str,
+) -> npt.NDArray[np.float64]:
+    """Run a derived index elementwise, with the shared lifecycle logging and NaN masking."""
+    log = _logger.bind(index_type=index_name, input_shape=inputs[0].shape, input_elements=inputs[0].size)
+    log.info("calculation_started")
+    t0 = time.perf_counter()
+    memory_metrics = check_large_array_memory(*inputs)
+    try:
+        invalid_count = int(np.count_nonzero(invalid))
+        if invalid_count > 0:
+            _logger.warning(f"Found {invalid_count} {invalid_description}; {index_name} is NaN there.")
+        with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+            evaluated = evaluate()
+        result = np.where(invalid, np.nan, evaluated).astype(np.float64, copy=False)
+        duration_ms = (time.perf_counter() - t0) * 1000.0
+        log.info(
+            "calculation_completed",
+            duration_ms=round(duration_ms, 2),
+            output_shape=result.shape,
+            **(memory_metrics or {}),
+        )
+        return result
+    except Exception as exc:
+        log.error(
+            "calculation_failed",
+            exc_info=True,
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+        )
+        raise
+
+
+def _initial_spread_index(
+    ffmc: npt.NDArray[np.float64],
+    wind_speed_kilometers_per_hour: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]:
+    """Combine FFMC and wind into ISI (Van Wagner and Pickett, 1985, Eq. 24-26)."""
+    moisture = _FFMC_COEFFICIENT * (101.0 - ffmc) / (59.5 + ffmc)
+    wind_factor = np.exp(0.05039 * wind_speed_kilometers_per_hour)
+    fine_fuel_factor = 91.9 * np.exp(-0.1386 * moisture) * (1.0 + moisture**5.31 / 49300000.0)
+    return 0.208 * wind_factor * fine_fuel_factor
+
+
+def _buildup_index(
+    dmc: npt.NDArray[np.float64],
+    dc: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]:
+    """Combine DMC and DC into BUI (Van Wagner and Pickett, 1985, Eq. 27)."""
+    with np.errstate(divide="ignore", invalid="ignore"):
+        combined = np.where((dmc == 0.0) & (dc == 0.0), 0.0, 0.8 * dc * dmc / (dmc + 0.4 * dc))
+        weight = np.where(dmc == 0.0, 0.0, (dmc - combined) / dmc)
+        characteristic = 0.92 + (0.0114 * dmc) ** 1.7
+        reduced = np.maximum(dmc - characteristic * weight, 0.0)
+    return np.where(combined < dmc, reduced, combined)
+
+
+def _cffwis_fwi(
+    isi: npt.NDArray[np.float64],
+    bui: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]:
+    """Combine ISI and BUI into the Canadian FWI (Van Wagner and Pickett, 1985, Eq. 28-30)."""
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        damped = 1000.0 / (25.0 + 108.64 / np.exp(0.023 * bui))
+        initial = 0.1 * isi * np.where(bui > 80.0, damped, 0.626 * bui**0.809 + 2.0)
+        exponentiated = np.exp(2.72 * (0.434 * np.log(initial)) ** 0.647)
+    return np.where(initial <= 1.0, initial, exponentiated)
+
+
+def _daily_severity_rating(fwi: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    """Transform FWI into DSR (Van Wagner, 1987, Eq. 31)."""
+    return 0.0272 * fwi**1.77
+
+
+def initial_spread_index(
+    ffmc: npt.ArrayLike,
+    wind_speed_meters_per_second: npt.ArrayLike,
+) -> npt.NDArray[np.float64]:
+    """Compute the Initial Spread Index (ISI).
+
+    The expected rate of fire spread immediately after ignition, from the
+    Fine Fuel Moisture Code and the 10 m wind speed (Van Wagner and Pickett,
+    1985). It carries no state and broadcasts elementwise, so any shape works.
+
+    Args:
+        ffmc: Fine Fuel Moisture Code, in [0, 101].
+        wind_speed_meters_per_second: 10 m wind speed, meters per second,
+            non-negative. Converted to the km/h the equations are written in
+            here and nowhere else.
+
+    Returns:
+        ISI with the broadcast shape of the inputs. NaN where any input is
+        NaN or non-finite, where FFMC lies outside [0, 101], or where wind
+        speed is negative.
+
+    Raises:
+        InvalidArgumentError: If the inputs cannot be broadcast together.
+    """
+    ffmc_array, wind_array = _broadcast_elementwise(
+        "initial_spread_index",
+        ("ffmc", "wind_speed_meters_per_second"),
+        ffmc,
+        wind_speed_meters_per_second,
+    )
+    with np.errstate(over="ignore", invalid="ignore"):
+        wind_kilometers_per_hour = wind_array * _KILOMETERS_PER_HOUR_PER_METER_PER_SECOND
+    invalid = (
+        ~np.isfinite(ffmc_array)
+        | ~np.isfinite(wind_kilometers_per_hour)
+        | (ffmc_array < 0.0)
+        | (ffmc_array > _FFMC_MAXIMUM)
+        | (wind_kilometers_per_hour < 0.0)
+    )
+    return _elementwise_result(
+        "initial_spread_index",
+        (ffmc_array, wind_kilometers_per_hour),
+        lambda: _initial_spread_index(ffmc_array, wind_kilometers_per_hour),
+        invalid=invalid,
+        invalid_description="values with FFMC outside [0, 101] or negative wind speed",
+    )
+
+
+def buildup_index(
+    dmc: npt.ArrayLike,
+    dc: npt.ArrayLike,
+) -> npt.NDArray[np.float64]:
+    """Compute the Buildup Index (BUI).
+
+    A weighted combination of the Duff Moisture Code and the Drought Code
+    (Van Wagner and Pickett, 1985) representing the fuel available for
+    spreading. It carries no state and broadcasts elementwise.
+
+    Args:
+        dmc: Duff Moisture Code, non-negative.
+        dc: Drought Code, non-negative.
+
+    Returns:
+        BUI with the broadcast shape of the inputs. NaN where any input is
+        NaN or non-finite or where DMC or DC is negative.
+
+    Raises:
+        InvalidArgumentError: If the inputs cannot be broadcast together.
+    """
+    dmc_array, dc_array = _broadcast_elementwise("buildup_index", ("dmc", "dc"), dmc, dc)
+    invalid = ~np.isfinite(dmc_array) | ~np.isfinite(dc_array) | (dmc_array < 0.0) | (dc_array < 0.0)
+    return _elementwise_result(
+        "buildup_index",
+        (dmc_array, dc_array),
+        lambda: _buildup_index(dmc_array, dc_array),
+        invalid=invalid,
+        invalid_description="values with negative or non-finite DMC or DC",
+    )
+
+
+def cffwis_fwi(
+    isi: npt.ArrayLike,
+    bui: npt.ArrayLike,
+) -> npt.NDArray[np.float64]:
+    """Compute the Canadian Fire Weather Index (FWI).
+
+    The final CFFWIS output, combining the Initial Spread Index and the
+    Buildup Index (Van Wagner and Pickett, 1985). ``cffwis_fwi`` is named to
+    keep it distinct from the Fosberg index, :func:`fosberg_ffwi`; there is no
+    ``fwi()``. It carries no state and broadcasts elementwise.
+
+    Args:
+        isi: Initial Spread Index, non-negative.
+        bui: Buildup Index, non-negative.
+
+    Returns:
+        FWI with the broadcast shape of the inputs. NaN where any input is
+        NaN or non-finite, or negative.
+
+    Raises:
+        InvalidArgumentError: If the inputs cannot be broadcast together.
+    """
+    isi_array, bui_array = _broadcast_elementwise("cffwis_fwi", ("isi", "bui"), isi, bui)
+    invalid = ~np.isfinite(isi_array) | ~np.isfinite(bui_array) | (isi_array < 0.0) | (bui_array < 0.0)
+    return _elementwise_result(
+        "cffwis_fwi",
+        (isi_array, bui_array),
+        lambda: _cffwis_fwi(isi_array, bui_array),
+        invalid=invalid,
+        invalid_description="values with negative or non-finite ISI or BUI",
+    )
+
+
+def daily_severity_rating(cffwis_fwi: npt.ArrayLike) -> npt.NDArray[np.float64]:
+    """Compute the Daily Severity Rating (DSR).
+
+    A power transform of the Canadian FWI that makes seasonal averaging
+    meaningful (Van Wagner, 1987), the form used for climatological work.
+    It carries no state and broadcasts elementwise.
+
+    Args:
+        cffwis_fwi: Canadian FWI, non-negative. The parameter keeps the
+            design-doc name so the transform is unambiguous about which FWI
+            it consumes.
+
+    Returns:
+        DSR with the broadcast shape of the input. NaN where the FWI is NaN,
+        non-finite, or negative.
+    """
+    fwi_array = _as_float_array(cffwis_fwi)
+    invalid = ~np.isfinite(fwi_array) | (fwi_array < 0.0)
+    return _elementwise_result(
+        "daily_severity_rating",
+        (fwi_array,),
+        lambda: _daily_severity_rating(fwi_array),
+        invalid=invalid,
+        invalid_description="values with negative or non-finite FWI",
+    )
+
+
+@dataclass
+class _CodeRecurrence:
+    """One moisture-code recurrence threaded through the CFFWIS day loop."""
+
+    index_type: str
+    value: npt.NDArray[np.float64]
+    step: Callable[[int, npt.NDArray[np.bool_] | None], npt.NDArray[np.float64]]
+    weather_valid: npt.NDArray[np.bool_]
+    static_valid: npt.NDArray[np.bool_]
+    trailing_gap_days: npt.NDArray[np.int64]
+
+
+def _run_cffwis_system(
+    components: tuple[_CodeRecurrence, ...],
+    *,
+    memory_arrays: tuple[npt.NDArray[np.float64], ...],
+    spin_up: int,
+    nan_policy: Literal["propagate", "bridge"],
+    max_gap_days: int,
+) -> tuple[tuple[npt.NDArray[np.float64], ...], tuple[npt.NDArray[np.int64] | None, ...]]:
+    """Run the three CFFWIS moisture codes through one daily time loop.
+
+    Each component carries its own ADR-0007 bookkeeping because a day can be
+    missing for one code and valid for another: negative wind only affects
+    FFMC, humidity outside [0, 100] affects FFMC and DMC, and a NaN latitude
+    only affects DMC and DC. The codes still share the single pass over the
+    time axis, so no weather input is walked or broadcast three times.
+    """
+    n_days = components[0].weather_valid.shape[0]
+    log = _logger.bind(
+        index_type="cffwis",
+        input_shape=components[0].weather_valid.shape,
+        input_elements=components[0].weather_valid.size,
+    )
+    log.info("calculation_started")
+    t0 = time.perf_counter()
+    try:
+        values = tuple(
+            np.full((max(n_days - spin_up, 0), *component.weather_valid.shape[1:]), np.nan, dtype=np.float64)
+            for component in components
+        )
+        started = tuple(component.trailing_gap_days >= 0 for component in components)
+        poisoned = tuple(np.isnan(component.value) for component in components)
+        static_all_valid = tuple(bool(component.static_valid.all()) for component in components)
+        memory_metrics = check_large_array_memory(*memory_arrays, *values)
+
+        for day in range(n_days):
+            for index, component in enumerate(components):
+                if static_all_valid[index] and component.weather_valid[day].all():
+                    # A fully valid day with a usable static input: the gap
+                    # policy reduces to "every unpoisoned cell is active, the
+                    # trailing count resets, and a started recurrence stays
+                    # started", with no partial-mask bookkeeping needed.
+                    component.trailing_gap_days.fill(0)
+                    started[index].fill(True)
+                    active = None if not poisoned[index].any() else ~poisoned[index]
+                    all_active = active is None
+                else:
+                    active = _apply_gap_policy(
+                        component.value,
+                        component.weather_valid[day],
+                        component.static_valid,
+                        started[index],
+                        poisoned[index],
+                        component.trailing_gap_days,
+                        nan_policy=nan_policy,
+                        max_gap_days=max_gap_days,
+                    )
+                    if not np.any(active):
+                        continue
+                    all_active = bool(active.all())
+                with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+                    updated = component.step(day, None if all_active else active)
+                if np.any(~np.isfinite(updated)):
+                    raise InvalidArgumentError(
+                        f"{component.index_type} produced a non-finite value from finite inputs.",
+                        argument_name=component.index_type,
+                        argument_value="non-finite result",
+                        valid_values="Finite inputs whose result stays within float64",
+                    )
+                if all_active:
+                    component.value[:] = updated
+                else:
+                    component.value[active] = updated
+                if day >= spin_up:
+                    output = values[index][day - spin_up]
+                    if all_active:
+                        output[:] = component.value
+                    else:
+                        assert active is not None
+                        output[:] = np.where(active, component.value, np.nan)
+
+        state_gap_days = tuple(
+            component.trailing_gap_days.copy() if np.any(started[index] | poisoned[index]) else None
+            for index, component in enumerate(components)
+        )
+        duration_ms = (time.perf_counter() - t0) * 1000.0
+        log.info(
+            "calculation_completed",
+            duration_ms=round(duration_ms, 2),
+            output_shape=values[0].shape,
+            **(memory_metrics or {}),
+        )
+        return values, state_gap_days
+    except Exception as exc:
+        log.error(
+            "calculation_failed",
+            exc_info=True,
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+        )
+        raise
+
+
+def cffwis(
+    temperature_celsius: npt.ArrayLike,
+    relative_humidity_percent: npt.ArrayLike,
+    wind_speed_meters_per_second: npt.ArrayLike,
+    precipitation_mm: npt.ArrayLike,
+    latitude_degrees_north: npt.ArrayLike,
+    month: npt.ArrayLike,
+    *,
+    initial_ffmc: npt.ArrayLike | None = None,
+    initial_dmc: npt.ArrayLike | None = None,
+    initial_dc: npt.ArrayLike | None = None,
+    initial_state: CFFWISState | None = None,
+    return_state: bool = False,
+    spin_up: int = 0,
+    nan_policy: Literal["propagate", "bridge"] = "propagate",
+    max_gap_days: int = 0,
+    outputs: Collection[_CFFWISComponent] | str | None = None,
+) -> CFFWISResult:
+    """Compute the Canadian Forest Fire Weather Index System in one pass.
+
+    The orchestrating call for CFFWIS: it threads FFMC, DMC, and DC through a
+    single daily time loop and derives ISI, BUI, the Canadian FWI, and DSR
+    from the concurrent code values. Every quantity an individually chained
+    set of calls produces is reproduced, without recomputing the recurrences.
+
+    ``outputs`` lets a caller who needs only some of the seven quantities
+    avoid computing and returning the rest: the moisture codes always run
+    because the three recurrences share the one pass, but a derived index is
+    computed only when it is selected or a selected index needs it. A field
+    that is not selected is ``None``.
+
+    The recurrence contract is ADR-0006 and the missing-day policy is
+    ADR-0007, both identical to the single-code functions: ``propagate``
+    poisons a started recurrence at a missing day, ``bridge`` skips gaps up to
+    ``max_gap_days``, and ``spin_up`` computes but omits leading days. A day
+    is missing for each code by its own inputs -- negative wind only affects
+    FFMC, humidity outside [0, 100] affects FFMC and DMC, and a NaN latitude
+    affects only DMC and DC -- matching what the separate functions do.
+
+    Args:
+        temperature_celsius: Daily noon-local-standard-time air temperature,
+            time-first, degrees Celsius.
+        relative_humidity_percent: Daily noon-local-standard-time relative
+            humidity, time-first, percent.
+        wind_speed_meters_per_second: Daily 10 m wind speed, time-first,
+            meters per second.
+        precipitation_mm: Daily 24-hour precipitation, time-first, mm.
+        latitude_degrees_north: Cell latitude, scalar or an array
+            broadcastable to the trailing spatial shape, degrees north in
+            [-90, 90]. NaN marks a cell with no usable day-length band.
+        month: Calendar month for each day, scalar or time-first, integer in
+            [1, 12]. Required by the DMC and DC day-length tables; the design
+            doc's signature omits it but the NumPy layer carries no calendar.
+        initial_ffmc: Seed FFMC, scalar or an array of the trailing spatial
+            shape. ``None`` selects the literature seed of 85. Cannot be
+            combined with ``initial_state``.
+        initial_dmc: Seed DMC. ``None`` selects the literature seed of 6.
+            Cannot be combined with ``initial_state``.
+        initial_dc: Seed DC. ``None`` selects the literature seed of 15.
+            Cannot be combined with ``initial_state``.
+        initial_state: Combined state returned by an earlier call. Cannot be
+            combined with any seed.
+        return_state: Attach the combined final :class:`CFFWISState`.
+        spin_up: Number of leading input days to compute but omit from the
+            outputs. The returned state still reflects the full input, as in
+            the single-code functions.
+        nan_policy: ``"propagate"`` poisons a started recurrence at a missing
+            day; ``"bridge"`` skips gaps up to ``max_gap_days``.
+        max_gap_days: Maximum bridged consecutive missing days. Must be zero
+            for ``"propagate"`` and positive for ``"bridge"``.
+        outputs: Component names to return, any subset of ``"ffmc"``,
+            ``"dmc"``, ``"dc"``, ``"isi"``, ``"bui"``, ``"fwi"``, and
+            ``"dsr"``. ``None`` returns all seven; a single string is
+            accepted as a one-name selection. Names not selected are ``None``
+            in the result.
+
+    Returns:
+        :class:`CFFWISResult` with the time-first shape of the broadcast
+        weather inputs, less ``spin_up`` leading days. The combined state is
+        attached when ``return_state`` is true.
+
+    Raises:
+        DataShapeError: If the weather inputs have no time dimension.
+        InvalidArgumentError: If shapes, configuration, state, latitude,
+            month, or physical inputs are invalid.
+    """
+    for seed_name, seed in (
+        ("initial_ffmc", initial_ffmc),
+        ("initial_dmc", initial_dmc),
+        ("initial_dc", initial_dc),
+    ):
+        _validate_recurrence_options(nan_policy, max_gap_days, spin_up, seed_name, seed, initial_state)
+    if initial_state is not None and not isinstance(initial_state, CFFWISState):
+        raise InvalidArgumentError(
+            "initial_state must be a CFFWISState.",
+            argument_name="initial_state",
+            argument_value=type(initial_state).__name__,
+            valid_values="CFFWISState",
+        )
+    selected = _resolve_outputs(outputs)
+
+    temperature, humidity, wind, precipitation = _daily_weather_arrays(
+        (
+            "temperature_celsius",
+            "relative_humidity_percent",
+            "wind_speed_meters_per_second",
+            "precipitation_mm",
+        ),
+        temperature_celsius,
+        relative_humidity_percent,
+        wind_speed_meters_per_second,
+        precipitation_mm,
+    )
+    if np.any(np.isfinite(precipitation) & (precipitation < 0.0)):
+        raise InvalidArgumentError(
+            "precipitation_mm must be non-negative where finite.",
+            argument_name="precipitation_mm",
+            argument_value="negative value",
+            valid_values="Non-negative daily precipitation",
+        )
+    months = _month_array(month, temperature.shape)
+    latitude, latitude_valid = _latitude_and_validity(latitude_degrees_north, temperature.shape[1:])
+
+    spatial_shape = temperature.shape[1:]
+    internal_spatial_shape = spatial_shape if spatial_shape else (1,)
+    temperature = temperature.reshape(temperature.shape[0], *internal_spatial_shape)
+    humidity = humidity.reshape(temperature.shape)
+    precipitation = precipitation.reshape(temperature.shape)
+    months = months.reshape(temperature.shape)
+    latitude = latitude.reshape(internal_spatial_shape)
+    latitude_valid = latitude_valid.reshape(internal_spatial_shape)
+    with np.errstate(over="ignore"):
+        wind = wind.reshape(temperature.shape) * _KILOMETERS_PER_HOUR_PER_METER_PER_SECOND
+    if np.any(np.isinf(wind)):
+        raise InvalidArgumentError(
+            "wind_speed_meters_per_second is too large to convert to kilometers per hour.",
+            argument_name="wind_speed_meters_per_second",
+            argument_value="finite value that overflows the km/h conversion",
+            valid_values="Finite values that do not overflow the km/h conversion",
+        )
+
+    ffmc_weather_valid = (
+        np.isfinite(temperature)
+        & np.isfinite(humidity)
+        & np.isfinite(wind)
+        & np.isfinite(precipitation)
+        & (humidity >= 0.0)
+        & (humidity <= 100.0)
+        & (wind >= 0.0)
+    )
+    dmc_weather_valid = (
+        np.isfinite(temperature)
+        & np.isfinite(humidity)
+        & np.isfinite(precipitation)
+        & (humidity >= 0.0)
+        & (humidity <= 100.0)
+    )
+    dc_weather_valid = np.isfinite(temperature) & np.isfinite(precipitation)
+
+    def component_state(
+        seed: npt.ArrayLike | None,
+        seed_name: str,
+        state: FFMCState | DMCState | DCState | None,
+        state_type: type[FFMCState] | type[DMCState] | type[DCState],
+        value_name: str,
+        default_seed: float,
+        maximum: float | None,
+    ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.int64]]:
+        return _initialize_single_value_state(
+            seed=seed,
+            seed_name=seed_name,
+            initial_state=state,
+            state_type=state_type,
+            value_name=value_name,
+            default_seed=default_seed,
+            minimum=0.0,
+            maximum=maximum,
+            spatial_shape=internal_spatial_shape,
+        )
+
+    ffmc_value, ffmc_trailing_gap_days = component_state(
+        initial_ffmc,
+        "initial_ffmc",
+        None if initial_state is None else initial_state.ffmc,
+        FFMCState,
+        "ffmc",
+        85.0,
+        _FFMC_MAXIMUM,
+    )
+    dmc_value, dmc_trailing_gap_days = component_state(
+        initial_dmc,
+        "initial_dmc",
+        None if initial_state is None else initial_state.dmc,
+        DMCState,
+        "dmc",
+        6.0,
+        None,
+    )
+    dc_value, dc_trailing_gap_days = component_state(
+        initial_dc,
+        "initial_dc",
+        None if initial_state is None else initial_state.dc,
+        DCState,
+        "dc",
+        15.0,
+        None,
+    )
+
+    dmc_band = _dmc_day_length_band(latitude)
+    dc_band = _dc_day_length_band(latitude)
+
+    def ffmc_step(day: int, active: npt.NDArray[np.bool_] | None = None) -> npt.NDArray[np.float64]:
+        state_slice, temperature_slice, humidity_slice, wind_slice, precipitation_slice = _active_view(
+            active,
+            ffmc_value,
+            temperature[day],
+            humidity[day],
+            wind[day],
+            precipitation[day],
+        )
+        return _ffmc_next(state_slice, temperature_slice, humidity_slice, wind_slice, precipitation_slice)
+
+    def dmc_step(day: int, active: npt.NDArray[np.bool_] | None = None) -> npt.NDArray[np.float64]:
+        if active is None:
+            effective_day_length = _DMC_EFFECTIVE_DAY_LENGTH_HOURS[dmc_band, months[day] - 1]
+        else:
+            effective_day_length = _DMC_EFFECTIVE_DAY_LENGTH_HOURS[dmc_band[active], months[day][active] - 1]
+        state_slice, temperature_slice, humidity_slice, precipitation_slice = _active_view(
+            active,
+            dmc_value,
+            temperature[day],
+            humidity[day],
+            precipitation[day],
+        )
+        return _dmc_next(state_slice, temperature_slice, humidity_slice, precipitation_slice, effective_day_length)
+
+    def dc_step(day: int, active: npt.NDArray[np.bool_] | None = None) -> npt.NDArray[np.float64]:
+        if active is None:
+            day_length_adjustment = _DC_DAY_LENGTH_ADJUSTMENT[dc_band, months[day] - 1]
+        else:
+            day_length_adjustment = _DC_DAY_LENGTH_ADJUSTMENT[dc_band[active], months[day][active] - 1]
+        state_slice, temperature_slice, precipitation_slice = _active_view(
+            active,
+            dc_value,
+            temperature[day],
+            precipitation[day],
+        )
+        return _dc_next(state_slice, temperature_slice, precipitation_slice, day_length_adjustment)
+
+    components = (
+        _CodeRecurrence(
+            "ffmc",
+            ffmc_value,
+            ffmc_step,
+            ffmc_weather_valid,
+            np.ones(internal_spatial_shape, dtype=np.bool_),
+            ffmc_trailing_gap_days,
+        ),
+        _CodeRecurrence(
+            "duff_moisture_code", dmc_value, dmc_step, dmc_weather_valid, latitude_valid, dmc_trailing_gap_days
+        ),
+        _CodeRecurrence("drought_code", dc_value, dc_step, dc_weather_valid, latitude_valid, dc_trailing_gap_days),
+    )
+    code_values, code_gap_days = _run_cffwis_system(
+        components,
+        memory_arrays=(temperature, humidity, wind, precipitation),
+        spin_up=spin_up,
+        nan_policy=nan_policy,
+        max_gap_days=max_gap_days,
+    )
+    ffmc_values, dmc_values, dc_values = code_values
+    ffmc_gap_days, dmc_gap_days, dc_gap_days = code_gap_days
+
+    # derive only what was requested: a downstream name pulls its inputs, so
+    # "ffmc" alone skips the four derived arrays entirely
+    needs_isi = bool(selected & {"isi", "fwi", "dsr"})
+    needs_bui = bool(selected & {"bui", "fwi", "dsr"})
+    isi_values = _initial_spread_index(ffmc_values, wind[spin_up:]) if needs_isi else None
+    bui_values = _buildup_index(dmc_values, dc_values) if needs_bui else None
+    fwi_values: npt.NDArray[np.float64] | None = None
+    if selected & {"fwi", "dsr"}:
+        assert isi_values is not None and bui_values is not None
+        fwi_values = _cffwis_fwi(isi_values, bui_values)
+    dsr_values: npt.NDArray[np.float64] | None = None
+    if "dsr" in selected:
+        assert fwi_values is not None
+        dsr_values = _daily_severity_rating(fwi_values)
+
+    def finalize(values_array: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+        return values_array.reshape(-1, *spatial_shape)
+
+    result_state: CFFWISState | None = None
+    if return_state:
+        result_state = CFFWISState(
+            ffmc=FFMCState(
+                ffmc=ffmc_value.reshape(spatial_shape).copy(),
+                trailing_gap_days=None if ffmc_gap_days is None else ffmc_gap_days.reshape(spatial_shape),
+            ),
+            dmc=DMCState(
+                dmc=dmc_value.reshape(spatial_shape).copy(),
+                trailing_gap_days=None if dmc_gap_days is None else dmc_gap_days.reshape(spatial_shape),
+            ),
+            dc=DCState(
+                dc=dc_value.reshape(spatial_shape).copy(),
+                trailing_gap_days=None if dc_gap_days is None else dc_gap_days.reshape(spatial_shape),
+            ),
+        )
+    return CFFWISResult(
+        ffmc=finalize(ffmc_values) if "ffmc" in selected else None,
+        dmc=finalize(dmc_values) if "dmc" in selected else None,
+        dc=finalize(dc_values) if "dc" in selected else None,
+        isi=finalize(isi_values) if "isi" in selected and isi_values is not None else None,
+        bui=finalize(bui_values) if "bui" in selected and bui_values is not None else None,
+        fwi=None if "fwi" not in selected or fwi_values is None else finalize(fwi_values),
+        dsr=None if "dsr" not in selected or dsr_values is None else finalize(dsr_values),
+        state=result_state,
     )
