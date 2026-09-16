@@ -2,28 +2,35 @@
 
 ## Decision
 
-Fire-weather and fuel-dryness indices live in one flat, namespaced module:
+Fire-weather and fuel-dryness indices live in one namespaced package:
 
 ```text
-src/climate_indices/fire.py
+src/climate_indices/fire/
+    __init__.py   public facade
+    _cffwis.py    Canadian Forest Fire Weather Index System
+    _fosberg.py   Fosberg FFWI
+    _hdw.py       Hot-Dry-Windy Index
+    _kbdi.py      Keetch-Byram Drought Index
+    _common.py    shared coercion, seed, and gap-policy helpers
+    _units.py     CF units-attribute conversion
 from climate_indices import fire
 ```
 
-`fire.py` is the stable NumPy layer for this family. It is an intentional
-family-level exception to the drought-oriented `indices.py`/`compute.py`
-placement in [ADR-0001](../adr/0001-dual-numpy-xarray-api.md), recorded in
+The package facade is the stable NumPy layer for this family. It is an
+intentional family-level exception to the drought-oriented
+`indices.py`/`compute.py` placement in
+[ADR-0001](../adr/0001-dual-numpy-xarray-api.md), recorded in
 [ADR-0005](../adr/0005-fire-module-api.md). Fire functions are never
 re-exported as unqualified package functions: use
 `fire.fosberg_ffwi()`, never `climate_indices.fosberg_ffwi()`.
 
-Keep the module flat until it exceeds roughly 1,500 lines or CFFWIS recurrence
-state needs isolated implementation modules. At that point, promote it to a
-`fire` package without changing `from climate_indices import fire` or any
-public function name. No fire CLI is part of this subsystem. `fire.py` passed
-that line count with the CFFWIS moisture codes (#803); promotion is deferred to
-a dedicated mechanical refactor tracked against the remaining CFFWIS work
-(#804), so the flat module is a deliberate, recorded deferral rather than a
-silent departure from the trigger.
+ADR-0005 kept the family flat until it passed roughly 1,500 lines or CFFWIS
+recurrence state needed isolated implementation modules. The CFFWIS behavior
+indices (#804) crossed that line, so the family was promoted to the package
+above without changing `from climate_indices import fire` or any public
+function name. The implementation modules carry a leading underscore so
+`fire.kbdi` and `fire.cffwis` stay bound to the functions rather than the
+modules. No fire CLI is part of this subsystem.
 
 This family covers meteorological and climatological indices only. It excludes
 NFDRS components such as ERC, BI, SC, and IC; fuel models; fire behaviour;
@@ -92,7 +99,10 @@ ordered coordinate labels; unlike KBDI, HDW does not align or reindex them.
 KBDI implements the contract today, with `KBDIState` carrying `kbdi`,
 `wet_spell_precipitation`, `trailing_gap_days`, and `units`; FFMC, DMC, and DC
 implement it with their single code value plus `trailing_gap_days`. The
-planned CFFWIS orchestrator (#804) will accept time-first daily arrays.
+`cffwis()` orchestrator adds `CFFWISState`, which nests the three single-code
+states so each keeps its own gap bookkeeping while a combined call resumes
+exactly what the three separate functions would. `CFFWISResult` returns any
+requested subset of the seven outputs; a name not selected is `None`.
 Single-output APIs take keyword-only `initial_<code>: float or spatial
 field | None`, `initial_state`, `return_state=False`, and `spin_up=0`. `None` selects the
 literature seed: KBDI 0, FFMC 85, DMC 6, or DC 15. `initial_state` restores the
@@ -189,13 +199,15 @@ kernels.
 | `buildup_index(dmc, dc)` | DMC, DC | dimensionless BUI |
 | `cffwis_fwi(isi, bui)` | ISI, BUI | dimensionless Canadian Fire Weather Index |
 | `daily_severity_rating(cffwis_fwi)` | Canadian FWI | dimensionless DSR |
-| `cffwis(temperature_celsius, relative_humidity_percent, wind_speed_meters_per_second, precipitation_mm, latitude_degrees_north, *, initial_ffmc=85.0, initial_dmc=6.0, initial_dc=15.0, spin_up=0, return_state=False)` | CFFWIS weather inputs above; `initial_*` and `spin_up` follow the shared state contract | `CFFWISResult` plus final state when `return_state=True`; xarray counterpart accepts `tas`, `hurs`, `sfcWind`, `pr`, and optional `lat`, returning `Dataset` |
+| `cffwis(temperature_celsius, relative_humidity_percent, wind_speed_meters_per_second, precipitation_mm, latitude_degrees_north, month, *, initial_ffmc=None, initial_dmc=None, initial_dc=None, initial_state=None, return_state=False, spin_up=0, nan_policy="propagate", max_gap_days=0, outputs=None)` | CFFWIS weather inputs above; `initial_*`, `spin_up`, and `nan_policy`/`max_gap_days` follow the shared stateful contract, and `month` is required by the DMC/DC day-length tables | `CFFWISResult` with the requested subset of the seven named outputs (`None` for names not requested) plus the combined `CFFWISState` when `return_state=True`; xarray counterpart accepts `tas`, `hurs`, `sfcWind`, `pr`, and optional `lat`, returning `Dataset` |
 | `hot_dry_windy(temperature_celsius, relative_humidity_percent, wind_speed_meters_per_second, height_agl_meters, *, level_axis=-1)` | vertical profiles in °C, %, m s⁻¹, m AGL | hPa m s⁻¹; all levels must identify the lowest 500 m AGL |
 | `haines_index(temperature_lower_celsius, temperature_upper_celsius, dewpoint_lower_celsius, *, variant)` | pressure-level °C inputs selected by `variant` | integer 2–6; `variant` is `"low"`, `"mid"`, or `"high"`, never inferred by default |
 
 `fosberg_ffwi()`, `hot_dry_windy()`, `kbdi()`, `ffmc()`,
-`duff_moisture_code()`, and `drought_code()` are implemented today; the
-remaining rows are planned contracts, not yet callable. The stateful rows
+`duff_moisture_code()`, `drought_code()`, `initial_spread_index()`,
+`buildup_index()`, `cffwis_fwi()`, `daily_severity_rating()`, and `cffwis()`
+are implemented today; the Haines row is a planned contract (#810), not yet
+callable. The stateful rows
 accept the keyword-only missing-data arguments `nan_policy="propagate"` and
 `max_gap_days=0` described above.
 
@@ -218,14 +230,15 @@ come from its registry entry, never hand-written in an adapter.
 [#798](https://github.com/monocongo/climate_indices/issues/798) extended
 `CFAttributes` with `description` and `climate_indices_variant`, and added
 entries for the indices implemented today: `kbdi` (metric), `kbdi_imperial`,
-`ffwi`, `hdw`, `ffmc`, `dmc`, and `dc`. KBDI uses two keys, not one, because
+`ffwi`, `hdw`, and the seven CFFWIS entries `ffmc`, `dmc`, `dc`, `isi`,
+`bui`, `fwi`, and `dsr`. KBDI uses two keys, not one, because
 `kbdi()` returns two different unit scales from the same function;
-`climate_indices_variant` distinguishes them, and the CFFWIS moisture codes
-carry `cffwis_classic` to distinguish them from a future FWI2025 variant. The
-CFFWIS behavior indices (`isi`, `bui`, `fwi`, `dsr`, #804) and the Haines
-Index (`haines`, #810) have no registry entries yet — their unit and variant
-decisions are open questions best resolved against real implementations, not
-guessed ahead of them. No adapter for an index ships before its registry
+`climate_indices_variant` distinguishes them, and the CFFWIS entries all
+carry `cffwis_classic` to distinguish them from a future FWI2025 variant.
+The Haines Index (`haines`, #810) has no registry entry yet — its elevation
+variant is an open question best resolved against a real implementation, not
+guessed ahead of it. FWI is registered as the CFFWIS output name; the
+Fosberg index stays `ffwi`. No adapter for an index ships before its registry
 entry lands.
 
 `drought_code()` names the CFFWIS component only. It neither accepts a climate
