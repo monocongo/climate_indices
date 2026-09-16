@@ -131,3 +131,20 @@ def test_kbdi_xarray_return_type() -> None:
     temperature = xr.DataArray(rng.uniform(-5.0, 35.0, size=100), coords={"time": time}, dims=["time"])
     result = fire.kbdi(precipitation, temperature, 1000.0)
     assert_type(result, xr.DataArray | fire.KBDIResult)
+
+
+def test_hdw_numpy_return_type() -> None:
+    """Verify mypy infers np.ndarray for NumPy input (see test_kbdi_numpy_return_type)."""
+    result = fire.hot_dry_windy([30.0, 26.0], [15.0, 30.0], [8.0, 12.0], [10.0, 400.0])
+    assert_type(result, np.ndarray)
+
+
+def test_hdw_xarray_return_type() -> None:
+    """Verify mypy infers xr.DataArray for xarray input (see test_kbdi_numpy_return_type)."""
+    dims = ["level"]
+    temperature = xr.DataArray([30.0, 26.0], dims=dims)
+    humidity = xr.DataArray([15.0, 30.0], dims=dims)
+    wind = xr.DataArray([8.0, 12.0], dims=dims)
+    height = xr.DataArray([10.0, 400.0], dims=dims)
+    result = fire.hot_dry_windy(temperature, humidity, wind, height)
+    assert_type(result, xr.DataArray)

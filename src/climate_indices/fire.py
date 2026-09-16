@@ -1260,6 +1260,100 @@ def fosberg_ffwi(
         raise
 
 
+def _hdw_xarray(
+    temperature_celsius: xr.DataArray,
+    relative_humidity_percent: xr.DataArray,
+    wind_speed_meters_per_second: xr.DataArray,
+    height_agl_meters: npt.ArrayLike | xr.DataArray,
+    *,
+    level_axis: int,
+    level_dim: str,
+) -> xr.DataArray:
+    """xarray dispatch for :func:`hot_dry_windy`. See :func:`hot_dry_windy` for the full contract.
+
+    HDW is weather-only and stateless: every dimension besides ``level_dim``
+    passes straight through, unlike KBDI's per-call CF-registry resolution or
+    CFFWIS's shared recurrence. :func:`xarray.apply_ufunc` calls this
+    function's own NumPy path directly, once per Dask chunk, with
+    ``level_dim`` as the sole core dimension and reduced away -- the same
+    shape ``test_hdw_chunked_time_and_space_match_eager`` already exercises
+    for the NumPy core, here wrapped with validation and CF metadata.
+    """
+    if level_axis != -1:
+        raise InvalidArgumentError(
+            "level_axis is not used for xr.DataArray input; the vertical dimension is named by level_dim.",
+            argument_name="level_axis",
+            argument_value=str(level_axis),
+            valid_values="-1 (the default) when temperature_celsius is an xr.DataArray",
+        )
+
+    temperature = _convert_temperature_units(temperature_celsius, "celsius")
+    humidity = relative_humidity_percent
+    wind = wind_speed_meters_per_second
+    if isinstance(height_agl_meters, xr.DataArray):
+        height = height_agl_meters
+    else:
+        height_array = np.asarray(height_agl_meters, dtype=np.float64)
+        if height_array.ndim != 1:
+            raise InvalidArgumentError(
+                "height_agl_meters must be an xr.DataArray or a 1-D array-like when "
+                "temperature_celsius is an xr.DataArray.",
+                argument_name="height_agl_meters",
+                argument_value=f"array-like with ndim={height_array.ndim}",
+                valid_values="An xr.DataArray, or a 1-D array-like naming level_dim's levels",
+            )
+        height = xr.DataArray(height_array, dims=(level_dim,))
+
+    for name, data in (
+        ("temperature_celsius", temperature),
+        ("relative_humidity_percent", humidity),
+        ("wind_speed_meters_per_second", wind),
+        ("height_agl_meters", height),
+    ):
+        if level_dim not in data.dims:
+            raise CoordinateValidationError(
+                message=(
+                    f"Dimension '{level_dim}' not found in {name}. "
+                    f"Available dimensions: {list(data.dims)}. Use level_dim to specify a custom name."
+                ),
+                coordinate_name=level_dim,
+                reason="missing_dimension",
+            )
+        _validate_dask_chunks(data, level_dim)
+
+    result: xr.DataArray = xr.apply_ufunc(
+        hot_dry_windy,
+        temperature,
+        humidity,
+        wind,
+        height,
+        input_core_dims=[[level_dim]] * 4,
+        output_core_dims=[[]],
+        dask="parallelized",
+        output_dtypes=[np.float64],
+    )
+    result = result.transpose(*(d for d in temperature.dims if d != level_dim))
+    result.attrs = _build_output_attrs(
+        temperature_celsius,
+        cf_metadata=CF_METADATA["hdw"],  # type: ignore[arg-type]
+        index_name="HDW",
+    )
+    return result
+
+
+@overload
+def hot_dry_windy(
+    temperature_celsius: xr.DataArray,
+    relative_humidity_percent: xr.DataArray,
+    wind_speed_meters_per_second: xr.DataArray,
+    height_agl_meters: npt.ArrayLike | xr.DataArray,
+    *,
+    level_axis: int = -1,
+    level_dim: str = "level",
+) -> xr.DataArray: ...
+
+
+@overload
 def hot_dry_windy(
     temperature_celsius: npt.ArrayLike,
     relative_humidity_percent: npt.ArrayLike,
@@ -1267,8 +1361,30 @@ def hot_dry_windy(
     height_agl_meters: npt.ArrayLike,
     *,
     level_axis: int = -1,
-) -> npt.NDArray[np.float64]:
+    level_dim: str = "level",
+) -> npt.NDArray[np.float64]: ...
+
+
+def hot_dry_windy(
+    temperature_celsius: npt.ArrayLike | xr.DataArray,
+    relative_humidity_percent: npt.ArrayLike | xr.DataArray,
+    wind_speed_meters_per_second: npt.ArrayLike | xr.DataArray,
+    height_agl_meters: npt.ArrayLike | xr.DataArray,
+    *,
+    level_axis: int = -1,
+    level_dim: str = "level",
+) -> npt.NDArray[np.float64] | xr.DataArray:
     """Compute the Hot-Dry-Windy Index (HDW).
+
+    This function accepts both NumPy arrays and xarray DataArrays. Type
+    checkers narrow the return type based on the input type.
+
+    .. warning:: **Beta Feature (xarray path only)** -- When called with
+       ``xr.DataArray`` input, this function uses the beta xarray adapter
+       layer: CF metadata from the ``hdw`` registry entry, CF
+       ``units``-attribute temperature inference, and Dask parallelism over
+       every dimension except ``level_dim``, which must be a single chunk.
+       The NumPy array interface and underlying computation are stable.
 
     A weather-only index of dangerous fire-behavior potential (Srock et al.,
     2018): the vapor pressure deficit (VPD) times the wind speed, maximized
@@ -1277,11 +1393,12 @@ def hot_dry_windy(
         HDW = max over levels with 0 <= height_agl <= 500 of (VPD * wind speed)
 
     Inputs are vertical profiles with SI units, like the rest of the package.
-    The four inputs broadcast against each other; the shared dimension
-    ``level_axis`` is the vertical coordinate and is reduced by the maximum.
-    VPD comes from each level's own temperature and relative humidity, with
-    saturation vapor pressure from ``pm_eto.saturation_vapor_pressure`` (FAO-56
-    Eq 11), converted from kPa to the hPa of the published index.
+    The four inputs broadcast against each other; the vertical coordinate
+    (``level_axis`` for NumPy input, ``level_dim`` for xarray input) is
+    reduced by the maximum. VPD comes from each level's own temperature and
+    relative humidity, with saturation vapor pressure from
+    ``pm_eto.saturation_vapor_pressure`` (FAO-56 Eq 11), converted from kPa to
+    the hPa of the published index.
 
     ``height_agl_meters`` is the vertical coordinate itself, so the AGL
     determination happens where that coordinate is built:
@@ -1309,24 +1426,70 @@ def hot_dry_windy(
             non-negative.
         height_agl_meters: Height above ground level of each level, meters.
             Levels outside [0, 500], or with NaN height, are excluded from the
-            maximum.
-        level_axis: Axis of the broadcast inputs that holds the vertical
-            coordinate. Reduced by the layer maximum.
+            maximum. For xarray input, an ``xr.DataArray`` (1-D on
+            ``level_dim`` or full N-D) or a 1-D array-like naming
+            ``level_dim``'s levels.
+        level_axis: NumPy input only. Axis of the broadcast inputs that holds
+            the vertical coordinate. Reduced by the layer maximum.
+        level_dim: xarray input only. Name of the vertical dimension. Reduced
+            by the layer maximum; not inferred.
 
     Returns:
-        HDW in hPa m s-1, with the broadcast shape of the inputs minus
-        ``level_axis``. NaN where any in-layer level has NaN or out-of-range
-        input, and for columns with no level inside the lowest 500 m AGL.
+        HDW in hPa m s-1, with the broadcast shape of the inputs minus the
+        vertical coordinate. NaN where any in-layer level has NaN or
+        out-of-range input, and for columns with no level inside the lowest
+        500 m AGL. For xarray input, a ``DataArray`` carrying CF metadata from
+        the ``hdw`` registry entry.
 
     Raises:
-        InvalidArgumentError: If the inputs cannot be broadcast together, or
-            ``level_axis`` is out of range for the broadcast shape.
+        InvalidArgumentError: If the inputs cannot be broadcast together,
+            ``level_axis`` is out of range for the broadcast shape (NumPy
+            input), or ``level_axis`` is not the default alongside xarray
+            input.
+        CoordinateValidationError: xarray input only -- if ``level_dim`` is
+            missing from any input, or the input is Dask-backed with
+            ``level_dim`` split across multiple chunks.
+
+    Notes:
+        xarray-only: ``temperature_celsius``, ``relative_humidity_percent``,
+        and ``wind_speed_meters_per_second`` must be the same type (all NumPy
+        or all ``xr.DataArray``); ``height_agl_meters`` may be either. A CF
+        ``units`` attribute on temperature is converted to Celsius; an absent
+        attribute is assumed to already be Celsius. HDW has no time semantics
+        -- it carries no state and is not a daily recurrence -- so every
+        dimension other than ``level_dim`` (including ``time``, if present)
+        is a plain passthrough with no cadence or alignment requirement.
 
     Example:
         >>> from climate_indices import fire
         >>> round(float(fire.hot_dry_windy([30.0, 26.0], [15.0, 30.0], [8.0, 12.0], [10.0, 400.0])), 2)
         288.53
     """
+    is_xarray = isinstance(temperature_celsius, xr.DataArray)
+    for name, value in (
+        ("relative_humidity_percent", relative_humidity_percent),
+        ("wind_speed_meters_per_second", wind_speed_meters_per_second),
+    ):
+        if isinstance(value, xr.DataArray) != is_xarray:
+            raise TypeError(
+                "temperature_celsius, relative_humidity_percent, and wind_speed_meters_per_second must be "
+                f"the same type. Got temperature_celsius={type(temperature_celsius).__name__}, "
+                f"{name}={type(value).__name__}. "
+                "Convert both to the same type (both numpy arrays or both xr.DataArray)."
+            )
+    if detect_input_type(temperature_celsius) != InputType.NUMPY:
+        assert isinstance(temperature_celsius, xr.DataArray)
+        assert isinstance(relative_humidity_percent, xr.DataArray)
+        assert isinstance(wind_speed_meters_per_second, xr.DataArray)
+        return _hdw_xarray(
+            temperature_celsius,
+            relative_humidity_percent,
+            wind_speed_meters_per_second,
+            height_agl_meters,
+            level_axis=level_axis,
+            level_dim=level_dim,
+        )
+
     temperature = _as_float_array(temperature_celsius)
     humidity = _as_float_array(relative_humidity_percent)
     wind = _as_float_array(wind_speed_meters_per_second)

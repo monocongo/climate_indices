@@ -68,6 +68,17 @@ spatial shape internally, so the adapter dispatches one call per Dask spatial
 chunk with the full `time` axis rather than looping per grid cell. The same
 per-call resolution need will recur for the CFFWIS extension above.
 
+HDW's adapter (#809) is manual for a different reason: it *reduces* a
+dimension. `hot_dry_windy()` collapses a vertical `level` axis to its layer
+maximum, and the generic decorator's Dask path only maps `time` to `time` —
+it has no way to shrink a core dimension. HDW has a single fixed registry
+entry, no per-call resolution, and no state or time semantics at all, so its
+adapter is simpler than KBDI's: `xr.apply_ufunc` calls `hot_dry_windy()`
+itself as the kernel, with the caller-named `level_dim` as the sole core
+dimension on all four inputs and no output core dimension. `level_dim`, like
+KBDI's `time_dim`, must be a single Dask chunk; every other dimension,
+including `time` if present, is an ordinary passthrough.
+
 ## Stateful recurrence contract
 
 KBDI implements the contract today, with `KBDIState` carrying `kbdi`,

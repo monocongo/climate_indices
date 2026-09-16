@@ -1275,50 +1275,50 @@ def _infer_temporal_parameters(
     return inferred
 
 
-def _validate_dask_chunks(data: xr.DataArray, time_dim: str) -> None:
-    """Validate that the time dimension is not split across multiple Dask chunks.
+def _validate_dask_chunks(data: xr.DataArray, dim: str) -> None:
+    """Validate that ``dim`` is not split across multiple Dask chunks.
 
-    Distribution fitting and stateful recurrences both require the full time
-    series. Spatial dimensions can be arbitrarily chunked for parallel
-    computation. This shared helper is the chunking guard for fire adapters.
+    Distribution fitting and stateful recurrences require the full time
+    series; HDW's level-maximum reduction requires the full vertical profile.
+    Other dimensions can be arbitrarily chunked for parallel computation.
+    This shared helper is the chunking guard for fire adapters.
 
     Args:
         data: Dask-backed DataArray to validate
-        time_dim: Name of the time dimension
+        dim: Name of the dimension that must be a single chunk
 
     Raises:
-        CoordinateValidationError: If time dimension is split across multiple chunks,
+        CoordinateValidationError: If dim is split across multiple chunks,
             with a message including the exact rechunking command to fix it
     """
-    # skip validation if time dimension doesn't exist (already validated elsewhere)
-    if time_dim not in data.dims:
+    # skip validation if the dimension doesn't exist (already validated elsewhere)
+    if dim not in data.dims:
         return
 
     # skip validation if not chunked (shouldn't happen since we call this after is_dask check)
     if data.chunks is None:
         return
 
-    # get chunks for time dimension
+    # get chunks for the dimension
     # data.chunks is a tuple-of-tuples indexed by dimension position
-    time_chunks = data.chunks[data.dims.index(time_dim)]
+    dim_chunks = data.chunks[data.dims.index(dim)]
 
-    # validate single chunk on time dimension
-    if len(time_chunks) > 1:
+    # validate single chunk on the dimension
+    if len(dim_chunks) > 1:
         error_msg = (
-            f"Time dimension '{time_dim}' is split across {len(time_chunks)} chunks. "
-            "Climate indices require the full time series for distribution fitting "
-            "or stateful recurrences. "
-            f"Rechunk using: data = data.chunk({{'{time_dim}': -1}})"
+            f"Dimension '{dim}' is split across {len(dim_chunks)} chunks. "
+            "Climate index computation requires this dimension in a single chunk. "
+            f"Rechunk using: data = data.chunk({{'{dim}': -1}})"
         )
         _log().error(
             "multi_chunked_time_dimension",
-            time_dim=time_dim,
-            num_chunks=len(time_chunks),
-            chunk_sizes=time_chunks,
+            time_dim=dim,
+            num_chunks=len(dim_chunks),
+            chunk_sizes=dim_chunks,
         )
         raise CoordinateValidationError(
             message=error_msg,
-            coordinate_name=time_dim,
+            coordinate_name=dim,
             reason="multi_chunked_time_dimension",
         )
 

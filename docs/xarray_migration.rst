@@ -533,7 +533,7 @@ Common Pitfalls and Solutions
 
 .. warning::
 
-   **Error:** ``CoordinateValidationError: Time dimension 'time' is split across 4 chunks. Climate indices require the full time series for distribution fitting. Rechunk using: data = data.chunk({'time': -1})``
+   **Error:** ``CoordinateValidationError: Dimension 'time' is split across 4 chunks. Climate index computation requires this dimension in a single chunk. Rechunk using: data = data.chunk({'time': -1})``
 
    **Cause:** Your Dask-backed DataArray has the time dimension split into multiple chunks. SPI/SPEI require the full time series for fitting distributions.
 
