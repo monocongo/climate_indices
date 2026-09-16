@@ -24,6 +24,7 @@ from climate_indices.logging_config import get_logger
 # declare the function names that should be included in the public API for this module
 __all__ = [
     "Periodicity",
+    "prepare_scaled",
     "scale_values",
     "sum_to_scale",
     "transform_fitted_gamma",
@@ -147,6 +148,19 @@ class Periodicity(Enum):
 
         return unit
 
+    @property
+    def period_length(self) -> int:
+        """
+        The number of time steps comprising one year at this periodicity,
+        i.e. 12 for monthly data and 366 for daily data.
+        """
+        return int(self.value)
+
+
+# the valid number of time steps per year, i.e. the length of the second axis
+# of a 2-D (years, periods) input array
+_PERIOD_LENGTHS = frozenset(periodicity.period_length for periodicity in Periodicity)
+
 
 def _validate_array(
     values: np.ndarray,
@@ -173,15 +187,10 @@ def _validate_array(
             )
             raise ValueError(message)
 
-        elif periodicity is Periodicity.monthly:
-            # we've been passed a 1-D array with shape (months),
-            # reshape it to 2-D with shape (years, 12)
-            values = utils.reshape_to_2d(values, 12)
-
-        elif periodicity is Periodicity.daily:
-            # we've been passed a 1-D array with shape (days),
-            # reshape it to 2-D with shape (years, 366)
-            values = utils.reshape_to_2d(values, 366)
+        elif periodicity is Periodicity.monthly or periodicity is Periodicity.daily:
+            # we've been passed a 1-D array with shape (months) or (days),
+            # reshape it to 2-D with shape (years, period_length)
+            values = utils.reshape_to_2d(values, periodicity.period_length)
 
         else:
             message = f"Unsupported periodicity argument: '{periodicity}'"  # type: ignore[unreachable]
@@ -193,9 +202,7 @@ def _validate_array(
             )
             raise ValueError(message)
 
-    elif (len(values.shape) != 2) or (values.shape[1] not in (12, 366)):
-        # ((values.shape[1] != 12) and (values.shape[1] != 366)):
-
+    elif (len(values.shape) != 2) or (values.shape[1] not in _PERIOD_LENGTHS):
         # neither a 1-D nor a 2-D array with valid shape was passed in
         message = f"Invalid input array with shape: {values.shape}"
         _logger.error(
@@ -273,16 +280,14 @@ def _log_and_raise_shape_error(shape: tuple[int, ...]) -> None:
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 def reshape_values(values: np.ndarray, periodicity: Periodicity) -> np.ndarray:
-    if periodicity is Periodicity.monthly:
-        return utils.reshape_to_2d(values, 12)
-    elif periodicity is Periodicity.daily:
-        return utils.reshape_to_2d(values, 366)
+    if periodicity is Periodicity.monthly or periodicity is Periodicity.daily:
+        return utils.reshape_to_2d(values, periodicity.period_length)
     else:
         raise ValueError(f"Invalid periodicity argument: {periodicity}")
 
 
 def validate_values_shape(values: np.ndarray) -> int:
-    if len(values.shape) != 2 or values.shape[1] not in (12, 366):
+    if len(values.shape) != 2 or values.shape[1] not in _PERIOD_LENGTHS:
         _log_and_raise_shape_error(shape=values.shape)
     return int(values.shape[1])
 
@@ -1037,12 +1042,45 @@ def gamma_parameters(
     return alphas, betas
 
 
-def scale_values(
+def prepare_scaled(
     values: np.ndarray,
     scale: int,
     periodicity: Periodicity,
+    *,
+    clip_negatives: bool = True,
+    reshape: bool = True,
 ) -> np.ndarray:
-    _logger.debug("scaling_started", operation="scale_values", scale=scale, periodicity=str(periodicity))
+    """
+    Prepare an array of values for distribution fitting by flattening, clipping,
+    summing each time step over the specified scale, and reshaping.
+
+    This is the single owner of the preparation pipeline shared by the fitting-based
+    indices (SPI, SPEI, EDDI, PNP) and the specialized CLI, so a policy change lands
+    in every index at once. An all-missing input is returned as a flattened array
+    without computing anything, which callers can detect with ``prepared.ndim == 1``
+    in order to short-circuit. Shape errors are raised as ``ValueError``, the convention
+    established by ``_validate_array`` and ``utils.reshape_to_2d``.
+
+    Args:
+        values: The array of values, either 1-D or 2-D (years, periods).
+        scale: The number of values for which each sliding summation will encompass.
+        periodicity: Specifies whether data is monthly (12 time steps per year) or daily.
+        clip_negatives: Whether negative values are clipped to zero, defaults to True.
+        reshape: Whether the scaled values are reshaped to (years, period_length),
+            defaults to True. ``indices.percentage_of_normal`` passes False, since it
+            averages the un-reshaped 1-D sums over each calendar period.
+
+    Returns:
+        The scaled values, either 2-D with shape (years, periodicity.period_length)
+        or 1-D when an all-missing input or ``reshape=False``.
+    """
+    _logger.debug("scaling_started", operation="prepare_scaled", scale=scale, periodicity=str(periodicity))
+
+    # periodicity must be validated regardless of whether the result is reshaped,
+    # since reshape_values() is the only other place this is checked and it's
+    # skipped entirely when reshape=False
+    if periodicity is not Periodicity.monthly and periodicity is not Periodicity.daily:
+        raise ValueError(f"Invalid periodicity argument: {periodicity}")
 
     # we expect to operate upon a 1-D array, so if we've been passed a 2-D array
     # then we flatten it, otherwise raise an error
@@ -1050,36 +1088,64 @@ def scale_values(
     if len(shape) == 2:
         values = values.flatten()
     elif len(shape) != 1:
-        # only 1-D and 2-D arrays are supported
-        _log_and_raise_shape_error(shape=shape)
+        _logger.error(
+            "validation_error",
+            operation="prepare_scaled",
+            reason="invalid_shape",
+            shape=str(shape),
+        )
+        raise ValueError(f"Invalid shape of input array: {shape} -- only 1-D and 2-D arrays are supported")
 
-    # if we're passed all missing values then we can't compute
-    # anything, so we return the same array of missing values
+    # if we're passed all missing values then we can't compute anything,
+    # so we return the same array of missing values
     if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
         return values
 
-    # clip any negative values to zero
-    if np.amin(values) < 0.0:
-        _logger.warning("negative_values_clipped", operation="scale_values")
+    # clip any negative values to zero. np.any(values < 0.0) is NaN-safe (NaN < 0
+    # is False) and mask-safe (MaskedArray.any() ignores masked entries), unlike
+    # np.amin/np.nanmin which either miss negatives behind a NaN or reach under a mask.
+    if clip_negatives and bool(np.any(values < 0.0)):
+        _logger.warning("negative_values_clipped", operation="prepare_scaled")
         values = np.clip(values, a_min=0.0, a_max=None)
 
     # get a sliding sums array, with each time step's value scaled
     # by the specified number of time steps
     scaled_values = sum_to_scale(values, scale)
 
+    # a masked sum stands for the missing value it represents, so make it an explicit NaN
+    if np.ma.isMaskedArray(scaled_values):
+        scaled_values = np.ma.filled(scaled_values.astype(float), np.nan)
+
     # reshape precipitation values to (years, 12) for monthly,
     # or to (years, 366) for daily
-    if periodicity is Periodicity.monthly:
-        scaled_values = utils.reshape_to_2d(scaled_values, 12)
+    if reshape:
+        scaled_values = reshape_values(scaled_values, periodicity)
 
-    elif periodicity is Periodicity.daily:
-        scaled_values = utils.reshape_to_2d(scaled_values, 366)
-
-    else:
-        raise ValueError(f"Invalid periodicity argument: {periodicity}")
-
-    _logger.debug("scaling_completed", operation="scale_values", output_shape=str(scaled_values.shape))
+    _logger.debug("scaling_completed", operation="prepare_scaled", output_shape=str(scaled_values.shape))
     return scaled_values
+
+
+def scale_values(
+    values: np.ndarray,
+    scale: int,
+    periodicity: Periodicity,
+) -> np.ndarray:
+    """
+    Scale an array of values by summing each time step over the specified scale,
+    clipping negative values to zero and reshaping to (years, periods).
+
+    Thin wrapper over ``prepare_scaled``, which owns the preparation pipeline for
+    every fitting-based index.
+
+    Args:
+        values: The array of values, either 1-D or 2-D (years, periods).
+        scale: The number of values for which each sliding summation will encompass.
+        periodicity: Specifies whether data is monthly (12 time steps per year) or daily.
+
+    Returns:
+        The scaled values, reshaped to (years, periodicity.period_length).
+    """
+    return prepare_scaled(values, scale, periodicity)
 
 
 def transform_fitted_gamma(

@@ -43,12 +43,18 @@ class CFAttributes(_CFAttributesRequired, total=False):
     climate_indices_variant: str
 
 
-# The CFFWIS moisture codes (FFMC, DMC, DC) share one source publication; keep the
-# rendered `references` text identical across their entries.
+# The CFFWIS entries share one source publication; keep the rendered
+# `references` text identical across the entries that cite it. DSR is the one
+# exception: Van Wagner (1987) Eq. 31 defines the power transform itself.
 _VAN_WAGNER_PICKETT_1985 = (
     "Van Wagner, C. E., & Pickett, T. L. (1985). "
     "Equations and FORTRAN program for the Canadian Forest Fire Weather Index System. "
     "Canadian Forestry Service, Forestry Technical Report 33."
+)
+_VAN_WAGNER_1987 = (
+    "Van Wagner, C. E. (1987). "
+    "Development and structure of the Canadian Forest Fire Weather Index System. "
+    "Canadian Forestry Service, Forestry Technical Report 35."
 )
 
 
@@ -174,11 +180,11 @@ CF_METADATA: dict[str, CFAttributes] = {
         ),
     },
     # Fire-weather indices (#793). Only entries for indices implemented in
-    # `climate_indices.fire` are added here; the CFFWIS behavior indices (isi,
-    # bui, fwi, dsr, #804) and the Haines Index (#810) are deferred to their
-    # own tickets, where unit and variant decisions can be validated against
-    # real output rather than guessed ahead of implementation. None of the
-    # fire indices has an official CF standard_name.
+    # `climate_indices.fire` are added here; the Haines Index (#810) is
+    # deferred to its own ticket, where the elevation-variant decision can be
+    # validated against real output rather than guessed ahead of
+    # implementation. None of the fire indices has an official CF
+    # standard_name.
     "kbdi": {
         "long_name": "Keetch-Byram Drought Index",
         "units": "mm",
@@ -262,5 +268,44 @@ CF_METADATA: dict[str, CFAttributes] = {
         ),
         "climate_indices_variant": "cffwis_classic",
         "references": _VAN_WAGNER_PICKETT_1985,
+    },
+    "isi": {
+        "long_name": "Initial Spread Index",
+        "units": "dimensionless",
+        "description": (
+            "Expected rate of fire spread immediately after ignition, dimensionless, "
+            "from the Fine Fuel Moisture Code and the 10 m wind speed."
+        ),
+        "climate_indices_variant": "cffwis_classic",
+        "references": _VAN_WAGNER_PICKETT_1985,
+    },
+    "bui": {
+        "long_name": "Buildup Index",
+        "units": "dimensionless",
+        "description": (
+            "Fuel available for spreading, dimensionless, from the Duff Moisture Code and the Drought Code."
+        ),
+        "climate_indices_variant": "cffwis_classic",
+        "references": _VAN_WAGNER_PICKETT_1985,
+    },
+    "fwi": {
+        "long_name": "Canadian Fire Weather Index",
+        "units": "dimensionless",
+        "description": (
+            "The final CFFWIS output, dimensionless, from the Initial Spread Index "
+            "and the Buildup Index; distinct from the Fosberg Fire Weather Index "
+            "(``ffwi``)."
+        ),
+        "climate_indices_variant": "cffwis_classic",
+        "references": _VAN_WAGNER_PICKETT_1985,
+    },
+    "dsr": {
+        "long_name": "Daily Severity Rating",
+        "units": "dimensionless",
+        "description": (
+            "``0.0272 * FWI ** 1.77`` power transform of the Canadian FWI that makes seasonal averaging meaningful."
+        ),
+        "climate_indices_variant": "cffwis_classic",
+        "references": _VAN_WAGNER_1987,
     },
 }
