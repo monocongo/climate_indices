@@ -72,7 +72,7 @@ Use this table to quickly find the section for your error message:
      - `Argument Validation Errors`_
    * - ``Invalid periodicity argument``
      - `Argument Validation Errors`_
-   * - ``Time dimension 'time' is split across`` / ``chunks``
+   * - ``Dimension 'time' is split across`` / ``chunks``
      - `Dask and Chunking Issues`_
    * - ``No overlapping time steps after alignment``
      - `Dask and Chunking Issues`_
@@ -778,7 +778,7 @@ Multi-chunked time dimension
 
 .. warning::
 
-   **Error:** ``CoordinateValidationError: Time dimension 'time' is split across 4 chunks. Climate indices require the full time series for distribution fitting. Rechunk using: data = data.chunk({'time': -1})``
+   **Error:** ``CoordinateValidationError: Dimension 'time' is split across 4 chunks. Climate index computation requires this dimension in a single chunk. Rechunk using: data = data.chunk({'time': -1})``
 
    **Cause:** Your Dask-backed DataArray has the time dimension split into multiple chunks. SPI/SPEI require the full time series for distribution fitting, so the time dimension must be in a single chunk.
 
@@ -1369,8 +1369,8 @@ The library emits structured log events for important operations:
      - Time dimension not found in DataArray
    * - ``time_coordinate_not_monotonic``
      - Time coordinate is not monotonically increasing
-   * - ``multi_chunked_time_dimension``
-     - Time dimension split across multiple Dask chunks
+   * - ``multi_chunked_dimension``
+     - Dimension required in a single chunk split across multiple Dask chunks
    * - ``insufficient_data_for_scale``
      - Time series too short for requested scale
 

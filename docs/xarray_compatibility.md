@@ -14,6 +14,7 @@ may change in a future minor release.
 | `DataArray` inputs for PNP | Yes | PNP wrapper tests cover scale handling and metadata. |
 | `DataArray` inputs for PCI | Yes | PCI uses a manual scalar-output wrapper. |
 | `DataArray` inputs for KBDI | Yes | `fire.kbdi()` resolves the `kbdi`/`kbdi_imperial` CF entry per call from `units`; supports `return_state`/`initial_state`, `spin_up`, `nan_policy`/`max_gap_days`, and CF `units`-attribute unit inference for the weather inputs and an attributed mean annual climatology. An attached time coordinate must be consecutive daily observations per input; a dimension-only time axis is aligned positionally. Overlapping timesteps are inner-aligned, dropped timesteps emit `InputAlignmentWarning`, and alignment that would drop non-time coordinates is rejected. See `tests/test_fire_kbdi.py`. |
+| `DataArray` inputs for HDW | Yes | `fire.hot_dry_windy()` reduces the caller-named `level_dim` (default `"level"`) to the layer maximum via `xr.apply_ufunc`; CF metadata comes from the `hdw` registry entry, and a CF `units` attribute on temperature is converted to Celsius. Not recursive: every other dimension, including `time` if present, is a plain passthrough with no cadence requirement. Dimensions shared by the inputs must carry identical, identically ordered coordinate labels, because the inputs are matched with xarray's exact join rather than aligned or reindexed. `level_dim` must be a single Dask chunk; other dimensions chunk freely. See `tests/test_fire.py`. |
 | Palmer direct xarray API | No | Use the NumPy Palmer function with `.values`, then rewrap outputs. See `notebooks/palmer_indices_xarray.ipynb`. |
 | Coordinate preservation | Yes | Adapter tests verify time and spatial coordinates are preserved. |
 | CF-style metadata | Yes | `CF_METADATA` registry and adapter tests verify `long_name`, `units`, `references`, version, and history attributes. |
@@ -27,9 +28,12 @@ may change in a future minor release.
 KBDI's adapter (`fire.kbdi()`) is shipped, following the recursive contract in
 [ADR-0006](adr/0006-fire-recursive-state-and-execution.md). CFFWIS's
 moisture-code adapters are not yet shipped; this section also describes the
-contract they will follow. The weather-only Fosberg and Hot-Dry-Windy indices
-are available today too, via the NumPy layer with no xarray adapter needed
-(they are elementwise, not recursive).
+contract they will follow. The weather-only Fosberg Fire Weather Index is
+available today too, via the NumPy layer with no xarray adapter needed (it is
+elementwise with no dimension to reduce). Hot-Dry-Windy's adapter (see the
+main table above) is not recursive either, but it does reduce a named
+vertical dimension, so it does not follow the stateful contract below; it
+needs only that dimension in a single Dask chunk.
 
 These adapters are recursive: each daily value needs its predecessor.
 Dask-backed inputs must therefore keep the complete `time` dimension in one
