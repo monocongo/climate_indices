@@ -14,7 +14,7 @@ import scipy.constants
 import xarray as xr
 
 from climate_indices import compute, fire, indices, palmer, utils
-from climate_indices._cli import _add_common_spi_arguments, _prepare_file
+from climate_indices._cli import _add_common_spi_arguments, _open_with_default_chunks, _prepare_file
 
 # the number of worker processes we'll use for process pools
 _NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count() - 1
@@ -779,7 +779,7 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
         else:
             raise ValueError(f"Invalid 'input_type' keyword argument: {input_type}")
     # Since multiple variables can be in the same file, de-duplicate the filelist.
-    dataset = xr.open_mfdataset(list(set(files)), chunks=chunks)
+    dataset = _open_with_default_chunks(xr.open_mfdataset, list(set(files)), chunks=chunks)
     output_chunksizes: tuple[int, ...] = ()
     chunksizes_dims: tuple[Any, ...] = ()
     if keyword_arguments["chunksizes"] == "input":
@@ -1666,8 +1666,8 @@ def process_climate_indices(
                 chunks = {"time": -1}
 
             with (
-                xr.open_dataset(netcdf_precip, chunks=chunks) as dataset_precip,
-                xr.open_dataset(netcdf_temp, chunks=chunks) as dataset_temp,
+                _open_with_default_chunks(xr.open_dataset, netcdf_precip, chunks=chunks) as dataset_precip,
+                _open_with_default_chunks(xr.open_dataset, netcdf_temp, chunks=chunks) as dataset_temp,
             ):
                 kbdi_values = fire.kbdi(
                     dataset_precip[arguments.var_name_precip],

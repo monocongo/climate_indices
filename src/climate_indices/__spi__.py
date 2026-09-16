@@ -12,7 +12,7 @@ import numpy as np
 import xarray as xr
 
 from climate_indices import compute, indices, utils
-from climate_indices._cli import _add_common_spi_arguments, _prepare_file
+from climate_indices._cli import _add_common_spi_arguments, _open_with_default_chunks, _prepare_file
 from climate_indices.exceptions import emit_deprecation_warning
 
 # variable names for the distribution fitting parameters
@@ -482,7 +482,7 @@ def _compute_write_index(keyword_arguments):
             chunks = {"time": -1}
         else:
             raise ValueError(f"Invalid 'input_type' keyword argument: {input_type}")
-    ds_precip = xr.open_dataset(keyword_arguments["netcdf_precip"], chunks=chunks)
+    ds_precip = _open_with_default_chunks(xr.open_dataset, keyword_arguments["netcdf_precip"], chunks=chunks)
 
     # trim out all data variables from the dataset except the ones we'll need
     input_var_names = []
