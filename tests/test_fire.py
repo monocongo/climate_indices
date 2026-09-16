@@ -639,6 +639,44 @@ def test_hdw_xarray_chunked_matches_eager() -> None:
     np.testing.assert_allclose(chunked.compute().values, eager.values)
 
 
+def test_hdw_xarray_dask_blocks_do_not_log_per_block() -> None:
+    """One xarray operation must not emit the public lifecycle events (or the
+    invalid-value warnings) once per Dask block; the silent kernel keeps
+    observability bounded while block exceptions still surface from compute()."""
+    xr = pytest.importorskip("xarray")
+    pytest.importorskip("dask")
+
+    temperature, humidity, wind, height = _hdw_profile_dataarrays(xr)
+    mock_logger = mock.MagicMock()
+    mock_logger.bind.return_value = mock_logger
+
+    with mock.patch.object(fire, "_logger", mock_logger):
+        chunked = fire.hot_dry_windy(
+            *(a.chunk({"time": 2, "x": 1}) for a in (temperature, humidity, wind)),
+            height,
+        )
+        chunked.compute()
+
+    mock_logger.bind.assert_not_called()
+    mock_logger.warning.assert_not_called()
+
+
+def test_hdw_xarray_mismatched_level_labels_raise() -> None:
+    """The documented contract is xarray's exact join: shared dimensions are
+    matched, not aligned, so unequal or reordered labels raise."""
+    xr = pytest.importorskip("xarray")
+
+    temperature, humidity, wind, height = _hdw_profile_dataarrays(xr)
+    levels = np.arange(temperature.sizes["level"], dtype=np.float64)
+    temperature = temperature.assign_coords(level=levels)
+    humidity = humidity.assign_coords(level=levels)
+    wind = wind.assign_coords(level=levels)
+    height = height.assign_coords(level=levels)
+
+    with pytest.raises(ValueError, match="join='exact'"):
+        fire.hot_dry_windy(temperature, humidity, wind, height.isel(level=slice(None, None, -1)))
+
+
 def test_hdw_xarray_level_chunked_raises() -> None:
     xr = pytest.importorskip("xarray")
     pytest.importorskip("dask")

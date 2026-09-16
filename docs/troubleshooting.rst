@@ -1369,8 +1369,8 @@ The library emits structured log events for important operations:
      - Time dimension not found in DataArray
    * - ``time_coordinate_not_monotonic``
      - Time coordinate is not monotonically increasing
-   * - ``multi_chunked_time_dimension``
-     - Time dimension split across multiple Dask chunks
+   * - ``multi_chunked_dimension``
+     - Dimension required in a single chunk split across multiple Dask chunks
    * - ``insufficient_data_for_scale``
      - Time series too short for requested scale
 

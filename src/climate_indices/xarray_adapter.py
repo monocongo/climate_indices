@@ -1311,7 +1311,9 @@ def _validate_dask_chunks(data: xr.DataArray, dim: str) -> None:
             f"Rechunk using: data = data.chunk({{'{dim}': -1}})"
         )
         _log().error(
-            "multi_chunked_time_dimension",
+            # the event names the validated dimension neutrally; the stable
+            # reason= code below keeps its historical time-axis spelling
+            "multi_chunked_dimension",
             dim=dim,
             num_chunks=len(dim_chunks),
             chunk_sizes=dim_chunks,

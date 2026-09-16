@@ -1260,6 +1260,68 @@ def fosberg_ffwi(
         raise
 
 
+def _hot_dry_windy_layer_max(
+    temperature: npt.NDArray[np.float64],
+    humidity: npt.NDArray[np.float64],
+    wind: npt.NDArray[np.float64],
+    height: npt.NDArray[np.float64],
+    axis: int,
+    *,
+    warn: bool = True,
+) -> npt.NDArray[np.float64]:
+    """Maximum per-level HDW product over ``axis`` for already-broadcast profiles.
+
+    Shared by :func:`hot_dry_windy`'s NumPy path and its xarray kernel. The
+    xarray path disables ``warn`` for Dask blocks, where one warning per block
+    would swamp the operation-level signal; NaN results still mark the invalid
+    columns.
+
+    Args:
+        temperature: Air temperature profile, degrees Celsius.
+        humidity: Relative humidity profile, percent.
+        wind: Wind speed profile, meters per second.
+        height: Height above ground level, meters.
+        axis: Axis of the vertical coordinate, reduced by the maximum.
+        warn: Emit the invalid-value and empty-column warnings.
+
+    Returns:
+        HDW in hPa m s-1, with the vertical axis removed.
+    """
+    # outside the physical range the formulas still return numbers, but
+    # meaningless ones, so treat such values as missing
+    in_layer = (height >= 0.0) & (height <= _HDW_LAYER_TOP_METERS)
+    invalid = (humidity < 0.0) | (humidity > 100.0) | (wind < 0.0)
+    if warn:
+        invalid_count = int(np.count_nonzero(invalid & in_layer))
+        if invalid_count > 0:
+            _logger.warning(
+                f"Found {invalid_count} values with relative humidity outside [0, 100] "
+                "or negative wind speed; HDW is NaN in those columns."
+            )
+        empty_columns = int(np.count_nonzero(~np.any(in_layer, axis=axis)))
+        if empty_columns > 0:
+            _logger.warning(
+                f"Found {empty_columns} columns with no level in the lowest "
+                f"{_HDW_LAYER_TOP_METERS:.0f} m AGL; HDW is NaN there."
+            )
+
+    saturation_hpa = pm_eto.saturation_vapor_pressure(temperature) / _KPA_PER_HPA
+    vpd_hpa = saturation_hpa * (1.0 - humidity / 100.0)
+
+    # NaN in-layer propagates through the maximum; out-of-layer levels are
+    # excluded via -inf, which any real product beats
+    value = np.where(invalid, np.nan, vpd_hpa * wind)
+    product = np.where(in_layer, value, -np.inf)
+    if product.shape[axis] == 0:
+        index = np.full(product.shape[:axis] + product.shape[axis + 1 :], np.nan)
+    else:
+        index = np.max(product, axis=axis)
+    result: npt.NDArray[np.float64] = np.where(np.any(in_layer, axis=axis), index, np.nan).astype(
+        np.float64, copy=False
+    )
+    return result
+
+
 def _hdw_xarray(
     temperature_celsius: xr.DataArray,
     relative_humidity_percent: xr.DataArray,
@@ -1273,11 +1335,14 @@ def _hdw_xarray(
 
     HDW is weather-only and stateless: every dimension besides ``level_dim``
     passes straight through, unlike KBDI's per-call CF-registry resolution or
-    CFFWIS's shared recurrence. :func:`xarray.apply_ufunc` calls this
-    function's own NumPy path directly, once per Dask chunk, with
-    ``level_dim`` as the sole core dimension and reduced away -- the same
-    shape ``test_hdw_chunked_time_and_space_match_eager`` already exercises
-    for the NumPy core, here wrapped with validation and CF metadata.
+    CFFWIS's shared recurrence. :func:`xarray.apply_ufunc` calls
+    :func:`_hot_dry_windy_layer_max` once per Dask block, with ``level_dim`` as
+    the sole core dimension and reduced away -- the same shape
+    ``test_hdw_chunked_time_and_space_match_eager`` already exercises for the
+    NumPy core, here wrapped with validation and CF metadata. The shared
+    kernel rather than the public function keeps one xarray operation from
+    emitting per-block calculation events, memory instrumentation, and
+    invalid-value warnings; block exceptions still propagate from ``compute``.
     """
     if level_axis != -1:
         raise InvalidArgumentError(
@@ -1321,14 +1386,18 @@ def _hdw_xarray(
             )
         _validate_dask_chunks(data, level_dim)
 
+    # one warning per invalid Dask block would swamp the logs; the eager path
+    # still reports invalid columns through the shared kernel's warnings
+    is_dask_backed = any(data.chunks is not None for data in (temperature, humidity, wind, height))
     result: xr.DataArray = xr.apply_ufunc(
-        hot_dry_windy,
+        _hot_dry_windy_layer_max,
         temperature,
         humidity,
         wind,
         height,
         input_core_dims=[[level_dim]] * 4,
         output_core_dims=[[]],
+        kwargs={"axis": -1, "warn": not is_dask_backed},
         dask="parallelized",
         output_dtypes=[np.float64],
     )
@@ -1471,7 +1540,13 @@ def hot_dry_windy(
         attribute is assumed to already be Celsius. HDW has no time semantics
         -- it carries no state and is not a daily recurrence -- so every
         dimension other than ``level_dim`` (including ``time``, if present)
-        is a plain passthrough with no cadence or alignment requirement.
+        is a plain passthrough with no cadence requirement. Dimensions shared
+        by the inputs are matched exactly (xarray's default exact join): the
+        inputs are never aligned or reindexed, so unequal or differently
+        ordered coordinate labels raise instead of broadcasting. The invalid
+        humidity/wind and empty-column warnings are emitted once per operation
+        for eager input; Dask-backed input suppresses them per block and
+        reports those columns as NaN.
 
     Example:
         >>> from climate_indices import fire
@@ -1558,35 +1633,7 @@ def hot_dry_windy(
     memory_metrics = check_large_array_memory(temperature, humidity, wind, height)
 
     try:
-        # outside the physical range the formulas still return numbers, but
-        # meaningless ones, so treat such values as missing
-        in_layer = (height >= 0.0) & (height <= _HDW_LAYER_TOP_METERS)
-        invalid = (humidity < 0.0) | (humidity > 100.0) | (wind < 0.0)
-        invalid_count = int(np.count_nonzero(invalid & in_layer))
-        if invalid_count > 0:
-            _logger.warning(
-                f"Found {invalid_count} values with relative humidity outside [0, 100] "
-                "or negative wind speed; HDW is NaN in those columns."
-            )
-        empty_columns = int(np.count_nonzero(~np.any(in_layer, axis=axis)))
-        if empty_columns > 0:
-            _logger.warning(
-                f"Found {empty_columns} columns with no level in the lowest "
-                f"{_HDW_LAYER_TOP_METERS:.0f} m AGL; HDW is NaN there."
-            )
-
-        saturation_hpa = pm_eto.saturation_vapor_pressure(temperature) / _KPA_PER_HPA
-        vpd_hpa = saturation_hpa * (1.0 - humidity / 100.0)
-
-        # NaN in-layer propagates through the maximum; out-of-layer levels are
-        # excluded via -inf, which any real product beats
-        value = np.where(invalid, np.nan, vpd_hpa * wind)
-        product = np.where(in_layer, value, -np.inf)
-        if product.shape[axis] == 0:
-            index = np.full(product.shape[:axis] + product.shape[axis + 1 :], np.nan)
-        else:
-            index = np.max(product, axis=axis)
-        result = np.where(np.any(in_layer, axis=axis), index, np.nan).astype(np.float64, copy=False)
+        result = _hot_dry_windy_layer_max(temperature, humidity, wind, height, axis)
 
         duration_ms = (time.perf_counter() - t0) * 1000.0
         log.info(

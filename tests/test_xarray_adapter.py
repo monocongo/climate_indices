@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import re
+from unittest import mock
 
 import numpy as np
 import pandas as pd
@@ -2995,6 +2996,21 @@ class TestValidateDaskChunks:
         assert exc_info.value.reason == "multi_chunked_time_dimension"
         assert "single chunk" in str(exc_info.value)
         assert "chunk({'time': -1})" in str(exc_info.value)
+
+    def test_multi_chunked_level_dimension_event_names_dimension(self):
+        """The structured event must name the validated dimension, not assume time."""
+        data = xr.DataArray(np.zeros((4, 2)), dims=("level", "x")).chunk({"level": 2})
+        mock_logger = mock.MagicMock()
+
+        with (
+            mock.patch("climate_indices.xarray_adapter._log", return_value=mock_logger),
+            pytest.raises(CoordinateValidationError),
+        ):
+            _validate_dask_chunks(data, "level")
+
+        mock_logger.error.assert_called_once_with(
+            "multi_chunked_dimension", dim="level", num_chunks=2, chunk_sizes=(2, 2)
+        )
 
     def test_missing_time_dim_skipped(self, no_time_dim_da):
         """Validation skipped when time dimension doesn't exist."""
