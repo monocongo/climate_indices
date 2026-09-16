@@ -80,7 +80,7 @@ Daily PET estimated from min/max/mean temperature and extraterrestrial radiation
 
 ### Fire family
 
-Fire-weather and fuel-dryness indices live in the namespaced `fire` module (`from climate_indices import fire`), never as unqualified package functions — see [ADR-0005](../../docs/adr/0005-fire-module-api.md) and the [fire subsystem design](../../docs/design/fire-subsystem.md).
+Fire-weather and fuel-dryness indices live in the namespaced `fire` package (`from climate_indices import fire`), never as unqualified package functions — see [ADR-0005](../../docs/adr/0005-fire-module-api.md) and the [fire subsystem design](../../docs/design/fire-subsystem.md).
 
 **FFWI (Fosberg Fire Weather Index)**:
 A dimensionless, weather-only, elementwise fire-weather index from temperature, relative humidity, and wind speed; computed by `fire.fosberg_ffwi()`.
