@@ -80,7 +80,7 @@ Daily PET estimated from min/max/mean temperature and extraterrestrial radiation
 
 ### Fire family
 
-Fire-weather and fuel-dryness indices live in the namespaced `fire` module (`from climate_indices import fire`), never as unqualified package functions — see [ADR-0005](../../docs/adr/0005-fire-module-api.md) and the [fire subsystem design](../../docs/design/fire-subsystem.md).
+Fire-weather and fuel-dryness indices live in the namespaced `fire` package (`from climate_indices import fire`), never as unqualified package functions — see [ADR-0005](../../docs/adr/0005-fire-module-api.md) and the [fire subsystem design](../../docs/design/fire-subsystem.md).
 
 **FFWI (Fosberg Fire Weather Index)**:
 A dimensionless, weather-only, elementwise fire-weather index from temperature, relative humidity, and wind speed; computed by `fire.fosberg_ffwi()`.
@@ -101,9 +101,21 @@ The daily recursive moisture content of loosely compacted organic layers of mode
 The daily recursive moisture content of deep, compact organic layers, from noon temperature and 24-hour rain; computed by `fire.drought_code()`. Potential evapotranspiration scales with the month- and latitude-dependent day length, and the dimensionless code is floored at zero with no upper bound. The CFFWIS component only, distinct from SPI, SPEI, PDSI, and the other drought indices.
 
 **CFFWIS (Canadian Forest Fire Weather Index System)**:
-The Canadian Forest Service's fire-weather system. Its three moisture codes are computed by `fire.ffmc()`, `fire.duff_moisture_code()`, and `fire.drought_code()`; the behavior indices ISI, BUI, FWI, and DSR and the `fire.cffwis()` orchestrator that returns them together are planned contracts in the design doc.
+The Canadian Forest Service's fire-weather system, computed by `fire.cffwis()`: the three moisture codes `fire.ffmc()` (FFMC), `fire.duff_moisture_code()` (DMC), and `fire.drought_code()` (DC), then the behavior indices ISI, BUI, FWI, and DSR. `fire.cffwis()` threads all three moisture codes through one daily pass and can return any requested subset of the seven outputs.
 
-The CFFWIS behavior indices (ISI, BUI, FWI, DSR) and Haines are planned contracts in the design doc.
+**ISI (Initial Spread Index)**:
+A dimensionless, state-free CFFWIS behavior index of the expected rate of fire spread immediately after ignition, from FFMC and 10 m wind speed; computed by `fire.initial_spread_index()`.
+
+**BUI (Buildup Index)**:
+A dimensionless, state-free CFFWIS behavior index of the fuel available for spreading, from DMC and DC; computed by `fire.buildup_index()`.
+
+**FWI (Canadian Fire Weather Index)**:
+A dimensionless, state-free CFFWIS behavior index combining ISI and BUI; computed by `fire.cffwis_fwi()`. Distinct from the Fosberg Fire Weather Index (FFWI).
+
+**DSR (Daily Severity Rating)**:
+The `0.0272 * FWI ** 1.77` transform of the Canadian FWI that makes seasonal averaging meaningful; computed by `fire.daily_severity_rating()`.
+
+The Haines Index is a planned contract in the design doc.
 
 ### Statistics
 
