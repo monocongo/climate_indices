@@ -1315,7 +1315,8 @@ class TestCFFWISXarrayCoordinates:
         )
         result = _xarray_cffwis(inputs, month=reversed_month)
         expected = _xarray_cffwis(inputs)
-        assert isinstance(result, xr.Dataset) and isinstance(expected, xr.Dataset)
+        assert isinstance(result, xr.Dataset)
+        assert isinstance(expected, xr.Dataset)
         for name in _GRID_VARIABLES:
             np.testing.assert_array_equal(result[name].values, expected[name].values)
 
@@ -1429,7 +1430,8 @@ class TestCFFWISXarrayOutputs:
         expected = _numpy_cffwis(inputs, return_state=True)
         result = _xarray_cffwis(chunked, return_state=True)
         assert isinstance(result, fire.CFFWISResult)
-        assert result.state is not None and expected.state is not None
+        assert result.state is not None
+        assert expected.state is not None
         np.testing.assert_array_equal(result.state.dmc.dmc, expected.state.dmc.dmc)
         np.testing.assert_array_equal(result.state.dc.dc, expected.state.dc.dc)
         for name in _GRID_VARIABLES:
@@ -1476,7 +1478,8 @@ class TestCFFWISXarrayOutputs:
             value = getattr(result, name)
             assert isinstance(value, xr.DataArray)
             np.testing.assert_array_equal(value.values, getattr(expected, name))
-        assert result.state is not None and expected.state is not None
+        assert result.state is not None
+        assert expected.state is not None
         np.testing.assert_array_equal(result.state.ffmc.ffmc, expected.state.ffmc.ffmc)
         np.testing.assert_array_equal(result.state.dmc.dmc, expected.state.dmc.dmc)
         np.testing.assert_array_equal(result.state.dc.dc, expected.state.dc.dc)
@@ -1500,7 +1503,8 @@ class TestCFFWISXarrayOutputs:
             inputs.precipitation.isel(time=slice(0, split)),
             return_state=True,
         )
-        assert isinstance(first, fire.CFFWISResult) and first.state is not None
+        assert isinstance(first, fire.CFFWISResult)
+        assert first.state is not None
         resumed = fire.cffwis(
             inputs.temperature.isel(time=slice(split, None)),
             inputs.humidity.isel(time=slice(split, None)),
@@ -1582,8 +1586,9 @@ class TestCFFWISXarrayValidation:
         inputs = _gridded_inputs()
         negative = inputs.precipitation.copy()
         negative.values[0, 0, 0] = -1.0
+        negative_inputs = replace(inputs, precipitation=negative)
         with pytest.raises(InvalidArgumentError, match="non-negative"):
-            _xarray_cffwis(replace(inputs, precipitation=negative))
+            _xarray_cffwis(negative_inputs)
 
     def test_non_string_units_attribute_raises(self) -> None:
         inputs = _gridded_inputs()
@@ -1597,16 +1602,15 @@ class TestCFFWISXarrayValidation:
         def radians(data: xr.DataArray) -> xr.DataArray:
             return data.assign_coords(lat=data.coords["lat"].assign_attrs(units="radians"))
 
+        radian_inputs = replace(
+            inputs,
+            temperature=radians(inputs.temperature),
+            humidity=radians(inputs.humidity),
+            wind=radians(inputs.wind),
+            precipitation=radians(inputs.precipitation),
+        )
         with pytest.raises(InvalidArgumentError, match="Unsupported latitude units"):
-            _xarray_cffwis(
-                replace(
-                    inputs,
-                    temperature=radians(inputs.temperature),
-                    humidity=radians(inputs.humidity),
-                    wind=radians(inputs.wind),
-                    precipitation=radians(inputs.precipitation),
-                )
-            )
+            _xarray_cffwis(radian_inputs)
 
     def test_latitude_with_unknown_dimension_raises(self) -> None:
         inputs = _gridded_inputs()
@@ -1621,10 +1625,9 @@ class TestCFFWISXarrayValidation:
         def bare(data: xr.DataArray, days: int) -> xr.DataArray:
             return xr.DataArray(data.values[:days], dims=data.dims, coords=coords)
 
+        temperature = bare(inputs.temperature, 10)
+        humidity = bare(inputs.humidity, 8)
+        wind = bare(inputs.wind, 10)
+        precipitation = bare(inputs.precipitation, 10)
         with pytest.raises(CoordinateValidationError, match="Cannot align"):
-            fire.cffwis(
-                bare(inputs.temperature, 10),
-                bare(inputs.humidity, 8),
-                bare(inputs.wind, 10),
-                bare(inputs.precipitation, 10),
-            )
+            fire.cffwis(temperature, humidity, wind, precipitation)
