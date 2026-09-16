@@ -396,7 +396,9 @@ def eto_hargreaves(
     (years x 366 days per year). A time-major spatial block of shape
     (time, *cells), as declared with ``spatial_time_major``, is also supported,
     in which case the per-day extraterrestrial radiation is computed once per
-    cell instead of once per grid cell.
+    block. A block's time axis is read as year-major 366-day years beginning on
+    January 1, as the folded 1-D/2-D input is; a trailing partial year is
+    supported.
 
     :param daily_tmin_celsius: array of daily minimum temperature values,
         in degrees Celsius
@@ -409,7 +411,10 @@ def eto_hargreaves(
         dimensions of a time-major spatial block
     :param spatial_time_major: read a three-or-more-dimensional input as a
         time-major spatial block, i.e. with the time steps first and the cells in
-        the trailing dimensions, so the calculation runs once per cell set
+        the trailing dimensions, so the calculation runs once per block. A direct
+        NumPy block must use 366 days per year and is not Gregorian-date
+        normalized; the xarray adapter performs that conversion before calling
+        this function
     :return: 1-D array of potential evapotranspiration over grass (ETo),
         in millimeters per day, or a time-major block of shape (time, *cells)
     """
