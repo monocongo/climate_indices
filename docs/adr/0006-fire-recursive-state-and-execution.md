@@ -16,7 +16,8 @@ value needed to resume exactly, such as KBDI's cumulative wet-spell
 precipitation. A generic tuple would conceal that required state; an xarray
 `Dataset` would make the stable NumPy core depend on the beta xarray layer.
 
-Each single-output API accepts keyword-only `initial_<code>: float | None`,
+Each single-output API accepts keyword-only `initial_<code>: float or
+spatial field | None`,
 `initial_state`, `return_state=False`, and `spin_up=0`. `None` selects the
 published seed (KBDI 0, FFMC 85, DMC 6, DC 15); an explicit `initial_state`
 replaces the seed and cannot be combined with one. `return_state=True` returns

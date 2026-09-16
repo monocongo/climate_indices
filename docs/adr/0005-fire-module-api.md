@@ -23,6 +23,10 @@ and an `xarray.Dataset` for xarray.
 Keep `fire.py` flat until it exceeds roughly 1,500 lines or CFFWIS state
 handling needs separated modules. Promotion to a `fire` package must preserve
 the `from climate_indices import fire` import and every public function name.
+`fire.py` passed that line count with the CFFWIS moisture codes (#803);
+promotion is deferred to a dedicated mechanical refactor tracked against the
+remaining CFFWIS work (#804), so the flat module is a deliberate, recorded
+deferral rather than a silent departure from the trigger above.
 
 ## Consequences
 

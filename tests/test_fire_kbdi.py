@@ -306,6 +306,20 @@ def test_spin_up_longer_than_the_input_yields_an_empty_result() -> None:
     assert fire.kbdi(precipitation, temperature, 1000.0, spin_up=9).shape == (0,)
 
 
+def test_numpy_integer_configuration_is_accepted() -> None:
+    precipitation, temperature = _dry_series(3)
+    np.testing.assert_array_equal(
+        fire.kbdi(precipitation, temperature, 1000.0, spin_up=np.int64(1)),
+        fire.kbdi(precipitation, temperature, 1000.0)[1:],
+    )
+    gapped = precipitation.copy()
+    gapped[1] = np.nan
+    np.testing.assert_array_equal(
+        fire.kbdi(gapped, temperature, 1000.0, nan_policy="bridge", max_gap_days=np.int64(1)),
+        fire.kbdi(gapped, temperature, 1000.0, nan_policy="bridge", max_gap_days=1),
+    )
+
+
 def test_initial_kbdi_cannot_be_combined_with_initial_state() -> None:
     precipitation, temperature = _dry_series(2)
     state = fire.kbdi(precipitation, temperature, 1000.0, return_state=True).state
