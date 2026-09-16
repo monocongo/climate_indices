@@ -91,7 +91,19 @@ The vapor pressure deficit times wind speed, maximized over the lowest 500 m abo
 **KBDI (Keetch-Byram Drought Index)**:
 A daily recursive measure of cumulative moisture deficiency in deep duff and upper soil layers, on a 0–800 scale of hundredths of an inch (0–203.2 mm metric), from precipitation, daily maximum temperature, and mean annual precipitation; computed by `fire.kbdi()`. Moisture loss reverses only through net rain: consecutive rainy days form one wet spell, and only rain above its first 5.08 mm (0.20 in) reduces the index. A fire-danger index, not a standardized drought index like SPI or SPEI.
 
-FFMC, DMC, DC, CFFWIS, and Haines are planned contracts in the design doc.
+**FFMC (Fine Fuel Moisture Code)**:
+The daily recursive moisture content of fine surface litter and other fine fuels, from noon temperature, relative humidity, 10 m wind speed, and 24-hour rain; computed by `fire.ffmc()`. A dimensionless code in [0, 101] and the base of the CFFWIS moisture codes.
+
+**DMC (Duff Moisture Code)**:
+The daily recursive moisture content of loosely compacted organic layers of moderate depth, from noon temperature, relative humidity, and 24-hour rain; computed by `fire.duff_moisture_code()`. Drying scales with the month- and latitude-dependent effective day length, and the dimensionless code is floored at zero with no upper bound.
+
+**DC (Drought Code)**:
+The daily recursive moisture content of deep, compact organic layers, from noon temperature and 24-hour rain; computed by `fire.drought_code()`. Potential evapotranspiration scales with the month- and latitude-dependent day length, and the dimensionless code is floored at zero with no upper bound. The CFFWIS component only, distinct from SPI, SPEI, PDSI, and the other drought indices.
+
+**CFFWIS (Canadian Forest Fire Weather Index System)**:
+The Canadian Forest Service's fire-weather system. Its three moisture codes are computed by `fire.ffmc()`, `fire.duff_moisture_code()`, and `fire.drought_code()`; the behavior indices ISI, BUI, FWI, and DSR and the `fire.cffwis()` orchestrator that returns them together are planned contracts in the design doc.
+
+The CFFWIS behavior indices (ISI, BUI, FWI, DSR) and Haines are planned contracts in the design doc.
 
 ### Statistics
 

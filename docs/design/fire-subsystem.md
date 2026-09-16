@@ -19,7 +19,11 @@ re-exported as unqualified package functions: use
 Keep the module flat until it exceeds roughly 1,500 lines or CFFWIS recurrence
 state needs isolated implementation modules. At that point, promote it to a
 `fire` package without changing `from climate_indices import fire` or any
-public function name. No fire CLI is part of this subsystem.
+public function name. No fire CLI is part of this subsystem. `fire.py` passed
+that line count with the CFFWIS moisture codes (#803); promotion is deferred to
+a dedicated mechanical refactor tracked against the remaining CFFWIS work
+(#804), so the flat module is a deliberate, recorded deferral rather than a
+silent departure from the trigger.
 
 This family covers meteorological and climatological indices only. It excludes
 NFDRS components such as ERC, BI, SC, and IC; fuel models; fire behaviour;
@@ -53,22 +57,44 @@ State initialization, final-state extraction, spin-up, and wet-spell state
 follow [ADR-0006](../adr/0006-fire-recursive-state-and-execution.md). No index
 may invent a different state-return convention.
 
-KBDI has the same "current adapter can't use it as-is" problem from a
+KBDI had the same "current adapter can't use it as-is" problem from a
 different direction: `kbdi()`'s `units` argument selects between two
 registry entries (`kbdi` for metric, `kbdi_imperial` for imperial) at *call*
 time, but `xarray_adapter`'s `cf_metadata` parameter binds one fixed
-`CFAttributes` dict at *decoration* time (#798). The KBDI xarray adapter
-(#801) needs the adapter to resolve the registry key per call — from the
-caller's `units` argument, not from a decorator-time constant — the same way
-the CFFWIS extension above resolves seven keys from one call.
+`CFAttributes` dict at *decoration* time (#798). Rather than widen the
+generic `@xarray_adapter` decorator, KBDI's adapter (#801) is a manual
+function on `fire.kbdi()` itself — following the precedent of
+`xarray_adapter.pet_thornthwaite`/`pet_hargreaves`, which also bypass the
+decorator — that resolves the registry key per call from `units` and calls
+`xr.apply_ufunc` directly. Unlike those PET functions, it does not need
+`vectorize=True`: `kbdi()`'s NumPy core already vectorizes over an arbitrary
+spatial shape internally, so the adapter dispatches one call per Dask spatial
+chunk with the full `time` axis rather than looping per grid cell. The same
+per-call resolution need will recur for the CFFWIS extension above.
+
+HDW's adapter (#809) is manual for a different reason: it *reduces* a
+dimension. `hot_dry_windy()` collapses a vertical `level` axis to its layer
+maximum, and the generic decorator's Dask path only maps `time` to `time` —
+it has no way to shrink a core dimension. HDW has a single fixed registry
+entry, no per-call resolution, and no state or time semantics at all, so its
+adapter is simpler than KBDI's: `xr.apply_ufunc` calls the shared private
+kernel `_hot_dry_windy_layer_max` as the kernel, with the caller-named
+`level_dim` as the sole core dimension on all four inputs and no output core
+dimension. Using the silent kernel rather than the public function keeps one
+xarray operation from logging once per Dask block. `level_dim`, like KBDI's
+`time_dim`, must be a single Dask chunk; every other dimension, including
+`time` if present, is an ordinary passthrough. Inputs are matched with
+xarray's exact join, so shared dimensions must carry identical, identically
+ordered coordinate labels; unlike KBDI, HDW does not align or reindex them.
 
 ## Stateful recurrence contract
 
 KBDI implements the contract today, with `KBDIState` carrying `kbdi`,
-`wet_spell_precipitation`, `trailing_gap_days`, and `units`. The planned NumPy
-APIs for FFMC, DMC, DC, and CFFWIS (#803) will accept time-first daily arrays.
-Single-output APIs take keyword-only `initial_<code>: float | None`,
-`initial_state`, `return_state=False`, and `spin_up=0`. `None` selects the
+`wet_spell_precipitation`, `trailing_gap_days`, and `units`; FFMC, DMC, and DC
+implement it with their single code value plus `trailing_gap_days`. The
+planned CFFWIS orchestrator (#804) will accept time-first daily arrays.
+Single-output APIs take keyword-only `initial_<code>: float or spatial
+field | None`, `initial_state`, `return_state=False`, and `spin_up=0`. `None` selects the
 literature seed: KBDI 0, FFMC 85, DMC 6, or DC 15. `initial_state` restores the
 full named state, including auxiliary values such as KBDI's cumulative
 wet-spell precipitation, and cannot be combined with a seed. It is the only
@@ -96,6 +122,24 @@ The implementation vectorizes each daily update over spatial cells and loops
 only over time. It has a required pure-NumPy baseline; `numba` is not an
 optional dependency unless later benchmark evidence justifies its support cost.
 
+The moisture codes evaluate the published equations in the source's
+operational units (km/h wind, mm rain, degrees Celsius) and follow the NRCan
+reference implementation where it departs from the printed report: FFMC's
+moisture-content conversion uses the exact `250 * 59.5 / 101` rather than the
+printed `147.2`, in both directions, and DMC's post-rain conversion uses the
+reference code's `43.43 * (5.6348 - ln(Wmr - 20))` form of Eq. 15. The
+reference lineage is `cffdrs_r` and its Python port `cffdrs_py`; the frozen
+vectors in `tests/test_fire_cffwis_moisture.py` pin that port's commit.
+
+The CFFWIS moisture codes select their month- and latitude-dependent tables per
+cell. DMC uses five effective-day-length rows: 46 N (`latitude > 30`), 20 N
+(`10 < latitude <= 30`), the equator (`-10 < latitude <= 10`), 20 S
+(`-30 < latitude <= -10`), and 40 S (`latitude <= -30`). DC uses three
+day-length-adjustment rows: north (`latitude > 20`), equator
+(`-20 < latitude <= 20`), and south (`latitude <= -20`). A NaN latitude means
+the cell has no usable day-length band, so its output stays NaN and its
+recurrence never starts — the same treatment as a NaN KBDI climatology.
+
 ## Missing data and gaps
 
 Missing days are governed by [ADR-0007](../adr/0007-fire-missing-data-policy.md).
@@ -112,8 +156,10 @@ bridged or poisons exactly as the one-shot series would. Leading missing days
 are unbounded only before the recurrence starts. Interpolation is deliberately
 not a policy:
 callers fill inputs upstream so the fill stays visible. A day is missing when
-any time-varying weather input is NaN; sub-freezing and inactive-index days
-are valid observations, and off-season periods must use the seasonal state
+any time-varying weather input is NaN or elementwise-invalid for the index
+(relative humidity outside [0, 100], negative wind speed); infinity raises
+`InvalidArgumentError` instead. Sub-freezing and inactive-index days are valid
+observations, and off-season periods must use the seasonal state
 carry from #806 rather than NaN. Each stateful implementation must carry the
 parametrized gap matrix recorded in ADR-0007.
 
@@ -143,14 +189,15 @@ kernels.
 | `buildup_index(dmc, dc)` | DMC, DC | dimensionless BUI |
 | `cffwis_fwi(isi, bui)` | ISI, BUI | dimensionless Canadian Fire Weather Index |
 | `daily_severity_rating(cffwis_fwi)` | Canadian FWI | dimensionless DSR |
-| `cffwis(temperature_celsius, relative_humidity_percent, wind_speed_meters_per_second, precipitation_mm, latitude_degrees_north, *, initial_ffmc=85.0, initial_dmc=6.0, initial_dc=15.0, spin_up=None, return_state=False)` | CFFWIS weather inputs above; `initial_*` and `spin_up` follow the shared state contract | `CFFWISResult` plus final state when `return_state=True`; xarray counterpart accepts `tas`, `hurs`, `sfcWind`, `pr`, and optional `lat`, returning `Dataset` |
+| `cffwis(temperature_celsius, relative_humidity_percent, wind_speed_meters_per_second, precipitation_mm, latitude_degrees_north, *, initial_ffmc=85.0, initial_dmc=6.0, initial_dc=15.0, spin_up=0, return_state=False)` | CFFWIS weather inputs above; `initial_*` and `spin_up` follow the shared state contract | `CFFWISResult` plus final state when `return_state=True`; xarray counterpart accepts `tas`, `hurs`, `sfcWind`, `pr`, and optional `lat`, returning `Dataset` |
 | `hot_dry_windy(temperature_celsius, relative_humidity_percent, wind_speed_meters_per_second, height_agl_meters, *, level_axis=-1)` | vertical profiles in °C, %, m s⁻¹, m AGL | hPa m s⁻¹; all levels must identify the lowest 500 m AGL |
 | `haines_index(temperature_lower_celsius, temperature_upper_celsius, dewpoint_lower_celsius, *, variant)` | pressure-level °C inputs selected by `variant` | integer 2–6; `variant` is `"low"`, `"mid"`, or `"high"`, never inferred by default |
 
-Only `fosberg_ffwi()`, `hot_dry_windy()`, and `kbdi()` are implemented today;
-the remaining rows are planned contracts, not yet callable. `kbdi()` also
-accepts the keyword-only missing-data arguments
-`nan_policy="propagate"` and `max_gap_days=0` described above.
+`fosberg_ffwi()`, `hot_dry_windy()`, `kbdi()`, `ffmc()`,
+`duff_moisture_code()`, and `drought_code()` are implemented today; the
+remaining rows are planned contracts, not yet callable. The stateful rows
+accept the keyword-only missing-data arguments `nan_policy="propagate"` and
+`max_gap_days=0` described above.
 
 `fosberg_ffwi()` is weather-only and elementwise. KBDI, FFMC, DMC, DC, and
 CFFWIS are daily recursive functions; their weather inputs must be ordered in
@@ -171,14 +218,15 @@ come from its registry entry, never hand-written in an adapter.
 [#798](https://github.com/monocongo/climate_indices/issues/798) extended
 `CFAttributes` with `description` and `climate_indices_variant`, and added
 entries for the indices implemented today: `kbdi` (metric), `kbdi_imperial`,
-`ffwi`, and `hdw`. KBDI uses two keys, not one, because `kbdi()` returns two
-different unit scales from the same function; `climate_indices_variant`
-distinguishes them. CFFWIS (`ffmc`, `dmc`, `dc`, `isi`, `bui`, `fwi`, `dsr`,
-#803/#804) and the Haines Index (`haines`, #810) have no registry entries yet
-— their unit and variant decisions (CFFWIS classic vs. FWI2025, Haines
-elevation variant) are open questions best resolved against real
-implementations, not guessed ahead of them. No adapter for an index ships
-before its registry entry lands.
+`ffwi`, `hdw`, `ffmc`, `dmc`, and `dc`. KBDI uses two keys, not one, because
+`kbdi()` returns two different unit scales from the same function;
+`climate_indices_variant` distinguishes them, and the CFFWIS moisture codes
+carry `cffwis_classic` to distinguish them from a future FWI2025 variant. The
+CFFWIS behavior indices (`isi`, `bui`, `fwi`, `dsr`, #804) and the Haines
+Index (`haines`, #810) have no registry entries yet — their unit and variant
+decisions are open questions best resolved against real implementations, not
+guessed ahead of them. No adapter for an index ships before its registry
+entry lands.
 
 `drought_code()` names the CFFWIS component only. It neither accepts a climate
 calibration period nor means SPI, SPEI, PDSI, or any other drought index.

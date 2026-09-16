@@ -1,13 +1,14 @@
 """Fire-weather indices computed from standard meteorological inputs.
 
 This module is the NumPy layer of the fire-weather family tracked in #793. It
-currently provides the Fosberg Fire Weather Index and the Hot-Dry-Windy
-Index, both weather-only and elementwise, and the Keetch-Byram Drought Index,
-a daily recurrence. Stateful functions follow the execution, state-ownership,
-and append/resume contract recorded in
-``docs/adr/0006-fire-recursive-state-and-execution.md`` and the missing-data
-policy recorded in ``docs/adr/0007-fire-missing-data-policy.md``; CFFWIS
-(#803) will use the same contract.
+provides the Fosberg Fire Weather Index and the Hot-Dry-Windy Index, both
+weather-only and elementwise, the Keetch-Byram Drought Index, and the three
+Canadian Forest Fire Weather Index System (CFFWIS) moisture codes: the Fine
+Fuel Moisture Code, the Duff Moisture Code, and the Drought Code. Stateful
+functions follow the execution, state-ownership, and append/resume contract
+recorded in ``docs/adr/0006-fire-recursive-state-and-execution.md`` and the
+missing-data policy recorded in ``docs/adr/0007-fire-missing-data-policy.md``;
+the CFFWIS behavior indices (#804) will use the same contract.
 
 References
 ----------
@@ -34,27 +35,64 @@ https://research.fs.usda.gov/treesearch/40
 
 Alexander, M.E. (1990) Computer calculation of the Keetch-Byram Drought
 Index - programmers beware! Fire Management Notes, 51(4), 23-25.
+
+Van Wagner, C.E. and Pickett, T.L. (1985) Equations and FORTRAN program for
+the Canadian Forest Fire Weather Index System. Canadian Forestry Service,
+Forestry Technical Report 33.
 """
 
 from __future__ import annotations
 
 import time
+import warnings
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, overload
 
 import numpy as np
 import numpy.typing as npt
+import xarray as xr
 
 from climate_indices import pm_eto
-from climate_indices.exceptions import DataShapeError, InvalidArgumentError
+from climate_indices.cf_metadata_registry import CF_METADATA
+from climate_indices.exceptions import (
+    CoordinateValidationError,
+    DataShapeError,
+    InputAlignmentWarning,
+    InputTypeError,
+    InvalidArgumentError,
+)
 from climate_indices.logging_config import get_logger
 from climate_indices.performance import check_large_array_memory
+from climate_indices.xarray_adapter import (
+    InputType,
+    _build_output_attrs,
+    _validate_dask_chunks,
+    _validate_time_dimension,
+    _validate_time_monotonicity,
+    detect_input_type,
+)
 
 # retrieve structlog logger for this module
 _logger = get_logger(__name__)
 
 # declare the function names that should be included in the public API for this module
-__all__ = ["KBDIResult", "KBDIState", "fosberg_ffwi", "hot_dry_windy", "kbdi"]
+__all__ = [
+    "DCResult",
+    "DCState",
+    "DMCResult",
+    "DMCState",
+    "FFMCResult",
+    "FFMCState",
+    "KBDIResult",
+    "KBDIState",
+    "drought_code",
+    "duff_moisture_code",
+    "ffmc",
+    "fosberg_ffwi",
+    "hot_dry_windy",
+    "kbdi",
+]
 
 # Simard (1968) equilibrium moisture content regressions, one per relative
 # humidity range, with the coefficients of NCEP's operational GEMPAK code.
@@ -95,6 +133,59 @@ _KBDI_RAIN_THRESHOLD_MM = 5.08
 _KBDI_DRYING_TEMPERATURE_CELSIUS = 10.0
 _KBDI_MINIMUM_MEAN_ANNUAL_RECORD_DAYS = 30 * 365
 
+_ARG_INITIAL_STATE_KBDI = "initial_state.kbdi"
+
+# The CFFWIS moisture codes (#803) follow Van Wagner and Pickett (1985) as
+# implemented by the NRCan reference code: `cffdrs_r` and its Python port
+# `cffdrs_py` (the frozen test vectors pin commit 0f57fcca of the latter). All
+# equations are evaluated in the source's operational units: km/h wind, mm
+# rain, degrees Celsius. The published FFMC equations print 147.2 for the
+# moisture-content conversion; the reference code uses the exact
+# 250 * 59.5 / 101, applied in both directions, and this implementation
+# matches the reference code. DMC's post-rain conversion likewise uses the
+# reference code's more accurate 43.43 * (5.6348 - ln(Wmr - 20)) form of
+# Eq. 15 rather than the printed 244.72 - 43.43 * ln(Wmr - 20).
+_FFMC_COEFFICIENT = 250.0 * 59.5 / 101.0
+_FFMC_MAXIMUM = 101.0
+_FFMC_MOISTURE_CAP = 250.0
+_FFMC_PRECIPITATION_THRESHOLD_MM = 0.5
+_FFMC_MOISTURE_FOR_RAIN_CORRECTION = 150.0
+_KILOMETERS_PER_HOUR_PER_METER_PER_SECOND = 3.6
+
+_DMC_PRECIPITATION_THRESHOLD_MM = 1.5
+_DMC_TEMPERATURE_FLOOR_CELSIUS = -1.1
+
+_DC_PRECIPITATION_THRESHOLD_MM = 2.8
+_DC_TEMPERATURE_FLOOR_CELSIUS = -2.8
+
+# Effective day length in hours for DMC, by latitude band and calendar month
+# (Van Wagner and Pickett, 1985). The bands and their table rows are, in
+# order: 46 N (latitude > 30), 20 N (10 < latitude <= 30), equator
+# (-10 < latitude <= 10), 20 S (-30 < latitude <= -10), and 40 S
+# (latitude <= -30). The 46 N row is the Canadian standard; the other rows
+# are the reference code's latitude adjustments, not a fallback for it.
+_DMC_EFFECTIVE_DAY_LENGTH_HOURS = np.array(
+    [
+        [6.5, 7.5, 9.0, 12.8, 13.9, 13.9, 12.4, 10.9, 9.4, 8.0, 7.0, 6.0],
+        [7.9, 8.4, 8.9, 9.5, 9.9, 10.2, 10.1, 9.7, 9.1, 8.6, 8.1, 7.8],
+        [9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0],
+        [10.1, 9.6, 9.1, 8.5, 8.1, 7.8, 7.9, 8.3, 8.9, 9.4, 9.9, 10.2],
+        [11.5, 10.5, 9.2, 7.9, 6.8, 6.2, 6.5, 7.4, 8.7, 10.0, 11.2, 11.8],
+    ]
+)
+
+# Day-length adjustment term for DC potential evapotranspiration, by
+# latitude band and calendar month (Van Wagner and Pickett, 1985). Bands:
+# north (latitude > 20), equator (-20 < latitude <= 20), south
+# (latitude <= -20).
+_DC_DAY_LENGTH_ADJUSTMENT = np.array(
+    [
+        [-1.6, -1.6, -1.6, 0.9, 3.8, 5.8, 6.4, 5.0, 2.4, 0.4, -1.6, -1.6],
+        [1.4, 1.4, 1.4, 1.4, 1.4, 1.4, 1.4, 1.4, 1.4, 1.4, 1.4, 1.4],
+        [6.4, 5.0, 2.4, 0.4, -1.6, -1.6, -1.6, -1.6, -1.6, 0.9, 3.8, 5.8],
+    ]
+)
+
 
 @dataclass(frozen=True)
 class KBDIState:
@@ -115,28 +206,136 @@ class KBDIState:
 
 @dataclass(frozen=True)
 class KBDIResult:
-    """KBDI values and final state returned by :func:`kbdi`."""
+    """KBDI values and final state returned by :func:`kbdi`.
 
-    values: npt.NDArray[np.float64]
+    ``values`` is an ``xr.DataArray`` when :func:`kbdi` was called with xarray
+    input, else a NumPy array. ``state`` is always NumPy: state types stay
+    algorithm-specific frozen dataclasses, never xarray objects, per
+    ``docs/adr/0006-fire-recursive-state-and-execution.md``.
+    """
+
+    values: npt.NDArray[np.float64] | xr.DataArray
     state: KBDIState
 
 
-def _kbdi_static_array(
+def _static_spatial_array(
     values: npt.ArrayLike,
     spatial_shape: tuple[int, ...],
     name: str,
 ) -> npt.NDArray[np.float64]:
-    """Coerce a scalar or spatial field to the KBDI spatial shape."""
+    """Coerce a scalar or spatial field to a recurrence's trailing spatial shape."""
     array = _as_float_array(values)
     try:
         return np.broadcast_to(array, spatial_shape).astype(np.float64, copy=True)
     except ValueError as exc:
         raise InvalidArgumentError(
-            f"{name} with shape {array.shape} cannot broadcast to KBDI spatial shape {spatial_shape}.",
+            f"{name} with shape {array.shape} cannot broadcast to spatial shape {spatial_shape}.",
             argument_name=name,
             argument_value=f"shape {array.shape}",
             valid_values=f"A scalar or an array broadcastable to {spatial_shape}",
         ) from exc
+
+
+def _validate_recurrence_options(
+    nan_policy: object,
+    max_gap_days: object,
+    spin_up: object,
+    seed_name: str,
+    seed: object,
+    initial_state: object,
+) -> None:
+    """Validate the configuration shared by every stateful fire recurrence."""
+    if nan_policy not in ("propagate", "bridge"):
+        raise InvalidArgumentError(
+            "nan_policy must be 'propagate' or 'bridge'.",
+            argument_name="nan_policy",
+            argument_value=str(nan_policy),
+            valid_values="'propagate', 'bridge'",
+        )
+    if isinstance(max_gap_days, bool) or not isinstance(max_gap_days, (int, np.integer)) or max_gap_days < 0:
+        raise InvalidArgumentError(
+            "max_gap_days must be a non-negative integer.",
+            argument_name="max_gap_days",
+            argument_value=str(max_gap_days),
+            valid_values="A non-negative integer",
+        )
+    if (nan_policy == "propagate" and max_gap_days != 0) or (nan_policy == "bridge" and max_gap_days < 1):
+        raise InvalidArgumentError(
+            "max_gap_days must be zero for 'propagate' and positive for 'bridge'.",
+            argument_name="max_gap_days",
+            argument_value=str(max_gap_days),
+            valid_values="0 for 'propagate'; at least 1 for 'bridge'",
+        )
+    if isinstance(spin_up, bool) or not isinstance(spin_up, (int, np.integer)) or spin_up < 0:
+        raise InvalidArgumentError(
+            "spin_up must be a non-negative integer.",
+            argument_name="spin_up",
+            argument_value=str(spin_up),
+            valid_values="A non-negative integer",
+        )
+    if seed is not None and initial_state is not None:
+        raise InvalidArgumentError(
+            f"{seed_name} cannot be combined with initial_state.",
+            argument_name=f"{seed_name}/initial_state",
+            argument_value="both supplied",
+            valid_values="Supply at most one initial condition",
+        )
+
+
+def _apply_gap_policy(
+    state_value: npt.NDArray[np.float64],
+    day_weather_valid: npt.NDArray[np.bool_],
+    static_valid: npt.NDArray[np.bool_],
+    started: npt.NDArray[np.bool_],
+    poisoned: npt.NDArray[np.bool_],
+    trailing_gap_days: npt.NDArray[np.int64],
+    *,
+    nan_policy: Literal["propagate", "bridge"],
+    max_gap_days: int,
+) -> npt.NDArray[np.bool_]:
+    """Apply one day of the ADR-0007 missing-day policy, returning the active cells.
+
+    ``state_value``, ``started``, ``poisoned``, and ``trailing_gap_days`` are
+    updated in place. A missing day is one with an invalid weather
+    observation. A cell whose static input is unusable never starts and is not
+    an elapsed missing day. A valid day is the return point's last day, so any
+    earlier run is closed.
+    """
+    valid = day_weather_valid & static_valid
+    missing_started = ~day_weather_valid & static_valid & (started | poisoned)
+
+    if nan_policy == "propagate":
+        state_value[missing_started] = np.nan
+        poisoned[missing_started] = True
+        trailing_gap_days[missing_started] = np.maximum(trailing_gap_days[missing_started], 0) + 1
+    else:
+        next_gap_days = np.maximum(trailing_gap_days, 0) + 1
+        over_gap_limit = missing_started & (next_gap_days > max_gap_days)
+        state_value[over_gap_limit] = np.nan
+        poisoned[over_gap_limit] = True
+        trailing_gap_days[missing_started] = next_gap_days[missing_started]
+
+    active = valid & ~poisoned
+    started[active] = True
+    trailing_gap_days[valid & (started | poisoned)] = 0
+    return active
+
+
+def _kbdi_initial_value(
+    initial_kbdi: npt.ArrayLike,
+    spatial_shape: tuple[int, ...],
+    maximum: float,
+) -> npt.NDArray[np.float64]:
+    """Validate a caller-supplied seed KBDI and broadcast it to the spatial shape."""
+    kbdi_value = _static_spatial_array(initial_kbdi, spatial_shape, "initial_kbdi")
+    if np.any(~np.isfinite(kbdi_value)) or np.any(kbdi_value < 0.0) or np.any(kbdi_value > maximum):
+        raise InvalidArgumentError(
+            f"initial_kbdi must be finite and within [0, {maximum:g}].",
+            argument_name="initial_kbdi",
+            argument_value="non-finite or outside the valid KBDI range",
+            valid_values=f"[0, {maximum:g}]",
+        )
+    return kbdi_value
 
 
 def _kbdi_state_arrays(
@@ -161,8 +360,8 @@ def _kbdi_state_arrays(
             valid_values=units,
         )
 
-    kbdi_value = _kbdi_static_array(state.kbdi, spatial_shape, "initial_state.kbdi")
-    wet_spell = _kbdi_static_array(
+    kbdi_value = _static_spatial_array(state.kbdi, spatial_shape, _ARG_INITIAL_STATE_KBDI)
+    wet_spell = _static_spatial_array(
         state.wet_spell_precipitation,
         spatial_shape,
         "initial_state.wet_spell_precipitation",
@@ -174,7 +373,7 @@ def _kbdi_state_arrays(
     ):
         raise InvalidArgumentError(
             f"initial_state.kbdi must be NaN or within [0, {maximum:g}].",
-            argument_name="initial_state.kbdi",
+            argument_name=_ARG_INITIAL_STATE_KBDI,
             argument_value="values outside the valid KBDI range",
             valid_values=f"NaN or [0, {maximum:g}]",
         )
@@ -189,7 +388,7 @@ def _kbdi_state_arrays(
     if state.trailing_gap_days is None:
         trailing_gap_days = np.full(spatial_shape, -1, dtype=np.int64)
     else:
-        trailing = _kbdi_static_array(state.trailing_gap_days, spatial_shape, "initial_state.trailing_gap_days")
+        trailing = _static_spatial_array(state.trailing_gap_days, spatial_shape, "initial_state.trailing_gap_days")
         if np.any(~np.isfinite(trailing)) or np.any(trailing < -1) or np.any(trailing != np.floor(trailing)):
             raise InvalidArgumentError(
                 "initial_state.trailing_gap_days must contain integers greater than or equal to -1.",
@@ -202,7 +401,7 @@ def _kbdi_state_arrays(
     if np.any(np.isnan(kbdi_value) & (trailing_gap_days < 0)):
         raise InvalidArgumentError(
             "initial_state.kbdi may be NaN only where trailing_gap_days shows a gap has started.",
-            argument_name="initial_state.kbdi",
+            argument_name=_ARG_INITIAL_STATE_KBDI,
             argument_value="NaN KBDI where initial_state.trailing_gap_days is -1 or None",
             valid_values="A finite KBDI in a not-started cell; NaN only after a gap has started the cell",
         )
@@ -210,6 +409,49 @@ def _kbdi_state_arrays(
     return kbdi_value, wet_spell, trailing_gap_days
 
 
+def _validate_kbdi_configuration(
+    *,
+    units: Literal["metric", "imperial"],
+    nan_policy: Literal["propagate", "bridge"],
+    max_gap_days: int,
+    spin_up: int,
+    initial_kbdi: npt.ArrayLike | xr.DataArray | None,
+    initial_state: KBDIState | None,
+) -> None:
+    """Validate the configuration shared by the NumPy and xarray paths.
+
+    Called before dispatch: the xarray path must reject invalid configuration
+    eagerly instead of returning a lazy, metadata-bearing result that fails
+    only when evaluated.
+    """
+    if units not in ("metric", "imperial"):
+        raise InvalidArgumentError(
+            "units must be 'metric' or 'imperial'.",
+            argument_name="units",
+            argument_value=str(units),
+            valid_values="'metric', 'imperial'",
+        )
+    _validate_recurrence_options(nan_policy, max_gap_days, spin_up, "initial_kbdi", initial_kbdi, initial_state)
+
+
+@overload
+def kbdi(
+    precipitation: xr.DataArray,
+    maximum_temperature: xr.DataArray,
+    mean_annual_precipitation: npt.ArrayLike | xr.DataArray | None = None,
+    *,
+    units: Literal["metric", "imperial"] = "metric",
+    initial_kbdi: npt.ArrayLike | xr.DataArray | None = None,
+    initial_state: KBDIState | None = None,
+    return_state: bool = False,
+    spin_up: int = 0,
+    nan_policy: Literal["propagate", "bridge"] = "propagate",
+    max_gap_days: int = 0,
+    time_dim: str = "time",
+) -> xr.DataArray | KBDIResult: ...
+
+
+@overload
 def kbdi(
     precipitation: npt.ArrayLike,
     maximum_temperature: npt.ArrayLike,
@@ -222,8 +464,35 @@ def kbdi(
     spin_up: int = 0,
     nan_policy: Literal["propagate", "bridge"] = "propagate",
     max_gap_days: int = 0,
-) -> npt.NDArray[np.float64] | KBDIResult:
+    time_dim: str = "time",
+) -> npt.NDArray[np.float64] | KBDIResult: ...
+
+
+def kbdi(
+    precipitation: npt.ArrayLike | xr.DataArray,
+    maximum_temperature: npt.ArrayLike | xr.DataArray,
+    mean_annual_precipitation: npt.ArrayLike | xr.DataArray | None = None,
+    *,
+    units: Literal["metric", "imperial"] = "metric",
+    initial_kbdi: npt.ArrayLike | xr.DataArray | None = None,
+    initial_state: KBDIState | None = None,
+    return_state: bool = False,
+    spin_up: int = 0,
+    nan_policy: Literal["propagate", "bridge"] = "propagate",
+    max_gap_days: int = 0,
+    time_dim: str = "time",
+) -> npt.NDArray[np.float64] | KBDIResult | xr.DataArray:
     """Compute the Keetch-Byram Drought Index (KBDI).
+
+    This function accepts both NumPy arrays and xarray DataArrays. Type
+    checkers narrow the return type based on the input type.
+
+    .. warning:: **Beta Feature (xarray path only)** -- When called with
+       ``xr.DataArray`` input, this function uses the beta xarray adapter
+       layer: per-call CF metadata resolution (``kbdi`` vs. ``kbdi_imperial``
+       by ``units``), CF ``units``-attribute unit inference, and Dask
+       spatial-chunk parallelism with a required single ``time`` chunk. The
+       NumPy array interface and underlying computation are stable.
 
     The implementation evaluates the corrected continuous Equation 18 of
     Keetch and Byram (1968), using Alexander's (1990) corrected 8.30
@@ -260,58 +529,71 @@ def kbdi(
             day; ``"bridge"`` skips gaps up to ``max_gap_days``.
         max_gap_days: Maximum bridged consecutive missing days. Must be zero
             for ``"propagate"`` and positive for ``"bridge"``.
+        time_dim: Name of the time dimension. Only used for xarray inputs.
 
     Returns:
         KBDI with the same time-first shape as the broadcast weather inputs,
         less ``spin_up`` leading days. Returns ``KBDIResult`` when
-        ``return_state`` is true.
+        ``return_state`` is true. For xarray input, ``values`` is a
+        ``DataArray`` carrying CF metadata from the ``kbdi``/``kbdi_imperial``
+        registry entry (chosen by ``units``) and ``state`` stays plain NumPy
+        per :doc:`../docs/adr/0006-fire-recursive-state-and-execution`.
 
     Raises:
         DataShapeError: If the weather inputs have no time dimension.
         InvalidArgumentError: If shapes, configuration, state, or physical
             precipitation inputs are invalid.
+        CoordinateValidationError: xarray input only -- if the time dimension
+            is missing, an attached time coordinate is non-monotonic or not
+            consecutive daily, the time dimension is split across multiple Dask
+            chunks, the inputs' non-time coordinates do not align, or
+            precipitation/maximum_temperature share no overlapping time steps.
+
+    Notes:
+        xarray-only: ``precipitation`` and ``maximum_temperature`` must be the
+        same type (both NumPy or both ``xr.DataArray``); a CF ``units``
+        attribute on either is converted to the scale ``units`` selects (mm/inch
+        for precipitation, including ``kg m-2 s-1``; Celsius/Fahrenheit/Kelvin
+        for temperature). An absent attribute is assumed to already match the
+        selected scale; an unrecognized one raises ``InvalidArgumentError``.
+        An attributed ``mean_annual_precipitation`` is converted the same way,
+        accepting annual totals (``mm``, ``inch``, ``mm year-1``, ...) but not
+        daily or flux rates. An attached time coordinate must hold consecutive
+        daily observations; a dimension-only time axis is aligned positionally.
+        Dask-backed input parallelizes over spatial chunks with the ``time``
+        dimension required to be a single chunk.
     """
-    if units not in ("metric", "imperial"):
-        raise InvalidArgumentError(
-            "units must be 'metric' or 'imperial'.",
-            argument_name="units",
-            argument_value=str(units),
-            valid_values="'metric', 'imperial'",
+    if isinstance(precipitation, xr.DataArray) != isinstance(maximum_temperature, xr.DataArray):
+        raise TypeError(
+            "precipitation and maximum_temperature must be the same type. "
+            f"Got precipitation={type(precipitation).__name__}, "
+            f"maximum_temperature={type(maximum_temperature).__name__}. "
+            "Convert both to the same type (both numpy arrays or both xr.DataArray)."
         )
-    if nan_policy not in ("propagate", "bridge"):
-        raise InvalidArgumentError(
-            "nan_policy must be 'propagate' or 'bridge'.",
-            argument_name="nan_policy",
-            argument_value=str(nan_policy),
-            valid_values="'propagate', 'bridge'",
-        )
-    if isinstance(max_gap_days, bool) or not isinstance(max_gap_days, int) or max_gap_days < 0:
-        raise InvalidArgumentError(
-            "max_gap_days must be a non-negative integer.",
-            argument_name="max_gap_days",
-            argument_value=str(max_gap_days),
-            valid_values="A non-negative integer",
-        )
-    if (nan_policy == "propagate" and max_gap_days != 0) or (nan_policy == "bridge" and max_gap_days < 1):
-        raise InvalidArgumentError(
-            "max_gap_days must be zero for 'propagate' and positive for 'bridge'.",
-            argument_name="max_gap_days",
-            argument_value=str(max_gap_days),
-            valid_values="0 for 'propagate'; at least 1 for 'bridge'",
-        )
-    if isinstance(spin_up, bool) or not isinstance(spin_up, int) or spin_up < 0:
-        raise InvalidArgumentError(
-            "spin_up must be a non-negative integer.",
-            argument_name="spin_up",
-            argument_value=str(spin_up),
-            valid_values="A non-negative integer",
-        )
-    if initial_kbdi is not None and initial_state is not None:
-        raise InvalidArgumentError(
-            "initial_kbdi cannot be combined with initial_state.",
-            argument_name="initial_kbdi/initial_state",
-            argument_value="both supplied",
-            valid_values="Supply at most one initial condition",
+    _validate_kbdi_configuration(
+        units=units,
+        nan_policy=nan_policy,
+        max_gap_days=max_gap_days,
+        spin_up=spin_up,
+        initial_kbdi=initial_kbdi,
+        initial_state=initial_state,
+    )
+    if detect_input_type(precipitation) != InputType.NUMPY:
+        # narrow for mypy: detect_input_type raises for anything but NUMPY/XARRAY
+        assert isinstance(precipitation, xr.DataArray)
+        assert isinstance(maximum_temperature, xr.DataArray)
+        return _kbdi_xarray(
+            precipitation,
+            maximum_temperature,
+            mean_annual_precipitation,
+            units=units,
+            initial_kbdi=initial_kbdi,
+            initial_state=initial_state,
+            return_state=return_state,
+            spin_up=spin_up,
+            nan_policy=nan_policy,
+            max_gap_days=max_gap_days,
+            time_dim=time_dim,
         )
 
     precipitation_array = _as_float_array(precipitation)
@@ -365,7 +647,9 @@ def kbdi(
             )
         mean_annual = np.sum(np.where(finite_precipitation, precipitation_array, 0.0), axis=0) / valid_days * 365.25
     else:
-        mean_annual = _kbdi_static_array(mean_annual_precipitation, internal_spatial_shape, "mean_annual_precipitation")
+        mean_annual = _static_spatial_array(
+            mean_annual_precipitation, internal_spatial_shape, "mean_annual_precipitation"
+        )
     if np.any(np.isinf(mean_annual)) or np.any(np.isfinite(mean_annual) & (mean_annual <= 0.0)):
         raise InvalidArgumentError(
             "mean_annual_precipitation must be positive where finite.",
@@ -378,14 +662,7 @@ def kbdi(
         if initial_kbdi is None:
             kbdi_value = np.zeros(internal_spatial_shape, dtype=np.float64)
         else:
-            kbdi_value = _kbdi_static_array(initial_kbdi, internal_spatial_shape, "initial_kbdi")
-            if np.any(~np.isfinite(kbdi_value)) or np.any(kbdi_value < 0.0) or np.any(kbdi_value > maximum):
-                raise InvalidArgumentError(
-                    f"initial_kbdi must be finite and within [0, {maximum:g}].",
-                    argument_name="initial_kbdi",
-                    argument_value="non-finite or outside the valid KBDI range",
-                    valid_values=f"[0, {maximum:g}]",
-                )
+            kbdi_value = _kbdi_initial_value(initial_kbdi, internal_spatial_shape, maximum)
         wet_spell = np.zeros(internal_spatial_shape, dtype=np.float64)
         trailing_gap_days = np.full(internal_spatial_shape, -1, dtype=np.int64)
     else:
@@ -534,6 +811,1324 @@ def kbdi(
         raise
 
 
+# CF units-attribute spellings this module recognizes, matching the precedent
+# list in __main__.py's legacy CLI unit handling, plus the CF flux unit the
+# NetCDF/Zarr ecosystem commonly uses for precipitation rate.
+_PRECIP_UNITS_MM = frozenset({"mm", "millimeters", "millimeter"})
+_PRECIP_UNITS_MM_PER_DAY = frozenset({"mm/dy", "mm day-1", "mm/day"})
+_PRECIP_UNITS_MM_PER_YEAR = frozenset({"mm/year", "mm/yr", "mm year-1", "mm yr-1"})
+_PRECIP_UNITS_INCH = frozenset({"inch", "inches"})
+_PRECIP_UNITS_INCH_PER_YEAR = frozenset(
+    {"in/year", "in/yr", "inch/year", "inch/yr", "inches/year", "inches/yr", "inch year-1", "inch yr-1"}
+)
+_PRECIP_UNITS_FLUX = frozenset({"kg m-2 s-1", "kg/m2/s", "kg m^-2 s^-1", "kg.m-2.s-1", "kg/m^2/s"})
+_SECONDS_PER_DAY = 86400.0
+
+_TEMP_UNITS_CELSIUS = frozenset({"c", "celsius", "degree_celsius", "degrees_celsius", "degc"})
+_TEMP_UNITS_FAHRENHEIT = frozenset({"f", "fahrenheit", "degree_fahrenheit", "degrees_fahrenheit", "degf"})
+_TEMP_UNITS_KELVIN = frozenset({"k", "kelvin"})
+_KELVIN_OFFSET_CELSIUS = 273.15
+
+
+def _convert_precipitation_units(
+    data: xr.DataArray,
+    target: Literal["mm", "inch"],
+    *,
+    argument_name: str = "precipitation.attrs['units']",
+    annual: bool = False,
+) -> xr.DataArray:
+    """Convert a precipitation DataArray to ``target`` from its CF ``units`` attribute.
+
+    An absent ``units`` attribute is assumed to already match ``target`` -- the
+    caller's ``units=`` scale is trusted, never silently overridden. An
+    unrecognized attribute raises ``InvalidArgumentError`` rather than guessing.
+    ``annual=True`` declares a mean annual climatology: per-day and flux rate
+    units are rejected, and per-year spellings are accepted in addition to the
+    annual totals (``mm``, ``inch``). Conversion is xarray arithmetic, so
+    Dask-backed input stays lazy.
+    """
+    raw_units = data.attrs.get("units")
+    normalized = raw_units.strip().lower() if isinstance(raw_units, str) else None
+    if normalized is None:
+        return data
+    if normalized in _PRECIP_UNITS_FLUX or normalized in _PRECIP_UNITS_MM_PER_DAY:
+        if annual:
+            raise InvalidArgumentError(
+                f"mean_annual_precipitation cannot use precipitation rate units: {raw_units!r}.",
+                argument_name=argument_name,
+                argument_value=str(raw_units),
+                valid_values="An annual total (mm, inch) or a per-year rate (mm year-1, inch year-1)",
+            )
+        if normalized in _PRECIP_UNITS_FLUX:
+            data = data * _SECONDS_PER_DAY
+        source: Literal["mm", "inch"] = "mm"
+    elif normalized in _PRECIP_UNITS_MM or (annual and normalized in _PRECIP_UNITS_MM_PER_YEAR):
+        source = "mm"
+    elif normalized in _PRECIP_UNITS_INCH or (annual and normalized in _PRECIP_UNITS_INCH_PER_YEAR):
+        source = "inch"
+    else:
+        raise InvalidArgumentError(
+            f"Unsupported precipitation units attribute: {raw_units!r}.",
+            argument_name=argument_name,
+            argument_value=str(raw_units),
+            valid_values=(
+                "An annual total (mm, inch) or a per-year rate (mm year-1, inch year-1)"
+                if annual
+                else "mm / mm day-1, inch(es), or kg m-2 s-1"
+            ),
+        )
+    if source == target:
+        return data
+    converted: xr.DataArray = data / 25.4 if target == "inch" else data * 25.4
+    return converted
+
+
+def _convert_temperature_units(data: xr.DataArray, target: Literal["celsius", "fahrenheit"]) -> xr.DataArray:
+    """Convert a temperature DataArray to ``target`` from its CF ``units`` attribute.
+
+    An absent ``units`` attribute is assumed to already match ``target``; an
+    unrecognized one raises ``InvalidArgumentError`` rather than guessing.
+    Conversion is xarray arithmetic, so Dask-backed input stays lazy.
+    """
+    raw_units = data.attrs.get("units")
+    normalized = raw_units.strip().lower() if isinstance(raw_units, str) else None
+    if normalized is None:
+        return data
+    if normalized in _TEMP_UNITS_KELVIN:
+        data = data - _KELVIN_OFFSET_CELSIUS
+        source: Literal["celsius", "fahrenheit"] = "celsius"
+    elif normalized in _TEMP_UNITS_CELSIUS:
+        source = "celsius"
+    elif normalized in _TEMP_UNITS_FAHRENHEIT:
+        source = "fahrenheit"
+    else:
+        raise InvalidArgumentError(
+            f"Unsupported temperature units attribute: {raw_units!r}.",
+            argument_name="maximum_temperature.attrs['units']",
+            argument_value=str(raw_units),
+            valid_values="K, kelvin, C/celsius, or F/fahrenheit",
+        )
+    if source == target:
+        return data
+    converted: xr.DataArray = data * 9.0 / 5.0 + 32.0 if target == "fahrenheit" else (data - 32.0) * 5.0 / 9.0
+    return converted
+
+
+def _validate_daily_time_coordinate(data: xr.DataArray, time_dim: str) -> None:
+    """Require consecutive daily samples: the KBDI recurrence is defined per day.
+
+    Called only when the time coordinate is attached; a dimension-only time
+    axis has no cadence metadata to check.
+
+    Raises:
+        CoordinateValidationError: If the time steps are not exactly one day apart.
+    """
+    values = data.coords[time_dim].values
+    if values.size < 2:
+        return
+    try:
+        deltas = np.diff(values.astype("datetime64[ns]"))
+    except (TypeError, ValueError) as exc:
+        raise CoordinateValidationError(
+            message=f"Cannot verify daily cadence for '{time_dim}': unsupported datetime type.",
+            coordinate_name=time_dim,
+            reason="unsupported_datetime_type",
+        ) from exc
+    if np.any(deltas != np.timedelta64(1, "D")):
+        raise CoordinateValidationError(
+            message=(
+                f"KBDI requires consecutive daily '{time_dim}' steps, but '{time_dim}' is not daily. "
+                "Aggregate the observations to daily totals and daily maxima before calling."
+            ),
+            coordinate_name=time_dim,
+            reason="not_daily",
+        )
+
+
+def _kbdi_xarray(
+    precipitation: xr.DataArray,
+    maximum_temperature: xr.DataArray,
+    mean_annual_precipitation: npt.ArrayLike | xr.DataArray | None,
+    *,
+    units: Literal["metric", "imperial"],
+    initial_kbdi: npt.ArrayLike | xr.DataArray | None,
+    initial_state: KBDIState | None,
+    return_state: bool,
+    spin_up: int,
+    nan_policy: Literal["propagate", "bridge"],
+    max_gap_days: int,
+    time_dim: str,
+) -> xr.DataArray | KBDIResult:
+    """xarray dispatch for :func:`kbdi`. See :func:`kbdi` for the full contract.
+
+    Resolves the ``kbdi``/``kbdi_imperial`` CF registry entry from ``units`` at
+    call time (the KBDI-specific problem named in
+    ``docs/design/fire-subsystem.md``: the same function selects between two
+    registry entries depending on a runtime argument, which a decoration-time
+    ``cf_metadata`` dict cannot do). Delegates the actual recurrence to
+    :func:`kbdi`'s NumPy path via :func:`xarray.apply_ufunc`, one call per
+    Dask spatial chunk with the full ``time`` axis, since :func:`kbdi` already
+    vectorizes over an arbitrary spatial shape internally -- unlike
+    :func:`~climate_indices.xarray_adapter.pet_hargreaves`, this does not need
+    ``vectorize=True`` per-cell looping.
+    """
+    precip_da = precipitation
+    temp_da = maximum_temperature
+
+    _validate_time_dimension(precip_da, time_dim)
+    _validate_time_dimension(temp_da, time_dim)
+    # a dimension-only time axis carries no cadence metadata: xarray aligns it
+    # positionally, so monotonicity and daily checks apply only to real coords
+    for data in (precip_da, temp_da):
+        if time_dim in data.coords:
+            _validate_time_monotonicity(data.coords[time_dim])
+            _validate_daily_time_coordinate(data, time_dim)
+
+    shared_spatial_dims = [str(dim) for dim in precip_da.dims if dim in temp_da.dims and dim != time_dim]
+    precip_aligned, temp_aligned = xr.align(precip_da, temp_da, join="inner")
+    for dim in sorted(shared_spatial_dims):
+        if precip_aligned.sizes[dim] != precip_da.sizes[dim] or temp_aligned.sizes[dim] != temp_da.sizes[dim]:
+            raise CoordinateValidationError(
+                message=(
+                    f"Input alignment dropped coordinates along non-time dimension '{dim}': "
+                    f"precipitation had {precip_da.sizes[dim]}, maximum_temperature had "
+                    f"{temp_da.sizes[dim]}; after the inner join they have "
+                    f"{precip_aligned.sizes[dim]} and {temp_aligned.sizes[dim]}. "
+                    "Subset or align the inputs explicitly; KBDI never reduces spatial coverage silently."
+                ),
+                coordinate_name=dim,
+                reason="non_time_alignment_dropped_coordinates",
+            )
+    aligned_len = precip_aligned.sizes[time_dim]
+    original_len = max(precip_da.sizes[time_dim], temp_da.sizes[time_dim])
+    if aligned_len == 0:
+        raise CoordinateValidationError(
+            message=(
+                f"No overlapping timesteps found between precipitation and maximum_temperature "
+                f"along '{time_dim}'. Cannot compute KBDI."
+            ),
+            coordinate_name=time_dim,
+            reason="empty_intersection_after_alignment",
+        )
+    if aligned_len < original_len:
+        warnings.warn(
+            InputAlignmentWarning(
+                message=(
+                    f"Input alignment: precipitation had {precip_da.sizes[time_dim]} timesteps, "
+                    f"maximum_temperature had {temp_da.sizes[time_dim]} timesteps. "
+                    f"After inner join, {aligned_len} remain."
+                ),
+                original_size=original_len,
+                aligned_size=aligned_len,
+                dropped_count=original_len - aligned_len,
+            ),
+            stacklevel=3,
+        )
+
+    _validate_dask_chunks(precip_aligned, time_dim)
+    _validate_dask_chunks(temp_aligned, time_dim)
+
+    precip_target: Literal["mm", "inch"] = "inch" if units == "imperial" else "mm"
+    temp_target: Literal["celsius", "fahrenheit"] = "fahrenheit" if units == "imperial" else "celsius"
+    precip_aligned = _convert_precipitation_units(precip_aligned, precip_target)
+    temp_aligned = _convert_temperature_units(temp_aligned, temp_target)
+
+    # one shared spatial topology: a time-only input must broadcast to the
+    # other's grid before apply_ufunc and the final transpose see its dims
+    precip_aligned, temp_aligned = xr.broadcast(precip_aligned, temp_aligned)
+
+    spatial_dims = tuple(d for d in precip_aligned.dims if d != time_dim)
+    spatial_shape = tuple(precip_aligned.sizes[d] for d in spatial_dims)
+
+    # validate initial conditions eagerly: a bad seed must fail this call, not a
+    # later lazy evaluation (the NumPy core revalidates per chunk)
+    maximum = 800.0 if units == "imperial" else _KBDI_MAX_MM
+    internal_spatial_shape = spatial_shape or (1,)
+    if initial_state is not None:
+        _kbdi_state_arrays(initial_state, internal_spatial_shape, units, maximum)
+    elif initial_kbdi is not None and not isinstance(initial_kbdi, xr.DataArray):
+        # a DataArray seed may be Dask-backed; validating it eagerly would compute it
+        _kbdi_initial_value(initial_kbdi, internal_spatial_shape, maximum)
+
+    def _wrap_spatial(value: npt.ArrayLike | xr.DataArray) -> xr.DataArray:
+        """Broadcast a scalar/array/DataArray to a DataArray on ``spatial_dims``.
+
+        Giving Dask/apply_ufunc real dimension names is what lets it slice
+        this secondary input per spatial chunk instead of broadcasting the
+        whole un-chunked array into every chunk's call.
+        """
+        if isinstance(value, xr.DataArray):
+            return value
+        return xr.DataArray(np.broadcast_to(np.asarray(value, dtype=np.float64), spatial_shape), dims=spatial_dims)
+
+    mean_annual_arg: xr.DataArray | None = None
+    if mean_annual_precipitation is not None:
+        if isinstance(mean_annual_precipitation, xr.DataArray):
+            mean_annual_precipitation = _convert_precipitation_units(
+                mean_annual_precipitation,
+                precip_target,
+                argument_name="mean_annual_precipitation.attrs['units']",
+                annual=True,
+            )
+        mean_annual_arg = _wrap_spatial(mean_annual_precipitation)
+    seed_kbdi_arg: xr.DataArray | None = None
+    seed_wet_arg: xr.DataArray | None = None
+    seed_gap_arg: xr.DataArray | None = None
+    if initial_state is not None:
+        gap_source = (
+            initial_state.trailing_gap_days
+            if initial_state.trailing_gap_days is not None
+            else np.full(spatial_shape, -1, dtype=np.int64)
+        )
+        seed_kbdi_arg = _wrap_spatial(initial_state.kbdi)
+        seed_wet_arg = _wrap_spatial(initial_state.wet_spell_precipitation)
+        seed_gap_arg = _wrap_spatial(gap_source)
+    elif initial_kbdi is not None:
+        seed_kbdi_arg = _wrap_spatial(initial_kbdi)
+
+    optional_slots = (mean_annual_arg, seed_kbdi_arg, seed_wet_arg, seed_gap_arg)
+    include_mask = tuple(slot is not None for slot in optional_slots)
+    optional_args = [slot for slot in optional_slots if slot is not None]
+
+    output_time_len = max(aligned_len - spin_up, 0)
+
+    def _kbdi_block(
+        precip_block: np.ndarray, temp_block: np.ndarray, *optional_blocks: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Compute one Dask chunk (or the whole array, eager): time axis last in, last out."""
+        it = iter(optional_blocks)
+        mean_annual_block = next(it) if include_mask[0] else None
+        seed_kbdi_block = next(it) if include_mask[1] else None
+        seed_wet_block = next(it) if include_mask[2] else None
+        seed_gap_block = next(it) if include_mask[3] else None
+
+        # apply_ufunc places core dims (time) last; kbdi()'s NumPy path is time-first.
+        precip_t = np.moveaxis(precip_block, -1, 0).copy()
+        temp_t = np.moveaxis(temp_block, -1, 0).copy()
+
+        call_initial_state = None
+        call_initial_kbdi = None
+        if seed_wet_block is not None:
+            gap = seed_gap_block.astype(np.int64)  # type: ignore[union-attr]
+            call_initial_state = KBDIState(
+                kbdi=seed_kbdi_block.copy(),  # type: ignore[union-attr]
+                wet_spell_precipitation=seed_wet_block.copy(),
+                trailing_gap_days=None if np.all(gap < 0) else gap.copy(),
+                units=units,
+            )
+        elif seed_kbdi_block is not None:
+            call_initial_kbdi = seed_kbdi_block
+
+        result = kbdi(
+            precip_t,
+            temp_t,
+            mean_annual_block,
+            units=units,
+            initial_kbdi=call_initial_kbdi,
+            initial_state=call_initial_state,
+            return_state=True,
+            spin_up=spin_up,
+            nan_policy=nan_policy,
+            max_gap_days=max_gap_days,
+        )
+        assert isinstance(result, KBDIResult)
+        # narrow for mypy: precip_t/temp_t are plain ndarrays, so this call
+        # always takes kbdi()'s NumPy path and result.values is never a DataArray
+        assert isinstance(result.values, np.ndarray)
+        values_out = np.moveaxis(result.values, 0, -1)
+        gap_out = result.state.trailing_gap_days
+        if gap_out is None:
+            gap_out = np.full(precip_t.shape[1:], -1, dtype=np.int64)
+        return values_out, result.state.kbdi, result.state.wet_spell_precipitation, gap_out
+
+    values_result, kbdi_result, wet_result, gap_result = xr.apply_ufunc(
+        _kbdi_block,
+        precip_aligned,
+        temp_aligned,
+        *optional_args,
+        input_core_dims=[[time_dim], [time_dim]] + [[] for _ in optional_args],
+        output_core_dims=[[time_dim], [], [], []],
+        exclude_dims={time_dim},
+        vectorize=False,
+        dask="parallelized",
+        dask_gufunc_kwargs={"output_sizes": {time_dim: output_time_len}},
+        output_dtypes=[float, float, float, np.int64],
+    )
+
+    values_result = values_result.transpose(*precip_aligned.dims)
+    if time_dim in precip_aligned.coords:
+        new_time_values = precip_aligned.coords[time_dim].values[spin_up : spin_up + output_time_len]
+        values_result = values_result.assign_coords({time_dim: new_time_values})
+
+    cf_key = "kbdi_imperial" if units == "imperial" else "kbdi"
+    values_result.attrs = _build_output_attrs(
+        precip_da,
+        cf_metadata=CF_METADATA[cf_key],  # type: ignore[arg-type]
+        # "units" is deliberately excluded here: it's a CF attribute the
+        # registry entry above already sets ("mm" / "0.01 in"), and
+        # _build_output_attrs layers calculation_metadata *over* cf_metadata,
+        # so including it here would silently overwrite the physical unit
+        # with the "metric"/"imperial" mode string.
+        calculation_metadata={"nan_policy": nan_policy},
+        index_name="KBDI",
+    )
+
+    if not return_state:
+        result_da: xr.DataArray = values_result
+        return result_da
+
+    # One compute for the values and all three state fields: they share the
+    # recurrence graph, so separate .values calls would each rerun it.
+    values_name = values_result.name
+    final_state = xr.Dataset(
+        {
+            "values": values_result,
+            "kbdi": kbdi_result,
+            "wet_spell_precipitation": wet_result,
+            "trailing_gap_days": gap_result,
+        }
+    ).load()
+    values_result = final_state["values"].rename(values_name)
+    final_gap: npt.NDArray[np.int64] = final_state["trailing_gap_days"].values
+    return KBDIResult(
+        values=values_result,
+        state=KBDIState(
+            kbdi=final_state["kbdi"].values,
+            wet_spell_precipitation=final_state["wet_spell_precipitation"].values,
+            trailing_gap_days=None if bool(np.all(final_gap < 0)) else final_gap,
+            units=units,
+        ),
+    )
+
+
+# Canadian Forest Fire Weather Index System moisture codes (#803)
+#
+# The three codes share the daily-recurrence contract of ADR-0006 and the
+# missing-day policy of ADR-0007 through ``_run_cffwis_recurrence``, which
+# owns the gap bookkeeping and the output/spin-up handling. Each ``_*_next``
+# function is the pure daily update for one code.
+
+
+@dataclass(frozen=True)
+class FFMCState:
+    """State needed to resume a Fine Fuel Moisture Code recurrence.
+
+    A ``trailing_gap_days`` value of ``None`` means no valid day has started
+    the recurrence. For spatial arrays, ``-1`` marks individual cells that
+    have not started yet. A NaN ``ffmc`` is only valid where
+    ``trailing_gap_days`` shows that a gap has started the cell; a
+    not-started cell holds a number.
+    """
+
+    ffmc: npt.NDArray[np.float64]
+    trailing_gap_days: npt.NDArray[np.int64] | None
+
+
+@dataclass(frozen=True)
+class FFMCResult:
+    """Fine Fuel Moisture Code values and final state returned by :func:`ffmc`."""
+
+    values: npt.NDArray[np.float64]
+    state: FFMCState
+
+
+@dataclass(frozen=True)
+class DMCState:
+    """State needed to resume a Duff Moisture Code recurrence.
+
+    ``trailing_gap_days`` follows :class:`FFMCState`; a NaN ``dmc`` is only
+    valid where a gap has started the cell.
+    """
+
+    dmc: npt.NDArray[np.float64]
+    trailing_gap_days: npt.NDArray[np.int64] | None
+
+
+@dataclass(frozen=True)
+class DMCResult:
+    """Duff Moisture Code values and final state returned by :func:`duff_moisture_code`."""
+
+    values: npt.NDArray[np.float64]
+    state: DMCState
+
+
+@dataclass(frozen=True)
+class DCState:
+    """State needed to resume a Drought Code recurrence.
+
+    ``trailing_gap_days`` follows :class:`FFMCState`; a NaN ``dc`` is only
+    valid where a gap has started the cell.
+    """
+
+    dc: npt.NDArray[np.float64]
+    trailing_gap_days: npt.NDArray[np.int64] | None
+
+
+@dataclass(frozen=True)
+class DCResult:
+    """Drought Code values and final state returned by :func:`drought_code`."""
+
+    values: npt.NDArray[np.float64]
+    state: DCState
+
+
+def _daily_weather_arrays(
+    names: tuple[str, ...],
+    *values: npt.ArrayLike,
+) -> tuple[npt.NDArray[np.float64], ...]:
+    """Coerce and broadcast time-first daily weather inputs, rejecting infinity."""
+    arrays = tuple(_as_float_array(value) for value in values)
+    # Time-first arrays are left-aligned: a shorter input is shared across every
+    # trailing axis, so a (time,) series spans the whole spatial grid instead of
+    # NumPy aligning it with the final axis.
+    ndim = max(array.ndim for array in arrays)
+    arrays = tuple(
+        array if array.ndim == ndim else array.reshape(array.shape + (1,) * (ndim - array.ndim)) for array in arrays
+    )
+    try:
+        broadcast = np.broadcast_arrays(*arrays)
+    except ValueError as exc:
+        shapes = ", ".join(f"{name}={array.shape}" for name, array in zip(names, arrays, strict=True))
+        raise InvalidArgumentError(
+            f"Incompatible array shapes for daily weather inputs: {shapes}. The inputs must broadcast together.",
+            argument_name="/".join(names),
+            argument_value=f"shapes {shapes}",
+            valid_values="Arrays broadcastable to a common time-first shape",
+        ) from exc
+    if broadcast[0].ndim == 0:
+        raise DataShapeError(
+            "Daily weather inputs must include a time dimension.",
+            expected_shape="(time, ...)",
+            actual_shape=broadcast[0].shape,
+        )
+    infinite = [name for name, array in zip(names, broadcast, strict=True) if np.any(np.isinf(array))]
+    if infinite:
+        raise InvalidArgumentError(
+            f"{'/'.join(infinite)} must be finite or NaN: infinity is not a missing observation.",
+            argument_name="/".join(infinite),
+            argument_value="infinite value",
+            valid_values="Finite values or NaN",
+        )
+    result: tuple[npt.NDArray[np.float64], ...] = tuple(broadcast)
+    return result
+
+
+def _month_array(month: npt.ArrayLike, weather_shape: tuple[int, ...]) -> npt.NDArray[np.int64]:
+    """Validate calendar months and broadcast them to the time-first weather shape."""
+    months = _as_float_array(month)
+    if np.any(~np.isfinite(months)) or np.any(months != np.floor(months)) or np.any((months < 1.0) | (months > 12.0)):
+        raise InvalidArgumentError(
+            "month must contain integer calendar months in [1, 12].",
+            argument_name="month",
+            argument_value="a non-finite, non-integral, or out-of-range value",
+            valid_values="Integer values in [1, 12]",
+        )
+    months = months.astype(np.int64)
+    if months.ndim == 1 and len(weather_shape) > 1 and months.shape[0] == weather_shape[0]:
+        # a calendar month series is shared across every spatial cell
+        months = months.reshape((months.shape[0],) + (1,) * (len(weather_shape) - 1))
+    try:
+        # the shared scalar and (time,) forms stay broadcast views instead of
+        # retaining an int64 value for every time-cell
+        result: npt.NDArray[np.int64] = np.broadcast_to(months, weather_shape)
+    except ValueError as exc:
+        raise InvalidArgumentError(
+            "month must broadcast to the time-first weather shape.",
+            argument_name="month",
+            argument_value=f"shape {months.shape}",
+            valid_values=f"A scalar or an array broadcastable to {weather_shape}",
+        ) from exc
+    return result
+
+
+def _latitude_and_validity(
+    latitude_degrees_north: npt.ArrayLike,
+    spatial_shape: tuple[int, ...],
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.bool_]]:
+    """Broadcast latitude to the spatial shape and report which cells are usable."""
+    latitude = _as_float_array(latitude_degrees_north)
+    if np.any(np.isinf(latitude)):
+        raise InvalidArgumentError(
+            "latitude_degrees_north must be finite or NaN: infinity is not a missing location.",
+            argument_name="latitude_degrees_north",
+            argument_value="infinite value",
+            valid_values="Finite values in [-90, 90] or NaN",
+        )
+    if np.any(np.isfinite(latitude) & ((latitude < -90.0) | (latitude > 90.0))):
+        raise InvalidArgumentError(
+            "latitude_degrees_north must be within [-90, 90] where finite.",
+            argument_name="latitude_degrees_north",
+            argument_value="value outside [-90, 90]",
+            valid_values="Finite values in [-90, 90] or NaN",
+        )
+    broadcast = _static_spatial_array(latitude, spatial_shape, "latitude_degrees_north")
+    return broadcast, np.isfinite(broadcast)
+
+
+def _initialize_single_value_state(
+    *,
+    seed: npt.ArrayLike | None,
+    seed_name: str,
+    initial_state: object,
+    state_type: type[DCState] | type[DMCState] | type[FFMCState],
+    value_name: str,
+    default_seed: float,
+    minimum: float,
+    maximum: float | None,
+    spatial_shape: tuple[int, ...],
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.int64]]:
+    """Resolve a seed or a supplied state into a recurrence's starting state."""
+    bound = f"[{minimum:g}, {maximum:g}]" if maximum is not None else f"greater than or equal to {minimum:g}"
+    if initial_state is None:
+        if seed is None:
+            value = np.full(spatial_shape, default_seed, dtype=np.float64)
+        else:
+            value = _static_spatial_array(seed, spatial_shape, seed_name)
+            outside = np.any(value < minimum) or (maximum is not None and np.any(value > maximum))
+            if np.any(~np.isfinite(value)) or outside:
+                raise InvalidArgumentError(
+                    f"{seed_name} must be finite and {bound}.",
+                    argument_name=seed_name,
+                    argument_value="non-finite or outside the valid range",
+                    valid_values=bound,
+                )
+        return value, np.full(spatial_shape, -1, dtype=np.int64)
+
+    if not isinstance(initial_state, state_type):
+        raise InvalidArgumentError(
+            f"initial_state must be a {state_type.__name__}.",
+            argument_name="initial_state",
+            argument_value=type(initial_state).__name__,
+            valid_values=state_type.__name__,
+        )
+    value = _static_spatial_array(getattr(initial_state, value_name), spatial_shape, f"initial_state.{value_name}")
+    trailing = initial_state.trailing_gap_days
+    if trailing is None:
+        trailing_gap_days = np.full(spatial_shape, -1, dtype=np.int64)
+    else:
+        trailing_array = _static_spatial_array(trailing, spatial_shape, "initial_state.trailing_gap_days")
+        if (
+            np.any(~np.isfinite(trailing_array))
+            or np.any(trailing_array < -1)
+            or np.any(trailing_array != np.floor(trailing_array))
+        ):
+            raise InvalidArgumentError(
+                "initial_state.trailing_gap_days must contain integers greater than or equal to -1.",
+                argument_name="initial_state.trailing_gap_days",
+                argument_value="non-integral or less than -1 value",
+                valid_values="-1 or a non-negative integer",
+            )
+        trailing_gap_days = trailing_array.astype(np.int64)
+
+    outside = np.any(value < minimum) or (maximum is not None and np.any(value > maximum))
+    if np.any(~np.isfinite(value) & ~np.isnan(value)) or outside:
+        raise InvalidArgumentError(
+            f"initial_state.{value_name} must be NaN or {bound}.",
+            argument_name=f"initial_state.{value_name}",
+            argument_value="non-finite or outside the valid range",
+            valid_values=f"NaN or {bound}",
+        )
+    if np.any(np.isnan(value) & (trailing_gap_days < 0)):
+        raise InvalidArgumentError(
+            f"initial_state.{value_name} may be NaN only where trailing_gap_days shows a gap has started.",
+            argument_name=f"initial_state.{value_name}",
+            argument_value="NaN where initial_state.trailing_gap_days is -1 or None",
+            valid_values="A finite value in a not-started cell; NaN only after a gap has started the cell",
+        )
+    return value, trailing_gap_days
+
+
+def _active_view(
+    active: npt.NDArray[np.bool_] | None,
+    *arrays: npt.NDArray[np.float64],
+) -> tuple[npt.NDArray[np.float64], ...]:
+    """Restrict each array to the active cells, or return them unchanged for all cells."""
+    if active is None:
+        return arrays
+    return tuple(array[active] for array in arrays)
+
+
+def _run_cffwis_recurrence(
+    state_value: npt.NDArray[np.float64],
+    step: Callable[[int, npt.NDArray[np.bool_] | None], npt.NDArray[np.float64]],
+    *,
+    index_type: str,
+    weather_valid: npt.NDArray[np.bool_],
+    static_valid: npt.NDArray[np.bool_],
+    trailing_gap_days: npt.NDArray[np.int64],
+    memory_arrays: tuple[npt.NDArray[np.float64], ...],
+    spin_up: int,
+    nan_policy: Literal["propagate", "bridge"],
+    max_gap_days: int,
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.int64] | None]:
+    """Run a time-first daily recurrence under the ADR-0007 missing-day policy.
+
+    ``step(day, active)`` returns the next code value for every cell when
+    ``active`` is ``None`` and for the selected cells otherwise. Only cells
+    with a valid observation whose recurrence has started and is not poisoned
+    adopt it. A cell whose static input is unusable never starts: its output
+    stays NaN and its state is untouched.
+    """
+    n_days = weather_valid.shape[0]
+
+    log = _logger.bind(
+        index_type=index_type,
+        input_shape=weather_valid.shape,
+        input_elements=weather_valid.size,
+    )
+    log.info("calculation_started")
+    t0 = time.perf_counter()
+    try:
+        # the allocation is inside the try so an output-allocation failure
+        # still reports the recurrence lifecycle
+        values = np.full((max(n_days - spin_up, 0), *weather_valid.shape[1:]), np.nan, dtype=np.float64)
+        started = trailing_gap_days >= 0
+        poisoned = np.isnan(state_value)
+        memory_metrics = check_large_array_memory(*memory_arrays, weather_valid, values)
+
+        for day in range(n_days):
+            # A cell whose static input is unusable has no recurrence to
+            # gap-manage: it never starts, so it is not an elapsed missing day.
+            active = _apply_gap_policy(
+                state_value,
+                weather_valid[day],
+                static_valid,
+                started,
+                poisoned,
+                trailing_gap_days,
+                nan_policy=nan_policy,
+                max_gap_days=max_gap_days,
+            )
+
+            all_active = active.all()
+            if np.any(active):
+                with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+                    updated = step(day, None if all_active else active)
+                if np.any(~np.isfinite(updated)):
+                    raise InvalidArgumentError(
+                        f"{index_type} produced a non-finite value from finite inputs.",
+                        argument_name=index_type,
+                        argument_value="non-finite result",
+                        valid_values="Finite inputs whose result stays within float64",
+                    )
+                if all_active:
+                    state_value[:] = updated
+                else:
+                    state_value[active] = updated
+            if day >= spin_up:
+                if all_active:
+                    values[day - spin_up] = state_value
+                else:
+                    values[day - spin_up] = np.where(active, state_value, np.nan)
+
+        state_gap_days = trailing_gap_days.copy() if np.any(started | poisoned) else None
+        duration_ms = (time.perf_counter() - t0) * 1000.0
+        log.info(
+            "calculation_completed",
+            duration_ms=round(duration_ms, 2),
+            output_shape=values.shape,
+            **(memory_metrics or {}),
+        )
+        return values, state_gap_days
+    except Exception as exc:
+        log.error(
+            "calculation_failed",
+            exc_info=True,
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+        )
+        raise
+
+
+def _ffmc_next(
+    ffmc_previous: npt.NDArray[np.float64],
+    temperature_celsius: npt.NDArray[np.float64],
+    relative_humidity_percent: npt.NDArray[np.float64],
+    wind_speed_kilometers_per_hour: npt.NDArray[np.float64],
+    precipitation_mm: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]:
+    """Advance the FFMC one day (Van Wagner and Pickett, 1985, Eq. 1-10)."""
+    # Eq. 1: previous FFMC to fine fuel moisture content, percent
+    moisture = _FFMC_COEFFICIENT * (101.0 - ffmc_previous) / (59.5 + ffmc_previous)
+    rained = precipitation_mm > _FFMC_PRECIPITATION_THRESHOLD_MM
+    effective_rain = np.where(rained, precipitation_mm - _FFMC_PRECIPITATION_THRESHOLD_MM, precipitation_mm)
+    # Eqs. 3a and 3b: rain adds moisture, with an amendment above 150 percent
+    rain_moisture = 42.5 * effective_rain * np.exp(-100.0 / (251.0 - moisture)) * (1.0 - np.exp(-6.93 / effective_rain))
+    rain_moisture += np.where(
+        moisture > _FFMC_MOISTURE_FOR_RAIN_CORRECTION,
+        0.0015 * (moisture - _FFMC_MOISTURE_FOR_RAIN_CORRECTION) ** 2 * np.sqrt(effective_rain),
+        0.0,
+    )
+    moisture = np.where(rained, np.minimum(moisture + rain_moisture, _FFMC_MOISTURE_CAP), moisture)
+
+    # Eqs. 4 and 5: equilibrium moisture content for drying and wetting
+    temperature_term = 0.18 * (21.1 - temperature_celsius) * (1.0 - np.exp(-0.115 * relative_humidity_percent))
+    drying_equilibrium = (
+        0.942 * relative_humidity_percent**0.679
+        + 11.0 * np.exp((relative_humidity_percent - 100.0) / 10.0)
+        + temperature_term
+    )
+    wetting_equilibrium = (
+        0.618 * relative_humidity_percent**0.753
+        + 10.0 * np.exp((relative_humidity_percent - 100.0) / 10.0)
+        + temperature_term
+    )
+
+    # Eqs. 6-9: dry toward the drying equilibrium or wet toward the wetting
+    # equilibrium, whichever side of it the fuel is on
+    humidity_fraction = relative_humidity_percent / 100.0
+    wind_root = np.sqrt(wind_speed_kilometers_per_hour)
+    temperature_scale = 0.581 * np.exp(0.0365 * temperature_celsius)
+    drying_rate = (
+        0.424 * (1.0 - humidity_fraction**1.7) + 0.0694 * wind_root * (1.0 - humidity_fraction**8)
+    ) * temperature_scale
+    wetting_rate = (
+        0.424 * (1.0 - (1.0 - humidity_fraction) ** 1.7) + 0.0694 * wind_root * (1.0 - (1.0 - humidity_fraction) ** 8)
+    ) * temperature_scale
+    dried = drying_equilibrium + (moisture - drying_equilibrium) * 10.0**-drying_rate
+    wetted = wetting_equilibrium - (wetting_equilibrium - moisture) * 10.0**-wetting_rate
+    moisture = np.where(
+        moisture > drying_equilibrium,
+        dried,
+        np.where(moisture < wetting_equilibrium, wetted, moisture),
+    )
+
+    # Eq. 10: final FFMC conversion, clamped to the published range
+    result = 59.5 * (250.0 - moisture) / (_FFMC_COEFFICIENT + moisture)
+    return np.clip(result, 0.0, _FFMC_MAXIMUM)
+
+
+def _dmc_next(
+    dmc_previous: npt.NDArray[np.float64],
+    temperature_celsius: npt.NDArray[np.float64],
+    relative_humidity_percent: npt.NDArray[np.float64],
+    precipitation_mm: npt.NDArray[np.float64],
+    effective_day_length_hours: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]:
+    """Advance the DMC one day (Van Wagner and Pickett, 1985, Eq. 11-16)."""
+    # Eq. 16: the log drying rate, with its temperature floor
+    temperature = np.maximum(temperature_celsius, _DMC_TEMPERATURE_FLOOR_CELSIUS)
+    drying_rate = 1.894 * (temperature + 1.1) * (100.0 - relative_humidity_percent) * effective_day_length_hours * 1e-4
+
+    # Eqs. 11-15: rain above 1.5 mm rewets the duff layer
+    rained = precipitation_mm > _DMC_PRECIPITATION_THRESHOLD_MM
+    effective_rain = 0.92 * precipitation_mm - 1.27
+    moisture_before = 20.0 + 280.0 / np.exp(0.023 * dmc_previous)
+    # Eq. 13's piecewise slope of the moisture-content relation
+    slope = np.where(
+        dmc_previous <= 33.0,
+        100.0 / (0.5 + 0.3 * dmc_previous),
+        np.where(
+            dmc_previous <= 65.0,
+            14.0 - 1.3 * np.log(dmc_previous),
+            6.2 * np.log(dmc_previous) - 17.2,
+        ),
+    )
+    moisture_after = moisture_before + 1000.0 * effective_rain / (48.77 + slope * effective_rain)
+    # Eq. 15 in the reference code's more accurate form
+    after_rain = np.maximum(43.43 * (5.6348 - np.log(moisture_after - 20.0)), 0.0)
+
+    previous = np.where(rained, after_rain, dmc_previous)
+    return np.maximum(previous + drying_rate, 0.0)
+
+
+def _dc_next(
+    dc_previous: npt.NDArray[np.float64],
+    temperature_celsius: npt.NDArray[np.float64],
+    precipitation_mm: npt.NDArray[np.float64],
+    day_length_adjustment: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]:
+    """Advance the DC one day (Van Wagner and Pickett, 1985, Eq. 18-23)."""
+    # Eq. 22: potential evapotranspiration, floored at zero for winter
+    temperature = np.maximum(temperature_celsius, _DC_TEMPERATURE_FLOOR_CELSIUS)
+    potential_evapotranspiration = np.maximum((0.36 * (temperature + 2.8) + day_length_adjustment) / 2.0, 0.0)
+
+    # Eqs. 18-21: rain above 2.8 mm reduces the drought code
+    rained = precipitation_mm > _DC_PRECIPITATION_THRESHOLD_MM
+    effective_rain = 0.83 * precipitation_mm - 1.27
+    moisture_before = 800.0 * np.exp(-dc_previous / 400.0)
+    after_rain = np.maximum(dc_previous - 400.0 * np.log(1.0 + 3.937 * effective_rain / moisture_before), 0.0)
+
+    previous = np.where(rained, after_rain, dc_previous)
+    value: npt.NDArray[np.float64] = np.maximum(previous + potential_evapotranspiration, 0.0)
+    return value
+
+
+def _dmc_day_length_band(latitude_degrees_north: npt.NDArray[np.float64]) -> npt.NDArray[np.intp]:
+    """Index the DMC effective-day-length table for each cell's latitude band."""
+    band: npt.NDArray[np.intp] = np.select(
+        [
+            latitude_degrees_north > 30.0,
+            latitude_degrees_north > 10.0,
+            latitude_degrees_north > -10.0,
+            latitude_degrees_north > -30.0,
+        ],
+        [0, 1, 2, 3],
+        default=4,
+    ).astype(np.intp)
+    return band
+
+
+def _dc_day_length_band(latitude_degrees_north: npt.NDArray[np.float64]) -> npt.NDArray[np.intp]:
+    """Index the DC day-length-adjustment table for each cell's latitude band."""
+    band: npt.NDArray[np.intp] = np.select(
+        [latitude_degrees_north > 20.0, latitude_degrees_north > -20.0],
+        [0, 1],
+        default=2,
+    ).astype(np.intp)
+    return band
+
+
+def ffmc(
+    temperature_celsius: npt.ArrayLike,
+    relative_humidity_percent: npt.ArrayLike,
+    wind_speed_meters_per_second: npt.ArrayLike,
+    precipitation_mm: npt.ArrayLike,
+    *,
+    initial_ffmc: npt.ArrayLike | None = None,
+    initial_state: FFMCState | None = None,
+    return_state: bool = False,
+    spin_up: int = 0,
+    nan_policy: Literal["propagate", "bridge"] = "propagate",
+    max_gap_days: int = 0,
+) -> npt.NDArray[np.float64] | FFMCResult:
+    """Compute the Fine Fuel Moisture Code (FFMC).
+
+    The moisture content of fine surface litter and other fine fuels, the
+    base of the Canadian Forest Fire Weather Index System (Van Wagner and
+    Pickett, 1985). It is a daily recurrence: rain rewets the fuel, and
+    temperature, relative humidity, and wind move it toward the day's
+    equilibrium moisture content.
+
+    The equations are evaluated in the source's operational units, so the
+    wind speed is converted from meters per second to km/h here and nowhere
+    else. The moisture-content conversion uses the reference code's exact
+    ``250 * 59.5 / 101`` rather than the ``147.2`` printed in the report.
+
+    The source's open choices are resolved here as: only rain above 0.5 mm
+    rewets the fuel, moisture content is capped at 250 percent, the code is
+    clamped to [0, 101], the literature seed is 85, and a day whose relative
+    humidity is outside [0, 100] or whose wind speed is negative counts as a
+    missing observation under ``nan_policy``.
+
+    Args:
+        temperature_celsius: Daily noon-local-standard-time air temperature,
+            time-first, degrees Celsius.
+        relative_humidity_percent: Daily noon-local-standard-time relative
+            humidity, time-first, percent.
+        wind_speed_meters_per_second: Daily 10 m wind speed, time-first,
+            meters per second.
+        precipitation_mm: Daily 24-hour precipitation, time-first, mm.
+        initial_ffmc: Seed code, scalar or an array of the trailing spatial
+            shape. ``None`` selects the literature seed of 85. Cannot be
+            combined with ``initial_state``.
+        initial_state: State returned by an earlier call.
+        return_state: Return :class:`FFMCResult` with the final state.
+        spin_up: Number of leading input days to compute but omit from the
+            output.
+        nan_policy: ``"propagate"`` poisons a started recurrence at a missing
+            day; ``"bridge"`` skips gaps up to ``max_gap_days``.
+        max_gap_days: Maximum bridged consecutive missing days. Must be zero
+            for ``"propagate"`` and positive for ``"bridge"``.
+
+    Returns:
+        FFMC with the time-first shape of the broadcast weather inputs, less
+        ``spin_up`` leading days. Returns :class:`FFMCResult` when
+        ``return_state`` is true.
+
+    Raises:
+        DataShapeError: If the weather inputs have no time dimension.
+        InvalidArgumentError: If shapes, configuration, state, or physical
+            inputs are invalid.
+    """
+    _validate_recurrence_options(nan_policy, max_gap_days, spin_up, "initial_ffmc", initial_ffmc, initial_state)
+
+    temperature, humidity, wind, precipitation = _daily_weather_arrays(
+        (
+            "temperature_celsius",
+            "relative_humidity_percent",
+            "wind_speed_meters_per_second",
+            "precipitation_mm",
+        ),
+        temperature_celsius,
+        relative_humidity_percent,
+        wind_speed_meters_per_second,
+        precipitation_mm,
+    )
+    if np.any(np.isfinite(precipitation) & (precipitation < 0.0)):
+        raise InvalidArgumentError(
+            "precipitation_mm must be non-negative where finite.",
+            argument_name="precipitation_mm",
+            argument_value="negative value",
+            valid_values="Non-negative daily precipitation",
+        )
+
+    spatial_shape = temperature.shape[1:]
+    internal_spatial_shape = spatial_shape if spatial_shape else (1,)
+    temperature = temperature.reshape(temperature.shape[0], *internal_spatial_shape)
+    humidity = humidity.reshape(temperature.shape)
+    precipitation = precipitation.reshape(temperature.shape)
+    with np.errstate(over="ignore"):
+        wind = wind.reshape(temperature.shape) * _KILOMETERS_PER_HOUR_PER_METER_PER_SECOND
+    if np.any(np.isinf(wind)):
+        raise InvalidArgumentError(
+            "wind_speed_meters_per_second is too large to convert to kilometers per hour.",
+            argument_name="wind_speed_meters_per_second",
+            argument_value="finite value that overflows the km/h conversion",
+            valid_values="Finite values that do not overflow the km/h conversion",
+        )
+
+    weather_valid = (
+        np.isfinite(temperature)
+        & np.isfinite(humidity)
+        & np.isfinite(wind)
+        & np.isfinite(precipitation)
+        & (humidity >= 0.0)
+        & (humidity <= 100.0)
+        & (wind >= 0.0)
+    )
+    state_value, trailing_gap_days = _initialize_single_value_state(
+        seed=initial_ffmc,
+        seed_name="initial_ffmc",
+        initial_state=initial_state,
+        state_type=FFMCState,
+        value_name="ffmc",
+        default_seed=85.0,
+        minimum=0.0,
+        maximum=_FFMC_MAXIMUM,
+        spatial_shape=internal_spatial_shape,
+    )
+
+    def step(day: int, active: npt.NDArray[np.bool_] | None = None) -> npt.NDArray[np.float64]:
+        state_slice, temperature_slice, humidity_slice, wind_slice, precipitation_slice = _active_view(
+            active,
+            state_value,
+            temperature[day],
+            humidity[day],
+            wind[day],
+            precipitation[day],
+        )
+        return _ffmc_next(state_slice, temperature_slice, humidity_slice, wind_slice, precipitation_slice)
+
+    values, state_gap_days = _run_cffwis_recurrence(
+        state_value,
+        step,
+        index_type="ffmc",
+        weather_valid=weather_valid,
+        static_valid=np.ones(internal_spatial_shape, dtype=np.bool_),
+        trailing_gap_days=trailing_gap_days,
+        memory_arrays=(temperature, humidity, wind, precipitation),
+        spin_up=spin_up,
+        nan_policy=nan_policy,
+        max_gap_days=max_gap_days,
+    )
+
+    result = values.reshape(-1, *spatial_shape)
+    if not return_state:
+        return result
+    return FFMCResult(
+        values=result,
+        state=FFMCState(
+            ffmc=state_value.reshape(spatial_shape).copy(),
+            trailing_gap_days=None if state_gap_days is None else state_gap_days.reshape(spatial_shape),
+        ),
+    )
+
+
+def duff_moisture_code(
+    temperature_celsius: npt.ArrayLike,
+    relative_humidity_percent: npt.ArrayLike,
+    precipitation_mm: npt.ArrayLike,
+    latitude_degrees_north: npt.ArrayLike,
+    month: npt.ArrayLike,
+    *,
+    initial_dmc: npt.ArrayLike | None = None,
+    initial_state: DMCState | None = None,
+    return_state: bool = False,
+    spin_up: int = 0,
+    nan_policy: Literal["propagate", "bridge"] = "propagate",
+    max_gap_days: int = 0,
+) -> npt.NDArray[np.float64] | DMCResult:
+    """Compute the Duff Moisture Code (DMC).
+
+    The moisture content of loosely compacted organic layers of moderate
+    depth, driven by noon temperature, relative humidity, and 24-hour rain
+    (Van Wagner and Pickett, 1985). It is a daily recurrence whose drying
+    rate scales with the month- and latitude-dependent effective day length.
+
+    The effective day-length tables are selected from five latitude bands:
+    46 N (latitude > 30), 20 N (10 < latitude <= 30), the equator
+    (-10 < latitude <= 10), 20 S (-30 < latitude <= -10), and 40 S
+    (latitude <= -30). No band is a fallback for another. The temperature
+    input is floored at -1.1 C, rain above 1.5 mm rewets the layer, and the
+    code is floored at zero with no upper bound.
+
+    A NaN latitude means the cell has no usable day-length band: its output
+    is always NaN and its recurrence never starts. A day whose relative
+    humidity is outside [0, 100] counts as a missing observation under
+    ``nan_policy``.
+
+    Args:
+        temperature_celsius: Daily noon-local-standard-time air temperature,
+            time-first, degrees Celsius.
+        relative_humidity_percent: Daily noon-local-standard-time relative
+            humidity, time-first, percent.
+        precipitation_mm: Daily 24-hour precipitation, time-first, mm.
+        latitude_degrees_north: Cell latitude, scalar or an array
+            broadcastable to the trailing spatial shape (for example
+            ``(lat, 1)`` or ``(lat, lon)`` for a ``(time, lat, lon)`` grid),
+            degrees north in [-90, 90]. NaN marks a cell with no usable band.
+        month: Calendar month for each day, scalar or time-first, integer in
+            [1, 12].
+        initial_dmc: Seed code, scalar or an array of the trailing spatial
+            shape. ``None`` selects the literature seed of 6. Cannot be
+            combined with ``initial_state``.
+        initial_state: State returned by an earlier call.
+        return_state: Return :class:`DMCResult` with the final state.
+        spin_up: Number of leading input days to compute but omit from the
+            output.
+        nan_policy: ``"propagate"`` poisons a started recurrence at a missing
+            day; ``"bridge"`` skips gaps up to ``max_gap_days``.
+        max_gap_days: Maximum bridged consecutive missing days. Must be zero
+            for ``"propagate"`` and positive for ``"bridge"``.
+
+    Returns:
+        DMC with the time-first shape of the broadcast weather inputs, less
+        ``spin_up`` leading days. Returns :class:`DMCResult` when
+        ``return_state`` is true.
+
+    Raises:
+        DataShapeError: If the weather inputs have no time dimension.
+        InvalidArgumentError: If shapes, configuration, state, latitude, or
+            physical inputs are invalid.
+    """
+    _validate_recurrence_options(nan_policy, max_gap_days, spin_up, "initial_dmc", initial_dmc, initial_state)
+
+    temperature, humidity, precipitation = _daily_weather_arrays(
+        ("temperature_celsius", "relative_humidity_percent", "precipitation_mm"),
+        temperature_celsius,
+        relative_humidity_percent,
+        precipitation_mm,
+    )
+    if np.any(np.isfinite(precipitation) & (precipitation < 0.0)):
+        raise InvalidArgumentError(
+            "precipitation_mm must be non-negative where finite.",
+            argument_name="precipitation_mm",
+            argument_value="negative value",
+            valid_values="Non-negative daily precipitation",
+        )
+    months = _month_array(month, temperature.shape)
+    latitude, static_valid = _latitude_and_validity(latitude_degrees_north, temperature.shape[1:])
+
+    spatial_shape = temperature.shape[1:]
+    internal_spatial_shape = spatial_shape if spatial_shape else (1,)
+    temperature = temperature.reshape(temperature.shape[0], *internal_spatial_shape)
+    humidity = humidity.reshape(temperature.shape)
+    precipitation = precipitation.reshape(temperature.shape)
+    months = months.reshape(temperature.shape)
+    latitude = latitude.reshape(internal_spatial_shape)
+    static_valid = static_valid.reshape(internal_spatial_shape)
+
+    weather_valid = (
+        np.isfinite(temperature)
+        & np.isfinite(humidity)
+        & np.isfinite(precipitation)
+        & (humidity >= 0.0)
+        & (humidity <= 100.0)
+    )
+    state_value, trailing_gap_days = _initialize_single_value_state(
+        seed=initial_dmc,
+        seed_name="initial_dmc",
+        initial_state=initial_state,
+        state_type=DMCState,
+        value_name="dmc",
+        default_seed=6.0,
+        minimum=0.0,
+        maximum=None,
+        spatial_shape=internal_spatial_shape,
+    )
+    band = _dmc_day_length_band(latitude)
+
+    def step(day: int, active: npt.NDArray[np.bool_] | None = None) -> npt.NDArray[np.float64]:
+        if active is None:
+            effective_day_length = _DMC_EFFECTIVE_DAY_LENGTH_HOURS[band, months[day] - 1]
+        else:
+            effective_day_length = _DMC_EFFECTIVE_DAY_LENGTH_HOURS[band[active], months[day][active] - 1]
+        state_slice, temperature_slice, humidity_slice, precipitation_slice = _active_view(
+            active,
+            state_value,
+            temperature[day],
+            humidity[day],
+            precipitation[day],
+        )
+        return _dmc_next(state_slice, temperature_slice, humidity_slice, precipitation_slice, effective_day_length)
+
+    values, state_gap_days = _run_cffwis_recurrence(
+        state_value,
+        step,
+        index_type="duff_moisture_code",
+        weather_valid=weather_valid,
+        static_valid=static_valid,
+        trailing_gap_days=trailing_gap_days,
+        memory_arrays=(temperature, humidity, precipitation),
+        spin_up=spin_up,
+        nan_policy=nan_policy,
+        max_gap_days=max_gap_days,
+    )
+
+    result = values.reshape(-1, *spatial_shape)
+    if not return_state:
+        return result
+    return DMCResult(
+        values=result,
+        state=DMCState(
+            dmc=state_value.reshape(spatial_shape).copy(),
+            trailing_gap_days=None if state_gap_days is None else state_gap_days.reshape(spatial_shape),
+        ),
+    )
+
+
+def drought_code(
+    temperature_celsius: npt.ArrayLike,
+    precipitation_mm: npt.ArrayLike,
+    latitude_degrees_north: npt.ArrayLike,
+    month: npt.ArrayLike,
+    *,
+    initial_dc: npt.ArrayLike | None = None,
+    initial_state: DCState | None = None,
+    return_state: bool = False,
+    spin_up: int = 0,
+    nan_policy: Literal["propagate", "bridge"] = "propagate",
+    max_gap_days: int = 0,
+) -> npt.NDArray[np.float64] | DCResult:
+    """Compute the Drought Code (DC).
+
+    The moisture content of deep, compact organic layers, driven by noon
+    temperature and 24-hour rain (Van Wagner and Pickett, 1985). It is a
+    daily recurrence whose potential evapotranspiration scales with the
+    month- and latitude-dependent day length. This is the CFFWIS component
+    only; it is distinct from the package's drought indices (SPI, SPEI,
+    PDSI).
+
+    The day-length adjustment is selected from three latitude bands: north
+    (latitude > 20), the equator (-20 < latitude <= 20), and south
+    (latitude <= -20). The temperature input is floored at -2.8 C, potential
+    evapotranspiration is floored at zero, rain above 2.8 mm reduces the
+    code, and the code is floored at zero with no upper bound.
+
+    A NaN latitude means the cell has no usable day-length band: its output
+    is always NaN and its recurrence never starts. Relative humidity is not
+    a DC input.
+
+    Args:
+        temperature_celsius: Daily noon-local-standard-time air temperature,
+            time-first, degrees Celsius.
+        precipitation_mm: Daily 24-hour precipitation, time-first, mm.
+        latitude_degrees_north: Cell latitude, scalar or an array
+            broadcastable to the trailing spatial shape (for example
+            ``(lat, 1)`` or ``(lat, lon)`` for a ``(time, lat, lon)`` grid),
+            degrees north in [-90, 90]. NaN marks a cell with no usable band.
+        month: Calendar month for each day, scalar or time-first, integer in
+            [1, 12].
+        initial_dc: Seed code, scalar or an array of the trailing spatial
+            shape. ``None`` selects the literature seed of 15. Cannot be
+            combined with ``initial_state``.
+        initial_state: State returned by an earlier call.
+        return_state: Return :class:`DCResult` with the final state.
+        spin_up: Number of leading input days to compute but omit from the
+            output.
+        nan_policy: ``"propagate"`` poisons a started recurrence at a missing
+            day; ``"bridge"`` skips gaps up to ``max_gap_days``.
+        max_gap_days: Maximum bridged consecutive missing days. Must be zero
+            for ``"propagate"`` and positive for ``"bridge"``.
+
+    Returns:
+        DC with the time-first shape of the broadcast weather inputs, less
+        ``spin_up`` leading days. Returns :class:`DCResult` when
+        ``return_state`` is true.
+
+    Raises:
+        DataShapeError: If the weather inputs have no time dimension.
+        InvalidArgumentError: If shapes, configuration, state, latitude, or
+            physical inputs are invalid.
+    """
+    _validate_recurrence_options(nan_policy, max_gap_days, spin_up, "initial_dc", initial_dc, initial_state)
+
+    temperature, precipitation = _daily_weather_arrays(
+        ("temperature_celsius", "precipitation_mm"),
+        temperature_celsius,
+        precipitation_mm,
+    )
+    if np.any(np.isfinite(precipitation) & (precipitation < 0.0)):
+        raise InvalidArgumentError(
+            "precipitation_mm must be non-negative where finite.",
+            argument_name="precipitation_mm",
+            argument_value="negative value",
+            valid_values="Non-negative daily precipitation",
+        )
+    months = _month_array(month, temperature.shape)
+    latitude, static_valid = _latitude_and_validity(latitude_degrees_north, temperature.shape[1:])
+
+    spatial_shape = temperature.shape[1:]
+    internal_spatial_shape = spatial_shape if spatial_shape else (1,)
+    temperature = temperature.reshape(temperature.shape[0], *internal_spatial_shape)
+    precipitation = precipitation.reshape(temperature.shape)
+    months = months.reshape(temperature.shape)
+    latitude = latitude.reshape(internal_spatial_shape)
+    static_valid = static_valid.reshape(internal_spatial_shape)
+
+    weather_valid = np.isfinite(temperature) & np.isfinite(precipitation)
+    state_value, trailing_gap_days = _initialize_single_value_state(
+        seed=initial_dc,
+        seed_name="initial_dc",
+        initial_state=initial_state,
+        state_type=DCState,
+        value_name="dc",
+        default_seed=15.0,
+        minimum=0.0,
+        maximum=None,
+        spatial_shape=internal_spatial_shape,
+    )
+    band = _dc_day_length_band(latitude)
+
+    def step(day: int, active: npt.NDArray[np.bool_] | None = None) -> npt.NDArray[np.float64]:
+        if active is None:
+            day_length_adjustment = _DC_DAY_LENGTH_ADJUSTMENT[band, months[day] - 1]
+        else:
+            day_length_adjustment = _DC_DAY_LENGTH_ADJUSTMENT[band[active], months[day][active] - 1]
+        state_slice, temperature_slice, precipitation_slice = _active_view(
+            active,
+            state_value,
+            temperature[day],
+            precipitation[day],
+        )
+        return _dc_next(state_slice, temperature_slice, precipitation_slice, day_length_adjustment)
+
+    values, state_gap_days = _run_cffwis_recurrence(
+        state_value,
+        step,
+        index_type="drought_code",
+        weather_valid=weather_valid,
+        static_valid=static_valid,
+        trailing_gap_days=trailing_gap_days,
+        memory_arrays=(temperature, precipitation),
+        spin_up=spin_up,
+        nan_policy=nan_policy,
+        max_gap_days=max_gap_days,
+    )
+
+    result = values.reshape(-1, *spatial_shape)
+    if not return_state:
+        return result
+    return DCResult(
+        values=result,
+        state=DCState(
+            dc=state_value.reshape(spatial_shape).copy(),
+            trailing_gap_days=None if state_gap_days is None else state_gap_days.reshape(spatial_shape),
+        ),
+    )
+
+
 def _equilibrium_moisture_content(
     temperature_fahrenheit: npt.NDArray[np.float64],
     relative_humidity_percent: npt.NDArray[np.float64],
@@ -599,7 +2194,19 @@ def _ffwi(
 
 
 def _as_float_array(values: npt.ArrayLike) -> npt.NDArray[np.float64]:
-    """Coerce to float64, turning masked elements into NaN instead of dropping the mask."""
+    """Coerce to float64, turning masked elements into NaN instead of dropping the mask.
+
+    Non-numeric inputs are rejected rather than coerced: datetime, string, and
+    object arrays would otherwise arrive as plausible but meaningless numbers,
+    and complex arrays would silently discard their imaginary part.
+    """
+    if np.asarray(values).dtype.kind not in "biuf":
+        raise InputTypeError(
+            "Fire index inputs must be numeric: datetime, string, object, and complex "
+            "arrays are not coerced to float64.",
+            expected_type=float,
+            actual_type=np.asarray(values).dtype.type,
+        )
     filled = np.ma.asarray(values, dtype=np.float64).filled(np.nan)
     return np.asarray(filled, dtype=np.float64)
 
@@ -721,6 +2328,179 @@ def fosberg_ffwi(
         raise
 
 
+def _hot_dry_windy_layer_max(
+    temperature: npt.NDArray[np.float64],
+    humidity: npt.NDArray[np.float64],
+    wind: npt.NDArray[np.float64],
+    height: npt.NDArray[np.float64],
+    axis: int,
+    *,
+    warn: bool = True,
+) -> npt.NDArray[np.float64]:
+    """Maximum per-level HDW product over ``axis`` for already-broadcast profiles.
+
+    Shared by :func:`hot_dry_windy`'s NumPy path and its xarray kernel. The
+    xarray path disables ``warn`` for Dask blocks, where one warning per block
+    would swamp the operation-level signal; NaN results still mark the invalid
+    columns.
+
+    Args:
+        temperature: Air temperature profile, degrees Celsius.
+        humidity: Relative humidity profile, percent.
+        wind: Wind speed profile, meters per second.
+        height: Height above ground level, meters.
+        axis: Axis of the vertical coordinate, reduced by the maximum.
+        warn: Emit the invalid-value and empty-column warnings.
+
+    Returns:
+        HDW in hPa m s-1, with the vertical axis removed.
+    """
+    # outside the physical range the formulas still return numbers, but
+    # meaningless ones, so treat such values as missing
+    in_layer = (height >= 0.0) & (height <= _HDW_LAYER_TOP_METERS)
+    invalid = (humidity < 0.0) | (humidity > 100.0) | (wind < 0.0)
+    if warn:
+        invalid_count = int(np.count_nonzero(invalid & in_layer))
+        if invalid_count > 0:
+            _logger.warning(
+                f"Found {invalid_count} values with relative humidity outside [0, 100] "
+                "or negative wind speed; HDW is NaN in those columns."
+            )
+        empty_columns = int(np.count_nonzero(~np.any(in_layer, axis=axis)))
+        if empty_columns > 0:
+            _logger.warning(
+                f"Found {empty_columns} columns with no level in the lowest "
+                f"{_HDW_LAYER_TOP_METERS:.0f} m AGL; HDW is NaN there."
+            )
+
+    saturation_hpa = pm_eto.saturation_vapor_pressure(temperature) / _KPA_PER_HPA
+    vpd_hpa = saturation_hpa * (1.0 - humidity / 100.0)
+
+    # NaN in-layer propagates through the maximum; out-of-layer levels are
+    # excluded via -inf, which any real product beats
+    value = np.where(invalid, np.nan, vpd_hpa * wind)
+    product = np.where(in_layer, value, -np.inf)
+    if product.shape[axis] == 0:
+        index = np.full(product.shape[:axis] + product.shape[axis + 1 :], np.nan)
+    else:
+        index = np.max(product, axis=axis)
+    result: npt.NDArray[np.float64] = np.where(np.any(in_layer, axis=axis), index, np.nan).astype(
+        np.float64, copy=False
+    )
+    return result
+
+
+def _hdw_xarray(
+    temperature_celsius: xr.DataArray,
+    relative_humidity_percent: xr.DataArray,
+    wind_speed_meters_per_second: xr.DataArray,
+    height_agl_meters: npt.ArrayLike | xr.DataArray,
+    *,
+    level_axis: int,
+    level_dim: str,
+) -> xr.DataArray:
+    """xarray dispatch for :func:`hot_dry_windy`. See :func:`hot_dry_windy` for the full contract.
+
+    HDW is weather-only and stateless: every dimension besides ``level_dim``
+    passes straight through, unlike KBDI's per-call CF-registry resolution or
+    CFFWIS's shared recurrence. :func:`xarray.apply_ufunc` calls
+    :func:`_hot_dry_windy_layer_max` once per Dask block, with ``level_dim`` as
+    the sole core dimension and reduced away -- the same shape
+    ``test_hdw_chunked_time_and_space_match_eager`` already exercises for the
+    NumPy core, here wrapped with validation and CF metadata. The shared
+    kernel rather than the public function keeps one xarray operation from
+    emitting per-block calculation events, memory instrumentation, and
+    invalid-value warnings; block exceptions still propagate from ``compute``.
+    """
+    if level_axis != -1:
+        raise InvalidArgumentError(
+            "level_axis is not used for xr.DataArray input; the vertical dimension is named by level_dim.",
+            argument_name="level_axis",
+            argument_value=str(level_axis),
+            valid_values="-1 (the default) when temperature_celsius is an xr.DataArray",
+        )
+
+    temperature = _convert_temperature_units(temperature_celsius, "celsius")
+    humidity = relative_humidity_percent
+    wind = wind_speed_meters_per_second
+    if isinstance(height_agl_meters, xr.DataArray):
+        height = height_agl_meters
+    else:
+        height_array = np.asarray(height_agl_meters, dtype=np.float64)
+        if height_array.ndim != 1:
+            raise InvalidArgumentError(
+                "height_agl_meters must be an xr.DataArray or a 1-D array-like when "
+                "temperature_celsius is an xr.DataArray.",
+                argument_name="height_agl_meters",
+                argument_value=f"array-like with ndim={height_array.ndim}",
+                valid_values="An xr.DataArray, or a 1-D array-like naming level_dim's levels",
+            )
+        height = xr.DataArray(height_array, dims=(level_dim,))
+
+    for name, data in (
+        ("temperature_celsius", temperature),
+        ("relative_humidity_percent", humidity),
+        ("wind_speed_meters_per_second", wind),
+        ("height_agl_meters", height),
+    ):
+        if level_dim not in data.dims:
+            raise CoordinateValidationError(
+                message=(
+                    f"Dimension '{level_dim}' not found in {name}. "
+                    f"Available dimensions: {list(data.dims)}. Use level_dim to specify a custom name."
+                ),
+                coordinate_name=level_dim,
+                reason="missing_dimension",
+            )
+        _validate_dask_chunks(data, level_dim)
+
+    # one warning per invalid Dask block would swamp the logs; the eager path
+    # still reports invalid columns through the shared kernel's warnings
+    is_dask_backed = any(data.chunks is not None for data in (temperature, humidity, wind, height))
+    result: xr.DataArray = xr.apply_ufunc(
+        _hot_dry_windy_layer_max,
+        temperature,
+        humidity,
+        wind,
+        height,
+        input_core_dims=[[level_dim]] * 4,
+        output_core_dims=[[]],
+        kwargs={"axis": -1, "warn": not is_dask_backed},
+        dask="parallelized",
+        output_dtypes=[np.float64],
+    )
+    # apply_ufunc orders output dims by first occurrence across all four inputs
+    # in argument order, not just temperature's: height (or humidity/wind) may
+    # carry a dimension temperature lacks, so the transpose target must be
+    # built the same way, not read off temperature.dims alone.
+    output_dims: list[str] = []
+    for data in (temperature, humidity, wind, height):
+        for dim in data.dims:
+            dim = str(dim)
+            if dim != level_dim and dim not in output_dims:
+                output_dims.append(dim)
+    result = result.transpose(*output_dims)
+    result.attrs = _build_output_attrs(
+        temperature_celsius,
+        cf_metadata=CF_METADATA["hdw"],  # type: ignore[arg-type]
+        index_name="HDW",
+    )
+    return result
+
+
+@overload
+def hot_dry_windy(
+    temperature_celsius: xr.DataArray,
+    relative_humidity_percent: xr.DataArray,
+    wind_speed_meters_per_second: xr.DataArray,
+    height_agl_meters: npt.ArrayLike | xr.DataArray,
+    *,
+    level_axis: int = -1,
+    level_dim: str = "level",
+) -> xr.DataArray: ...
+
+
+@overload
 def hot_dry_windy(
     temperature_celsius: npt.ArrayLike,
     relative_humidity_percent: npt.ArrayLike,
@@ -728,8 +2508,30 @@ def hot_dry_windy(
     height_agl_meters: npt.ArrayLike,
     *,
     level_axis: int = -1,
-) -> npt.NDArray[np.float64]:
+    level_dim: str = "level",
+) -> npt.NDArray[np.float64]: ...
+
+
+def hot_dry_windy(
+    temperature_celsius: npt.ArrayLike | xr.DataArray,
+    relative_humidity_percent: npt.ArrayLike | xr.DataArray,
+    wind_speed_meters_per_second: npt.ArrayLike | xr.DataArray,
+    height_agl_meters: npt.ArrayLike | xr.DataArray,
+    *,
+    level_axis: int = -1,
+    level_dim: str = "level",
+) -> npt.NDArray[np.float64] | xr.DataArray:
     """Compute the Hot-Dry-Windy Index (HDW).
+
+    This function accepts both NumPy arrays and xarray DataArrays. Type
+    checkers narrow the return type based on the input type.
+
+    .. warning:: **Beta Feature (xarray path only)** -- When called with
+       ``xr.DataArray`` input, this function uses the beta xarray adapter
+       layer: CF metadata from the ``hdw`` registry entry, CF
+       ``units``-attribute temperature inference, and Dask parallelism over
+       every dimension except ``level_dim``, which must be a single chunk.
+       The NumPy array interface and underlying computation are stable.
 
     A weather-only index of dangerous fire-behavior potential (Srock et al.,
     2018): the vapor pressure deficit (VPD) times the wind speed, maximized
@@ -738,11 +2540,12 @@ def hot_dry_windy(
         HDW = max over levels with 0 <= height_agl <= 500 of (VPD * wind speed)
 
     Inputs are vertical profiles with SI units, like the rest of the package.
-    The four inputs broadcast against each other; the shared dimension
-    ``level_axis`` is the vertical coordinate and is reduced by the maximum.
-    VPD comes from each level's own temperature and relative humidity, with
-    saturation vapor pressure from ``pm_eto.saturation_vapor_pressure`` (FAO-56
-    Eq 11), converted from kPa to the hPa of the published index.
+    The four inputs broadcast against each other; the vertical coordinate
+    (``level_axis`` for NumPy input, ``level_dim`` for xarray input) is
+    reduced by the maximum. VPD comes from each level's own temperature and
+    relative humidity, with saturation vapor pressure from
+    ``pm_eto.saturation_vapor_pressure`` (FAO-56 Eq 11), converted from kPa to
+    the hPa of the published index.
 
     ``height_agl_meters`` is the vertical coordinate itself, so the AGL
     determination happens where that coordinate is built:
@@ -770,24 +2573,79 @@ def hot_dry_windy(
             non-negative.
         height_agl_meters: Height above ground level of each level, meters.
             Levels outside [0, 500], or with NaN height, are excluded from the
-            maximum.
-        level_axis: Axis of the broadcast inputs that holds the vertical
-            coordinate. Reduced by the layer maximum.
+            maximum. For xarray input, an ``xr.DataArray`` (1-D on
+            ``level_dim`` or full N-D) or a 1-D array-like naming
+            ``level_dim``'s levels.
+        level_axis: NumPy input only. Axis of the broadcast inputs that holds
+            the vertical coordinate. Reduced by the layer maximum.
+        level_dim: xarray input only. Name of the vertical dimension. Reduced
+            by the layer maximum; not inferred.
 
     Returns:
-        HDW in hPa m s-1, with the broadcast shape of the inputs minus
-        ``level_axis``. NaN where any in-layer level has NaN or out-of-range
-        input, and for columns with no level inside the lowest 500 m AGL.
+        HDW in hPa m s-1, with the broadcast shape of the inputs minus the
+        vertical coordinate. NaN where any in-layer level has NaN or
+        out-of-range input, and for columns with no level inside the lowest
+        500 m AGL. For xarray input, a ``DataArray`` carrying CF metadata from
+        the ``hdw`` registry entry.
 
     Raises:
-        InvalidArgumentError: If the inputs cannot be broadcast together, or
-            ``level_axis`` is out of range for the broadcast shape.
+        TypeError: If ``temperature_celsius``, ``relative_humidity_percent``,
+            and ``wind_speed_meters_per_second`` are not all the same type.
+        InvalidArgumentError: If the inputs cannot be broadcast together,
+            ``level_axis`` is out of range for the broadcast shape (NumPy
+            input), ``level_axis`` is not the default alongside xarray
+            input, or ``height_agl_meters`` is not an ``xr.DataArray`` or a
+            1-D array-like when the other inputs are ``xr.DataArray``.
+        CoordinateValidationError: xarray input only -- if ``level_dim`` is
+            missing from any input, or the input is Dask-backed with
+            ``level_dim`` split across multiple chunks.
+
+    Notes:
+        xarray-only: ``temperature_celsius``, ``relative_humidity_percent``,
+        and ``wind_speed_meters_per_second`` must be the same type (all NumPy
+        or all ``xr.DataArray``); ``height_agl_meters`` may be either. A CF
+        ``units`` attribute on temperature is converted to Celsius; an absent
+        attribute is assumed to already be Celsius. HDW has no time semantics
+        -- it carries no state and is not a daily recurrence -- so every
+        dimension other than ``level_dim`` (including ``time``, if present)
+        is a plain passthrough with no cadence requirement. Dimensions shared
+        by the inputs are matched exactly (xarray's default exact join): the
+        inputs are never aligned or reindexed, so unequal or differently
+        ordered coordinate labels raise instead of broadcasting. The invalid
+        humidity/wind and empty-column warnings are emitted once per operation
+        for eager input; Dask-backed input suppresses them per block and
+        reports those columns as NaN.
 
     Example:
         >>> from climate_indices import fire
         >>> round(float(fire.hot_dry_windy([30.0, 26.0], [15.0, 30.0], [8.0, 12.0], [10.0, 400.0])), 2)
         288.53
     """
+    is_xarray = isinstance(temperature_celsius, xr.DataArray)
+    for name, value in (
+        ("relative_humidity_percent", relative_humidity_percent),
+        ("wind_speed_meters_per_second", wind_speed_meters_per_second),
+    ):
+        if isinstance(value, xr.DataArray) != is_xarray:
+            raise TypeError(
+                "temperature_celsius, relative_humidity_percent, and wind_speed_meters_per_second must be "
+                f"the same type. Got temperature_celsius={type(temperature_celsius).__name__}, "
+                f"{name}={type(value).__name__}. "
+                "Convert both to the same type (both numpy arrays or both xr.DataArray)."
+            )
+    if detect_input_type(temperature_celsius) != InputType.NUMPY:
+        assert isinstance(temperature_celsius, xr.DataArray)
+        assert isinstance(relative_humidity_percent, xr.DataArray)
+        assert isinstance(wind_speed_meters_per_second, xr.DataArray)
+        return _hdw_xarray(
+            temperature_celsius,
+            relative_humidity_percent,
+            wind_speed_meters_per_second,
+            height_agl_meters,
+            level_axis=level_axis,
+            level_dim=level_dim,
+        )
+
     temperature = _as_float_array(temperature_celsius)
     humidity = _as_float_array(relative_humidity_percent)
     wind = _as_float_array(wind_speed_meters_per_second)
@@ -843,35 +2701,7 @@ def hot_dry_windy(
     memory_metrics = check_large_array_memory(temperature, humidity, wind, height)
 
     try:
-        # outside the physical range the formulas still return numbers, but
-        # meaningless ones, so treat such values as missing
-        in_layer = (height >= 0.0) & (height <= _HDW_LAYER_TOP_METERS)
-        invalid = (humidity < 0.0) | (humidity > 100.0) | (wind < 0.0)
-        invalid_count = int(np.count_nonzero(invalid & in_layer))
-        if invalid_count > 0:
-            _logger.warning(
-                f"Found {invalid_count} values with relative humidity outside [0, 100] "
-                "or negative wind speed; HDW is NaN in those columns."
-            )
-        empty_columns = int(np.count_nonzero(~np.any(in_layer, axis=axis)))
-        if empty_columns > 0:
-            _logger.warning(
-                f"Found {empty_columns} columns with no level in the lowest "
-                f"{_HDW_LAYER_TOP_METERS:.0f} m AGL; HDW is NaN there."
-            )
-
-        saturation_hpa = pm_eto.saturation_vapor_pressure(temperature) / _KPA_PER_HPA
-        vpd_hpa = saturation_hpa * (1.0 - humidity / 100.0)
-
-        # NaN in-layer propagates through the maximum; out-of-layer levels are
-        # excluded via -inf, which any real product beats
-        value = np.where(invalid, np.nan, vpd_hpa * wind)
-        product = np.where(in_layer, value, -np.inf)
-        if product.shape[axis] == 0:
-            index = np.full(product.shape[:axis] + product.shape[axis + 1 :], np.nan)
-        else:
-            index = np.max(product, axis=axis)
-        result = np.where(np.any(in_layer, axis=axis), index, np.nan).astype(np.float64, copy=False)
+        result = _hot_dry_windy_layer_max(temperature, humidity, wind, height, axis)
 
         duration_ms = (time.perf_counter() - t0) * 1000.0
         log.info(

@@ -107,15 +107,17 @@ fire records rather than treating temporal overlap as predictive skill
 ## Fire-index roadmap
 
 `climate_indices.fire` currently provides Fosberg FFWI, a surface-weather
-index, and HDW, which combines vapor-pressure deficit and wind in the lowest
-500 m above ground ([NCEP][ncep-fire]; [Srock et al. (2018)][srock-2018]).
+index; HDW, which combines vapor-pressure deficit and wind in the lowest
+500 m above ground ([NCEP][ncep-fire]; [Srock et al. (2018)][srock-2018]);
+KBDI, the cumulative moisture-deficit index for forest-fire control
+([Keetch and Byram, 1968][kbdi]); and the CFFWIS moisture codes FFMC, DMC, and
+DC ([Natural Resources Canada][nrcan-fwi]).
 
 The [fire-family epic #793][fire-epic] tracks planned additions:
 
-- **KBDI**: cumulative moisture-deficit index for forest-fire control
-  ([Keetch and Byram, 1968][kbdi]).
-- **CFFWIS**: FFMC, DMC, and DC fuel-moisture codes plus ISI, BUI, FWI, and DSR
-  fire-behavior indices ([Natural Resources Canada][nrcan-fwi]).
+- **CFFWIS behavior indices**: ISI, BUI, FWI, and DSR, plus the `fire.cffwis()`
+  orchestrator that returns the moisture codes and behavior indices together
+  ([Natural Resources Canada][nrcan-fwi]).
 - **Haines Index**: lower-atmosphere stability and moisture diagnostic for
   potential large-fire growth ([National Weather Service][nws-haines]).
 

@@ -31,7 +31,9 @@ class CFAttributes(_CFAttributesRequired, total=False):
     conventions), description (free-text detail such as value range or a
     resolved-ambiguity note), climate_indices_variant (distinguishes entries
     for one index that has more than one output convention, e.g. KBDI's
-    metric and imperial unit scales).
+    metric and imperial unit scales, or reserves an entry against a future
+    convention, e.g. the CFFWIS moisture codes' `cffwis_classic` against a
+    future FWI2025 variant).
 
     .. note:: Part of the beta xarray adapter layer. See :doc:`xarray_migration`.
     """
@@ -39,6 +41,15 @@ class CFAttributes(_CFAttributesRequired, total=False):
     standard_name: str
     description: str
     climate_indices_variant: str
+
+
+# The CFFWIS moisture codes (FFMC, DMC, DC) share one source publication; keep the
+# rendered `references` text identical across their entries.
+_VAN_WAGNER_PICKETT_1985 = (
+    "Van Wagner, C. E., & Pickett, T. L. (1985). "
+    "Equations and FORTRAN program for the Canadian Forest Fire Weather Index System. "
+    "Canadian Forestry Service, Forestry Technical Report 33."
+)
 
 
 CF_METADATA: dict[str, CFAttributes] = {
@@ -163,8 +174,8 @@ CF_METADATA: dict[str, CFAttributes] = {
         ),
     },
     # Fire-weather indices (#793). Only entries for indices implemented in
-    # `climate_indices.fire` are added here; CFFWIS (ffmc, dmc, dc, isi, bui,
-    # fwi, dsr, #803/#804) and the Haines Index (#810) are deferred to their
+    # `climate_indices.fire` are added here; the CFFWIS behavior indices (isi,
+    # bui, fwi, dsr, #804) and the Haines Index (#810) are deferred to their
     # own tickets, where unit and variant decisions can be validated against
     # real output rather than guessed ahead of implementation. None of the
     # fire indices has an official CF standard_name.
@@ -221,5 +232,35 @@ CF_METADATA: dict[str, CFAttributes] = {
             "The Hot-Dry-Windy Index: A New Fire Weather Index. "
             "Atmosphere, 9(7), 279. https://doi.org/10.3390/atmos9070279"
         ),
+    },
+    "ffmc": {
+        "long_name": "Fine Fuel Moisture Code",
+        "units": "dimensionless",
+        "description": (
+            "Moisture content of fine surface litter and other fine fuels, a dimensionless code in [0, 101]."
+        ),
+        "climate_indices_variant": "cffwis_classic",
+        "references": _VAN_WAGNER_PICKETT_1985,
+    },
+    "dmc": {
+        "long_name": "Duff Moisture Code",
+        "units": "dimensionless",
+        "description": (
+            "Moisture content of loosely compacted organic layers of moderate depth, "
+            "a dimensionless code floored at zero with no upper bound."
+        ),
+        "climate_indices_variant": "cffwis_classic",
+        "references": _VAN_WAGNER_PICKETT_1985,
+    },
+    "dc": {
+        "long_name": "Drought Code",
+        "units": "dimensionless",
+        "description": (
+            "Moisture content of deep, compact organic layers, a dimensionless code "
+            "floored at zero with no upper bound; the CFFWIS component only, distinct "
+            "from the package's drought indices."
+        ),
+        "climate_indices_variant": "cffwis_classic",
+        "references": _VAN_WAGNER_PICKETT_1985,
     },
 }
