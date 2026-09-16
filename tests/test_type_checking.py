@@ -1,14 +1,10 @@
 """Static type verification tests for mypy.
 
 These tests use typing.assert_type() to verify that mypy correctly infers
-return types for the overloaded public API functions. The tests are checked
-by mypy, not by pytest.
-
-Enforced by the `lint` CI job (`mypy src/ tests/test_type_checking.py`); the
-`meta` job also runs them under pytest so the calls execute at runtime.
-
-Note: These tests are designed to be checked by mypy for type inference.
-They include proper test data so they can also run successfully in pytest.
+return types for the overloaded public API functions. assert_type() is a
+runtime no-op, so only mypy enforces them: the `lint` CI job runs
+`mypy src/ tests/test_type_checking.py`. The `meta` job also runs this module
+under pytest, which executes the call bodies but verifies no types.
 """
 
 from __future__ import annotations
