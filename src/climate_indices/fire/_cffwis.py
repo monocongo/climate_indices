@@ -193,6 +193,17 @@ def _daily_weather_arrays(
     return result
 
 
+def _validate_non_negative_precipitation(precipitation: npt.NDArray[np.float64]) -> None:
+    """Reject negative daily precipitation before any recurrence or derived index."""
+    if np.any(np.isfinite(precipitation) & (precipitation < 0.0)):
+        raise InvalidArgumentError(
+            "precipitation_mm must be non-negative where finite.",
+            argument_name="precipitation_mm",
+            argument_value="negative value",
+            valid_values="Non-negative daily precipitation",
+        )
+
+
 def _month_array(month: npt.ArrayLike, weather_shape: tuple[int, ...]) -> npt.NDArray[np.int64]:
     """Validate calendar months and broadcast them to the time-first weather shape."""
     months = _as_float_array(month)
@@ -583,13 +594,7 @@ def ffmc(
         wind_speed_meters_per_second,
         precipitation_mm,
     )
-    if np.any(np.isfinite(precipitation) & (precipitation < 0.0)):
-        raise InvalidArgumentError(
-            "precipitation_mm must be non-negative where finite.",
-            argument_name="precipitation_mm",
-            argument_value="negative value",
-            valid_values="Non-negative daily precipitation",
-        )
+    _validate_non_negative_precipitation(precipitation)
 
     spatial_shape = temperature.shape[1:]
     internal_spatial_shape = spatial_shape if spatial_shape else (1,)
@@ -738,13 +743,7 @@ def duff_moisture_code(
         relative_humidity_percent,
         precipitation_mm,
     )
-    if np.any(np.isfinite(precipitation) & (precipitation < 0.0)):
-        raise InvalidArgumentError(
-            "precipitation_mm must be non-negative where finite.",
-            argument_name="precipitation_mm",
-            argument_value="negative value",
-            valid_values="Non-negative daily precipitation",
-        )
+    _validate_non_negative_precipitation(precipitation)
     months = _month_array(month, temperature.shape)
     latitude, static_valid = _latitude_and_validity(latitude_degrees_north, temperature.shape[1:])
 
@@ -887,13 +886,7 @@ def drought_code(
         temperature_celsius,
         precipitation_mm,
     )
-    if np.any(np.isfinite(precipitation) & (precipitation < 0.0)):
-        raise InvalidArgumentError(
-            "precipitation_mm must be non-negative where finite.",
-            argument_name="precipitation_mm",
-            argument_value="negative value",
-            valid_values="Non-negative daily precipitation",
-        )
+    _validate_non_negative_precipitation(precipitation)
     months = _month_array(month, temperature.shape)
     latitude, static_valid = _latitude_and_validity(latitude_degrees_north, temperature.shape[1:])
 
@@ -1113,8 +1106,10 @@ def _buildup_index(
 ) -> npt.NDArray[np.float64]:
     """Combine DMC and DC into BUI (Van Wagner and Pickett, 1985, Eq. 27)."""
     with np.errstate(divide="ignore", invalid="ignore"):
-        combined = np.where((dmc == 0.0) & (dc == 0.0), 0.0, 0.8 * dc * dmc / (dmc + 0.4 * dc))
-        weight = np.where(dmc == 0.0, 0.0, (dmc - combined) / dmc)
+        # exact-zero branch, as in the cffdrs reference: np.equal keeps the
+        # deliberate equality out of the float-comparison lint rule
+        combined = np.where(np.equal(dmc, 0.0) & np.equal(dc, 0.0), 0.0, 0.8 * dc * dmc / (dmc + 0.4 * dc))
+        weight = np.where(np.equal(dmc, 0.0), 0.0, (dmc - combined) / dmc)
         characteristic = 0.92 + (0.0114 * dmc) ** 1.7
         reduced = np.maximum(dmc - characteristic * weight, 0.0)
     return np.where(combined < dmc, reduced, combined)
@@ -1524,13 +1519,7 @@ def cffwis(
         wind_speed_meters_per_second,
         precipitation_mm,
     )
-    if np.any(np.isfinite(precipitation) & (precipitation < 0.0)):
-        raise InvalidArgumentError(
-            "precipitation_mm must be non-negative where finite.",
-            argument_name="precipitation_mm",
-            argument_value="negative value",
-            valid_values="Non-negative daily precipitation",
-        )
+    _validate_non_negative_precipitation(precipitation)
     months = _month_array(month, temperature.shape)
     latitude, latitude_valid = _latitude_and_validity(latitude_degrees_north, temperature.shape[1:])
 

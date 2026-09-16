@@ -517,13 +517,15 @@ def test_unselected_derived_indices_are_not_computed() -> None:
 
 
 def test_unknown_output_name_raises() -> None:
+    weather = _reference_weather()
     with pytest.raises(InvalidArgumentError):
-        _run_orchestrator(_reference_weather(), outputs=["fwi", "nope"])
+        _run_orchestrator(weather, outputs=["fwi", "nope"])
 
 
 def test_empty_outputs_raise() -> None:
+    weather = _reference_weather()
     with pytest.raises(InvalidArgumentError):
-        _run_orchestrator(_reference_weather(), outputs=[])
+        _run_orchestrator(weather, outputs=[])
 
 
 # ------------------------------------------------------------------------------
@@ -551,7 +553,8 @@ def test_append_resume_round_trip_is_bitwise_identical() -> None:
             np.concatenate((getattr(first, name), getattr(second, name))),
             getattr(whole, name),
         )
-    assert second.state is not None and whole.state is not None
+    assert second.state is not None
+    assert whole.state is not None
     for nested in ("ffmc", "dmc", "dc"):
         np.testing.assert_array_equal(
             getattr(getattr(second.state, nested), nested),
@@ -591,9 +594,10 @@ def test_seed_changes_the_recurrence(seed_name: str, seed: float) -> None:
 
 
 def test_seed_and_initial_state_are_mutually_exclusive() -> None:
-    state = _run_orchestrator(_reference_weather(), return_state=True).state
+    weather = _reference_weather()
+    state = _run_orchestrator(weather, return_state=True).state
     with pytest.raises(InvalidArgumentError):
-        _run_orchestrator(_reference_weather(), initial_dmc=50.0, initial_state=state)
+        _run_orchestrator(weather, initial_dmc=50.0, initial_state=state)
 
 
 def test_spin_up_omits_leading_days_without_changing_the_state() -> None:
@@ -602,7 +606,8 @@ def test_spin_up_omits_leading_days_without_changing_the_state() -> None:
     full = _run_orchestrator(weather, return_state=True)
     for name in ("ffmc", "dmc", "dc", "isi", "bui", "fwi", "dsr"):
         np.testing.assert_array_equal(getattr(spun, name), getattr(full, name)[3:])
-    assert spun.state is not None and full.state is not None
+    assert spun.state is not None
+    assert full.state is not None
     for nested in ("ffmc", "dmc", "dc"):
         np.testing.assert_array_equal(
             getattr(getattr(spun.state, nested), nested), getattr(getattr(full.state, nested), nested)
@@ -611,12 +616,14 @@ def test_spin_up_omits_leading_days_without_changing_the_state() -> None:
 
 def test_spin_up_longer_than_the_input_yields_empty_outputs() -> None:
     result = _run_orchestrator(_reference_weather(), spin_up=20)
-    assert result.fwi is not None and result.fwi.shape == (0,)
+    assert result.fwi is not None
+    assert result.fwi.shape == (0,)
 
 
 def test_returned_state_does_not_alias_the_outputs() -> None:
     result = _run_orchestrator(_reference_weather(), return_state=True)
-    assert result.state is not None and result.ffmc is not None
+    assert result.state is not None
+    assert result.ffmc is not None
     for nested in ("ffmc", "dmc", "dc"):
         state_code = getattr(getattr(result.state, nested), nested)
         assert not np.shares_memory(state_code, result.ffmc)
@@ -831,7 +838,8 @@ def test_gridded_orchestrator_matches_per_point_runs() -> None:
     weather.precipitation = np.tile(weather.precipitation[:, None, None], (1, 2, 2))
     weather.month = np.tile(weather.month[:, None, None], (1, 2, 2))
     gridded = _run_orchestrator(replace(weather, latitude=latitudes), return_state=True)
-    assert gridded.fwi is not None and gridded.fwi.shape == (6, 2, 2)
+    assert gridded.fwi is not None
+    assert gridded.fwi.shape == (6, 2, 2)
     for row in range(2):
         for column in range(2):
             per_point = fire.cffwis(
