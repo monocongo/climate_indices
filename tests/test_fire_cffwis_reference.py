@@ -10,7 +10,8 @@ cross-implementation validation against the reference lineage named in
 ``docs/design/fire-subsystem.md``, not another frozen copy of this library's
 own output. The same record's published one-decimal values agree with the
 fixture within the published rounding bound (measured maximum absolute
-deviation 0.0497, and 0.0047 for DSR), so the committed tolerance is a CSV
+deviation 0.0497, and 0.0047 for DSR at fixture preparation), so the committed
+tolerance is a CSV
 round-trip bound rather than scientific slack.
 
 ``tests/test_fire_cffwis_moisture.py`` keeps the 12-day regression vectors for
@@ -111,7 +112,7 @@ def test_xclim_sanity_check_agrees_except_for_the_printed_ffmc_constant() -> Non
     lineage differs by the printed-versus-exact moisture constant and is
     bounded by the provenance's ``xclim_constant_difference_atol`` instead.
     """
-    xclim = pytest.importorskip("xclim")
+    xclim = pytest.importorskip("xclim", minversion="0.62")
     xr = pytest.importorskip("xarray")
     pd = pytest.importorskip("pandas")
 
