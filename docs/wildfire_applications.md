@@ -111,7 +111,9 @@ index; HDW, which combines vapor-pressure deficit and wind in the lowest
 500 m above ground ([NCEP][ncep-fire]; [Srock et al. (2018)][srock-2018]);
 KBDI, the cumulative moisture-deficit index for forest-fire control
 ([Keetch and Byram, 1968][kbdi]); and the CFFWIS moisture codes FFMC, DMC, and
-DC ([Natural Resources Canada][nrcan-fwi]).
+DC ([Natural Resources Canada][nrcan-fwi]). KBDI is also exposed through the
+existing command line as `process_climate_indices --index kbdi`, from daily
+precipitation and maximum temperature inputs (see :doc:`index`).
 
 The [fire-family epic #793][fire-epic] tracks planned additions:
 
