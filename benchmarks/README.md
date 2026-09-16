@@ -39,33 +39,33 @@ Reference grid: 3306 cells x 480 months.
 |---|---|
 | baseline, INFO logging | 1.1 s |
 | baseline, WARNING logging | 0.7 s |
-| cProfile-instrumented | 2.5 s |
+| cProfile-instrumented | 2.4 s |
 
 Per-cell logging costs ~0.4 s (~35%) of the INFO wall clock. `cProfile` roughly
 doubles the wall clock on this call-heavy path, so the profiled report is for
 relative attribution, not absolute timing.
 
-Hottest paths by cumulative time (2.493 s profiled total):
+Hottest paths by cumulative time (2.392 s profiled total):
 
 | path | calls | cumtime |
 |---|---|---|
-| `numpy._vectorize_call_with_signature` | 1 | 2.492 s |
-| `climate_indices/xarray_adapter.py:507` (`wrapper`, one call per grid cell) | 3306 | 2.483 s |
-| `climate_indices/indices.py:417` (`spi`) | 3306 | 2.478 s |
-| `climate_indices/compute.py:1085` (`transform_fitted_gamma`) | 3306 | 1.942 s |
-| `structlog/stdlib.py:218` (`info`) | 19837 | 1.229 s |
-| `climate_indices/compute.py:942` (`gamma_parameters`) | 3306 | 1.015 s |
-| `climate_indices/compute.py:779` (`_check_goodness_of_fit_gamma`) | 3306 | 0.473 s |
+| `numpy._vectorize_call_with_signature` | 1 | 2.391 s |
+| `climate_indices/xarray_adapter.py:507` (`wrapper`, one call per grid cell) | 3306 | 2.381 s |
+| `climate_indices/indices.py:417` (`spi`) | 3306 | 2.377 s |
+| `climate_indices/compute.py:1085` (`transform_fitted_gamma`) | 3306 | 1.860 s |
+| `structlog/stdlib.py:218` (`info`) | 19837 | 1.187 s |
+| `climate_indices/compute.py:942` (`gamma_parameters`) | 3306 | 0.971 s |
+| `climate_indices/compute.py:779` (`_check_goodness_of_fit_gamma`) | 3306 | 0.449 s |
 
 Hottest paths by self time:
 
 | path | tottime |
 |---|---|
-| `climate_indices/compute.py:779` (`_check_goodness_of_fit_gamma`) | 0.181 s |
-| `structlog/dev.py:296` (console renderer) | 0.146 s |
-| `climate_indices/compute.py:743` (`_ks_poor_fit_p_value`) | 0.111 s |
-| `scipy/stats/_continuous_distns.py:3612` (`_cdf`) | 0.091 s |
-| `structlog/_frames.py:36` (`_find_first_app_frame_and_name`) | 0.049 s |
+| `climate_indices/compute.py:779` (`_check_goodness_of_fit_gamma`) | 0.172 s |
+| `structlog/dev.py:296` (console renderer) | 0.141 s |
+| `climate_indices/compute.py:743` (`_ks_poor_fit_p_value`) | 0.105 s |
+| `scipy/stats/_continuous_distns.py:3612` (`_cdf`) | 0.089 s |
+| `structlog/_frames.py:36` (`_find_first_app_frame_and_name`) | 0.048 s |
 
 Interpretation:
 

@@ -1,83 +1,83 @@
 grid: time=480 lat=38 lon=87; scale=3; calibration=1981-2010
 environment: python 3.13.13; macOS-26.6.2-arm64-arm-64bit-Mach-O; climate_indices log level INFO (WARNING for the quiet run)
-timings: baseline=1.1s profiled=2.5s warning=0.7s (baseline and warning are the minimum of two runs)
+timings: baseline=1.1s profiled=2.4s warning=0.7s (baseline and warning are the minimum of two runs)
 
 --- sorted by cumulative ---
-         8199591 function calls (8199528 primitive calls) in 2.493 seconds
+         8199591 function calls (8199528 primitive calls) in 2.392 seconds
 
    Ordered by: cumulative time
    List reduced from 656 to 30 due to restriction <30>
 
    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
-        1    0.000    0.000    2.493    2.493 profile_gridded_spi.py:93(_time_spi)
-        1    0.000    0.000    2.493    2.493 profile_gridded_spi.py:80(run_spi)
-        1    0.000    0.000    2.493    2.493 typed_public_api.py:102(spi)
-        1    0.000    0.000    2.493    2.493 xarray_adapter.py:1570(wrapper)
-        1    0.000    0.000    2.492    2.492 apply_ufunc.py:896(apply_ufunc)
-        1    0.000    0.000    2.492    2.492 apply_ufunc.py:276(apply_dataarray_vfunc)
-        1    0.000    0.000    2.492    2.492 apply_ufunc.py:707(apply_variable_ufunc)
-        1    0.000    0.000    2.492    2.492 _function_base_impl.py:2513(__call__)
-        1    0.000    0.000    2.492    2.492 _function_base_impl.py:2483(_call_as_normal)
-        1    0.000    0.000    2.492    2.492 _function_base_impl.py:2589(_vectorize_call)
-        1    0.007    0.007    2.492    2.492 _function_base_impl.py:2608(_vectorize_call_with_signature)
-     3306    0.002    0.000    2.483    0.001 xarray_adapter.py:507(wrapper)
-     3306    0.002    0.000    2.480    0.001 xarray_adapter.py:524(_compute_with_daily_calendar_plan)
-     3306    0.026    0.000    2.478    0.001 indices.py:417(spi)
-     3306    0.029    0.000    1.942    0.001 compute.py:1085(transform_fitted_gamma)
-    23143    0.015    0.000    1.229    0.000 stdlib.py:269(_proxy_to_logger)
-    19837    0.008    0.000    1.229    0.000 stdlib.py:218(info)
-    23143    0.013    0.000    1.215    0.000 _base.py:193(_proxy_to_logger)
-    19837    0.011    0.000    1.037    0.000 __init__.py:1510(info)
-    19837    0.011    0.000    1.023    0.000 __init__.py:1641(_log)
-     3306    0.032    0.000    1.015    0.000 compute.py:942(gamma_parameters)
-    19837    0.008    0.000    0.794    0.000 __init__.py:1667(handle)
-    19837    0.010    0.000    0.783    0.000 __init__.py:1721(callHandlers)
-    19837    0.011    0.000    0.772    0.000 __init__.py:1011(handle)
-    19837    0.010    0.000    0.757    0.000 __init__.py:1139(emit)
-    19837    0.006    0.000    0.705    0.000 __init__.py:988(format)
-    19837    0.041    0.000    0.699    0.000 stdlib.py:1136(format)
-    19837    0.082    0.000    0.495    0.000 dev.py:930(__call__)
-     3306    0.181    0.000    0.473    0.000 compute.py:779(_check_goodness_of_fit_gamma)
-   158696    0.146    0.000    0.327    0.000 dev.py:296(__call__)
+        1    0.000    0.000    2.392    2.392 profile_gridded_spi.py:92(_time_spi)
+        1    0.000    0.000    2.392    2.392 profile_gridded_spi.py:79(run_spi)
+        1    0.000    0.000    2.392    2.392 typed_public_api.py:102(spi)
+        1    0.000    0.000    2.392    2.392 xarray_adapter.py:1570(wrapper)
+        1    0.000    0.000    2.391    2.391 apply_ufunc.py:896(apply_ufunc)
+        1    0.000    0.000    2.391    2.391 apply_ufunc.py:276(apply_dataarray_vfunc)
+        1    0.000    0.000    2.391    2.391 apply_ufunc.py:707(apply_variable_ufunc)
+        1    0.000    0.000    2.391    2.391 _function_base_impl.py:2513(__call__)
+        1    0.000    0.000    2.391    2.391 _function_base_impl.py:2483(_call_as_normal)
+        1    0.000    0.000    2.391    2.391 _function_base_impl.py:2589(_vectorize_call)
+        1    0.007    0.007    2.391    2.391 _function_base_impl.py:2608(_vectorize_call_with_signature)
+     3306    0.002    0.000    2.381    0.001 xarray_adapter.py:507(wrapper)
+     3306    0.002    0.000    2.379    0.001 xarray_adapter.py:524(_compute_with_daily_calendar_plan)
+     3306    0.026    0.000    2.377    0.001 indices.py:417(spi)
+     3306    0.028    0.000    1.860    0.001 compute.py:1085(transform_fitted_gamma)
+    19837    0.008    0.000    1.187    0.000 stdlib.py:218(info)
+    23143    0.012    0.000    1.186    0.000 stdlib.py:269(_proxy_to_logger)
+    23143    0.012    0.000    1.174    0.000 _base.py:193(_proxy_to_logger)
+    19837    0.011    0.000    1.003    0.000 __init__.py:1510(info)
+    19837    0.011    0.000    0.990    0.000 __init__.py:1641(_log)
+     3306    0.030    0.000    0.971    0.000 compute.py:942(gamma_parameters)
+    19837    0.008    0.000    0.768    0.000 __init__.py:1667(handle)
+    19837    0.008    0.000    0.757    0.000 __init__.py:1721(callHandlers)
+    19837    0.011    0.000    0.748    0.000 __init__.py:1011(handle)
+    19837    0.010    0.000    0.733    0.000 __init__.py:1139(emit)
+    19837    0.005    0.000    0.682    0.000 __init__.py:988(format)
+    19837    0.040    0.000    0.677    0.000 stdlib.py:1136(format)
+    19837    0.079    0.000    0.481    0.000 dev.py:930(__call__)
+     3306    0.172    0.000    0.449    0.000 compute.py:779(_check_goodness_of_fit_gamma)
+   158696    0.141    0.000    0.319    0.000 dev.py:296(__call__)
 
 
 
 --- sorted by tottime ---
-         8199591 function calls (8199528 primitive calls) in 2.493 seconds
+         8199591 function calls (8199528 primitive calls) in 2.392 seconds
 
    Ordered by: internal time
    List reduced from 656 to 30 due to restriction <30>
 
    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
-     3306    0.181    0.000    0.473    0.000 compute.py:779(_check_goodness_of_fit_gamma)
-   158696    0.146    0.000    0.327    0.000 dev.py:296(__call__)
-    39672    0.111    0.000    0.239    0.000 compute.py:743(_ks_poor_fit_p_value)
-   142443    0.093    0.000    0.093    0.000 {method 'reduce' of 'numpy.ufunc' objects}
-     3306    0.091    0.000    0.091    0.000 _continuous_distns.py:3612(_cdf)
-    39674    0.089    0.000    0.215    0.000 __init__.py:298(__init__)
-    19837    0.082    0.000    0.495    0.000 dev.py:930(__call__)
-   972013    0.068    0.000    0.068    0.000 {method 'write' of '_io.StringIO' objects}
-    19837    0.049    0.000    0.077    0.000 _frames.py:36(_find_first_app_frame_and_name)
-     3306    0.046    0.000    0.158    0.000 _distn_infrastructure.py:2302(ppf)
-    23143    0.043    0.000    0.164    0.000 _base.py:123(_process_event)
-     3306    0.042    0.000    0.253    0.000 _distn_infrastructure.py:2132(cdf)
-   178533    0.042    0.000    0.062    0.000 dev.py:109(_pad)
-    19837    0.041    0.000    0.699    0.000 stdlib.py:1136(format)
-    99185    0.037    0.000    0.047    0.000 dev.py:915(_repr)
-   631879    0.035    0.000    0.035    0.000 {built-in method builtins.isinstance}
-     3306    0.032    0.000    1.015    0.000 compute.py:942(gamma_parameters)
-     3306    0.029    0.000    1.942    0.001 compute.py:1085(transform_fitted_gamma)
-   377070    0.029    0.000    0.029    0.000 {method 'get' of 'dict' objects}
-    13228    0.028    0.000    0.163    0.000 _distn_infrastructure.py:612(argsreduce)
-    19837    0.027    0.000    0.027    0.000 {method 'write' of '_io.TextIOWrapper' objects}
-     3306    0.026    0.000    2.478    0.001 indices.py:417(spi)
-     3306    0.023    0.000    0.050    0.000 numeric.py:2384(isclose)
-    36389    0.020    0.000    0.055    0.000 fromnumeric.py:86(_wrapreduction_any_all)
-     9935    0.020    0.000    0.032    0.000 _stride_tricks_impl.py:373(_broadcast_to)
-    19837    0.019    0.000    0.029    0.000 processors.py:305(__call__)
-    39688    0.018    0.000    0.018    0.000 {method 'sort' of 'numpy.ndarray' objects}
-   178533    0.017    0.000    0.017    0.000 {method 'getvalue' of '_io.StringIO' objects}
-19845/19843    0.017    0.000    0.027    0.000 {method 'join' of 'str' objects}
+     3306    0.172    0.000    0.449    0.000 compute.py:779(_check_goodness_of_fit_gamma)
+   158696    0.141    0.000    0.319    0.000 dev.py:296(__call__)
+    39672    0.105    0.000    0.227    0.000 compute.py:743(_ks_poor_fit_p_value)
+     3306    0.089    0.000    0.089    0.000 _continuous_distns.py:3612(_cdf)
+   142443    0.086    0.000    0.086    0.000 {method 'reduce' of 'numpy.ufunc' objects}
+    39674    0.085    0.000    0.207    0.000 __init__.py:298(__init__)
+    19837    0.079    0.000    0.481    0.000 dev.py:930(__call__)
+   972013    0.067    0.000    0.067    0.000 {method 'write' of '_io.StringIO' objects}
+    19837    0.048    0.000    0.074    0.000 _frames.py:36(_find_first_app_frame_and_name)
+     3306    0.044    0.000    0.152    0.000 _distn_infrastructure.py:2302(ppf)
+    23143    0.041    0.000    0.158    0.000 _base.py:123(_process_event)
+   178533    0.041    0.000    0.061    0.000 dev.py:109(_pad)
+     3306    0.040    0.000    0.246    0.000 _distn_infrastructure.py:2132(cdf)
+    19837    0.040    0.000    0.677    0.000 stdlib.py:1136(format)
+    99185    0.036    0.000    0.046    0.000 dev.py:915(_repr)
+   631879    0.034    0.000    0.035    0.000 {built-in method builtins.isinstance}
+     3306    0.030    0.000    0.971    0.000 compute.py:942(gamma_parameters)
+     3306    0.028    0.000    1.860    0.001 compute.py:1085(transform_fitted_gamma)
+    13228    0.028    0.000    0.158    0.000 _distn_infrastructure.py:612(argsreduce)
+   377070    0.027    0.000    0.027    0.000 {method 'get' of 'dict' objects}
+    19837    0.026    0.000    0.026    0.000 {method 'write' of '_io.TextIOWrapper' objects}
+     3306    0.026    0.000    2.377    0.001 indices.py:417(spi)
+     3306    0.020    0.000    0.046    0.000 numeric.py:2384(isclose)
+    36389    0.020    0.000    0.052    0.000 fromnumeric.py:86(_wrapreduction_any_all)
+     9935    0.019    0.000    0.031    0.000 _stride_tricks_impl.py:373(_broadcast_to)
+    19837    0.017    0.000    0.027    0.000 processors.py:305(__call__)
    218244    0.017    0.000    0.017    0.000 {method 'pop' of 'dict' objects}
+19845/19843    0.016    0.000    0.026    0.000 {method 'join' of 'str' objects}
+   178533    0.016    0.000    0.016    0.000 {method 'getvalue' of '_io.StringIO' objects}
+   238294    0.016    0.000    0.016    0.000 {built-in method builtins.max}
 
 
