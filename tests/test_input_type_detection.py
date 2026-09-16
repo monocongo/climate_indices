@@ -1,16 +1,14 @@
-"""Tests for input type detection infrastructure (Story 2.1).
+"""Table-driven tests for input type detection (Story 2.1).
 
-This test module validates the type classification logic that routes inputs
-to either NumPy or xarray computation paths. It covers:
-- NumPy-coercible types (ndarray, list, tuple, scalars, masked arrays)
-- xarray DataArray variants (with coords, attrs, multiple dimensions)
-- Unsupported types with appropriate error messages
-- Error message quality (hints for pandas, polars, Dataset)
+The tables are the single owner of the classifier contract: which inputs route
+to the NumPy path, which route to the xarray path, and how unsupported types
+are reported.
 """
 
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
 import xarray as xr
 
@@ -18,229 +16,108 @@ from climate_indices.exceptions import ClimateIndicesError, InputTypeError
 from climate_indices.xarray_adapter import InputType, detect_input_type
 
 
-class TestDetectInputTypeNumpy:
-    """Test detection of NumPy-coercible input types."""
+class FakePolarsDataFrame:
+    """Looks like a polars frame without adding the dependency."""
 
-    def test_ndarray_1d(self):
-        """1D NumPy array is classified as NUMPY."""
-        data = np.array([1.0, 2.0, 3.0])
-        assert detect_input_type(data) == InputType.NUMPY
-
-    def test_ndarray_2d(self):
-        """2D NumPy array is classified as NUMPY."""
-        data = np.array([[1.0, 2.0], [3.0, 4.0]])
-        assert detect_input_type(data) == InputType.NUMPY
-
-    def test_list(self):
-        """Python list is classified as NUMPY."""
-        data = [1.0, 2.0, 3.0]
-        assert detect_input_type(data) == InputType.NUMPY
-
-    def test_nested_list(self):
-        """Nested list is classified as NUMPY."""
-        data = [[1.0, 2.0], [3.0, 4.0]]
-        assert detect_input_type(data) == InputType.NUMPY
-
-    def test_tuple(self):
-        """Python tuple is classified as NUMPY."""
-        data = (1.0, 2.0, 3.0)
-        assert detect_input_type(data) == InputType.NUMPY
-
-    def test_int(self):
-        """Python int scalar is classified as NUMPY."""
-        data = 42
-        assert detect_input_type(data) == InputType.NUMPY
-
-    def test_float(self):
-        """Python float scalar is classified as NUMPY."""
-        data = 3.14
-        assert detect_input_type(data) == InputType.NUMPY
-
-    def test_numpy_int_scalar(self):
-        """NumPy integer scalar is classified as NUMPY."""
-        data = np.int64(42)
-        assert detect_input_type(data) == InputType.NUMPY
-
-    def test_numpy_float_scalar(self):
-        """NumPy float64 scalar is classified as NUMPY."""
-        data = np.float64(3.14)
-        assert detect_input_type(data) == InputType.NUMPY
-
-    def test_numpy_float32_scalar(self):
-        """NumPy float32 scalar is classified as NUMPY."""
-        data = np.float32(3.14)
-        assert detect_input_type(data) == InputType.NUMPY
-
-    def test_masked_array(self):
-        """NumPy masked array is classified as NUMPY."""
-        data = np.ma.array([1.0, 2.0, 3.0], mask=[False, True, False])
-        assert detect_input_type(data) == InputType.NUMPY
+    def to_numpy(self):
+        return np.array([1.0, 2.0, 3.0])
 
 
-class TestDetectInputTypeXarray:
-    """Test detection of xarray DataArray inputs."""
+NUMPY_INPUTS = [
+    pytest.param(np.array([1.0, 2.0, 3.0]), id="ndarray-1d"),
+    pytest.param(np.array([[1.0, 2.0], [3.0, 4.0]]), id="ndarray-2d"),
+    pytest.param([1.0, 2.0, 3.0], id="list"),
+    pytest.param([[1.0, 2.0], [3.0, 4.0]], id="nested-list"),
+    pytest.param((1.0, 2.0, 3.0), id="tuple"),
+    pytest.param(42, id="int"),
+    pytest.param(3.14, id="float"),
+    pytest.param(np.int64(42), id="numpy-int-scalar"),
+    pytest.param(np.float64(3.14), id="numpy-float64-scalar"),
+    pytest.param(np.float32(3.14), id="numpy-float32-scalar"),
+    pytest.param(np.ma.array([1.0, 2.0, 3.0], mask=[False, True, False]), id="masked-array"),
+]
 
-    def test_simple_dataarray(self):
-        """Basic DataArray with no coordinates is classified as XARRAY."""
-        data = xr.DataArray([1.0, 2.0, 3.0])
-        assert detect_input_type(data) == InputType.XARRAY
+XARRAY_INPUTS = [
+    pytest.param(xr.DataArray([1.0, 2.0, 3.0]), id="simple"),
+    pytest.param(
+        xr.DataArray([1.0, 2.0, 3.0], coords={"time": ["2020-01", "2020-02", "2020-03"]}, dims=["time"]),
+        id="with-coords",
+    ),
+    pytest.param(
+        xr.DataArray(np.random.rand(10, 5), coords={"lat": range(10), "lon": range(5)}, dims=["lat", "lon"]),
+        id="multidimensional",
+    ),
+    pytest.param(
+        xr.DataArray([1.0, 2.0, 3.0], attrs={"units": "mm", "long_name": "precipitation"}),
+        id="with-attrs",
+    ),
+]
 
-    def test_dataarray_with_coords(self):
-        """DataArray with coordinates is classified as XARRAY."""
-        data = xr.DataArray(
-            [1.0, 2.0, 3.0],
-            coords={"time": ["2020-01", "2020-02", "2020-03"]},
-            dims=["time"],
-        )
-        assert detect_input_type(data) == InputType.XARRAY
+UNSUPPORTED_INPUTS = [
+    pytest.param(pd.Series([1.0, 2.0, 3.0]), id="pandas-series"),
+    pytest.param(pd.DataFrame({"col": [1.0, 2.0, 3.0]}), id="pandas-dataframe"),
+    pytest.param("not a valid input", id="string"),
+    pytest.param({"key": "value"}, id="dict"),
+    pytest.param(None, id="none"),
+    pytest.param(xr.Dataset({"temp": ([1.0, 2.0, 3.0])}), id="xarray-dataset"),
+    pytest.param({1, 2, 3}, id="set"),
+]
 
-    def test_dataarray_multidimensional(self):
-        """Multidimensional DataArray is classified as XARRAY."""
-        data = xr.DataArray(
-            np.random.rand(10, 5),
-            coords={"lat": range(10), "lon": range(5)},
-            dims=["lat", "lon"],
-        )
-        assert detect_input_type(data) == InputType.XARRAY
+ERROR_MESSAGE_CASES = [
+    pytest.param("string", ("str", "np.ndarray", "xr.DataArray"), id="string-lists-accepted-types"),
+    pytest.param(pd.Series([1.0, 2.0, 3.0]), ("to_numpy()",), id="pandas-remediation"),
+    pytest.param(FakePolarsDataFrame(), ("to_numpy()",), id="to-numpy-remediation"),
+    pytest.param(xr.Dataset({"temp": ([1.0, 2.0, 3.0])}), ("Dataset", "variable_name"), id="dataset-hint"),
+]
 
-    def test_dataarray_with_attrs(self):
-        """DataArray with attributes is classified as XARRAY."""
-        data = xr.DataArray(
-            [1.0, 2.0, 3.0],
-            attrs={"units": "mm", "long_name": "precipitation"},
-        )
-        assert detect_input_type(data) == InputType.XARRAY
-
-
-class TestDetectInputTypeUnsupported:
-    """Test rejection of unsupported input types."""
-
-    def test_pandas_series(self):
-        """pandas Series raises InputTypeError."""
-        # pandas is available as transitive dependency via xarray
-        import pandas as pd
-
-        data = pd.Series([1.0, 2.0, 3.0])
-        with pytest.raises(InputTypeError):
-            detect_input_type(data)
-
-    def test_pandas_dataframe(self):
-        """pandas DataFrame raises InputTypeError."""
-        import pandas as pd
-
-        data = pd.DataFrame({"col": [1.0, 2.0, 3.0]})
-        with pytest.raises(InputTypeError):
-            detect_input_type(data)
-
-    def test_string(self):
-        """String input raises InputTypeError."""
-        with pytest.raises(InputTypeError):
-            detect_input_type("not a valid input")
-
-    def test_dict(self):
-        """Dictionary input raises InputTypeError."""
-        with pytest.raises(InputTypeError):
-            detect_input_type({"key": "value"})
-
-    def test_none(self):
-        """None input raises InputTypeError."""
-        with pytest.raises(InputTypeError):
-            detect_input_type(None)
-
-    def test_xr_dataset(self):
-        """xarray Dataset raises InputTypeError."""
-        data = xr.Dataset({"temp": ([1.0, 2.0, 3.0])})
-        with pytest.raises(InputTypeError):
-            detect_input_type(data)
-
-    def test_set(self):
-        """Set input raises InputTypeError."""
-        with pytest.raises(InputTypeError):
-            detect_input_type({1, 2, 3})
+ERROR_ATTRIBUTE_CASES = [
+    pytest.param("string", str, id="string"),
+    pytest.param(None, type(None), id="none"),
+    pytest.param({1, 2, 3}, set, id="set"),
+]
 
 
-class TestInputTypeErrorMessage:
-    """Test quality of error messages for unsupported types."""
-
-    def test_includes_actual_type(self):
-        """Error message includes the actual type name."""
-        with pytest.raises(InputTypeError) as exc_info:
-            detect_input_type("string")
-        # should include module.qualname format
-        assert "str" in str(exc_info.value)
-
-    def test_includes_expected_types(self):
-        """Error message lists accepted types."""
-        with pytest.raises(InputTypeError) as exc_info:
-            detect_input_type("string")
-        message = str(exc_info.value)
-        # should mention key accepted types
-        assert "np.ndarray" in message
-        assert "xr.DataArray" in message
-
-    def test_pandas_remediation(self):
-        """Error for pandas types includes to_numpy() hint."""
-        import pandas as pd
-
-        data = pd.Series([1.0, 2.0, 3.0])
-        with pytest.raises(InputTypeError) as exc_info:
-            detect_input_type(data)
-        # should suggest conversion method
-        assert "to_numpy()" in str(exc_info.value)
-
-    def test_polars_remediation(self):
-        """Error for polars-like types includes to_numpy() hint."""
-
-        # create a mock class that looks like polars without adding dependency
-        class FakePolarsDataFrame:
-            def to_numpy(self):
-                return np.array([1.0, 2.0, 3.0])
-
-        data = FakePolarsDataFrame()
-        with pytest.raises(InputTypeError) as exc_info:
-            detect_input_type(data)
-        # should suggest conversion method for any type with to_numpy
-        assert "to_numpy()" in str(exc_info.value)
-
-    def test_error_attributes_set(self):
-        """InputTypeError has expected_type and actual_type attributes."""
-        with pytest.raises(InputTypeError) as exc_info:
-            detect_input_type("string")
-        assert exc_info.value.actual_type is str
-        # expected_type is None since multiple types are accepted
-        assert exc_info.value.expected_type is None
-
-    def test_catchable_as_base(self):
-        """InputTypeError is catchable as ClimateIndicesError."""
-        with pytest.raises(ClimateIndicesError):
-            detect_input_type("string")
+@pytest.mark.parametrize("data", NUMPY_INPUTS)
+def test_numpy_coercible_inputs_are_classified_numpy(data) -> None:
+    """Anything NumPy can consume routes to the NumPy computation path."""
+    assert detect_input_type(data) == InputType.NUMPY
 
 
-class TestInputTypeEnum:
-    """Test InputType enum properties."""
-
-    def test_has_numpy(self):
-        """InputType enum has NUMPY member."""
-        assert hasattr(InputType, "NUMPY")
-
-    def test_has_xarray(self):
-        """InputType enum has XARRAY member."""
-        assert hasattr(InputType, "XARRAY")
-
-    def test_members_distinct(self):
-        """NUMPY and XARRAY are distinct values."""
-        assert InputType.NUMPY != InputType.XARRAY
+@pytest.mark.parametrize("data", XARRAY_INPUTS)
+def test_xarray_dataarrays_are_classified_xarray(data) -> None:
+    """Every DataArray variant routes to the xarray computation path."""
+    assert detect_input_type(data) == InputType.XARRAY
 
 
-class TestDatasetSpecificError:
-    """Test Dataset-specific error messaging."""
+@pytest.mark.parametrize("data", UNSUPPORTED_INPUTS)
+def test_unsupported_inputs_raise_input_type_error(data) -> None:
+    """Types the classifier cannot route (including xr.Dataset) are rejected."""
+    with pytest.raises(InputTypeError):
+        detect_input_type(data)
 
-    def test_xr_dataset_hints_variable_selection(self):
-        """xarray Dataset error includes variable selection hint."""
-        data = xr.Dataset({"temp": ([1.0, 2.0, 3.0])})
-        with pytest.raises(InputTypeError) as exc_info:
-            detect_input_type(data)
-        message = str(exc_info.value)
-        # should specifically mention Dataset and how to select a variable
-        assert "Dataset" in message
-        assert "variable_name" in message
+
+@pytest.mark.parametrize(("data", "expected_fragments"), ERROR_MESSAGE_CASES)
+def test_error_message_names_the_type_accepted_types_and_remediation(data, expected_fragments) -> None:
+    """Rejections tell users what was passed, what is accepted, and how to convert."""
+    with pytest.raises(InputTypeError) as exc_info:
+        detect_input_type(data)
+    message = str(exc_info.value)
+    for fragment in expected_fragments:
+        assert fragment in message
+
+
+@pytest.mark.parametrize(("data", "expected_actual_type"), ERROR_ATTRIBUTE_CASES)
+def test_error_attributes_and_base_catchability(data, expected_actual_type) -> None:
+    """The error carries the actual type, no single expected type, and is catchable as the base."""
+    with pytest.raises(ClimateIndicesError) as exc_info:
+        detect_input_type(data)
+    assert exc_info.value.actual_type is expected_actual_type
+    # expected_type is None since multiple input types are accepted
+    assert exc_info.value.expected_type is None
+
+
+def test_input_type_enum_exposes_distinct_numpy_and_xarray_members() -> None:
+    """The routing enum names the two supported paths."""
+    assert hasattr(InputType, "NUMPY")
+    assert hasattr(InputType, "XARRAY")
+    assert InputType.NUMPY != InputType.XARRAY

@@ -24,6 +24,7 @@ from climate_indices.logging_config import get_logger
 # declare the function names that should be included in the public API for this module
 __all__ = [
     "Periodicity",
+    "prepare_scaled",
     "scale_values",
     "sum_to_scale",
     "transform_fitted_gamma",
@@ -147,6 +148,19 @@ class Periodicity(Enum):
 
         return unit
 
+    @property
+    def period_length(self) -> int:
+        """
+        The number of time steps comprising one year at this periodicity,
+        i.e. 12 for monthly data and 366 for daily data.
+        """
+        return int(self.value)
+
+
+# the valid number of time steps per year, i.e. the length of the second axis
+# of a 2-D (years, periods) input array
+_PERIOD_LENGTHS = frozenset(periodicity.period_length for periodicity in Periodicity)
+
 
 def _validate_array(
     values: np.ndarray,
@@ -173,15 +187,10 @@ def _validate_array(
             )
             raise ValueError(message)
 
-        elif periodicity is Periodicity.monthly:
-            # we've been passed a 1-D array with shape (months),
-            # reshape it to 2-D with shape (years, 12)
-            values = utils.reshape_to_2d(values, 12)
-
-        elif periodicity is Periodicity.daily:
-            # we've been passed a 1-D array with shape (days),
-            # reshape it to 2-D with shape (years, 366)
-            values = utils.reshape_to_2d(values, 366)
+        elif periodicity is Periodicity.monthly or periodicity is Periodicity.daily:
+            # we've been passed a 1-D array with shape (months) or (days),
+            # reshape it to 2-D with shape (years, period_length)
+            values = utils.reshape_to_2d(values, periodicity.period_length)
 
         else:
             message = f"Unsupported periodicity argument: '{periodicity}'"  # type: ignore[unreachable]
@@ -193,10 +202,9 @@ def _validate_array(
             )
             raise ValueError(message)
 
-    elif (len(values.shape) != 2) or (values.shape[1] not in (12, 366)):
-        # ((values.shape[1] != 12) and (values.shape[1] != 366)):
-
-        # neither a 1-D nor a 2-D array with valid shape was passed in
+    elif len(values.shape) < 2 or values.shape[1] not in _PERIOD_LENGTHS:
+        # not a 1-D array, and no valid period axis: an already-reshaped spatial
+        # array carries its periods along axis 1, i.e. (years, periods, *cells)
         message = f"Invalid input array with shape: {values.shape}"
         _logger.error(
             "validation_error",
@@ -219,6 +227,9 @@ def sum_to_scale(
     Missing values are not ignored, i.e. if a np.nan
     (missing) value is part of the group of values to be summed then the sum
     will be np.nan
+
+    A time-major spatial array with shape (time, *cells) is summed window-wise along
+    its time axis, so every cell's sliding sums are computed by one vectorized pass.
 
     For example if the first array is [3, 4, 6, 2, 1, 3, 5, 8, 5] and
     the number of values to sum is 3 then the resulting array
@@ -244,6 +255,17 @@ def sum_to_scale(
     # don't bother if the number of values to sum is 1
     if scale == 1:
         return values
+
+    if values.ndim > 2:
+        # time-major spatial arrays are summed window-wise along the time axis: one
+        # vectorized window per time step for every cell, no per-cell Python loop
+        # (np.convolve is 1-D only). The NaN pad is float64, as the 1-D path's
+        # np.hstack([np.nan, ...]) is, so single-precision input still accumulates in
+        # double precision.
+        pad_shape = (scale - 1, *values.shape[1:])
+        padded = np.concatenate((np.full(pad_shape, np.nan, dtype=float), values))
+        window_sums: np.ndarray = np.lib.stride_tricks.sliding_window_view(padded, scale, axis=0).sum(axis=-1)
+        return window_sums
 
     # get the valid sliding summations with 1D convolution
     sliding_sums = np.convolve(values, np.ones(scale), mode="valid")
@@ -272,17 +294,47 @@ def _log_and_raise_shape_error(shape: tuple[int, ...]) -> None:
 
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+def _reshape_time_major(values: np.ndarray, periodicity: Periodicity) -> np.ndarray:
+    """
+    Reshape a time-major spatial array to (years, periods, *cells).
+
+    The spatial counterpart of ``utils.reshape_to_2d``: the time axis is folded onto
+    a new period axis while every trailing cell dimension is left untouched, and a
+    trailing partial period is padded with NaN values as in the 1-D case.
+
+    :param values: time-major array of values, shape (time, *cells)
+    :param periodicity: specifies whether data is monthly (12) or daily (366)
+    :return: the values with shape (years, period_length, *cells)
+    """
+    if periodicity is not Periodicity.monthly and periodicity is not Periodicity.daily:
+        raise ValueError(f"Invalid periodicity argument: {periodicity}")
+
+    period_length = periodicity.period_length
+    cell_shape = values.shape[1:]
+    final_period_values = values.shape[0] % period_length
+    if final_period_values > 0:
+        pads = [(0, period_length - final_period_values)] + [(0, 0)] * len(cell_shape)
+        values = np.pad(values, pads, mode="constant", constant_values=np.nan)
+
+    result: np.ndarray = values.reshape(-1, period_length, *cell_shape)
+    _logger.debug(
+        "array_reshaped",
+        operation="reshape_time_major",
+        input_shape=str(cell_shape),
+        output_shape=str(result.shape),
+    )
+    return result
+
+
 def reshape_values(values: np.ndarray, periodicity: Periodicity) -> np.ndarray:
-    if periodicity is Periodicity.monthly:
-        return utils.reshape_to_2d(values, 12)
-    elif periodicity is Periodicity.daily:
-        return utils.reshape_to_2d(values, 366)
+    if periodicity is Periodicity.monthly or periodicity is Periodicity.daily:
+        return utils.reshape_to_2d(values, periodicity.period_length)
     else:
         raise ValueError(f"Invalid periodicity argument: {periodicity}")
 
 
 def validate_values_shape(values: np.ndarray) -> int:
-    if len(values.shape) != 2 or values.shape[1] not in (12, 366):
+    if len(values.shape) != 2 or values.shape[1] not in _PERIOD_LENGTHS:
         _log_and_raise_shape_error(shape=values.shape)
     return int(values.shape[1])
 
@@ -786,11 +838,20 @@ def _check_goodness_of_fit_gamma(
 
     Performs Kolmogorov-Smirnov tests for each time step and aggregates
     poor fits into a single warning to avoid flooding users with warnings.
+    Spatial arrays with shape (years, time_steps, ...) evaluate one vectorized D
+    statistic per time step across every cell, so the check costs no Python call
+    per cell; only cells whose statistic reaches the critical value defer to
+    SciPy for an exact p-value.
 
-    :param calibration_values: Calibration data with shape (years, time_steps)
+    :param calibration_values: Calibration data with shape (years, time_steps) or
+        (years, time_steps, ...) for spatial input
     :param alphas: Shape parameters for gamma distribution
     :param betas: Scale parameters for gamma distribution
     """
+    if calibration_values.ndim > 2:
+        _check_goodness_of_fit_gamma_spatial(calibration_values, alphas, betas)
+        return
+
     time_steps = calibration_values.shape[1]
     poor_fit_steps = []
 
@@ -842,6 +903,101 @@ def _check_goodness_of_fit_gamma(
             total_steps=time_steps,
         )
         warnings.warn(warning, stacklevel=3)
+
+
+def _check_goodness_of_fit_gamma_spatial(
+    calibration_values: np.ndarray,
+    alphas: np.ndarray,
+    betas: np.ndarray,
+) -> None:
+    """
+    Gamma goodness-of-fit check across every cell of a (years, time_steps, ...) array.
+
+    :param calibration_values: Calibration data with shape (years, time_steps, ...)
+    :param alphas: Shape parameters, with shape (time_steps, ...)
+    :param betas: Scale parameters, with shape (time_steps, ...)
+
+    Peak memory is a few O(years x time_steps x cells) temporaries, so spatial blocks
+    decide the footprint: chunk large grids rather than passing one dense block.
+    """
+    num_years = calibration_values.shape[0]
+    time_steps = calibration_values.shape[1]
+    cell_count = int(np.prod(calibration_values.shape[2:], dtype=np.intp))
+
+    # NaN values sort last, so each cell's valid sample leads along the year axis
+    sorted_values = np.sort(calibration_values, axis=0)
+    valid_counts = np.count_nonzero(~np.isnan(calibration_values), axis=0)
+
+    # the D statistic is a maximum over the ranked sample positions, evaluated here
+    # for every (time step, cell) at once; positions beyond a cell's valid count and
+    # samples whose fitted parameters are invalid fall outside the comparison, matching
+    # the per-series check's own guards. The float64 cast matches that check's arithmetic.
+    ranks = np.arange(1, num_years + 1).reshape((-1,) + (1,) * (calibration_values.ndim - 1))
+    valid_positions = (ranks <= valid_counts) & np.isfinite(alphas[np.newaxis]) & np.isfinite(betas[np.newaxis])
+    valid_positions &= (alphas[np.newaxis] > 0) & (betas[np.newaxis] > 0)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        cdf_values = scipy.special.gammainc(
+            alphas[np.newaxis].astype(float),
+            sorted_values.astype(float) / betas[np.newaxis].astype(float),
+        )
+        upper = np.where(valid_positions, ranks / valid_counts - cdf_values, -np.inf)
+        lower = np.where(valid_positions, cdf_values - (ranks - 1) / valid_counts, -np.inf)
+    d_statistics = np.maximum(np.max(upper, axis=0), np.max(lower, axis=0))
+
+    # critical values depend on the per-cell valid count, so evaluate the cached
+    # exact statistic once per distinct count rather than once per cell
+    critical_values = np.full(valid_counts.shape, np.inf)
+    for valid_count in np.unique(valid_counts):
+        if valid_count > 0:
+            critical_values[valid_counts == valid_count] = _ks_critical_value(int(valid_count))
+    critical_tolerance = 0.0
+    if np.issubdtype(calibration_values.dtype, np.floating):
+        critical_tolerance = float(np.finfo(calibration_values.dtype).eps)
+
+    candidates = np.nonzero(d_statistics >= critical_values - critical_tolerance)
+    poor_fits: list[tuple[int, float]] = []
+    for candidate in zip(*candidates, strict=True):
+        step_index = int(candidate[0])
+        valid_count = int(valid_counts[candidate])
+        sorted_column = sorted_values[(slice(0, valid_count), *candidate)]
+        try:
+            p_value = _ks_poor_fit_p_value(
+                sorted_column,
+                scipy.special.gammainc(
+                    float(alphas[candidate]),
+                    sorted_column.astype(float) / float(betas[candidate]),
+                ),
+            )
+        except Exception:
+            # ignore fitting errors during goodness-of-fit check, as the per-series path does
+            continue
+        if p_value is not None:
+            poor_fits.append((step_index, p_value))
+
+    if not poor_fits:
+        return
+
+    # show up to 5 examples
+    examples = poor_fits[:5]
+    example_text = ", ".join([f"step {idx} (p={p:.4f})" for idx, p in examples])
+    if len(poor_fits) > 5:
+        example_text += f", and {len(poor_fits) - 5} more"
+
+    comparisons = time_steps * cell_count
+    message = (
+        f"Gamma distribution shows poor goodness-of-fit for {len(poor_fits)} of "
+        f"{comparisons} time step/cell combinations (p < {GOODNESS_OF_FIT_P_VALUE_THRESHOLD}). "
+        f"Examples: {example_text}. Consider using a different distribution or "
+        f"investigating data quality issues."
+    )
+    warning = GoodnessOfFitWarning(
+        message,
+        distribution_name="gamma",
+        threshold=GOODNESS_OF_FIT_P_VALUE_THRESHOLD,
+        poor_fit_count=len(poor_fits),
+        total_steps=comparisons,
+    )
+    warnings.warn(warning, stacklevel=3)
 
 
 def _check_goodness_of_fit_pearson(
@@ -985,6 +1141,9 @@ def gamma_parameters(
             shape = (366,)
         else:
             raise ValueError(f"Unsupported periodicity: {periodicity}")
+        if values.ndim > 2:
+            # validated spatial arrays carry the periods along axis 1: (periods, *cells)
+            shape = values.shape[1:]
         alphas = np.full(shape=shape, fill_value=np.nan)
         betas = np.full(shape=shape, fill_value=np.nan)
         return alphas, betas
@@ -1037,49 +1196,185 @@ def gamma_parameters(
     return alphas, betas
 
 
-def scale_values(
+def _prepare_input_shape(values: np.ndarray, spatial_time_major: bool) -> np.ndarray:
+    """
+    Flatten a 2-D input, pass a declared time-major spatial block through unchanged,
+    and reject any other shape.
+
+    We expect to operate upon a 1-D array, so a 2-D array is flattened. A time-major
+    spatial block keeps its trailing cell dims, so that the scaling and everything
+    downstream runs once per cell set rather than per cell, but only when the caller
+    says the block is time-major: reading it by default would silently re-read a
+    (years, periods, *cells) array along the wrong axis.
+    """
+    shape = values.shape
+    if len(shape) == 2:
+        return values.flatten()
+    if len(shape) > 2:
+        # every array with three or more dimensions is read as a time-major block, except
+        # when its first cell axis is a calendar period length: that shape is equally
+        # readable as a (years, periods, *cells) array, so it must be declared
+        if not spatial_time_major and shape[1] in _PERIOD_LENGTHS:
+            _logger.error(
+                "validation_error",
+                operation="prepare_scaled",
+                reason="ambiguous_spatial_shape",
+                shape=str(shape),
+            )
+            raise ValueError(
+                f"Invalid shape of input array: {shape} -- a (time, *cells) block whose first cell axis "
+                "is a calendar period length is ambiguous with a (years, periods, *cells) array; "
+                "declare it with spatial_time_major=True"
+            )
+        return values
+    if len(shape) != 1:
+        _logger.error(
+            "validation_error",
+            operation="prepare_scaled",
+            reason="invalid_shape",
+            shape=str(shape),
+        )
+        raise ValueError(
+            f"Invalid shape of input array: {shape} -- only 1-D arrays, 2-D (years, periods) "
+            "arrays, and declared time-major spatial blocks are supported"
+        )
+    return values
+
+
+def prepare_scaled(
     values: np.ndarray,
     scale: int,
     periodicity: Periodicity,
+    *,
+    clip_negatives: bool = True,
+    reshape: bool = True,
+    spatial_time_major: bool = False,
 ) -> np.ndarray:
-    _logger.debug("scaling_started", operation="scale_values", scale=scale, periodicity=str(periodicity))
+    """
+    Prepare an array of values for distribution fitting by flattening, clipping,
+    summing each time step over the specified scale, and reshaping.
 
-    # we expect to operate upon a 1-D array, so if we've been passed a 2-D array
-    # then we flatten it, otherwise raise an error
-    shape = values.shape
-    if len(shape) == 2:
-        values = values.flatten()
-    elif len(shape) != 1:
-        # only 1-D and 2-D arrays are supported
-        _log_and_raise_shape_error(shape=shape)
+    This is the single owner of the preparation pipeline shared by the fitting-based
+    indices (SPI, SPEI, EDDI, PNP) and the specialized CLI, so a policy change lands
+    in every index at once. An all-missing 1-D or 2-D input is returned as a flattened
+    array without computing anything, which callers can detect with
+    ``prepared.ndim == 1`` in order to short-circuit; an all-missing time-major spatial
+    input is returned with its (time, *cells) shape. Shape errors are raised as
+    ``ValueError``, the convention established by ``_validate_array`` and
+    ``utils.reshape_to_2d``.
 
-    # if we're passed all missing values then we can't compute
-    # anything, so we return the same array of missing values
+    Args:
+        values: The array of values, either 1-D, 2-D (years, periods), or a time-major
+            spatial array with shape (time, *cells) and three or more dimensions,
+            whose trailing cell dimensions are preserved.
+        scale: The number of values for which each sliding summation will encompass.
+        periodicity: Specifies whether data is monthly (12 time steps per year) or daily.
+        clip_negatives: Whether negative values are clipped to zero, defaults to True.
+        reshape: Whether the scaled values are reshaped to (years, period_length),
+            defaults to True. For a time-major spatial input the result is
+            (years, period_length, *cells). ``indices.percentage_of_normal`` passes
+            False, since it averages the un-reshaped 1-D sums over each calendar period.
+        spatial_time_major: Declares that a three-or-more-dimensional ``values`` is a
+            time-major block of independent time series, shaped (time, *cells). That is
+            how a block is read anyway, except when the first cell axis is a calendar
+            period length (12 or 366), which makes the shape equally readable as a
+            (years, periods, *cells) array; there the caller has to say which it means.
+            ``xarray_adapter`` sets this for every block it packs.
+
+    Returns:
+        The scaled values, either 2-D with shape (years, periodicity.period_length),
+        three or more dimensions with shape (years, periodicity.period_length, *cells)
+        for a time-major spatial input, or 1-D when an all-missing input or
+        ``reshape=False``.
+    """
+    _logger.debug("scaling_started", operation="prepare_scaled", scale=scale, periodicity=str(periodicity))
+
+    # periodicity must be validated regardless of whether the result is reshaped,
+    # since reshape_values() is the only other place this is checked and it's
+    # skipped entirely when reshape=False
+    if periodicity is not Periodicity.monthly and periodicity is not Periodicity.daily:
+        raise ValueError(f"Invalid periodicity argument: {periodicity}")
+
+    values = _prepare_input_shape(values, spatial_time_major)
+
+    # if we're passed all missing values then we can't compute anything,
+    # so we return the same array of missing values
     if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
         return values
 
-    # clip any negative values to zero
-    if np.amin(values) < 0.0:
-        _logger.warning("negative_values_clipped", operation="scale_values")
+    # clip any negative values to zero. np.any(values < 0.0) is NaN-safe (NaN < 0
+    # is False) and mask-safe (MaskedArray.any() ignores masked entries), unlike
+    # np.amin/np.nanmin which either miss negatives behind a NaN or reach under a mask.
+    if clip_negatives and bool(np.any(values < 0.0)):
+        _logger.warning("negative_values_clipped", operation="prepare_scaled")
         values = np.clip(values, a_min=0.0, a_max=None)
 
     # get a sliding sums array, with each time step's value scaled
     # by the specified number of time steps
     scaled_values = sum_to_scale(values, scale)
 
+    # a masked sum stands for the missing value it represents, so make it an explicit NaN
+    if np.ma.isMaskedArray(scaled_values):
+        scaled_values = np.ma.filled(scaled_values.astype(float), np.nan)
+
     # reshape precipitation values to (years, 12) for monthly,
     # or to (years, 366) for daily
-    if periodicity is Periodicity.monthly:
-        scaled_values = utils.reshape_to_2d(scaled_values, 12)
+    if reshape:
+        scaled_values = (
+            _reshape_time_major(scaled_values, periodicity)
+            if scaled_values.ndim > 2
+            else reshape_values(scaled_values, periodicity)
+        )
 
-    elif periodicity is Periodicity.daily:
-        scaled_values = utils.reshape_to_2d(scaled_values, 366)
-
-    else:
-        raise ValueError(f"Invalid periodicity argument: {periodicity}")
-
-    _logger.debug("scaling_completed", operation="scale_values", output_shape=str(scaled_values.shape))
+    _logger.debug("scaling_completed", operation="prepare_scaled", output_shape=str(scaled_values.shape))
     return scaled_values
+
+
+def scale_values(
+    values: np.ndarray,
+    scale: int,
+    periodicity: Periodicity,
+) -> np.ndarray:
+    """
+    Scale an array of values by summing each time step over the specified scale,
+    clipping negative values to zero and reshaping to (years, periods).
+
+    Thin wrapper over ``prepare_scaled``, which owns the preparation pipeline for
+    every fitting-based index.
+
+    Args:
+        values: The array of values, either 1-D or 2-D (years, periods).
+        scale: The number of values for which each sliding summation will encompass.
+        periodicity: Specifies whether data is monthly (12 time steps per year) or daily.
+
+    Returns:
+        The scaled values, reshaped to (years, periodicity.period_length).
+    """
+    return prepare_scaled(values, scale, periodicity)
+
+
+def _broadcast_fitting_parameters(
+    values: np.ndarray, alphas: np.ndarray | None, betas: np.ndarray | None
+) -> tuple[np.ndarray | None, np.ndarray | None]:
+    """
+    Reshape period-only fit parameters, shape (periods,), so that NumPy broadcasts
+    them along axis 1 of a time-major spatial array instead of aligning them with the
+    trailing cell axes.
+    """
+    if values.ndim <= 2:
+        return alphas, betas
+
+    if alphas is not None:
+        alphas = np.asarray(alphas)
+        if alphas.ndim == 1:
+            alphas = alphas.reshape(1, -1, *([1] * (values.ndim - 2)))
+
+    if betas is not None:
+        betas = np.asarray(betas)
+        if betas.ndim == 1:
+            betas = betas.reshape(1, -1, *([1] * (values.ndim - 2)))
+
+    return alphas, betas
 
 
 def transform_fitted_gamma(
@@ -1131,6 +1426,8 @@ def transform_fitted_gamma(
 
     # validate (and possibly reshape) the input array
     values = _validate_array(values, periodicity)
+
+    alphas, betas = _broadcast_fitting_parameters(values, alphas, betas)
 
     # Replace zeros with NaNs for fitting (zeros are excluded from gamma fitting)
     # and get mask of zero positions for later probability calculations

@@ -1,4 +1,5 @@
 import logging
+from unittest import mock
 
 import numpy as np
 import pytest
@@ -287,6 +288,32 @@ def test_pnp_3d_input_raises():
         )
 
 
+def test_spi_ambiguous_3d_input_raises():
+    """A gridded array whose first cell axis is the period length raises ValueError.
+
+    That shape is equally readable as time-major (time, 12, *cells) and as the legacy
+    (years, periods, *cells) layout, so it must be declared with spatial_time_major=True
+    instead of being silently re-read along the wrong axis (#923).
+
+    Unlike eddi()/percentage_of_normal(), spi()'s dimension errors are pinned to
+    plain ValueError by tests/test_backward_compat.py::TestErrorHierarchyDocumented,
+    so this stays on the shared preparation seam's ValueError rather than switching
+    to DataShapeError.
+    """
+    values = np.zeros((2, 12, 4))
+
+    with pytest.raises(ValueError, match="Invalid shape of input array"):
+        indices.spi(
+            values,
+            1,
+            indices.Distribution.gamma,
+            1900,
+            1900,
+            1901,
+            compute.Periodicity.monthly,
+        )
+
+
 @pytest.mark.usefixtures(
     "precips_mm_monthly",
     "precips_mm_daily",
@@ -406,11 +433,12 @@ def test_spi(
             compute.Periodicity.monthly,
         )
 
-    # input array argument that's neither 1-D nor 2-D should raise a ValueError
+    # a gridded array whose first cell axis is the period length is ambiguous with a
+    # (years, periods, *cells) array, so it has to be declared rather than read
     np.testing.assert_raises(
         ValueError,
         indices.spi,
-        np.array(np.zeros((4, 4, 8))),
+        np.array(np.zeros((4, 366, 8))),
         6,
         indices.Distribution.gamma,
         data_year_start_monthly,
@@ -724,3 +752,70 @@ def test_pci(
 
     # confirm that an invalid number of days raises an error
     np.testing.assert_raises(InvalidArgumentError, indices.pci, np.array(list(range(300))))
+
+
+@pytest.mark.usefixtures(
+    "precips_mm_monthly",
+    "pet_thornthwaite_mm",
+    "data_year_start_monthly",
+    "calibration_year_start_monthly",
+    "calibration_year_end_monthly",
+)
+def test_fitting_indices_share_one_preparation_seam(
+    precips_mm_monthly,
+    pet_thornthwaite_mm,
+    data_year_start_monthly,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+):
+    """SPI, SPEI, EDDI, and PNP all prepare their scaled values through one seam."""
+    precips = precips_mm_monthly.flatten()
+    pet = pet_thornthwaite_mm.flatten()
+
+    with mock.patch.object(compute, "prepare_scaled", wraps=compute.prepare_scaled) as prepare_scaled:
+        indices.spi(
+            precips,
+            3,
+            indices.Distribution.gamma,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            compute.Periodicity.monthly,
+        )
+        indices.spei(
+            precips,
+            pet,
+            3,
+            indices.Distribution.gamma,
+            compute.Periodicity.monthly,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+        )
+        indices.eddi(
+            pet_thornthwaite_mm,
+            3,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            compute.Periodicity.monthly,
+        )
+        indices.percentage_of_normal(
+            precips,
+            3,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            compute.Periodicity.monthly,
+        )
+
+    # SPI and EDDI prepare with the defaults; SPEI and PNP opt out of clipping and
+    # reshaping. The spatial-block declaration is not part of that contract, so only
+    # those two keywords are compared.
+    assert prepare_scaled.call_count == 4
+    prep_kwargs = [
+        {key: value for key, value in call.kwargs.items() if key in {"clip_negatives", "reshape"}}
+        for call in prepare_scaled.call_args_list
+    ]
+    assert prep_kwargs.count({}) == 2
+    assert [call for call in prep_kwargs if call] == [{"clip_negatives": False, "reshape": False}] * 2

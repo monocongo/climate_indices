@@ -80,7 +80,7 @@ Daily PET estimated from min/max/mean temperature and extraterrestrial radiation
 
 ### Fire family
 
-Fire-weather and fuel-dryness indices live in the namespaced `fire` module (`from climate_indices import fire`), never as unqualified package functions — see [ADR-0005](../../docs/adr/0005-fire-module-api.md) and the [fire subsystem design](../../docs/design/fire-subsystem.md).
+Fire-weather and fuel-dryness indices live in the namespaced `fire` package (`from climate_indices import fire`), never as unqualified package functions — see [ADR-0005](../../docs/adr/0005-fire-module-api.md) and the [fire subsystem design](../../docs/design/fire-subsystem.md).
 
 **FFWI (Fosberg Fire Weather Index)**:
 A dimensionless, weather-only, elementwise fire-weather index from temperature, relative humidity, and wind speed; computed by `fire.fosberg_ffwi()`.
@@ -101,14 +101,38 @@ The daily recursive moisture content of loosely compacted organic layers of mode
 The daily recursive moisture content of deep, compact organic layers, from noon temperature and 24-hour rain; computed by `fire.drought_code()`. Potential evapotranspiration scales with the month- and latitude-dependent day length, and the dimensionless code is floored at zero with no upper bound. The CFFWIS component only, distinct from SPI, SPEI, PDSI, and the other drought indices.
 
 **CFFWIS (Canadian Forest Fire Weather Index System)**:
-The Canadian Forest Service's fire-weather system. Its three moisture codes are computed by `fire.ffmc()`, `fire.duff_moisture_code()`, and `fire.drought_code()`; the behavior indices ISI, BUI, FWI, and DSR and the `fire.cffwis()` orchestrator that returns them together are planned contracts in the design doc.
+The Canadian Forest Service's fire-weather system, computed by `fire.cffwis()`: the three moisture codes `fire.ffmc()` (FFMC), `fire.duff_moisture_code()` (DMC), and `fire.drought_code()` (DC), then the behavior indices ISI, BUI, FWI, and DSR. `fire.cffwis()` threads all three moisture codes through one daily pass and can return any requested subset of the seven outputs.
 
-The CFFWIS behavior indices (ISI, BUI, FWI, DSR) and Haines are planned contracts in the design doc.
+**ISI (Initial Spread Index)**:
+A dimensionless, state-free CFFWIS behavior index of the expected rate of fire spread immediately after ignition, from FFMC and 10 m wind speed; computed by `fire.initial_spread_index()`.
+
+**BUI (Buildup Index)**:
+A dimensionless, state-free CFFWIS behavior index of the fuel available for spreading, from DMC and DC; computed by `fire.buildup_index()`.
+
+**FWI (Canadian Fire Weather Index)**:
+A dimensionless, state-free CFFWIS behavior index combining ISI and BUI; computed by `fire.cffwis_fwi()`. Distinct from the Fosberg Fire Weather Index (FFWI).
+
+**DSR (Daily Severity Rating)**:
+The `0.0272 * FWI ** 1.77` transform of the Canadian FWI that makes seasonal averaging meaningful; computed by `fire.daily_severity_rating()`.
+
+The Haines Index is a planned contract in the design doc.
 
 ### Statistics
 
 **L-Moments**:
 Linear-combination-of-order-statistics summary measures of a sample's location, scale, and skew — used here as a more robust alternative to conventional moments for fitting the Pearson Type III distribution.
+
+### Gridded execution
+
+**Spatial Block** (spelled time-major in code):
+A gridded input array shaped `(time, *cells)` — the time axis first, every trailing axis an independent cell — that the fitting-based indices scale, fit, and transform in one pass. Any array with three or more dimensions is read this way; 1-D input stays a series and 2-D input stays the legacy `(years, periods)` layout. The one ambiguous shape is a block whose first cell axis is a calendar period length (12 or 366), which is indistinguishable from a `(years, periods, *cells)` array; that shape has to be declared with `spatial_time_major=True`, which `xarray_adapter` sets for every block it packs. See [ADR-0008](../../docs/adr/0008-spatial-block-declaration.md).
+_Avoid_: time-major block (the code spelling, not the prose term)
+
+**Spatial Kernel**:
+An index whose NumPy core accepts a Spatial Block, declared per index with `spatial_kernel=True` at its adapter call site. Such an index runs one `xr.apply_ufunc` call per non-core block instead of one per grid cell; indices whose cores still loop over cells keep the Per-Cell Path.
+
+**Per-Cell Path**:
+The alternative dispatch, `xr.apply_ufunc(..., vectorize=True)`, which calls the kernel once per grid cell over 1-D time series. Still used for inputs with a single non-core dimension, and for the index families listed in [ADR-0008](../../docs/adr/0008-spatial-block-declaration.md) (#940, #941, #942, #937).
 
 ### Metadata & provenance
 

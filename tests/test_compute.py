@@ -616,3 +616,162 @@ def test_sum_to_scale():
         sum_by6,
         err_msg=UNEXPECTED_SLIDING_SUMS_MESSAGE,
     )
+
+
+def test_periodicity_period_length():
+    """
+    Each periodicity reports the number of time steps in one year of data.
+    """
+    assert compute.Periodicity.monthly.period_length == 12
+    assert compute.Periodicity.daily.period_length == 366
+
+
+def test_prepare_scaled_flattens_clips_and_reshapes():
+    """
+    2-D input is flattened before summing, negatives are clipped, and the result is reshaped.
+    """
+    values = np.arange(24, dtype=float).reshape(2, 12)
+    values[0, 0] = -5.0
+
+    computed = compute.prepare_scaled(values, 3, compute.Periodicity.monthly)
+
+    assert computed.shape == (2, 12)
+    # the sum crosses the year boundary, i.e. the input was flattened before scaling
+    assert computed[1, 0] == 10.0 + 11.0 + 12.0
+    # the negative value was clipped to zero rather than summed
+    assert computed[0, 2] == 0.0 + 1.0 + 2.0
+    np.testing.assert_array_equal(
+        computed,
+        compute.prepare_scaled(values.flatten(), 3, compute.Periodicity.monthly),
+    )
+
+    # clipping is optional, and nothing else about the preparation changes
+    unclipped = compute.prepare_scaled(values, 3, compute.Periodicity.monthly, clip_negatives=False)
+    assert unclipped[0, 2] == -5.0 + 1.0 + 2.0
+
+
+def test_prepare_scaled_sums_over_the_scale():
+    """
+    The scale sums each time step, and the reshape to (years, periods) is optional.
+    """
+    values = np.arange(1.0, 25.0)
+
+    unreshaped = compute.prepare_scaled(values, 3, compute.Periodicity.monthly, reshape=False)
+    np.testing.assert_array_equal(unreshaped, compute.sum_to_scale(values, 3))
+    assert unreshaped.shape == (24,)
+
+    reshaped = compute.prepare_scaled(values, 3, compute.Periodicity.monthly)
+    assert reshaped.shape == (2, 12)
+
+
+def test_prepare_scaled_fills_masked_values_with_nan():
+    """
+    Masked values are missing values, so they come back as NaN rather than as raw data.
+    """
+    values = np.ma.array(np.arange(24, dtype=float), mask=False)
+    values.mask[3] = True
+
+    # scale == 1 returns the still-masked values, which the seam makes explicit
+    computed = compute.prepare_scaled(values, 1, compute.Periodicity.monthly)
+
+    assert not np.ma.isMaskedArray(computed)
+    assert computed.shape == (2, 12)
+    assert np.isnan(computed[0, 3])
+    assert computed[0, 4] == 4.0
+
+
+def test_scale_values_delegates_to_prepare_scaled():
+    """
+    The public scaling wrapper keeps its contract by delegating to the shared seam.
+    """
+    values = np.array([-2.0, 3.0, 4.0, 5.0] * 6).reshape(2, 12)
+
+    scaled = compute.scale_values(values, 3, compute.Periodicity.monthly)
+
+    assert scaled.shape == (2, 12)
+    assert scaled[0, 2] == 0.0 + 3.0 + 4.0  # the negative value was clipped before summing
+    np.testing.assert_array_equal(
+        scaled,
+        compute.prepare_scaled(values, 3, compute.Periodicity.monthly),
+    )
+
+
+def test_prepare_scaled_returns_all_missing_input_unreshaped():
+    """
+    All-missing input is handed back flattened and un-reshaped so that callers can short-circuit.
+    """
+    computed = compute.prepare_scaled(np.full((2, 12), np.nan), 3, compute.Periodicity.monthly)
+    assert computed.ndim == 1
+    assert np.all(np.isnan(computed))
+
+    computed_masked = compute.prepare_scaled(
+        np.ma.array(np.zeros((2, 12)), mask=True),
+        3,
+        compute.Periodicity.monthly,
+    )
+    assert np.ma.isMaskedArray(computed_masked)
+    assert computed_masked.ndim == 1
+    assert computed_masked.mask.all()
+
+
+def test_prepare_scaled_rejects_unsupported_shapes():
+    """
+    Input with no time axis, and ambiguous spatial input, raise a ValueError.
+
+    Three or more dimensions are read as a time-major (time, *cells) block, except when
+    the first cell axis is itself the period length: that shape is equally readable as a
+    (years, periods, *cells) array, so it has to be declared (#923).
+    """
+    with pytest.raises(ValueError, match="Invalid shape of input array"):
+        compute.prepare_scaled(np.array(0.0), 1, compute.Periodicity.monthly)
+
+    with pytest.raises(ValueError, match="ambiguous"):
+        compute.prepare_scaled(np.zeros((24, 12, 2)), 1, compute.Periodicity.monthly)
+
+    # unambiguous spatial input is read as time-major (time, *cells) without a declaration
+    spatial = compute.prepare_scaled(np.zeros((24, 2, 2)), 1, compute.Periodicity.monthly)
+    assert spatial.shape == (2, 12, 2, 2)
+
+    # and the ambiguous shape folds the same way once it is declared
+    declared = compute.prepare_scaled(
+        np.zeros((24, 12, 2)),
+        1,
+        compute.Periodicity.monthly,
+        spatial_time_major=True,
+    )
+    assert declared.shape == (2, 12, 12, 2)
+
+
+def test_prepare_scaled_rejects_unsupported_periodicity_when_unreshaped():
+    """
+    An invalid periodicity must be rejected even with reshape=False, since
+    reshape_values() -- the only other periodicity check -- is skipped in that case.
+    """
+    with pytest.raises(ValueError, match="Invalid periodicity argument"):
+        compute.prepare_scaled(np.arange(12, dtype=float), 3, "monthly", reshape=False)
+
+
+def test_prepare_scaled_clips_negatives_alongside_missing_values():
+    """
+    A negative value must be clipped even when the array also contains unmasked NaN
+    or masked entries, since np.amin/np.nanmin either miss the negative (a NaN in the
+    array makes np.amin return NaN, so `NaN < 0.0` is False) or reach under the mask.
+    """
+    # scale == 1 short-circuits sum_to_scale, so the negative reaches the output
+    # unmodified if it isn't clipped -- this is the path the bug hid on
+    values = np.array([-3.0, np.nan, 2.0])
+    computed = compute.prepare_scaled(values, 1, compute.Periodicity.monthly, reshape=False)
+    assert computed[0] == 0.0
+    assert np.isnan(computed[1])
+
+    # masked entries must not be mistaken for the negative, or reported as clipped
+    masked = np.ma.array([-3.0, 5.0, 2.0], mask=[False, True, False])
+    computed_masked = compute.prepare_scaled(masked, 1, compute.Periodicity.monthly, reshape=False)
+    assert computed_masked[0] == 0.0
+    assert np.isnan(computed_masked[1])
+
+    # the summed path (scale > 1) must also clip before summing, with a NaN elsewhere
+    # in the array (np.amin would return NaN here, hiding the negative under the bug)
+    with_nan = np.array([-3.0, 4.0, np.nan, 2.0])
+    summed = compute.prepare_scaled(with_nan, 2, compute.Periodicity.monthly, reshape=False)
+    assert summed[1] == 0.0 + 4.0

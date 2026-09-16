@@ -292,6 +292,7 @@ guarded only by internal fixtures.
 | PCI | Validated | Existing fixture tolerances in `tests/test_indices.py` and xarray PCI tests | Daily rainfall fixture and scalar xarray wrapper tests cover PCI. | None blocking v2.5. |
 | EDDI | Validated | NOAA reference tests use `rtol=1e-5`, `atol=1e-5` | Committed paired NOAA PSL monthly reference ET/EDDI fixtures for 1-, 3-, and 6-month Timescales, 1979–2023, pass in `tests/test_noaa_eddi_reference.py`; maximum observed error is `2.43e-6`. | This is one fixed latitude/longitude subset, not a CONUS-wide assessment. |
 | KBDI | Reference-reproduced, not independently validated | Published Figure 1 series reproduced with `atol=4.0` hundredths of an inch (table-vs-equation discretization, measured maximum 2.91); GHCN station regression `rtol=1e-12`, `atol=1e-9` mm | `tests/test_fire_kbdi_reference.py` reproduces the Keetch & Byram (1968) Figure 1 worked example from a committed fixture, audits the published net-rain wet-spell rule, and runs a complete 30-year GHCN-Daily PRCP/TMAX record for Fresno, California against frozen values from an independent plain-Python calculator; the xclim (Finkele variant) and WFAS cross-checks skip when their optional inputs are absent. Recurrence, gap, and unit contracts are covered by `tests/test_fire_kbdi.py`. | Figure 1 is an exact oracle only for the 1968 integer table workflow, not the corrected continuous Equation 18 the library implements; xclim is a later Australian/FFDI variant, and no reproducible WFAS point oracle was obtainable. |
+| CFFWIS (FFMC, DMC, DC, ISI, BUI, FWI, DSR) | Validated against the NRCan reference implementation | All seven components `atol=1e-9` against full-precision `cffdrs_py` reference outputs; xclim sanity check at `atol=1e-9` for DC/DMC/BUI and `atol=0.5` for the FFMC lineage | `tests/test_fire_cffwis_reference.py` runs the 48-day Van Wagner & Pickett (1985) calibration sample committed as `tests/fixture/cffwis_vwp1985/` against reference values generated at `cffdrs_py` commit `0f57fcc`; the xclim cross-check skips when xclim is absent. Recurrence, gap, unit, and seasonal-carry contracts remain covered by `tests/test_fire_cffwis_moisture.py`, `tests/test_fire_cffwis_behavior.py`, and `tests/test_fire_dc_overwintering.py`. | The committed record is one calibration sample at latitude 40 N, so the external check exercises the northern DMC/DC day-length band only; the other latitude bands are covered by frozen regression vectors, and no independent (non-NRCan-lineage) CFFWIS oracle exists. |
 | Palmer PDSI/PHDI/PMDI/Z-Index and scPDSI family | Regression covered, not independently validated | Palmer and scPDSI regression tests use `atol=5e-5`, `rtol=0`; nClimDiv characterization ceilings documented in `tests/test_nclimdiv_reference.py` | `tests/test_palmer.py` exercises the standard Palmer fixtures; `tests/test_scpdsi.py` compares four self-calibrating outputs and fitted duration factors against Wells-lineage reference fixtures for all 344 climate divisions; `tests/test_nclimdiv_reference.py` characterizes aggregate `pdsi()`/`scpdsi()` agreement against the NOAA NCEI nClimDiv reference arrays. All three are marked `validation`. | `tests/fixture/palmer/provenance.json` distinguishes library-generated standard Palmer outputs from Wells-lineage scPDSI outputs. These fixture sets protect against regressions but are not treated as independent authoritative scientific validation. |
 
 ## EDDI Fixture Policy
@@ -382,6 +383,10 @@ See "Palmer Authoritative-Reference Decision" above for the latter.
   Paper No. 45. https://www.droughtmanagement.info/literature/USWB_Meteorological_Drought_1965.pdf
 - NOAA Physical Sciences Laboratory EDDI archive:
   https://downloads.psl.noaa.gov/Projects/EDDI/
+- Van Wagner, C. E., and Pickett, T. L. (1985). Equations and FORTRAN
+  program for the Canadian Forest Fire Weather Index System. Canadian
+  Forestry Service, Forest Technical Report 33.
+  https://cfs.nrcan.gc.ca/pubwarehouse/pdfs/19973.pdf
 
 ## docs/xarray_compatibility.md
 
@@ -406,6 +411,7 @@ may change in a future minor release.
 | Coordinate preservation | Yes | Adapter tests verify time and spatial coordinates are preserved. |
 | CF-style metadata | Yes | `CF_METADATA` registry and adapter tests verify `long_name`, `units`, `references`, version, and history attributes. |
 | Dask-backed arrays | Yes, constrained | The time dimension must be a single chunk. Adapter tests verify detection and validation. |
+| Spatial (gridded) kernels | Yes, for SPI and SPEI | `spi`/`spei` receive a time-major `(time, *cells)` block and fit every cell in one pass, so a gridded gamma run costs one kernel call per Dask block instead of one call per cell ([ADR-0008](adr/0008-spatial-block-declaration.md)). The NumPy API keeps 2-D input on the legacy `(years, periods)` reading, and rejects the one gridded shape that is ambiguous with it (a first cell axis of 12 or 366). Inputs with a single non-core dimension keep the per-cell path, as do EDDI and percentage-of-normal ([#942](https://github.com/monocongo/climate_indices/issues/942)), PET ([#941](https://github.com/monocongo/climate_indices/issues/941)), and the Pearson Type III fit ([#940](https://github.com/monocongo/climate_indices/issues/940)). See `tests/test_spatial_kernel.py`. |
 | Calendar semantics | Yes, constrained | Standard/gregorian/proleptic_gregorian `datetime64` only; monthly input must begin in January and daily input on January 1. Daily values are converted to the 366-day calendar (February 29 synthesized from February 28 and March 1) and restored afterward. A partial final year is supported; `cftime` calendars are rejected. See [ADR-0004](adr/0004-xarray-calendar-semantics.md). |
 | Automatic temporal inference | Yes | Monthly and daily time-coordinate inference is covered by adapter tests. |
 | Multi-input alignment | Yes | SPEI aligns precipitation and PET with an inner join and emits a warning when timesteps are dropped. |
@@ -452,7 +458,11 @@ applies per cell along the time axis.
 - Use xarray APIs for labeled, gridded workflows where coordinate preservation
   and metadata are more valuable than strict interface stability.
 - Keep Dask chunks spatial when possible and leave `time` as one chunk before
-  calling index functions.
+  calling index functions. Spatial chunks set the parallelism granularity: SPI and
+  SPEI fit a whole `(time, *cells)` block per call, and the gridded path requires
+  the full `time` axis in that block. Chunk size is also the memory lever — one block
+  is held whole inside the fit, with a few `O(years x periods x cells)` temporaries,
+  so a dense continental grid passed in one piece costs several times its own size.
 - The canonical lazy xarray/Dask SPI/SPEI workflow is the teaching notebook
   `notebooks/zarr_dask_spi_spei.ipynb`: the public typed API on Dask-backed DataArrays
   (`xr.apply_ufunc(..., dask="parallelized")`), one full time chunk with spatial
@@ -1077,12 +1087,13 @@ spi = "climate_indices.__spi__:main"
 **Purpose**: Core mathematical algorithms for climate index calculation.
 
 **Modules**:
-- **`compute.py`** (1328 lines): Core computation functions
-  - `scale_values()`: Rolling sum computation for temporal scaling
+- **`compute.py`** (1278 lines): Core computation functions
+  - `prepare_scaled()`: Shared flatten/clip/roll-sum/reshape preparation for the fitting-based indices
+  - `scale_values()`: Rolling sum computation for temporal scaling (wrapper over `prepare_scaled()`)
   - `gamma_parameters()`, `pearson_parameters()`: Distribution fitting
   - `transform_fitted_gamma()`, `transform_fitted_pearson()`: CDF transformation
   - `sum_to_scale()`: Optimized sliding window summation
-  - `Periodicity` enum: `monthly` (12 steps/year), `daily` (366 steps/year)
+  - `Periodicity` enum: `monthly` (12 steps/year), `daily` (366 steps/year), with a `period_length` property and a `unit()` method
 
 - **`palmer.py`**: Palmer Drought Index family
   - PDSI (Palmer Drought Severity Index)
@@ -1249,6 +1260,8 @@ climate_indices/
 │  - Rolling sum over N months/days                               │
 │  - Handles NaN propagation                                      │
 │  - Output: scaled_values (same shape as input)                  │
+│  - Except an all-missing input: returned unreshaped, so a       │
+│    2-D all-missing input comes back 1-D                         │
 └───────────────────────┬─────────────────────────────────────────┘
                         │
                         ▼
@@ -2026,18 +2039,22 @@ class Distribution(Enum):
 
 ### `compute.py` - Mathematical Core
 **Location**: `src/climate_indices/compute.py`
-**Lines**: 1328
+**Lines**: 1278
 **Purpose**: Core algorithms for climate index calculation.
 
 #### Periodicity Enum
 ```python
 class Periodicity(Enum):
-    monthly = "monthly"  # 12 time steps per year
-    daily = "daily"      # 366 time steps per year
+    monthly = 12   # 12 time steps per year
+    daily = 366    # 366 time steps per year
 
     @staticmethod
     def from_string(value: str) -> "Periodicity":
         """Parse string to Periodicity enum."""
+
+    @property
+    def period_length(self) -> int:
+        """Return 12 (monthly) or 366 (daily)."""
 
     def unit(self) -> str:
         """Return 'month' or 'day'."""
@@ -2046,6 +2063,23 @@ class Periodicity(Enum):
 #### Key Algorithms
 
 ##### Temporal Scaling
+**`prepare_scaled()`**
+```python
+def prepare_scaled(
+    values: np.ndarray,
+    scale: int,
+    periodicity: Periodicity,
+    *,
+    clip_negatives: bool = True,
+    reshape: bool = True,
+) -> np.ndarray:
+    """Flatten, clip negatives, roll-sum over the scale, and reshape to (years, periods)."""
+```
+**Algorithm**: The single preparation pipeline shared by SPI, SPEI, EDDI, and PNP.
+All-missing input is returned un-reshaped, which callers detect with `ndim == 1`
+in order to short-circuit. `percentage_of_normal` passes `clip_negatives=False`
+and `reshape=False` because it averages the un-reshaped 1-D sums per calendar period.
+
 **`scale_values()`**
 ```python
 def scale_values(
@@ -2053,7 +2087,7 @@ def scale_values(
     scale: int,
     periodicity: Periodicity,
 ) -> np.ndarray:
-    """Compute rolling sums for temporal scaling."""
+    """Compute rolling sums for temporal scaling. Thin wrapper over prepare_scaled()."""
 ```
 **Algorithm**: Rolling window summation with NaN propagation.
 

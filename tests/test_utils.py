@@ -500,3 +500,7 @@ def test_tolerance():
     tol = utils.get_tolerance(meshlon)
     assert tol > 0, tolerance_greater
     assert tol < abs(dlon), tolerance_smaller
+
+    # singleton dimensions have no spacing to derive a tolerance from
+    tol = utils.get_tolerance(np.array([25.0]))
+    assert tol > 0, tolerance_greater

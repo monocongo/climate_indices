@@ -6,13 +6,13 @@ import multiprocessing
 import os
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import scipy.constants
 import xarray as xr
 
-from climate_indices import compute, indices, palmer, utils
+from climate_indices import compute, fire, indices, palmer, utils
 from climate_indices._cli import _add_common_spi_arguments, _prepare_file
 
 # the number of worker processes we'll use for process pools
@@ -65,6 +65,44 @@ def _validate_args(args: argparse.Namespace) -> InputType:
     expected_dimensions_grid_awc = [("lat", "lon")]
     expected_dimensions_divisions_awc = [("division",)]
 
+    # KBDI is computed for daily inputs only, through the fire module, and does
+    # not use the scale, calibration, PET, or AWC arguments of the other indices
+    if args.index == "kbdi":
+        if args.periodicity is not compute.Periodicity.daily:
+            msg = "Invalid periodicity argument for KBDI: " + f"'{args.periodicity}' -- only 'daily' is supported"
+            _logger.error(msg)
+            raise ValueError(msg)
+
+        if args.scales is not None:
+            msg = "The --scales argument is not applicable to KBDI"
+            _logger.error(msg)
+            raise ValueError(msg)
+
+        if args.calibration_start_year is not None or args.calibration_end_year is not None:
+            msg = "The --calibration_start_year and --calibration_end_year arguments are not applicable to KBDI"
+            _logger.error(msg)
+            raise ValueError(msg)
+
+        if args.netcdf_pet is not None or args.var_name_pet is not None:
+            msg = "The --netcdf_pet and --var_name_pet arguments are not applicable to KBDI"
+            _logger.error(msg)
+            raise ValueError(msg)
+
+        if args.netcdf_awc is not None or args.var_name_awc is not None:
+            msg = "The --netcdf_awc and --var_name_awc arguments are not applicable to KBDI"
+            _logger.error(msg)
+            raise ValueError(msg)
+
+        if args.netcdf_temp is None:
+            msg = "Missing the required temperature file argument"
+            _logger.error(msg)
+            raise ValueError(msg)
+
+        if args.var_name_temp is None:
+            msg = "Missing temperature variable name"
+            _logger.error(msg)
+            raise ValueError(msg)
+
     # all indices except PET require a precipitation file
     if args.index != "pet":
         # make sure a precipitation file was specified
@@ -106,6 +144,8 @@ def _validate_args(args: argparse.Namespace) -> InputType:
                 )
                 _logger.error(msg)
                 raise ValueError(msg)
+
+            dimensions_precip = dimensions
 
             # get the values of the precipitation coordinate variables,
             # for comparison against those of the other data variables
@@ -157,6 +197,60 @@ def _validate_args(args: argparse.Namespace) -> InputType:
                 )
                 _logger.error(msg)
                 raise ValueError(msg)
+
+    # KBDI's maximum temperature input must share the precipitation data's
+    # named dimensions, time values, and, for gridded/divisional inputs,
+    # coordinates
+    if args.index == "kbdi":
+        with xr.open_dataset(args.netcdf_temp) as dataset_temp:
+            if args.var_name_temp not in dataset_temp.variables:
+                msg = (
+                    f"Invalid temperature variable name: '{args.var_name_temp}'"
+                    + f" does not exist in temperature file '{args.netcdf_temp}'"
+                )
+                _logger.error(msg)
+                raise ValueError(msg)
+
+            dimensions_temp = dataset_temp[args.var_name_temp].dims
+            # compare dimension names rather than storage order: either supported
+            # order of each input is valid, and fire.kbdi() aligns by name
+            if set(dimensions_temp) != set(dimensions_precip):
+                msg = (
+                    f"Invalid dimensions of the temperature variable: {dimensions_temp} "
+                    + f"(expected the precipitation variable dimensions: {dimensions_precip})"
+                )
+                _logger.error(msg)
+                raise ValueError(msg)
+
+            if not np.array_equal(times_precip, dataset_temp["time"].values[:]):
+                msg = "Precipitation and temperature variables contain non-matching times"
+                _logger.error(msg)
+                raise ValueError(msg)
+
+            if input_type == InputType.grid:
+                if not np.allclose(
+                    lats_precip,
+                    dataset_temp["lat"][:],
+                    atol=utils.get_tolerance(lats_precip),
+                ):
+                    msg = "Precipitation and temperature variables contain non-matching latitudes"
+                    _logger.error(msg)
+                    raise ValueError(msg)
+
+                if not np.allclose(
+                    lons_precip,
+                    dataset_temp["lon"][:],
+                    atol=utils.get_tolerance(lons_precip),
+                ):
+                    msg = "Precipitation and temperature variables contain non-matching longitudes"
+                    _logger.error(msg)
+                    raise ValueError(msg)
+
+            elif input_type == InputType.divisions:
+                if not np.array_equal(divisions_precip, dataset_temp["division"][:]):
+                    msg = "Precipitation and temperature variables contain non-matching division IDs"
+                    _logger.error(msg)
+                    raise ValueError(msg)
 
     # SPEI, scaled, Palmers, and all require either a PET file or a temperature file to compute PET
     if args.index in ["spei", "scaled", "palmers", "all"]:
@@ -685,7 +779,8 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
             raise ValueError(f"Invalid 'input_type' keyword argument: {input_type}")
     # Since multiple variables can be in the same file, de-duplicate the filelist.
     dataset = xr.open_mfdataset(list(set(files)), chunks=chunks)
-    output_chunksizes = {}
+    output_chunksizes: tuple[int, ...] = ()
+    chunksizes_dims: tuple[Any, ...] = ()
     if keyword_arguments["chunksizes"] == "input":
         # Find the first variable with chunksizes set and use that
         # Note that the netcdf spec doesn't require that all data variables
@@ -694,6 +789,7 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
             if not da.encoding.get("contiguous", True):
                 # tuple of chunksizes, respectively by dimension
                 output_chunksizes = da.encoding.get("chunksizes", ())
+                chunksizes_dims = da.dims
             if output_chunksizes:
                 break
 
@@ -726,6 +822,21 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
         raise ValueError(
             "Unable to determine output dimensions, no precipitation or temperature variable name was specified."
         )
+
+    # the copied chunksizes follow the source variable's dimension order, which
+    # can differ from the output variable's -- reorder by dimension name so that
+    # each chunk length corresponds to the correct output dimension
+    if output_chunksizes and chunksizes_dims != tuple(output_dims):
+        chunksizes_by_dim = dict(zip(chunksizes_dims, output_chunksizes, strict=False))
+        if set(chunksizes_by_dim) == set(output_dims):
+            output_chunksizes = tuple(chunksizes_by_dim[dim] for dim in output_dims)
+        else:
+            _logger.warning(
+                "Ignoring '--chunksizes input': chunked variable dimensions %s do not match output dimensions %s",
+                chunksizes_dims,
+                output_dims,
+            )
+            output_chunksizes = ()
 
     # convert data into the appropriate units, if necessary
     # precipitation and PET should be in millimeters
@@ -785,6 +896,9 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
     args = _build_arguments(keyword_arguments)
 
     output_encodings = {"chunksizes": output_chunksizes} if output_chunksizes else None
+    # a chunksizes encoding is only honored by an HDF5-backed engine, and the
+    # supported xarray versions still default to scipy when netCDF4 is absent
+    output_engine: Literal["h5netcdf"] | None = "h5netcdf" if output_chunksizes else None
 
     # add output variable arrays into the shared memory arrays dictionary
     if keyword_arguments["index"] == "palmers":
@@ -882,7 +996,7 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
 
         # write the dataset as NetCDF
         netcdf_file_name = keyword_arguments["output_file_base"] + "_" + var_name_pdsi + ".nc"
-        dataset.to_netcdf(netcdf_file_name)
+        dataset.to_netcdf(netcdf_file_name, engine=output_engine)
 
         # create a new variable to contain the PHDI values, assign into the dataset
         long_name = "Palmer Hydrological Drought Index"
@@ -900,7 +1014,7 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
 
         # write the dataset as NetCDF
         netcdf_file_name = keyword_arguments["output_file_base"] + "_" + var_name_phdi + ".nc"
-        dataset.to_netcdf(netcdf_file_name)
+        dataset.to_netcdf(netcdf_file_name, engine=output_engine)
 
         # create a new variable to contain the PMDI values, assign into the dataset
         long_name = "Palmer Modified Drought Index"
@@ -918,7 +1032,7 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
 
         # write the dataset as NetCDF
         netcdf_file_name = keyword_arguments["output_file_base"] + "_" + var_name_pmdi + ".nc"
-        dataset.to_netcdf(netcdf_file_name)
+        dataset.to_netcdf(netcdf_file_name, engine=output_engine)
 
         # create a new variable to contain the Z-Index values, assign into the dataset
         long_name = "Palmer Z-Index"
@@ -936,7 +1050,7 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
 
         # write the dataset as NetCDF
         netcdf_file_name = keyword_arguments["output_file_base"] + "_" + var_name_zindex + ".nc"
-        dataset.to_netcdf(netcdf_file_name)
+        dataset.to_netcdf(netcdf_file_name, engine=output_engine)
         return None
 
     else:
@@ -1040,7 +1154,7 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
 
         # write the dataset as NetCDF
         netcdf_file_name = keyword_arguments["output_file_base"] + "_" + output_var_name + ".nc"
-        dataset.to_netcdf(netcdf_file_name)
+        dataset.to_netcdf(netcdf_file_name, engine=output_engine)
 
         return netcdf_file_name, output_var_name
 
@@ -1440,7 +1554,7 @@ def main() -> None:
         parser.add_argument(
             "--index",
             help="Indices to compute",
-            choices=["spi", "spei", "pnp", "scaled", "pet", "palmers", "all"],
+            choices=["spi", "spei", "pnp", "scaled", "pet", "palmers", "kbdi", "all"],
             required=True,
         )
         _add_common_spi_arguments(parser)
@@ -1464,6 +1578,20 @@ def main() -> None:
         parser.add_argument(
             "--var_name_awc",
             help="Available water capacity variable name used in the AWC NetCDF file",
+        )
+        parser.add_argument(
+            "--kbdi_units",
+            help="Units of the KBDI input and output values",
+            choices=["metric", "imperial"],
+            required=False,
+            default="metric",
+        )
+        parser.add_argument(
+            "--kbdi_initial",
+            help="Initial KBDI value",
+            type=float,
+            required=False,
+            default=0.0,
         )
         parser.add_argument(
             "--chunksizes",
@@ -1509,6 +1637,55 @@ def process_climate_indices(
             _NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count()
         else:  # default ("all_but_one")
             _NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count() - 1
+
+        # compute KBDI if specified -- through the fire module's xarray API,
+        # since _compute_write_index() reshapes daily inputs into 366-day years
+        # and coerces input units, both of which corrupt the KBDI recurrence
+        if arguments.index == "kbdi":
+            netcdf_precip = _prepare_file(arguments.netcdf_precip, arguments.var_name_precip)
+            netcdf_temp = _prepare_file(arguments.netcdf_temp, arguments.var_name_temp)
+
+            # KBDI's recurrence is sequential over time but independent per grid
+            # cell/division, and fire.kbdi() requires the time axis in a single
+            # Dask chunk: keep time whole and chunk the spatial axes, so the
+            # multi-decade daily inputs are never all resident at once
+            if input_type == InputType.grid:
+                chunks: dict[str, Any] = {"lat": "auto", "lon": "auto", "time": -1}
+            elif input_type == InputType.divisions:
+                chunks = {"division": "auto", "time": -1}
+            else:
+                chunks = {"time": -1}
+
+            with (
+                xr.open_dataset(netcdf_precip, chunks=chunks) as dataset_precip,
+                xr.open_dataset(netcdf_temp, chunks=chunks) as dataset_temp,
+            ):
+                kbdi_values = fire.kbdi(
+                    dataset_precip[arguments.var_name_precip],
+                    dataset_temp[arguments.var_name_temp],
+                    units=arguments.kbdi_units,
+                    initial_kbdi=arguments.kbdi_initial,
+                )
+
+                # the xarray route names the result after its precipitation
+                # input; use the CF variable name the `units` argument selected
+                kbdi_values.name = "kbdi_imperial" if arguments.kbdi_units == "imperial" else "kbdi"
+                output_file = f"{arguments.output_file_base}_{kbdi_values.name}.nc"
+
+                # honor --chunksizes input by copying the precipitation
+                # variable's on-disk chunks to the output variable; a chunksizes
+                # encoding is only honored by an HDF5-backed engine, and the
+                # supported xarray versions still default to scipy when
+                # netCDF4 is absent
+                output_engine: Literal["h5netcdf"] | None = None
+                if arguments.chunksizes == "input":
+                    input_chunksizes = dataset_precip[arguments.var_name_precip].encoding.get("chunksizes")
+                    if input_chunksizes:
+                        kbdi_values.encoding["chunksizes"] = input_chunksizes
+                        output_engine = "h5netcdf"
+
+                _logger.info("Writing KBDI values to file: %s", output_file)
+                kbdi_values.to_netcdf(output_file, engine=output_engine)
 
         # compute SPI if specified
         if arguments.index in ["spi", "scaled", "all"]:
