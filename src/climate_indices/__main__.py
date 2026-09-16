@@ -199,7 +199,8 @@ def _validate_args(args: argparse.Namespace) -> InputType:
                 raise ValueError(msg)
 
     # KBDI's maximum temperature input must share the precipitation data's
-    # dimensions, time values, and, for gridded/divisional inputs, coordinates
+    # named dimensions, time values, and, for gridded/divisional inputs,
+    # coordinates
     if args.index == "kbdi":
         with xr.open_dataset(args.netcdf_temp) as dataset_temp:
             if args.var_name_temp not in dataset_temp.variables:
@@ -211,7 +212,9 @@ def _validate_args(args: argparse.Namespace) -> InputType:
                 raise ValueError(msg)
 
             dimensions_temp = dataset_temp[args.var_name_temp].dims
-            if dimensions_temp != dimensions_precip:
+            # compare dimension names rather than storage order: either supported
+            # order of each input is valid, and fire.kbdi() aligns by name
+            if set(dimensions_temp) != set(dimensions_precip):
                 msg = (
                     f"Invalid dimensions of the temperature variable: {dimensions_temp} "
                     + f"(expected the precipitation variable dimensions: {dimensions_precip})"
@@ -1622,9 +1625,20 @@ def process_climate_indices(
             netcdf_precip = _prepare_file(arguments.netcdf_precip, arguments.var_name_precip)
             netcdf_temp = _prepare_file(arguments.netcdf_temp, arguments.var_name_temp)
 
+            # KBDI's recurrence is sequential over time but independent per grid
+            # cell/division, and fire.kbdi() requires the time axis in a single
+            # Dask chunk: keep time whole and chunk the spatial axes, so the
+            # multi-decade daily inputs are never all resident at once
+            if input_type == InputType.grid:
+                chunks: dict[str, Any] = {"lat": "auto", "lon": "auto", "time": -1}
+            elif input_type == InputType.divisions:
+                chunks = {"division": "auto", "time": -1}
+            else:
+                chunks = {"time": -1}
+
             with (
-                xr.open_dataset(netcdf_precip) as dataset_precip,
-                xr.open_dataset(netcdf_temp) as dataset_temp,
+                xr.open_dataset(netcdf_precip, chunks=chunks) as dataset_precip,
+                xr.open_dataset(netcdf_temp, chunks=chunks) as dataset_temp,
             ):
                 kbdi_values = fire.kbdi(
                     dataset_precip[arguments.var_name_precip],
@@ -1637,6 +1651,14 @@ def process_climate_indices(
                 # input; use the CF variable name the `units` argument selected
                 kbdi_values.name = "kbdi_imperial" if arguments.kbdi_units == "imperial" else "kbdi"
                 output_file = f"{arguments.output_file_base}_{kbdi_values.name}.nc"
+
+                # honor --chunksizes input by copying the precipitation
+                # variable's on-disk chunks to the output variable
+                if arguments.chunksizes == "input":
+                    input_chunksizes = dataset_precip[arguments.var_name_precip].encoding.get("chunksizes")
+                    if input_chunksizes:
+                        kbdi_values.encoding["chunksizes"] = input_chunksizes
+
                 _logger.info("Writing KBDI values to file: %s", output_file)
                 kbdi_values.to_netcdf(output_file)
 

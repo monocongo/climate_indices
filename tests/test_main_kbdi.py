@@ -137,6 +137,22 @@ class TestKBDIValidation:
             "(expected the precipitation variable dimensions: ('time',))"
         )
 
+    def test_accepts_reordered_temperature_dimensions(self, monkeypatch, kbdi_datasets):
+        time = xr.date_range("1990-01-01", periods=_DAILY_PERIODS, freq="D")
+        rng = np.random.default_rng(0)
+        coords = {"lat": [25.0, 26.0], "lon": [-100.0, -99.0, -98.0], "time": time}
+        kbdi_datasets["precip.nc"] = xr.Dataset(
+            {"precip": (("lat", "lon", "time"), rng.gamma(2.0, 2.0, (2, 3, _DAILY_PERIODS)), {"units": "mm"})},
+            coords=coords,
+        )
+        kbdi_datasets["temp.nc"] = xr.Dataset(
+            {"tmax": (("time", "lat", "lon"), 25.0 + 5.0 * rng.random((_DAILY_PERIODS, 2, 3)), {"units": "degC"})},
+            coords=coords,
+        )
+        _patch_open_dataset(monkeypatch, kbdi_datasets)
+
+        assert cli_main._validate_args(_kbdi_arguments()) == cli_main.InputType.grid
+
 
 class TestKBDIProcessing:
     @pytest.mark.parametrize(
@@ -177,3 +193,53 @@ class TestKBDIProcessing:
             assert dataset[var_name].attrs["climate_indices_variant"] == variant
             assert dataset[var_name].sizes["time"] == _DAILY_PERIODS
             assert np.isfinite(dataset[var_name].values).all()
+
+    def test_chunked_inputs_keep_time_whole_and_copy_input_chunksizes(self, monkeypatch, tmp_path):
+        time = xr.date_range("1990-01-01", periods=_DAILY_PERIODS, freq="D")
+        rng = np.random.default_rng(42)
+        coords = {"lat": [25.0, 26.0], "lon": [-100.0, -99.0, -98.0], "time": time}
+        precip = xr.Dataset(
+            {"precip": (("lat", "lon", "time"), rng.gamma(2.0, 2.0, (2, 3, _DAILY_PERIODS)), {"units": "mm"})},
+            coords=coords,
+        )
+        temperature = xr.Dataset(
+            {"tmax": (("time", "lat", "lon"), 25.0 + 5.0 * rng.random((_DAILY_PERIODS, 2, 3)), {"units": "degC"})},
+            coords=coords,
+        )
+        precip_path = tmp_path / "precip.nc"
+        temp_path = tmp_path / "temp.nc"
+        precip.to_netcdf(precip_path, encoding={"precip": {"chunksizes": (2, 3, 1000)}})
+        temperature.to_netcdf(temp_path, encoding={"tmax": {"chunksizes": (1000, 2, 3)}})
+
+        captured = {}
+        original_kbdi = cli_main.fire.kbdi
+
+        def _capture_kbdi(*args, **kwargs):
+            # the xarray adapter calls this same module-level name for each
+            # NumPy block; capture only the top-level DataArray invocation
+            if isinstance(args[0], xr.DataArray):
+                captured["precip"], captured["temp"] = args[0], args[1]
+            return original_kbdi(*args, **kwargs)
+
+        monkeypatch.setattr(cli_main.fire, "kbdi", _capture_kbdi)
+
+        cli_main.process_climate_indices(
+            _kbdi_arguments(
+                netcdf_precip=str(precip_path),
+                var_name_precip="precip",
+                netcdf_temp=str(temp_path),
+                var_name_temp="tmax",
+                output_file_base=str(tmp_path / "out"),
+                chunksizes="input",
+            ),
+        )
+
+        # gridded inputs must reach fire.kbdi() as Dask arrays with the full
+        # time axis in one chunk (fire.py's recurrence constraint)
+        assert captured["precip"].chunks is not None
+        assert captured["temp"].chunks is not None
+        assert len(captured["precip"].chunks[captured["precip"].dims.index("time")]) == 1
+
+        with xr.open_dataset(tmp_path / "out_kbdi.nc") as dataset:
+            assert dataset["kbdi"].encoding["chunksizes"] == (2, 3, 1000)
+            assert np.isfinite(dataset["kbdi"].values).all()
