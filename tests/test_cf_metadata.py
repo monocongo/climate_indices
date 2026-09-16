@@ -268,11 +268,17 @@ class TestFireEntries:
     def test_cffwis_entries_are_the_classic_variant(self, index_name: str) -> None:
         assert CF_METADATA[index_name]["climate_indices_variant"] == "cffwis_classic"
 
-    @pytest.mark.parametrize("index_name", ["ffmc", "dmc", "dc", "isi", "bui", "fwi", "dsr"])
+    @pytest.mark.parametrize("index_name", ["ffmc", "dmc", "dc", "isi", "bui", "fwi"])
     def test_cffwis_references_contain_van_wagner(self, index_name: str) -> None:
         references = CF_METADATA[index_name]["references"]
         assert "Van Wagner" in references
         assert "1985" in references
+
+    def test_dsr_references_the_1987_severity_rating_report(self) -> None:
+        """DSR is Eq. 31 of the 1987 report, not the 1985 equations report."""
+        references = CF_METADATA["dsr"]["references"]
+        assert "Van Wagner" in references
+        assert "1987" in references
 
     @pytest.mark.parametrize("index_name", FIRE_KEYS)
     def test_fire_entry_has_description(self, index_name: str) -> None:

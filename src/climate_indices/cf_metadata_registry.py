@@ -43,12 +43,18 @@ class CFAttributes(_CFAttributesRequired, total=False):
     climate_indices_variant: str
 
 
-# The CFFWIS moisture codes (FFMC, DMC, DC) share one source publication; keep the
-# rendered `references` text identical across their entries.
+# The CFFWIS entries share one source publication; keep the rendered
+# `references` text identical across the entries that cite it. DSR is the one
+# exception: Van Wagner (1987) Eq. 31 defines the power transform itself.
 _VAN_WAGNER_PICKETT_1985 = (
     "Van Wagner, C. E., & Pickett, T. L. (1985). "
     "Equations and FORTRAN program for the Canadian Forest Fire Weather Index System. "
     "Canadian Forestry Service, Forestry Technical Report 33."
+)
+_VAN_WAGNER_1987 = (
+    "Van Wagner, C. E. (1987). "
+    "Development and structure of the Canadian Forest Fire Weather Index System. "
+    "Canadian Forestry Service, Forestry Technical Report 35."
 )
 
 
@@ -300,6 +306,6 @@ CF_METADATA: dict[str, CFAttributes] = {
             "``0.0272 * FWI ** 1.77`` power transform of the Canadian FWI that makes seasonal averaging meaningful."
         ),
         "climate_indices_variant": "cffwis_classic",
-        "references": _VAN_WAGNER_PICKETT_1985,
+        "references": _VAN_WAGNER_1987,
     },
 }
