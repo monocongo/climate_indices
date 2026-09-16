@@ -331,9 +331,10 @@ class TestInputElementsInLogs:
         precips_mm_monthly,
     ):
         """input_elements appears in calculation_failed events (context-bound)."""
-        # trigger failure with unsupported array shape (3D array)
+        # trigger failure with an unsupported array shape (an undeclared gridded array
+        # whose first cell axis is the monthly period length)
         # this error occurs after logger is bound, inside the try block
-        invalid_3d_array = np.zeros((10, 10, 10))
+        invalid_3d_array = np.zeros((10, 12, 10))
         with pytest.raises(ValueError, match="Invalid shape"):
             indices.spi(
                 values=invalid_3d_array,

@@ -14,9 +14,13 @@ The script builds the reference grid from #893 as deterministic synthetic data
 fitting/transform path on a small warm-up grid so first-call imports and caches
 stay out of the measurement window, then runs `climate_indices.spi(DataArray)`
 on the numpy-backed (in-memory) adapter branch — the serial baseline for
-gridded SPI. A Dask-backed input returns a lazy result from the same per-cell
-`apply_ufunc` loop; Dask scheduling and multi-core scaling belong to #927 and
-#928.
+gridded SPI. A Dask-backed input returns a lazy result; Dask scheduling and
+multi-core scaling belong to #927 and #928. Gridded SPI/SPEI now reach the NumPy
+core one spatial block at a time (#923, see the conversion status below), so the
+figures here describe the per-cell path this harness was built to measure. Reruns
+now measure the spatial path instead and will replace the committed report with
+lower timings; the tables above and their interpretation stand as the pre-#923
+baseline until #929 republishes them.
 
 Each run measures three things and always rewrites
 `benchmarks/results/profile_gridded_spi.txt`:
@@ -127,6 +131,23 @@ and distribution loops (`__main__.py:1519-1520`).
 This path is serial within a process and is the one the #921 profile measured:
 3306 calls into the calendar wrapper at `xarray_adapter.py:507` for a single
 SPI-1/gamma run.
+
+### Conversion status (#923)
+
+`spi` and `spei` accept the spatial blocks the Dask path already schedules: the
+adapter's `spatial_kernel=True` forwards `vectorize=False` to `xr.apply_ufunc` and
+transposes the core dimension, so one `(time, *cells)` block reaches the NumPy core
+and the gamma fitting, transform, and goodness-of-fit check run once per block
+instead of once per cell. `tests/test_spatial_kernel.py` pins the call count, the
+equivalence with the single-series path, and the NaN, partial-final-year, and daily
+calendar contracts. The remaining per-cell sites above are owned by follow-ups:
+
+| remaining site | owner |
+| --- | --- |
+| `indices.spi`/`indices.spei` with `Distribution.pearson` (per-series L-moment fit) | #940 |
+| `pet_thornthwaite`, `pet_hargreaves` (latitude-dependent day length) | #941 |
+| `indices.eddi` (per-period, per-year ranking loop), `indices.percentage_of_normal` | #942 |
+| `palmer.pdsi`/`palmer.scpdsi` (no adapter layer at all) | #937 |
 
 ### Legacy CLI path (per-cell loop present, parallel across workers)
 
