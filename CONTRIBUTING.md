@@ -53,7 +53,7 @@ Run the checks that CI expects before opening a PR:
 ```bash
 uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
-uv run mypy src/
+uv run mypy src/ tests/test_type_checking.py
 uv run pytest
 ```
 

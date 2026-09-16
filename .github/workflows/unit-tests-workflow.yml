@@ -39,8 +39,10 @@ jobs:
       - name: Check ruff formatting
         run: uv run --no-sync --no-build ruff format --check src/ tests/
 
+      # Also checks tests/test_type_checking.py, whose assert_type() calls are
+      # invisible to pytest; see that module's docstring.
       - name: Run mypy type checker
-        run: uv run --no-sync --no-build mypy src/
+        run: uv run --no-sync --no-build mypy src/ tests/test_type_checking.py
 
   # Compatibility policy: expensive or environment-independent suites run once
   # (`validation` on 3.12, repo/meta checks on 3.10, minimum dependencies on
