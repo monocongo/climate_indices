@@ -97,10 +97,16 @@ class TestLogLevelResolution:
             ("INFO", "ERROR", logging.INFO),
         ],
     )
-    def test_level_resolution(self, explicit: str | None, env_value: str | None, expected: int) -> None:
+    def test_level_resolution(
+        self,
+        explicit: str | None,
+        env_value: str | None,
+        expected: int,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         """Explicit level wins over the environment, invalid values fall back to INFO."""
         if env_value is not None:
-            os.environ[ENV_LOG_LEVEL] = env_value
+            monkeypatch.setenv(ENV_LOG_LEVEL, env_value)
         if explicit is None:
             configure_logging()
         else:
