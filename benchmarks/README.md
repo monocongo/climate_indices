@@ -124,25 +124,25 @@ SPI-1/gamma run.
 
 ### Legacy CLI path (per-cell loop present, parallel across workers)
 
-`__main__.py` and `__spi__.py` build shared-memory arrays shaped
-`(lat, lon, time)` or `(lon, lat, time)`, split them along axis 0 (latitude for
-those two orders) across a `multiprocessing.Pool`, and loop per cell inside each
-worker. `__spi__.py:98` also accepts `(time, lat, lon)`, a shape that passes
-validation but breaks processing (#932); the counts below assume the two
-canonical orders. The loops run in parallel across processes but are not
-eliminated, and each worker's per-cell call carries the same per-cell overhead
-the #921 profile measured (per-cell `structlog` records and the per-kernel
-goodness-of-fit check): the Pool divides wall clock, it does not reduce total
-per-cell Python cost.
+`__main__.py` and `__spi__.py` validate `(lat, lon, time)` or `(time, lat, lon)
+(`__main__.py:61`, `__spi__.py:98`), while the shared-array path stores the
+lat/lon-first order untransposed and the per-cell loops assume it; the
+mismatches that survive validation are tracked in #932. The counts below assume
+`(lat, lon, time)`, split along axis 0 (latitude) across a `multiprocessing.Pool`,
+with the per-cell loop inside each worker. The loops run in parallel across
+processes but are not eliminated, and each worker's per-cell call carries the
+same per-cell overhead the #921 profile measured (per-cell `structlog` records
+and the per-kernel goodness-of-fit check): the Pool divides wall clock, it does
+not reduce total per-cell Python cost.
 
 | site | invocation | loop dimensions | calls |
 |---|---|---|---|
 | `__main__.py:1289` (`_apply_along_axis`) | `_spi`/`_pnp` via `np.apply_along_axis(axis=2)` | `lat x lon`, looped by `np.apply_along_axis` in Python | 3306 per scale x distribution |
-| `__main__.py:1343,1345` (`_apply_along_axis_double`) | `_spei`/`_pet` | `lat x lon` | 3306 |
-| `__main__.py:1409,1411` (`_apply_along_axis_palmers`) | `_palmers` -> `palmer.pdsi` | `lat x lon` | 3306, four outputs each |
+| `__main__.py:1347,1349` (`_apply_along_axis_double`, loop at `:1343,1345`) | `_spei`/`_pet` | `lat x lon` | 3306 |
+| `__main__.py:1412` (`_apply_along_axis_palmers`, loop at `:1409,1411`) | `_palmers` -> `palmer.pdsi` | `lat x lon` | 3306, four outputs each |
 | `__spi__.py:1021` (`_apply_to_subarray_spi`, loop at `:1004`) | `indices.spi` transform | `lat x lon` | 3306 per scale x distribution |
-| `__spi__.py:1105` (`_apply_to_subarray_gamma`, loop at `:1099`) | `compute.gamma_parameters` | `lat x lon` | 3306 |
-| `__spi__.py:1192` (`_apply_to_subarray_pearson`, loop at `:1177`) | `compute.pearson_parameters` | `lat x lon` | 3306 |
+| `__spi__.py:1105` (`_apply_to_subarray_gamma`, loop at `:1099`) | `compute.gamma_parameters` | `lat x lon` | 3306 per scale x distribution |
+| `__spi__.py:1192` (`_apply_to_subarray_pearson`, loop at `:1177`) | `compute.pearson_parameters` | `lat x lon` | 3306 per scale x distribution |
 
 `__spi__.py` is the legacy CLI whose fate is tracked in #919; its three sites
 vanish if it is retired rather than vectorized. The `__main__.py` sites duplicate
