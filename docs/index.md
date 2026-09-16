@@ -146,7 +146,7 @@ uv run pytest
 
 **For Specific Tasks**:
 - **Add new index**: Read `compute.py`, `indices.py`, `xarray_adapter.py` + tests
-- **Fix CLI bug**: Start with `__main__.py` or `__spi__.py`
+- **Fix CLI bug**: Start with `__main__.py` (the legacy `__spi__.py` script is deprecated)
 - **Add validation**: Examine `xarray_adapter.py` and `exceptions.py`
 - **Performance optimization**: Study `compute.py` and `test_benchmark_*.py` files
 
@@ -173,7 +173,7 @@ uv run pytest
 | Module | Layer | Purpose | Lines | Priority |
 |--------|-------|---------|-------|----------|
 | `__main__.py` | CLI | Full-featured CLI (all indices) | 1872 | 🔴 CRITICAL |
-| `__spi__.py` | CLI | Specialized SPI CLI (param caching; deprecated in 2.4.0, removal 3.0.0) | 1477 | 🟡 HIGH |
+| `__spi__.py` | CLI | Specialized SPI CLI (param caching; deprecated in 2.4.0, removal 3.0.0) | 1346 | 🟡 HIGH |
 | `typed_public_api.py` | API | Strict mypy-compliant API (NEW 2.2.0) | 210 | 🟢 NEW |
 | `xarray_adapter.py` | API | Modern xarray interface (EXPANDED 2.2.0) | 2102 | 🔴 CRITICAL |
 | `indices.py` | API | Legacy numpy API (STABLE) | 856 | 🟡 HIGH |
