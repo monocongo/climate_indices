@@ -246,6 +246,15 @@ def _month_array(month: npt.ArrayLike, weather_shape: tuple[int, ...]) -> npt.ND
 
 def _season_mask(in_season: npt.ArrayLike, weather_shape: tuple[int, ...]) -> npt.NDArray[np.bool_]:
     """Validate and broadcast the per-day fire-season mask to the weather shape."""
+    if np.ma.isMaskedArray(in_season) and np.ma.getmaskarray(in_season).any():
+        # a masked weather input is a missing day; a masked season boundary has
+        # no equivalent, and dropping the mask would silently choose one
+        raise InvalidArgumentError(
+            "in_season must not be a masked array: a masked season boundary is neither in nor out of season.",
+            argument_name="in_season",
+            argument_value="a masked element",
+            valid_values="A boolean scalar or array with no masked elements",
+        )
     mask = np.asarray(in_season)
     if mask.dtype.kind != "b":
         raise InvalidArgumentError(
@@ -925,10 +934,12 @@ def drought_code(
         max_gap_days: Maximum bridged consecutive missing days. Must be zero
             for ``"propagate"`` and positive for ``"bridge"``.
         in_season: Boolean mask of the days inside the fire season, time-first
-            and broadcastable to the weather shape. A one-dimensional mask is
-            shared across every spatial cell. ``None`` treats every day as
-            in-season, which is the default and leaves the recurrence
-            unchanged.
+            and broadcastable to the weather shape. It is left-aligned like
+            the weather inputs, so a one-dimensional mask is a season series
+            shared across every spatial cell and a leading spatial mask is
+            rejected rather than aligned to the trailing axes. ``None``
+            treats every day as in-season, which is the default and leaves
+            the recurrence unchanged.
 
     Returns:
         DC with the time-first shape of the broadcast weather inputs, less
@@ -1060,8 +1071,8 @@ def overwinter_drought_code(
 
     Returns:
         Spring start-up DC, the broadcast shape of the inputs. NaN where
-        either input is NaN or negative, or where the start-up moisture
-        equivalent is zero.
+        either input is NaN, non-finite, or negative, or where the start-up
+        moisture equivalent is zero.
 
     Raises:
         InvalidArgumentError: If the shapes do not broadcast, or either

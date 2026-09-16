@@ -44,6 +44,23 @@ _SEASON_LATITUDE = 46.0
 # start-up stays well above the seed. Cell 1: a fully recharging winter.
 _WINTER_PRECIPITATION = np.array([20.0, 250.0])
 
+# The whole multi-season chain, produced by the NRCan reference implementation:
+# the season-1 DC driven day by day through ``cffdrs_py`` commit 0f57fcca's
+# ``cffdrs/fwi.py::drought_code`` from the seed 15, then each cell's spring
+# start-up from the same commit's ``overwinter_drought_code`` at the winter
+# precipitation above, then season 2 driven the same way.
+_FALL_DC_REFERENCE = 56.02
+_SECOND_SEASON_REFERENCE = np.array(
+    [
+        [136.36265489888880, 23.204],
+        [144.56665489888880, 31.408],
+        [152.77065489888880, 39.612],
+        [160.97465489888882, 47.816],
+        [169.17865489888882, 56.02],
+    ]
+)
+_SPRING_DC_REFERENCE = np.array([128.15865489888878, 15.0])
+
 
 @pytest.fixture(scope="module", autouse=True)
 def disable_logging():
@@ -280,6 +297,28 @@ def test_season_mask_broadcasts_and_validates() -> None:
     )
     np.testing.assert_array_equal(shared, per_cell)
 
+    # a scalar mask is the in-season default, and a time-first mask reaches a
+    # three-dimensional grid through the same left-aligned rule
+    scalar = fire.drought_code(
+        temperature,
+        precipitation,
+        _SEASON_LATITUDE,
+        _SEASON_MONTH,
+        in_season=np.bool_(True),
+    )
+    np.testing.assert_array_equal(
+        scalar, fire.drought_code(temperature, precipitation, _SEASON_LATITUDE, _SEASON_MONTH)
+    )
+    grid = fire.drought_code(
+        np.broadcast_to(temperature[:, :, np.newaxis], (14, 2, 2)),
+        np.broadcast_to(precipitation[:, :, np.newaxis], (14, 2, 2)),
+        _SEASON_LATITUDE,
+        _SEASON_MONTH,
+        in_season=_SEASON_MASK,
+    )
+    assert grid.shape == (14, 2, 2)
+    np.testing.assert_array_equal(grid[:, :, 0], shared)
+
     for invalid in (np.ones(14, dtype=np.int64), np.ones((14, 3), dtype=bool), np.array([True, False])):
         with pytest.raises(InvalidArgumentError):
             fire.drought_code(
@@ -291,22 +330,132 @@ def test_season_mask_broadcasts_and_validates() -> None:
             )
 
 
+def test_masked_season_mask_is_rejected() -> None:
+    """A masked season boundary is neither in nor out of season, never guessed."""
+    temperature, precipitation = _season_inputs()
+    masked = np.ma.masked_array(_SEASON_MASK, mask=[True] + [False] * 13)
+    with pytest.raises(InvalidArgumentError):
+        fire.drought_code(
+            temperature,
+            precipitation,
+            _SEASON_LATITUDE,
+            _SEASON_MONTH,
+            in_season=masked,
+        )
+
+
+def test_leading_off_season_days_stay_nan_until_the_recurrence_starts() -> None:
+    """A cell with no carried value yet emits NaN, not its seed."""
+    temperature, precipitation = _season_inputs()
+    leading = np.array([False, False] + [True] * 12)
+    values = np.asarray(
+        fire.drought_code(
+            temperature,
+            precipitation,
+            _SEASON_LATITUDE,
+            _SEASON_MONTH,
+            in_season=leading,
+        )
+    )
+    assert np.isnan(values[:2]).all()
+    assert np.isfinite(values[2:]).all()
+    # the first in-season day starts the recurrence from the seed
+    np.testing.assert_array_equal(values[2], _run_season(0, 5)[0])
+
+
+def test_spin_up_omits_leading_days_with_a_mask() -> None:
+    """A spin-up drops the leading days whether or not they are in season."""
+    temperature, precipitation = _season_inputs()
+    full = np.asarray(
+        fire.drought_code(
+            temperature,
+            precipitation,
+            _SEASON_LATITUDE,
+            _SEASON_MONTH,
+            in_season=_SEASON_MASK,
+        )
+    )
+    # the omitted prefix spans the four off-season days
+    spun_up = fire.drought_code(
+        temperature,
+        precipitation,
+        _SEASON_LATITUDE,
+        _SEASON_MONTH,
+        in_season=_SEASON_MASK,
+        spin_up=6,
+    )
+    np.testing.assert_array_equal(full[6:], spun_up)
+
+
+def test_bridge_gaps_inside_the_season_and_across_the_off_season() -> None:
+    """Off-season days neither extend nor reset a bridged in-season gap."""
+    temperature, precipitation = _season_inputs()
+    missing = temperature.copy()
+    missing[2] = np.nan
+    missing[5:9] = np.nan
+    bridged = np.asarray(
+        fire.drought_code(
+            missing,
+            precipitation,
+            _SEASON_LATITUDE,
+            _SEASON_MONTH,
+            in_season=_SEASON_MASK,
+            nan_policy="bridge",
+            max_gap_days=1,
+        )
+    )
+    assert np.isnan(bridged[2]).all()
+    # a bridged day's output is NaN and its state is unchanged, so the run
+    # continues exactly as if the missing day had not been in the series
+    valid_days = fire.drought_code(
+        temperature[[0, 1, 3, 4]],
+        precipitation[[0, 1, 3, 4]],
+        _SEASON_LATITUDE,
+        _SEASON_MONTH[[0, 1, 3, 4]],
+    )
+    np.testing.assert_array_equal(bridged[[0, 1, 3, 4]], valid_days)
+    # the off-season days neither advance the run nor consume the allowance, so
+    # the next season still starts from the frozen state
+    np.testing.assert_array_equal(bridged[5:9], np.repeat(bridged[4][np.newaxis], 4, axis=0))
+    assert np.isfinite(bridged[9:]).all()
+
+    # the count is the missing run immediately before the return point, so a
+    # missing last in-season day and a missing first day of the next season are
+    # one two-day run and exceed a budget of one
+    boundary = temperature.copy()
+    boundary[4] = np.nan
+    boundary[9] = np.nan
+    poisoned = np.asarray(
+        fire.drought_code(
+            boundary,
+            precipitation,
+            _SEASON_LATITUDE,
+            _SEASON_MONTH,
+            in_season=_SEASON_MASK,
+            nan_policy="bridge",
+            max_gap_days=1,
+        )
+    )
+    assert np.isfinite(poisoned[:4]).all()
+    assert np.isnan(poisoned[9:]).all()
+
+
 def test_multi_year_overwintering_diverges_in_the_expected_direction() -> None:
-    """A dry winter carries the DC over; a wet one recharges it to the seed."""
+    """The overwintered multi-season run matches the NRCan reference chain."""
     fall_dc = _run_season(0, 5)[-1]
+    assert np.allclose(fall_dc, _FALL_DC_REFERENCE, rtol=0.0, atol=1e-9)
     spring_dc = fire.overwinter_drought_code(fall_dc, _WINTER_PRECIPITATION)
+    assert np.allclose(spring_dc, _SPRING_DC_REFERENCE, rtol=0.0, atol=1e-9)
 
-    # (1) dry winter: the overwintered start-up is drier than the seed, and the
-    # difference is exactly the start-up difference on the first day
-    assert spring_dc[0] > 15.0
-    assert spring_dc[1] == 15.0
+    # (1) the overwintered season-2 series, per cell, is the reference's
     overwintered = _run_season(9, 14, initial_dc=spring_dc)
-    non_overwintered = _run_season(9, 14)
-    assert (overwintered[:, 0] > non_overwintered[:, 0]).all()
-    assert np.isclose(overwintered[0, 0] - non_overwintered[0, 0], spring_dc[0] - 15.0, rtol=0.0, atol=1e-9)
+    assert np.allclose(overwintered, _SECOND_SEASON_REFERENCE, rtol=0.0, atol=1e-9)
 
-    # (2) wet winter: full recharge, so the overwintered run is the seed run
+    # (2) a fully recharging winter is a no-op: the recharged cell runs exactly
+    # as the default-seeded run does, while the dry cell does not
+    non_overwintered = _run_season(9, 14)
     np.testing.assert_array_equal(overwintered[:, 1], non_overwintered[:, 1])
+    assert (overwintered[:, 0] > non_overwintered[:, 0]).all()
 
     # (3) carrying the autumn DC through without the overwinter equation keeps
     # the wet cell drier than a recharged start, which is the bias the
@@ -322,3 +471,26 @@ def test_multi_year_overwintering_diverges_in_the_expected_direction() -> None:
         )
     )[9:]
     assert (carried_through[:, 1] > overwintered[:, 1]).all()
+
+
+def test_a_poisoned_season_stays_poisoned_when_resumed() -> None:
+    """A missing in-season day cannot be undone by resuming into a new season."""
+    temperature, precipitation = _season_inputs()
+    temperature[1] = np.nan
+    state = fire.drought_code(
+        temperature,
+        precipitation,
+        _SEASON_LATITUDE,
+        _SEASON_MONTH,
+        in_season=_SEASON_MASK,
+        return_state=True,
+    ).state
+    assert np.isnan(state.dc).all()
+    resumed = fire.drought_code(
+        temperature[9:],
+        precipitation[9:],
+        _SEASON_LATITUDE,
+        _SEASON_MONTH[9:],
+        initial_state=state,
+    )
+    assert np.isnan(resumed).all()

@@ -60,6 +60,13 @@ respond to off-season weather; it is not overwintering, and callers who want
 the published spring start-up must chain seasons through
 `overwinter_drought_code()`.
 
+`trailing_gap_days` is carried across the off-season rather than reset: the
+count is the missing days immediately before the return point, and an
+off-season day neither closes nor extends the run. A missing last in-season
+day followed by a missing first day of the next season therefore counts as a
+two-day run, whether the off-season is spanned by one masked call or by a
+resumed call.
+
 The `cffwis()` orchestrator does not take the mask yet: seasonal carry is
 implemented for the DC alone, and threading an off-season policy through the
 shared three-code loop is separate work. The overwintering tunables are
