@@ -10,7 +10,7 @@ import xarray as xr
 
 from climate_indices import fire
 from climate_indices.cf_metadata_registry import CF_METADATA
-from climate_indices.exceptions import DataShapeError, InvalidArgumentError
+from climate_indices.exceptions import DataShapeError, InputTypeError, InvalidArgumentError
 
 # The published Haines (1988) tables, restated here so a test failure points at
 # the implementation rather than at a shared helper. Stability and moisture
@@ -493,11 +493,17 @@ def test_haines_xarray_chunked_matches_eager() -> None:
 
 
 def test_haines_xarray_dask_blocks_do_not_log_per_block() -> None:
-    """One xarray operation must not emit lifecycle events once per Dask block."""
+    """One xarray operation must not emit lifecycle events (or the below-ground
+    warning) once per Dask block, while block exceptions still surface from
+    compute()."""
     pytest.importorskip("dask")
     from unittest import mock
 
     temperature_lower, temperature_upper, dewpoint = _haines_dataarrays()
+    surface_pressure = xr.DataArray(
+        np.full((3, 2, 2), 1000.0), dims=("time", "y", "x"), coords=temperature_lower.coords
+    )
+    surface_pressure = surface_pressure.where(surface_pressure.coords["x"] == -104.0, 900.0)
     mock_logger = mock.MagicMock()
     mock_logger.bind.return_value = mock_logger
 
@@ -505,11 +511,67 @@ def test_haines_xarray_dask_blocks_do_not_log_per_block() -> None:
         chunked = fire.haines_index(
             *(array.chunk({"time": 2, "y": 1}) for array in (temperature_lower, temperature_upper, dewpoint)),
             variant="low",
+            surface_pressure_hpa=surface_pressure.chunk({"time": 2, "y": 1}),
         )
-        chunked.compute()
+        values = chunked.compute().values
 
     mock_logger.bind.assert_not_called()
     mock_logger.warning.assert_not_called()
+    assert np.isnan(values[:, :, 0]).all()
+    assert np.isfinite(values[:, :, 1]).all()
+
+
+def test_haines_xarray_eager_input_still_warns_below_ground() -> None:
+    """Only Dask-backed input suppresses the below-ground warning; eager input
+    reports the masked cells."""
+    from unittest import mock
+
+    temperature_lower, temperature_upper, dewpoint = _haines_dataarrays()
+    mock_logger = mock.MagicMock()
+
+    with mock.patch.object(fire._haines, "_logger", mock_logger):
+        result = fire.haines_index(
+            temperature_lower, temperature_upper, dewpoint, variant="low", surface_pressure_hpa=900.0
+        )
+
+    assert np.isnan(result.values).all()
+    mock_logger.warning.assert_called_once()
+
+
+def test_haines_xarray_non_numeric_dtype_raises() -> None:
+    """The NumPy path rejects non-numeric input; the xarray path must too,
+    rather than failing inside numpy or inside compute()."""
+    temperature_lower, temperature_upper, dewpoint = _haines_dataarrays()
+    strings = xr.DataArray(np.full((3, 2, 2), "nope"), dims=("time", "y", "x"))
+    with pytest.raises(InputTypeError, match="numeric") as exc_info:
+        fire.haines_index(strings, temperature_upper, dewpoint, variant="low")
+    assert exc_info.value.actual_type is not None
+
+    non_numeric_pressure = xr.DataArray(np.full((3, 2, 2), "nope"), dims=("time", "y", "x"))
+    with pytest.raises(InputTypeError, match="surface_pressure_hpa"):
+        fire.haines_index(
+            temperature_lower,
+            temperature_upper,
+            dewpoint,
+            variant="low",
+            surface_pressure_hpa=non_numeric_pressure,
+        )
+
+
+def test_haines_xarray_unsupported_units_attribute_names_the_input() -> None:
+    temperature_lower, temperature_upper, dewpoint = _haines_dataarrays()
+    kelvin = (temperature_lower + 273.15).assign_attrs(units="rankine")
+    with pytest.raises(InvalidArgumentError, match="Unsupported temperature units") as exc_info:
+        fire.haines_index(kelvin, temperature_upper, dewpoint, variant="low")
+    assert exc_info.value.argument_name == "temperature_lower_celsius.attrs['units']"
+
+
+def test_haines_xarray_fahrenheit_temperatures_converted() -> None:
+    temperature_lower, temperature_upper, dewpoint = _haines_dataarrays()
+    fahrenheit = (temperature_lower * 9.0 / 5.0 + 32.0).assign_attrs(units="degF")
+    assert float(fire.haines_index(fahrenheit, temperature_upper, dewpoint, variant="low").values.flat[0]) == float(
+        fire.haines_index(temperature_lower, temperature_upper, dewpoint, variant="low").values.flat[0]
+    )
 
 
 def test_haines_xarray_temperature_kelvin_units_converted() -> None:

@@ -10,7 +10,7 @@ import numpy.typing as npt
 import xarray as xr
 
 from climate_indices.cf_metadata_registry import CF_METADATA
-from climate_indices.exceptions import DataShapeError, InvalidArgumentError
+from climate_indices.exceptions import DataShapeError, InputTypeError, InvalidArgumentError
 from climate_indices.fire._common import _as_float_array
 from climate_indices.fire._units import _convert_temperature_units
 from climate_indices.logging_config import get_logger
@@ -169,8 +169,6 @@ def _interpolate_log_pressure(
     Returns:
         Values at the target levels, target level on the last axis.
     """
-    target_shape = profile.shape[:-1] + (len(target_levels_hpa),)
-
     # log pressure increases upward, so reverse both to make np.searchsorted's
     # increasing-array requirement hold
     log_pressure = np.log(pressure_hpa)[::-1]
@@ -645,13 +643,17 @@ def _haines_xarray(
     :func:`_haines_from_levels` with no core dimensions, which leaves it to
     NumPy's broadcasting; using the kernel rather than the public function
     keeps one xarray operation from emitting per-block calculation events,
-    memory instrumentation, and below-ground warnings. Block exceptions still
-    propagate from ``compute``.
+    memory instrumentation, and below-ground warnings. Eager input still
+    reports below-ground cells through the kernel's warning, and only
+    Dask-backed input suppresses it per block.
     """
-    temperatures = (
-        _convert_temperature_units(temperature_lower_celsius, "celsius"),
-        _convert_temperature_units(temperature_upper_celsius, "celsius"),
-        _convert_temperature_units(dewpoint_celsius, "celsius"),
+    temperatures = tuple(
+        _convert_temperature_units(data, "celsius", argument_name=f"{name}.attrs['units']")
+        for name, data in (
+            ("temperature_lower_celsius", temperature_lower_celsius),
+            ("temperature_upper_celsius", temperature_upper_celsius),
+            ("dewpoint_celsius", dewpoint_celsius),
+        )
     )
     inputs: tuple[xr.DataArray | npt.NDArray[np.float64], ...] = temperatures
     if surface_pressure_hpa is not None:
@@ -668,11 +670,29 @@ def _haines_xarray(
                 valid_values="An xr.DataArray, or a scalar",
             )
 
+    # reject non-numeric dtype here rather than letting the kernel's comparisons
+    # fail inside numpy (or, for Dask blocks, inside compute()) with a raw
+    # UFuncTypeError; dtype is known without computing
+    for name, data in zip(
+        ("temperature_lower_celsius", "temperature_upper_celsius", "dewpoint_celsius", "surface_pressure_hpa"),
+        inputs,
+        strict=False,
+    ):
+        if data.dtype.kind not in "biuf":
+            raise InputTypeError(
+                f"Haines Index inputs must be numeric: {name} has dtype {data.dtype}.",
+                expected_type=float,
+                actual_type=data.dtype.type,
+            )
+
+    # one warning per invalid Dask block would swamp the logs; eager input still
+    # reports below-ground cells through the shared kernel's warning
+    is_dask_backed = any(isinstance(data, xr.DataArray) and data.chunks is not None for data in inputs)
     result: xr.DataArray = xr.apply_ufunc(
         _haines_from_levels,
         *inputs,
         input_core_dims=[[]] * len(inputs),
-        kwargs={"variant": variant, "warn": False},
+        kwargs={"variant": variant, "warn": not is_dask_backed},
         dask="parallelized",
         output_dtypes=[np.float64],
     )
