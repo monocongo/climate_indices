@@ -146,9 +146,8 @@ Recommendations for monthly grids:
   `benchmarks/parallel_scaling.py` re-chunks spatial dims to one block per
   worker for its strong-scaling runs.
 - Daily grids carry up to 366 steps per cell-year instead of 12, so the per-cell
-  working set is roughly 30x larger and cells per block should shrink by about
-  the same factor — around a `3 x 3` block where a monthly grid uses
-  `10 x 10`.
+  working set is roughly 30x larger; at the same ~100 MB ceiling that is about a
+  `7 x 7` block where a monthly grid uses `10 x 10`.
 
 Rechunk once, at read or prepare time, when the stored layout differs from the
 shape the computation wants — a Zarr store with one `time` chunk per year, or a
