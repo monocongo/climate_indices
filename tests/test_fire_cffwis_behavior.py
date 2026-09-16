@@ -522,6 +522,25 @@ def test_unknown_output_name_raises() -> None:
         _run_orchestrator(weather, outputs=["fwi", "nope"])
 
 
+def test_mixed_type_unknown_output_names_raise_invalid_argument_error() -> None:
+    """Heterogeneous bad names must not leak the sorted() comparison TypeError."""
+    weather = _reference_weather()
+    with pytest.raises(InvalidArgumentError):
+        _run_orchestrator(weather, outputs=["ffmc", 1, None])  # type: ignore[list-item]
+
+
+def test_subset_outputs_record_only_the_code_histories_they_consume() -> None:
+    """A subset request stops allocating the moisture-code histories it never reads."""
+    with mock.patch.object(_cffwis, "_run_cffwis_system", wraps=_cffwis._run_cffwis_system) as runner:
+        _run_orchestrator(_reference_weather(), outputs=["ffmc"])
+    assert runner.call_args is not None
+    assert runner.call_args.kwargs["record"] == (True, False, False)
+    with mock.patch.object(_cffwis, "_run_cffwis_system", wraps=_cffwis._run_cffwis_system) as runner:
+        _run_orchestrator(_reference_weather(), outputs=["bui"])
+    assert runner.call_args is not None
+    assert runner.call_args.kwargs["record"] == (False, True, True)
+
+
 def test_empty_outputs_raise() -> None:
     weather = _reference_weather()
     with pytest.raises(InvalidArgumentError):

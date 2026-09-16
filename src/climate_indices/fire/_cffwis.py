@@ -376,7 +376,9 @@ def _run_cffwis_recurrence(
         system_name=index_type,
         fast_path=False,
     )
-    return values[0], state_gap_days[0]
+    output = values[0]
+    assert output is not None  # the single-code path always records its history
+    return output, state_gap_days[0]
 
 
 def _ffmc_next(
@@ -1004,7 +1006,10 @@ def _resolve_outputs(outputs: Collection[_CFFWISComponent] | str | None) -> froz
         requested = (cast(_CFFWISComponent, outputs),)
     else:
         requested = tuple(outputs)
-    unknown = sorted(name for name in requested if name not in _CFFWIS_COMPONENTS)
+    unknown = sorted(
+        (name for name in requested if not isinstance(name, str) or name not in _CFFWIS_COMPONENTS),
+        key=repr,
+    )
     if unknown:
         raise InvalidArgumentError(
             f"Unknown CFFWIS output name(s): {', '.join(repr(name) for name in unknown)}.",
@@ -1298,7 +1303,8 @@ def _run_cffwis_system(
     max_gap_days: int,
     system_name: str,
     fast_path: bool,
-) -> tuple[tuple[npt.NDArray[np.float64], ...], tuple[npt.NDArray[np.int64] | None, ...]]:
+    record: tuple[bool, ...] | None = None,
+) -> tuple[tuple[npt.NDArray[np.float64] | None, ...], tuple[npt.NDArray[np.int64] | None, ...]]:
     """Run one or more daily recurrences through one shared time loop.
 
     ``step(day, active)`` returns the next code value for every cell when
@@ -1313,6 +1319,12 @@ def _run_cffwis_system(
     only affects DMC and DC. ``fast_path`` enables the all-valid shortcut that
     the combined orchestrator uses; the single-code wrapper disables it so
     their behaviour stays identical to the pre-orchestrator engine.
+
+    ``record`` marks the components whose daily history is kept: an unrecorded
+    component still runs and advances its state, but its output slot is
+    ``None`` instead of a full time series, so a subset request allocates only
+    the histories a selected output reads. The default records every
+    component, which is what the single-code wrapper needs.
     """
     n_days = components[0].weather_valid.shape[0]
     log = _logger.bind(
@@ -1325,15 +1337,18 @@ def _run_cffwis_system(
     try:
         # the allocation is inside the try so an output-allocation failure
         # still reports the recurrence lifecycle
+        records = (True,) * len(components) if record is None else record
         values = tuple(
             np.full((max(n_days - spin_up, 0), *component.weather_valid.shape[1:]), np.nan, dtype=np.float64)
-            for component in components
+            if keep
+            else None
+            for component, keep in zip(components, records, strict=True)
         )
         for component in components:
             component.started = component.trailing_gap_days >= 0
             component.poisoned = np.isnan(component.value)
             component.static_all_valid = bool(component.static_valid.all())
-        memory_metrics = check_large_array_memory(*memory_arrays, *values)
+        memory_metrics = check_large_array_memory(*memory_arrays, *(value for value in values if value is not None))
 
         for day in range(n_days):
             for index, component in enumerate(components):
@@ -1376,13 +1391,14 @@ def _run_cffwis_system(
                     component.value[:] = updated
                 else:
                     component.value[active] = updated
-                if day >= spin_up:
-                    output = values[index][day - spin_up]
+                output = values[index]
+                if day >= spin_up and output is not None:
+                    output_day = output[day - spin_up]
                     if all_active:
-                        output[:] = component.value
+                        output_day[:] = component.value
                     else:
                         assert active is not None
-                        output[:] = np.where(active, component.value, np.nan)
+                        output_day[:] = np.where(active, component.value, np.nan)
 
         state_gap_days = tuple(
             component.trailing_gap_days.copy() if np.any(component.started | component.poisoned) else None
@@ -1392,7 +1408,7 @@ def _run_cffwis_system(
         log.info(
             "calculation_completed",
             duration_ms=round(duration_ms, 2),
-            output_shape=values[0].shape,
+            output_shape=next(value.shape for value in values if value is not None),
             **(memory_metrics or {}),
         )
         return values, state_gap_days
@@ -1434,8 +1450,9 @@ def cffwis(
     ``outputs`` lets a caller who needs only some of the seven quantities
     avoid computing and returning the rest: the moisture codes always run
     because the three recurrences share the one pass, but a derived index is
-    computed only when it is selected or a selected index needs it. A field
-    that is not selected is ``None``.
+    computed only when it is selected or a selected index needs it, and a
+    moisture code's daily history is kept only when a selected output reads
+    it. A field that is not selected is ``None``.
 
     The recurrence contract is ADR-0006 and the missing-day policy is
     ADR-0007, both identical to the single-code functions: ``propagate``
@@ -1662,6 +1679,13 @@ def cffwis(
         ),
         _CodeRecurrence("drought_code", dc_value, dc_step, dc_weather_valid, latitude_valid, dc_trailing_gap_days),
     )
+    # a code keeps its daily history only when a selected output reads it: the
+    # direct name, or a derived index whose formula consumes the series
+    record = (
+        bool(selected & {"ffmc", "isi", "fwi", "dsr"}),
+        bool(selected & {"dmc", "bui", "fwi", "dsr"}),
+        bool(selected & {"dc", "bui", "fwi", "dsr"}),
+    )
     code_values, code_gap_days = _run_cffwis_system(
         components,
         memory_arrays=(temperature, humidity, wind, precipitation),
@@ -1670,6 +1694,7 @@ def cffwis(
         max_gap_days=max_gap_days,
         system_name="cffwis",
         fast_path=True,
+        record=record,
     )
     ffmc_values, dmc_values, dc_values = code_values
     ffmc_gap_days, dmc_gap_days, dc_gap_days = code_gap_days
@@ -1678,8 +1703,16 @@ def cffwis(
     # "ffmc" alone skips the four derived arrays entirely
     needs_isi = bool(selected & {"isi", "fwi", "dsr"})
     needs_bui = bool(selected & {"bui", "fwi", "dsr"})
-    isi_values = _initial_spread_index(ffmc_values, wind[spin_up:]) if needs_isi else None
-    bui_values = _buildup_index(dmc_values, dc_values) if needs_bui else None
+    if needs_isi:
+        assert ffmc_values is not None
+        isi_values = _initial_spread_index(ffmc_values, wind[spin_up:])
+    else:
+        isi_values = None
+    if needs_bui:
+        assert dmc_values is not None and dc_values is not None
+        bui_values = _buildup_index(dmc_values, dc_values)
+    else:
+        bui_values = None
     fwi_values: npt.NDArray[np.float64] | None = None
     if selected & {"fwi", "dsr"}:
         assert isi_values is not None and bui_values is not None
@@ -1709,9 +1742,9 @@ def cffwis(
             ),
         )
     return CFFWISResult(
-        ffmc=finalize(ffmc_values) if "ffmc" in selected else None,
-        dmc=finalize(dmc_values) if "dmc" in selected else None,
-        dc=finalize(dc_values) if "dc" in selected else None,
+        ffmc=finalize(ffmc_values) if "ffmc" in selected and ffmc_values is not None else None,
+        dmc=finalize(dmc_values) if "dmc" in selected and dmc_values is not None else None,
+        dc=finalize(dc_values) if "dc" in selected and dc_values is not None else None,
         isi=finalize(isi_values) if "isi" in selected and isi_values is not None else None,
         bui=finalize(bui_values) if "bui" in selected and bui_values is not None else None,
         fwi=None if "fwi" not in selected or fwi_values is None else finalize(fwi_values),
