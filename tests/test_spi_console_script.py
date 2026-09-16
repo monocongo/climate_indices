@@ -12,9 +12,8 @@ def test_main_emits_deprecation_warning(monkeypatch):
     """Invoking the legacy SPI CLI warns that it is scheduled for removal."""
     monkeypatch.setattr(sys, "argv", ["spi", "--help"])
 
-    with pytest.warns(ClimateIndicesDeprecationWarning) as recorded:
-        with pytest.raises(SystemExit) as exit_info:
-            __spi__.main()
+    with pytest.warns(ClimateIndicesDeprecationWarning) as recorded, pytest.raises(SystemExit) as exit_info:
+        __spi__.main()
 
     assert exit_info.value.code == 0
 
