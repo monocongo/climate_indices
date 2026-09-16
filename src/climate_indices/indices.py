@@ -503,8 +503,9 @@ def spi(
         across cells.
     :param spatial_time_major: read ``values`` as a time-major block of independent
         time series, shaped (time, *cells), and fit every cell in one pass. The
-        xarray adapter sets this for gridded input; the NumPy API answers a
-        gridded array with a ``ValueError`` unless it is given explicitly.
+        xarray adapter sets this for every block it packs; the NumPy API requires
+        it only for an ambiguous shape, where the first cell axis is a calendar
+        period length (12 or 366) and could be read as (years, periods, *cells).
     :return: SPI values fitted to the gamma distribution at the specified time
         step scale, unitless
     :rtype: 1-D numpy.ndarray of floats of the same length as the input array
@@ -732,8 +733,9 @@ def spei(
         Older keys such as "alphas" and "probabilities_of_zero" are deprecated.
     :param spatial_time_major: read ``precips_mm``/``pet_mm`` as time-major blocks of
         independent time series, shaped (time, *cells), and fit every cell in one pass.
-        The xarray adapter sets this for gridded input; the NumPy API answers a
-        gridded array with a ``ValueError`` unless it is given explicitly.
+        The xarray adapter sets this for every block it packs; the NumPy API requires
+        it only for an ambiguous shape, where the first cell axis is a calendar
+        period length (12 or 366) and could be read as (years, periods, *cells).
     :return: an array of SPEI values
     :rtype: numpy.ndarray of type float, of the same size and shape as the input
         PET and precipitation arrays
