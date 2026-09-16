@@ -76,7 +76,7 @@ be releasable.
 4. Run validation:
    `uv run ruff check src/ tests/`
    `uv run ruff format --check src/ tests/`
-   `uv run mypy src/`
+   `uv run mypy src/ tests/test_type_checking.py`
    `uv run pytest`
 5. Open a PR into `main`.
 6. The maintainer merges the PR after review and passing CI; agents never merge.
