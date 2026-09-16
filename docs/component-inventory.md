@@ -454,8 +454,8 @@ class Distribution(Enum):
 #### Periodicity Enum
 ```python
 class Periodicity(Enum):
-    monthly = "monthly"  # 12 time steps per year
-    daily = "daily"      # 366 time steps per year
+    monthly = 12   # 12 time steps per year
+    daily = 366    # 366 time steps per year
 
     @staticmethod
     def from_string(value: str) -> "Periodicity":
