@@ -35,7 +35,7 @@ def test_public_api_is_namespaced() -> None:
 
 def _emc(temperature_fahrenheit: float, relative_humidity_percent: float) -> float:
     return float(
-        fire._equilibrium_moisture_content(
+        fire._fosberg._equilibrium_moisture_content(
             np.asarray(temperature_fahrenheit, dtype=np.float64),
             np.asarray(relative_humidity_percent, dtype=np.float64),
         )
@@ -95,7 +95,7 @@ def test_emc_is_discontinuous_at_the_breakpoints() -> None:
 
 def test_calibration_point() -> None:
     """Zero moisture and a 30 mph wind give 100, to the precision of 0.3002."""
-    value = float(fire._ffwi(np.asarray(0.0), np.asarray(30.0)))
+    value = float(fire._fosberg._ffwi(np.asarray(0.0), np.asarray(30.0)))
     assert value == pytest.approx(99.988881, abs=1e-6)
     assert abs(value - 100.0) < 0.02
 
@@ -107,7 +107,7 @@ def test_damping_changes_sign_exactly_at_30() -> None:
     np.testing.assert_allclose(polynomial, (1.0 - x) * (0.5 * x**2 - x + 1.0), atol=1e-12)
     assert np.all(0.5 * x**2 - x + 1.0 > 0.0)
 
-    damping = fire._moisture_damping(np.array([0.0, 15.0, 30.0, 40.0]))
+    damping = fire._fosberg._moisture_damping(np.array([0.0, 15.0, 30.0, 40.0]))
     assert damping[0] == pytest.approx(1.0)
     assert 0.0 < damping[1] < 1.0
     assert damping[2] == pytest.approx(0.0, abs=1e-12)
@@ -248,8 +248,8 @@ def test_calculation_failure_logs_and_propagates() -> None:
         raise RuntimeError("synthetic failure")
 
     with (
-        mock.patch.object(fire, "_logger", mock_logger),
-        mock.patch.object(fire, "_equilibrium_moisture_content", side_effect=_raise),
+        mock.patch.object(fire._fosberg, "_logger", mock_logger),
+        mock.patch.object(fire._fosberg, "_equilibrium_moisture_content", side_effect=_raise),
         pytest.raises(RuntimeError, match="synthetic failure"),
     ):
         fire.fosberg_ffwi(20.0, 30.0, 5.0)
@@ -267,8 +267,8 @@ def test_large_array_memory_metrics_are_logged() -> None:
     mock_logger.bind.return_value = mock_logger
 
     with (
-        mock.patch.object(fire, "_logger", mock_logger),
-        mock.patch.object(fire, "check_large_array_memory", return_value={"array_memory_mb": 1234.5}),
+        mock.patch.object(fire._fosberg, "_logger", mock_logger),
+        mock.patch.object(fire._fosberg, "check_large_array_memory", return_value={"array_memory_mb": 1234.5}),
     ):
         result = fire.fosberg_ffwi(20.0, 30.0, 5.0)
 
@@ -420,7 +420,7 @@ def test_hdw_invalid_above_layer_does_not_warn() -> None:
     mock_logger = mock.MagicMock()
     mock_logger.bind.return_value = mock_logger
 
-    with mock.patch.object(fire, "_logger", mock_logger):
+    with mock.patch.object(fire._hdw, "_logger", mock_logger):
         result = fire.hot_dry_windy([20.0, 20.0], [50.0, 101.0], [5.0, 5.0], [10.0, 800.0])
 
     assert np.isfinite(result)
@@ -478,8 +478,8 @@ def test_hdw_calculation_failure_logs_and_propagates() -> None:
         raise RuntimeError("synthetic failure")
 
     with (
-        mock.patch.object(fire, "_logger", mock_logger),
-        mock.patch.object(fire.pm_eto, "saturation_vapor_pressure", side_effect=_raise),
+        mock.patch.object(fire._hdw, "_logger", mock_logger),
+        mock.patch.object(fire._hdw.pm_eto, "saturation_vapor_pressure", side_effect=_raise),
         pytest.raises(RuntimeError, match="synthetic failure"),
     ):
         fire.hot_dry_windy(30.0, 15.0, 8.0, 10.0)
@@ -650,7 +650,7 @@ def test_hdw_xarray_dask_blocks_do_not_log_per_block() -> None:
     mock_logger = mock.MagicMock()
     mock_logger.bind.return_value = mock_logger
 
-    with mock.patch.object(fire, "_logger", mock_logger):
+    with mock.patch.object(fire._hdw, "_logger", mock_logger):
         chunked = fire.hot_dry_windy(
             *(a.chunk({"time": 2, "x": 1}) for a in (temperature, humidity, wind)),
             height,

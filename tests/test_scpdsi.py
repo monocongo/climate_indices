@@ -198,16 +198,9 @@ def test_scpdsi_oracle_contains_all_climate_divisions():
 
 @pytest.mark.validation
 @pytest.mark.parametrize("division_dir", _DIVISION_DIRS, ids=lambda path: path.name)
-def test_climate_division_matches_scpdsi_oracle(division_dir):
+def test_climate_division_matches_scpdsi_oracle(division_dir, palmer_scpdsi_results):
     division = division_dir.name
-    scpdsi, scphdi, scpmdi, sczindex, params = palmer.scpdsi(
-        np.load(division_dir / "precips.npy"),
-        np.load(division_dir / "pet.npy"),
-        _AWCS[division],
-        1895,
-        1931,
-        1990,
-    )
+    scpdsi, scphdi, scpmdi, sczindex, params = palmer_scpdsi_results[division]
     assert params is not None
 
     for name, actual in (

@@ -223,10 +223,76 @@ def rain_mm_366():
     return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "rain_mm_366.npy"))
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def palmer_awcs():
     with open(os.path.join(os.path.split(__file__)[0], "fixture", "palmer_awc.json")) as awcfile:
         return json.load(awcfile)
+
+
+def _palmer_division_dirs() -> tuple[str, ...]:
+    root = os.path.join(os.path.split(__file__)[0], "fixture", "palmer")
+    return tuple(os.path.join(root, name) for name in sorted(os.listdir(root)) if name.isdigit())
+
+
+class _PalmerSweep(dict[str, tuple | Exception]):
+    """Division-keyed sweep results, re-raising a stored division failure on read.
+
+    A division that raises is recorded rather than propagated by the sweep, so
+    the remaining divisions still compute and only the tests that read the
+    failed division fail, naming it.
+    """
+
+    def __getitem__(self, division: str) -> tuple:
+        result = super().__getitem__(division)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+
+def _palmer_sweep(entry_point: str, awcs: dict) -> _PalmerSweep:
+    """Run one Palmer entry point across every fixture climate division.
+
+    The session-scoped fixtures below cache the result so the 344-division
+    validation sweep runs once per entry point instead of once per consuming
+    test module (issue #909). Session scope, rather than module, is what lets
+    the three consuming modules share one sweep. Each fixture is lazy, so a run
+    touching only one entry point pays only for that sweep; any run that
+    touches a sweep computes it in full, even when only a subset of divisions
+    is selected. The cache costs ~35 MiB extra peak RSS on the sweep tests,
+    while the full validation suite peak does not increase (measured
+    305.9 -> 289.8 MiB in #909). A division failure ends only that division:
+    the sweep keeps going and the failure resurfaces where its division is
+    read, so one bad division cannot turn every consumer into a setup error.
+    """
+    from climate_indices import palmer
+
+    results: _PalmerSweep = _PalmerSweep()
+    for division_dir in _palmer_division_dirs():
+        division = os.path.basename(division_dir)
+        try:
+            results[division] = getattr(palmer, entry_point)(
+                np.load(os.path.join(division_dir, "precips.npy")),
+                np.load(os.path.join(division_dir, "pet.npy")),
+                awcs[division],
+                _DATA_YEAR_START_MONTHLY,
+                _CALIBRATION_YEAR_START_PALMER,
+                _CALIBRATION_YEAR_END_PALMER,
+            )
+        except Exception as error:
+            failure = RuntimeError(f"palmer.{entry_point}() failed for division {division}")
+            failure.__cause__ = error
+            results[division] = failure
+    return results
+
+
+@pytest.fixture(scope="session")
+def palmer_pdsi_results(palmer_awcs) -> _PalmerSweep:
+    return _palmer_sweep("pdsi", palmer_awcs)
+
+
+@pytest.fixture(scope="session")
+def palmer_scpdsi_results(palmer_awcs) -> _PalmerSweep:
+    return _palmer_sweep("scpdsi", palmer_awcs)
 
 
 # Hargreaves fixtures for daily evapotranspiration calculations
