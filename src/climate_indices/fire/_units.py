@@ -46,6 +46,13 @@ def _convert_precipitation_units(
     Dask-backed input stays lazy.
     """
     raw_units = data.attrs.get("units")
+    if raw_units is not None and not isinstance(raw_units, str):
+        raise InvalidArgumentError(
+            f"Unsupported {argument_name}: {raw_units!r} is not a CF units string.",
+            argument_name=argument_name,
+            argument_value=repr(raw_units),
+            valid_values="A CF units string, or no units attribute at all",
+        )
     normalized = raw_units.strip().lower() if isinstance(raw_units, str) else None
     if normalized is None:
         return data
@@ -81,7 +88,12 @@ def _convert_precipitation_units(
     return converted
 
 
-def _convert_temperature_units(data: xr.DataArray, target: Literal["celsius", "fahrenheit"]) -> xr.DataArray:
+def _convert_temperature_units(
+    data: xr.DataArray,
+    target: Literal["celsius", "fahrenheit"],
+    *,
+    argument_name: str = "maximum_temperature.attrs['units']",
+) -> xr.DataArray:
     """Convert a temperature DataArray to ``target`` from its CF ``units`` attribute.
 
     An absent ``units`` attribute is assumed to already match ``target``; an
@@ -89,6 +101,13 @@ def _convert_temperature_units(data: xr.DataArray, target: Literal["celsius", "f
     Conversion is xarray arithmetic, so Dask-backed input stays lazy.
     """
     raw_units = data.attrs.get("units")
+    if raw_units is not None and not isinstance(raw_units, str):
+        raise InvalidArgumentError(
+            f"Unsupported {argument_name}: {raw_units!r} is not a CF units string.",
+            argument_name=argument_name,
+            argument_value=repr(raw_units),
+            valid_values="A CF units string, or no units attribute at all",
+        )
     normalized = raw_units.strip().lower() if isinstance(raw_units, str) else None
     if normalized is None:
         return data
@@ -102,7 +121,7 @@ def _convert_temperature_units(data: xr.DataArray, target: Literal["celsius", "f
     else:
         raise InvalidArgumentError(
             f"Unsupported temperature units attribute: {raw_units!r}.",
-            argument_name="maximum_temperature.attrs['units']",
+            argument_name=argument_name,
             argument_value=str(raw_units),
             valid_values="K, kelvin, C/celsius, or F/fahrenheit",
         )

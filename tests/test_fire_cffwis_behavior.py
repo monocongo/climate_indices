@@ -962,10 +962,14 @@ class _GriddedInputs:
 
 
 def _gridded_inputs(days: int = 12, *, hour: int = 12) -> _GriddedInputs:
-    """Deterministic gridded weather with a ``lat`` coordinate for inference."""
+    """Deterministic gridded weather with a ``lat`` coordinate for inference.
+
+    The series starts in late January so the inferred months span a calendar-
+    month boundary, exercising the DMC/DC day-length table lookup rows.
+    """
     rng = np.random.default_rng(807)
     shape = (days, _GRID_LATITUDES.size, _GRID_LONGITUDES.size)
-    time = pd.date_range(f"2000-01-01 {hour:02d}:00", periods=days, freq="D")
+    time = pd.date_range(f"2000-01-28 {hour:02d}:00", periods=days, freq="D")
     coords = {"time": time, "lat": _GRID_LATITUDES, "lon": _GRID_LONGITUDES}
     dims = ("time", "lat", "lon")
     temperature = 20.0 + 8.0 * rng.standard_normal(shape)
@@ -1202,6 +1206,33 @@ class TestCFFWISXarrayCoordinates:
         assert isinstance(series, xr.Dataset)
         _assert_matches_numpy(inputs, series)
 
+    def test_month_wrong_length_raises(self) -> None:
+        inputs = _gridded_inputs()
+        with pytest.raises(InvalidArgumentError, match="entries"):
+            _xarray_cffwis(inputs, month=np.ones(inputs.temperature.sizes["time"] + 1, dtype=np.int64))
+
+    def test_month_coordinate_mismatch_raises(self) -> None:
+        inputs = _gridded_inputs()
+        shifted = xr.DataArray(
+            inputs.month,
+            dims=("time",),
+            coords={"time": inputs.temperature.coords["time"] + pd.Timedelta(days=1)},
+        )
+        with pytest.raises(InvalidArgumentError, match="month has no value"):
+            _xarray_cffwis(inputs, month=shifted)
+
+    def test_month_coordinate_is_reindexed_not_paired_positionally(self) -> None:
+        """A labelled month series follows its dates, so a reversed series still pairs correctly."""
+        inputs = _gridded_inputs()
+        reversed_month = xr.DataArray(
+            inputs.month[::-1].copy(), dims=("time",), coords={"time": inputs.temperature.coords["time"][::-1]}
+        )
+        result = _xarray_cffwis(inputs, month=reversed_month)
+        expected = _xarray_cffwis(inputs)
+        assert isinstance(result, xr.Dataset) and isinstance(expected, xr.Dataset)
+        for name in _GRID_VARIABLES:
+            np.testing.assert_array_equal(result[name].values, expected[name].values)
+
     def test_month_missing_without_time_coordinate_raises(self) -> None:
         inputs = _gridded_inputs()
         coords = {"lat": _GRID_LATITUDES, "lon": _GRID_LONGITUDES}
@@ -1298,6 +1329,38 @@ class TestCFFWISXarrayOutputs:
         assert result.sizes["time"] == inputs.temperature.sizes["time"] - 4
         np.testing.assert_array_equal(result["fwi"].coords["time"].values, inputs.temperature.coords["time"].values[4:])
         _assert_matches_numpy(inputs, result, spin_up=4)
+
+    def test_dask_return_state_matches_numpy(self) -> None:
+        """The state must be computed eagerly while the value arrays stay lazy."""
+        inputs = _gridded_inputs(days=9)
+        chunked = replace(
+            inputs,
+            temperature=inputs.temperature.chunk({"time": -1, "lat": 1, "lon": 1}),
+            humidity=inputs.humidity.chunk({"time": -1, "lat": 1, "lon": 1}),
+            wind=inputs.wind.chunk({"time": -1, "lat": 1, "lon": 1}),
+            precipitation=inputs.precipitation.chunk({"time": -1, "lat": 1, "lon": 1}),
+        )
+        expected = _numpy_cffwis(inputs, return_state=True)
+        result = _xarray_cffwis(chunked, return_state=True)
+        assert isinstance(result, fire.CFFWISResult)
+        assert result.state is not None and expected.state is not None
+        np.testing.assert_array_equal(result.state.dmc.dmc, expected.state.dmc.dmc)
+        np.testing.assert_array_equal(result.state.dc.dc, expected.state.dc.dc)
+        for name in _GRID_VARIABLES:
+            value = getattr(result, name)
+            assert isinstance(value, xr.DataArray)
+            np.testing.assert_array_equal(value.values, getattr(expected, name))
+
+    def test_bridge_gap_matches_numpy(self) -> None:
+        inputs = _gridded_inputs()
+        gapped = inputs.precipitation.copy()
+        gapped.values[5, 0, 0] = np.nan
+        gapped_inputs = replace(inputs, precipitation=gapped)
+        result = _xarray_cffwis(gapped_inputs, nan_policy="bridge", max_gap_days=2)
+        assert isinstance(result, xr.Dataset)
+        expected = _numpy_cffwis(gapped_inputs, nan_policy="bridge", max_gap_days=2)
+        for name in _GRID_VARIABLES:
+            np.testing.assert_array_equal(result[name].values, getattr(expected, name))
 
     def test_return_state_matches_numpy(self) -> None:
         inputs = _gridded_inputs(days=10)
@@ -1398,6 +1461,65 @@ class TestCFFWISXarrayValidation:
             fire.cffwis(inputs.temperature, inputs.humidity, inputs.wind, shifted)
 
     def test_invalid_seed_raises_eagerly(self) -> None:
+        """A bad seed must fail the call, before any lazy evaluation can run."""
         inputs = _gridded_inputs()
+        chunked = replace(
+            inputs,
+            temperature=inputs.temperature.chunk({"time": -1, "lat": 1, "lon": 1}),
+            humidity=inputs.humidity.chunk({"time": -1, "lat": 1, "lon": 1}),
+            wind=inputs.wind.chunk({"time": -1, "lat": 1, "lon": 1}),
+            precipitation=inputs.precipitation.chunk({"time": -1, "lat": 1, "lon": 1}),
+        )
         with pytest.raises(InvalidArgumentError, match="ffmc must be finite"):
-            _xarray_cffwis(inputs, initial_ffmc=500.0)
+            _xarray_cffwis(chunked, initial_ffmc=500.0)
+
+    def test_negative_precipitation_raises(self) -> None:
+        inputs = _gridded_inputs()
+        negative = inputs.precipitation.copy()
+        negative.values[0, 0, 0] = -1.0
+        with pytest.raises(InvalidArgumentError, match="non-negative"):
+            _xarray_cffwis(replace(inputs, precipitation=negative))
+
+    def test_non_string_units_attribute_raises(self) -> None:
+        inputs = _gridded_inputs()
+        kelvin = (inputs.temperature + 273.15).assign_attrs(units=b"K")
+        with pytest.raises(InvalidArgumentError, match="not a CF units string"):
+            fire.cffwis(kelvin, inputs.humidity, inputs.wind, inputs.precipitation)
+
+    def test_radian_latitude_coordinates_raise(self) -> None:
+        inputs = _gridded_inputs()
+
+        def radians(data: xr.DataArray) -> xr.DataArray:
+            return data.assign_coords(lat=data.coords["lat"].assign_attrs(units="radians"))
+
+        with pytest.raises(InvalidArgumentError, match="Unsupported latitude units"):
+            _xarray_cffwis(
+                replace(
+                    inputs,
+                    temperature=radians(inputs.temperature),
+                    humidity=radians(inputs.humidity),
+                    wind=radians(inputs.wind),
+                    precipitation=radians(inputs.precipitation),
+                )
+            )
+
+    def test_latitude_with_unknown_dimension_raises(self) -> None:
+        inputs = _gridded_inputs()
+        unknown_axis = xr.DataArray([40.0, 45.0], dims=("y",))
+        with pytest.raises(InvalidArgumentError, match="dimensions the weather inputs do not have"):
+            _xarray_cffwis(inputs, latitude_degrees_north=unknown_axis)
+
+    def test_conflicting_dimension_sizes_raise_coordinate_error(self) -> None:
+        inputs = _gridded_inputs()
+        coords = {"lat": _GRID_LATITUDES, "lon": _GRID_LONGITUDES}
+
+        def bare(data: xr.DataArray, days: int) -> xr.DataArray:
+            return xr.DataArray(data.values[:days], dims=data.dims, coords=coords)
+
+        with pytest.raises(CoordinateValidationError, match="Cannot align"):
+            fire.cffwis(
+                bare(inputs.temperature, 10),
+                bare(inputs.humidity, 8),
+                bare(inputs.wind, 10),
+                bare(inputs.precipitation, 10),
+            )

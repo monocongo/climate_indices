@@ -6,7 +6,7 @@ import time
 import warnings
 from collections.abc import Callable, Collection
 from dataclasses import dataclass, field
-from typing import Literal, cast
+from typing import Literal, cast, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -25,6 +25,7 @@ from climate_indices.fire._common import (
     _as_float_array,
     _static_spatial_array,
     _validate_recurrence_options,
+    _wrap_spatial,
 )
 from climate_indices.fire._units import (
     _convert_precipitation_units,
@@ -1639,6 +1640,50 @@ def _run_cffwis_system(
         raise
 
 
+@overload
+def cffwis(
+    temperature_celsius: npt.ArrayLike,
+    relative_humidity_percent: npt.ArrayLike,
+    wind_speed_meters_per_second: npt.ArrayLike,
+    precipitation_mm: npt.ArrayLike,
+    latitude_degrees_north: npt.ArrayLike | None = None,
+    month: npt.ArrayLike | None = None,
+    *,
+    initial_ffmc: npt.ArrayLike | None = None,
+    initial_dmc: npt.ArrayLike | None = None,
+    initial_dc: npt.ArrayLike | None = None,
+    initial_state: CFFWISState | None = None,
+    return_state: bool = False,
+    spin_up: int = 0,
+    nan_policy: Literal["propagate", "bridge"] = "propagate",
+    max_gap_days: int = 0,
+    outputs: Collection[_CFFWISComponent] | str | None = None,
+    time_dim: str = "time",
+) -> CFFWISResult: ...
+
+
+@overload
+def cffwis(
+    temperature_celsius: xr.DataArray,
+    relative_humidity_percent: xr.DataArray,
+    wind_speed_meters_per_second: xr.DataArray,
+    precipitation_mm: xr.DataArray,
+    latitude_degrees_north: npt.ArrayLike | xr.DataArray | None = None,
+    month: npt.ArrayLike | xr.DataArray | None = None,
+    *,
+    initial_ffmc: npt.ArrayLike | None = None,
+    initial_dmc: npt.ArrayLike | None = None,
+    initial_dc: npt.ArrayLike | None = None,
+    initial_state: CFFWISState | None = None,
+    return_state: bool = False,
+    spin_up: int = 0,
+    nan_policy: Literal["propagate", "bridge"] = "propagate",
+    max_gap_days: int = 0,
+    outputs: Collection[_CFFWISComponent] | str | None = None,
+    time_dim: str = "time",
+) -> xr.Dataset | CFFWISResult: ...
+
+
 def cffwis(
     temperature_celsius: npt.ArrayLike | xr.DataArray,
     relative_humidity_percent: npt.ArrayLike | xr.DataArray,
@@ -1744,7 +1789,8 @@ def cffwis(
         attributes. With ``return_state=True`` the xarray route instead
         returns :class:`CFFWISResult` whose selected component fields are
         DataArrays and whose ``state`` stays plain NumPy per
-        ``docs/adr/0006-fire-recursive-state-and-execution.md``.
+        ``docs/adr/0006-fire-recursive-state-and-execution.md``; the state
+        arrays are computed eagerly while the component DataArrays stay lazy.
 
     Raises:
         DataShapeError: If the weather inputs have no time dimension.
@@ -2145,7 +2191,17 @@ def _align_cffwis_inputs(
             if dim in inputs[second].dims and dim != time_dim
         }
     )
-    aligned = xr.align(*inputs, join="inner")
+    try:
+        aligned = xr.align(*inputs, join="inner")
+    except xr.AlignmentError as exc:
+        raise CoordinateValidationError(
+            message=(
+                "Cannot align the CFFWIS weather inputs: their dimension sizes or coordinate labels "
+                f"conflict ({exc}). Give the inputs matching spatial shapes and a shared time axis."
+            ),
+            coordinate_name=time_dim,
+            reason="alignment_conflict",
+        ) from exc
     for dim in shared_spatial_dims:
         original_sizes = {name: data.sizes[dim] for name, data in zip(names, inputs, strict=True) if dim in data.sizes}
         aligned_sizes = {name: data.sizes[dim] for name, data in zip(names, aligned, strict=True) if dim in data.sizes}
@@ -2188,6 +2244,30 @@ def _align_cffwis_inputs(
             stacklevel=3,
         )
     return aligned[0], aligned[1], aligned[2], aligned[3]
+
+
+_LATITUDE_DEGREE_UNITS = frozenset({"degrees_north", "degree_north", "degrees", "degree", "deg"})
+
+
+def _validate_latitude_units(latitude: xr.DataArray) -> None:
+    """Reject a latitude whose CF ``units`` attribute is not degrees north.
+
+    A radians-valued coordinate consumed as degrees silently moves every cell
+    into the wrong day-length band, so an unrecognized attribute fails the
+    call rather than being ignored.
+    """
+    raw_units = latitude.attrs.get("units")
+    if raw_units is None:
+        return
+    normalized = raw_units.strip().lower() if isinstance(raw_units, str) else None
+    if normalized in _LATITUDE_DEGREE_UNITS or normalized == "":
+        return
+    raise InvalidArgumentError(
+        f"Unsupported latitude units attribute: {raw_units!r}.",
+        argument_name="latitude_degrees_north.attrs['units']",
+        argument_value=repr(raw_units),
+        valid_values="degrees_north, degrees, or no units attribute",
+    )
 
 
 def _resolve_cffwis_latitude(
@@ -2252,6 +2332,50 @@ def _resolve_cffwis_latitude(
             argument_value=f"dims {tuple(str(dim) for dim in latitude.dims)}",
             valid_values="A scalar or a spatial field with no time dimension",
         )
+    unsupported_dims = [str(dim) for dim in latitude.dims if str(dim) not in spatial_dims]
+    if unsupported_dims:
+        raise InvalidArgumentError(
+            "latitude_degrees_north carries dimensions the weather inputs do not have, so it would add "
+            "an unsupported axis to the result. A latitude must be a scalar or a spatial field on the "
+            "weather grid.",
+            argument_name="latitude_degrees_north",
+            argument_value=f"dims {tuple(str(dim) for dim in latitude.dims)}",
+            valid_values=f"A scalar, or a field on the weather spatial dims {spatial_dims}",
+        )
+    mismatched_sizes = {
+        str(dim): (latitude.sizes[dim], spatial_shape[spatial_dims.index(str(dim))])
+        for dim in latitude.dims
+        if latitude.sizes[dim] != spatial_shape[spatial_dims.index(str(dim))]
+    }
+    if mismatched_sizes:
+        raise InvalidArgumentError(
+            "latitude_degrees_north does not match the weather inputs' spatial extents: "
+            + ", ".join(
+                f"'{dim}' is {latitude_size} on the latitude and {weather_size} on the weather"
+                for dim, (latitude_size, weather_size) in mismatched_sizes.items()
+            )
+            + ".",
+            argument_name="latitude_degrees_north",
+            argument_value=f"sizes {dict(latitude.sizes)}",
+            valid_values=f"A scalar, or a field with the weather spatial shape {spatial_shape}",
+        )
+    _validate_latitude_units(latitude)
+    for dim in latitude.dims:
+        dim_name = str(dim)
+        if dim_name not in latitude.indexes:
+            continue
+        for data in weather_inputs:
+            if dim_name in data.indexes:
+                if not latitude.indexes[dim_name].equals(data.indexes[dim_name]):
+                    raise CoordinateValidationError(
+                        message=(
+                            f"latitude_degrees_north's '{dim_name}' coordinate labels do not match the "
+                            "weather inputs'. Reindex the latitude to the weather grid's labels before calling."
+                        ),
+                        coordinate_name=dim_name,
+                        reason="latitude_coordinates_not_aligned",
+                    )
+                break
     if latitude.chunks is None:
         # eager validation: a bad latitude must fail this call, not a later
         # lazy evaluation (the NumPy core revalidates per block)
@@ -2294,6 +2418,48 @@ def _resolve_cffwis_month(
                 argument_value=f"dims {tuple(str(dim) for dim in month.dims)}",
                 valid_values=f"A scalar, a 1-D time series, or a DataArray on '{time_dim}'",
             )
+        if time_dim in month.coords:
+            if time_dim not in temperature.coords:
+                raise InvalidArgumentError(
+                    f"month carries a '{time_dim}' coordinate but the weather inputs do not; drop the "
+                    "coordinate or give the weather inputs matching time coordinates.",
+                    argument_name="month",
+                    argument_value="a time coordinate the weather inputs do not carry",
+                    valid_values="Months without a time coordinate, or weather inputs carrying the same one",
+                )
+            # a labelled month series keeps its dates: relabel it onto the
+            # aligned weather axis so a reordered series cannot be paired
+            # positionally
+            try:
+                # mypy loses the isinstance narrowing across xarray's Self-returning reindex
+                month = cast(xr.DataArray, month.reindex({time_dim: temperature.coords[time_dim]}))
+            except (KeyError, TypeError, ValueError) as exc:
+                raise InvalidArgumentError(
+                    f"month's '{time_dim}' coordinate cannot be matched to the weather inputs' "
+                    "coordinate. Align the two, or pass month as a plain array to pair it positionally.",
+                    argument_name="month",
+                    argument_value="unmatched time coordinate",
+                    valid_values=f"Months carrying the weather '{time_dim}' coordinates, or a plain array",
+                ) from exc
+            if bool(month.isnull().any()):
+                raise InvalidArgumentError(
+                    f"month has no value at every aligned weather timestep along '{time_dim}'; its "
+                    "time coordinate must cover the weather inputs' aligned timesteps.",
+                    argument_name="month",
+                    argument_value="time coordinate gaps",
+                    valid_values=f"Months covering every aligned '{time_dim}' step",
+                )
+        if month.chunks is not None and time_dim in month.dims:
+            # a lazily-backed month stays lazy: its size is checked from
+            # metadata and the core validates the values against each block
+            if month.sizes[time_dim] != time_length:
+                raise InvalidArgumentError(
+                    f"month has {month.sizes[time_dim]} entries but the time dimension has {time_length} steps.",
+                    argument_name="month",
+                    argument_value=f"shape {dict(month.sizes)}",
+                    valid_values=f"A scalar or a 1-D array of {time_length} calendar months",
+                )
+            return month
         values = np.asarray(month)
     else:
         values = np.asarray(month)
@@ -2370,7 +2536,7 @@ def _cffwis_xarray(
     for data in (temperature, humidity, wind, precipitation):
         _validate_dask_chunks(data, time_dim)
 
-    temperature = _convert_temperature_units(temperature, "celsius")
+    temperature = _convert_temperature_units(temperature, "celsius", argument_name="temperature_celsius.attrs['units']")
     precipitation = _convert_precipitation_units(precipitation, "mm")
     # one shared spatial topology: a time-only input must broadcast to the
     # others' grid before apply_ufunc and the final transpose see its dims
@@ -2434,37 +2600,29 @@ def _cffwis_xarray(
     _validate_seed(initial_dmc, None if initial_state is None else initial_state.dmc, DMCState, "dmc", 6.0, None)
     _validate_seed(initial_dc, None if initial_state is None else initial_state.dc, DCState, "dc", 15.0, None)
 
-    def _wrap_spatial(value: npt.ArrayLike | xr.DataArray) -> xr.DataArray:
-        """Broadcast a scalar/array/DataArray to a DataArray on ``spatial_dims``.
-
-        Giving Dask/apply_ufunc real dimension names is what lets it slice
-        this secondary input per spatial chunk instead of broadcasting the
-        whole un-chunked array into every chunk's call.
-        """
-        if isinstance(value, xr.DataArray):
-            return value
-        array = np.asarray(value)
-        return xr.DataArray(np.broadcast_to(array, spatial_shape), dims=spatial_dims)
+    def _wrap_spatial_arg(value: npt.ArrayLike | xr.DataArray) -> xr.DataArray:
+        """Bind this adapter's spatial shape to the shared static-operand wrapper."""
+        return _wrap_spatial(value, spatial_shape, spatial_dims)
 
     optional_kinds: list[str] = []
     optional_args: list[xr.DataArray] = []
     if initial_state is not None:
         optional_kinds = ["ffmc_value", "ffmc_gap", "dmc_value", "dmc_gap", "dc_value", "dc_gap"]
         optional_args = [
-            _wrap_spatial(initial_state.ffmc.ffmc),
-            _wrap_spatial(
+            _wrap_spatial_arg(initial_state.ffmc.ffmc),
+            _wrap_spatial_arg(
                 initial_state.ffmc.trailing_gap_days
                 if initial_state.ffmc.trailing_gap_days is not None
                 else np.full(spatial_shape, -1, dtype=np.int64)
             ),
-            _wrap_spatial(initial_state.dmc.dmc),
-            _wrap_spatial(
+            _wrap_spatial_arg(initial_state.dmc.dmc),
+            _wrap_spatial_arg(
                 initial_state.dmc.trailing_gap_days
                 if initial_state.dmc.trailing_gap_days is not None
                 else np.full(spatial_shape, -1, dtype=np.int64)
             ),
-            _wrap_spatial(initial_state.dc.dc),
-            _wrap_spatial(
+            _wrap_spatial_arg(initial_state.dc.dc),
+            _wrap_spatial_arg(
                 initial_state.dc.trailing_gap_days
                 if initial_state.dc.trailing_gap_days is not None
                 else np.full(spatial_shape, -1, dtype=np.int64)
@@ -2474,7 +2632,7 @@ def _cffwis_xarray(
         for kind, seed in (("initial_ffmc", initial_ffmc), ("initial_dmc", initial_dmc), ("initial_dc", initial_dc)):
             if seed is not None:
                 optional_kinds.append(kind)
-                optional_args.append(_wrap_spatial(seed))
+                optional_args.append(_wrap_spatial_arg(seed))
 
     def _cffwis_block(
         temperature_block: np.ndarray,
@@ -2584,7 +2742,9 @@ def _cffwis_xarray(
         if variable.dims != output_dims:
             variable = variable.transpose(*output_dims)
         if time_dim in temperature.coords:
-            trimmed = temperature.coords[time_dim].values[spin_up : spin_up + output_time_length]
+            # slice the coordinate rather than its values so CF coordinate
+            # attributes (calendar, axis, ...) survive spin-up trimming
+            trimmed = temperature.coords[time_dim].isel({time_dim: slice(spin_up, spin_up + output_time_length)})
             variable = variable.assign_coords({time_dim: trimmed})
         variable.attrs = _build_output_attrs(
             temperature_celsius,
@@ -2597,8 +2757,8 @@ def _cffwis_xarray(
     if not return_state:
         return xr.Dataset(variable_results)
 
-    # one compute for the values and all six state fields: they share the
-    # recurrence graph, so separate .values calls would each rerun it
+    # compute the final state (it must be plain NumPy): the component values
+    # stay lazy so return_state=True never materializes seven full grids
     state_results = {
         "cffwis_state_ffmc": result_arrays[len(active_components)],
         "cffwis_state_ffmc_gap": result_arrays[len(active_components) + 1],
@@ -2607,27 +2767,27 @@ def _cffwis_xarray(
         "cffwis_state_dc": result_arrays[len(active_components) + 4],
         "cffwis_state_dc_gap": result_arrays[len(active_components) + 5],
     }
-    loaded = xr.Dataset({**variable_results, **state_results}).load()
+    loaded_state = xr.Dataset(state_results).load()
     return CFFWISResult(
-        ffmc=loaded["ffmc"] if "ffmc" in variable_results else None,
-        dmc=loaded["dmc"] if "dmc" in variable_results else None,
-        dc=loaded["dc"] if "dc" in variable_results else None,
-        isi=loaded["isi"] if "isi" in variable_results else None,
-        bui=loaded["bui"] if "bui" in variable_results else None,
-        fwi=loaded["fwi"] if "fwi" in variable_results else None,
-        dsr=loaded["dsr"] if "dsr" in variable_results else None,
+        ffmc=variable_results.get("ffmc"),
+        dmc=variable_results.get("dmc"),
+        dc=variable_results.get("dc"),
+        isi=variable_results.get("isi"),
+        bui=variable_results.get("bui"),
+        fwi=variable_results.get("fwi"),
+        dsr=variable_results.get("dsr"),
         state=CFFWISState(
             ffmc=FFMCState(
-                ffmc=loaded["cffwis_state_ffmc"].values,
-                trailing_gap_days=_trailing_gap_days_from_block(loaded["cffwis_state_ffmc_gap"].values),
+                ffmc=loaded_state["cffwis_state_ffmc"].values,
+                trailing_gap_days=_trailing_gap_days_from_block(loaded_state["cffwis_state_ffmc_gap"].values),
             ),
             dmc=DMCState(
-                dmc=loaded["cffwis_state_dmc"].values,
-                trailing_gap_days=_trailing_gap_days_from_block(loaded["cffwis_state_dmc_gap"].values),
+                dmc=loaded_state["cffwis_state_dmc"].values,
+                trailing_gap_days=_trailing_gap_days_from_block(loaded_state["cffwis_state_dmc_gap"].values),
             ),
             dc=DCState(
-                dc=loaded["cffwis_state_dc"].values,
-                trailing_gap_days=_trailing_gap_days_from_block(loaded["cffwis_state_dc_gap"].values),
+                dc=loaded_state["cffwis_state_dc"].values,
+                trailing_gap_days=_trailing_gap_days_from_block(loaded_state["cffwis_state_dc_gap"].values),
             ),
         ),
     )
