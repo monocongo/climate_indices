@@ -47,6 +47,18 @@ _DMC_TEMPERATURE_FLOOR_CELSIUS = -1.1
 _DC_PRECIPITATION_THRESHOLD_MM = 2.8
 _DC_TEMPERATURE_FLOOR_CELSIUS = -2.8
 
+# Lawson and Armitage (2008) overwintering. The carry-over fraction weights
+# the final autumn DC and the wetting efficiency weights the overwinter
+# precipitation; both are region-tunable, and the defaults are the NRCan
+# reference values (``cffdrs_r``/``cffdrs_py`` ``overwinter_drought_code``).
+# Eq. 2 of the reference expresses the wetting term as 3.94 mm of starting
+# moisture equivalent per mm of overwinter precipitation, and Eq. 4's
+# start-up code is constrained to the published seed of 15.
+_OVERWINTER_CARRY_OVER_FRACTION = 0.75
+_OVERWINTER_WETTING_EFFICIENCY = 0.75
+_OVERWINTER_WETTING_PER_MM = 3.94
+_OVERWINTER_MINIMUM_START_DC = 15.0
+
 # Effective day length in hours for DMC, by latitude band and calendar month
 # (Van Wagner and Pickett, 1985). The bands and their table rows are, in
 # order: 46 N (latitude > 30), 20 N (10 < latitude <= 30), equator
@@ -232,6 +244,34 @@ def _month_array(month: npt.ArrayLike, weather_shape: tuple[int, ...]) -> npt.ND
     return result
 
 
+def _season_mask(in_season: npt.ArrayLike, weather_shape: tuple[int, ...]) -> npt.NDArray[np.bool_]:
+    """Validate and broadcast the per-day fire-season mask to the weather shape."""
+    mask = np.asarray(in_season)
+    if mask.dtype.kind != "b":
+        raise InvalidArgumentError(
+            "in_season must be a boolean array.",
+            argument_name="in_season",
+            argument_value=f"dtype {mask.dtype}",
+            valid_values="A boolean scalar or array broadcastable to the weather shape",
+        )
+    # Time-first arrays are left-aligned, exactly as the weather inputs are: a
+    # (time,) mask is shared across every spatial cell, while an array that
+    # aligns with the trailing axes is not.
+    mask = (
+        mask if mask.ndim >= len(weather_shape) else mask.reshape(mask.shape + (1,) * (len(weather_shape) - mask.ndim))
+    )
+    try:
+        result: npt.NDArray[np.bool_] = np.broadcast_to(mask, weather_shape)
+    except ValueError as exc:
+        raise InvalidArgumentError(
+            "in_season must broadcast to the time-first weather shape.",
+            argument_name="in_season",
+            argument_value=f"shape {mask.shape}",
+            valid_values=f"A boolean scalar or an array broadcastable to {weather_shape}",
+        ) from exc
+    return result
+
+
 def _latitude_and_validity(
     latitude_degrees_north: npt.ArrayLike,
     spatial_shape: tuple[int, ...],
@@ -351,6 +391,7 @@ def _run_cffwis_recurrence(
     spin_up: int,
     nan_policy: Literal["propagate", "bridge"],
     max_gap_days: int,
+    in_season: npt.NDArray[np.bool_] | None = None,
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.int64] | None]:
     """Run one time-first daily recurrence under the ADR-0007 missing-day policy.
 
@@ -366,6 +407,7 @@ def _run_cffwis_recurrence(
         weather_valid,
         static_valid,
         trailing_gap_days,
+        in_season,
     )
     values, state_gap_days = _run_cffwis_system(
         (component,),
@@ -829,6 +871,7 @@ def drought_code(
     spin_up: int = 0,
     nan_policy: Literal["propagate", "bridge"] = "propagate",
     max_gap_days: int = 0,
+    in_season: npt.ArrayLike | None = None,
 ) -> npt.NDArray[np.float64] | DCResult:
     """Compute the Drought Code (DC).
 
@@ -848,6 +891,17 @@ def drought_code(
     A NaN latitude means the cell has no usable day-length band: its output
     is always NaN and its recurrence never starts. Relative humidity is not
     a DC input.
+
+    ``in_season`` selects the seasonal shutdown contract of
+    ``docs/adr/0008-seasonal-carry-is-an-explicit-mask.md``: an off-season day
+    is neither an observation nor a missing day, so it freezes the recurrence
+    and emits the carried DC instead of a gap NaN. A cell whose recurrence has
+    not started yet has no carried value and stays NaN. Off-season days are
+    therefore indistinguishable from in-season days in the output and never
+    poison or bridge a gap; the caller's mask is the only record of which is
+    which. This is the shutdown half of overwintering, not a start-up rule:
+    pass the value from :func:`overwinter_drought_code` as ``initial_dc`` for
+    the next season, because the winter carry is not a recurrence.
 
     Args:
         temperature_celsius: Daily noon-local-standard-time air temperature,
@@ -870,6 +924,11 @@ def drought_code(
             day; ``"bridge"`` skips gaps up to ``max_gap_days``.
         max_gap_days: Maximum bridged consecutive missing days. Must be zero
             for ``"propagate"`` and positive for ``"bridge"``.
+        in_season: Boolean mask of the days inside the fire season, time-first
+            and broadcastable to the weather shape. A one-dimensional mask is
+            shared across every spatial cell. ``None`` treats every day as
+            in-season, which is the default and leaves the recurrence
+            unchanged.
 
     Returns:
         DC with the time-first shape of the broadcast weather inputs, less
@@ -878,8 +937,8 @@ def drought_code(
 
     Raises:
         DataShapeError: If the weather inputs have no time dimension.
-        InvalidArgumentError: If shapes, configuration, state, latitude, or
-            physical inputs are invalid.
+        InvalidArgumentError: If shapes, configuration, state, latitude,
+            physical inputs, or the season mask are invalid.
     """
     _validate_recurrence_options(nan_policy, max_gap_days, spin_up, "initial_dc", initial_dc, initial_state)
 
@@ -901,6 +960,7 @@ def drought_code(
     static_valid = static_valid.reshape(internal_spatial_shape)
 
     weather_valid = np.isfinite(temperature) & np.isfinite(precipitation)
+    season_mask = None if in_season is None else _season_mask(in_season, weather_valid.shape)
     state_value, trailing_gap_days = _initialize_single_value_state(
         seed=initial_dc,
         seed_name="initial_dc",
@@ -938,6 +998,7 @@ def drought_code(
         spin_up=spin_up,
         nan_policy=nan_policy,
         max_gap_days=max_gap_days,
+        in_season=season_mask,
     )
 
     result = values.reshape(-1, *spatial_shape)
@@ -949,6 +1010,107 @@ def drought_code(
             dc=state_value.reshape(spatial_shape).copy(),
             trailing_gap_days=None if state_gap_days is None else state_gap_days.reshape(spatial_shape),
         ),
+    )
+
+
+def overwinter_drought_code(
+    final_fall_dc: npt.ArrayLike,
+    overwinter_precipitation: npt.ArrayLike,
+    *,
+    carry_over_fraction: float = _OVERWINTER_CARRY_OVER_FRACTION,
+    wetting_efficiency: float = _OVERWINTER_WETTING_EFFICIENCY,
+) -> npt.NDArray[np.float64]:
+    """Compute the spring start-up Drought Code after overwintering.
+
+    The standard overwintering method of Lawson and Armitage (2008): the
+    final autumn DC is converted to its moisture equivalent (their Eq. 3),
+    the overwinter precipitation refills it at the wetting efficiency (Eq. 2),
+    and the spring start-up code is read back from that moisture equivalent
+    (Eq. 4), constrained to the published seed of 15.
+
+    Only the DC is overwintered: the FFMC and DMC are assumed to reach
+    saturation over winter, so any error in their spring start-up quickly
+    disappears, while the DC's long response time means a wrong start-up
+    affects a large part of the season. Overwinter precipitation of roughly
+    200 mm or more usually recharges the layer fully, and the result is then
+    the seed 15.
+
+    The carry-over fraction and wetting efficiency are region-tunable, and the
+    defaults are the NRCan reference values for a fully assessed station;
+    Lawson and Armitage (2008) tabulate higher fractions where the final
+    autumn DC is known to be representative. Setting both to zero leaves the
+    start-up moisture equivalent at zero, so the code is undefined and the
+    result is NaN.
+
+    This is the start-up half of the seasonal carry recorded in
+    ``docs/adr/0008-seasonal-carry-is-an-explicit-mask.md``. The caller owns
+    the season boundaries: accumulate the precipitation between the season
+    shutdown and the next start-up, pass the final autumn DC from
+    :func:`drought_code`, and pass the result back as ``initial_dc`` for the
+    next season's :func:`drought_code` call.
+
+    Args:
+        final_fall_dc: DC on the last day of the previous fire season.
+        overwinter_precipitation: Total precipitation between that day and
+            the next season's start-up day, mm.
+        carry_over_fraction: Weight of the final autumn DC's moisture
+            equivalent in the start-up moisture equivalent, in [0, 1].
+        wetting_efficiency: Fraction of the overwinter precipitation that
+            refills the layer, in [0, 1].
+
+    Returns:
+        Spring start-up DC, the broadcast shape of the inputs. NaN where
+        either input is NaN or negative, or where the start-up moisture
+        equivalent is zero.
+
+    Raises:
+        InvalidArgumentError: If the shapes do not broadcast, or either
+            tunable fraction is outside [0, 1].
+    """
+    for name, fraction in (
+        ("carry_over_fraction", carry_over_fraction),
+        ("wetting_efficiency", wetting_efficiency),
+    ):
+        if (
+            isinstance(fraction, bool)
+            or not isinstance(fraction, (int, float, np.integer, np.floating))
+            or not np.isfinite(fraction)
+            or fraction < 0.0
+            or fraction > 1.0
+        ):
+            raise InvalidArgumentError(
+                f"{name} must be a finite fraction in [0, 1].",
+                argument_name=name,
+                argument_value=str(fraction),
+                valid_values="A finite value in [0, 1]",
+            )
+
+    dc, precipitation = _broadcast_elementwise(
+        "overwinter_drought_code",
+        ("final_fall_dc", "overwinter_precipitation"),
+        final_fall_dc,
+        overwinter_precipitation,
+    )
+    invalid = ~np.isfinite(dc) | (dc < 0.0) | ~np.isfinite(precipitation) | (precipitation < 0.0)
+
+    def evaluate() -> npt.NDArray[np.float64]:
+        # Eq. 3: final autumn moisture equivalent, then Eq. 2: overwinter
+        # refill, then Eq. 4: the start-up code it implies
+        final_moisture = 800.0 * np.exp(-dc / 400.0)
+        start_moisture = (
+            float(carry_over_fraction) * final_moisture
+            + float(wetting_efficiency) * _OVERWINTER_WETTING_PER_MM * precipitation
+        )
+        with np.errstate(divide="ignore"):
+            start = 400.0 * np.log(800.0 / start_moisture)
+        return np.maximum(start, _OVERWINTER_MINIMUM_START_DC)
+
+    return _elementwise_result(
+        "overwinter_drought_code",
+        (dc, precipitation),
+        evaluate,
+        invalid=invalid,
+        invalid_description="NaN or negative overwintering inputs",
     )
 
 
@@ -1287,6 +1449,9 @@ class _CodeRecurrence:
     weather_valid: npt.NDArray[np.bool_]
     static_valid: npt.NDArray[np.bool_]
     trailing_gap_days: npt.NDArray[np.int64]
+    # optional per-day fire-season mask: off-season days freeze the recurrence
+    # instead of advancing or gap-managing it (ADR-0008)
+    in_season: npt.NDArray[np.bool_] | None = None
     # derived once by the runner so the day loop has a single grouping of
     # per-component state instead of parallel index spaces
     started: npt.NDArray[np.bool_] = field(init=False)
@@ -1352,7 +1517,16 @@ def _run_cffwis_system(
 
         for day in range(n_days):
             for index, component in enumerate(components):
-                if fast_path and component.static_all_valid and component.weather_valid[day].all():
+                # off-season days neither advance the recurrence nor count as
+                # missing, so they emit the carried state instead of a gap NaN
+                season_today = None if component.in_season is None else component.in_season[day]
+                carried = None
+                if (
+                    fast_path
+                    and season_today is None
+                    and component.static_all_valid
+                    and component.weather_valid[day].all()
+                ):
                     # A fully valid day with a usable static input: the gap
                     # policy reduces to "every unpoisoned cell is active, the
                     # trailing count resets, and a started recurrence stays
@@ -1360,7 +1534,6 @@ def _run_cffwis_system(
                     component.trailing_gap_days.fill(0)
                     component.started.fill(True)
                     active = None if not component.poisoned.any() else ~component.poisoned
-                    all_active = active is None
                 else:
                     # A cell whose static input is unusable has no recurrence
                     # to gap-manage: it never starts, so it is not an elapsed
@@ -1374,31 +1547,37 @@ def _run_cffwis_system(
                         component.trailing_gap_days,
                         nan_policy=nan_policy,
                         max_gap_days=max_gap_days,
+                        in_season=season_today,
                     )
-                    if not np.any(active):
-                        continue
-                    all_active = bool(active.all())
-                with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
-                    updated = component.step(day, None if all_active else active)
-                if np.any(~np.isfinite(updated)):
-                    raise InvalidArgumentError(
-                        f"{component.index_type} produced a non-finite value from finite inputs.",
-                        argument_name=component.index_type,
-                        argument_value="non-finite result",
-                        valid_values="Finite inputs whose result stays within float64",
-                    )
-                if all_active:
-                    component.value[:] = updated
-                else:
-                    component.value[active] = updated
+                    if season_today is not None:
+                        carried = ~season_today & component.static_valid & component.started
+                all_active = active is None or bool(active.all())
+                if active is None or np.any(active):
+                    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+                        updated = component.step(day, None if all_active else active)
+                    if np.any(~np.isfinite(updated)):
+                        raise InvalidArgumentError(
+                            f"{component.index_type} produced a non-finite value from finite inputs.",
+                            argument_name=component.index_type,
+                            argument_value="non-finite result",
+                            valid_values="Finite inputs whose result stays within float64",
+                        )
+                    if all_active:
+                        component.value[:] = updated
+                    else:
+                        component.value[active] = updated
                 output = values[index]
                 if day >= spin_up and output is not None:
                     output_day = output[day - spin_up]
-                    if all_active:
-                        output_day[:] = component.value
+                    if carried is None:
+                        if all_active:
+                            output_day[:] = component.value
+                        else:
+                            assert active is not None
+                            output_day[:] = np.where(active, component.value, np.nan)
                     else:
-                        assert active is not None
-                        output_day[:] = np.where(active, component.value, np.nan)
+                        emitted = carried if active is None else (carried | active)
+                        output_day[:] = np.where(emitted, component.value, np.nan)
 
         state_gap_days = tuple(
             component.trailing_gap_days.copy() if np.any(component.started | component.poisoned) else None
