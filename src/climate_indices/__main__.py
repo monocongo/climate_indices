@@ -4,6 +4,7 @@ import argparse
 import logging
 import multiprocessing
 import os
+from collections.abc import Sequence
 from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
@@ -1528,10 +1529,12 @@ def _apply_along_axis_palmers(params: dict[str, Any]) -> None:
             pdsi[i], phdi[i], pmdi[i], zindex[i] = func1d(precip, pet, awc, parameters=args)
 
 
-def main() -> None:
+def main(argv: Sequence[str] | None = None) -> None:
     """
-    This function is used to perform climate indices processing on NetCDF
-    gridded datasets.
+    Perform climate indices processing on NetCDF datasets, which may be
+    gridded, US climate division, or single-location time-series inputs.
+
+    :param argv: command line arguments; defaults to ``sys.argv[1:]`` when omitted.
 
     Example command line arguments for SPI only using monthly precipitation input:
 
@@ -1601,7 +1604,7 @@ def main() -> None:
             default="none",
         )
 
-        arguments = parser.parse_args()
+        arguments = parser.parse_args(argv)
 
         process_climate_indices(arguments=arguments)
 
@@ -1625,6 +1628,12 @@ def process_climate_indices(
     :param arguments: A dictionary or argparse.Namespace containing the arguments
     :return: The results of the climate indices processing
     """
+
+    # start each invocation with fresh shared arrays, so result storage
+    # retained from an earlier invocation in this process (with a possibly
+    # incompatible shape) is never reused
+    global _global_shared_arrays
+    _global_shared_arrays = {}
 
     try:
         # validate the arguments and determine the input type
