@@ -11,6 +11,9 @@ test importorskip("matplotlib").
 
 import ast
 import json
+import linecache
+import traceback
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -29,15 +32,26 @@ NOTEBOOK = REPO_ROOT / "notebooks" / "zarr_dask_spi_spei.ipynb"
 CANONICAL_YEARS = {"data_start_year": 1980, "cal_start_year": 1981, "cal_end_year": 2010}
 
 
-def _code_cells() -> list[str]:
+def _indexed_code_cells() -> list[tuple[int, str]]:
+    """Code-cell sources paired with their position in the notebook file."""
     notebook = json.loads(NOTEBOOK.read_text())
-    return ["".join(cell["source"]) for cell in notebook["cells"] if cell["cell_type"] == "code"]
+    return [
+        (position, "".join(cell["source"]))
+        for position, cell in enumerate(notebook["cells"])
+        if cell["cell_type"] == "code"
+    ]
+
+
+def _code_cells() -> list[str]:
+    return [source for _, source in _indexed_code_cells()]
 
 
 def _executable_cells() -> list[str]:
     # The Dask Client cell is execution mechanics out of scope here (#829) and
     # stays untested; local Dask falls back to the threaded scheduler without
-    # it, so calculation-path coverage is unaffected. The write cell's guarded
+    # it, so calculation-path coverage is unaffected. It runs only via
+    # scripts/smoke_e2e_notebook.sh locally, since pytest is the single CI
+    # owner of notebook execution (#917). The write cell's guarded
     # `client.close()` is skipped whenever no client exists in the namespace.
     # The plot cells are excluded from every test that reuses this list
     # because matplotlib isn't guaranteed present (e.g. the minimum-dependency
@@ -51,8 +65,20 @@ def _cells_excluding_client() -> list[str]:
 
 
 def _exec_cells(namespace: dict, sources: list[str]) -> None:
-    for source in sources:
-        exec(compile(source, str(NOTEBOOK), "exec"), namespace)
+    # Compile each cell under a per-cell pseudo-filename and expose its source
+    # to linecache so a failing cell's traceback names the offending notebook
+    # cell and shows its source. Counter consumption keeps duplicate sources
+    # aligned with successive notebook positions.
+    pending = Counter(sources)
+    for position, source in _indexed_code_cells():
+        if pending[source] < 1:
+            continue
+        pending[source] -= 1
+        filename = f"{NOTEBOOK}:cell[{position}]"
+        linecache.cache[filename] = (len(source), None, source.splitlines(keepends=True), filename)
+        exec(compile(source, filename, "exec"), namespace)
+    if +pending:
+        raise AssertionError(f"notebook cells not found in {NOTEBOOK}: {dict(+pending)}")
 
 
 def _split_at_calculation(sources: list[str]) -> tuple[list[str], list[str]]:
@@ -366,8 +392,10 @@ def test_notebook_rejects_stale_data_start_year(e2e_data):
     setup, calculation = _split_at_calculation(_executable_cells())
     _exec_cells(namespace, setup)
     namespace["pipeline_config"].update({"data_start_year": 1990, "cal_start_year": 1990, "cal_end_year": 1991})
-    with pytest.raises(exceptions.InvalidArgumentError):
+    with pytest.raises(exceptions.InvalidArgumentError) as exc_info:
         _exec_cells(namespace, calculation)
+    # A failing cell must name its notebook position in the traceback (#917).
+    assert ":cell[" in "".join(traceback.format_exception(exc_info.value))
 
 
 def test_notebook_rejects_calibration_outside_data_range(e2e_data):
