@@ -329,6 +329,24 @@ The output files will be `<out_dir>/nclimgrid_lowres_spi_gamma_06.nc`,
 and `<out_dir>/nclimgrid_lowres_spi_pearson_12.nc`. Parallelization will occur utilizing
 all CPUs.
 
+KBDI daily
+""""""""""
+
+``$ process_climate_indices --index kbdi --periodicity daily
+--netcdf_precip /data/cmorph_lowres_daily_conus_prcp.nc --var_name_precip prcp
+--netcdf_temp /data/daily_tmax.nc --var_name_temp tmax
+--output_file_base <out_dir>/kbdi_example``
+
+The above command will compute KBDI (Keetch-Byram Drought Index) from daily
+precipitation and daily maximum temperature datasets. The inputs must cover at
+least 30 years of daily record so that KBDI's mean annual precipitation can be
+derived. Input values are interpreted as metric (mm and degrees Celsius) by
+default; use `--kbdi_units imperial` for inputs in inches and degrees
+Fahrenheit, which also selects output in hundredths of an inch. The output
+file will be `<out_dir>/kbdi_example_kbdi.nc` (`<out_dir>/kbdi_example_kbdi_imperial.nc`
+with `--kbdi_units imperial`). Unlike the other indices, KBDI is not computed
+by the `--index all` selection.
+
 SPEI monthly
 """""""""""""
 

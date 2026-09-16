@@ -1,0 +1,179 @@
+"""Tests for the CLI's KBDI dispatch path in climate_indices.__main__.
+
+KBDI must not route through ``_compute_write_index()``: the shared daily path
+reshapes inputs into 366-day years and coerces precipitation to mm and
+temperature to Celsius, all of which corrupt the KBDI recurrence and its
+``units="imperial"`` mode. The CLI therefore dispatches ``--index kbdi``
+through the fire module's xarray API in an isolated branch.
+"""
+
+import argparse
+
+import numpy as np
+import pytest
+import xarray as xr
+
+from climate_indices import __main__ as cli_main
+from climate_indices import compute
+
+# KBDI derives mean annual precipitation from at least 30 * 365 days of record
+_DAILY_PERIODS = 11000
+
+
+@pytest.fixture
+def kbdi_datasets():
+    time = xr.date_range("1990-01-01", periods=_DAILY_PERIODS, freq="D")
+    rng = np.random.default_rng(42)
+    precip = xr.Dataset(
+        {"precip": ("time", rng.gamma(2.0, 2.0, _DAILY_PERIODS), {"units": "mm"})},
+        coords={"time": time},
+    )
+    temperature = xr.Dataset(
+        {"tmax": ("time", 25.0 + 5.0 * rng.random(_DAILY_PERIODS), {"units": "degC"})},
+        coords={"time": time},
+    )
+    return {"precip.nc": precip, "temp.nc": temperature}
+
+
+def _kbdi_arguments(**overrides):
+    arguments = {
+        "index": "kbdi",
+        "periodicity": compute.Periodicity.daily,
+        "scales": None,
+        "calibration_start_year": None,
+        "calibration_end_year": None,
+        "netcdf_precip": "precip.nc",
+        "var_name_precip": "precip",
+        "netcdf_temp": "temp.nc",
+        "var_name_temp": "tmax",
+        "netcdf_pet": None,
+        "var_name_pet": None,
+        "netcdf_awc": None,
+        "var_name_awc": None,
+        "output_file_base": "output",
+        "multiprocessing": "single",
+        "chunksizes": "none",
+        "kbdi_units": "metric",
+        "kbdi_initial": 0.0,
+    }
+    arguments.update(overrides)
+    return argparse.Namespace(**arguments)
+
+
+def _patch_open_dataset(monkeypatch, datasets):
+    original_open_dataset = xr.open_dataset
+
+    def _open_dataset(path, **kwargs):
+        if path in datasets:
+            return datasets[path]
+        return original_open_dataset(path, **kwargs)
+
+    monkeypatch.setattr(cli_main.xr, "open_dataset", _open_dataset)
+    return original_open_dataset
+
+
+class TestKBDIValidation:
+    @pytest.mark.parametrize(
+        ("overrides", "message"),
+        [
+            (
+                {"periodicity": compute.Periodicity.monthly},
+                "Invalid periodicity argument for KBDI: 'monthly' -- only 'daily' is supported",
+            ),
+            ({"scales": [1, 3]}, "The --scales argument is not applicable to KBDI"),
+            (
+                {"calibration_start_year": 1990},
+                "The --calibration_start_year and --calibration_end_year arguments are not applicable to KBDI",
+            ),
+            (
+                {"calibration_end_year": 2020},
+                "The --calibration_start_year and --calibration_end_year arguments are not applicable to KBDI",
+            ),
+            ({"netcdf_pet": "pet.nc"}, "The --netcdf_pet and --var_name_pet arguments are not applicable to KBDI"),
+            ({"var_name_pet": "pet"}, "The --netcdf_pet and --var_name_pet arguments are not applicable to KBDI"),
+            ({"netcdf_awc": "awc.nc"}, "The --netcdf_awc and --var_name_awc arguments are not applicable to KBDI"),
+            ({"var_name_awc": "awc"}, "The --netcdf_awc and --var_name_awc arguments are not applicable to KBDI"),
+            ({"netcdf_temp": None}, "Missing the required temperature file argument"),
+            ({"var_name_temp": None}, "Missing temperature variable name"),
+        ],
+    )
+    def test_rejects_inapplicable_arguments(self, overrides, message):
+        with pytest.raises(ValueError) as error:
+            cli_main._validate_args(_kbdi_arguments(**overrides))
+
+        assert str(error.value) == message
+
+    def test_rejects_missing_temperature_variable(self, monkeypatch, kbdi_datasets):
+        _patch_open_dataset(monkeypatch, kbdi_datasets)
+
+        with pytest.raises(ValueError) as error:
+            cli_main._validate_args(_kbdi_arguments(var_name_temp="bogus"))
+
+        assert (
+            str(error.value)
+            == "Invalid temperature variable name: 'bogus' does not exist in temperature file 'temp.nc'"
+        )
+
+    def test_rejects_non_matching_times(self, monkeypatch, kbdi_datasets):
+        kbdi_datasets["temp.nc"] = kbdi_datasets["temp.nc"].assign_coords(
+            time=kbdi_datasets["temp.nc"]["time"] + np.timedelta64(1, "D")
+        )
+        _patch_open_dataset(monkeypatch, kbdi_datasets)
+
+        with pytest.raises(ValueError) as error:
+            cli_main._validate_args(_kbdi_arguments())
+
+        assert str(error.value) == "Precipitation and temperature variables contain non-matching times"
+
+    def test_rejects_time_dependent_temperature_dimensions(self, monkeypatch, kbdi_datasets):
+        kbdi_datasets["temp.nc"] = kbdi_datasets["temp.nc"].expand_dims("division", axis=0)
+        _patch_open_dataset(monkeypatch, kbdi_datasets)
+
+        with pytest.raises(ValueError) as error:
+            cli_main._validate_args(_kbdi_arguments())
+
+        assert str(error.value) == (
+            "Invalid dimensions of the temperature variable: ('division', 'time') "
+            "(expected the precipitation variable dimensions: ('time',))"
+        )
+
+
+class TestKBDIProcessing:
+    @pytest.mark.parametrize(
+        ("units", "var_name", "cf_units", "variant"),
+        [
+            ("metric", "kbdi", "mm", "metric"),
+            ("imperial", "kbdi_imperial", "0.01 in", "imperial"),
+        ],
+    )
+    def test_writes_cf_compliant_output(
+        self,
+        monkeypatch,
+        tmp_path,
+        kbdi_datasets,
+        units,
+        var_name,
+        cf_units,
+        variant,
+    ):
+        original_open_dataset = _patch_open_dataset(monkeypatch, kbdi_datasets)
+
+        def _fail_compute_write_index(kwargs):
+            raise AssertionError("KBDI must not route through _compute_write_index()")
+
+        monkeypatch.setattr(cli_main, "_compute_write_index", _fail_compute_write_index)
+
+        output_file_base = str(tmp_path / "out")
+        cli_main.process_climate_indices(
+            _kbdi_arguments(output_file_base=output_file_base, kbdi_units=units),
+        )
+
+        output_file = tmp_path / f"out_{var_name}.nc"
+        assert output_file.exists()
+        with original_open_dataset(output_file) as dataset:
+            assert list(dataset.data_vars) == [var_name]
+            assert dataset[var_name].attrs["long_name"] == "Keetch-Byram Drought Index"
+            assert dataset[var_name].attrs["units"] == cf_units
+            assert dataset[var_name].attrs["climate_indices_variant"] == variant
+            assert dataset[var_name].sizes["time"] == _DAILY_PERIODS
+            assert np.isfinite(dataset[var_name].values).all()

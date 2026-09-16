@@ -19,7 +19,11 @@ re-exported as unqualified package functions: use
 Keep the module flat until it exceeds roughly 1,500 lines or CFFWIS recurrence
 state needs isolated implementation modules. At that point, promote it to a
 `fire` package without changing `from climate_indices import fire` or any
-public function name. No fire CLI is part of this subsystem. `fire.py` passed
+public function name. No fire CLI is part of this subsystem itself: fire
+indices are surfaced through the existing `climate_indices` CLI only where an
+xarray adapter and a CF registry entry exist (KBDI as `--index kbdi`, #802), so
+the CLI is a consumer of `fire.py`, not a component of this subsystem.
+`fire.py` passed
 that line count with the CFFWIS moisture codes (#803); promotion is deferred to
 a dedicated mechanical refactor tracked against the remaining CFFWIS work
 (#804), so the flat module is a deliberate, recorded deferral rather than a

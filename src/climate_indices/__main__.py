@@ -12,7 +12,7 @@ import numpy as np
 import scipy.constants
 import xarray as xr
 
-from climate_indices import compute, indices, palmer, utils
+from climate_indices import compute, fire, indices, palmer, utils
 from climate_indices._cli import _add_common_spi_arguments, _prepare_file
 
 # the number of worker processes we'll use for process pools
@@ -65,6 +65,44 @@ def _validate_args(args: argparse.Namespace) -> InputType:
     expected_dimensions_grid_awc = [("lat", "lon")]
     expected_dimensions_divisions_awc = [("division",)]
 
+    # KBDI is computed for daily inputs only, through the fire module, and does
+    # not use the scale, calibration, PET, or AWC arguments of the other indices
+    if args.index == "kbdi":
+        if args.periodicity is not compute.Periodicity.daily:
+            msg = "Invalid periodicity argument for KBDI: " + f"'{args.periodicity}' -- only 'daily' is supported"
+            _logger.error(msg)
+            raise ValueError(msg)
+
+        if args.scales is not None:
+            msg = "The --scales argument is not applicable to KBDI"
+            _logger.error(msg)
+            raise ValueError(msg)
+
+        if args.calibration_start_year is not None or args.calibration_end_year is not None:
+            msg = "The --calibration_start_year and --calibration_end_year arguments are not applicable to KBDI"
+            _logger.error(msg)
+            raise ValueError(msg)
+
+        if args.netcdf_pet is not None or args.var_name_pet is not None:
+            msg = "The --netcdf_pet and --var_name_pet arguments are not applicable to KBDI"
+            _logger.error(msg)
+            raise ValueError(msg)
+
+        if args.netcdf_awc is not None or args.var_name_awc is not None:
+            msg = "The --netcdf_awc and --var_name_awc arguments are not applicable to KBDI"
+            _logger.error(msg)
+            raise ValueError(msg)
+
+        if args.netcdf_temp is None:
+            msg = "Missing the required temperature file argument"
+            _logger.error(msg)
+            raise ValueError(msg)
+
+        if args.var_name_temp is None:
+            msg = "Missing temperature variable name"
+            _logger.error(msg)
+            raise ValueError(msg)
+
     # all indices except PET require a precipitation file
     if args.index != "pet":
         # make sure a precipitation file was specified
@@ -106,6 +144,8 @@ def _validate_args(args: argparse.Namespace) -> InputType:
                 )
                 _logger.error(msg)
                 raise ValueError(msg)
+
+            dimensions_precip = dimensions
 
             # get the values of the precipitation coordinate variables,
             # for comparison against those of the other data variables
@@ -157,6 +197,57 @@ def _validate_args(args: argparse.Namespace) -> InputType:
                 )
                 _logger.error(msg)
                 raise ValueError(msg)
+
+    # KBDI's maximum temperature input must share the precipitation data's
+    # dimensions, time values, and, for gridded/divisional inputs, coordinates
+    if args.index == "kbdi":
+        with xr.open_dataset(args.netcdf_temp) as dataset_temp:
+            if args.var_name_temp not in dataset_temp.variables:
+                msg = (
+                    f"Invalid temperature variable name: '{args.var_name_temp}'"
+                    + f" does not exist in temperature file '{args.netcdf_temp}'"
+                )
+                _logger.error(msg)
+                raise ValueError(msg)
+
+            dimensions_temp = dataset_temp[args.var_name_temp].dims
+            if dimensions_temp != dimensions_precip:
+                msg = (
+                    f"Invalid dimensions of the temperature variable: {dimensions_temp} "
+                    + f"(expected the precipitation variable dimensions: {dimensions_precip})"
+                )
+                _logger.error(msg)
+                raise ValueError(msg)
+
+            if not np.array_equal(times_precip, dataset_temp["time"].values[:]):
+                msg = "Precipitation and temperature variables contain non-matching times"
+                _logger.error(msg)
+                raise ValueError(msg)
+
+            if input_type == InputType.grid:
+                if not np.allclose(
+                    lats_precip,
+                    dataset_temp["lat"][:],
+                    atol=utils.get_tolerance(lats_precip),
+                ):
+                    msg = "Precipitation and temperature variables contain non-matching latitudes"
+                    _logger.error(msg)
+                    raise ValueError(msg)
+
+                if not np.allclose(
+                    lons_precip,
+                    dataset_temp["lon"][:],
+                    atol=utils.get_tolerance(lons_precip),
+                ):
+                    msg = "Precipitation and temperature variables contain non-matching longitudes"
+                    _logger.error(msg)
+                    raise ValueError(msg)
+
+            elif input_type == InputType.divisions:
+                if not np.array_equal(divisions_precip, dataset_temp["division"][:]):
+                    msg = "Precipitation and temperature variables contain non-matching division IDs"
+                    _logger.error(msg)
+                    raise ValueError(msg)
 
     # SPEI, scaled, Palmers, and all require either a PET file or a temperature file to compute PET
     if args.index in ["spei", "scaled", "palmers", "all"]:
@@ -1440,7 +1531,7 @@ def main() -> None:
         parser.add_argument(
             "--index",
             help="Indices to compute",
-            choices=["spi", "spei", "pnp", "scaled", "pet", "palmers", "all"],
+            choices=["spi", "spei", "pnp", "scaled", "pet", "palmers", "kbdi", "all"],
             required=True,
         )
         _add_common_spi_arguments(parser)
@@ -1464,6 +1555,20 @@ def main() -> None:
         parser.add_argument(
             "--var_name_awc",
             help="Available water capacity variable name used in the AWC NetCDF file",
+        )
+        parser.add_argument(
+            "--kbdi_units",
+            help="Units of the KBDI input and output values",
+            choices=["metric", "imperial"],
+            required=False,
+            default="metric",
+        )
+        parser.add_argument(
+            "--kbdi_initial",
+            help="Initial KBDI value",
+            type=float,
+            required=False,
+            default=0.0,
         )
         parser.add_argument(
             "--chunksizes",
@@ -1509,6 +1614,31 @@ def process_climate_indices(
             _NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count()
         else:  # default ("all_but_one")
             _NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count() - 1
+
+        # compute KBDI if specified -- through the fire module's xarray API,
+        # since _compute_write_index() reshapes daily inputs into 366-day years
+        # and coerces input units, both of which corrupt the KBDI recurrence
+        if arguments.index == "kbdi":
+            netcdf_precip = _prepare_file(arguments.netcdf_precip, arguments.var_name_precip)
+            netcdf_temp = _prepare_file(arguments.netcdf_temp, arguments.var_name_temp)
+
+            with (
+                xr.open_dataset(netcdf_precip) as dataset_precip,
+                xr.open_dataset(netcdf_temp) as dataset_temp,
+            ):
+                kbdi_values = fire.kbdi(
+                    dataset_precip[arguments.var_name_precip],
+                    dataset_temp[arguments.var_name_temp],
+                    units=arguments.kbdi_units,
+                    initial_kbdi=arguments.kbdi_initial,
+                )
+
+                # the xarray route names the result after its precipitation
+                # input; use the CF variable name the `units` argument selected
+                kbdi_values.name = "kbdi_imperial" if arguments.kbdi_units == "imperial" else "kbdi"
+                output_file = f"{arguments.output_file_base}_{kbdi_values.name}.nc"
+                _logger.info("Writing KBDI values to file: %s", output_file)
+                kbdi_values.to_netcdf(output_file)
 
         # compute SPI if specified
         if arguments.index in ["spi", "scaled", "all"]:
