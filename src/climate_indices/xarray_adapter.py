@@ -557,6 +557,9 @@ def _compute_with_daily_calendar_plan(
         adapted_kwargs[name] = calendar_plan.to_all_leap(adapted_kwargs[name])
 
     all_leap_result = func(*adapted_args, **adapted_kwargs)
+    # release the all-leap copies before the Gregorian restoration allocates its own,
+    # so a spatial block does not hold both full-width sets of arrays at once
+    del adapted_args, adapted_kwargs
     return calendar_plan.to_gregorian(all_leap_result)
 
 
@@ -671,7 +674,9 @@ def _validate_latitude_range(
             )
 
 
-def _build_latitude_attr(latitude: float | xr.DataArray) -> str | int | float | bool:
+def _build_latitude_attr(
+    latitude: float | int | np.floating | np.integer | xr.DataArray,
+) -> str | int | float | bool:
     """Serialize latitude for storage as a DataArray attribute.
 
     Args:
@@ -1975,6 +1980,35 @@ def xarray_adapter(
     return decorator
 
 
+def _spatial_kernel_latitude(
+    data: xr.DataArray,
+    latitude: float | int | np.floating | np.integer | xr.DataArray,
+    time_dim: str,
+) -> tuple[bool, float | int | np.floating | np.integer | xr.DataArray]:
+    """Decide whether ``data`` reaches a spatial (per-block) kernel, and with which latitude.
+
+    Returns ``(use_spatial_kernel, latitude_to_pass)``. The block path is skipped, and
+    the latitude returned unchanged, when the input has a single non-core dimension
+    (only one dimension to broadcast over) or when the latitude carries a dimension the
+    input does not (so it cannot be read as a per-cell latitude at all).
+
+    A DataArray latitude is transposed into the block's cell-dimension order, so the
+    kernel reads its axes in that order; apply_ufunc appends a leading cell dimension it
+    does not carry as a length-1 axis, and leaves a length-1 axis to numpy's right-aligned
+    broadcasting, which the kernel matches.
+    """
+    if data.ndim <= 2:
+        return False, latitude
+
+    cell_dims = [dim for dim in data.dims if dim != time_dim]
+    if not isinstance(latitude, xr.DataArray):
+        return True, latitude
+    if not set(latitude.dims) <= set(cell_dims):
+        return False, latitude
+
+    return True, latitude.transpose(*[dim for dim in cell_dims if dim in latitude.dims])
+
+
 def pet_thornthwaite(
     temperature: np.ndarray | xr.DataArray,
     latitude: float | np.floating | xr.DataArray,
@@ -2048,8 +2082,9 @@ def pet_thornthwaite(
 
     Notes:
         - The underlying indices.pet() function expects 1-D temperature arrays and
-          scalar latitude. For gridded inputs, xr.apply_ufunc with vectorize=True
-          automatically loops over non-time dimensions.
+          scalar latitude. For gridded inputs, a (time, *cells) block reaches it with
+          the per-cell latitude array, so a 3-D or higher input costs one call per
+          block rather than one xr.apply_ufunc call per grid cell.
         - Dask-backed DataArrays remain lazy (dask="parallelized")
         - CF Convention metadata and provenance history are automatically applied
           to xarray outputs
@@ -2105,41 +2140,49 @@ def pet_thornthwaite(
             time_coord_first=str(time_coord.values[0]),
         )
 
-    # normalize latitude for xr.apply_ufunc
-    # convert scalar numpy types to python float for compatibility
-    if isinstance(latitude, float | int | np.floating | np.integer):
-        lat_for_ufunc: float | xr.DataArray = float(latitude)
-    else:
-        # assume it's already an xr.DataArray
-        lat_for_ufunc = latitude
+    # normalize latitude for xr.apply_ufunc: a gridded input reaches indices.pet as one
+    # time-major block with the latitude per cell, instead of one call per grid cell; the
+    # latitude is aligned with the temperature's cell axes so the kernel reads them in the
+    # block's order
+    use_spatial_kernel, lat_for_ufunc = _spatial_kernel_latitude(temp_da, latitude, time_dim)
 
-    # wrapper function to handle read-only array views from apply_ufunc
+    # wrapper functions to handle read-only array views from apply_ufunc
     # the underlying eto.eto_thornthwaite modifies the temp array in-place,
     # so we must create a writable copy
-    def _pet_with_copy(temps: np.ndarray, lat: float, year: int) -> np.ndarray:
+    def _pet_with_copy(temps: np.ndarray, lat: np.ndarray, year: int) -> np.ndarray:
         """Wrapper for indices.pet that creates a writable copy of temps."""
         return indices.pet(temps.copy(), lat, year)
 
+    def _pet_block(temps: np.ndarray, lat: np.ndarray, year: int) -> np.ndarray:
+        """Wrapper for indices.pet that reads a (time, *cells) block with per-cell latitudes."""
+        pet = indices.pet(np.moveaxis(temps, -1, 0).copy(), lat, year, spatial_time_major=True)
+        return np.moveaxis(pet, 0, -1)
+
     # compute using xr.apply_ufunc with spatial broadcasting
-    # input_core_dims: temperature's time dim is "core", latitude and year are scalars per iteration
+    # input_core_dims: temperature's time dim is "core"; latitude and year arrive as
+    #   scalars per iteration on the per-cell path and as cell arrays on the other
     # output_core_dims: preserve time dimension in output
-    # vectorize=True: loop over non-core dims (lat, lon) calling indices.pet per gridpoint
+    # vectorize=True: loop over non-core dims (lat, lon) calling indices.pet per gridpoint,
+    # whereas the spatial kernel path hands the whole (time, *cells) block over at once
     # dask_gufunc_kwargs: allow_rechunk=True permits chunked core dimensions (for dask arrays)
     result = xr.apply_ufunc(
-        _pet_with_copy,
+        _pet_block if use_spatial_kernel else _pet_with_copy,
         temp_da,
         lat_for_ufunc,
         data_start_year,
         input_core_dims=[[time_dim], [], []],
         output_core_dims=[[time_dim]],
-        vectorize=True,
+        vectorize=not use_spatial_kernel,
         dask="parallelized",
         dask_gufunc_kwargs={"allow_rechunk": True},
         output_dtypes=[float],
     )
 
-    # restore original dimension order (apply_ufunc places output core dims last)
-    result = result.transpose(*temp_da.dims)
+    # restore original dimension order (apply_ufunc places output core dims last);
+    # a latitude broadcast over a dimension the temperature does not have adds that
+    # dimension to the result, so keep the temperature's dims first
+    desired_dims = list(temp_da.dims) + [dim for dim in result.dims if dim not in temp_da.dims]
+    result = result.transpose(*desired_dims)
 
     # apply CF metadata from registry
     cf_attrs = CF_METADATA["pet_thornthwaite"]
@@ -2157,8 +2200,8 @@ def pet_thornthwaite(
 
     # build and append history entry
     # serialize latitude for history
-    if isinstance(lat_for_ufunc, xr.DataArray):
-        lat_desc = f"DataArray(dims={lat_for_ufunc.dims})"
+    if isinstance(latitude, xr.DataArray):
+        lat_desc = f"DataArray(dims={latitude.dims})"
     else:
         lat_desc = str(lat_for_ufunc)
 
@@ -2275,7 +2318,9 @@ def pet_hargreaves(
 
     Notes:
         - The underlying eto.eto_hargreaves() expects 1-D arrays and scalar latitude.
-          For gridded inputs, xr.apply_ufunc with vectorize=True loops over spatial dims.
+          For gridded inputs, a (time, *cells) block reaches it with the per-cell
+          latitude array, so a 3-D or higher input costs one call per block rather
+          than one xr.apply_ufunc call per grid cell.
         - For xarray inputs with misaligned time coordinates, xr.align(join='inner')
           is automatically applied, and InputAlignmentWarning is emitted if timesteps differ.
         - Mean temperature is auto-derived: tmean = (tmin + tmax) / 2
@@ -2367,14 +2412,13 @@ def pet_hargreaves(
     # derive tmean
     tmean_da = (tmin_aligned + tmax_aligned) / 2.0
 
-    # normalize latitude for xr.apply_ufunc
-    if isinstance(latitude, float | int | np.floating | np.integer):
-        lat_for_ufunc: float | xr.DataArray = float(latitude)
-    else:
-        # assume it's already an xr.DataArray
-        lat_for_ufunc = latitude
+    # normalize latitude for xr.apply_ufunc: a gridded input reaches eto.eto_hargreaves as
+    # one time-major block with the latitude per cell, instead of one call per grid cell;
+    # the latitude is aligned with the temperature's cell axes so the kernel reads them in
+    # the block's order
+    use_spatial_kernel, lat_for_ufunc = _spatial_kernel_latitude(tmin_aligned, latitude, time_dim)
 
-    # wrapper function to handle read-only array views from apply_ufunc
+    # wrapper functions to handle read-only array views from apply_ufunc
     # eto.eto_hargreaves may modify arrays in-place, so create writable copies
     def _eto_hargreaves_with_copy(tmin: np.ndarray, tmax: np.ndarray, tmean: np.ndarray, lat: float) -> np.ndarray:
         """Wrapper for eto.eto_hargreaves that creates writable copies."""
@@ -2392,16 +2436,33 @@ def pet_hargreaves(
             set(),
         )
 
+    def _hargreaves_block(tmin: np.ndarray, tmax: np.ndarray, tmean: np.ndarray, lat: np.ndarray) -> np.ndarray:
+        """Compute Hargreaves ETo once per (time, *cells) block, with per-cell latitudes."""
+        block = _compute_with_daily_calendar_plan(
+            eto.eto_hargreaves,
+            (
+                np.moveaxis(tmin, -1, 0),
+                np.moveaxis(tmax, -1, 0),
+                np.moveaxis(tmean, -1, 0),
+                lat,
+            ),
+            {"spatial_time_major": True},
+            calendar_plan,
+            {0, 1, 2},
+            set(),
+        )
+        return np.moveaxis(block, 0, -1)
+
     # compute using xr.apply_ufunc with spatial broadcasting
     result = xr.apply_ufunc(
-        _hargreaves_with_copy,
+        _hargreaves_block if use_spatial_kernel else _hargreaves_with_copy,
         tmin_aligned,
         tmax_aligned,
         tmean_da,
         lat_for_ufunc,
         input_core_dims=[[time_dim], [time_dim], [time_dim], []],
         output_core_dims=[[time_dim]],
-        vectorize=True,
+        vectorize=not use_spatial_kernel,
         dask="parallelized",
         dask_gufunc_kwargs={"allow_rechunk": True},
         output_dtypes=[float],
@@ -2429,8 +2490,8 @@ def pet_hargreaves(
 
     # build and append history entry
     # serialize latitude for history
-    if isinstance(lat_for_ufunc, xr.DataArray):
-        lat_desc = f"DataArray(dims={lat_for_ufunc.dims})"
+    if isinstance(latitude, xr.DataArray):
+        lat_desc = f"DataArray(dims={latitude.dims})"
     else:
         lat_desc = str(lat_for_ufunc)
 
