@@ -1540,7 +1540,7 @@ def _normalize_fitting_params(params: dict[str, Any] | None) -> dict[str, Any] |
 
     normed = {}
     for name, altname in _FIT_ALTNAMES:
-        if name in params:
+        if params.get(name) is not None:
             normed[name] = params[name]
         elif altname in params:
             _logger.warning(
@@ -1549,12 +1549,16 @@ def _normalize_fitting_params(params: dict[str, Any] | None) -> dict[str, Any] |
                 name,
             )
             normed[name] = params[altname]
+        elif name in params:
+            # an explicit None means "fit this parameter from the data", so the key is
+            # kept rather than dropped
+            normed[name] = params[name]
     return normed
 
 
 def fit_and_standardize(
     values: np.ndarray,
-    distribution: Distribution,
+    distribution: "Distribution",
     data_start_year: int,
     calibration_start_year: int,
     calibration_end_year: int,
@@ -1574,26 +1578,32 @@ def fit_and_standardize(
     makes that policy a parameter of the call rather than a copy of this branch in
     each index function; the indices pass ``False`` unless they intend to fall back.
 
-    :param values: 2-D array of scaled values, with each row typically representing a
-        year containing twelve columns representing the respective calendar months, or
-        366 days per column as if all years were leap years; a time-major spatial
-        block with more than two dimensions is also accepted
-    :param distribution: the distribution to fit the values to
-    :param data_start_year: the initial year of the input values array
-    :param calibration_start_year: the initial year to use for the calibration period
-    :param calibration_end_year: the final year to use for the calibration period
-    :param periodicity: the type of time series represented by the input data,
-        valid values are 'monthly' or 'daily'
-    :param fitting_params: optional dictionary of pre-computed distribution fitting
-        parameters, with the keys "alpha" and "beta" when fitting to gamma and
-        "prob_zero", "loc", "scale", and "skew" when fitting to Pearson Type III;
-        deprecated aliases such as "alphas" and "probabilities_of_zero" are accepted
-    :param fallback_to_gamma: fall back to the gamma distribution when a Pearson
-        Type III fit fails or leaves too many missing values
-    :param fallback_context: context included in the fall-back warning log message
-    :return: 2-D array of transformed/fitted values, corresponding in size
-        and shape to the input array
-    :rtype: numpy.ndarray of floats
+    Args:
+        values: 2-D array of scaled values, with each row typically representing a
+            year containing twelve columns representing the respective calendar
+            months, or 366 days per column as if all years were leap years; a
+            time-major spatial block with more than two dimensions is also accepted.
+        distribution: The distribution to fit the values to.
+        data_start_year: The initial year of the input values array.
+        calibration_start_year: The initial year to use for the calibration period.
+        calibration_end_year: The final year to use for the calibration period.
+        periodicity: The type of time series represented by the input data, either
+            monthly (12 time steps per year) or daily (366 time steps per year).
+        fitting_params: Optional dictionary of pre-computed distribution fitting
+            parameters, with the keys "alpha" and "beta" when fitting to gamma and
+            "prob_zero", "loc", "scale", and "skew" when fitting to Pearson Type III.
+            Deprecated aliases such as "alphas" and "probabilities_of_zero" are
+            accepted, and an explicit None means "fit this parameter from the data".
+        fallback_to_gamma: Whether to fall back to the gamma distribution when a
+            Pearson Type III fit fails or leaves too many missing values.
+        fallback_context: Context included in the fall-back warning log message.
+
+    Returns:
+        2-D array of transformed/fitted values, corresponding in size and shape to
+        the input array.
+
+    Raises:
+        ValueError: If the distribution is neither gamma nor Pearson Type III.
     """
     params = _normalize_fitting_params(fitting_params)
 
