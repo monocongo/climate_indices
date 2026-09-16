@@ -868,25 +868,44 @@ def test_supplied_fitting_params_reproduce_the_inline_fit(
         calibration_year_end_monthly,
         periodicity,
     )
-    for distribution, fitting_params in (
-        (indices.Distribution.gamma, gamma_parameters(scaled)),
+    for distribution, fitting_params, fitter in (
+        (indices.Distribution.gamma, gamma_parameters(scaled), "gamma_parameters"),
         (
             indices.Distribution.pearson,
             {"prob_zero": prob_zero, "loc": locs, "scale": scales, "skew": skews},
+            "pearson_parameters",
         ),
     ):
         inline = indices.spi(values, distribution=distribution, **kwargs)
-        supplied = indices.spi(values, distribution=distribution, fitting_params=fitting_params, **kwargs)
+
+        # the supplied parameters are used as given, rather than refitted, so a call
+        # that quietly ignored them cannot make this comparison hold by construction
+        with mock.patch.object(compute, fitter, side_effect=AssertionError(f"unexpected {fitter} call")):
+            supplied = indices.spi(values, distribution=distribution, fitting_params=fitting_params, **kwargs)
+
         np.testing.assert_allclose(supplied, inline, equal_nan=True)
 
-    # a time-major grid carries one period-by-cell parameter array per cell
-    grid = np.stack([values * factor for factor in (1.0, 1.5, 0.5, 2.0)], axis=-1).reshape(len(values), 2, 2)
+    # a time-major grid carries one period-by-cell parameter array per cell, and the
+    # cells carry distinct series so that a parameter array sliced to the wrong cell
+    # shows up as a mismatch rather than cancelling out
+    cells = (values, np.roll(values, 7) * 1.2, np.roll(values, 13) * 0.8, values[::-1])
+    grid = np.stack(cells, axis=-1).reshape(len(values), 2, 2)
     grid_kwargs = dict(kwargs, spatial_time_major=True)
     scaled_grid = compute.prepare_scaled(grid, scale, periodicity, spatial_time_major=True)
     grid_params = gamma_parameters(scaled_grid)
     assert grid_params["alpha"].shape == grid_params["beta"].shape == (12, 2, 2)
+    inline_grid = indices.spi(grid, distribution=indices.Distribution.gamma, **grid_kwargs)
     np.testing.assert_allclose(
         indices.spi(grid, distribution=indices.Distribution.gamma, fitting_params=grid_params, **grid_kwargs),
-        indices.spi(grid, distribution=indices.Distribution.gamma, **grid_kwargs),
+        inline_grid,
+        equal_nan=True,
+    )
+
+    # the comparison above is only meaningful if a misaligned parameter array changes
+    # the result, which requires the grid's cells to have distinct fits
+    misaligned = {key: value[:, :, ::-1].copy() for key, value in grid_params.items()}
+    assert not np.allclose(
+        indices.spi(grid, distribution=indices.Distribution.gamma, fitting_params=misaligned, **grid_kwargs),
+        inline_grid,
         equal_nan=True,
     )

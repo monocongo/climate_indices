@@ -17,9 +17,8 @@ Use ``climate_indices --index spi`` instead, with two caveats:
   rather than migrated to ``climate_indices`` (#957). Fitting parameters remain
   available at the library level: fit the scaled values once with
   ``compute.gamma_parameters()`` or ``compute.pearson_parameters()``, then pass
-  the result as the ``fitting_params`` argument of ``indices.spi()`` (or
-  ``indices.spei()``). The SPI section of the documentation index shows the
-  gridded workflow.
+  the result as the ``fitting_params`` argument of ``indices.spi()``. The SPI
+  section of the documentation index shows the gridded workflow.
 - For multi-scale runs, ``climate_indices --index spi`` reopens and stages the
   precipitation input once per scale, while the ``spi`` script stages it once
   for all scales. Large multi-scale batches may therefore need more time and

@@ -456,13 +456,21 @@ in a NetCDF file, are retired along with the script in 3.0.0 -- see
    )
 
 Perform the fitting over the calibration period only, and keep the parameters for
-as long as that climatology is the one to standardize against. Pearson Type III
-parameters are computed per series with ``compute.pearson_parameters()``, so a grid
-needs one call per cell, and are supplied as ``prob_zero``, ``loc``, ``scale``, and
-``skew``. The parameters of a single series are period-only arrays, shape (12,) for
-monthly or (366,) for daily input; those of a time-major grid carry the cell
-dimensions after the period axis, shape (12, lat, lon) for monthly gridded input, as
-in the example above.
+as long as that climatology is the one to standardize against -- for example with
+``np.savez("nclimgrid_fitting.npz", alpha=alphas, beta=betas)`` and ``np.load()`` in
+later runs. The parameters are then used exactly as supplied: the calibration years
+still passed to ``indices.spi()`` no longer take part in any fit, so they have to
+match the period the parameters were fitted over.
+
+Pearson Type III parameters are computed per series from the scaled values with
+``compute.pearson_parameters()`` and supplied as ``prob_zero``, ``loc``, ``scale``,
+and ``skew``. The parameters of a single series are period-only arrays, shape (12,)
+for monthly or (366,) for daily input. For the gamma fit, the parameters of a
+time-major grid carry the cell dimensions after the period axis, shape
+(12, lat, lon) for monthly gridded input, as in the example above; a grid has to be
+time-major with three or more dimensions, since two-dimensional input is still read
+as the legacy (years, periods) layout of one series. Note that the command line reads
+gridded input in the opposite dimension order, (lat, lon, time).
 
 
 Tutorials
