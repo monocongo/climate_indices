@@ -32,6 +32,7 @@ import time
 import warnings
 from collections.abc import Callable
 
+import numpy as np
 import xarray as xr
 from profile_gridded_spi import (
     CALIBRATION_PERIOD,
@@ -95,7 +96,7 @@ _RUNNERS: dict[str, _Runner] = {"spi": _run_spi, "spei": run_spei}
 
 
 def _chunk_for_workers(array: xr.DataArray, workers: int) -> xr.DataArray:
-    """Chunk the spatial dimensions into at least ``workers`` blocks.
+    """Chunk the spatial dimensions so every worker gets a block.
 
     The time dimension stays a single chunk, as ADR-0003 requires.
     """
@@ -112,16 +113,24 @@ def _chunk_for_workers(array: xr.DataArray, workers: int) -> xr.DataArray:
 def _measure(runner: _Runner, precip: xr.DataArray, pet: xr.DataArray, workers: int, repeat: int) -> float:
     """Return the fastest of ``repeat`` runs on ``workers`` Dask processors.
 
-    One extra warm-up run absorbs process-pool start-up and first-call imports.
+    One extra warm-up run keeps parent-side first-call imports out of the timed
+    samples. Every ``compute()`` call creates a fresh process pool, so pool
+    start-up stays inside every measurement, as it does for any caller of the
+    ``processes`` scheduler.
     """
     inputs = _chunk_for_workers(precip, workers), _chunk_for_workers(pet, workers)
     timings = []
     for _ in range(repeat + 1):
         start = time.perf_counter()
         # chunksize=1: the default batches up to six ready tasks per submission, which
-        # would run the whole reference grid on one worker and hide any scaling
-        runner(*inputs).compute(scheduler="processes", num_workers=workers, chunksize=1)
+        # runs a whole six-block batch sequentially on one worker
+        result = runner(*inputs).compute(scheduler="processes", num_workers=workers, chunksize=1)
         timings.append(time.perf_counter() - start)
+    values = result.values
+    # SPI and SPEI pad the first scale-1 time steps with NaN; anything else non-finite
+    # means the fit degenerated and the timing above measures nothing useful
+    if not np.isfinite(values[SCALE - 1 :]).all():
+        raise RuntimeError(f"non-finite output beyond the leading {SCALE - 1} padded time steps")
     return min(timings[1:])
 
 
@@ -208,7 +217,9 @@ def main() -> None:
                 baseline = seconds
             speedup = baseline / seconds
             blocks = _spatial_blocks(precip, worker_count)
-            print(f"{worker_count:>8} {blocks:>7} {seconds:>9.3f} {speedup:>7.2f}x {speedup / worker_count:>10.0%}")
+            # relative to the baseline's worker count, which need not be one
+            efficiency = speedup * workers[0] / worker_count
+            print(f"{worker_count:>8} {blocks:>7} {seconds:>9.3f} {speedup:>7.2f}x {efficiency:>10.0%}")
 
 
 if __name__ == "__main__":
