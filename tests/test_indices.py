@@ -288,19 +288,21 @@ def test_pnp_3d_input_raises():
         )
 
 
-def test_spi_3d_input_raises():
-    """An input array with more than two dimensions raises ValueError.
+def test_spi_scalar_input_raises():
+    """An input array with no time axis raises ValueError.
+
+    3-D and higher input is a supported spatial layout as of #923 (see
+    tests/test_spatial_kernel.py), so a scalar array is the remaining shape the
+    preparation seam cannot read.
 
     Unlike eddi()/percentage_of_normal(), spi()'s dimension errors are pinned to
     plain ValueError by tests/test_backward_compat.py::TestErrorHierarchyDocumented,
     so this stays on the shared preparation seam's ValueError rather than switching
     to DataShapeError.
     """
-    values = np.zeros((2, 3, 4))
-
     with pytest.raises(ValueError, match="Invalid shape of input array"):
         indices.spi(
-            values,
+            np.array(0.0),
             1,
             indices.Distribution.gamma,
             1900,
@@ -429,11 +431,13 @@ def test_spi(
             compute.Periodicity.monthly,
         )
 
-    # input array argument that's neither 1-D nor 2-D should raise a ValueError
+    # input array arguments that cannot be read as a time series or as a time-major
+    # spatial array should raise a ValueError; 3-D input is a supported spatial layout
+    # as of #923, so a scalar array is the remaining unsupported shape
     np.testing.assert_raises(
         ValueError,
         indices.spi,
-        np.array(np.zeros((4, 4, 8))),
+        np.array(0.0),
         6,
         indices.Distribution.gamma,
         data_year_start_monthly,

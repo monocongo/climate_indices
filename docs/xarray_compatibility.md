@@ -19,6 +19,7 @@ may change in a future minor release.
 | Coordinate preservation | Yes | Adapter tests verify time and spatial coordinates are preserved. |
 | CF-style metadata | Yes | `CF_METADATA` registry and adapter tests verify `long_name`, `units`, `references`, version, and history attributes. |
 | Dask-backed arrays | Yes, constrained | The time dimension must be a single chunk. Adapter tests verify detection and validation. |
+| Spatial (gridded) kernels | Yes, for SPI and SPEI | `spi`/`spei` receive a `(time, *cells)` block and fit every cell in one pass, so a gridded gamma run costs one kernel call per Dask block instead of one call per cell. Inputs with a single non-core dimension keep the per-cell path, as do EDDI and percentage-of-normal ([#942](https://github.com/monocongo/climate_indices/issues/942)), PET ([#941](https://github.com/monocongo/climate_indices/issues/941)), and the Pearson Type III fit ([#940](https://github.com/monocongo/climate_indices/issues/940)). See `tests/test_spatial_kernel.py`. |
 | Calendar semantics | Yes, constrained | Standard/gregorian/proleptic_gregorian `datetime64` only; monthly input must begin in January and daily input on January 1. Daily values are converted to the 366-day calendar (February 29 synthesized from February 28 and March 1) and restored afterward. A partial final year is supported; `cftime` calendars are rejected. See [ADR-0004](adr/0004-xarray-calendar-semantics.md). |
 | Automatic temporal inference | Yes | Monthly and daily time-coordinate inference is covered by adapter tests. |
 | Multi-input alignment | Yes | SPEI aligns precipitation and PET with an inner join and emits a warning when timesteps are dropped. |
@@ -65,7 +66,9 @@ applies per cell along the time axis.
 - Use xarray APIs for labeled, gridded workflows where coordinate preservation
   and metadata are more valuable than strict interface stability.
 - Keep Dask chunks spatial when possible and leave `time` as one chunk before
-  calling index functions.
+  calling index functions. Spatial chunks set the parallelism granularity: SPI and
+  SPEI fit a whole `(time, *cells)` block per call, and the gridded path requires
+  the full `time` axis in that block.
 - The canonical lazy xarray/Dask SPI/SPEI workflow is the teaching notebook
   `notebooks/zarr_dask_spi_spei.ipynb`: the public typed API on Dask-backed DataArrays
   (`xr.apply_ufunc(..., dask="parallelized")`), one full time chunk with spatial

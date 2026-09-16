@@ -190,8 +190,8 @@ class TestSPIErrorContextLogging:
 
     def test_invalid_shape_emits_calculation_failed(self, log_capture):
         """Invalid array shape emits calculation_failed."""
-        # create 3-D array (invalid)
-        invalid_array = np.random.rand(10, 12, 5)
+        # a scalar array has no time axis (3-D input is a supported spatial layout)
+        invalid_array = np.array(0.0)
 
         with pytest.raises(ValueError, match="Invalid shape"):
             indices.spi(

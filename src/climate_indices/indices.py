@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import functools
 import time
+from collections.abc import Callable
 from enum import Enum
 from typing import Any, cast
 
@@ -179,6 +181,31 @@ def _raise_if_unsupported_shape(values: np.ndarray) -> None:
             expected_shape="(N,) or (years, periods)",
             actual_shape=values.shape,
         )
+
+
+def _apply_per_cell(
+    func: Callable[..., np.ndarray],
+    *cell_arrays: np.ndarray,
+) -> np.ndarray:
+    """Run a single-series kernel once per cell of time-major spatial arrays.
+
+    Spatial input reaches the fitting-based indices as (time, *cells). The gamma
+    fitting path evaluates every cell at once, but the Pearson Type III path fits each
+    series separately with L-moments, so these calls still loop over cells here; see
+    #940 for vectorizing that fit across a cell axis.
+
+    Args:
+        func: Kernel taking one 1-D series per array and returning its 1-D result.
+        cell_arrays: Time-major arrays of identical shape, (time, *cells).
+
+    Returns:
+        The kernel results, packed like the input arrays.
+    """
+    result = np.empty(cell_arrays[0].shape, dtype=float)
+    for cell_index in np.ndindex(cell_arrays[0].shape[1:]):
+        position = (slice(None), *cell_index)
+        result[position] = func(*[array[position] for array in cell_arrays])
+    return result
 
 
 def _hastings_inverse_normal(probability: np.ndarray) -> np.ndarray:
@@ -422,7 +449,11 @@ def spi(
 
     :param values: 1-D numpy array of precipitation values, in any units,
         first value assumed to correspond to January of the initial year if
-        the periodicity is monthly, or January 1st of the initial year if daily
+        the periodicity is monthly, or January 1st of the initial year if daily.
+        A time-major spatial array with shape (time, *cells) is also accepted, and
+        then every cell is scaled and fitted in one pass; that layout steps outside
+        the per-cell path for the gamma distribution only, since the Pearson Type III
+        fit still runs once per series.
     :param scale: number of time steps over which the values should be scaled
         before the index is computed
     :param distribution: distribution type to be used for the internal
@@ -441,7 +472,7 @@ def spi(
     :return: SPI values fitted to the gamma distribution at the specified time
         step scale, unitless
     :rtype: 1-D numpy.ndarray of floats of the same length as the input array
-        of precipitation values
+        of precipitation values, or of the same (time, *cells) shape as spatial input
     """
     # validate arguments
     _validate_scale(scale)
@@ -461,9 +492,32 @@ def spi(
     memory_metrics = check_large_array_memory(values)
 
     try:
-        # remember the original length of the array, in order to facilitate
-        # returning an array of the same size
+        # remember the original length and shape of the array, in order to facilitate
+        # returning an array of the same size and layout
         original_length = values.size
+        original_shape = values.shape
+
+        # spatial input arrives time-major, packed as (time, *cells), and is fitted in a
+        # single pass over every cell rather than one call per cell. An all-missing
+        # block is returned as it arrived, and the Pearson Type III fit still runs once
+        # per cell (see #940), so those two cases leave this function's main flow alone.
+        if values.ndim > 2:
+            if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
+                return values
+            if distribution is Distribution.pearson:
+                return _apply_per_cell(
+                    functools.partial(
+                        spi,
+                        scale=scale,
+                        distribution=distribution,
+                        data_start_year=data_start_year,
+                        calibration_year_initial=calibration_year_initial,
+                        calibration_year_final=calibration_year_final,
+                        periodicity=periodicity,
+                        fitting_params=fitting_params,
+                    ),
+                    values,
+                )
 
         # flatten, short-circuit all-missing input, clip negatives to zero,
         # and scale/reshape in the shared preparation seam. Shape errors raise the
@@ -550,11 +604,16 @@ def spi(
                     betas=None,
                 )
 
-        # clip values to within the valid range, reshape the array back to 1-D
-        values = np.clip(values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
+        # clip values to within the valid range
+        values = np.clip(values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX)
 
-        # return the original size array
-        result = values[0:original_length]
+        if values.ndim > 2:
+            # (years, periods, *cells) back to the time-major input layout, dropping any
+            # padded time steps beyond the original number of them
+            result = values.reshape(-1, *values.shape[2:])[: original_shape[0]]
+        else:
+            # reshape the array back to 1-D and return the original size array
+            result = values.flatten()[0:original_length]
         duration_ms = (time.perf_counter() - t0) * 1000.0
         log.info(
             "calculation_completed",
@@ -595,7 +654,11 @@ def spei(
     precipitation time series.
 
     :param precips_mm: an array of monthly total precipitation values,
-        in millimeters, should be of the same size (and shape?) as the input PET array
+        in millimeters, should be of the same size (and shape?) as the input PET array.
+        A time-major spatial array with shape (time, *cells) is also accepted, and
+        then every cell is scaled and fitted in one pass; that layout steps outside
+        the per-cell path for the gamma distribution only, since the Pearson Type III
+        fit still runs once per series.
     :param pet_mm: an array of monthly PET values, in millimeters,
         should be of the same size (and shape?) as the input precipitation array
     :param scale: the number of months over which the values should be scaled
@@ -654,10 +717,29 @@ def spei(
             return precips_mm
 
         # validate that the two input arrays are compatible
-        if precips_mm.size != pet_mm.size:
+        if precips_mm.size != pet_mm.size or (precips_mm.ndim > 2 and precips_mm.shape != pet_mm.shape):
             message = "Incompatible precipitation and PET arrays"
             _logger.error(message)
             raise ValueError(message)
+
+        # spatial input arrives time-major, packed as (time, *cells), and is fitted in a
+        # single pass over every cell rather than one call per cell. The Pearson Type III
+        # fit still runs once per cell (see #940).
+        if precips_mm.ndim > 2 and distribution is Distribution.pearson:
+            return _apply_per_cell(
+                functools.partial(
+                    spei,
+                    scale=scale,
+                    distribution=distribution,
+                    periodicity=periodicity,
+                    data_start_year=data_start_year,
+                    calibration_year_initial=calibration_year_initial,
+                    calibration_year_final=calibration_year_final,
+                    fitting_params=fitting_params,
+                ),
+                precips_mm,
+                pet_mm,
+            )
 
         # clip any negative values to zero. np.any(...) is NaN-safe, unlike np.amin.
         if bool(np.any(precips_mm < 0.0)):
@@ -666,11 +748,15 @@ def spei(
 
         # subtract the PET from precipitation, adding an offset
         # to ensure that all values are positive
-        p_minus_pet = (precips_mm.flatten() - pet_mm.flatten()) + 1000.0
+        if precips_mm.ndim > 2:
+            p_minus_pet = (precips_mm - pet_mm) + 1000.0
+        else:
+            p_minus_pet = (precips_mm.flatten() - pet_mm.flatten()) + 1000.0
 
-        # remember the original length of the input array, in order to facilitate
-        # returning an array of the same size
+        # remember the original length and shape of the input array, in order to
+        # facilitate returning an array of the same size and layout
         original_length = precips_mm.size
+        original_shape = precips_mm.shape
 
         # get a sliding sums array, with each element's value
         # scaled by the specified number of time steps. The scale is applied to the
@@ -680,7 +766,9 @@ def spei(
             scale,
             periodicity,
             clip_negatives=False,
-            reshape=False,
+            # spatial values are reshaped here instead: the fitting transform reads
+            # (years, periods, *cells) once an array has more than two dimensions
+            reshape=p_minus_pet.ndim > 2,
         )
 
         if distribution is Distribution.gamma:
@@ -731,11 +819,16 @@ def spei(
                 skews,
             )
 
-        # clip values to within the valid range, reshape the array back to 1-D
-        values = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
+        # clip values to within the valid range
+        values = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX)
 
-        # return the original size array
-        result = values[0:original_length]
+        if values.ndim > 2:
+            # (years, periods, *cells) back to the time-major input layout, dropping any
+            # padded time steps beyond the original number of them
+            result = values.reshape(-1, *values.shape[2:])[: original_shape[0]]
+        else:
+            # reshape the array back to 1-D and return the original size array
+            result = values.flatten()[0:original_length]
         duration_ms = (time.perf_counter() - t0) * 1000.0
         log.info(
             "calculation_completed",
