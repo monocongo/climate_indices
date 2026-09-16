@@ -683,16 +683,18 @@ _OUT_OF_RANGE_STATE_VALUES = {_run_ffmc: 150.0, _run_dmc: -1.0, _run_dc: -1.0}
 @pytest.mark.parametrize(("runner", "state_type", "value_name"), _STATE_TYPES)
 def test_out_of_range_initial_state_value_raises(runner: object, state_type: type, value_name: str) -> None:
     state = state_type(**{value_name: np.asarray(_OUT_OF_RANGE_STATE_VALUES[runner]), "trailing_gap_days": None})
+    weather = _series(2)
     with pytest.raises(InvalidArgumentError, match=f"initial_state.{value_name}"):
-        runner(_series(2), initial_state=state)
+        runner(weather, initial_state=state)
 
 
 @pytest.mark.parametrize(("runner", "state_type", "value_name"), _STATE_TYPES)
 @pytest.mark.parametrize("trailing", [-2.0, 0.5])
 def test_invalid_trailing_gap_days_raise(runner: object, state_type: type, value_name: str, trailing: float) -> None:
     state = state_type(**{value_name: np.asarray(_SEEDS[runner]), "trailing_gap_days": np.asarray(trailing)})
+    weather = _series(2)
     with pytest.raises(InvalidArgumentError, match="trailing_gap_days"):
-        runner(_series(2), initial_state=state)
+        runner(weather, initial_state=state)
 
 
 # ------------------------------------------------------------------------------
@@ -987,6 +989,7 @@ def test_shared_calendar_months_stay_a_broadcast_view() -> None:
 
 def test_output_allocation_failure_emits_lifecycle_events(monkeypatch: pytest.MonkeyPatch) -> None:
     """A failure to allocate the recurrence output still reports started and failed."""
+    weather = _series(3)
     real_full = np.full
 
     def fail_output_allocation(*args: object, **kwargs: object) -> np.ndarray:
@@ -998,7 +1001,7 @@ def test_output_allocation_failure_emits_lifecycle_events(monkeypatch: pytest.Mo
     monkeypatch.setattr(fire.np, "full", fail_output_allocation)
     with mock.patch.object(fire, "_logger") as mocked_logger:
         with pytest.raises(MemoryError):
-            _run_ffmc(_series(3))
+            _run_ffmc(weather)
     bound = mocked_logger.bind.return_value
     bound.info.assert_called_once_with("calculation_started")
     assert bound.error.call_args.args[0] == "calculation_failed"
@@ -1023,8 +1026,9 @@ def test_invalid_latitude_raises(latitude: float) -> None:
     ],
 )
 def test_out_of_range_seed_raises(runner: object, seed_name: str, seed: float) -> None:
+    weather = _series(3)
     with pytest.raises(InvalidArgumentError, match=seed_name):
-        runner(_series(3), **{seed_name: seed})
+        runner(weather, **{seed_name: seed})
 
 
 @pytest.mark.parametrize(
@@ -1038,9 +1042,10 @@ def test_out_of_range_seed_raises(runner: object, seed_name: str, seed: float) -
 )
 def test_non_numeric_weather_inputs_are_rejected(value: np.ndarray) -> None:
     """Coercing these would yield plausible but meaningless temperatures."""
+    weather = replace(_series(1), temperature=value)
     for runner in (_run_ffmc, _run_dmc, _run_dc):
         with pytest.raises(InputTypeError):
-            runner(replace(_series(1), temperature=value))
+            runner(weather)
 
 
 def test_numpy_integer_configuration_is_accepted() -> None:
