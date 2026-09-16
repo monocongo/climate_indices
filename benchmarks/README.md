@@ -115,14 +115,14 @@ cell: 3306 for the 38 x 87 reference grid, and extra non-core dimensions
 multiply that count. On a Dask-backed input `dask="parallelized"` schedules
 those calls as per-block tasks: chunking the spatial dimensions changes task
 count and wall time, not the per-cell total. The core dimension (`time`) must be
-a single chunk on the generic adapter path (`_validate_dask_chunks` at `:1658`,
-and `apply_ufunc` raises without `allow_rechunk`); the two PET paths pass
+a single chunk on the generic adapter path (`_validate_dask_chunks` at `:1659`
+raises before `apply_ufunc` runs); the two PET paths pass
 `dask_gufunc_kwargs={"allow_rechunk": True}` (`:2086`, `:2355`) so they can
-rechunk a split time dimension. Counts multiply per invocation, one call
-per index, scale, and distribution: a 14-pass SPI run over
-`--scales 1 2 3 6 9 12 24` and both distributions is 46,284 per-cell calls,
-whether it goes through this adapter or through the CLI's own scale and
-distribution loops (`__main__.py:1519-1520`).
+rechunk a split time dimension. Counts multiply per invocation: each adapter
+call covers one index, scale, and distribution, so a 14-pass SPI run over
+`--scales 1 2 3 6 9 12 24` and both distributions is 14 repeated adapter calls
+(46,284 per-cell calls). The CLI reaches the same total through its own scale
+and distribution loops (`__main__.py:1519-1520`).
 
 This path is serial within a process and is the one the #921 profile measured:
 3306 calls into the calendar wrapper at `xarray_adapter.py:507` for a single
