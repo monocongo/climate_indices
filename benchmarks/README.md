@@ -112,9 +112,11 @@ per-cell pass is 3306 calls.
 All four pass `vectorize=True` to `xr.apply_ufunc`, which loops the non-core
 (spatial) dimensions in Python. On a Dask-backed input `dask="parallelized"`
 splits the same 3306 calls across blocks, so the count per full pass is
-unchanged and only wall time improves. Counts multiply with the scale and
-distribution loops of `typed_public_api.py`: SPI over `--scales 1 2 3 6 9 12 24`
-and both distributions is 14 passes, 46,284 per-cell calls.
+unchanged and only wall time improves. Counts multiply per invocation, one call
+per index, scale, and distribution: a 14-pass SPI run over
+`--scales 1 2 3 6 9 12 24` and both distributions is 46,284 per-cell calls,
+whether it goes through this adapter or through the CLI's own scale and
+distribution loops (`__main__.py:1519-1520`).
 
 This path is serial within a process and is the one the #921 profile measured:
 3306 calls into the calendar wrapper at `xarray_adapter.py:507` for a single
@@ -123,48 +125,65 @@ SPI-1/gamma run.
 ### Legacy CLI path (per-cell loop present, parallel across workers)
 
 `__main__.py` and `__spi__.py` build shared-memory arrays shaped
-`(lat, lon, time)`, split them by latitude across a `multiprocessing.Pool`, and
-loop per cell inside each worker. The loops run in parallel across processes but
-are not eliminated.
+`(lat, lon, time)` or `(lon, lat, time)`, split them along axis 0 across a
+`multiprocessing.Pool`, and loop per cell inside each worker. The loops run in
+parallel across processes but are not eliminated, and each worker's per-cell
+call carries the same per-cell overhead the #921 profile measured (per-cell
+`structlog` records and the per-kernel goodness-of-fit check): the Pool divides
+wall clock, it does not reduce total per-cell Python cost.
 
 | site | invocation | loop dimensions | calls |
 |---|---|---|---|
-| `__main__.py:1289` (`_apply_along_axis`) | `_spi`/`_pnp` via `np.apply_along_axis(axis=2)` | `lat x lon` (looped inside numpy) | 3306 per scale x distribution |
+| `__main__.py:1289` (`_apply_along_axis`) | `_spi`/`_pnp` via `np.apply_along_axis(axis=2)` | `lat x lon`, looped by `np.apply_along_axis` in Python | 3306 per scale x distribution |
 | `__main__.py:1343,1345` (`_apply_along_axis_double`) | `_spei`/`_pet` | `lat x lon` | 3306 |
 | `__main__.py:1409,1411` (`_apply_along_axis_palmers`) | `_palmers` -> `palmer.pdsi` | `lat x lon` | 3306, four outputs each |
-| `__spi__.py:1004,1006` (`_apply_to_subarray_spi`) | `indices.spi` transform | `lat x lon` | 3306 per scale x distribution |
-| `__spi__.py:1099,1101` (`_apply_to_subarray_gamma`) | `compute.gamma_parameters` | `lat x lon` | 3306 |
-| `__spi__.py:1177,1179` (`_apply_to_subarray_pearson`) | `compute.pearson_parameters` | `lat x lon` | 3306 |
+| `__spi__.py:1021` (`_apply_to_subarray_spi`, loop at `:1004`) | `indices.spi` transform | `lat x lon` | 3306 per scale x distribution |
+| `__spi__.py:1105` (`_apply_to_subarray_gamma`, loop at `:1099`) | `compute.gamma_parameters` | `lat x lon` | 3306 |
+| `__spi__.py:1192` (`_apply_to_subarray_pearson`, loop at `:1177`) | `compute.pearson_parameters` | `lat x lon` | 3306 |
 
 `__spi__.py` is the legacy CLI whose fate is tracked in #919; its three sites
 vanish if it is retired rather than vectorized. The `__main__.py` sites duplicate
-the adapter path's work on the same kernels, which is why the CLI and the
-canonical path are separate baselines in #929.
+the adapter path's work on the same kernels, so a baseline measured through the
+CLI and a baseline measured through the canonical path are not interchangeable.
 
-### Already vectorized (no per-cell invocation site)
+### Already vectorized (no per-cell index invocation)
 
 - `fire.py:1144` (`_kbdi_xarray`) passes `vectorize=False` and `fire.py:2460`
   (`_hdw_xarray`) omits it: those kernels loop over time (or the level dimension)
   and operate on whole block arrays, so cells are handled by NumPy operations
   rather than a Python call per cell.
-- The core kernels are vectorized over cells by construction: `compute.py`,
-  `indices.py`, `eto.py`, and `pm_eto.py` take a 1-D series and return a 1-D
-  series, and their internal loops are over time steps
-  (`compute.py:797`, `compute.py:869`, `indices.py:352`), not over grid cells.
+- The core kernels are vectorized over cells by construction: given a 1-D series
+  they return a 1-D series, and their internal loops are over time steps rather
+  than over grid cells (`compute.py:797`, `compute.py:869` check goodness of fit
+  per calibration time step; `indices.py:352` ranks EDDI per period).
   `indices.pci` is a single-year scalar with no loop at all.
-- The per-cell `np.apply_along_axis` calendar transforms
-  (`__main__.py:569`, `__main__.py:1015`, `__spi__.py:250`, `__spi__.py:717`,
-  `__spi__.py:768`) call `utils.transform_to_366day` /
-  `utils.transform_to_gregorian`, not index functions; they are vectorized over
-  time and are not part of the #923 conversion.
+
+### Per-cell calendar transforms (not index kernels, cost not accounted for)
+
+The per-cell `np.apply_along_axis` sites (`__main__.py:569`, `__main__.py:1015`,
+`__spi__.py:250`, `__spi__.py:717`, `__spi__.py:768`) call
+`utils.transform_to_366day` / `utils.transform_to_gregorian`, not an index
+function, so they are outside the #923 conversion. They are still per-cell Python
+calls: `np.apply_along_axis` loops the spatial dimensions in Python, and each
+transform loops over years inside that call (`utils.py:396`, `utils.py:515`). The
+daily adapter path runs the same transforms per cell through
+`_compute_with_daily_calendar_plan` (`xarray_adapter.py:511`), inside the wrapper
+counted above. Unmeasured overhead on both paths; no ticket owns it.
 
 ### Structural blockers
 
-`palmer.pdsi` and `palmer.scpdsi` take one 1-D series plus a scalar available
-water capacity, allocate a per-location `data` dict of `(n_years, 12)` arrays, and
-loop over years and months (`palmer.py:231`, `palmer.py:323`, `palmer.py:365`,
-`palmer.py:733`). The Palmer adapters therefore cannot drop their per-cell call
-by changing an `apply_ufunc` flag; they need an n-D kernel.
-`self_calibration.py` percentile sweeps (`self_calibration.py:342`, `:394`,
-`:449`) run inside that same per-cell call. The #923 acceptance criteria name
-SPI, SPEI, and PET, so Palmer is a follow-up rather than part of the conversion.
+`palmer.pdsi` and `palmer.scpdsi` take two 1-D series (precipitation and PET)
+plus a scalar available water capacity, allocate a per-location `data` dict of
+`(n_years, 12)` arrays, and loop over years and months (`palmer.py:231`,
+`palmer.py:323`, `palmer.py:365`, `palmer.py:733`). There is no adapter-layer
+Palmer call, so today the only per-cell Palmer path is the legacy CLI's
+`_apply_along_axis_palmers` (`__main__.py:1409,1411`); converting it needs an n-D
+kernel, not an `apply_ufunc` flag. `scpdsi` additionally runs
+`_palmer_wells.calculate` per location (`palmer.py:1035`, `palmer.py:1047`), a
+per-month backtracking state machine, and duration-factor fits
+(`self_calibration.py:342`, `self_calibration.py:394`, `self_calibration.py:449`)
+inside the same per-cell call; standard `pdsi` does not self-calibrate. #899
+refactors these internals with unchanged output, not into an n-D kernel. The #923
+tasks name SPI, SPEI, and PET (its acceptance criteria name SPI), so Palmer is a
+follow-up rather than part of the conversion, and no open ticket owns the n-D
+kernel.
