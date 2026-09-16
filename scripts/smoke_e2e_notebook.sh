@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Smoke-execute notebooks/zarr_dask_spi_spei.ipynb from a fresh kernel.
 #
+# Local use only: CI owns notebook execution through
+# tests/test_e2e_with_dask.py in the core suite (#917).
+#
 # Prepares the pinned sample inputs (cached under data/e2e/source after the
 # first run, checksum-verified on every use), then executes every cell.
 # Results go to a scratch directory so a local run never rewrites the
