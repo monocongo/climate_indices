@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable, Collection
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal, cast
 
 import numpy as np
@@ -341,83 +341,31 @@ def _run_cffwis_recurrence(
     nan_policy: Literal["propagate", "bridge"],
     max_gap_days: int,
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.int64] | None]:
-    """Run a time-first daily recurrence under the ADR-0007 missing-day policy.
+    """Run one time-first daily recurrence under the ADR-0007 missing-day policy.
 
-    ``step(day, active)`` returns the next code value for every cell when
-    ``active`` is ``None`` and for the selected cells otherwise. Only cells
-    with a valid observation whose recurrence has started and is not poisoned
-    adopt it. A cell whose static input is unusable never starts: its output
-    stays NaN and its state is untouched.
+    Thin wrapper over the shared day loop in :func:`_run_cffwis_system`, so the
+    single-code functions and the combined orchestrator cannot drift apart.
+    The orchestrator's all-valid fast path stays off here, keeping the
+    single-code behaviour and the measured single-pass advantage unchanged.
     """
-    n_days = weather_valid.shape[0]
-
-    log = _logger.bind(
-        index_type=index_type,
-        input_shape=weather_valid.shape,
-        input_elements=weather_valid.size,
+    component = _CodeRecurrence(
+        index_type,
+        state_value,
+        step,
+        weather_valid,
+        static_valid,
+        trailing_gap_days,
     )
-    log.info("calculation_started")
-    t0 = time.perf_counter()
-    try:
-        # the allocation is inside the try so an output-allocation failure
-        # still reports the recurrence lifecycle
-        values = np.full((max(n_days - spin_up, 0), *weather_valid.shape[1:]), np.nan, dtype=np.float64)
-        started = trailing_gap_days >= 0
-        poisoned = np.isnan(state_value)
-        memory_metrics = check_large_array_memory(*memory_arrays, weather_valid, values)
-
-        for day in range(n_days):
-            # A cell whose static input is unusable has no recurrence to
-            # gap-manage: it never starts, so it is not an elapsed missing day.
-            active = _apply_gap_policy(
-                state_value,
-                weather_valid[day],
-                static_valid,
-                started,
-                poisoned,
-                trailing_gap_days,
-                nan_policy=nan_policy,
-                max_gap_days=max_gap_days,
-            )
-
-            all_active = active.all()
-            if np.any(active):
-                with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
-                    updated = step(day, None if all_active else active)
-                if np.any(~np.isfinite(updated)):
-                    raise InvalidArgumentError(
-                        f"{index_type} produced a non-finite value from finite inputs.",
-                        argument_name=index_type,
-                        argument_value="non-finite result",
-                        valid_values="Finite inputs whose result stays within float64",
-                    )
-                if all_active:
-                    state_value[:] = updated
-                else:
-                    state_value[active] = updated
-            if day >= spin_up:
-                if all_active:
-                    values[day - spin_up] = state_value
-                else:
-                    values[day - spin_up] = np.where(active, state_value, np.nan)
-
-        state_gap_days = trailing_gap_days.copy() if np.any(started | poisoned) else None
-        duration_ms = (time.perf_counter() - t0) * 1000.0
-        log.info(
-            "calculation_completed",
-            duration_ms=round(duration_ms, 2),
-            output_shape=values.shape,
-            **(memory_metrics or {}),
-        )
-        return values, state_gap_days
-    except Exception as exc:
-        log.error(
-            "calculation_failed",
-            exc_info=True,
-            error_type=type(exc).__name__,
-            error_message=str(exc),
-        )
-        raise
+    values, state_gap_days = _run_cffwis_system(
+        (component,),
+        memory_arrays=memory_arrays,
+        spin_up=spin_up,
+        nan_policy=nan_policy,
+        max_gap_days=max_gap_days,
+        system_name=index_type,
+        fast_path=False,
+    )
+    return values[0], state_gap_days[0]
 
 
 def _ffmc_next(
@@ -1126,7 +1074,10 @@ def _elementwise_result(
             _logger.warning(f"Found {invalid_count} {invalid_description}; {index_name} is NaN there.")
         with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
             evaluated = evaluate()
-        result = np.where(invalid, np.nan, evaluated).astype(np.float64, copy=False)
+        # a finite, in-range input can still overflow float64 (absurd wind or
+        # FWI); the stateful codes raise there, so the elementwise path masks it
+        # to NaN rather than returning an undocumented infinity
+        result = np.where(invalid | ~np.isfinite(evaluated), np.nan, evaluated).astype(np.float64, copy=False)
         duration_ms = (time.perf_counter() - t0) * 1000.0
         log.info(
             "calculation_completed",
@@ -1336,6 +1287,11 @@ class _CodeRecurrence:
     weather_valid: npt.NDArray[np.bool_]
     static_valid: npt.NDArray[np.bool_]
     trailing_gap_days: npt.NDArray[np.int64]
+    # derived once by the runner so the day loop has a single grouping of
+    # per-component state instead of parallel index spaces
+    started: npt.NDArray[np.bool_] = field(init=False)
+    poisoned: npt.NDArray[np.bool_] = field(init=False)
+    static_all_valid: bool = field(init=False, default=False)
 
 
 def _run_cffwis_system(
@@ -1345,51 +1301,66 @@ def _run_cffwis_system(
     spin_up: int,
     nan_policy: Literal["propagate", "bridge"],
     max_gap_days: int,
+    system_name: str,
+    fast_path: bool,
 ) -> tuple[tuple[npt.NDArray[np.float64], ...], tuple[npt.NDArray[np.int64] | None, ...]]:
-    """Run the three CFFWIS moisture codes through one daily time loop.
+    """Run one or more daily recurrences through one shared time loop.
+
+    ``step(day, active)`` returns the next code value for every cell when
+    ``active`` is ``None`` and for the selected cells otherwise. Only cells
+    with a valid observation whose recurrence has started and is not poisoned
+    adopt it. A cell whose static input is unusable never starts: its output
+    stays NaN and its state is untouched.
 
     Each component carries its own ADR-0007 bookkeeping because a day can be
     missing for one code and valid for another: negative wind only affects
     FFMC, humidity outside [0, 100] affects FFMC and DMC, and a NaN latitude
-    only affects DMC and DC. The codes still share the single pass over the
-    time axis, so no weather input is walked or broadcast three times.
+    only affects DMC and DC. ``fast_path`` enables the all-valid shortcut that
+    the combined orchestrator uses; the single-code wrapper disables it so
+    their behaviour stays identical to the pre-orchestrator engine.
     """
     n_days = components[0].weather_valid.shape[0]
     log = _logger.bind(
-        index_type="cffwis",
+        index_type=system_name,
         input_shape=components[0].weather_valid.shape,
         input_elements=components[0].weather_valid.size,
     )
     log.info("calculation_started")
     t0 = time.perf_counter()
     try:
+        # the allocation is inside the try so an output-allocation failure
+        # still reports the recurrence lifecycle
         values = tuple(
             np.full((max(n_days - spin_up, 0), *component.weather_valid.shape[1:]), np.nan, dtype=np.float64)
             for component in components
         )
-        started = tuple(component.trailing_gap_days >= 0 for component in components)
-        poisoned = tuple(np.isnan(component.value) for component in components)
-        static_all_valid = tuple(bool(component.static_valid.all()) for component in components)
+        for component in components:
+            component.started = component.trailing_gap_days >= 0
+            component.poisoned = np.isnan(component.value)
+            component.static_all_valid = bool(component.static_valid.all())
         memory_metrics = check_large_array_memory(*memory_arrays, *values)
 
         for day in range(n_days):
             for index, component in enumerate(components):
-                if static_all_valid[index] and component.weather_valid[day].all():
+                if fast_path and component.static_all_valid and component.weather_valid[day].all():
                     # A fully valid day with a usable static input: the gap
                     # policy reduces to "every unpoisoned cell is active, the
                     # trailing count resets, and a started recurrence stays
                     # started", with no partial-mask bookkeeping needed.
                     component.trailing_gap_days.fill(0)
-                    started[index].fill(True)
-                    active = None if not poisoned[index].any() else ~poisoned[index]
+                    component.started.fill(True)
+                    active = None if not component.poisoned.any() else ~component.poisoned
                     all_active = active is None
                 else:
+                    # A cell whose static input is unusable has no recurrence
+                    # to gap-manage: it never starts, so it is not an elapsed
+                    # missing day.
                     active = _apply_gap_policy(
                         component.value,
                         component.weather_valid[day],
                         component.static_valid,
-                        started[index],
-                        poisoned[index],
+                        component.started,
+                        component.poisoned,
                         component.trailing_gap_days,
                         nan_policy=nan_policy,
                         max_gap_days=max_gap_days,
@@ -1419,8 +1390,8 @@ def _run_cffwis_system(
                         output[:] = np.where(active, component.value, np.nan)
 
         state_gap_days = tuple(
-            component.trailing_gap_days.copy() if np.any(started[index] | poisoned[index]) else None
-            for index, component in enumerate(components)
+            component.trailing_gap_days.copy() if np.any(component.started | component.poisoned) else None
+            for component in components
         )
         duration_ms = (time.perf_counter() - t0) * 1000.0
         log.info(
@@ -1491,8 +1462,8 @@ def cffwis(
             broadcastable to the trailing spatial shape, degrees north in
             [-90, 90]. NaN marks a cell with no usable day-length band.
         month: Calendar month for each day, scalar or time-first, integer in
-            [1, 12]. Required by the DMC and DC day-length tables; the design
-            doc's signature omits it but the NumPy layer carries no calendar.
+            [1, 12]. Required by the DMC and DC day-length tables: the NumPy
+            layer carries no calendar, so the caller supplies it explicitly.
         initial_ffmc: Seed FFMC, scalar or an array of the trailing spatial
             shape. ``None`` selects the literature seed of 85. Cannot be
             combined with ``initial_state``.
@@ -1581,23 +1552,22 @@ def cffwis(
             valid_values="Finite values that do not overflow the km/h conversion",
         )
 
+    finite_temperature = np.isfinite(temperature)
+    finite_humidity = np.isfinite(humidity)
+    finite_precipitation = np.isfinite(precipitation)
     ffmc_weather_valid = (
-        np.isfinite(temperature)
-        & np.isfinite(humidity)
+        finite_temperature
+        & finite_humidity
         & np.isfinite(wind)
-        & np.isfinite(precipitation)
+        & finite_precipitation
         & (humidity >= 0.0)
         & (humidity <= 100.0)
         & (wind >= 0.0)
     )
     dmc_weather_valid = (
-        np.isfinite(temperature)
-        & np.isfinite(humidity)
-        & np.isfinite(precipitation)
-        & (humidity >= 0.0)
-        & (humidity <= 100.0)
+        finite_temperature & finite_humidity & finite_precipitation & (humidity >= 0.0) & (humidity <= 100.0)
     )
-    dc_weather_valid = np.isfinite(temperature) & np.isfinite(precipitation)
+    dc_weather_valid = finite_temperature & finite_precipitation
 
     def component_state(
         seed: npt.ArrayLike | None,
@@ -1709,6 +1679,8 @@ def cffwis(
         spin_up=spin_up,
         nan_policy=nan_policy,
         max_gap_days=max_gap_days,
+        system_name="cffwis",
+        fast_path=True,
     )
     ffmc_values, dmc_values, dc_values = code_values
     ffmc_gap_days, dmc_gap_days, dc_gap_days = code_gap_days
