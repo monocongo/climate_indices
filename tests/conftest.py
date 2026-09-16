@@ -223,7 +223,7 @@ def rain_mm_366():
     return np.load(os.path.join(os.path.split(__file__)[0], "fixture", "rain_mm_366.npy"))
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def palmer_awcs():
     with open(os.path.join(os.path.split(__file__)[0], "fixture", "palmer_awc.json")) as awcfile:
         return json.load(awcfile)
@@ -234,42 +234,45 @@ def _palmer_division_dirs() -> tuple[str, ...]:
     return tuple(os.path.join(root, name) for name in sorted(os.listdir(root)) if name.isdigit())
 
 
-def _palmer_sweep(entry_point: str) -> dict[str, tuple]:
+def _palmer_sweep(entry_point: str, awcs: dict) -> dict[str, tuple]:
     """Run one Palmer entry point across every fixture climate division.
 
     The session-scoped fixtures below cache the result so the 344-division
     validation sweep runs once per entry point instead of once per consuming
     test module (issue #909). Session scope, rather than module, is what lets
-    the three consuming modules share one sweep; each fixture is lazy, so a run
-    touching only one entry point pays only for that sweep.
+    the three consuming modules share one sweep. Each fixture is lazy, so a run
+    touching only one entry point pays only for that sweep; any run that
+    touches a sweep computes it in full, even when only a subset of divisions
+    is selected. The cache costs ~35 MiB extra peak RSS on the sweep tests,
+    while the full validation suite peak is unchanged (measured in #909).
     """
     from climate_indices import palmer
-
-    with open(os.path.join(os.path.split(__file__)[0], "fixture", "palmer_awc.json")) as awc_file:
-        awcs = json.load(awc_file)
 
     results = {}
     for division_dir in _palmer_division_dirs():
         division = os.path.basename(division_dir)
-        results[division] = getattr(palmer, entry_point)(
-            np.load(os.path.join(division_dir, "precips.npy")),
-            np.load(os.path.join(division_dir, "pet.npy")),
-            awcs[division],
-            _DATA_YEAR_START_MONTHLY,
-            _CALIBRATION_YEAR_START_PALMER,
-            _CALIBRATION_YEAR_END_PALMER,
-        )
+        try:
+            results[division] = getattr(palmer, entry_point)(
+                np.load(os.path.join(division_dir, "precips.npy")),
+                np.load(os.path.join(division_dir, "pet.npy")),
+                awcs[division],
+                _DATA_YEAR_START_MONTHLY,
+                _CALIBRATION_YEAR_START_PALMER,
+                _CALIBRATION_YEAR_END_PALMER,
+            )
+        except Exception as error:
+            raise RuntimeError(f"palmer.{entry_point}() failed for division {division}") from error
     return results
 
 
 @pytest.fixture(scope="session")
-def palmer_pdsi_results() -> dict[str, tuple]:
-    return _palmer_sweep("pdsi")
+def palmer_pdsi_results(palmer_awcs) -> dict[str, tuple]:
+    return _palmer_sweep("pdsi", palmer_awcs)
 
 
 @pytest.fixture(scope="session")
-def palmer_scpdsi_results() -> dict[str, tuple]:
-    return _palmer_sweep("scpdsi")
+def palmer_scpdsi_results(palmer_awcs) -> dict[str, tuple]:
+    return _palmer_sweep("scpdsi", palmer_awcs)
 
 
 # Hargreaves fixtures for daily evapotranspiration calculations
