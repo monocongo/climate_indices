@@ -120,6 +120,9 @@ def get_tolerance(dim: np.ndarray) -> float:
     derived from (smallest) absolute grid size along dimension dim.
     Always greater than zero.
     """
+    if dim.size < 2:
+        # a singleton dimension has no spacing, so np.diff() is empty
+        return float(np.finfo(np.float64).resolution)
     tol = np.abs(np.diff(dim)).min() / 10
     return float(max(tol, np.finfo(tol.dtype).resolution))
 

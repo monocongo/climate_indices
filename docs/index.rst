@@ -133,15 +133,17 @@ The options for the entry point script are described below:
 +========================+=================================================+
 | index                  | Which of the climate indices to compute.        |
 |                        | Valid values are 'spi', 'spei', 'pnp', 'scaled',|
-|                        | 'pet', and 'palmers'. 'scaled' indicates all    |
-|                        | three scaled indices (SPI, SPEI, and PNP) and   |
-|                        | 'palmers' indicates all Palmer indices (PDSI,   |
-|                        | PHDI, PMDI, and Z-Index).                       |
+|                        | 'pet', 'palmers', and 'kbdi'. 'scaled'          |
+|                        | indicates all three scaled indices (SPI, SPEI,  |
+|                        | and PNP) and 'palmers' indicates all Palmer     |
+|                        | indices (PDSI, PHDI, PMDI, and Z-Index). KBDI   |
+|                        | is only available via 'kbdi', not 'all'.        |
 +------------------------+-------------------------------------------------+
 | periodicity            | The periodicity of the input dataset files.     |
 |                        | Valid values are 'monthly' and 'daily'.         |
 |                        |                                                 |
-|                        | **NOTE**: Only SPI and PNP support daily inputs.|
+|                        | **NOTE**: Only SPI, PNP, and KBDI accept daily  |
+|                        | inputs; KBDI requires daily inputs.             |
 +------------------------+-------------------------------------------------+
 | netcdf_precip          | Input NetCDF file containing a                  |
 |                        | precipitation dataset, required for all         |
@@ -153,7 +155,9 @@ The options for the entry point script are described below:
 |                        | the input precipitation NetCDF.                 |
 +------------------------+-------------------------------------------------+
 | netcdf_temp            | Input NetCDF file containing a                  |
-|                        | temperature dataset, required for PET.          |
+|                        | temperature dataset, required for PET. For KBDI |
+|                        | this dataset must contain daily maximum         |
+|                        | temperature.                                    |
 |                        | If specified in conjunction with an index       |
 |                        | specification of SPEI or Palmers then PET       |
 |                        | will be computed and written as a side          |
@@ -189,6 +193,16 @@ The options for the entry point script are described below:
 +------------------------+-------------------------------------------------+
 | awc_var_name           | Name of the available water capacity variable   |
 |                        | within the input AWC NetCDF.                    |
++------------------------+-------------------------------------------------+
+| kbdi_units             | Units of the KBDI input and output values.      |
+|                        | Valid values are 'metric' (millimeters and      |
+|                        | degrees Celsius; default) and 'imperial'        |
+|                        | (inches and degrees Fahrenheit, with output     |
+|                        | in hundredths of an inch). Applicable only      |
+|                        | when **index** is 'kbdi'.                       |
++------------------------+-------------------------------------------------+
+| kbdi_initial           | Initial KBDI value. Default value is 0.0.       |
+|                        | Applicable only when **index** is 'kbdi'.       |
 +------------------------+-------------------------------------------------+
 | output_file_base       | Base file name for all output files.            |
 |                        |                                                 |
@@ -328,6 +342,24 @@ The output files will be `<out_dir>/nclimgrid_lowres_spi_gamma_06.nc`,
 `<out_dir>/nclimgrid_lowres_spi_gamma_12.nc`, `<out_dir>/nclimgrid_lowres_spi_pearson_06.nc`,
 and `<out_dir>/nclimgrid_lowres_spi_pearson_12.nc`. Parallelization will occur utilizing
 all CPUs.
+
+KBDI daily
+""""""""""
+
+``$ process_climate_indices --index kbdi --periodicity daily
+--netcdf_precip /data/cmorph_lowres_daily_conus_prcp.nc --var_name_precip prcp
+--netcdf_temp /data/daily_tmax.nc --var_name_temp tmax
+--output_file_base <out_dir>/kbdi_example``
+
+The above command will compute KBDI (Keetch-Byram Drought Index) from daily
+precipitation and daily maximum temperature datasets. The inputs must cover at
+least 30 years of daily record so that KBDI's mean annual precipitation can be
+derived. Input values are interpreted as metric (mm and degrees Celsius) by
+default; use `--kbdi_units imperial` for inputs in inches and degrees
+Fahrenheit, which also selects output in hundredths of an inch. The output
+file will be `<out_dir>/kbdi_example_kbdi.nc` (`<out_dir>/kbdi_example_kbdi_imperial.nc`
+with `--kbdi_units imperial`). Unlike the other indices, KBDI is not computed
+by the `--index all` selection.
 
 SPEI monthly
 """""""""""""

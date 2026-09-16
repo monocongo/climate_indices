@@ -31,7 +31,10 @@ remaining CFFWIS work (#804), which landed the package
 above without changing `from climate_indices import fire` or any public
 function name. The implementation modules carry a leading underscore so
 `fire.kbdi` and `fire.cffwis` stay bound to the functions rather than the
-modules. No fire CLI is part of this subsystem.
+modules. No fire CLI is part of this subsystem itself: fire indices are
+surfaced through the existing `climate_indices` CLI only where an xarray
+adapter and a CF registry entry exist (KBDI as `--index kbdi`, #802), so the
+CLI consumes the fire package rather than being a component of this subsystem.
 
 This family covers meteorological and climatological indices only. It excludes
 NFDRS components such as ERC, BI, SC, and IC; fuel models; fire behaviour;
