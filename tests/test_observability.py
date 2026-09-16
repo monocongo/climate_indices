@@ -94,6 +94,7 @@ class TestLogLevelResolution:
             ("INVALID", None, logging.INFO),
             (None, "warning", logging.WARNING),
             (None, "", logging.INFO),
+            (None, "NOT_A_LEVEL", logging.INFO),
             ("INFO", "ERROR", logging.INFO),
         ],
     )
