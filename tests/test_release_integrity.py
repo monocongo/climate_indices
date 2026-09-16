@@ -339,7 +339,8 @@ def test_minimum_dependency_job_preserves_resolved_environment() -> None:
 
     assert "uv sync --no-dev --group test --resolution lowest-direct" in minimum_job
     assert "--locked" not in minimum_job
-    assert minimum_job.count("uv run --no-sync --no-build pytest") == 2
+    # Core tests only: validation and repo/meta checks are single-owner jobs.
+    assert minimum_job.count("uv run --no-sync --no-build pytest") == 1
 
 
 @pytest.mark.parametrize(
