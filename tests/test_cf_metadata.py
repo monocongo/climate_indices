@@ -31,6 +31,10 @@ EXPECTED_KEYS = {
     "ffmc",
     "dmc",
     "dc",
+    "isi",
+    "bui",
+    "fwi",
+    "dsr",
 }
 
 REQUIRED_FIELDS = {"long_name", "units", "references"}
@@ -188,7 +192,7 @@ class TestZIndexEntry:
 class TestFireEntries:
     """Validate fire-weather registry entries (#798)."""
 
-    FIRE_KEYS = ("kbdi", "kbdi_imperial", "ffwi", "hdw", "ffmc", "dmc", "dc")
+    FIRE_KEYS = ("kbdi", "kbdi_imperial", "ffwi", "hdw", "ffmc", "dmc", "dc", "isi", "bui", "fwi", "dsr")
 
     def test_kbdi_long_name(self) -> None:
         assert CF_METADATA["kbdi"]["long_name"] == "Keetch-Byram Drought Index"
@@ -249,11 +253,22 @@ class TestFireEntries:
         assert CF_METADATA["dc"]["long_name"] == "Drought Code"
         assert CF_METADATA["dc"]["units"] == "dimensionless"
 
-    @pytest.mark.parametrize("index_name", ["ffmc", "dmc", "dc"])
+    def test_behavior_index_long_names_and_units(self) -> None:
+        expected = {
+            "isi": "Initial Spread Index",
+            "bui": "Buildup Index",
+            "fwi": "Canadian Fire Weather Index",
+            "dsr": "Daily Severity Rating",
+        }
+        for index_name, long_name in expected.items():
+            assert CF_METADATA[index_name]["long_name"] == long_name
+            assert CF_METADATA[index_name]["units"] == "dimensionless"
+
+    @pytest.mark.parametrize("index_name", ["ffmc", "dmc", "dc", "isi", "bui", "fwi", "dsr"])
     def test_cffwis_entries_are_the_classic_variant(self, index_name: str) -> None:
         assert CF_METADATA[index_name]["climate_indices_variant"] == "cffwis_classic"
 
-    @pytest.mark.parametrize("index_name", ["ffmc", "dmc", "dc"])
+    @pytest.mark.parametrize("index_name", ["ffmc", "dmc", "dc", "isi", "bui", "fwi", "dsr"])
     def test_cffwis_references_contain_van_wagner(self, index_name: str) -> None:
         references = CF_METADATA[index_name]["references"]
         assert "Van Wagner" in references
