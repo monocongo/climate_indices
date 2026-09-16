@@ -11,6 +11,8 @@ test importorskip("matplotlib").
 
 import ast
 import json
+import linecache
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -29,9 +31,18 @@ NOTEBOOK = REPO_ROOT / "notebooks" / "zarr_dask_spi_spei.ipynb"
 CANONICAL_YEARS = {"data_start_year": 1980, "cal_start_year": 1981, "cal_end_year": 2010}
 
 
-def _code_cells() -> list[str]:
+def _indexed_code_cells() -> list[tuple[int, str]]:
+    """Code-cell sources paired with their position in the notebook file."""
     notebook = json.loads(NOTEBOOK.read_text())
-    return ["".join(cell["source"]) for cell in notebook["cells"] if cell["cell_type"] == "code"]
+    return [
+        (position, "".join(cell["source"]))
+        for position, cell in enumerate(notebook["cells"])
+        if cell["cell_type"] == "code"
+    ]
+
+
+def _code_cells() -> list[str]:
+    return [source for _, source in _indexed_code_cells()]
 
 
 def _executable_cells() -> list[str]:
@@ -53,11 +64,20 @@ def _cells_excluding_client() -> list[str]:
 
 
 def _exec_cells(namespace: dict, sources: list[str]) -> None:
-    # Compile each cell under a per-cell pseudo-filename so a failing cell's
-    # traceback names the offending notebook cell, not just the notebook path.
-    cells = _code_cells()
-    for source in sources:
-        exec(compile(source, f"{NOTEBOOK}:cell[{cells.index(source)}]", "exec"), namespace)
+    # Compile each cell under a per-cell pseudo-filename and expose its source
+    # to linecache so a failing cell's traceback names the offending notebook
+    # cell and shows its source. Counter consumption keeps duplicate sources
+    # aligned with successive notebook positions.
+    pending = Counter(sources)
+    for position, source in _indexed_code_cells():
+        if pending[source] < 1:
+            continue
+        pending[source] -= 1
+        filename = f"{NOTEBOOK}:cell[{position}]"
+        linecache.cache[filename] = (len(source), None, source.splitlines(keepends=True), filename)
+        exec(compile(source, filename, "exec"), namespace)
+    if +pending:
+        raise AssertionError(f"notebook cells not found in {NOTEBOOK}: {dict(+pending)}")
 
 
 def _split_at_calculation(sources: list[str]) -> tuple[list[str], list[str]]:
