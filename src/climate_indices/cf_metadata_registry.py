@@ -43,6 +43,15 @@ class CFAttributes(_CFAttributesRequired, total=False):
     climate_indices_variant: str
 
 
+# The CFFWIS moisture codes (FFMC, DMC, DC) share one source publication; keep the
+# rendered `references` text identical across their entries.
+_VAN_WAGNER_PICKETT_1985 = (
+    "Van Wagner, C. E., & Pickett, T. L. (1985). "
+    "Equations and FORTRAN program for the Canadian Forest Fire Weather Index System. "
+    "Canadian Forestry Service, Forestry Technical Report 33."
+)
+
+
 CF_METADATA: dict[str, CFAttributes] = {
     "spi": {
         "long_name": "Standardized Precipitation Index",
@@ -231,11 +240,7 @@ CF_METADATA: dict[str, CFAttributes] = {
             "Moisture content of fine surface litter and other fine fuels, a dimensionless code in [0, 101]."
         ),
         "climate_indices_variant": "cffwis_classic",
-        "references": (
-            "Van Wagner, C. E., & Pickett, T. L. (1985). "
-            "Equations and FORTRAN program for the Canadian Forest Fire Weather Index System. "
-            "Canadian Forestry Service, Forestry Technical Report 33."
-        ),
+        "references": _VAN_WAGNER_PICKETT_1985,
     },
     "dmc": {
         "long_name": "Duff Moisture Code",
@@ -245,11 +250,7 @@ CF_METADATA: dict[str, CFAttributes] = {
             "a dimensionless code floored at zero with no upper bound."
         ),
         "climate_indices_variant": "cffwis_classic",
-        "references": (
-            "Van Wagner, C. E., & Pickett, T. L. (1985). "
-            "Equations and FORTRAN program for the Canadian Forest Fire Weather Index System. "
-            "Canadian Forestry Service, Forestry Technical Report 33."
-        ),
+        "references": _VAN_WAGNER_PICKETT_1985,
     },
     "dc": {
         "long_name": "Drought Code",
@@ -260,10 +261,6 @@ CF_METADATA: dict[str, CFAttributes] = {
             "from the package's drought indices."
         ),
         "climate_indices_variant": "cffwis_classic",
-        "references": (
-            "Van Wagner, C. E., & Pickett, T. L. (1985). "
-            "Equations and FORTRAN program for the Canadian Forest Fire Weather Index System. "
-            "Canadian Forestry Service, Forestry Technical Report 33."
-        ),
+        "references": _VAN_WAGNER_PICKETT_1985,
     },
 }
