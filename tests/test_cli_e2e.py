@@ -275,6 +275,35 @@ def test_palmers_rejects_an_awc_variable_with_unsupported_units(
     assert not list(tmp_path.glob("palmers_*"))
 
 
+def test_palmers_rejects_a_precipitation_rate_label(tmp_path, precips_mm_monthly, pet_thornthwaite_mm, palmer_awcs):
+    precip_path = tmp_path / "precip.nc"
+    pet_path = tmp_path / "pet.nc"
+    awc_path = tmp_path / "awc.nc"
+    _write_divisions(precip_path, precips_mm_monthly.reshape(-1), units="mm/dy")
+    _write_divisions(pet_path, pet_thornthwaite_mm.reshape(-1), var_name="pet")
+    xr.Dataset(
+        {"awc": ("division", np.array([palmer_awcs[_DIVISION]]), {"units": "inches"})},
+        coords={"division": [_DIVISION]},
+    ).to_netcdf(awc_path)
+
+    with pytest.raises(ValueError, match="mm/dy"):
+        main(
+            [
+                *_common_arguments("palmers", precip_path, tmp_path / "palmers"),
+                "--netcdf_pet",
+                str(pet_path),
+                "--var_name_pet",
+                "pet",
+                "--netcdf_awc",
+                str(awc_path),
+                "--var_name_awc",
+                "awc",
+            ]
+        )
+
+    assert not list(tmp_path.glob("palmers_*"))
+
+
 def test_invalid_scale_raises_and_writes_no_output(tmp_path, precips_mm_monthly):
     precip_path = tmp_path / "precip.nc"
     _write_timeseries(precip_path, precips_mm_monthly.reshape(-1))

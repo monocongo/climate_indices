@@ -408,7 +408,9 @@ Jan. 1951 through Dec. 2010. The output files will be
    PET, and available water capacity in inches. The command line normalizes
    precipitation and PET to millimeters for the other indices, so these inputs
    may declare either unit: values labeled ``inches``/``inch`` or
-   ``mm``/``millimeters`` are converted to inches before computing. An AWC
+   ``mm``/``millimeters`` are converted to inches before computing. A
+   precipitation rate (``mm/dy``) is not accepted for Palmers -- it is a daily
+   rate, not the monthly accumulated depth ``palmer.pdsi()`` requires. An AWC
    variable without a ``units`` attribute is assumed to be inches, and one that
    declares any other unit is rejected.
 

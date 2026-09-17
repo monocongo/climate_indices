@@ -884,11 +884,36 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
                 raise ValueError(f"Unsupported PET units: {dataset[pet_var_name].units}")
 
     # the Palmer routines take inches, whereas the conversions above normalize
-    # precipitation and PET to millimeters for every other index
+    # precipitation and PET to millimeters for every other index; AWC is
+    # validated here too, before precipitation and PET are copied into shared
+    # memory below, so an invalid AWC label is rejected without paying for
+    # those full-array copies
     if keyword_arguments["index"] == "palmers":
+        if precip_unit == "mm/dy":
+            # a daily rate isn't the monthly accumulated depth palmer.pdsi() requires
+            raise ValueError(
+                "Unsupported precipitation units for palmers: 'mm/dy' is a daily rate, not a monthly total"
+            )
+
         for var_name in (keyword_arguments["var_name_precip"], keyword_arguments["var_name_pet"]):
             # out-of-place so integer-valued variables are promoted rather than rejected
             dataset[var_name].values = dataset[var_name].values / 25.4
+
+        if ("netcdf_awc" not in keyword_arguments) or ("var_name_awc" not in keyword_arguments):
+            raise ValueError("Missing the AWC file and/or variable name argument(s)")
+
+        awc_dataset = xr.open_dataset(keyword_arguments["netcdf_awc"])
+
+        # the Palmer routines take available water capacity in inches; an
+        # absent units attribute is assumed to already be inches
+        awc_var_name = keyword_arguments["var_name_awc"]
+        awc_units = str(awc_dataset[awc_var_name].attrs.get("units", "")).strip().lower()
+        if awc_units in ("mm", "millimeters", "millimeter"):
+            awc_dataset[awc_var_name].values = awc_dataset[awc_var_name].values / 25.4
+        elif awc_units and awc_units not in ("inch", "inches"):
+            # !r so a units attribute holding newlines/control characters can't
+            # forge log lines or alter terminal rendering when this is logged
+            raise ValueError(f"Unsupported available water capacity units: {awc_units!r}")
 
     if input_type == InputType.divisions:
         output_shape = _drop_data_into_shared_arrays_divisions(dataset, input_var_names)
@@ -910,20 +935,9 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
 
     # add output variable arrays into the shared memory arrays dictionary
     if keyword_arguments["index"] == "palmers":
-        # read AWC data into shared memory array
-        if ("netcdf_awc" not in keyword_arguments) or ("var_name_awc" not in keyword_arguments):
-            raise ValueError("Missing the AWC file and/or variable name argument(s)")
-
-        awc_dataset = xr.open_dataset(keyword_arguments["netcdf_awc"])
-
-        # the Palmer routines take available water capacity in inches; an
-        # absent units attribute is assumed to already be inches
-        var_name = keyword_arguments["var_name_awc"]
-        awc_units = str(awc_dataset[var_name].attrs.get("units", "")).strip().lower()
-        if awc_units in ("mm", "millimeters", "millimeter"):
-            awc_dataset[var_name].values = awc_dataset[var_name].values / 25.4
-        elif awc_units and awc_units not in ("inch", "inches"):
-            raise ValueError(f"Unsupported available water capacity units: {awc_units}")
+        # read AWC data into shared memory array; already opened and
+        # unit-validated above
+        var_name = awc_var_name
 
         # create a shared memory array, wrap it as a numpy array and
         # copy the data (values) from this variable's DataArray
