@@ -34,21 +34,21 @@ def test_spei_chunksizes_follow_output_dimension_order(monkeypatch, tmp_path):
     monkeypatch.setattr(cli_main, "_parallel_process", lambda *_args, **_kwargs: None)
 
     cli_main._compute_write_index(
-        {
-            "index": "spei",
-            "netcdf_precip": "precip.nc",
-            "var_name_precip": "precip",
-            "netcdf_pet": "pet.nc",
-            "var_name_pet": "pet",
-            "input_type": InputType.divisions,
-            "scale": 3,
-            "distribution": indices.Distribution.gamma,
-            "periodicity": compute.Periodicity.monthly,
-            "calibration_start_year": 1990,
-            "calibration_end_year": 1991,
-            "output_file_base": str(tmp_path / "out"),
-            "chunksizes": "input",
-        }
+        cli_main._IndexRequest(
+            index="spei",
+            netcdf_precip="precip.nc",
+            var_name_precip="precip",
+            netcdf_pet="pet.nc",
+            var_name_pet="pet",
+            input_type=InputType.divisions,
+            periodicity=compute.Periodicity.monthly,
+            chunksizes="input",
+            output_file_base=str(tmp_path / "out"),
+            scale=3,
+            distribution=indices.Distribution.gamma,
+            calibration_start_year=1990,
+            calibration_end_year=1991,
+        )
     )
 
     with xr.open_dataset(tmp_path / "out_spei_gamma_03.nc") as written:
