@@ -37,10 +37,6 @@ surfaced through the existing `climate_indices` CLI only where an xarray
 adapter and a CF registry entry exist (KBDI as `--index kbdi`, #802), so the
 CLI consumes the fire package rather than being a component of this subsystem.
 
-This family covers meteorological and climatological indices only. It excludes
-NFDRS components such as ERC, BI, SC, and IC; fuel models; fire behaviour;
-ignition; and occurrence prediction.
-
 ## Scope and boundary
 
 The dividing line is not drought versus wildfire but **meteorological and
@@ -60,6 +56,7 @@ Out of scope:
   and fuel models rather than weather alone
 - Fuel model catalogs, live and dead fuel state, and operational calibration
 - Fire-behaviour simulation and rate-of-spread modeling
+- Ignition and occurrence prediction
 - FWI2025 next-generation reformulations, at least initially
 
 A weather-only index such as the McArthur Forest Fire Danger Index would be an
