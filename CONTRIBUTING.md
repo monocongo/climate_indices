@@ -78,7 +78,8 @@ sources cannot leak them. When an internal page is added or moves between
 audiences, update that exclusion list and this section in the same change.
 
 Current assignments (the context map and validation status live at the
-repository root; the core-library vocabulary sits beside its code):
+repository root — `CONTEXT-MAP.md`, `VALIDATION.md` — and the core-library
+vocabulary at `src/climate_indices/CONTEXT.md`):
 
 - Tutorial: `docs/quickstart.rst`, `docs/index.rst`
 - How-to guide: `docs/troubleshooting.rst`, `docs/xarray_migration.rst`,
