@@ -20,7 +20,7 @@ The package uses responsibility-focused modules:
 
 | Area | Modules |
 | --- | --- |
-| Command-line interfaces | `__main__.py`, `__spi__.py` |
+| Command-line interfaces | `__main__.py` |
 | Public APIs | `indices.py` (NumPy), `typed_public_api.py`, `xarray_adapter.py` |
 | Climate-index computation | `compute.py`, `palmer.py` |
 | PET and statistics | `eto.py`, `pm_eto.py`, `lmoments.py` |

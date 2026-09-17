@@ -232,22 +232,6 @@ The options for the entry point script are described below:
 |                        | 'all_but_one' (uses all CPUs minus one).        |
 |                        | Default value is 'all_but_one'.                 |
 +------------------------+-------------------------------------------------+
-| save_params            | Save distribution fitting variables to this file|
-|                        | path. The fittings NetCDF is to be used as input|
-|                        | when using the `load_params` option.            |
-|                        | [NOTE: only via the `spi` entrypoint, which is  |
-|                        | deprecated in 2.4.0 and removed in 3.0.0. In    |
-|                        | the library use the `fitting_params` argument   |
-|                        | of `climate_indices.spi`, see the SPI section.] |
-+------------------------+-------------------------------------------------+
-| load_params            | Load distribution fitting variables from this   |
-|                        | filepath. The fittings NetCDF file is one that  |
-|                        | was created by the `save_params` option.        |
-|                        | [NOTE: only via the `spi` entrypoint, which is  |
-|                        | deprecated in 2.4.0 and removed in 3.0.0. In    |
-|                        | the library use the `fitting_params` argument   |
-|                        | of `climate_indices.spi`, see the SPI section.] |
-+------------------------+-------------------------------------------------+
 
 Example Input and Output Datasets
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -425,7 +409,7 @@ standardized against the same fitted climatology.
 
 The fitting cache is a library-level feature. The legacy ``spi`` script's
 ``--save_params`` and ``--load_params`` options, which cached the same parameters
-in a NetCDF file, are retired along with the script in 3.0.0 -- see
+in a NetCDF file, were removed with the script in 3.0.0 -- see
 :doc:`deprecations/api-changes`.
 
 .. code-block:: python

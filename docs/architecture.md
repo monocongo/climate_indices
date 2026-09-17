@@ -56,7 +56,6 @@ The **climate_indices** library implements a **layered library architecture** op
 │                         CLI Layer                                  │
 ├────────────────────────────────────────────────────────────────────┤
 │  __main__.py          │  Full-featured CLI (all indices)          │
-│  __spi__.py           │  Specialized SPI CLI (param save/load)    │
 ├────────────────────────────────────────────────────────────────────┤
 │                      Public API Layer                              │
 ├────────────────────────────────────────────────────────────────────┤
@@ -95,18 +94,11 @@ The **climate_indices** library implements a **layered library architecture** op
   - Shared memory arrays for worker processes
   - Input type detection (grid, divisions, timeseries)
 
-- **`__spi__.py`**: Specialized SPI computation CLI
-  - Distribution fitting parameter save/load for reusability
-  - Parallel fitting and SPI computation
-  - Supports gamma and Pearson Type III distributions
-  - NetCDF output with CF metadata
-
 **Entry Points** (`pyproject.toml`):
 ```toml
 [project.scripts]
 climate_indices = "climate_indices.__main__:main"
 process_climate_indices = "climate_indices.__main__:main"
-spi = "climate_indices.__spi__:main"
 ```
 
 #### 2. Public API Layer
@@ -234,7 +226,6 @@ climate_indices/
 ├── src/climate_indices/          # Main package directory
 │   ├── __init__.py               # Public API exports
 │   ├── __main__.py               # Full-featured CLI entry point
-│   ├── __spi__.py                # Specialized SPI CLI entry point
 │   ├── typed_public_api.py       # Strict mypy-compliant API
 │   ├── xarray_adapter.py         # Modern xarray interface
 │   ├── indices.py                # Legacy numpy API (STABLE)
