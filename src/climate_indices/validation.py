@@ -1,9 +1,13 @@
 """Validation façade for the climate index entry surfaces.
 
 Owns the input-kind detection and xarray/Dask validation checks shared by the
-xarray adapter, the fire adapters, and the CLI, so callers depend on a
-validation contract rather than on private names inside
+xarray adapter, the fire adapters, and the typed public API, so callers depend
+on a validation contract rather than on private names inside
 :mod:`climate_indices.xarray_adapter`.
+
+The CLI (:mod:`climate_indices.__main__`) is not a caller: it keeps its own
+dataset-layout classifier and validation path, with a distinct ``InputType``
+for grid, divisions, and timeseries layouts.
 """
 
 from enum import Enum, auto
