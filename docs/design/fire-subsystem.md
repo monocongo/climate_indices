@@ -54,7 +54,10 @@ Out of scope:
 - NFDRS Ignition Component, Spread Component, Energy Release Component, and
   Burning Index, which NWCG defines in terms of live and dead fuel moisture
   and fuel models rather than weather alone
-- Fuel model catalogs, live and dead fuel state, and operational calibration
+- Externally supplied fuel-model catalogs, live fuel state, and operational
+  calibration against fuel loads or fire-occurrence records — not the
+  weather-driven dead-fuel-moisture recursions (CFFWIS FFMC, DMC, DC) this
+  package already computes from weather alone
 - Fire-behaviour simulation and rate-of-spread modeling
 - Ignition and occurrence prediction
 - FWI2025 next-generation reformulations, at least initially
@@ -73,8 +76,10 @@ of these are true:
 4. Fire-specific dependencies would be forced on all `climate_indices` users
 5. The release cadence needs to diverge
 
-Until then, out-of-scope fire proposals are redirected to that sibling rather
-than relitigated here; [CONTRIBUTING.md](../../CONTRIBUTING.md#fire-weather-scope)
+Until then, an out-of-scope fire proposal is not rejected on merit: open an
+issue in this repository labeled `fire-weather` recording it as a candidate
+for the eventual `fire_weather_indices` split, rather than relitigating the
+boundary here. [CONTRIBUTING.md](../../CONTRIBUTING.md#fire-weather-scope)
 records the triage response.
 
 ## API tiers
