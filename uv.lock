@@ -773,6 +773,7 @@ dev = [
     { name = "zarr", version = "3.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
 docs = [
+    { name = "h5py" },
     { name = "myst-parser", version = "4.0.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "myst-parser", version = "5.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "sphinx", version = "8.1.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -859,6 +860,7 @@ requires-dist = [
     { name = "distributed", marker = "extra == 'dev'", specifier = ">=2025.7.0" },
     { name = "h5netcdf", specifier = ">=1.6.3" },
     { name = "h5py", marker = "extra == 'dev'", specifier = ">=3.11.0" },
+    { name = "h5py", marker = "extra == 'docs'", specifier = ">=3.11.0" },
     { name = "hypothesis", marker = "extra == 'test'", specifier = ">=6.100.0" },
     { name = "jsonschema", marker = "extra == 'test'", specifier = ">=4.0.0" },
     { name = "jupyter", marker = "extra == 'dev'", specifier = ">=1.1.1" },

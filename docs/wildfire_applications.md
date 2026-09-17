@@ -62,7 +62,7 @@ calibration period and event, compute a 14-day EDDI series for a Central
 California point. This uses the xarray `DataArray` route of
 `climate_indices.eddi`, which is **beta**: numerical results match the stable
 NumPy API, but parameter inference, metadata, and coordinate handling may change
-in a future minor release ([xarray_compatibility.md](https://github.com/monocongo/climate_indices/blob/main/docs/xarray_compatibility.md)).
+in a future minor release (see :doc:`xarray_migration`).
 Use the NumPy API when an integration cannot absorb beta interface changes.
 
 ```python
