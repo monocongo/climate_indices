@@ -57,20 +57,23 @@ jobs:
         with:
           python-version: '3.12'
 
-      # Install exactly what Read the Docs installs -- docs/requirements.txt,
-      # then the project with pip -- so a green gate means the publishing
-      # environment renders and validates the same dependency resolution.
+      - name: Install uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
+
+      # Read the Docs installs the same `docs` extra from uv.lock (see
+      # .readthedocs.yaml), so the gate and the published build resolve
+      # identical documentation dependencies.
       - name: Install dependencies
-        run: python -m pip install -r docs/requirements.txt .
+        run: uv sync --locked --no-dev --extra docs --no-build
 
       # Warnings are errors and the doctest builder proves the examples run.
       # `-E` forces a fresh read so a cached environment cannot hide a warning;
       # the same commands run locally (CONTRIBUTING.md).
       - name: Build documentation with warnings as errors
-        run: python -m sphinx -E -b html -W --keep-going docs docs/_build/html
+        run: uv run --no-sync --no-build sphinx-build -E -b html -W --keep-going docs docs/_build/html
 
       - name: Run documentation doctests
-        run: python -m sphinx -E -b doctest docs docs/_build/doctest
+        run: uv run --no-sync --no-build sphinx-build -E -b doctest docs docs/_build/doctest
 
   # Compatibility policy: expensive or environment-independent suites run once
   # (`validation` on 3.12, repo/meta checks on 3.10, minimum dependencies on
