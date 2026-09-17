@@ -1167,6 +1167,16 @@ _TIME_AXIS_INDEX: dict[InputType, int] = {
     InputType.timeseries: 0,
 }
 
+# the registrations run only after _validate_args() has filled the request, so
+# these assertions are invariant checks rather than input validation; keep each
+# message identical across the registrations that assert it
+_UNVALIDATED_PRECIP = "the precipitation variable name was not validated"
+_UNVALIDATED_PET = "the PET variable name was not validated"
+_UNVALIDATED_TEMP = "the temperature variable name was not validated"
+_UNVALIDATED_AWC = "the AWC variable name was not validated"
+_UNVALIDATED_DISTRIBUTION = "the distribution was not validated"
+_UNVALIDATED_SCALE = "the scale was not validated"
+
 
 def _shared_array(name: str, shape: tuple[int, ...]) -> np.ndarray:
     """
@@ -1194,25 +1204,25 @@ def _allocate_shared_array(name: str, shape: tuple[int, ...]) -> None:
 
 
 def _precipitation_array_key(request: _IndexRequest) -> tuple[str, ...]:
-    assert request.var_name_precip is not None, "the precipitation variable name was not validated"
+    assert request.var_name_precip is not None, _UNVALIDATED_PRECIP
     return (request.var_name_precip,)
 
 
 def _precipitation_and_pet_array_keys(request: _IndexRequest) -> tuple[str, ...]:
-    assert request.var_name_precip is not None, "the precipitation variable name was not validated"
-    assert request.var_name_pet is not None, "the PET variable name was not validated"
+    assert request.var_name_precip is not None, _UNVALIDATED_PRECIP
+    assert request.var_name_pet is not None, _UNVALIDATED_PET
     return (request.var_name_precip, request.var_name_pet)
 
 
 def _temperature_and_latitude_array_keys(request: _IndexRequest) -> tuple[str, ...]:
-    assert request.var_name_temp is not None, "the temperature variable name was not validated"
+    assert request.var_name_temp is not None, _UNVALIDATED_TEMP
     return (request.var_name_temp, _KEY_LAT)
 
 
 def _palmer_array_keys(request: _IndexRequest) -> tuple[str, ...]:
-    assert request.var_name_precip is not None, "the precipitation variable name was not validated"
-    assert request.var_name_pet is not None, "the PET variable name was not validated"
-    assert request.var_name_awc is not None, "the AWC variable name was not validated"
+    assert request.var_name_precip is not None, _UNVALIDATED_PRECIP
+    assert request.var_name_pet is not None, _UNVALIDATED_PET
+    assert request.var_name_awc is not None, _UNVALIDATED_AWC
     return (request.var_name_precip, request.var_name_pet, request.var_name_awc)
 
 
@@ -1250,8 +1260,8 @@ def _pet_arguments(request: _IndexRequest) -> dict[str, Any]:
 
 
 def _spi_variable_attributes(request: _IndexRequest) -> tuple[str, dict[str, Any]]:
-    assert request.distribution is not None, "the distribution was not validated"
-    assert request.scale is not None, "the scale was not validated"
+    assert request.distribution is not None, _UNVALIDATED_DISTRIBUTION
+    assert request.scale is not None, _UNVALIDATED_SCALE
     long_name = (
         f"Standardized Precipitation Index ({request.distribution.value.capitalize()} distribution), "
         + f"{request.scale}-{_get_scale_increment(request.periodicity)}"
@@ -1263,8 +1273,8 @@ def _spi_variable_attributes(request: _IndexRequest) -> tuple[str, dict[str, Any
 
 
 def _spei_variable_attributes(request: _IndexRequest) -> tuple[str, dict[str, Any]]:
-    assert request.distribution is not None, "the distribution was not validated"
-    assert request.scale is not None, "the scale was not validated"
+    assert request.distribution is not None, _UNVALIDATED_DISTRIBUTION
+    assert request.scale is not None, _UNVALIDATED_SCALE
     long_name = (
         f"Standardized Precipitation Evapotranspiration Index ({request.distribution.value.capitalize()} distribution), "
         + f"{request.scale}-{_get_scale_increment(request.periodicity)}"
@@ -1276,7 +1286,7 @@ def _spei_variable_attributes(request: _IndexRequest) -> tuple[str, dict[str, An
 
 
 def _pnp_variable_attributes(request: _IndexRequest) -> tuple[str, dict[str, Any]]:
-    assert request.scale is not None, "the scale was not validated"
+    assert request.scale is not None, _UNVALIDATED_SCALE
     long_name = "Percentage of Normal Precipitation, " + f"{request.scale}-{_get_scale_increment(request.periodicity)}"
     attrs = {"long_name": long_name, "valid_min": -1000.0, "valid_max": 1000.0}
     var_name = "pnp_" + str(request.scale).zfill(2)
@@ -1305,8 +1315,8 @@ def _prepare_palmer_inputs(request: _IndexRequest, dataset: xr.Dataset) -> xr.Da
     :return: the opened available water capacity dataset
     :raise ValueError: if an input's units are unsupported
     """
-    assert request.var_name_precip is not None, "the precipitation variable name was not validated"
-    assert request.var_name_pet is not None, "the PET variable name was not validated"
+    assert request.var_name_precip is not None, _UNVALIDATED_PRECIP
+    assert request.var_name_pet is not None, _UNVALIDATED_PET
 
     if dataset[request.var_name_precip].units.lower() == "mm/dy":
         # a daily rate isn't the monthly accumulated depth palmer.pdsi() requires
@@ -1370,9 +1380,9 @@ def _compute_palmers(context: _ComputeContext) -> None:
     :param context: the opened inputs and output settings of the request
     """
     request = context.request
-    assert request.var_name_precip is not None, "the precipitation variable name was not validated"
-    assert request.var_name_pet is not None, "the PET variable name was not validated"
-    assert request.var_name_awc is not None, "the AWC variable name was not validated"
+    assert request.var_name_precip is not None, _UNVALIDATED_PRECIP
+    assert request.var_name_pet is not None, _UNVALIDATED_PET
+    assert request.var_name_awc is not None, _UNVALIDATED_AWC
     assert context.prepared is not None, "the AWC dataset is opened before the shared arrays are filled"
 
     # read AWC data into a shared memory array; already opened and unit-validated
