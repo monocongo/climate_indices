@@ -721,7 +721,7 @@ def _compute_write_index(request: _IndexRequest) -> tuple[str, str] | None:
     elif request.input_type == InputType.timeseries:
         chunks = {"time": -1}
     else:
-        raise ValueError(f"Invalid 'input_type' keyword argument: {request.input_type}")
+        raise ValueError(f"Unsupported input type: {request.input_type}")
 
     # Since multiple variables can be in the same file, de-duplicate the filelist.
     dataset = xr.open_mfdataset(list(set(files)), chunks=chunks)
@@ -1586,7 +1586,7 @@ def _run_spi(arguments: argparse.Namespace, input_type: InputType) -> None:
     :param arguments: the parsed command line arguments
     :param input_type: the input type determined by argument validation
     """
-    _prepare_file(arguments.netcdf_precip, arguments.var_name_precip)
+    arguments.netcdf_precip = _prepare_file(arguments.netcdf_precip, arguments.var_name_precip)
     for scale in arguments.scales:
         for distribution in indices.Distribution:
             _compute_write_index(
@@ -1607,8 +1607,8 @@ def _run_spei(arguments: argparse.Namespace, input_type: InputType) -> None:
     :param arguments: the parsed command line arguments
     :param input_type: the input type determined by argument validation
     """
-    _prepare_file(arguments.netcdf_precip, arguments.var_name_precip)
-    _prepare_file(arguments.netcdf_pet, arguments.var_name_pet)
+    arguments.netcdf_precip = _prepare_file(arguments.netcdf_precip, arguments.var_name_precip)
+    arguments.netcdf_pet = _prepare_file(arguments.netcdf_pet, arguments.var_name_pet)
     for scale in arguments.scales:
         for distribution in indices.Distribution:
             _compute_write_index(
@@ -1629,7 +1629,7 @@ def _run_pnp(arguments: argparse.Namespace, input_type: InputType) -> None:
     :param arguments: the parsed command line arguments
     :param input_type: the input type determined by argument validation
     """
-    _prepare_file(arguments.netcdf_precip, arguments.var_name_precip)
+    arguments.netcdf_precip = _prepare_file(arguments.netcdf_precip, arguments.var_name_precip)
     for scale in arguments.scales:
         _compute_write_index(_IndexRequest.from_arguments(arguments, index="pnp", input_type=input_type, scale=scale))
 
@@ -1648,7 +1648,7 @@ def _run_pet(arguments: argparse.Namespace, input_type: InputType) -> None:
     if arguments.netcdf_pet is not None:
         return
 
-    _prepare_file(arguments.netcdf_temp, arguments.var_name_temp)
+    arguments.netcdf_temp = _prepare_file(arguments.netcdf_temp, arguments.var_name_temp)
     result = _compute_write_index(_IndexRequest.from_arguments(arguments, index="pet", input_type=input_type))
     assert result is not None, "PET computation should return file and variable name"
     arguments.netcdf_pet, arguments.var_name_pet = result
@@ -1661,9 +1661,9 @@ def _run_palmers(arguments: argparse.Namespace, input_type: InputType) -> None:
     :param arguments: the parsed command line arguments
     :param input_type: the input type determined by argument validation
     """
-    _prepare_file(arguments.netcdf_precip, arguments.var_name_precip)
-    _prepare_file(arguments.netcdf_pet, arguments.var_name_pet)
-    _prepare_file(arguments.netcdf_awc, arguments.var_name_awc)
+    arguments.netcdf_precip = _prepare_file(arguments.netcdf_precip, arguments.var_name_precip)
+    arguments.netcdf_pet = _prepare_file(arguments.netcdf_pet, arguments.var_name_pet)
+    arguments.netcdf_awc = _prepare_file(arguments.netcdf_awc, arguments.var_name_awc)
     _compute_write_index(_IndexRequest.from_arguments(arguments, index="palmers", input_type=input_type))
 
 
