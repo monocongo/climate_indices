@@ -127,16 +127,20 @@ class DurationFactors:
         )
 
     @staticmethod
-    def weighting_fraction(m: float, b: float) -> float:
+    def weighting_fraction(m: float | np.ndarray, b: float | np.ndarray) -> float | np.ndarray:
         """The duration-factor weighting fraction ``c = b / (m + b)`` as the pdi.f lineage computes it.
+
+        ``m``/``b`` are scalars for the standard per-location recursion and
+        length-``n_cells`` arrays for :mod:`climate_indices.palmer`'s
+        vectorized ``pdsi()`` recursion; the zero check covers every cell.
 
         :param m: duration-factor slope
         :param b: duration-factor intercept
         :return the weighting fraction c = b / (m + b)
-        :rtype: float
-        :raises ValueError: if the duration factors sum to zero
+        :rtype: float | np.ndarray
+        :raises ValueError: if the duration factors sum to zero for any element
         """
         denominator = m + b
-        if denominator == 0:
+        if bool(np.any(denominator == 0)):
             raise ValueError("duration-factor slope and intercept must not sum to zero")
         return b / denominator

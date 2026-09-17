@@ -35,8 +35,28 @@ def _call(division: str = "0101", fitting_params=None):
 
 
 def test_public_signature_matches_pdsi_and_is_exported():
+    """scpdsi() intentionally omits pdsi()'s spatial_time_major.
+
+    scpdsi() runs the Wells backtracking recursion and per-location
+    duration-factor fits per cell, so it stays on the per-location path
+    (ADR-0011) while pdsi() vectorizes across a spatial block's cells --
+    including AWC, which pdsi() accepts as a scalar or a per-cell array and
+    scpdsi() keeps scalar-only. Every parameter name, position, and default
+    must still match exactly; only these two annotations may differ.
+    """
     assert "scpdsi" in palmer.__all__
-    assert inspect.signature(palmer.scpdsi) == inspect.signature(palmer.pdsi)
+    pdsi_params = inspect.signature(palmer.pdsi).parameters
+    scpdsi_params = inspect.signature(palmer.scpdsi).parameters
+    assert set(pdsi_params) - set(scpdsi_params) == {"spatial_time_major"}
+    shared = [name for name in pdsi_params if name != "spatial_time_major"]
+    assert shared == list(scpdsi_params)
+    for name in shared:
+        pdsi_param = pdsi_params[name]
+        scpdsi_param = scpdsi_params[name]
+        assert pdsi_param.default == scpdsi_param.default
+        assert pdsi_param.kind == scpdsi_param.kind
+        if name != "awc":
+            assert pdsi_param.annotation == scpdsi_param.annotation
 
 
 def test_all_missing_input_returns_four_same_length_missing_arrays_and_no_params():
