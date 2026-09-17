@@ -703,16 +703,17 @@ def _pearson_fit(
 def _validate_pearson_parameter_cells(
     values: np.ndarray, named_parameters: tuple[tuple[str, np.ndarray | None], ...]
 ) -> None:
-    """Reject pre-computed Pearson parameters whose cell axes do not match a block."""
+    """Reject pre-computed Pearson parameters whose period or cell axes do not match a block."""
+    period_length = values.shape[1]
     cells = values.shape[2:]
     for name, parameter in named_parameters:
         if parameter is None:
             continue
         parameter = np.asarray(parameter)
-        if parameter.ndim > 1 and parameter.shape[1:] != cells:
+        if parameter.ndim > 1 and (parameter.shape[0] != period_length or parameter.shape[1:] != cells):
             raise ValueError(
-                f"Fitting parameter '{name}' has shape {parameter.shape}, which carries cell dimensions "
-                f"{parameter.shape[1:]} that do not match the input's cells {cells}"
+                f"Fitting parameter '{name}' has shape {parameter.shape}, which must carry the "
+                f"block's period length {period_length} and cell dimensions {cells}"
             )
 
 

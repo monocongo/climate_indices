@@ -856,7 +856,33 @@ class TestSpatialBlockContracts:
             "skew": np.zeros((12, 4, 4)),
         }
 
-        with pytest.raises(ValueError, match="do not match the input's cells"):
+        with pytest.raises(ValueError, match="must carry the"):
+            indices.spi(
+                data,
+                scale=3,
+                distribution=indices.Distribution.pearson,
+                data_start_year=1980,
+                calibration_year_initial=_CALIBRATION_START,
+                calibration_year_final=_CALIBRATION_END,
+                periodicity=compute.Periodicity.monthly,
+                fitting_params=params,
+            )
+
+    def test_period_mismatched_parameter_cells_raise(self, gridded_monthly_precip):
+        """A parameter array with the right cells but wrong period length is rejected.
+
+        A (1, *cells) array would otherwise broadcast its single period across every
+        month instead of being read as one-parameter-set-per-period.
+        """
+        data = np.asarray(gridded_monthly_precip.values)
+        params = {
+            "prob_zero": np.zeros((1, 3, 2)),
+            "loc": np.zeros((1, 3, 2)),
+            "scale": np.ones((1, 3, 2)),
+            "skew": np.zeros((1, 3, 2)),
+        }
+
+        with pytest.raises(ValueError, match="must carry the"):
             indices.spi(
                 data,
                 scale=3,
