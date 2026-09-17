@@ -187,10 +187,10 @@ def test_statement_200_px1_always_uses_wet_factors_px2_always_dry():
     assert state.px2[0, 0] == pytest.approx(expected_px2)
 
 
-def test_calc_cafec_zindex_writes_cafec_and_zindex():
+def test_calc_cafec_zindex_writes_the_zindex():
     """The shared CAFEC/Z-index step serves both the PDSI and scPDSI recursions.
 
-    Expected values are recomputed with the pre-refactor named-intermediate
+    The expected value is recomputed with the pre-refactor named-intermediate
     grouping and compared exactly: the recursion branches on exact comparisons
     downstream, so a 1-ulp reassociation is a behavior change. The constants are
     chosen so that common reassociations (swapping the CAFEC terms, distributing
@@ -215,7 +215,6 @@ def test_calc_cafec_zindex_writes_cafec_and_zindex():
     cro = prepared.gamma[0] * prepared.spdat[0, 0]
     cl = prepared.delta[0] * prepared.pldat[0, 0]
     expected_cafec = cet + cr + cro - cl
-    assert state.cp[0, 0] == expected_cafec
     assert state.z[0, 0] == prepared.ak[0] * (prepared.precips[0, 0] - expected_cafec)
 
 
@@ -249,12 +248,12 @@ def test_custom_duration_factors_change_pdsi_output():
 
     prepared_default, state_default = _run_zindex_pipeline(precips, pet, awc=5.0)
     palmer._calc_zindex(prepared_default, state_default)
-    palmer._finish_up(prepared_default, state_default)
+    palmer._finish_up(state_default)
 
     prepared_custom, state_custom = _run_zindex_pipeline(precips, pet, awc=5.0)
     prepared_custom.wetm, prepared_custom.wetb = 1.0, 1.0
     prepared_custom.drym, prepared_custom.dryb = 1.0, 1.0
     palmer._calc_zindex(prepared_custom, state_custom)
-    palmer._finish_up(prepared_custom, state_custom)
+    palmer._finish_up(state_custom)
 
     assert not np.allclose(state_default.pdsi, state_custom.pdsi, equal_nan=True)

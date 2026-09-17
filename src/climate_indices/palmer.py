@@ -116,7 +116,6 @@ class _PalmerRecursion:
 
     # arrays the recursion and the CAFEC stage write, and the results built from them
     z: np.ndarray
-    cp: np.ndarray
     pdsi: np.ndarray
     phdi: np.ndarray
     wplm: np.ndarray
@@ -425,8 +424,8 @@ def _calc_scpdsi_k_factors(prepared: _PalmerPrepared) -> None:
 def _calc_cafec_zindex(prepared: _PalmerPrepared, state: _PalmerRecursion, year: int, month: int) -> None:
     """
     Calculate one month's CAFEC (climatically appropriate for existing
-    conditions) precipitation and raw Z-index, writing both into the recursion
-    state.
+    conditions) precipitation and raw Z-index, writing the Z-index into the
+    recursion state.
 
     The standard PDSI recursion (_calc_zindex) and the scPDSI recursion
     (_calc_scpdsi_raw_zindex) compute these identically; only the recurrences
@@ -443,7 +442,6 @@ def _calc_cafec_zindex(prepared: _PalmerPrepared, state: _PalmerRecursion, year:
         + prepared.gamma[month] * prepared.spdat[year, month]
         - prepared.delta[month] * prepared.pldat[year, month]
     )
-    state.cp[year, month] = cafec
     state.z[year, month] = prepared.ak[month] * (prepared.precips[year, month] - cafec)
 
 
@@ -879,17 +877,16 @@ def _calc_zindex(prepared: _PalmerPrepared, state: _PalmerRecursion) -> None:
             continue
 
 
-def _finish_up(prepared: _PalmerPrepared, state: _PalmerRecursion) -> None:
+def _finish_up(state: _PalmerRecursion) -> None:
     """
     Wet spell abatement is possible
 
-    :param prepared: the prepared Palmer inputs
     :param state: the mutable recursion state
     """
     for k8 in range(state.k8max):
         i = int(state.indexj[k8])
         j = int(state.indexm[k8])
-        i_end = prepared.precips.shape[0] - 1
+        i_end = state.pdsi.shape[0] - 1
         state.pdsi[i, j] = state.x[i, j]
         state.phdi[i, j] = state.px3[i, j]
 
@@ -1064,7 +1061,6 @@ def _initialize_recursion(prepared: _PalmerPrepared) -> _PalmerRecursion:
         px3=np.zeros((n_years, 12)),
         x=np.zeros((n_years, 12)),
         z=np.full((n_years, 12), np.nan),
-        cp=np.full((n_years, 12), np.nan),
         pdsi=np.full((n_years, 12), np.nan),
         phdi=np.full((n_years, 12), np.nan),
         wplm=np.full((n_years, 12), np.nan),
@@ -1128,7 +1124,7 @@ def _calculate_pdsi_prepared(prepared: _PalmerPrepared, original_length: int) ->
     _calc_kfactors(prepared)
     state = _initialize_recursion(prepared)
     _calc_zindex(prepared, state)
-    _finish_up(prepared, state)
+    _finish_up(state)
 
     pdsi_result = state.pdsi.flatten()[0:original_length]
     phdi = state.phdi.flatten()[0:original_length]
