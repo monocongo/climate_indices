@@ -56,5 +56,6 @@ __all__ = [
     "pet_thornthwaite",
     "spei",
     "spi",
+    "validation",
     "xarray_adapter",
 ]

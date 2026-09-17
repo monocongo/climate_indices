@@ -243,3 +243,11 @@ class TestValidationPublicSurface:
 
         assert adapter_module.InputType is validation.InputType
         assert adapter_module.detect_input_type is validation.detect_input_type
+
+    def test_package_root_reexports_the_facade(self):
+        """The package root exposes the facade module and its input-kind names."""
+        import climate_indices
+
+        assert "validation" in climate_indices.__all__
+        assert climate_indices.InputType is validation.InputType
+        assert climate_indices.detect_input_type is validation.detect_input_type
