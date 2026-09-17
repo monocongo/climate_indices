@@ -57,7 +57,7 @@ class InputType(Enum):
 
     Used by detect_input_type() to determine which computation path to use.
 
-    .. note:: Part of the beta xarray adapter layer. See :doc:`xarray_migration`.
+    .. note:: Part of the beta xarray API layer. See :doc:`xarray_migration`.
 
     Attributes:
         NUMPY: Input is NumPy-coercible (ndarray, list, tuple, scalars)
@@ -75,7 +75,7 @@ def detect_input_type(data: Any) -> InputType:
     perform any data transformation or coercion. The actual dispatch logic
     is handled by the @xarray_adapter decorator.
 
-    .. note:: Part of the beta xarray adapter layer. See :doc:`xarray_migration`.
+    .. note:: Part of the beta xarray API layer. See :doc:`xarray_migration`.
 
     Args:
         data: Input data to classify
@@ -244,7 +244,9 @@ def validate_dask_chunks(data: xr.DataArray, dim: str) -> None:
     Distribution fitting and stateful recurrences require the full time
     series; HDW's level-maximum reduction requires the full vertical profile.
     Other dimensions can be arbitrarily chunked for parallel computation.
-    This shared helper is the chunking guard for every xarray entry surface.
+    This shared helper is the chunking guard for the decorated adapter path
+    and the stateful fire adapters; the hand-written PET entry points opt
+    into Dask rechunking instead.
 
     Args:
         data: Dask-backed DataArray to validate
