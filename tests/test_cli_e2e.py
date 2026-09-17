@@ -178,11 +178,11 @@ def test_spei_uses_provided_pet_file_and_matches_in_process_computation(
 
 def _length_in(values_inches, units):
     """Express values known in inches under the given length unit label."""
-    return values_inches * 25.4 if units == "mm" else values_inches
+    return values_inches if units in ("inches", None) else values_inches * 25.4
 
 
 @pytest.mark.parametrize("precip_units", ["mm", "inches"])
-@pytest.mark.parametrize("awc_units", ["mm", "inches", None])
+@pytest.mark.parametrize("awc_units", ["mm", "millimeters", "inches", None])
 def test_palmers_writes_all_four_outputs_matching_in_process_computation(
     tmp_path, precips_mm_monthly, pet_thornthwaite_mm, palmer_awcs, precip_units, awc_units
 ):
@@ -271,6 +271,8 @@ def test_palmers_rejects_an_awc_variable_with_unsupported_units(
                 "awc",
             ]
         )
+
+    assert not list(tmp_path.glob("palmers_*"))
 
 
 def test_invalid_scale_raises_and_writes_no_output(tmp_path, precips_mm_monthly):
