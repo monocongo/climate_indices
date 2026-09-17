@@ -716,6 +716,11 @@ def test_missing_day_policy_routes_through_the_shared_helper(
     runner(weather)
 
     assert len(calls) == weather.temperature.shape[0]
+    # _with_missing poisons precipitation on days 1-2: the helper must see those
+    # as invalid, not just get called once per day regardless of what it's fed.
+    missing_days = {1, 2}
+    day_weather_valid = [bool(args[1]) for args in calls]
+    assert all(valid == (day not in missing_days) for day, valid in enumerate(day_weather_valid))
 
 
 # ------------------------------------------------------------------------------

@@ -571,11 +571,11 @@ def test_missing_day_policy_routes_through_the_shared_helper(
     max_gap_days: int,
 ) -> None:
     """ADR-0007: the day policy has one implementation, in fire._common."""
-    calls: list[dict[str, object]] = []
+    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
     shared = fire._kbdi._apply_gap_policy
 
     def recording_helper(*args: object, **kwargs: object) -> object:
-        calls.append(kwargs)
+        calls.append((args, kwargs))
         return shared(*args, **kwargs)
 
     monkeypatch.setattr(fire._kbdi, "_apply_gap_policy", recording_helper)
@@ -584,7 +584,13 @@ def test_missing_day_policy_routes_through_the_shared_helper(
     fire.kbdi(precipitation, temperature, 1000.0, nan_policy=nan_policy, max_gap_days=max_gap_days)
 
     assert len(calls) == precipitation.shape[0]
-    assert all(call["nan_policy"] == nan_policy and call["max_gap_days"] == max_gap_days for call in calls)
+    assert all(kwargs["nan_policy"] == nan_policy and kwargs["max_gap_days"] == max_gap_days for _, kwargs in calls)
+    # precipitation[2] is the fixture's missing day: the helper must see it as invalid,
+    # not just get called the right number of times with the right policy kwargs.
+    missing_day = 2
+    day_weather_valid = [bool(args[1]) for args, _ in calls]
+    assert day_weather_valid[missing_day] is False
+    assert all(valid for day, valid in enumerate(day_weather_valid) if day != missing_day)
 
 
 def test_propagate_poisons_from_the_first_valid_day_after_an_interior_gap() -> None:
