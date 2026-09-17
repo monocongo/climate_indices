@@ -628,6 +628,43 @@ def _backtrack_assigned_values(state: _PalmerRecursion, active: np.ndarray) -> N
         state.sx[i] = np.where(step, new_sx, state.sx[i])
 
 
+def _flush_spells(state: _PalmerRecursion, flush: np.ndarray, cells: np.ndarray) -> None:
+    """
+    Output the PDSI/PHDI/PMDI entries for the cells whose spell closes this month.
+
+    :param state: the mutable recursion state
+    :param flush: which cells close an open spell this month (k8 > 0)
+    :param cells: every cell index, parallel to ``flush``
+    """
+    use_all_x3 = flush & (state.iass == 3)
+    backtrack = flush & ~use_all_x3
+
+    # use all x3 values
+    if np.any(use_all_x3):
+        max_k8_x3 = int(state.k8[use_all_x3].max())
+        for idx in range(max_k8_x3):
+            step = use_all_x3 & (idx < state.k8)
+            if np.any(step):
+                state.sx[idx] = np.where(step, state.sx3[idx], state.sx[idx])
+    if np.any(backtrack):
+        _backtrack_assigned_values(state, backtrack)
+
+    # proper assignments to array sx have been made, output the mess
+    max_k8_flush = int(state.k8[flush].max())
+    for idx in range(max_k8_flush + 1):
+        step = flush & (idx <= state.k8)
+        if not np.any(step):
+            continue
+        step_cells = cells[step]
+        _record_index_values(
+            state,
+            state.indexj[idx][step],
+            state.indexm[idx][step],
+            state.sx[idx][step],
+            step_cells,
+        )
+
+
 def _assign(state: _PalmerRecursion, active: np.ndarray) -> None:
     """
     Assign x values, for every active cell.
@@ -657,33 +694,7 @@ def _assign(state: _PalmerRecursion, active: np.ndarray) -> None:
         )
 
     if np.any(flush):
-        use_all_x3 = flush & (state.iass == 3)
-        backtrack = flush & ~use_all_x3
-
-        # use all x3 values
-        if np.any(use_all_x3):
-            max_k8_x3 = int(state.k8[use_all_x3].max())
-            for idx in range(max_k8_x3):
-                step = use_all_x3 & (idx < state.k8)
-                if np.any(step):
-                    state.sx[idx] = np.where(step, state.sx3[idx], state.sx[idx])
-        if np.any(backtrack):
-            _backtrack_assigned_values(state, backtrack)
-
-        # proper assignments to array sx have been made, output the mess
-        max_k8_flush = int(state.k8[flush].max())
-        for idx in range(max_k8_flush + 1):
-            step = flush & (idx <= state.k8)
-            if not np.any(step):
-                continue
-            step_cells = cells[step]
-            _record_index_values(
-                state,
-                state.indexj[idx][step],
-                state.indexm[idx][step],
-                state.sx[idx][step],
-                step_cells,
-            )
+        _flush_spells(state, flush, cells)
 
     state.k8 = np.where(active, 0, state.k8)
     # k8max is deliberately not reset here: it is the high-water mark
