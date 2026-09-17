@@ -345,7 +345,7 @@ def _measure_peak_rss_mb(n_days: int, n_side: int, chunk_side: int, outputs=None
         raise RuntimeError(f"peak-RSS probe failed (exit {exc.returncode}):\n{exc.stderr}") from exc
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"peak-RSS probe timed out after {exc.timeout:.0f}s") from exc
-    except (json.JSONDecodeError, IndexError, KeyError) as exc:
+    except (json.JSONDecodeError, IndexError, KeyError, TypeError) as exc:
         raise RuntimeError(f"peak-RSS probe printed no usable result: {exc}") from exc
 
 
@@ -561,11 +561,12 @@ class TestFireBudgetPolicy:
         with pytest.raises(RuntimeError, match="timed out"):
             _measure_peak_rss_mb(365, 32, 32)
 
-    def test_probe_unreadable_output_is_reported(self, monkeypatch) -> None:
-        """A probe child that exits cleanly with no JSON result fails with context."""
+    @pytest.mark.parametrize("stdout", ["not json\n", "", '{"other": 1}\n', "123\n"])
+    def test_probe_unreadable_output_is_reported(self, monkeypatch, stdout: str) -> None:
+        """A probe child that exits cleanly without a result fails with context."""
 
         def _garbage(*args, **kwargs):
-            return subprocess.CompletedProcess(["probe"], 0, stdout="not json\n", stderr="")
+            return subprocess.CompletedProcess(["probe"], 0, stdout=stdout, stderr="")
 
         monkeypatch.setattr(subprocess, "run", _garbage)
         with pytest.raises(RuntimeError, match="no usable result"):
