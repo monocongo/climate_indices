@@ -154,6 +154,61 @@ def test_all_nan_cell_matches_per_location_all_missing_and_does_not_poison_neigh
     assert np.isnan(zindex[:, 0, 1]).all()
 
 
+def test_masked_cells_are_missing_not_their_backing_values(palmer_awcs):
+    """A masked cell must come back missing rather than computed from the data
+    hidden under its mask (``np.asarray`` in the reshaper would strip the mask)."""
+    division = "0101"
+    precips = np.load(_FIXTURE_ROOT / division / "precips.npy")
+    pet = np.load(_FIXTURE_ROOT / division / "pet.npy")
+    awc = palmer_awcs[division]
+
+    # the masked cell's backing values are finite zeros, so reading under the mask
+    # would produce ordinary-looking PDSI values instead of missing data
+    precips_block = np.stack([precips, np.zeros_like(precips)], axis=-1).reshape(-1, 1, 2)
+    pet_block = np.stack([pet, np.zeros_like(pet)], axis=-1).reshape(-1, 1, 2)
+    mask = np.zeros(precips_block.shape, dtype=bool)
+    mask[:, :, 1] = True
+    awc_block = np.array([[awc, awc]])
+
+    pdsi, phdi, pmdi, zindex, _ = palmer.pdsi(
+        np.ma.masked_array(precips_block, mask=mask),
+        np.ma.masked_array(pet_block, mask=mask),
+        awc_block,
+        _DATA_START_YEAR,
+        _CALIBRATION_START,
+        _CALIBRATION_END,
+        spatial_time_major=True,
+    )
+
+    for values in (pdsi, phdi, pmdi, zindex):
+        assert not np.ma.isMaskedArray(values)
+        assert np.isnan(values[:, 0, 1]).all()
+
+    # the unmasked cell is untouched by the mask conversion
+    single_pdsi, single_phdi, single_pmdi, single_z, _ = palmer.pdsi(
+        precips, pet, awc, _DATA_START_YEAR, _CALIBRATION_START, _CALIBRATION_END
+    )
+    np.testing.assert_array_equal(pdsi[:, 0, 0], single_pdsi)
+    np.testing.assert_array_equal(phdi[:, 0, 0], single_phdi)
+    np.testing.assert_array_equal(pmdi[:, 0, 0], single_pmdi)
+    np.testing.assert_array_equal(zindex[:, 0, 0], single_z)
+
+
+def test_same_size_incompatible_cell_axes_raise():
+    """(time, 2, 3) and (time, 3, 2) have equal element counts but flatten their
+    cells in a different spatial order, so they must be rejected rather than paired."""
+    with pytest.raises(ValueError, match="Incompatible precipitation and PET arrays"):
+        palmer.pdsi(
+            np.zeros((240, 2, 3)),
+            np.zeros((240, 3, 2)),
+            5.0,
+            1980,
+            1980,
+            1999,
+            spatial_time_major=True,
+        )
+
+
 def test_per_cell_awc_actually_varies_the_result(palmer_awcs):
     """Guards against a broadcasting bug that applies one AWC to every cell."""
     division = "0101"
@@ -202,3 +257,10 @@ def test_scpdsi_rejects_spatial_block(palmer_awcs):
 
     with pytest.raises(ValueError, match="spatial block"):
         palmer.scpdsi(precips_block, pet_block, awc, _DATA_START_YEAR, _CALIBRATION_START, _CALIBRATION_END)
+
+
+def test_scpdsi_rejects_a_block_in_either_input():
+    """PET alone being a block must be rejected too, not run as a mixed-shape
+    calculation with the precipitation series broadcast over it."""
+    with pytest.raises(ValueError, match="spatial block"):
+        palmer.scpdsi(np.zeros(240), np.zeros((240, 1, 1)), 5.0, 1980, 1980, 1999)

@@ -139,6 +139,54 @@ class TestPalmersWorker:
         np.testing.assert_allclose(_read(cli_main._KEY_RESULT_PMDI), expected_pmdi, equal_nan=True)
         np.testing.assert_allclose(_read(cli_main._KEY_RESULT_ZINDEX), expected_zindex, equal_nan=True)
 
+    def test_grid_worker_applies_the_supplied_callable(
+        self,
+        monkeypatch,
+    ):
+        """The grid branch must call ``func1d`` (as the divisions branch does)
+        instead of hard-coding ``palmer.pdsi``, passing the block with a private
+        ``spatial_time_major=True`` so the callable reads it as time-major."""
+        lat, lon, n_time = 2, 2, 24
+        shape = (lat, lon, n_time)
+        shared_arrays = {
+            "precip": _make_shared_array(np.ones(shape), shape),
+            "pet": _make_shared_array(np.ones(shape), shape),
+            "awc": _make_shared_array(np.full((lat, lon), 5.0), (lat, lon)),
+            cli_main._KEY_RESULT_PDSI: _make_empty_shared_array(shape),
+            cli_main._KEY_RESULT_PHDI: _make_empty_shared_array(shape),
+            cli_main._KEY_RESULT_PMDI: _make_empty_shared_array(shape),
+            cli_main._KEY_RESULT_ZINDEX: _make_empty_shared_array(shape),
+        }
+        monkeypatch.setattr(cli_main, "_global_shared_arrays", shared_arrays)
+
+        calls: list[tuple[tuple[int, ...], bool]] = []
+
+        def recording_palmers(precips, pet, awc, parameters):
+            calls.append((precips.shape, parameters.get("spatial_time_major", False)))
+            computed = np.zeros(precips.shape)
+            return computed, computed, computed, computed
+
+        params = {
+            "func1d": recording_palmers,
+            "sub_array_start": 0,
+            "sub_array_end": None,
+            "var_name_precip": "precip",
+            "var_name_pet": "pet",
+            "var_name_awc": "awc",
+            "output_var_name": cli_main._KEY_RESULT_PDSI,
+            "input_type": InputType.grid,
+            "args": {"data_start_year": 1980, "calibration_start_year": 1980, "calibration_end_year": 1981},
+        }
+
+        cli_main._apply_along_axis_palmers(params)
+
+        # the callable saw the time-major block (time, lat, lon) ...
+        assert calls == [((n_time, lat, lon), True)]
+        # ... and its output is what landed in the shared arrays, not palmer.pdsi()'s
+        entry = shared_arrays[cli_main._KEY_RESULT_PDSI]
+        written = np.frombuffer(entry[cli_main._KEY_ARRAY].get_obj()).reshape(entry[cli_main._KEY_SHAPE])
+        np.testing.assert_array_equal(written, np.zeros(shape))
+
     def test_grid_worker_matches_per_division_computation(
         self,
         monkeypatch,

@@ -1423,6 +1423,25 @@ def _calculate_scpdsi_prepared(prepared: _PalmerPrepared, original_length: int) 
     )
 
 
+def _fill_masked_with_nan(values: np.ndarray) -> np.ndarray:
+    """
+    Replace a masked array with a plain float array whose masked elements are NaN.
+
+    The reshaper and the recursion call ``np.asarray``, which drops a mask and
+    exposes the backing values underneath, so a masked grid cell would be
+    computed from -- and publish -- the data the caller marked missing.
+    Converting once at the shared calculation entry makes a masked element
+    indistinguishable from NaN input everywhere downstream, including the
+    per-cell all-missing test.
+
+    :param values: the input array
+    :return: the input unchanged, or the masked input's data with NaN under its mask
+    """
+    if not np.ma.isMaskedArray(values):
+        return values
+    return np.ma.filled(values.astype(float), np.nan)
+
+
 def _mask_fully_missing_cells(precips: np.ndarray, result: _PalmerResult) -> _PalmerResult:
     """
     NaN out any cell whose entire time series is missing, in a spatial block.
@@ -1479,17 +1498,27 @@ def _palmer_calculation(
     t0 = time.perf_counter()
 
     try:
-        if precips.size != pet.size:
+        # equal element counts are not enough to pair a spatial block: (time, 2, 3)
+        # and (time, 3, 2) have the same size but flatten their cells in different
+        # spatial order, and a block's time axis is not recoverable from size alone.
+        # 1-D and 2-D input stays interchangeable -- (time,) and (years, 12) are the
+        # same series folded the same way.
+        precips_shape = np.shape(precips)
+        pet_shape = np.shape(pet)
+        if precips_shape != pet_shape and (precips.size != pet.size or len(precips_shape) > 2 or len(pet_shape) > 2):
             message = "Incompatible precipitation and PET arrays"
             log.error("validation_failed", reason=message)
             raise ValueError(message)
+
+        precips = _fill_masked_with_nan(precips)
+        pet = _fill_masked_with_nan(pet)
 
         if np.any(np.isinf(precips)) or np.any(np.isinf(pet)):
             message = "precipitation and PET arrays cannot contain infinite values"
             log.error("validation_failed", reason=message)
             raise ValueError(message)
 
-        all_missing = (isinstance(precips, np.ma.MaskedArray) and precips.mask.all()) or np.all(np.isnan(precips))
+        all_missing = np.all(np.isnan(precips))
         if all_missing:
             reshaped, _ = _reshape_palmer_input(precips, spatial_time_major)
             _validate_calibration_period(
@@ -1650,7 +1679,7 @@ def scpdsi(
             fitted slope non-positive and trigger this (see
             :func:`climate_indices.self_calibration.duration_factors`).
     """
-    if np.asarray(precips).ndim > 2:
+    if np.ndim(precips) > 2 or np.ndim(pet) > 2:
         raise ValueError(
             "scpdsi() does not support a spatial block (three or more dimensions); "
             "self-calibrating PDSI runs per location -- see ADR-0009. Use pdsi() "

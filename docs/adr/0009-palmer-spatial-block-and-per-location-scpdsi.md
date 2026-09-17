@@ -78,6 +78,19 @@ sequence of branch decisions for roughly 15% of a 48-division stress grid.
 sum back on NumPy's fast, contiguous axis and reproducing the per-location value
 exactly; this was verified empirically against the divergent cases, not assumed.
 
+## Memory footprint
+
+The vectorized recursion trades the per-location path's small per-cell working set for
+block-sized state: the spell window (`indexj`/`indexm`/`sx`/`sx1`/`sx2`/`sx3`) is
+preallocated to the record length for every cell, and the prepared, recursion, and output
+arrays all carry `(years, 12, cells)`. Peak memory is therefore a function of
+`record_months x cells` -- a few tens of float64 buffers, not one -- so a large enough
+legal block can exhaust memory before producing output. As with the fitting-based kernels
+(ADR-0008), the block size is the memory lever: a direct caller chunks spatially rather
+than handing `pdsi()` a dense continental grid, and the CLI splits the grid along latitude
+across one process per worker, so per-worker memory is the chunk's share of the grid (the
+sum across workers stays proportional to the grid).
+
 ## A block cell that is entirely missing
 
 A standalone call on an all-missing series short-circuits before the recursion runs and
@@ -89,7 +102,9 @@ ocean or no-data cells would read back as an ordinary near-zero PDSI instead of 
 data. `palmer.pdsi()` therefore detects per-cell full missingness in a block
 (`np.all(np.isnan(precips), axis=0)`) after the recursion completes and overwrites just
 those cells' four outputs with NaN, reproducing the standalone shortcut's result without
-touching any other cell.
+touching any other cell. Masked input is converted once at the shared calculation entry
+(`_fill_masked_with_nan`), so a masked element is the same missing marker as a NaN and the
+backing value under a mask is never read or published.
 
 ## Consequences
 
