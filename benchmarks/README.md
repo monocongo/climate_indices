@@ -122,10 +122,10 @@ The compute call passes `chunksize=1`: Dask's default batches up to six ready
 tasks per submission, which runs a whole six-block batch sequentially on one
 worker and silently flattens the curve.
 
-PET for SPEI is synthetic (a fixed fraction of the precipitation) and per-cell
-logging and goodness-of-fit warnings are disabled, so the timings measure the
-fitting path rather than the log renderer. The before/after table for #929 is
-below.
+PET for SPEI is synthetic (a fixed fraction of the precipitation); the Dask
+sweep runs with logging quiet and goodness-of-fit warnings filtered, so the Dask
+timings measure the fitting path rather than the log renderer. The before/after
+table for #929 is below.
 
 ## Before/after on the reference grid (#929)
 
@@ -162,31 +162,47 @@ block replaces 3306. The INFO column collapses after the conversion because the
 per-cell `structlog` volume goes with the loop (SPI: 19837 records before, a few
 per block after).
 
+The #921 profile's 0.7 s quiet SPI figure is the Python 3.13.13 run of the same
+pre-conversion path; the 0.898 s here is a Python 3.14.7 measurement of it, and
+rerunning the identical command a few minutes later gave 0.770 s, so read the
+speedup column as ±15% rather than exact.
+
 Raw output: `benchmarks/results/serial_before.txt` (pre-conversion) and
-`benchmarks/results/parallel_scaling.txt` (this branch).
+`benchmarks/results/parallel_scaling.txt` (post-conversion). The harness only
+writes to standard output, so neither file is rewritten by the commands above:
+`parallel_scaling.txt` is the `tee` of the #928 full-sweep command, and
+`serial_before.txt` is the historical pre-conversion run on `d4e9ba0d` with the
+harness copied in, so `--serial-only` here re-measures the post-conversion path
+instead. Re-measure rather than trusting either file on another machine or
+dependency set; the pre-conversion artifact's header omits the dask and xarray
+versions the current script prints.
 
 ### The 10x criterion (#893)
 
-**Met for EDDI only; SPI and SPEI fall short.** Against the pre-vectorization
-serial canonical path on the reference grid:
+**Met end to end for EDDI only; SPI and SPEI fall short.** Against the
+pre-vectorization serial canonical path on the reference grid:
 
-- EDDI: 14.717 s -> 0.710 s through the Dask path, ~21x end to end, and 342x for
-  the in-process vectorization alone.
-- PET: 53x in-process, but 1.5x end to end (1.063 s -> 0.694 s) because the Dask
+- EDDI: 14.717 s -> 0.699 s through the Dask path, ~21x end to end, and 342x
+  for the in-process vectorization alone.
+- PET: 53x in-process, but 1.6x end to end (1.063 s -> 0.685 s) because the Dask
   path is slower than the serial in-memory call at this size.
-- SPI: 4.4x in-process, 1.0x end to end (0.898 s -> 0.895 s).
-- SPEI: 3.5x in-process, 0.86x end to end (0.783 s -> 0.911 s).
+- SPI: 4.4x in-process, 1.1x end to end (0.898 s -> 0.837 s).
+- SPEI: 3.6x in-process, 0.89x end to end (0.783 s -> 0.877 s).
 
-The SPI/SPEI shortfall is fixed overhead, not a serial-vs-parallel gap in the
-kernels: after vectorization each finishes in ~0.2 s, while every `processes`
-pool start-up and result transfer costs ~0.7 s. The one-worker row shows it
-directly (SPI: 0.924 s for the pool against 0.205 s in memory). Parallelism pays
-when the work per block exceeds that fixed cost, and the 3306-cell reference grid
-no longer does. The epic's ">11 minutes" reference measures the explicit
-lat/lon loops in `notebooks/muitprocess_spi_nclimgrid.ipynb`, which bypass the
-adapter: the canonical path was 1.1 s before the conversion, so the 10x criterion
-needs either a larger grid than the reference one or a longer-lived executor than
-one pool per `compute()` call to be reachable for SPI and SPEI.
+The SPI/SPEI shortfall is Dask overhead, not a serial-vs-parallel gap in the
+kernels: after vectorization each finishes in ~0.2 s, while a fresh `processes`
+pool plus its start-up and the result transfer add 0.66-0.71 s at one worker and
+about 1.0 s at eight, on the same added-cost basis (SPI: 0.863 s pooled against
+0.204 s in memory at one worker, 1.197 s at eight, i.e. ~0.99 s of added cost).
+Parallelism pays when the work per block exceeds that
+cost, and the 3306-cell reference grid no longer does. The epic's ">11 minutes"
+reference measures the explicit lat/lon loops in
+`notebooks/muitprocess_spi_nclimgrid.ipynb`, which bypass the adapter: the
+canonical path was 1.1 s before the conversion. Reaching 10x for SPI and SPEI
+therefore needs a larger grid than the reference one: even the warmed-pool
+figure recorded for this grid (0.23 s at eight workers, `docs/xarray_compatibility.md`,
+#927 harness) is 3.9x the 0.898 s serial baseline, so executor reuse alone does
+not close the gap.
 
 ## Per-cell invocation inventory (#922)
 

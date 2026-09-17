@@ -121,6 +121,9 @@ applies per cell along the time axis.
   and 1.26 s against 0.23 s at eight workers
   ([#928](https://github.com/monocongo/climate_indices/issues/928) harness,
   recorded on [#927](https://github.com/monocongo/climate_indices/issues/927)).
+  The serial reference and the fresh-pool rows for SPI, SPEI, PET and EDDI are
+  tabulated in
+  [the #929 before/after table](https://github.com/monocongo/climate_indices/blob/main/benchmarks/README.md#beforeafter-on-the-reference-grid-929).
   Keep a `dask.distributed.Client` alive across calls — the [tutorial's client
   cell](https://github.com/monocongo/climate_indices/blob/main/notebooks/zarr_dask_spi_spei.ipynb)
   does, and `distributed` ships with the `dev` extra — or pass a pre-created pool
