@@ -1591,10 +1591,10 @@ def pdsi(
 
     Args:
         precips: Time series of monthly precipitation values, in inches, or
-            a time-major spatial block with shape (time, *cells) and three or
-            more dimensions, per ADR-0009 and ADR-0011. A block whose first
+            a time-major spatial block with shape ``(time, *cells)`` and three
+            or more dimensions, per ADR-0009 and ADR-0011. A block whose first
             cell axis is a calendar period length (12 or 366) is ambiguous
-            with a (years, periods, *cells) array and requires
+            with a ``(years, periods, *cells)`` array and requires
             ``spatial_time_major=True``.
         pet: Time series of monthly PET values, in inches, matching precips'
             shape.
