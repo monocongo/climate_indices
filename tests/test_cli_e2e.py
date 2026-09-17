@@ -257,20 +257,20 @@ def test_palmers_rejects_an_awc_variable_with_unsupported_units(
         coords={"division": [_DIVISION]},
     ).to_netcdf(awc_path)
 
+    arguments = [
+        *_common_arguments("palmers", precip_path, tmp_path / "palmers"),
+        "--netcdf_pet",
+        str(pet_path),
+        "--var_name_pet",
+        "pet",
+        "--netcdf_awc",
+        str(awc_path),
+        "--var_name_awc",
+        "awc",
+    ]
+
     with pytest.raises(ValueError, match="Unsupported available water capacity units"):
-        main(
-            [
-                *_common_arguments("palmers", precip_path, tmp_path / "palmers"),
-                "--netcdf_pet",
-                str(pet_path),
-                "--var_name_pet",
-                "pet",
-                "--netcdf_awc",
-                str(awc_path),
-                "--var_name_awc",
-                "awc",
-            ]
-        )
+        main(arguments)
 
     assert not list(tmp_path.glob("palmers_*"))
 
@@ -286,20 +286,20 @@ def test_palmers_rejects_a_precipitation_rate_label(tmp_path, precips_mm_monthly
         coords={"division": [_DIVISION]},
     ).to_netcdf(awc_path)
 
+    arguments = [
+        *_common_arguments("palmers", precip_path, tmp_path / "palmers"),
+        "--netcdf_pet",
+        str(pet_path),
+        "--var_name_pet",
+        "pet",
+        "--netcdf_awc",
+        str(awc_path),
+        "--var_name_awc",
+        "awc",
+    ]
+
     with pytest.raises(ValueError, match="mm/dy"):
-        main(
-            [
-                *_common_arguments("palmers", precip_path, tmp_path / "palmers"),
-                "--netcdf_pet",
-                str(pet_path),
-                "--var_name_pet",
-                "pet",
-                "--netcdf_awc",
-                str(awc_path),
-                "--var_name_awc",
-                "awc",
-            ]
-        )
+        main(arguments)
 
     assert not list(tmp_path.glob("palmers_*"))
 
