@@ -51,7 +51,7 @@ def main() -> None:
     )
 
     # Time in one chunk is required; spatial chunks are the parallelism and memory lever.
-    chunks = {"time": -1, "lat": 5, "lon": 5}
+    chunks = {"time": -1, "lat": 10, "lon": 10}
     precip = precip.chunk(chunks)
     pet = pet.chunk(chunks)
 
@@ -83,28 +83,30 @@ if __name__ == "__main__":
 
 `spi_grid` and `spei_grid` are `DataArray`s with the input coordinates, one
 value per cell and month, computed without a per-cell Python loop. With
-synthetic values the gamma goodness-of-fit check can emit
+synthetic values the gamma goodness-of-fit check can report
 `GoodnessOfFitWarning` for a few cell-months; that is the fit report, not a
-failure. Give multi-input indices such as SPEI the same chunking on the
-dimensions they share with the other input: each input's `time` chunking is
-validated independently, and a mismatch on `lat`/`lon` survives into the compute
-as a Dask `rechunk-merge` copy.
+failure, and under `scheduler="processes"` it is raised in the workers (their
+stderr), not catchable in the caller. Give multi-input indices such as SPEI the
+same chunking on the dimensions they share with the other input: each input's
+`time` chunking is validated independently, and a mismatch on `lat`/`lon`
+survives into the compute as a Dask `rechunk-merge` copy.
 
 ## Measured speedup
 
 Vectorization is what removes the per-cell Python loop, so its effect is
 measured against the serial in-memory call. On the #893 reference grid
-(38 x 87 cells, 40 years monthly, scale 3, quiet logging, fastest of three runs
-after a warm-up; Python 3.14.7, 10-core macOS arm64):
+(38 x 87 cells, 40 years monthly, scale 3, fastest of three runs after a warm-up
+with logging quiet so the fit is isolated; the speedups compare quiet-logging
+serial runs and are ±15% rather than exact; Python 3.14.7, 10-core macOS arm64):
 
 | index | serial before | serial after | vectorization speedup |
 | --- | ---: | ---: | ---: |
 | SPI | 0.898 s | 0.204 s | 4.4x |
-| SPEI | 0.783 s | 0.221 s | 3.6x |
+| SPEI | 0.783 s | 0.220 s | 3.6x |
 | Thornthwaite PET | 1.063 s | 0.020 s | 53x |
 | EDDI | 14.717 s | 0.043 s | 342x |
 
-"The "serial before" column is the last commit before the spatial-block
+The "serial before" column is the last commit before the spatial-block
 conversion; the per-cell logging volume disappeared with the loop, collapsing
 the INFO-logged figures as well. The raw runs, the full command, and the
 end-to-end Dask numbers are in
@@ -113,10 +115,11 @@ end-to-end Dask numbers are in
 On this grid the Dask path does not beat the serial call for SPI, SPEI, or PET:
 after vectorization each finishes in about 0.2 s or less, while a fresh
 `processes` pool plus result transfer adds roughly 0.7 s at one worker. EDDI,
-whose pre-vectorization call took 14.7 s, is the one index here that clears the
-epic's 10x criterion through Dask alone. Parallelism pays when the work per
-block exceeds that fixed cost -- larger grids, longer series, or a worker pool
-that outlives one compute call.
+whose pre-vectorization call took 14.7 s, is the only index whose end-to-end Dask
+figure still clears 10x (0.699 s, ~21x, and at a single worker): the win is the
+vectorization surviving the fixed pool cost, not the parallelism. Parallelism
+pays when the work per block exceeds that fixed cost -- larger grids, longer
+series, or a worker pool that outlives one compute call.
 
 ## Scheduler
 
@@ -132,8 +135,13 @@ spi_grid = spi_lazy.compute(scheduler="processes")
 - Every `.compute(scheduler="processes")` builds and tears down its own pool, so
   short or repeated computations spend most of their wall clock there. Keep a
   `dask.distributed.Client` alive across calls (`distributed` ships with the
-  `dev` extra) or pass a pre-created pool; compute several lazy results in one
-  `dask.compute` call as in the example above.
+  `dev` extra), pass a pre-created pool as
+  `dask.compute(..., scheduler="processes", pool=pool)`, or compute several lazy
+  results in one `dask.compute` call as in the example above.
+- Dask's processes scheduler batches up to six ready tasks per submission by
+  default, which can flatten scaling on large grids; pass `chunksize=1` to
+  `dask.compute` (or set `dask.config.set({"chunksize": 1})`) so each ready
+  block is submitted as soon as a worker is free.
 - The threaded scheduler remains the right choice for I/O-bound work, reductions
   such as `.mean("time")`, and small in-memory grids where serializing each block
   to a worker costs more than the parallelism saves.
@@ -144,15 +152,17 @@ The full scheduler guidance, including Zarr and NetCDF write behavior, is in
 ## Chunking
 
 Keep `time` in a single chunk and size spatial blocks by cell count, not shape.
-The measured working set of a monthly gamma fit is about 60 KB per cell, so a
-100 MB per-block budget is roughly 1,600 cells. That figure is a per-block
+The PET adapters (`pet_thornthwaite`, `pet_hargreaves`) are the exception: they
+accept a split `time` and rechunk it internally, paying that copy inside every
+call. The measured working set of a monthly gamma fit is about 60 KB per cell,
+so a 100 MB per-block budget is roughly 1,600 cells. That figure is a per-block
 measurement taken with `scheduler="synchronous"`, one block resident at a time;
 a threaded or distributed worker can hold several ready blocks plus their
 inputs and outputs, so budget from the memory a worker can spare per block it
 runs at once. The reference grid measures well under that at `10 x 10` to
-`20 x 20`. Daily grids carry up to 366 steps per
-cell-year instead of 12 and want blocks near `7 x 7`. Chunk both spatial
-dimensions rather than long rows, and leave at least a few blocks per worker.
+`20 x 20`. Daily grids carry up to 366 steps per cell-year instead of 12 and
+want blocks near `7 x 7`. Chunk both spatial dimensions rather than long rows,
+and leave at least a few blocks per worker.
 
 Rechunk once, at read or prepare time: `.chunk(...)` only sets the layout of a
 lazy graph, so persist the rechunked array (or write the layout back to the
@@ -170,7 +180,7 @@ one to N workers:
 uv run benchmarks/parallel_scaling.py --indices spi,spei,pet,eddi --repeat 3
 ```
 
-`benchmarks/profile_gridded_spi.py` is the `cProfile`/py-spy entry point for
+`benchmarks/profile_gridded_spi.py` is the `cProfile` entry point for
 attributing a slow SPI pass, and
 [`benchmarks/README.md`](https://github.com/monocongo/climate_indices/blob/main/benchmarks/README.md)
 documents both harnesses and the committed raw output.
