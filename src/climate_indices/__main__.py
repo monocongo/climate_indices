@@ -1231,7 +1231,9 @@ def _palmers(
     parameters: dict[str, Any],
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     # The CLI does not yet expose the implemented self-calibrating API;
-    # palmer.pdsi() produces only standard PDSI/PHDI/PMDI/Z-Index here.
+    # palmer.pdsi() produces only standard PDSI/PHDI/PMDI/Z-Index here. The grid
+    # worker passes its block with spatial_time_major=True; the divisions worker's
+    # per-location call leaves it unset and gets the legacy 1-D reading.
     computed_pdsi, computed_phdi, computed_pmdi, computed_zindex, _fitting_params = palmer.pdsi(
         precips,
         pet,
@@ -1239,6 +1241,7 @@ def _palmers(
         parameters["data_start_year"],
         parameters["calibration_start_year"],
         parameters["calibration_end_year"],
+        spatial_time_major=parameters.get("spatial_time_major", False),
     )
     return computed_pdsi, computed_phdi, computed_pmdi, computed_zindex
 
@@ -1490,8 +1493,15 @@ def _apply_along_axis_double(
 
 def _apply_along_axis_palmers(params: dict[str, Any]) -> None:
     """
-    Applies the Palmer computation function across subarrays of
-    the Palmer-specific input (shared-memory) arrays.
+    Applies the Palmer computation across subarrays of the Palmer-specific
+    input (shared-memory) arrays.
+
+    A grid chunk is computed in one vectorized call over the whole
+    (lat_chunk, lon, time) block through the supplied ``func1d``, which receives
+    the block with a private ``spatial_time_major=True`` in its parameters, so the
+    block is read per ADR-0009/ADR-0011 rather than computed per grid cell;
+    multiprocessing still parallelizes across chunks (ADR-0002). A divisions chunk
+    has no cell-adjacency structure to batch, so it stays on the per-location loop.
 
     This function is useful with multiprocessing.Pool().map(): (1) map() only
     handles functions that take a single argument, and (2) this function can
@@ -1541,11 +1551,24 @@ def _apply_along_axis_palmers(params: dict[str, Any]) -> None:
     zindex_output_array = _global_shared_arrays[_KEY_RESULT_ZINDEX][_KEY_ARRAY]
     zindex = np.frombuffer(zindex_output_array.get_obj()).reshape(shape)[start_index:end_index]
 
-    for i, (precip, pet, awc) in enumerate(zip(sub_array_precip, sub_array_pet, sub_array_awc, strict=False)):
-        if params["input_type"] == InputType.grid:
-            for j in range(precip.shape[0]):
-                pdsi[i, j], phdi[i, j], pmdi[i, j], zindex[i, j] = func1d(precip[j], pet[j], awc[j], parameters=args)
-        else:  # divisions
+    if params["input_type"] == InputType.grid:
+        # sub_array_precip/pet are (lat_chunk, lon, time); pdsi() wants a
+        # time-major (time, *cells) block
+        precip_block = np.moveaxis(sub_array_precip, -1, 0)
+        pet_block = np.moveaxis(sub_array_pet, -1, 0)
+        block_args = {**args, "spatial_time_major": True}
+        block_pdsi, block_phdi, block_pmdi, block_zindex = func1d(
+            precip_block,
+            pet_block,
+            sub_array_awc,
+            parameters=block_args,
+        )
+        np.copyto(pdsi, np.moveaxis(block_pdsi, 0, -1))
+        np.copyto(phdi, np.moveaxis(block_phdi, 0, -1))
+        np.copyto(pmdi, np.moveaxis(block_pmdi, 0, -1))
+        np.copyto(zindex, np.moveaxis(block_zindex, 0, -1))
+    else:  # divisions
+        for i, (precip, pet, awc) in enumerate(zip(sub_array_precip, sub_array_pet, sub_array_awc, strict=False)):
             pdsi[i], phdi[i], pmdi[i], zindex[i] = func1d(precip, pet, awc, parameters=args)
 
 

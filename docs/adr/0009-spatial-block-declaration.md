@@ -66,7 +66,12 @@ Pearson fit propagates instead of falling back. EDDI and percentage of normal ca
 well (#942): EDDI counts each calendar period's climatology values below every cell's value, and
 percentage of normal averages each cell's calendar-period normals, so neither loops over the grid.
 Unlike the fitting-based kernels they reject an undeclared 3-D input, since their dimension errors
-are pinned to `DataShapeError` rather than `ValueError`. Palmer has no adapter layer at all (#937).
+are pinned to `DataShapeError` rather than `ValueError`. `palmer.pdsi()` adopts this same
+time-major block contract at the NumPy layer (#937); see
+[ADR-0011](./0011-palmer-spatial-block-and-per-location-scpdsi.md) for why its recursion needed a
+masked rewrite rather than a broadcast, why scPDSI stays per-location, and why one K-factor
+reduction has to run along a specific axis to stay bit-for-bit with the per-location path. Palmer
+still has no xarray adapter layer; that registration is a separate follow-up ticket.
 
 The PET entry points do not use the adapter decorator, because latitude arrives as a broadcast
 input rather than a secondary time series. They forward `vectorize=False` themselves and hand
