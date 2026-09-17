@@ -4,6 +4,7 @@ Common classes and functions used to compute the various climate indices.
 
 import functools
 import warnings
+from collections.abc import Callable
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
@@ -1038,6 +1039,58 @@ def _check_goodness_of_fit_gamma(
         warnings.warn(warning, stacklevel=3)
 
 
+def _spatial_poor_fits(
+    sorted_values: np.ndarray,
+    valid_counts: np.ndarray,
+    valid_positions: np.ndarray,
+    cdf_values: np.ndarray,
+    critical_tolerance: float,
+    candidate_cdf: Callable[[np.ndarray, tuple[int, ...]], np.ndarray],
+) -> list[tuple[int, float]]:
+    """Poorly fitting (time step, cell) candidates and their exact p-values.
+
+    The D statistic is a maximum over the ranked sample positions, evaluated for
+    every (time step, cell) at once; positions beyond a cell's valid count and
+    samples whose fitted parameters are invalid fall outside the comparison,
+    matching the per-series check's own guards.
+
+    :param sorted_values: Ascending calibration values, shaped (years, time_steps, ...)
+    :param valid_counts: Per-cell valid sample count, shaped (time_steps, ...)
+    :param valid_positions: Mask of positions inside a cell's valid sample with usable parameters
+    :param cdf_values: Fitted CDF at ``sorted_values``, same shape
+    :param critical_tolerance: Epsilon slack when comparing the D statistic to the critical value
+    :param candidate_cdf: CDF for one candidate's sorted column and candidate index
+    :return: The (time step index, p-value) pairs that fail the goodness-of-fit check
+    """
+    ranks = np.arange(1, sorted_values.shape[0] + 1).reshape((-1,) + (1,) * (sorted_values.ndim - 1))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        upper = np.where(valid_positions, ranks / valid_counts - cdf_values, -np.inf)
+        lower = np.where(valid_positions, cdf_values - (ranks - 1) / valid_counts, -np.inf)
+    d_statistics = np.maximum(np.max(upper, axis=0), np.max(lower, axis=0))
+
+    # critical values depend on the per-cell valid count, so evaluate the cached
+    # exact statistic once per distinct count rather than once per cell
+    critical_values = np.full(valid_counts.shape, np.inf)
+    for valid_count in np.unique(valid_counts):
+        if valid_count > 0:
+            critical_values[valid_counts == valid_count] = _ks_critical_value(int(valid_count))
+
+    candidates = np.nonzero(d_statistics >= critical_values - critical_tolerance)
+    poor_fits: list[tuple[int, float]] = []
+    for candidate in zip(*candidates, strict=True):
+        step_index = int(candidate[0])
+        valid_count = int(valid_counts[candidate])
+        sorted_column = sorted_values[(slice(0, valid_count), *candidate)]
+        try:
+            p_value = _ks_poor_fit_p_value(sorted_column, candidate_cdf(sorted_column, candidate))
+        except Exception:
+            # ignore fitting errors during goodness-of-fit check, as the per-series path does
+            continue
+        if p_value is not None:
+            poor_fits.append((step_index, p_value))
+    return poor_fits
+
+
 def _check_goodness_of_fit_gamma_spatial(
     calibration_values: np.ndarray,
     alphas: np.ndarray,
@@ -1061,51 +1114,29 @@ def _check_goodness_of_fit_gamma_spatial(
     sorted_values = np.sort(calibration_values, axis=0)
     valid_counts = np.count_nonzero(~np.isnan(calibration_values), axis=0)
 
-    # the D statistic is a maximum over the ranked sample positions, evaluated here
-    # for every (time step, cell) at once; positions beyond a cell's valid count and
-    # samples whose fitted parameters are invalid fall outside the comparison, matching
-    # the per-series check's own guards. The float64 cast matches that check's arithmetic.
     ranks = np.arange(1, num_years + 1).reshape((-1,) + (1,) * (calibration_values.ndim - 1))
     valid_positions = (ranks <= valid_counts) & np.isfinite(alphas[np.newaxis]) & np.isfinite(betas[np.newaxis])
     valid_positions &= (alphas[np.newaxis] > 0) & (betas[np.newaxis] > 0)
     with np.errstate(divide="ignore", invalid="ignore"):
+        # the float64 casts match the per-series check's arithmetic
         cdf_values = scipy.special.gammainc(
             alphas[np.newaxis].astype(float),
             sorted_values.astype(float) / betas[np.newaxis].astype(float),
         )
-        upper = np.where(valid_positions, ranks / valid_counts - cdf_values, -np.inf)
-        lower = np.where(valid_positions, cdf_values - (ranks - 1) / valid_counts, -np.inf)
-    d_statistics = np.maximum(np.max(upper, axis=0), np.max(lower, axis=0))
-
-    # critical values depend on the per-cell valid count, so evaluate the cached
-    # exact statistic once per distinct count rather than once per cell
-    critical_values = np.full(valid_counts.shape, np.inf)
-    for valid_count in np.unique(valid_counts):
-        if valid_count > 0:
-            critical_values[valid_counts == valid_count] = _ks_critical_value(int(valid_count))
     critical_tolerance = 0.0
     if np.issubdtype(calibration_values.dtype, np.floating):
         critical_tolerance = float(np.finfo(calibration_values.dtype).eps)
-
-    candidates = np.nonzero(d_statistics >= critical_values - critical_tolerance)
-    poor_fits: list[tuple[int, float]] = []
-    for candidate in zip(*candidates, strict=True):
-        step_index = int(candidate[0])
-        valid_count = int(valid_counts[candidate])
-        sorted_column = sorted_values[(slice(0, valid_count), *candidate)]
-        try:
-            p_value = _ks_poor_fit_p_value(
-                sorted_column,
-                scipy.special.gammainc(
-                    float(alphas[candidate]),
-                    sorted_column.astype(float) / float(betas[candidate]),
-                ),
-            )
-        except Exception:
-            # ignore fitting errors during goodness-of-fit check, as the per-series path does
-            continue
-        if p_value is not None:
-            poor_fits.append((step_index, p_value))
+    poor_fits = _spatial_poor_fits(
+        sorted_values,
+        valid_counts,
+        valid_positions,
+        cdf_values,
+        critical_tolerance,
+        lambda column, candidate: scipy.special.gammainc(
+            float(alphas[candidate]),
+            column.astype(float) / float(betas[candidate]),
+        ),
+    )
 
     if not poor_fits:
         return
@@ -1252,6 +1283,7 @@ def _check_goodness_of_fit_pearson_spatial(
     parameters_valid &= valid_counts > 0
 
     ranks = np.arange(1, num_years + 1).reshape((-1,) + (1,) * (calibration_values.ndim - 1))
+    valid_positions = (ranks <= valid_counts) & parameters_valid[np.newaxis]
     with np.errstate(divide="ignore", invalid="ignore"):
         cdf_values = scipy.stats.pearson3.cdf(
             np.asarray(sorted_values, dtype=float),
@@ -1259,37 +1291,17 @@ def _check_goodness_of_fit_pearson_spatial(
             loc=np.asarray(locs, dtype=float)[np.newaxis],
             scale=np.asarray(scales, dtype=float)[np.newaxis],
         )
-        valid_positions = (ranks <= valid_counts) & parameters_valid[np.newaxis]
-        upper = np.where(valid_positions, ranks / valid_counts - cdf_values, -np.inf)
-        lower = np.where(valid_positions, cdf_values - (ranks - 1) / valid_counts, -np.inf)
-    d_statistics = np.maximum(np.max(upper, axis=0), np.max(lower, axis=0))
-
-    # critical values depend on the per-cell valid count, so evaluate the cached
-    # exact statistic once per distinct count rather than once per cell
-    critical_values = np.full(valid_counts.shape, np.inf)
-    for valid_count in np.unique(valid_counts):
-        if valid_count > 0:
-            critical_values[valid_counts == valid_count] = _ks_critical_value(int(valid_count))
     critical_tolerance = 0.0
     if np.issubdtype(calibration_values.dtype, np.floating):
         critical_tolerance = float(np.finfo(calibration_values.dtype).eps)
-
-    candidates = np.nonzero(d_statistics >= critical_values - critical_tolerance)
-    poor_fits: list[tuple[int, float]] = []
-    for candidate in zip(*candidates, strict=True):
-        step_index = int(candidate[0])
-        valid_count = int(valid_counts[candidate])
-        sorted_column = sorted_values[(slice(0, valid_count), *candidate)]
-        try:
-            p_value = _ks_poor_fit_p_value(
-                sorted_column,
-                cdf_values[(slice(0, valid_count), *candidate)],
-            )
-        except Exception:
-            # ignore fitting errors during goodness-of-fit check, as the per-series path does
-            continue
-        if p_value is not None:
-            poor_fits.append((step_index, p_value))
+    poor_fits = _spatial_poor_fits(
+        sorted_values,
+        valid_counts,
+        valid_positions,
+        cdf_values,
+        critical_tolerance,
+        lambda column, candidate: cdf_values[(slice(0, column.size), *candidate)],
+    )
 
     if not poor_fits:
         return
