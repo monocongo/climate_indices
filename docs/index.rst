@@ -404,6 +404,14 @@ Jan. 1951 through Dec. 2010. The output files will be
 `<out_dir>/nclimgrid_lowres_pmdi.nc`, and `<out_dir>/nclimgrid_lowres_zindex.nc`.
 
 .. note::
+   The Palmer routines (:func:`climate_indices.palmer.pdsi`) take precipitation,
+   PET, and available water capacity in inches. The command line normalizes
+   precipitation and PET to millimeters for the other indices, so these inputs
+   may declare either unit: values labeled ``inches``/``inch`` or
+   ``mm``/``millimeters`` are converted to inches before computing. An AWC
+   variable that declares any other unit is rejected.
+
+.. note::
    Self-calibrated PDSI (scPDSI) is available through the NumPy API as
    :func:`climate_indices.palmer.scpdsi`. It is not yet exposed by the
    ``process_climate_indices --index palmers`` command; see `issue #721

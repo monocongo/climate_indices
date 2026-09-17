@@ -883,6 +883,12 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
             else:
                 raise ValueError(f"Unsupported PET units: {dataset[pet_var_name].units}")
 
+    # the Palmer routines take inches, whereas the conversions above normalize
+    # precipitation and PET to millimeters for every other index
+    if keyword_arguments["index"] == "palmers":
+        dataset[keyword_arguments["var_name_precip"]].values /= 25.4
+        dataset[keyword_arguments["var_name_pet"]].values /= 25.4
+
     if input_type == InputType.divisions:
         output_shape = _drop_data_into_shared_arrays_divisions(dataset, input_var_names)
     else:
@@ -909,9 +915,17 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
 
         awc_dataset = xr.open_dataset(keyword_arguments["netcdf_awc"])
 
+        # the Palmer routines take available water capacity in inches; an
+        # absent units attribute is assumed to already be inches
+        var_name = keyword_arguments["var_name_awc"]
+        awc_units = str(awc_dataset[var_name].attrs.get("units", "")).strip().lower()
+        if awc_units in ("mm", "millimeters", "millimeter"):
+            awc_dataset[var_name].values /= 25.4
+        elif awc_units and awc_units not in ("inch", "inches"):
+            raise ValueError(f"Unsupported available water capacity units: {awc_units}")
+
         # create a shared memory array, wrap it as a numpy array and
         # copy the data (values) from this variable's DataArray
-        var_name = keyword_arguments["var_name_awc"]
         shared_array = multiprocessing.Array("d", int(np.prod(awc_dataset[var_name].shape)))
         shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(awc_dataset[var_name].shape)  # type: ignore[call-overload]
         np.copyto(shared_array_np, awc_dataset[var_name].values)

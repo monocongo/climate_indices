@@ -176,8 +176,15 @@ def test_spei_uses_provided_pet_file_and_matches_in_process_computation(
         np.testing.assert_allclose(dataset["spei_gamma_06"].values[0], expected, equal_nan=True)
 
 
+def _length_in(values_inches, units):
+    """Express values known in inches under the given length unit label."""
+    return values_inches if units == "inches" else values_inches * 25.4
+
+
+@pytest.mark.parametrize("precip_units", ["mm", "inches"])
+@pytest.mark.parametrize("awc_units", ["mm", "inches"])
 def test_palmers_writes_all_four_outputs_matching_in_process_computation(
-    tmp_path, precips_mm_monthly, pet_thornthwaite_mm, palmer_awcs
+    tmp_path, precips_mm_monthly, pet_thornthwaite_mm, palmer_awcs, precip_units, awc_units
 ):
     precips = precips_mm_monthly.reshape(-1)
     pet = pet_thornthwaite_mm.reshape(-1)
@@ -185,9 +192,14 @@ def test_palmers_writes_all_four_outputs_matching_in_process_computation(
     precip_path = tmp_path / "precip.nc"
     pet_path = tmp_path / "pet.nc"
     awc_path = tmp_path / "awc.nc"
-    _write_divisions(precip_path, precips)
-    _write_divisions(pet_path, pet, var_name="pet")
-    xr.Dataset({"awc": ("division", np.array([awc]))}, coords={"division": [_DIVISION]}).to_netcdf(awc_path)
+    # both labelings describe the same physical inputs, so the computed indices
+    # must match the in-process computation on the inches palmer.pdsi() takes
+    _write_divisions(precip_path, _length_in(precips / 25.4, precip_units), units=precip_units)
+    _write_divisions(pet_path, _length_in(pet / 25.4, precip_units), var_name="pet", units=precip_units)
+    xr.Dataset(
+        {"awc": ("division", np.array([_length_in(awc, awc_units)]), {"units": awc_units})},
+        coords={"division": [_DIVISION]},
+    ).to_netcdf(awc_path)
     output_base = tmp_path / "palmers"
 
     main(
@@ -205,8 +217,8 @@ def test_palmers_writes_all_four_outputs_matching_in_process_computation(
     )
 
     expected_pdsi, expected_phdi, expected_pmdi, expected_zindex, _ = palmer.pdsi(
-        precips,
-        pet,
+        precips / 25.4,
+        pet / 25.4,
         awc,
         _DATA_START_YEAR,
         _CALIBRATION_START_YEAR,
@@ -229,6 +241,35 @@ def test_palmers_writes_all_four_outputs_matching_in_process_computation(
         "palmers_pmdi.nc",
         "palmers_zindex.nc",
     }
+
+
+def test_palmers_rejects_an_awc_variable_with_unsupported_units(
+    tmp_path, precips_mm_monthly, pet_thornthwaite_mm, palmer_awcs
+):
+    precip_path = tmp_path / "precip.nc"
+    pet_path = tmp_path / "pet.nc"
+    awc_path = tmp_path / "awc.nc"
+    _write_divisions(precip_path, precips_mm_monthly.reshape(-1))
+    _write_divisions(pet_path, pet_thornthwaite_mm.reshape(-1), var_name="pet")
+    xr.Dataset(
+        {"awc": ("division", np.array([palmer_awcs[_DIVISION]]), {"units": "kg m-2"})},
+        coords={"division": [_DIVISION]},
+    ).to_netcdf(awc_path)
+
+    with pytest.raises(ValueError, match="Unsupported available water capacity units"):
+        main(
+            [
+                *_common_arguments("palmers", precip_path, tmp_path / "palmers"),
+                "--netcdf_pet",
+                str(pet_path),
+                "--var_name_pet",
+                "pet",
+                "--netcdf_awc",
+                str(awc_path),
+                "--var_name_awc",
+                "awc",
+            ]
+        )
 
 
 def test_invalid_scale_raises_and_writes_no_output(tmp_path, precips_mm_monthly):
