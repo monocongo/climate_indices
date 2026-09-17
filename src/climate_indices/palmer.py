@@ -421,7 +421,7 @@ def _calc_scpdsi_k_factors(prepared: _PalmerPrepared) -> None:
     prepared.ak = k_prime
 
 
-def _calc_cafec_zindex(prepared: _PalmerPrepared, state: _PalmerRecursion, year: int, month: int) -> None:
+def _calc_cafec_zindex(prepared: _PalmerPrepared, state: _PalmerRecursion, year: int, month: int) -> float:
     """
     Calculate one month's CAFEC (climatically appropriate for existing
     conditions) precipitation and raw Z-index, writing the Z-index into the
@@ -435,14 +435,18 @@ def _calc_cafec_zindex(prepared: _PalmerPrepared, state: _PalmerRecursion, year:
     :param state: the mutable recursion state
     :param year: row index into the monthly arrays
     :param month: month index, 0 = January
+    :return the CAFEC precipitation value, returned so tests can pin its exact
+            term grouping
+    :rtype: float
     """
-    cafec = (
+    cafec: float = (
         prepared.alpha[month] * prepared.pet[year, month]
         + prepared.beta[month] * prepared.prdat[year, month]
         + prepared.gamma[month] * prepared.spdat[year, month]
         - prepared.delta[month] * prepared.pldat[year, month]
     )
     state.z[year, month] = prepared.ak[month] * (prepared.precips[year, month] - cafec)
+    return cafec
 
 
 def _calc_scpdsi_raw_zindex(prepared: _PalmerPrepared, state: _PalmerRecursion) -> None:

@@ -190,11 +190,11 @@ def test_statement_200_px1_always_uses_wet_factors_px2_always_dry():
 def test_calc_cafec_zindex_writes_the_zindex():
     """The shared CAFEC/Z-index step serves both the PDSI and scPDSI recursions.
 
-    The expected value is recomputed with the pre-refactor named-intermediate
-    grouping and compared exactly: the recursion branches on exact comparisons
-    downstream, so a 1-ulp reassociation is a behavior change. The constants are
-    chosen so that common reassociations (swapping the CAFEC terms, distributing
-    ``ak`` over the departure) change the last bit.
+    The CAFEC value and the Z-index are recomputed with the pre-refactor
+    named-intermediate grouping and compared exactly: the recursion branches on
+    exact comparisons downstream, so a 1-ulp reassociation is a behavior change.
+    The constants are chosen so that common reassociations (swapping the CAFEC
+    terms, distributing ``ak`` over the departure) change the last bit.
     """
     prepared, state = _blank_state()
     prepared.alpha = np.full((12,), 3.24)
@@ -208,13 +208,14 @@ def test_calc_cafec_zindex_writes_the_zindex():
     prepared.pldat[0, 0] = 5.07
     prepared.precips[0, 0] = 0.3
 
-    palmer._calc_cafec_zindex(prepared, state, 0, 0)
+    cafec = palmer._calc_cafec_zindex(prepared, state, 0, 0)
 
     cet = prepared.alpha[0] * prepared.pet[0, 0]
     cr = prepared.beta[0] * prepared.prdat[0, 0]
     cro = prepared.gamma[0] * prepared.spdat[0, 0]
     cl = prepared.delta[0] * prepared.pldat[0, 0]
     expected_cafec = cet + cr + cro - cl
+    assert cafec == expected_cafec
     assert state.z[0, 0] == prepared.ak[0] * (prepared.precips[0, 0] - expected_cafec)
 
 
