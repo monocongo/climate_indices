@@ -152,13 +152,19 @@ Measured throughput on a development machine (Apple silicon, macOS, CPython
 | KBDI | 256 x 256 cells | 365 days | 41 M cell-days/s |
 | KBDI | 1000 x 1000 cells | 30 days | 42 M cell-days/s |
 
-Reproduce the figures with `pytest tests/test_benchmark_fire.py -m benchmark
---benchmark-enable`, setting `FIRE_BENCH_GRID_SIDES` and
-`FIRE_BENCH_RECORD_DAYS` to the sizes above. That module also holds budget
+Reproduce the throughput table with the command `pytest
+tests/test_benchmark_fire.py -m benchmark --benchmark-enable`, setting
+`FIRE_BENCH_GRID_SIDES` and `FIRE_BENCH_RECORD_DAYS` to the sizes above. The
+memory table below used `FIRE_BENCH_MEMORY_GRID_SIDE=128` and
+`FIRE_BENCH_MEMORY_RECORD_DAYS=1825`, with `FIRE_BENCH_CHUNK_SIDES=32,64,128`
+for its chunk rows; the `outputs=("fwi",)` row used
+`FIRE_BENCH_CHUNK_SIDES=64`, because the output-selection benchmark runs at the
+last configured chunk side. That module also holds budget
 guards, run by the benchmarks workflow on every pull request, that fail on a
-slowdown of the recurrence, on an orchestrator that costs more than the chained
-code calls it replaces, or on peak memory far beyond the modeled footprint. The
-default test suite covers those guards' failure paths deterministically.
+slowdown of the recurrence, on an orchestrator that costs more than 1.25x the
+chained code calls it replaces, or on peak memory far beyond the modeled
+footprint. The default test suite covers those guards' failure paths
+deterministically.
 
 At a CONUS extent on a 0.25 degree grid, roughly 100 x 237 cells and 14,610 days
 of record over 40 years, CFFWIS covers about 346 M cell-days. At the measured

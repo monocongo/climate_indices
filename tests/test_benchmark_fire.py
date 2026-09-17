@@ -26,10 +26,10 @@ Timed tests are marked with @pytest.mark.benchmark and excluded from default tes
 runs. The benchmarks workflow runs them on every pull request
 (.github/workflows/benchmarks.yml), including the budget guards in
 TestFireRegressionGuards that fail on a slow recurrence, on an orchestrator that
-costs more than the chained calls it replaces, or on peak RSS far beyond the
-modeled footprint. TestFireBudgetPolicy covers those guards' failure paths in the
-default suite without depending on wall-clock measurements. Run the marked tests
-explicitly with: pytest -m benchmark --benchmark-enable
+costs more than 1.25x the chained calls it replaces, or on peak RSS far beyond
+the modeled footprint. TestFireBudgetPolicy covers those guards' failure paths
+in the default suite without depending on wall-clock measurements. Run the
+marked tests explicitly with: pytest -m benchmark --benchmark-enable
 
 Scale is configured through environment variables (CI-friendly defaults; the
 published sizing table used the spec-scale values):
@@ -80,10 +80,11 @@ _GUARD_RECORD_DAYS = 365
 # timing repetitions per measurement (best-of, which filters CI noise)
 _REPEATS = 3
 
-# Ratio budget for the orchestrator guard. Measured single-pass/chained was
-# 0.86-0.91 on the development machine; 1.25 keeps ~35% headroom above that while
-# still failing if the orchestrator becomes slower than the chained calls it
-# replaces, which is the orchestrator's whole claim.
+# Ratio budget for the orchestrator guard: the permitted single-pass/chained
+# cost, not the measured ratio. Measured 0.86-0.91 on the development machine;
+# 1.25 keeps ~35% headroom above that for timer and runner variance while still
+# failing an orchestrator that costs a quarter more than the chained calls it
+# replaces.
 _ORCHESTRATOR_RATIO_BUDGET = 1.25
 
 # Ratio budget for the machine-speed guard: CFFWIS seconds divided by the seconds
@@ -336,7 +337,7 @@ class TestFireRegressionGuards:
     """Timed and RSS guards; run by the benchmarks workflow on every pull request."""
 
     def test_orchestrator_not_slower_than_chained_calls(self) -> None:
-        """Verify the single-pass orchestrator costs no more than chained calls."""
+        """Verify the single-pass orchestrator stays within 1.25x the chained calls."""
         weather = _weather_arrays(_GUARD_RECORD_DAYS, _GUARD_GRID_SIDE**2)
         single_pass = _measure(lambda: _single_pass_cffwis(weather))
         chained = _measure(lambda: _chained_cffwis(weather))
@@ -367,9 +368,12 @@ class TestFireRegressionGuards:
         """Verify chunked CFFWIS peak RSS stays within reach of the modeled footprint."""
         n_days = _MEMORY_RECORD_DAYS
         n_side = _MEMORY_GRID_SIDE
-        inputs = _chunked_cffwis_inputs(n_days, n_side, _CHUNK_SIDES[0])
 
+        # build the inputs inside the monitor so the measured interval covers the
+        # same allocations the model does: the four retained input histories plus
+        # the CFFWIS outputs
         with _PeakRSSMonitor() as monitor:
+            inputs = _chunked_cffwis_inputs(n_days, n_side, _CHUNK_SIDES[0])
             fire.cffwis(**inputs).load()
 
         values = n_days * n_side * n_side
