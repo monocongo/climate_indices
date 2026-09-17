@@ -870,19 +870,20 @@ The notebook validates the prepared store before calculating, and each failure
 names the contract it enforces:
 
 - **Coordinates:** precipitation and PET must be exactly aligned before SPEI;
-  partial overlap is not enough. See [Coordinate and Dimension Errors] and
+  partial overlap is not enough. See
+  [Coordinate and Dimension Errors](#coordinate-and-dimension-errors) and
   {doc}`xarray_migration`.
 - **Units:** inputs must be monthly totals in millimeters declared as
   `units == "mm"`. Relabeling the attribute is not a conversion; convert the
   values upstream instead.
 - **Calibration Period:** `data_start_year` and the calibration years in the
   notebook's `pipeline_config` must match the prepared store and its
-  `manifest.json`. See [Empty calibration period] and
-  [ShortCalibrationWarning].
+  `manifest.json`. See [Empty calibration period](#empty-calibration-period) and
+  [ShortCalibrationWarning](#shortcalibrationwarning).
 - **Missing data:** missing values must be `NaN`, missingness must match
   between precipitation and PET, and no cell may be partially missing across
   the time series, because distribution fitting needs one complete series per
-  location. See [Insufficient non-NaN data].
+  location. See [Insufficient non-NaN data](#insufficient-non-nan-data).
 - **All-NaN results:** an all-NaN cell means the location never had enough
   valid data to fit; the notebook's guard treats those cells as unavailable
   instead of failing the whole grid.
@@ -896,8 +897,7 @@ names the contract it enforces:
 fitting needs each location's full series, so `time` must be one chunk in
 both the prepared store and the calculation input. See
 [Multi-chunked time dimension](#multi-chunked-time-dimension) and
-`docs/adr/0003-dask-time-dimension-single-chunk.md
-<https://github.com/monocongo/climate_indices/blob/main/docs/adr/0003-dask-time-dimension-single-chunk.md>`__.
+[docs/adr/0003-dask-time-dimension-single-chunk.md](https://github.com/monocongo/climate_indices/blob/main/docs/adr/0003-dask-time-dimension-single-chunk.md).
 
 **Solution:** rechunk with `ds.chunk({"time": -1})` before calculating
 (as the notebook does) and rewrite persistent stores with the complete
@@ -911,7 +911,8 @@ one spatial chunk produces a single task no matter how many workers exist; the
 tutorial's 38x87 grid with 10x10 chunks yields roughly 40 spatial blocks, and
 worker count alone is not evidence of parallelism. Inspect the chunk layout and
 task graph (the notebook does) and expect scheduling overhead, not a speedup,
-for a small sample. See [Dask and Chunking Issues] and [Performance Tuning].
+for a small sample. See [Dask and Chunking Issues](#dask-and-chunking-issues) and
+[Performance Tuning](#performance-tuning).
 
 ### Optional dependencies
 
