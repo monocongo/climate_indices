@@ -88,7 +88,8 @@ records the triage response.
   array-likes, broadcast elementwise inputs where physically meaningful, and
   return NumPy arrays.
 - Xarray support is beta and added function by function. It preserves the
-  `fire.<name>` public route, uses `xarray_adapter` for validation and metadata,
+  `fire.<name>` public route, uses `validation.py` for input-kind, time-axis,
+  and chunk checks and `xarray_adapter` for metadata,
   and documents its Dask constraints. Recursive indices require one time chunk.
 - `typed_public_api.py` remains the unqualified drought/moisture facade. It
   must not gain unqualified fire functions or package-level fire re-exports.

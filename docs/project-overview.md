@@ -34,7 +34,7 @@
 ┌─────────────────────────────────────┐
 │   CLI Layer                         │  ← __main__.py
 ├─────────────────────────────────────┤
-│   Public API Layer                  │  ← typed_public_api.py, xarray_adapter.py
+│   Public API Layer                  │  ← typed_public_api.py, xarray_adapter.py, validation.py
 ├─────────────────────────────────────┤
 │   Computation Layer                 │  ← indices.py, compute.py
 ├─────────────────────────────────────┤

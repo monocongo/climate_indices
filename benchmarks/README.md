@@ -268,9 +268,9 @@ multiply that count. On a Dask-backed input `dask="parallelized"` schedules
 those calls as per-block tasks: chunking the spatial dimensions changes task
 count and wall time, not the per-cell total. The core dimension (`time`) must be
 a single chunk on the generic adapter path (`validation.validate_dask_chunks`
-raises before `apply_ufunc` runs); the two PET paths pass
-`dask_gufunc_kwargs={"allow_rechunk": True}` (`:2086`, `:2355`) so they can
-rechunk a split time dimension. Counts multiply per invocation: each adapter
+raises before `apply_ufunc` runs); `pet_thornthwaite` and `pet_hargreaves`
+pass `dask_gufunc_kwargs={"allow_rechunk": True}` so they can rechunk a split
+time dimension. Counts multiply per invocation: each adapter
 call covers one index, scale, and distribution, so a 14-pass SPI run over
 `--scales 1 2 3 6 9 12 24` and both distributions is 14 repeated adapter calls
 (46,284 per-cell calls). The CLI reaches the same total through its own scale
@@ -386,10 +386,9 @@ function, so they are outside the #923 conversion. They are still per-cell Pytho
 calls: `np.apply_along_axis` loops the spatial dimensions in Python, and each
 transform loops over years inside that call (`utils.py:396`, `utils.py:515`). The
 daily adapter path runs equivalent transforms per cell through
-`_compute_with_daily_calendar_plan` (`xarray_adapter.py:512`), driven by
-`_DailyCalendarPlan.to_all_leap`/`to_gregorian` (`xarray_adapter.py:306`, `:340`)
-and counted inside the wrapper above. Unmeasured overhead on both paths; no
-ticket owns it.
+`_compute_with_daily_calendar_plan` (`xarray_adapter.py`), driven by
+`_DailyCalendarPlan.to_all_leap`/`to_gregorian`, and counted inside the wrapper
+above. Unmeasured overhead on both paths; no ticket owns it.
 
 ### Structural blockers
 
