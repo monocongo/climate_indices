@@ -129,14 +129,14 @@ Linear-combination-of-order-statistics summary measures of a sample's location, 
 ### Gridded execution
 
 **Spatial Block** (spelled time-major in code):
-A gridded input array shaped `(time, *cells)` — the time axis first, every trailing axis an independent cell — that the fitting-based indices scale, fit, and transform in one pass. Any array with three or more dimensions is read this way; 1-D input stays a series and 2-D input stays the legacy `(years, periods)` layout. The one ambiguous shape is a block whose first cell axis is a calendar period length (12 or 366), which is indistinguishable from a `(years, periods, *cells)` array; that shape has to be declared with `spatial_time_major=True`, which `xarray_adapter` sets for every block it packs. See [ADR-0008](../../docs/adr/0008-spatial-block-declaration.md).
+A gridded input array shaped `(time, *cells)` — the time axis first, every trailing axis an independent cell — that the fitting-based indices scale, fit, and transform in one pass. Any array with three or more dimensions is read this way; 1-D input stays a series and 2-D input stays the legacy `(years, periods)` layout. The one ambiguous shape is a block whose first cell axis is a calendar period length (12 or 366), which is indistinguishable from a `(years, periods, *cells)` array; that shape has to be declared with `spatial_time_major=True`, which `xarray_adapter` sets for every block it packs. See [ADR-0009](../../docs/adr/0009-spatial-block-declaration.md).
 _Avoid_: time-major block (the code spelling, not the prose term)
 
 **Spatial Kernel**:
 An index whose NumPy core accepts a Spatial Block, declared per index with `spatial_kernel=True` at its adapter call site. Such an index runs one `xr.apply_ufunc` call per non-core block instead of one per grid cell; indices whose cores still loop over cells keep the Per-Cell Path.
 
 **Per-Cell Path**:
-The alternative dispatch, `xr.apply_ufunc(..., vectorize=True)`, which calls the kernel once per grid cell over 1-D time series. Still used for inputs with a single non-core dimension, and for the index families listed in [ADR-0008](../../docs/adr/0008-spatial-block-declaration.md) (#937).
+The alternative dispatch, `xr.apply_ufunc(..., vectorize=True)`, which calls the kernel once per grid cell over 1-D time series. Still used for inputs with a single non-core dimension, and for the index families listed in [ADR-0009](../../docs/adr/0009-spatial-block-declaration.md) (#937).
 
 ### Metadata & provenance
 

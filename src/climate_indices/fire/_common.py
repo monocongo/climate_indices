@@ -122,7 +122,7 @@ def _apply_gap_policy(
     ``in_season`` optionally restricts the policy to the cells inside the fire
     season: an off-season day is neither an observation nor a missing day, so
     it never advances the recurrence and never counts against the gap
-    allowance (``docs/adr/0008-seasonal-carry-is-an-explicit-mask.md``).
+    allowance (``docs/adr/0010-seasonal-carry-is-an-explicit-mask.md``).
     """
     if in_season is None:
         valid = day_weather_valid & static_valid
