@@ -63,7 +63,6 @@ import argparse
 import hashlib
 import json
 import os
-import shutil
 import tempfile
 import uuid
 from collections.abc import Callable
@@ -396,7 +395,10 @@ def main() -> None:
     manifest_path = output_dir / "manifest.json"
     temporary = manifest_path.with_suffix(f".json.{uuid.uuid4().hex}")
     temporary.write_text(json.dumps(manifest, indent=2) + "\n")
-    shutil.move(str(temporary), manifest_path)
+    try:
+        os.replace(temporary, manifest_path)
+    finally:
+        temporary.unlink(missing_ok=True)
     print(f"prepared {manifest_path}")
 
 
