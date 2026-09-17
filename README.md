@@ -55,6 +55,18 @@ See [drought.gov](https://www.drought.gov/drought/python-climate-indices).
 - [__License__](https://github.com/monocongo/climate_indices/blob/main/LICENSE)
 - [__Disclaimer__](https://github.com/monocongo/climate_indices/blob/main/DISCLAIMER)
 
+## Installation
+
+Install the released package from PyPI:
+
+```bash
+pip install climate-indices
+```
+
+`uv` users can run `uv pip install climate-indices`. See
+[quickstart.rst](https://github.com/monocongo/climate_indices/blob/main/docs/quickstart.rst)
+for prerequisites and a complete worked example.
+
 ## Developer Workflow
 
 This project uses trunk-based development. `main` is the trunk and should always
