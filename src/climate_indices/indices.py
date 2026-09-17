@@ -821,7 +821,8 @@ def percentage_of_normal(
     *,
     spatial_time_major: bool = False,
 ) -> np.ndarray:
-    """
+    """Compute the percentage of normal precipitation.
+
     This function finds the percent of normal values (average of each calendar
     month or day over a specified calibration period of years) for a specified
     time steps scale. The normal precipitation for each calendar time step is
@@ -831,30 +832,36 @@ def percentage_of_normal(
     normal is described by the calibration start and end years arguments.
     The calibration period typically used for US climate monitoring is 1981-2010.
 
-    :param values: 1-D numpy array of precipitation values, any length, initial
-        value assumed to be January of the data start year (January 1st of the
-        start year if daily periodicity), see the description of the
-        *periodicity* argument below for further clarification
-    :param scale: integer number of months over which the normal value is
-        computed (eg 3-months, 6-months, etc.)
-    :param data_start_year: the initial year of the input monthly values array
-    :param calibration_start_year: the initial year of the calibration period
-        over which the normal average for each calendar time step is computed
-    :param calibration_end_year: the final year of the calibration period over
-        which the normal average for each calendar time step is computed
-    :param periodicity: periodicity of the input time series; use
-        ``compute.Periodicity.monthly`` for monthly data (12 values/year) or
-        ``compute.Periodicity.daily`` for daily data (366 values/year).
-    :param spatial_time_major: read a three-or-more-dimensional ``values`` as a
-        time-major block of independent time series, shaped (time, *cells), and
-        divide every cell by its own calendar-period normals in one pass. The
-        xarray adapter sets this for every block it packs; a direct NumPy caller
-        has to declare it, since a block is not a shape this function reads
-        without being told.
-    :return: percent of normal precipitation values corresponding to the
-        scaled precipitation values array: 1-D for a 1-D or 2-D input, or the
-        (time, *cells) layout of a declared block
-    :rtype: numpy.ndarray of type float
+    Args:
+        values: 1-D numpy array of precipitation values, any length, initial
+            value assumed to be January of the data start year (January 1st of
+            the start year if daily periodicity), see the description of the
+            *periodicity* argument below for further clarification. A
+            time-major spatial block, shaped (time, *cells), divides every
+            cell by its own normals in one pass when it is declared with
+            ``spatial_time_major``.
+        scale: Integer number of months over which the normal value is
+            computed (eg 3-months, 6-months, etc.).
+        data_start_year: The initial year of the input monthly values array.
+        calibration_start_year: The initial year of the calibration period
+            over which the normal average for each calendar time step is
+            computed.
+        calibration_end_year: The final year of the calibration period over
+            which the normal average for each calendar time step is computed.
+        periodicity: Periodicity of the input time series; use
+            ``compute.Periodicity.monthly`` for monthly data (12 values/year)
+            or ``compute.Periodicity.daily`` for daily data (366 values/year).
+        spatial_time_major: Read a three-or-more-dimensional ``values`` as a
+            time-major block of independent time series, shaped (time, *cells),
+            and divide every cell by its own calendar-period normals in one
+            pass. The xarray adapter sets this for every block it packs; a
+            direct NumPy caller has to declare it, since a block is not a
+            shape this function reads without being told.
+
+    Returns:
+        Percent of normal precipitation values corresponding to the scaled
+        precipitation values array (numpy.ndarray of type float): 1-D for a
+        1-D or 2-D input, or the (time, *cells) layout of a declared block.
     """
     # validate arguments
     _validate_scale(scale)
