@@ -882,14 +882,14 @@ def _advance_month(prepared: _PalmerPrepared, state: _PalmerRecursion, year: int
             return
     # Abatement is underway
     else:
-        # We are in a wet spell
-        if state.x3 > 0:
+        # We are in a wet spell; a NaN x3 also takes this path, matching the
+        # "no abatement" branch's NaN fallthrough below
+        if state.x3 > 0 or np.isnan(state.x3):
             _statement_170(prepared, state)
-            return
         # We are in a drought
-        elif state.x3 <= 0:
+        else:
             _statement_180(prepared, state)
-            return
+        return
 
     _statement_170(prepared, state)
 
