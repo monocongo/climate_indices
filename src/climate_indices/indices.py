@@ -283,7 +283,7 @@ def eddi(
             The first value corresponds to January of ``data_start_year`` for
             monthly data or January 1st for daily data. 2-D arrays are accepted
             and will be flattened automatically. A time-major spatial block,
-            shaped (time, *cells), ranks every cell in one pass when it is
+            shaped (time, ``*cells``), ranks every cell in one pass when it is
             declared with ``spatial_time_major``.
         scale: Number of time steps over which PET values are accumulated
             before ranking. Must be in [1, 72].
@@ -295,7 +295,7 @@ def eddi(
             ``compute.Periodicity.monthly`` (12 values/year) or
             ``compute.Periodicity.daily`` (366 values/year).
         spatial_time_major: Read a three-or-more-dimensional ``pet_values`` as a
-            time-major block of independent time series, shaped (time, *cells),
+            time-major block of independent time series, shaped (time, ``*cells``),
             and rank every cell against its own climatology in one pass. The
             xarray adapter sets this for every block it packs; a direct NumPy
             caller has to declare it, since a block is not a shape EDDI reads
@@ -303,7 +303,7 @@ def eddi(
 
     Returns:
         1-D numpy array of EDDI values (unitless z-scores), same length as
-        the input, or the same (time, *cells) shape as a declared block. Values
+        the input, or the same (time, ``*cells``) shape as a declared block. Values
         are clipped to [-3.09, 3.09].
 
     Raises:
@@ -469,13 +469,13 @@ def spi(
     :param values: 1-D numpy array of precipitation values, in any units,
         first value assumed to correspond to January of the initial year if
         the periodicity is monthly, or January 1st of the initial year if daily.
-        A time-major spatial array with shape (time, *cells), i.e. three or more
+        A time-major spatial array with shape (time, ``*cells``), i.e. three or more
         dimensions, is also accepted, and then every cell is scaled and fitted in
         one pass.
         Two-dimensional input is still read as the legacy (years, periods) layout
         and flattened into a single series, not treated as a (time, cells) grid.
         When the first cell axis is a calendar period length (12 or 366) the shape is
-        equally readable as a (years, periods, *cells) array, and then the reading has to
+        equally readable as a (years, periods, ``*cells``) array, and then the reading has to
         be declared with ``spatial_time_major``; the xarray adapter declares every block
         it packs, and only that ambiguous shape raises without a declaration.
     :param scale: number of time steps over which the values should be scaled
@@ -497,14 +497,14 @@ def spi(
         parameter array is read as one value per calendar period and broadcast
         across cells.
     :param spatial_time_major: read ``values`` as a time-major block of independent
-        time series, shaped (time, *cells), and fit every cell in one pass. The
+        time series, shaped (time, ``*cells``), and fit every cell in one pass. The
         xarray adapter sets this for every block it packs; the NumPy API requires
         it only for an ambiguous shape, where the first cell axis is a calendar
-        period length (12 or 366) and could be read as (years, periods, *cells).
+        period length (12 or 366) and could be read as (years, periods, ``*cells``).
     :return: SPI values fitted to the gamma distribution at the specified time
         step scale, unitless
     :rtype: 1-D numpy.ndarray of floats of the same length as the input array
-        of precipitation values, or of the same (time, *cells) shape when
+        of precipitation values, or of the same (time, ``*cells``) shape when
         ``spatial_time_major`` is set
     """
     # validate arguments
@@ -634,13 +634,13 @@ def spei(
 
     :param precips_mm: an array of monthly total precipitation values,
         in millimeters, should be of the same size (and shape?) as the input PET array.
-        A time-major spatial array with shape (time, *cells), i.e. three or more
+        A time-major spatial array with shape (time, ``*cells``), i.e. three or more
         dimensions, is also accepted, and then every cell is scaled and fitted in
         one pass.
         Two-dimensional input is still read as the legacy (years, periods) layout
         and flattened into a single series, not treated as a (time, cells) grid.
         When the first cell axis is a calendar period length (12 or 366) the shape is
-        equally readable as a (years, periods, *cells) array, and then the reading has to
+        equally readable as a (years, periods, ``*cells``) array, and then the reading has to
         be declared with ``spatial_time_major``; the xarray adapter declares every block
         it packs, and only that ambiguous shape raises without a declaration.
     :param pet_mm: an array of monthly PET values, in millimeters,
@@ -663,10 +663,10 @@ def spei(
         as "prob_zero", "loc", "scale", and "skew"
         Older keys such as "alphas" and "probabilities_of_zero" are deprecated.
     :param spatial_time_major: read ``precips_mm``/``pet_mm`` as time-major blocks of
-        independent time series, shaped (time, *cells), and fit every cell in one pass.
+        independent time series, shaped (time, ``*cells``), and fit every cell in one pass.
         The xarray adapter sets this for every block it packs; the NumPy API requires
         it only for an ambiguous shape, where the first cell axis is a calendar
-        period length (12 or 366) and could be read as (years, periods, *cells).
+        period length (12 or 366) and could be read as (years, periods, ``*cells``).
     :return: an array of SPEI values
     :rtype: numpy.ndarray of type float, of the same size and shape as the input
         PET and precipitation arrays
@@ -837,7 +837,7 @@ def percentage_of_normal(
             value assumed to be January of the data start year (January 1st of
             the start year if daily periodicity), see the description of the
             *periodicity* argument below for further clarification. A
-            time-major spatial block, shaped (time, *cells), divides every
+            time-major spatial block, shaped (time, ``*cells``), divides every
             cell by its own normals in one pass when it is declared with
             ``spatial_time_major``.
         scale: Integer number of months over which the normal value is
@@ -852,7 +852,7 @@ def percentage_of_normal(
             ``compute.Periodicity.monthly`` for monthly data (12 values/year)
             or ``compute.Periodicity.daily`` for daily data (366 values/year).
         spatial_time_major: Read a three-or-more-dimensional ``values`` as a
-            time-major block of independent time series, shaped (time, *cells),
+            time-major block of independent time series, shaped (time, ``*cells``),
             and divide every cell by its own calendar-period normals in one
             pass. The xarray adapter sets this for every block it packs; a
             direct NumPy caller has to declare it, since a block is not a
@@ -861,7 +861,7 @@ def percentage_of_normal(
     Returns:
         Percent of normal precipitation values corresponding to the scaled
         precipitation values array (numpy.ndarray of type float): 1-D for a
-        1-D or 2-D input, or the (time, *cells) layout of a declared block.
+        1-D or 2-D input, or the (time, ``*cells``) layout of a declared block.
     """
     # validate arguments
     _validate_scale(scale)

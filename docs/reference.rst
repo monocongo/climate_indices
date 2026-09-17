@@ -50,6 +50,7 @@ climate_indices.compute
 
 .. automodule:: climate_indices.compute
    :members:
+   :exclude-members: InsufficientDataError
 
 
 climate_indices.indices

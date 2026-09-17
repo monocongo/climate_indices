@@ -44,6 +44,34 @@ jobs:
       - name: Run mypy type checker
         run: uv run --no-sync --no-build mypy src/ tests/test_type_checking.py
 
+  docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
+
+      - name: Install dependencies
+        run: uv sync --locked --dev --no-build
+
+      # Warnings are errors and the doctest builder proves the examples run.
+      # `-E` forces a fresh read so a cached environment cannot hide a warning;
+      # the same commands run locally (CONTRIBUTING.md).
+      - name: Build documentation with warnings as errors
+        run: uv run --no-sync --no-build sphinx-build -E -b html -W --keep-going docs docs/_build/html
+
+      - name: Run documentation doctests
+        run: uv run --no-sync --no-build sphinx-build -E -b doctest docs docs/_build/doctest
+
   # Compatibility policy: expensive or environment-independent suites run once
   # (`validation` on 3.12, repo/meta checks on 3.10, minimum dependencies on
   # 3.10). The full behavior suite runs on every supported interpreter here
