@@ -126,13 +126,75 @@ wind is doing. Both are computed from standard reanalysis fields, HDW from a
 vertical profile and Haines from the pressure levels its variant names.
 
 The [fire-family epic #793][fire-epic] tracks the rest of the family: an ERA5
-CONUS demonstration notebook, performance benchmarks for the recursive
-indices, and the scope decision on where the package stops relative to NFDRS
-and operational fire-behavior modeling.
+CONUS demonstration notebook (#811) and the scope decision on where the package
+stops relative to NFDRS and operational fire-behavior modeling (#813). The
+performance benchmarks for the recursive indices are published below.
 
 These remain meteorological and climatological indices. Epic #793
 explicitly excludes ignition probability, operational fire behavior, and fire
 occurrence modeling.
+
+## Performance and sizing
+
+The recursive fire indices share one execution shape: a daily loop carried
+forward in time, with every spatial cell updated in the same vectorized step
+(`docs/adr/0006-fire-recursive-state-and-execution.md`). Time is therefore not a
+chunkable dimension, and cost is best measured in cell-days, the grid cell count
+times the days of record.
+
+Measured throughput on a development machine (Apple silicon, macOS, CPython
+3.14.7, single process, pure NumPy path, best of three runs):
+
+| Index | Grid | Record | Throughput |
+| --- | --- | --- | --- |
+| CFFWIS, all seven outputs | 256 x 256 cells | 365 days | 7.1 M cell-days/s |
+| CFFWIS, all seven outputs | 1000 x 1000 cells | 30 days | 6.9-7.4 M cell-days/s |
+| KBDI | 256 x 256 cells | 365 days | 41 M cell-days/s |
+| KBDI | 1000 x 1000 cells | 30 days | 42 M cell-days/s |
+
+Reproduce the figures with `pytest tests/test_benchmark_fire.py -m benchmark
+--benchmark-enable`, setting `FIRE_BENCH_GRID_SIDES` and
+`FIRE_BENCH_RECORD_DAYS` to the sizes above. That module also holds budget
+guards, run by the benchmarks workflow on every pull request, that fail on a
+slowdown of the recurrence, on an orchestrator that costs more than the chained
+code calls it replaces, or on peak memory far beyond the modeled footprint. The
+default test suite covers those guards' failure paths deterministically.
+
+At a CONUS extent on a 0.25 degree grid, roughly 100 x 237 cells and 14,610 days
+of record over 40 years, CFFWIS covers about 346 M cell-days. At the measured
+throughput that is **approximately one minute** of recurrence compute, with KBDI
+at about 8 seconds. These two figures are linear extrapolations from the table
+above, not measurements: throughput is flat between the two grid sizes, so a
+linear model in cell-days is what the measurements support.
+
+Memory, not time, is the binding constraint at that scale. Every retained output
+keeps a full daily history per cell, so 23,700 cells over 14,610 days is 2.7 GB
+per field; the default seven outputs plus four inputs would need roughly 30 GB.
+Peak RSS for one CFFWIS run over 128 x 128 cells and a five-year record (29.9 M
+cell-days), same machine:
+
+| Configuration | Peak RSS delta |
+| --- | --- |
+| 32 x 32 spatial chunk, all outputs | 2.3 GB |
+| 64 x 64 spatial chunk, all outputs | 4.1-4.6 GB |
+| single 128 x 128 chunk, all outputs | 2.6 GB |
+| 64 x 64 spatial chunk, `outputs=("fwi",)` | 1.7 GB |
+
+Peak RSS is not monotone in the spatial chunk size: retained histories dominate,
+per-chunk temporaries and Dask graph overhead move with the chunk, and allocator
+retention adds noise (the 64 x 64 row above measured 4.1 GB in one run and
+4.6 GB in another). Two levers do matter. The first is `outputs=`, which drops
+the histories of the fields a caller does not need: the same 64 x 64
+configuration measured 4.6 GB with all seven outputs against 1.7 GB with `fwi`
+alone. The second is spatial chunking, which bounds the per-day temporaries but
+cannot reduce the retained histories, because time has to stay a single chunk.
+For a multi-decade CONUS run the practical shape is therefore a selected output
+set, one time-continuous spatial block at a time.
+
+`numba` is not an optional dependency of this package. ADR-0006 requires
+representative benchmark evidence before one is added, and the throughput table
+above is that evidence as measured today: no agreed runtime target is missed, so
+the pure NumPy recurrence remains the implementation.
 
 ## Sources
 
