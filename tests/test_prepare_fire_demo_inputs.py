@@ -323,3 +323,27 @@ def test_prepare_inputs_publishes_manifest_with_provenance(tmp_path, monkeypatch
     assert manifest["domain"]["realized_longitude"] == [-100.0, -100.0]
     assert manifest["season"] == [module.SEASON_START, module.SEASON_END]
     assert manifest["generated_utc"]
+
+
+def test_prepare_inputs_skips_opening_source_when_fully_cached(tmp_path, monkeypatch):
+    """A fully cached run must not open the remote store."""
+    module = _prepare_module(monkeypatch)
+    times = pd.date_range("2020-01-01", periods=2, freq="D") + pd.Timedelta(hours=12)
+    coordinates = {"time": times, "latitude": [30.0], "longitude": [-100.0]}
+    surface = xr.Dataset(
+        {"tmean_c": (("time", "latitude", "longitude"), np.ones((2, 1, 1)))},
+        coords=coordinates,
+    )
+    levels = xr.Dataset(
+        {"temperature_c": (("time", "level", "latitude", "longitude"), np.ones((2, 1, 1, 1)))},
+        coords={**coordinates, "level": [1000.0]},
+    )
+
+    def fail_if_opened():
+        raise AssertionError("a fully cached run must not open the remote store")
+
+    monkeypatch.setattr(module, "_open_source", fail_if_opened)
+    monkeypatch.setattr(module, "_surface_inputs", lambda source, cache_dir: surface)
+    monkeypatch.setattr(module, "_level_inputs", lambda source, cache_dir: levels)
+
+    module.prepare_inputs(tmp_path)

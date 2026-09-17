@@ -246,12 +246,13 @@ def _cache(cache_dir: Path, key: str, variable: str, builder: Callable[[], xr.Da
     return xr.load_dataset(path)[variable]
 
 
-def _surface_inputs(dataset: xr.Dataset, cache_dir: Path) -> xr.Dataset:
+def _surface_inputs(source: Callable[[], xr.Dataset], cache_dir: Path) -> xr.Dataset:
     """Build the long daily surface record, one cached year at a time.
 
     Each year's slice ends one six-hourly stamp into the next year so the 31
     December precipitation bin is complete; the cache key spells the slice out
-    so a changed window can never reuse the old download.
+    so a changed window can never reuse the old download. ``source`` is only
+    called on a cache miss, so a fully cached run never touches the remote store.
     """
     years = []
     for year in SURFACE_YEARS:
@@ -262,27 +263,31 @@ def _surface_inputs(dataset: xr.Dataset, cache_dir: Path) -> xr.Dataset:
                 cache_dir,
                 f"{name}_{start}_{end}",
                 name,
-                lambda name=name, start=start, end=end: _select(dataset, name, start, end),
+                lambda name=name, start=start, end=end: _select(source(), name, start, end),
             )
         years.append(_to_daily_surface(xr.Dataset(parts), year))
     return xr.concat(years, dim="time")
 
 
-def _level_inputs(dataset: xr.Dataset, cache_dir: Path) -> xr.Dataset:
-    """Build the season's daily level record, cached one variable at a time."""
+def _level_inputs(source: Callable[[], xr.Dataset], cache_dir: Path) -> xr.Dataset:
+    """Build the season's daily level record, cached one variable at a time.
+
+    ``source`` is only called on a cache miss, so a fully cached run never
+    touches the remote store.
+    """
     parts = {}
     for name in LEVEL_VARIABLES:
         parts[name] = _cache(
             cache_dir,
             f"{name}_{SEASON_START}_{SEASON_END}",
             name,
-            lambda name=name: _select(dataset, name, SEASON_START, SEASON_END),
+            lambda name=name: _select(source(), name, SEASON_START, SEASON_END),
         )
     parts[STATIC_VARIABLE] = _cache(
         cache_dir,
         STATIC_VARIABLE,
         STATIC_VARIABLE,
-        lambda: _select(dataset, STATIC_VARIABLE, SEASON_START, SEASON_END),
+        lambda: _select(source(), STATIC_VARIABLE, SEASON_START, SEASON_END),
     )
     return _to_daily_levels(xr.Dataset(parts))
 
@@ -336,12 +341,21 @@ def _publish(dataset: xr.Dataset, path: Path) -> None:
 def prepare_inputs(output_dir: Path) -> dict[str, Any]:
     """Prepare and publish the demonstration inputs, returning the manifest."""
     cache_dir = output_dir / "cache"
-    source = _open_source()
+    opened: list[xr.Dataset] = []
+
+    def source() -> xr.Dataset:
+        # opened lazily so a run with every selection already cached never
+        # touches the remote store
+        if not opened:
+            opened.append(_open_source())
+        return opened[0]
+
     try:
         surface = _surface_inputs(source, cache_dir)
         levels = _level_inputs(source, cache_dir)
     finally:
-        source.close()
+        if opened:
+            opened[0].close()
 
     surface_path = output_dir / OUTPUT_SURFACE
     levels_path = output_dir / OUTPUT_LEVELS
