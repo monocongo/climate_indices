@@ -25,13 +25,17 @@ from climate_indices.exceptions import (
     InputAlignmentWarning,
     InsufficientDataError,
 )
+from climate_indices.validation import (
+    validate_dask_chunks,
+    validate_time_dimension,
+    validate_time_monotonicity,
+)
 from climate_indices.xarray_adapter import (
     CF_METADATA,
     _align_inputs,
     _append_history,
     _assess_nan_density,
     _build_history_entry,
-    _build_output_attrs,
     _finalize_ufunc_result,
     _infer_calibration_period,
     _infer_data_start_year,
@@ -41,11 +45,9 @@ from climate_indices.xarray_adapter import (
     _resolve_secondary_inputs,
     _serialize_attr_value,
     _validate_calibration_non_nan_sample_size,
-    _validate_dask_chunks,
     _validate_sufficient_data,
-    _validate_time_dimension,
-    _validate_time_monotonicity,
     _verify_nan_propagation,
+    build_output_attrs,
     xarray_adapter,
 )
 
@@ -1619,17 +1621,17 @@ class TestHistoryProvenance:
 
 
 class TestValidateTimeDimension:
-    """Test _validate_time_dimension() function."""
+    """Test validate_time_dimension() function."""
 
     def test_valid_time_dimension_passes(self, sample_monthly_precip_da):
         """Valid time dimension does not raise."""
         # should not raise
-        _validate_time_dimension(sample_monthly_precip_da, "time")
+        validate_time_dimension(sample_monthly_precip_da, "time")
 
     def test_missing_dimension_raises(self, no_time_dim_da):
         """Missing time dimension raises CoordinateValidationError."""
         with pytest.raises(CoordinateValidationError) as exc_info:
-            _validate_time_dimension(no_time_dim_da, "time")
+            validate_time_dimension(no_time_dim_da, "time")
 
         assert "not found" in str(exc_info.value).lower()
         assert exc_info.value.coordinate_name == "time"
@@ -1638,7 +1640,7 @@ class TestValidateTimeDimension:
     def test_error_message_includes_available_dims(self, no_time_dim_da):
         """Error message lists available dimensions."""
         with pytest.raises(CoordinateValidationError) as exc_info:
-            _validate_time_dimension(no_time_dim_da, "time")
+            validate_time_dimension(no_time_dim_da, "time")
 
         error_msg = str(exc_info.value)
         assert "['x', 'lat']" in error_msg
@@ -1646,7 +1648,7 @@ class TestValidateTimeDimension:
     def test_error_message_suggests_time_dim_parameter(self, no_time_dim_da):
         """Error message suggests using time_dim parameter."""
         with pytest.raises(CoordinateValidationError) as exc_info:
-            _validate_time_dimension(no_time_dim_da, "time")
+            validate_time_dimension(no_time_dim_da, "time")
 
         assert "time_dim parameter" in str(exc_info.value)
 
@@ -1661,18 +1663,18 @@ class TestValidateTimeDimension:
         )
 
         # should not raise when checking for 'date'
-        _validate_time_dimension(da, "date")
+        validate_time_dimension(da, "date")
 
         # should raise when checking for 'time'
         with pytest.raises(CoordinateValidationError):
-            _validate_time_dimension(da, "time")
+            validate_time_dimension(da, "time")
 
     def test_scalar_dataarray_raises(self):
         """Scalar DataArray (no dims) raises error."""
         scalar_da = xr.DataArray(42.0)
 
         with pytest.raises(CoordinateValidationError) as exc_info:
-            _validate_time_dimension(scalar_da, "time")
+            validate_time_dimension(scalar_da, "time")
 
         # should show empty dims list
         assert "[]" in str(exc_info.value)
@@ -1687,7 +1689,7 @@ class TestValidateTimeDimension:
         )
 
         with pytest.raises(CoordinateValidationError):
-            _validate_time_dimension(da, "time")
+            validate_time_dimension(da, "time")
 
     def test_empty_dataarray_with_time_dim_passes(self):
         """Empty DataArray with time dim (0 elements) passes dimension check."""
@@ -1698,11 +1700,11 @@ class TestValidateTimeDimension:
         )
 
         # dimension exists, so validation passes
-        _validate_time_dimension(empty_da, "time")
+        validate_time_dimension(empty_da, "time")
 
 
 class TestValidateTimeMonotonicity:
-    """Test _validate_time_monotonicity() function."""
+    """Test validate_time_monotonicity() function."""
 
     def test_monotonic_increasing_passes(self):
         """Monotonically increasing time coordinate passes."""
@@ -1710,7 +1712,7 @@ class TestValidateTimeMonotonicity:
         time_coord = xr.DataArray(time, dims=["time"])
 
         # should not raise
-        _validate_time_monotonicity(time_coord)
+        validate_time_monotonicity(time_coord)
 
     def test_reversed_time_raises(self):
         """Reversed time coordinate raises CoordinateValidationError."""
@@ -1718,7 +1720,7 @@ class TestValidateTimeMonotonicity:
         time_coord = xr.DataArray(time, dims=["time"])
 
         with pytest.raises(CoordinateValidationError) as exc_info:
-            _validate_time_monotonicity(time_coord)
+            validate_time_monotonicity(time_coord)
 
         assert "not monotonically increasing" in str(exc_info.value).lower()
         assert exc_info.value.reason == "not_monotonic"
@@ -1726,7 +1728,7 @@ class TestValidateTimeMonotonicity:
     def test_shuffled_time_raises(self, non_monotonic_time_da):
         """Shuffled time coordinate raises CoordinateValidationError."""
         with pytest.raises(CoordinateValidationError) as exc_info:
-            _validate_time_monotonicity(non_monotonic_time_da["time"])
+            validate_time_monotonicity(non_monotonic_time_da["time"])
 
         assert "not monotonically increasing" in str(exc_info.value).lower()
 
@@ -1737,7 +1739,7 @@ class TestValidateTimeMonotonicity:
 
         # pandas is_monotonic_increasing allows duplicates (non-decreasing)
         # should not raise
-        _validate_time_monotonicity(time_coord)
+        validate_time_monotonicity(time_coord)
 
     def test_error_suggests_sortby(self):
         """Error message suggests using sortby()."""
@@ -1745,7 +1747,7 @@ class TestValidateTimeMonotonicity:
         time_coord = xr.DataArray(time, dims=["time"])
 
         with pytest.raises(CoordinateValidationError) as exc_info:
-            _validate_time_monotonicity(time_coord)
+            validate_time_monotonicity(time_coord)
 
         assert "sortby" in str(exc_info.value)
 
@@ -1754,7 +1756,7 @@ class TestValidateTimeMonotonicity:
         time_coord = xr.DataArray([pd.Timestamp("2020-01-01")], dims=["time"])
 
         # should not raise
-        _validate_time_monotonicity(time_coord)
+        validate_time_monotonicity(time_coord)
 
     def test_two_element_increasing_passes(self):
         """Two-element increasing time coordinate passes."""
@@ -1762,7 +1764,7 @@ class TestValidateTimeMonotonicity:
         time_coord = xr.DataArray(time, dims=["time"])
 
         # should not raise
-        _validate_time_monotonicity(time_coord)
+        validate_time_monotonicity(time_coord)
 
     def test_two_element_decreasing_raises(self):
         """Two-element decreasing time coordinate raises."""
@@ -1770,7 +1772,7 @@ class TestValidateTimeMonotonicity:
         time_coord = xr.DataArray(time, dims=["time"])
 
         with pytest.raises(CoordinateValidationError):
-            _validate_time_monotonicity(time_coord)
+            validate_time_monotonicity(time_coord)
 
 
 class TestValidateSufficientData:
@@ -2830,17 +2832,17 @@ class TestNanHandlingSPIIntegration:
 
 
 class TestValidateDaskChunks:
-    """Test _validate_dask_chunks() validation function."""
+    """Test validate_dask_chunks() validation function."""
 
     def test_single_time_chunk_passes(self, dask_monthly_precip_3d):
         """Single time chunk with spatial chunks passes validation."""
         # should not raise
-        _validate_dask_chunks(dask_monthly_precip_3d, "time")
+        validate_dask_chunks(dask_monthly_precip_3d, "time")
 
     def test_multi_time_chunk_raises_error(self, dask_multi_time_chunk):
         """Multiple time chunks raises CoordinateValidationError."""
         with pytest.raises(CoordinateValidationError) as exc_info:
-            _validate_dask_chunks(dask_multi_time_chunk, "time")
+            validate_dask_chunks(dask_multi_time_chunk, "time")
 
         assert exc_info.value.reason == "multi_chunked_time_dimension"
         assert "single chunk" in str(exc_info.value)
@@ -2854,10 +2856,10 @@ class TestValidateDaskChunks:
         # patch via sys.modules: the package exports the `xarray_adapter` function,
         # shadowing the submodule attribute that Python 3.10's mock.patch resolves
         with (
-            mock.patch.object(sys.modules["climate_indices.xarray_adapter"], "_log", return_value=mock_logger),
+            mock.patch.object(sys.modules["climate_indices.validation"], "_log", return_value=mock_logger),
             pytest.raises(CoordinateValidationError),
         ):
-            _validate_dask_chunks(data, "level")
+            validate_dask_chunks(data, "level")
 
         mock_logger.error.assert_called_once_with(
             "multi_chunked_dimension", dim="level", num_chunks=2, chunk_sizes=(2, 2)
@@ -2869,15 +2871,15 @@ class TestValidateDaskChunks:
         dask_da = no_time_dim_da.chunk({"x": 2})
 
         # should not raise (time dim doesn't exist, validation skipped)
-        _validate_dask_chunks(dask_da, "time")
+        validate_dask_chunks(dask_da, "time")
 
 
 class TestBuildOutputAttrs:
-    """Test _build_output_attrs() attribute construction helper."""
+    """Test build_output_attrs() attribute construction helper."""
 
     def test_version_always_present(self, sample_monthly_precip_da):
         """Output attrs always include climate_indices_version."""
-        attrs = _build_output_attrs(sample_monthly_precip_da)
+        attrs = build_output_attrs(sample_monthly_precip_da)
 
         assert "climate_indices_version" in attrs
         assert isinstance(attrs["climate_indices_version"], str)
@@ -2889,7 +2891,7 @@ class TestBuildOutputAttrs:
             "units": "dimensionless",
         }
 
-        attrs = _build_output_attrs(sample_monthly_precip_da, cf_metadata=cf_meta)
+        attrs = build_output_attrs(sample_monthly_precip_da, cf_metadata=cf_meta)
 
         assert attrs["long_name"] == "Standardized Precipitation Index"
         assert attrs["units"] == "dimensionless"
@@ -2901,14 +2903,14 @@ class TestBuildOutputAttrs:
             "distribution": indices.Distribution.gamma,
         }
 
-        attrs = _build_output_attrs(sample_monthly_precip_da, calculation_metadata=calc_meta)
+        attrs = build_output_attrs(sample_monthly_precip_da, calculation_metadata=calc_meta)
 
         assert attrs["scale"] == 3
         assert attrs["distribution"] == "gamma"  # enum serialized to name
 
     def test_history_added(self, sample_monthly_precip_da):
         """History entry is added when index_name provided."""
-        attrs = _build_output_attrs(
+        attrs = build_output_attrs(
             sample_monthly_precip_da,
             calculation_metadata={"scale": 3},
             index_name="SPI",

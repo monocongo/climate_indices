@@ -32,14 +32,14 @@ from climate_indices.fire._units import (
 )
 from climate_indices.logging_config import get_logger
 from climate_indices.performance import check_large_array_memory
-from climate_indices.xarray_adapter import (
+from climate_indices.validation import (
     InputType,
-    _build_output_attrs,
-    _validate_dask_chunks,
-    _validate_time_dimension,
-    _validate_time_monotonicity,
     detect_input_type,
+    validate_dask_chunks,
+    validate_time_dimension,
+    validate_time_monotonicity,
 )
+from climate_indices.xarray_adapter import build_output_attrs
 
 # retrieve structlog logger for this module
 _logger = get_logger(__name__)
@@ -600,13 +600,13 @@ def _kbdi_xarray(
     precip_da = precipitation
     temp_da = maximum_temperature
 
-    _validate_time_dimension(precip_da, time_dim)
-    _validate_time_dimension(temp_da, time_dim)
+    validate_time_dimension(precip_da, time_dim)
+    validate_time_dimension(temp_da, time_dim)
     # a dimension-only time axis carries no cadence metadata: xarray aligns it
     # positionally, so monotonicity and daily checks apply only to real coords
     for data in (precip_da, temp_da):
         if time_dim in data.coords:
-            _validate_time_monotonicity(data.coords[time_dim])
+            validate_time_monotonicity(data.coords[time_dim])
             _validate_daily_time_coordinate(data, time_dim)
 
     shared_spatial_dims = [str(dim) for dim in precip_da.dims if dim in temp_da.dims and dim != time_dim]
@@ -650,8 +650,8 @@ def _kbdi_xarray(
             stacklevel=3,
         )
 
-    _validate_dask_chunks(precip_aligned, time_dim)
-    _validate_dask_chunks(temp_aligned, time_dim)
+    validate_dask_chunks(precip_aligned, time_dim)
+    validate_dask_chunks(temp_aligned, time_dim)
 
     precip_target: Literal["mm", "inch"] = "inch" if units == "imperial" else "mm"
     temp_target: Literal["celsius", "fahrenheit"] = "fahrenheit" if units == "imperial" else "celsius"
@@ -775,12 +775,12 @@ def _kbdi_xarray(
         values_result = values_result.assign_coords({time_dim: new_time_values})
 
     cf_key = "kbdi_imperial" if units == "imperial" else "kbdi"
-    values_result.attrs = _build_output_attrs(
+    values_result.attrs = build_output_attrs(
         precip_da,
         cf_metadata=CF_METADATA[cf_key],  # type: ignore[arg-type]
         # "units" is deliberately excluded here: it's a CF attribute the
         # registry entry above already sets ("mm" / "0.01 in"), and
-        # _build_output_attrs layers calculation_metadata *over* cf_metadata,
+        # build_output_attrs layers calculation_metadata *over* cf_metadata,
         # so including it here would silently overwrite the physical unit
         # with the "metric"/"imperial" mode string.
         calculation_metadata={"nan_policy": nan_policy},

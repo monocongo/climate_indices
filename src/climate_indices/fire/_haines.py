@@ -15,7 +15,7 @@ from climate_indices.fire._common import _as_float_array
 from climate_indices.fire._units import _convert_temperature_units
 from climate_indices.logging_config import get_logger
 from climate_indices.performance import check_large_array_memory
-from climate_indices.xarray_adapter import _build_output_attrs
+from climate_indices.xarray_adapter import build_output_attrs
 
 # retrieve structlog logger for this module
 _logger = get_logger(__name__)
@@ -764,7 +764,7 @@ def _haines_xarray(
         dask="parallelized",
         output_dtypes=[np.float64],
     )
-    result.attrs = _build_output_attrs(
+    result.attrs = build_output_attrs(
         temperature_lower_celsius,
         cf_metadata=CF_METADATA[f"haines_{variant}"],  # type: ignore[arg-type]
         index_name="Haines Index",
