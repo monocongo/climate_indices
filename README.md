@@ -60,12 +60,13 @@ See [drought.gov](https://www.drought.gov/drought/python-climate-indices).
 Install the released package from PyPI:
 
 ```bash
-pip install climate-indices
+pip install "climate-indices>=2.3"
 ```
 
-`uv` users can run `uv pip install climate-indices`. See
-[quickstart.rst](https://github.com/monocongo/climate_indices/blob/main/docs/quickstart.rst)
-for prerequisites and a complete worked example.
+`uv` users can run `uv pip install "climate-indices>=2.3"`. The 2.3.0 floor matches the
+[quickstart](https://github.com/monocongo/climate_indices/blob/main/docs/quickstart.rst),
+which documents the latest release and uses the xarray API added in 2.3.0; see
+[Supported Python Versions](#supported-python-versions) for interpreter support.
 
 ## Developer Workflow
 
