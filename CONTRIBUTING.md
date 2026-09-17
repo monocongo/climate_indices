@@ -74,10 +74,13 @@ The split exists so the site teaches one version of the truth. Working notes
 move with the code, are addressed to maintainers, and would otherwise reach
 readers as competing instructions. Because a Markdown suffix publishes every
 page it can find, pages are excluded by path in `docs/conf.py`
-(`exclude_patterns`), not by convention: internal pages can never leak, and
-published pages stay unpublished until their navigation lands. When a page is
-added or moves between audiences, update that exclusion list and this section
-in the same change.
+(`exclude_patterns`), not by convention: internal pages are never built into
+the site. A published page stays excluded until it is wired into navigation,
+unless another built page links to it as a document — a link to an excluded
+page fails the warnings-as-errors build — in which case it builds behind a
+hidden toctree until its navigation lands. When a page is added or moves
+between audiences, update that exclusion list and this section in the same
+change.
 
 Current assignments (the context map and validation status live at the
 repository root — `CONTEXT-MAP.md`, `VALIDATION.md` — and the core-library

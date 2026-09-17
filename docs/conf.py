@@ -95,7 +95,7 @@ language = "en"
 # Internal working notes are excluded by path, not by convention: agent
 # guidance, design/planning scratch, and research are addressed to
 # maintainers and drift, so the site must never build them. Excluding them
-# here also keeps them out once Markdown sources are enabled. See the
+# here also keeps them out of the Markdown build. See the
 # "Documentation audience" section of CONTRIBUTING.md for the
 # published/internal split and each published page's reader-need quadrant.
 exclude_patterns = [
@@ -110,8 +110,8 @@ exclude_patterns = [
     "architecture-deepening-review-*.md",
     "test_fixture_management.md",
     # Published Markdown pages not yet wired into navigation. Later tickets
-    # publish them and delete their paths from this list: DOCS-5 (leaf RST
-    # pages), DOCS-7 (navigation), DOCS-8 (explanation and reference corpus).
+    # publish them and delete their paths from this list: DOCS-7 (navigation)
+    # and DOCS-8 (explanation and reference corpus).
     # `wildfire_applications.md` is different: the published page is its
     # `wildfire_applications.rst` include wrapper, so discovering the Markdown
     # file as a second source would warn about a duplicate document. It stays
@@ -162,7 +162,10 @@ html_theme = "sphinx_rtd_theme"
 # further.  For a list of options available for each theme, see the
 # documentation.
 #
-# html_theme_options = {}
+# sphinx_rtd_theme defaults `includehidden` to True, which would put the
+# staged-publication hidden toctree (the ADR build set in index.rst) into the
+# sidebar. Keep hidden toctrees out of navigation.
+html_theme_options = {"includehidden": False}
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,

@@ -536,12 +536,22 @@ API Reference
 
 .. Hidden until DOCS-8 wires the architecture decision record into the
    four-section navigation; the pages must build now because the xarray
-   compatibility matrix links to them as documents.
+   compatibility matrix links to them as documents. Listed explicitly rather
+   than globbed so adding a file under docs/adr/ cannot publish it by
+   accident.
 .. toctree::
    :hidden:
-   :glob:
 
-   adr/*
+   adr/0001-dual-numpy-xarray-api
+   adr/0002-multiprocessing-cli-dask-xarray
+   adr/0003-dask-time-dimension-single-chunk
+   adr/0004-xarray-calendar-semantics
+   adr/0005-fire-module-api
+   adr/0006-fire-recursive-state-and-execution
+   adr/0007-fire-missing-data-policy
+   adr/0008-pattern-compliance-by-behavior-not-source-greps
+   adr/0009-spatial-block-declaration
+   adr/0010-seasonal-carry-is-an-explicit-mask
 
 Get involved
 -------------
