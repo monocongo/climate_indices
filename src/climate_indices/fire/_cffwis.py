@@ -34,12 +34,8 @@ from climate_indices.fire._units import (
 )
 from climate_indices.logging_config import get_logger
 from climate_indices.performance import check_large_array_memory
-from climate_indices.xarray_adapter import (
-    _build_output_attrs,
-    _validate_dask_chunks,
-    _validate_time_dimension,
-    _validate_time_monotonicity,
-)
+from climate_indices.validation import validate_dask_chunks, validate_time_dimension, validate_time_monotonicity
+from climate_indices.xarray_adapter import build_output_attrs
 
 # retrieve structlog logger for this module
 _logger = get_logger(__name__)
@@ -2603,9 +2599,9 @@ class _CFFWISCallOptions:
 def _validate_cffwis_xarray_inputs(weather_inputs: tuple[xr.DataArray, ...], time_dim: str) -> None:
     """Validate each weather input's time axis: known dimension, monotonic, daily."""
     for data in weather_inputs:
-        _validate_time_dimension(data, time_dim)
+        validate_time_dimension(data, time_dim)
         if time_dim in data.coords:
-            _validate_time_monotonicity(data.coords[time_dim])
+            validate_time_monotonicity(data.coords[time_dim])
             _validate_daily_time_coordinate(data, time_dim)
 
 
@@ -2840,7 +2836,7 @@ def _cffwis_variable_results(
             # attributes (calendar, axis, ...) survive spin-up trimming
             trimmed = time_coord.isel({options.time_dim: slice(options.spin_up, options.spin_up + output_time_length)})
             variable = variable.assign_coords({options.time_dim: trimmed})
-        variable.attrs = _build_output_attrs(
+        variable.attrs = build_output_attrs(
             temperature_celsius,
             cf_metadata=CF_METADATA[name],  # type: ignore[arg-type]
             calculation_metadata={"nan_policy": options.nan_policy},
@@ -2890,7 +2886,7 @@ def _cffwis_xarray(
         time_dim,
     )
     for data in (temperature, humidity, wind, precipitation):
-        _validate_dask_chunks(data, time_dim)
+        validate_dask_chunks(data, time_dim)
 
     temperature = _convert_temperature_units(temperature, "celsius", argument_name="temperature_celsius.attrs['units']")
     precipitation = _convert_precipitation_units(precipitation, "mm")
