@@ -1,0 +1,44 @@
+reference grid: 38x87 cells, 40 years monthly; scale=3; calibration=1981-2010
+environment: python 3.14.7; macOS-26.6.2-arm64-arm-64bit-Mach-O; 10 CPUs; fastest of 3 runs after a warm-up
+
+spi
+serial in-memory: 0.205 s (INFO) | 0.204 s (quiet log)
+
+spei
+serial in-memory: 0.221 s (INFO) | 0.221 s (quiet log)
+
+pet
+serial in-memory: 0.020 s (INFO) | 0.020 s (quiet log)
+
+eddi
+serial in-memory: 0.043 s (INFO) | 0.043 s (quiet log)
+
+Dask worker counts: 1,2,4,8; scheduler=processes
+
+spi
+ workers  blocks   seconds  speedup  efficiency
+       1       1     0.924    1.00x       100%
+       2       2     0.895    1.03x        52%
+       4       4     0.978    0.94x        24%
+       8       8     1.299    0.71x         9%
+
+spei
+ workers  blocks   seconds  speedup  efficiency
+       1       1     0.963    1.00x       100%
+       2       2     0.911    1.06x        53%
+       4       4     0.943    1.02x        26%
+       8       8     1.355    0.71x         9%
+
+pet
+ workers  blocks   seconds  speedup  efficiency
+       1       1     0.694    1.00x       100%
+       2       2     0.759    0.91x        46%
+       4       4     0.953    0.73x        18%
+       8       8     1.342    0.52x         6%
+
+eddi
+ workers  blocks   seconds  speedup  efficiency
+       1       1     0.710    1.00x       100%
+       2       2     0.771    0.92x        46%
+       4       4     0.942    0.75x        19%
+       8       8     1.289    0.55x         7%

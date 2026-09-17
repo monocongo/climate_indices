@@ -1,0 +1,14 @@
+reference grid: 38x87 cells, 40 years monthly; scale=3; calibration=1981-2010
+environment: python 3.14.7; macOS-26.6.2-arm64-arm-64bit-Mach-O; 10 CPUs; fastest of 3 runs after a warm-up
+
+spi
+serial in-memory: 1.120 s (INFO) | 0.898 s (quiet log)
+
+spei
+serial in-memory: 1.193 s (INFO) | 0.783 s (quiet log)
+
+pet
+serial in-memory: 1.429 s (INFO) | 1.063 s (quiet log)
+
+eddi
+serial in-memory: 14.960 s (INFO) | 14.717 s (quiet log)

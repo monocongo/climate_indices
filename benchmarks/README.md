@@ -17,10 +17,10 @@ on the numpy-backed (in-memory) adapter branch — the serial baseline for
 gridded SPI. A Dask-backed input returns a lazy result; Dask scheduling and
 multi-core scaling belong to #927 and #928. Gridded SPI/SPEI now reach the NumPy
 core one spatial block at a time (#923, see the conversion status below), so the
-figures here describe the per-cell path this harness was built to measure. Reruns
-now measure the spatial path instead and will replace the committed report with
-lower timings; the tables above and their interpretation stand as the pre-#923
-baseline until #929 republishes them.
+figures here describe the per-cell path this harness was built to measure. The
+report stays committed as the pre-#923 profile artifact; the before/after table
+is in the #929 section below, and rerunning the script now reports the spatial
+path instead.
 
 Each run measures three things and always rewrites
 `benchmarks/results/profile_gridded_spi.txt`:
@@ -91,26 +91,30 @@ Interpretation:
   warm-up in the harness only absorbs first-call imports and caches.
 - The epic's ">11 minutes" reference matches the explicit lat/lon `for` loops in
   `notebooks/muitprocess_spi_nclimgrid.ipynb`, which bypass the canonical adapter
-  path. The canonical path measured here is 1.1 s, so the 10x speedup criterion
-  in #893 needs a pinned baseline entry point (#929) before it can be evaluated.
+  path. The canonical path measured here is 1.1 s, so that comparison says more
+  about the entry point than about per-core speed; the #929 section below
+  evaluates the epic's 10x criterion against this harness's baseline instead.
 
-## Parallel scaling of gridded SPI and SPEI (#928)
+## Parallel scaling of the gridded indices (#928)
 
 ```bash
-uv run benchmarks/parallel_scaling.py                                 # 1, 2, 4, ... workers up to the CPU count
-uv run benchmarks/parallel_scaling.py --cores 1,2,4,8 --indices spi,spei --repeat 5
+uv run benchmarks/parallel_scaling.py                                 # spi,spei on 1, 2, 4, ... workers up to the CPU count
+uv run benchmarks/parallel_scaling.py --cores 1,2,4,8 --indices spi,spei,pet,eddi --repeat 5
+uv run benchmarks/parallel_scaling.py --indices spi,spei,pet,eddi --serial-only --repeat 3
 uv run benchmarks/parallel_scaling.py | tee benchmarks/results/parallel_scaling.txt
 ```
 
 The script runs the same reference grid through the public xarray API on a
-Dask-backed input with the `processes` scheduler. It re-chunks the spatial
+Dask-backed input with the `processes` scheduler, for SPI, SPEI, Thornthwaite
+PET (`pet_thornthwaite`, latitude passed as a `(lat,)` coordinate so the spatial
+kernel stays on its broadcast path) and EDDI. It re-chunks the spatial
 dimensions for each worker count (time stays a single chunk, per ADR-0003) and
 reports the fastest of `--repeat` runs after a warm-up, plus the block count and
 the parallel efficiency. Speedup is relative to the first `--cores` entry. Every
 `compute()` call creates a fresh process pool, so pool start-up is inside every
 timing, not only the baseline: the harness measures the out-of-the-box
-`processes` scheduler. The serial in-memory number to compare against is the
-#921 baseline above.
+`processes` scheduler. The serial in-memory number to compare against is printed
+by the same run, and `--serial-only` prints just that reference.
 
 The compute call passes `chunksize=1`: Dask's default batches up to six ready
 tasks per submission, which runs a whole six-block batch sequentially on one
@@ -118,8 +122,67 @@ worker and silently flattens the curve.
 
 PET for SPEI is synthetic (a fixed fraction of the precipitation) and per-cell
 logging and goodness-of-fit warnings are disabled, so the timings measure the
-fitting path rather than the log renderer. #929 publishes the before/after table
-built from this script.
+fitting path rather than the log renderer. The before/after table for #929 is
+below.
+
+## Before/after on the reference grid (#929)
+
+```bash
+uv run benchmarks/parallel_scaling.py --indices spi,spei,pet,eddi --repeat 3
+uv run benchmarks/parallel_scaling.py --indices spi,spei,pet,eddi --serial-only --repeat 3
+```
+
+Each run first times the in-memory, single-process call for every requested
+index, at the default INFO log level and again with logging quiet, then (unless
+`--serial-only`) the Dask worker counts. The pre-vectorization numbers below were
+taken with `--serial-only` on the commit before the first spatial-block
+conversion, `d4e9ba0d` (the parent of the #923 merge), with this script copied
+into that checkout; both sides ran the same Python 3.14.7 environment on a
+10-core macOS arm64 machine.
+
+Reference grid: 38x87 cells, 40 years monthly, scale 3, calibration 1981-2010;
+fastest of three runs after a warm-up. "Quiet" pins per-cell logging and
+goodness-of-fit warnings off, which isolates the fitting path; INFO is what an
+unconfigured caller pays.
+
+| index | serial before, INFO | serial before, quiet | serial after, INFO | serial after, quiet | vectorization speedup | best parallel after |
+| --- | --- | --- | --- | --- | --- | --- |
+| SPI | 1.120 s | 0.898 s | 0.205 s | 0.204 s | 4.4x | 0.895 s (2 workers) |
+| SPEI | 1.193 s | 0.783 s | 0.221 s | 0.221 s | 3.5x | 0.911 s (2 workers) |
+| Thornthwaite PET | 1.429 s | 1.063 s | 0.020 s | 0.020 s | 53x | 0.694 s (1 worker) |
+| EDDI | 14.960 s | 14.717 s | 0.043 s | 0.043 s | 342x | 0.710 s (1 worker) |
+
+"Vectorization speedup" is serial-before-quiet over serial-after-quiet: the
+spatial block replaced the per-cell Python loop, so one kernel call per non-core
+block replaces 3306. The INFO column collapses after the conversion because the
+per-cell `structlog` volume goes with the loop (SPI: 19837 records before, a few
+per block after).
+
+Raw output: `benchmarks/results/serial_before.txt` (pre-conversion) and
+`benchmarks/results/parallel_scaling.txt` (this branch).
+
+### The 10x criterion (#893)
+
+**Met for EDDI only; SPI and SPEI fall short.** Against the pre-vectorization
+serial canonical path on the reference grid:
+
+- EDDI: 14.717 s -> 0.710 s through the Dask path, ~21x end to end, and 342x for
+  the in-process vectorization alone.
+- PET: 53x in-process, but 1.5x end to end (1.063 s -> 0.694 s) because the Dask
+  path is slower than the serial in-memory call at this size.
+- SPI: 4.4x in-process, 1.0x end to end (0.898 s -> 0.895 s).
+- SPEI: 3.5x in-process, 0.86x end to end (0.783 s -> 0.911 s).
+
+The SPI/SPEI shortfall is fixed overhead, not a serial-vs-parallel gap in the
+kernels: after vectorization each finishes in ~0.2 s, while every `processes`
+pool start-up and result transfer costs ~0.7 s. The one-worker row shows it
+directly (SPI: 0.924 s for the pool against 0.205 s in memory). Parallelism pays
+when the work per block exceeds that fixed cost, and the 3306-cell reference grid
+no longer does. The epic's ">11 minutes" reference measures the explicit
+lat/lon loops in `notebooks/muitprocess_spi_nclimgrid.ipynb`, which bypass the
+adapter: the canonical path was 1.1 s before the conversion, so the 10x criterion
+needs either a larger grid than the reference one or a longer-lived executor than
+one pool per `compute()` call to be reachable for SPI and SPEI.
 
 ## Per-cell invocation inventory (#922)
 
