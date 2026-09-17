@@ -77,6 +77,43 @@ class TestAWCDimensions:
         )
 
 
+class TestScalesRequirement:
+    def test_all_without_scales_raises_value_error(self, monkeypatch):
+        """`--index all` computes SPI/PNP and must require --scales like they do.
+
+        Regression test: `_validate_args` used to omit "all" from the scales
+        requirement, so a missing `--scales` reached the SPI/PNP loop in
+        `process_climate_indices` and raised a bare `TypeError` instead of a
+        clear `ValueError` from validation.
+        """
+        coords = {"division": [_DIVISION_ID], "time": np.arange(12)}
+        datasets = {
+            "precip.nc": xr.Dataset({"precip": (("division", "time"), np.ones((1, 12)))}, coords=coords),
+            "pet.nc": xr.Dataset({"pet": (("division", "time"), np.ones((1, 12)))}, coords=coords),
+            "awc.nc": xr.Dataset({"awc": (("division",), np.ones(1))}, coords={"division": [_DIVISION_ID]}),
+        }
+        monkeypatch.setattr(cli_main.xr, "open_dataset", datasets.__getitem__)
+        arguments = argparse.Namespace(
+            index="all",
+            scales=None,
+            netcdf_precip="precip.nc",
+            var_name_precip="precip",
+            netcdf_temp=None,
+            netcdf_pet="pet.nc",
+            var_name_pet="pet",
+            netcdf_awc="awc.nc",
+            var_name_awc="awc",
+        )
+
+        with pytest.raises(ValueError) as error:
+            cli_main._validate_args(arguments)
+
+        assert str(error.value) == (
+            "Scaled indices (SPI, SPEI, and/or PNP) specified without "
+            "including one or more time scales (missing --scales argument)"
+        )
+
+
 class TestPalmersWorker:
     def test_writes_all_four_palmer_outputs(
         self,

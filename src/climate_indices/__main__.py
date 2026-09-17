@@ -69,40 +69,31 @@ def _validate_args(args: argparse.Namespace) -> InputType:
     # KBDI is computed for daily inputs only, through the fire module, and does
     # not use the scale, calibration, PET, or AWC arguments of the other indices
     if args.index == "kbdi":
-        if args.periodicity is not compute.Periodicity.daily:
-            msg = "Invalid periodicity argument for KBDI: " + f"'{args.periodicity}' -- only 'daily' is supported"
-            _logger.error(msg)
-            raise ValueError(msg)
-
-        if args.scales is not None:
-            msg = "The --scales argument is not applicable to KBDI"
-            _logger.error(msg)
-            raise ValueError(msg)
-
-        if args.calibration_start_year is not None or args.calibration_end_year is not None:
-            msg = "The --calibration_start_year and --calibration_end_year arguments are not applicable to KBDI"
-            _logger.error(msg)
-            raise ValueError(msg)
-
-        if args.netcdf_pet is not None or args.var_name_pet is not None:
-            msg = "The --netcdf_pet and --var_name_pet arguments are not applicable to KBDI"
-            _logger.error(msg)
-            raise ValueError(msg)
-
-        if args.netcdf_awc is not None or args.var_name_awc is not None:
-            msg = "The --netcdf_awc and --var_name_awc arguments are not applicable to KBDI"
-            _logger.error(msg)
-            raise ValueError(msg)
-
-        if args.netcdf_temp is None:
-            msg = "Missing the required temperature file argument"
-            _logger.error(msg)
-            raise ValueError(msg)
-
-        if args.var_name_temp is None:
-            msg = "Missing temperature variable name"
-            _logger.error(msg)
-            raise ValueError(msg)
+        kbdi_checks: tuple[tuple[bool, str], ...] = (
+            (
+                args.periodicity is not compute.Periodicity.daily,
+                f"Invalid periodicity argument for KBDI: '{args.periodicity}' -- only 'daily' is supported",
+            ),
+            (args.scales is not None, "The --scales argument is not applicable to KBDI"),
+            (
+                args.calibration_start_year is not None or args.calibration_end_year is not None,
+                "The --calibration_start_year and --calibration_end_year arguments are not applicable to KBDI",
+            ),
+            (
+                args.netcdf_pet is not None or args.var_name_pet is not None,
+                "The --netcdf_pet and --var_name_pet arguments are not applicable to KBDI",
+            ),
+            (
+                args.netcdf_awc is not None or args.var_name_awc is not None,
+                "The --netcdf_awc and --var_name_awc arguments are not applicable to KBDI",
+            ),
+            (args.netcdf_temp is None, "Missing the required temperature file argument"),
+            (args.var_name_temp is None, "Missing temperature variable name"),
+        )
+        for is_invalid, msg in kbdi_checks:
+            if is_invalid:
+                _logger.error(msg)
+                raise ValueError(msg)
 
     # all indices except PET require a precipitation file
     if args.index != "pet":
@@ -499,7 +490,7 @@ def _validate_args(args: argparse.Namespace) -> InputType:
                     _logger.error(msg)
                     raise ValueError(msg)
 
-    if args.index in ["spi", "spei", "scaled", "pnp"]:
+    if args.index in ["spi", "spei", "scaled", "pnp", "all"]:
         if args.scales is None:
             msg = (
                 "Scaled indices (SPI, SPEI, and/or PNP) specified without "
