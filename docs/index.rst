@@ -474,7 +474,8 @@ input, and the scaling, fit, and transform then add full-grid arrays of their ow
 the grid has to fit in memory alongside them. For a grid that does not, pass the
 xarray data instead -- :func:`climate_indices.spi` and
 :func:`climate_indices.spei` accept a Dask-backed DataArray chunked over the spatial
-dimensions with time as a single chunk -- see :doc:`xarray_migration`.
+dimensions with time as a single chunk -- see :doc:`xarray_migration`. For a
+complete parallel example and the measured speedups, see :doc:`performance`.
 
 
 Tutorials
@@ -506,6 +507,7 @@ User Guides
    algorithms
    wildfire_applications
    xarray_migration
+   performance
    deprecations/index
    troubleshooting
 
