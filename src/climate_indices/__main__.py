@@ -62,8 +62,13 @@ _EXPECTED_DIMENSIONS_DIVISIONS_AWC = [("division",)]
 @dataclass(frozen=True)
 class _InputContext:
     """
-    A precipitation input's validated dimensions and coordinates, used to check
-    the companion inputs (temperature, PET, AWC) against it.
+    A precipitation or temperature input's validated dimensions, used to check
+    the companion inputs against it.
+
+    Built from precipitation for every index but ``pet``, which is computed
+    from temperature alone; only that route leaves ``latitudes``,
+    ``longitudes``, and ``divisions`` unset, since temperature alone carries
+    no coordinate data to compare companion inputs against.
     """
 
     input_type: InputType
