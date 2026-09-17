@@ -51,7 +51,7 @@ _HASTINGS_D3 = 0.001308
 # ceiling on the elements of EDDI's rank comparison, i.e. one chunk of the
 # (climatology years x years x cells) count that ranks every calendar period; the
 # boolean intermediate is held one byte per element, so this bounds it near 4 MB
-# for any grid rather than growing with the number of calibration years
+# by chunking across cells rather than growing with the width of the spatial block
 _EDDI_RANK_COMPARISON_ELEMENT_BUDGET = 4_000_000
 
 # day-of-year start index of each calendar month, keyed by the number of days in
@@ -390,33 +390,38 @@ def eddi(
 
         # Rank every calendar period against its own climatology. The rank is a count
         # of climatology values below the current value, so each period is walked as a
-        # (climatology years, years, *cells) comparison: one pass over the periods, not
-        # over the grid cells, and the climatology rows are summed in chunks that keep
-        # that intermediate bounded for a large grid, where the whole comparison would
-        # multiply the block by the number of calibration years. Missing climatology
-        # values never compare below a value, so they stay out of the count.
+        # (climatology years, years, cells) comparison: one pass over the periods, not
+        # over the grid cells, and the comparison is chunked across cells so that
+        # intermediate stays bounded for a wide spatial block, where comparing every
+        # cell in the block at once would grow with the block's width rather than
+        # holding steady at the number of calibration years. Missing climatology values
+        # never compare below a value, so they stay out of the count.
         climatology = pet_values[calibration_start_year_index : calibration_end_year_index + 1]
         climatology_valid_counts = np.count_nonzero(~np.isnan(climatology), axis=0)
         leading_pads_count = np.count_nonzero(
             leading_scale_pads[calibration_start_year_index : calibration_end_year_index + 1],
             axis=0,
         )
-        cells_per_time_step = int(np.prod(pet_values.shape[2:], dtype=np.int64)) or 1
-        rows_per_chunk = max(1, _EDDI_RANK_COMPARISON_ELEMENT_BUDGET // (num_years * cells_per_time_step))
+        cell_shape = pet_values.shape[2:]
+        cells_per_time_step = int(np.prod(cell_shape, dtype=np.int64)) or 1
+        num_climatology_years = climatology.shape[0]
+        cells_per_chunk = max(1, _EDDI_RANK_COMPARISON_ELEMENT_BUDGET // (num_climatology_years * num_years))
         probabilities = np.full(pet_values.shape, np.nan)
 
         for period_index in range(num_periods):
-            period_climatology = climatology[:, period_index]
-            period_values = pet_values[:, period_index]
+            period_climatology = climatology[:, period_index].reshape(num_climatology_years, cells_per_time_step)
+            period_values = pet_values[:, period_index].reshape(num_years, cells_per_time_step)
             below = np.zeros(period_values.shape, dtype=np.int64)
-            for chunk_start in range(0, period_climatology.shape[0], rows_per_chunk):
-                climate_chunk = period_climatology[chunk_start : chunk_start + rows_per_chunk]
-                below += np.count_nonzero(climate_chunk[:, None] < period_values, axis=0)
+            for cell_start in range(0, cells_per_time_step, cells_per_chunk):
+                cell_chunk = slice(cell_start, cell_start + cells_per_chunk)
+                below[:, cell_chunk] = np.count_nonzero(
+                    period_climatology[:, None, cell_chunk] < period_values[:, cell_chunk], axis=0
+                )
 
             # NOAA uses zero-based ranks and treats leading scale pads as lower than every
             # observed value; this is the Tukey plotting position of that rank
             period_pads = leading_pads_count[period_index]
-            probabilities[:, period_index] = (period_pads + below + 0.66) / (
+            probabilities[:, period_index] = (period_pads + below.reshape(num_years, *cell_shape) + 0.66) / (
                 climatology_valid_counts[period_index] + period_pads + 0.33
             )
 
