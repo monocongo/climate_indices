@@ -9,6 +9,7 @@ from enum import Enum
 from typing import Any, cast
 
 import numpy as np
+import structlog.stdlib
 
 from climate_indices import compute, eto
 from climate_indices.exceptions import DataShapeError, InvalidArgumentError
@@ -152,6 +153,29 @@ def _raise_if_unsupported_shape(values: np.ndarray, spatial_time_major: bool = F
         )
 
 
+def _log_calculation_completed(
+    log: structlog.stdlib.BoundLogger,
+    t0: float,
+    output_shape: tuple[int, ...],
+    memory_metrics: dict[str, float] | None,
+) -> None:
+    """Emit the "calculation_completed" event shared by every index function.
+
+    Args:
+        log: Logger already bound with the calling index's context.
+        t0: Start time from ``time.perf_counter()``.
+        output_shape: Shape of the value(s) about to be returned.
+        memory_metrics: Metrics from ``check_large_array_memory``, or ``None``.
+    """
+    duration_ms = (time.perf_counter() - t0) * 1000.0
+    log.info(
+        "calculation_completed",
+        duration_ms=round(duration_ms, 2),
+        output_shape=output_shape,
+        **(memory_metrics or {}),
+    )
+
+
 def _apply_per_cell(
     func: Callable[..., np.ndarray],
     *cell_arrays: np.ndarray,
@@ -227,6 +251,61 @@ def _hastings_inverse_normal(probability: np.ndarray) -> np.ndarray:
     z = sign * (t - numerator / denominator)
 
     return cast(np.ndarray, z)
+
+
+def _validate_eddi_calibration_period(
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    data_start_year: int,
+    data_end_year: int,
+) -> None:
+    """Raise InvalidArgumentError if EDDI's calibration period doesn't fit the data.
+
+    Args:
+        calibration_year_initial: First year of the calibration period.
+        calibration_year_final: Last year of the calibration period.
+        data_start_year: First year of the input PET dataset.
+        data_end_year: Last year of the input PET dataset.
+
+    Raises:
+        InvalidArgumentError: If the calibration years are out of order or fall
+            outside the data's year range.
+    """
+    if calibration_year_initial > calibration_year_final:
+        message = (
+            f"Invalid calibration year arguments: initial year "
+            f"({calibration_year_initial}) is after final year ({calibration_year_final})"
+        )
+        _logger.error(message)
+        raise InvalidArgumentError(
+            message,
+            argument_name="calibration_year_initial",
+            argument_value=str(calibration_year_initial),
+        )
+
+    if calibration_year_initial < data_start_year:
+        message = (
+            f"Invalid calibration year arguments: calibration start year "
+            f"({calibration_year_initial}) is before data start year ({data_start_year})"
+        )
+        _logger.error(message)
+        raise InvalidArgumentError(
+            message,
+            argument_name="calibration_year_initial",
+            argument_value=str(calibration_year_initial),
+        )
+
+    if calibration_year_final > data_end_year:
+        message = (
+            f"Invalid calibration year arguments: calibration end year "
+            f"({calibration_year_final}) is after data end year ({data_end_year})"
+        )
+        _logger.error(message)
+        raise InvalidArgumentError(
+            message,
+            argument_name="calibration_year_final",
+            argument_value=str(calibration_year_final),
+        )
 
 
 def eddi(
@@ -312,13 +391,7 @@ def eddi(
         if pet_values.ndim > 2 and (
             (isinstance(pet_values, np.ma.MaskedArray) and pet_values.mask.all()) or np.all(np.isnan(pet_values))
         ):
-            duration_ms = (time.perf_counter() - t0) * 1000.0
-            log.info(
-                "calculation_completed",
-                duration_ms=round(duration_ms, 2),
-                output_shape=pet_values.shape,
-                **(memory_metrics or {}),
-            )
+            _log_calculation_completed(log, t0, pet_values.shape, memory_metrics)
             return pet_values
 
         # flatten, clip negatives to zero, and scale/reshape in the shared preparation seam
@@ -327,13 +400,7 @@ def eddi(
 
         # an all-missing input comes back un-reshaped, so there's nothing to compute
         if pet_values.ndim == 1:
-            duration_ms = (time.perf_counter() - t0) * 1000.0
-            log.info(
-                "calculation_completed",
-                duration_ms=round(duration_ms, 2),
-                output_shape=pet_values.shape,
-                **(memory_metrics or {}),
-            )
+            _log_calculation_completed(log, t0, pet_values.shape, memory_metrics)
             return pet_values
 
         # NOAA ranks left-padded scale values below valid observations. The pads are
@@ -348,41 +415,9 @@ def eddi(
         data_end_year = data_start_year + num_years - 1
 
         # validate calibration period
-        if calibration_year_initial > calibration_year_final:
-            message = (
-                f"Invalid calibration year arguments: initial year "
-                f"({calibration_year_initial}) is after final year ({calibration_year_final})"
-            )
-            _logger.error(message)
-            raise InvalidArgumentError(
-                message,
-                argument_name="calibration_year_initial",
-                argument_value=str(calibration_year_initial),
-            )
-
-        if calibration_year_initial < data_start_year:
-            message = (
-                f"Invalid calibration year arguments: calibration start year "
-                f"({calibration_year_initial}) is before data start year ({data_start_year})"
-            )
-            _logger.error(message)
-            raise InvalidArgumentError(
-                message,
-                argument_name="calibration_year_initial",
-                argument_value=str(calibration_year_initial),
-            )
-
-        if calibration_year_final > data_end_year:
-            message = (
-                f"Invalid calibration year arguments: calibration end year "
-                f"({calibration_year_final}) is after data end year ({data_end_year})"
-            )
-            _logger.error(message)
-            raise InvalidArgumentError(
-                message,
-                argument_name="calibration_year_final",
-                argument_value=str(calibration_year_final),
-            )
+        _validate_eddi_calibration_period(
+            calibration_year_initial, calibration_year_final, data_start_year, data_end_year
+        )
 
         # determine calibration period indices
         calibration_start_year_index = calibration_year_initial - data_start_year
@@ -444,13 +479,7 @@ def eddi(
             result = cast(np.ndarray, eddi_values.reshape(-1, *eddi_values.shape[2:])[: original_shape[0]])
         else:
             result = cast(np.ndarray, eddi_values.flatten()[0:original_length])
-        duration_ms = (time.perf_counter() - t0) * 1000.0
-        log.info(
-            "calculation_completed",
-            duration_ms=round(duration_ms, 2),
-            output_shape=result.shape,
-            **(memory_metrics or {}),
-        )
+        _log_calculation_completed(log, t0, result.shape, memory_metrics)
         return result
 
     except Exception as exc:
@@ -933,13 +962,7 @@ def percentage_of_normal(
         if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or (
             values.ndim > 2 and np.all(np.isnan(values))
         ):
-            duration_ms = (time.perf_counter() - t0) * 1000.0
-            log.info(
-                "calculation_completed",
-                duration_ms=round(duration_ms, 2),
-                output_shape=values.shape,
-                **(memory_metrics or {}),
-            )
+            _log_calculation_completed(log, t0, values.shape, memory_metrics)
             return values
 
         # make sure we've been provided with sane calibration limits
@@ -1048,13 +1071,7 @@ def percentage_of_normal(
                 out=percentages_of_normal[remainder_start:],
             )
 
-        duration_ms = (time.perf_counter() - t0) * 1000.0
-        log.info(
-            "calculation_completed",
-            duration_ms=round(duration_ms, 2),
-            output_shape=percentages_of_normal.shape,
-            **(memory_metrics or {}),
-        )
+        _log_calculation_completed(log, t0, percentages_of_normal.shape, memory_metrics)
         return percentages_of_normal
     except Exception as exc:
         log.error(
