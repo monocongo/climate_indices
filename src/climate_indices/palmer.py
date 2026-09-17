@@ -520,6 +520,29 @@ def _case(prob: float, x1: float, x2: float, x3: float) -> float:
     return (1.0 - pro) * x3 + pro * x2
 
 
+def _record_index_values(data: _PalmerData, year: int, month: int) -> None:
+    """
+    Record the current month's PDSI, PHDI, and PMDI
+
+    Used when no spell is open (k8 == 0), so the month's preliminary values
+    are final without backtracking through the trail arrays.
+
+    :param data: the Palmer data struct (initialized in pdsi)
+    :param year: row index into the monthly arrays
+    :param month: month index, 0 = January
+    """
+    data.pdsi[year, month] = data.x[year, month]
+    data.phdi[year, month] = data.px3[year, month]
+    if data.px3[year, month] == 0:
+        data.phdi[year, month] = data.x[year, month]
+    data.wplm[year, month] = _case(
+        data.ppr[year, month],
+        data.px1[year, month],
+        data.px2[year, month],
+        data.px3[year, month],
+    )
+
+
 def _assign(data: _PalmerData) -> None:
     """
     Assign x values
@@ -531,17 +554,7 @@ def _assign(data: _PalmerData) -> None:
     data.sx[data.k8] = data.x[year, month]
     isave = data.iass
     if data.k8 == 0:
-        data.pdsi[year, month] = data.x[year, month]
-        data.phdi[year, month] = data.px3[year, month]
-        if data.px3[year, month] == 0:
-            data.phdi[year, month] = data.x[year, month]
-
-        data.wplm[year, month] = _case(
-            data.ppr[year, month],
-            data.px1[year, month],
-            data.px2[year, month],
-            data.px3[year, month],
-        )
+        _record_index_values(data, year, month)
         return
 
     # use all x3 values
@@ -627,16 +640,7 @@ def _statement_210(data: _PalmerData) -> None:
     data.x[year, month] = data.px3[year, month]
 
     if data.k8 == 0:
-        data.pdsi[year, month] = data.x[year, month]
-        data.phdi[year, month] = data.px3[year, month]
-        if data.px3[year, month] == 0:
-            data.phdi[year, month] = data.x[year, month]
-        data.wplm[year, month] = _case(
-            data.ppr[year, month],
-            data.px1[year, month],
-            data.px2[year, month],
-            data.px3[year, month],
-        )
+        _record_index_values(data, year, month)
     else:
         data.iass = 3
         _assign(data)
