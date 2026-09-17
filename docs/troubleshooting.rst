@@ -799,7 +799,7 @@ Multi-chunked time dimension
       da_rechunked = da.chunk({"time": -1, "lat": 10, "lon": 10})
       result = indices.spi(da_rechunked, scale=6, distribution=indices.Distribution.gamma)
 
-   **Performance tip:** Use ``time=-1`` to consolidate all time steps into a single chunk, and adjust spatial chunks to balance memory usage vs. parallelism.
+   **Performance tip:** Use ``time=-1`` to consolidate all time steps into a single chunk, and adjust spatial chunks to balance memory usage vs. parallelism. Materialize the result with ``scheduler="processes"`` so the CPU-bound blocks run in parallel across worker processes rather than serially under the default threaded scheduler; see the Operational Guidance section of ``docs/xarray_compatibility.md``.
 
 **Cross-reference:** See :doc:`xarray_migration` Pitfall 4.
 

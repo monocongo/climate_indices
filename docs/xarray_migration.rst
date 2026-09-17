@@ -811,9 +811,14 @@ Example 4: Out-of-core SPI with Dask
        calibration_year_final=2010,
    )
 
-   # write to NetCDF — triggers Dask computation
-   # processes chunks in parallel, streams to disk
-   spi_12_global.to_netcdf("spi_12_global_cmip6.nc")
+   # write to NetCDF — triggers Dask computation under a distributed client, so
+   # the blocks are fitted in worker processes and streamed to disk. Without a
+   # client, the default threaded scheduler runs the Python-level fitting work
+   # serially. (`distributed` ships with the `dev` extra.)
+   from dask.distributed import Client
+
+   with Client(n_workers=4, threads_per_worker=1) as client:
+       spi_12_global.to_netcdf("spi_12_global_cmip6.nc")
 
 
 API Reference Links
