@@ -250,7 +250,7 @@ data: the DC has no calendar, no snow input, and no single threshold that fits
 every region. `drought_code()` therefore takes a keyword-only
 `in_season` boolean mask, time-first and broadcast against the weather inputs,
 and the seasonal carry contract is
-[ADR-0008](../adr/0008-seasonal-carry-is-an-explicit-mask.md). `None` treats
+[ADR-0010](../adr/0010-seasonal-carry-is-an-explicit-mask.md). `None` treats
 every day as in-season, which is the default and leaves the recurrence
 unchanged.
 

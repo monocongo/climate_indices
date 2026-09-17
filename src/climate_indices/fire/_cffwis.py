@@ -928,7 +928,7 @@ def drought_code(
     a DC input.
 
     ``in_season`` selects the seasonal shutdown contract of
-    ``docs/adr/0008-seasonal-carry-is-an-explicit-mask.md``: an off-season day
+    ``docs/adr/0010-seasonal-carry-is-an-explicit-mask.md``: an off-season day
     is neither an observation nor a missing day, so it freezes the recurrence
     and emits the carried DC instead of a gap NaN. A cell whose recurrence has
     not started yet has no carried value and stays NaN. Off-season days are
@@ -1080,7 +1080,7 @@ def overwinter_drought_code(
     result is NaN.
 
     This is the start-up half of the seasonal carry recorded in
-    ``docs/adr/0008-seasonal-carry-is-an-explicit-mask.md``. The caller owns
+    ``docs/adr/0010-seasonal-carry-is-an-explicit-mask.md``. The caller owns
     the season boundaries: accumulate the precipitation between the season
     shutdown and the next start-up, pass the final autumn DC from
     :func:`drought_code`, and pass the result back as ``initial_dc`` for the
@@ -1489,7 +1489,7 @@ class _CodeRecurrence:
     static_valid: npt.NDArray[np.bool_]
     trailing_gap_days: npt.NDArray[np.int64]
     # optional per-day fire-season mask: off-season days freeze the recurrence
-    # instead of advancing or gap-managing it (ADR-0008)
+    # instead of advancing or gap-managing it (ADR-0010)
     in_season: npt.NDArray[np.bool_] | None = None
     # derived once by the runner so the day loop has a single grouping of
     # per-component state instead of parallel index spaces

@@ -6,7 +6,6 @@
 
 ### Project Status
 - **Maturity**: Production/Stable (Development Status 5)
-- **Current Version**: 2.2.0
 - **Python Support**: 3.10, 3.11, 3.12, 3.13, 3.14
 - **License**: BSD 3-Clause
 - **Documentation**: [ReadTheDocs](https://climate-indices.readthedocs.io/)
@@ -180,7 +179,7 @@ uv run pytest -m benchmark
 ## AI-Assisted Development Guidance
 
 ### Recommended Starting Points for AI Agents
-1. **For understanding computation**: Start with `docs/source/modules.rst` (Sphinx), then `src/climate_indices/compute.py`
+1. **For understanding computation**: Start with `docs/reference.rst` (Sphinx API reference), then `src/climate_indices/compute.py`
 2. **For understanding API**: Read `src/climate_indices/typed_public_api.py` (strict mypy typing) and `src/climate_indices/xarray_adapter.py`
 3. **For understanding CLI**: Examine `src/climate_indices/__main__.py` (full-featured) and `src/climate_indices/__spi__.py` (specialized)
 4. **For testing patterns**: Review `tests/conftest.py` (fixtures), `tests/test_xarray_adapter.py` (modern API), `tests/test_property_based.py` (invariants)

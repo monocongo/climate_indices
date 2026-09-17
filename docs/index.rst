@@ -100,16 +100,11 @@ Next (optional) run the unit test suite to validate the installation::
 
     uv run pytest
 
-the above should display output similar to this::
-
-   ======================= 38 passed, 18 warnings in 12.19s =======================
-
 Finally, show the package installed into the environment::
 
-   uv list | grep climate-indices
+   uv pip list | grep climate-indices
 
-   # climate-indices v2.1.0 (editable)
-   #     + climate-indices==2.1.0 (from file:///path/to/climate_indices)
+   # climate-indices   X.Y.Z   /path/to/climate_indices
 
 
 
@@ -526,7 +521,6 @@ User Guides
    quickstart
    algorithms
    wildfire_applications
-   pypi_release
    xarray_migration
    deprecations/index
    troubleshooting
