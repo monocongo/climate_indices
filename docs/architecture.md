@@ -421,6 +421,7 @@ tests/
 ├── Performance Tests (Benchmarks)
 │   ├── test_benchmark_overhead.py   # xarray vs numpy overhead
 │   ├── test_benchmark_chunked.py    # Dask chunking strategies
+│   ├── test_benchmark_fire.py       # Fire-index throughput, sizing, and guards
 │   └── test_benchmark_memory.py     # Memory usage profiling
 │
 └── Regression Tests
