@@ -46,6 +46,16 @@ We optimize for readability and scientific reproducibility:
 - Add type hints and Google-style docstrings for public functions.
 - Add tests for new behavior and bug fixes.
 
+## Fire-weather scope
+
+`climate_indices` accepts meteorological and climatological fire-weather
+indices; operational fire-danger and fire-behavior modeling is out of scope.
+The exact boundary, the criteria for a future `fire_weather_indices` sibling
+repository, and concrete in-scope and out-of-scope examples are in
+[the fire subsystem design](docs/design/fire-subsystem.md#scope-and-boundary).
+Point an out-of-scope proposal there rather than dismissing it: it is a
+candidate for that sibling, not a rejection on merit.
+
 ## Local validation
 
 Run the checks that CI expects before opening a PR:

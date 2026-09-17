@@ -41,6 +41,45 @@ This family covers meteorological and climatological indices only. It excludes
 NFDRS components such as ERC, BI, SC, and IC; fuel models; fire behaviour;
 ignition; and occurrence prediction.
 
+## Scope and boundary
+
+The dividing line is not drought versus wildfire but **meteorological and
+climatological indices** versus **operational fire-danger and fire-behaviour
+modeling**.
+
+In scope:
+
+- Indices computable from standard meteorological and reanalysis fields
+- Deterministic, well-published algorithms with authoritative reference code
+- Anything that fits the existing NumPy + xarray + CF metadata + Dask pattern
+
+Out of scope:
+
+- NFDRS Ignition Component, Spread Component, Energy Release Component, and
+  Burning Index, which NWCG defines in terms of live and dead fuel moisture
+  and fuel models rather than weather alone
+- Fuel model catalogs, live and dead fuel state, and operational calibration
+- Fire-behaviour simulation and rate-of-spread modeling
+- FWI2025 next-generation reformulations, at least initially
+
+A weather-only index such as the McArthur Forest Fire Danger Index would be an
+in-scope proposal. NFDRS Energy Release Component would not: it needs fuel
+models and live and dead fuel state this package does not model.
+
+A separate `fire_weather_indices` repository becomes justified when two or more
+of these are true:
+
+1. An implementation requires fuel-model or fuel-state data structures
+2. An implementation requires operational calibration against fire-occurrence
+   records
+3. The fire code exceeds roughly 30 percent of the package's source volume
+4. Fire-specific dependencies would be forced on all `climate_indices` users
+5. The release cadence needs to diverge
+
+Until then, out-of-scope fire proposals are redirected to that sibling rather
+than relitigated here; [CONTRIBUTING.md](../../CONTRIBUTING.md#fire-weather-scope)
+records the triage response.
+
 ## API tiers
 
 - `fire.*` NumPy APIs are stable. They accept scalars or NumPy-compatible
