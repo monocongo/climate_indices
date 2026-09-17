@@ -287,12 +287,12 @@ def _assert_peak_within_model(peak_delta_mb: float, modeled_mb: float, slack: fl
 
 def _chunked_cffwis_inputs(n_days: int, n_side: int, chunk_side: int, seed: int = 42):
     """Return Dask-backed CFFWIS weather inputs chunked across space only."""
+    if n_side % chunk_side:
+        raise ValueError(f"chunk side {chunk_side} does not divide the {n_side}-cell grid side")
+
     import dask.array as da
     import pandas as pd
     import xarray as xr
-
-    if n_side % chunk_side:
-        raise ValueError(f"chunk side {chunk_side} does not divide the {n_side}-cell grid side")
 
     time_coord = pd.date_range("2015-01-01 12:00", periods=n_days, freq="D")
     lat_coord = np.linspace(30.0, 45.0, n_side)
@@ -311,6 +311,11 @@ def _chunked_cffwis_inputs(n_days: int, n_side: int, chunk_side: int, seed: int 
         )
 
     return inputs
+
+
+# wall-clock ceiling for one peak-RSS probe process; the largest published row
+# takes minutes, so this only catches a child that hangs
+_PROBE_TIMEOUT_SECONDS = 900
 
 
 def _measure_peak_rss_mb(n_days: int, n_side: int, chunk_side: int, outputs=None, run_cffwis: bool = True) -> float:
@@ -333,10 +338,15 @@ def _measure_peak_rss_mb(n_days: int, n_side: int, chunk_side: int, outputs=None
             capture_output=True,
             text=True,
             check=True,
+            timeout=_PROBE_TIMEOUT_SECONDS,
         )
+        return json.loads(completed.stdout.strip().splitlines()[-1])["peak_rss_mb"]
     except subprocess.CalledProcessError as exc:
         raise RuntimeError(f"peak-RSS probe failed (exit {exc.returncode}):\n{exc.stderr}") from exc
-    return json.loads(completed.stdout.strip().splitlines()[-1])["peak_rss_mb"]
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"peak-RSS probe timed out after {exc.timeout:.0f}s") from exc
+    except (json.JSONDecodeError, IndexError, KeyError) as exc:
+        raise RuntimeError(f"peak-RSS probe printed no usable result: {exc}") from exc
 
 
 @pytest.mark.benchmark(group="fire-scaling")
@@ -538,4 +548,25 @@ class TestFireBudgetPolicy:
 
         message = str(exc_info.value)
         assert "peak-RSS probe failed" in message
+        assert "exit 1" in message
         assert "chunk side 3 does not divide" in message
+
+    def test_probe_timeout_is_reported(self, monkeypatch) -> None:
+        """A probe child that never exits fails with a timeout rather than hanging the suite."""
+
+        def _timeout(*args, **kwargs):
+            raise subprocess.TimeoutExpired(cmd="probe", timeout=_PROBE_TIMEOUT_SECONDS)
+
+        monkeypatch.setattr(subprocess, "run", _timeout)
+        with pytest.raises(RuntimeError, match="timed out"):
+            _measure_peak_rss_mb(365, 32, 32)
+
+    def test_probe_unreadable_output_is_reported(self, monkeypatch) -> None:
+        """A probe child that exits cleanly with no JSON result fails with context."""
+
+        def _garbage(*args, **kwargs):
+            return subprocess.CompletedProcess(["probe"], 0, stdout="not json\n", stderr="")
+
+        monkeypatch.setattr(subprocess, "run", _garbage)
+        with pytest.raises(RuntimeError, match="no usable result"):
+            _measure_peak_rss_mb(365, 32, 32)

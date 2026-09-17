@@ -185,7 +185,8 @@ The modeled column is cells x days x 8 bytes per field, counting the seven outpu
 histories and the four input histories. Reproduce the memory rows with the same
 command and `BENCHMARK_FIRE_MEMORY_GRID_SIDE`, `BENCHMARK_FIRE_MEMORY_RECORD_DAYS`,
 and `BENCHMARK_FIRE_CHUNK_SIDES` set to the row's grid, record, and chunk side;
-the output-selection comparison used `BENCHMARK_FIRE_CHUNK_SIDES=64`. Measured
+the output-selection comparison runs at the last configured chunk side, so the
+published run used `BENCHMARK_FIRE_CHUNK_SIDES=64`. Measured
 peak runs about 2 to 2.6 times that model, because the path holds copies of the
 inputs and outputs alongside the histories, and peak RSS is not monotone in the
 spatial chunk size. Three durable
