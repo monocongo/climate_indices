@@ -564,6 +564,23 @@ def _gapped_series() -> tuple[np.ndarray, np.ndarray]:
     return precipitation, temperature
 
 
+def test_missing_day_policy_routes_through_the_shared_helper(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ADR-0007: the day policy has one implementation, in fire._common."""
+    calls: list[tuple[object, ...]] = []
+    shared = fire._kbdi._apply_gap_policy
+
+    def recording_helper(*args: object, **kwargs: object) -> object:
+        calls.append(args)
+        return shared(*args, **kwargs)
+
+    monkeypatch.setattr(fire._kbdi, "_apply_gap_policy", recording_helper)
+
+    precipitation, temperature = _gapped_series()
+    fire.kbdi(precipitation, temperature, 1000.0)
+
+    assert calls
+
+
 def test_propagate_poisons_from_the_first_valid_day_after_an_interior_gap() -> None:
     precipitation, temperature = _gapped_series()
     result = fire.kbdi(precipitation, temperature, 1000.0, return_state=True)

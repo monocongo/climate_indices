@@ -697,6 +697,26 @@ def test_invalid_trailing_gap_days_raise(runner: object, state_type: type, value
         runner(weather, initial_state=state)
 
 
+@pytest.mark.parametrize("runner", _RUNNERS)
+def test_missing_day_policy_routes_through_the_shared_helper(
+    runner: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR-0007: the day policy has one implementation, in fire._common."""
+    calls: list[tuple[object, ...]] = []
+    shared = fire._cffwis._apply_gap_policy
+
+    def recording_helper(*args: object, **kwargs: object) -> object:
+        calls.append(args)
+        return shared(*args, **kwargs)
+
+    monkeypatch.setattr(fire._cffwis, "_apply_gap_policy", recording_helper)
+
+    runner(_with_missing(_series(5), 1, 3))
+
+    assert calls
+
+
 # ------------------------------------------------------------------------------
 # missing days: propagate
 
