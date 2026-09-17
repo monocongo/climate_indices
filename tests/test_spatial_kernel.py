@@ -93,6 +93,26 @@ def _pointwise_spi(data: np.ndarray, scale: int, distribution: indices.Distribut
     return result
 
 
+def _count_pearson_calls(monkeypatch) -> tuple[list[tuple[int, ...]], list[tuple[int, ...]]]:
+    """Patch the Pearson fit and transform seams to record the shape of each call."""
+    transforms: list[tuple[int, ...]] = []
+    fits: list[tuple[int, ...]] = []
+    original_transform = compute.transform_fitted_pearson
+    original_fit = compute.pearson_parameters
+
+    def counting_transform(values, *args, **kwargs):
+        transforms.append(np.shape(values))
+        return original_transform(values, *args, **kwargs)
+
+    def counting_fit(values, *args, **kwargs):
+        fits.append(np.shape(values))
+        return original_fit(values, *args, **kwargs)
+
+    monkeypatch.setattr(compute, "transform_fitted_pearson", counting_transform)
+    monkeypatch.setattr(compute, "pearson_parameters", counting_fit)
+    return transforms, fits
+
+
 class TestSpatialKernelSkipsPerCellLoop:
     """The gridded path must not call the fitting kernel once per grid cell."""
 
@@ -199,21 +219,7 @@ class TestSpatialKernelSkipsPerCellLoop:
 
     def test_pearson_fits_once_for_gridded_input(self, gridded_monthly_precip, spatial_spi, monkeypatch):
         """The Pearson Type III fit and transform run once for a 3 x 2 grid (#940)."""
-        transforms: list[tuple[int, ...]] = []
-        fits: list[tuple[int, ...]] = []
-        original_transform = compute.transform_fitted_pearson
-        original_fit = compute.pearson_parameters
-
-        def counting_transform(values, *args, **kwargs):
-            transforms.append(np.shape(values))
-            return original_transform(values, *args, **kwargs)
-
-        def counting_fit(values, *args, **kwargs):
-            fits.append(np.shape(values))
-            return original_fit(values, *args, **kwargs)
-
-        monkeypatch.setattr(compute, "transform_fitted_pearson", counting_transform)
-        monkeypatch.setattr(compute, "pearson_parameters", counting_fit)
+        transforms, fits = _count_pearson_calls(monkeypatch)
 
         result = spatial_spi(
             gridded_monthly_precip,
@@ -232,21 +238,7 @@ class TestSpatialKernelSkipsPerCellLoop:
     def test_spei_pearson_fits_once_for_gridded_input(self, gridded_monthly_precip, spatial_spei, monkeypatch):
         """The SPEI Pearson branch fits and transforms once for a 3 x 2 grid (#940)."""
         pet = xr.full_like(gridded_monthly_precip, 0.5)
-        transforms: list[tuple[int, ...]] = []
-        fits: list[tuple[int, ...]] = []
-        original_transform = compute.transform_fitted_pearson
-        original_fit = compute.pearson_parameters
-
-        def counting_transform(values, *args, **kwargs):
-            transforms.append(np.shape(values))
-            return original_transform(values, *args, **kwargs)
-
-        def counting_fit(values, *args, **kwargs):
-            fits.append(np.shape(values))
-            return original_fit(values, *args, **kwargs)
-
-        monkeypatch.setattr(compute, "transform_fitted_pearson", counting_transform)
-        monkeypatch.setattr(compute, "pearson_parameters", counting_fit)
+        transforms, fits = _count_pearson_calls(monkeypatch)
 
         result = spatial_spei(
             gridded_monthly_precip,
