@@ -532,6 +532,16 @@ API Reference
    :maxdepth: 2
 
    reference
+   xarray_compatibility
+
+.. Hidden until DOCS-8 wires the architecture decision record into the
+   four-section navigation; the pages must build now because the xarray
+   compatibility matrix links to them as documents.
+.. toctree::
+   :hidden:
+   :glob:
+
+   adr/*
 
 Get involved
 -------------

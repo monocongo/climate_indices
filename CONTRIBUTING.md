@@ -63,19 +63,21 @@ library, and every page under `docs/` is either published or internal:
 
 - **Published** pages serve exactly one reader need: tutorial (learning),
   how-to guide (doing a job), reference (looking something up), or
-  explanation (understanding). The Markdown pages below join the site when
-  Markdown sources are enabled; until then the site builds the `.rst`
-  sources only.
+  explanation (understanding). Markdown sources are enabled, but pages join
+  the site as tickets wire them into navigation and links; a published page
+  not yet wired in stays in `exclude_patterns` so it cannot render
+  half-linked.
 - **Internal** pages are working notes — agent guidance, design and planning
   scratch, research — that stay in the repository without being published.
 
 The split exists so the site teaches one version of the truth. Working notes
 move with the code, are addressed to maintainers, and would otherwise reach
 readers as competing instructions. Because a Markdown suffix publishes every
-page it can find, internal pages are excluded by path in
-`docs/conf.py` (`exclude_patterns`), not by convention: enabling Markdown
-sources cannot leak them. When an internal page is added or moves between
-audiences, update that exclusion list and this section in the same change.
+page it can find, pages are excluded by path in `docs/conf.py`
+(`exclude_patterns`), not by convention: internal pages can never leak, and
+published pages stay unpublished until their navigation lands. When a page is
+added or moves between audiences, update that exclusion list and this section
+in the same change.
 
 Current assignments (the context map and validation status live at the
 repository root — `CONTEXT-MAP.md`, `VALIDATION.md` — and the core-library

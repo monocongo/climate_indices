@@ -55,16 +55,29 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx.ext.githubpages",
     "sphinx_autodoc_typehints",
+    "myst_parser",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
 
 # The suffix(es) of source filenames.
-# You can specify multiple suffix as a list of string:
-#
-# source_suffix = ['.rst', '.md']
-source_suffix = ".rst"
+# RST and Markdown build side by side during the migration window. Every
+# non-excluded Markdown page becomes a source document, so a published page
+# joins the site by leaving `exclude_patterns` and entering a toctree, while
+# internal pages stay in `exclude_patterns`.
+source_suffix = {
+    ".rst": "restructuredtext",
+    ".md": "markdown",
+}
+
+# -- MyST configuration -------------------------------------------------------
+# Heading anchors let a Markdown page cross-link to its own sections (the
+# xarray compatibility matrix does, via `#chunking-guidance-...` links).
+myst_heading_anchors = 3
+
+# `colon_fence` is needed for `:::{warning}`-style Markdown admonitions.
+myst_enable_extensions = ["colon_fence"]
 
 # The master toctree document.
 master_doc = "index"
@@ -96,6 +109,23 @@ exclude_patterns = [
     "explorer/**",
     "architecture-deepening-review-*.md",
     "test_fixture_management.md",
+    # Published Markdown pages not yet wired into navigation. Later tickets
+    # publish them and delete their paths from this list: DOCS-5 (leaf RST
+    # pages), DOCS-7 (navigation), DOCS-8 (explanation and reference corpus).
+    # `wildfire_applications.md` is different: the published page is its
+    # `wildfire_applications.rst` include wrapper, so discovering the Markdown
+    # file as a second source would warn about a duplicate document. It stays
+    # excluded until DOCS-5 or DOCS-6 retires the wrapper.
+    "algorithm_refs/**",
+    "architecture.md",
+    "contribution-guide.md",
+    "deployment-guide.md",
+    "development-guide.md",
+    "floating_point_best_practices.md",
+    "project-overview.md",
+    "release-process.md",
+    "research/nclimgrid-acquisition-and-redistribution.md",
+    "wildfire_applications.md",
 ]
 
 # The name of the Pygments (syntax highlighting) style to use.
