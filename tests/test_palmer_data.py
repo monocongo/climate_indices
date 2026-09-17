@@ -63,5 +63,7 @@ def test_incomplete_or_malformed_fitting_params_fall_back_to_calibration():
 
         assert prepared.calibrate is True, name
         # no coefficient is adopted from a rejected parameter set
-        assert np.isnan(prepared.alpha).all() and np.isnan(prepared.beta).all(), name
-        assert np.isnan(prepared.gamma).all() and np.isnan(prepared.delta).all(), name
+        assert np.isnan(prepared.alpha).all(), name
+        assert np.isnan(prepared.beta).all(), name
+        assert np.isnan(prepared.gamma).all(), name
+        assert np.isnan(prepared.delta).all(), name

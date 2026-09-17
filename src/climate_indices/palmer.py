@@ -522,27 +522,56 @@ def _case(prob: float, x1: float, x2: float, x3: float) -> float:
     return (1.0 - pro) * x3 + pro * x2
 
 
-def _record_index_values(state: _PalmerRecursion, year: int, month: int) -> None:
+def _record_index_values(state: _PalmerRecursion, year: int, month: int, value: float) -> None:
     """
-    Record the current month's PDSI, PHDI, and PMDI
+    Record one month's PDSI, PHDI, and PMDI
 
-    Used when no spell is open (k8 == 0), so the month's preliminary values
-    are final without backtracking through the trail arrays.
+    Used both when no spell is open (k8 == 0), where ``value`` is this
+    month's preliminary X value, and when a spell closes and ``_assign``
+    flushes the backtracked trail, where ``value`` is the assigned severity.
 
     :param state: the mutable recursion state
     :param year: row index into the monthly arrays
     :param month: month index, 0 = January
+    :param value: the PDSI value to record for this month
     """
-    state.pdsi[year, month] = state.x[year, month]
+    state.pdsi[year, month] = value
     state.phdi[year, month] = state.px3[year, month]
     if state.px3[year, month] == 0:
-        state.phdi[year, month] = state.x[year, month]
+        state.phdi[year, month] = value
     state.wplm[year, month] = _case(
         state.ppr[year, month],
         state.px1[year, month],
         state.px2[year, month],
         state.px3[year, month],
     )
+
+
+def _backtrack_assigned_values(state: _PalmerRecursion) -> None:
+    """
+    Backtrack through the x1/x2 trail arrays
+
+    Stores the assigned x1 (or x2) in sx until it is zero, then switches to
+    the other until it is zero, etc.
+
+    :param state: the mutable recursion state
+    """
+    isave = state.iass
+    for i in range(state.k8 - 1, -1, -1):
+        if isave == 2:
+            if state.sx2[i] == 0:
+                isave = 1
+                state.sx[i] = state.sx1[i]
+            else:
+                isave = 2
+                state.sx[i] = state.sx2[i]
+        else:
+            if state.sx1[i] == 0:
+                isave = 2
+                state.sx[i] = state.sx2[i]
+            else:
+                isave = 1
+                state.sx[i] = state.sx1[i]
 
 
 def _assign(state: _PalmerRecursion) -> None:
@@ -554,54 +583,24 @@ def _assign(state: _PalmerRecursion) -> None:
     year = state.year
     month = state.month
     state.sx[state.k8] = state.x[year, month]
-    isave = state.iass
     if state.k8 == 0:
-        _record_index_values(state, year, month)
+        _record_index_values(state, year, month, state.x[year, month])
         return
 
     # use all x3 values
     if state.iass == 3:
-        for i in range(state.k8):
-            state.sx[i] = state.sx3[i]
-
-    # backtrack through arrays, storing assigned x1 (or x2)
-    # in sx until it is zero, then switching to the other until
-    # it is zero, etc
+        state.sx[: state.k8] = state.sx3[: state.k8]
     else:
-        for i in range(state.k8 - 1, -1, -1):
-            if isave == 2:
-                if state.sx2[i] == 0:
-                    isave = 1
-                    state.sx[i] = state.sx1[i]
-                else:
-                    isave = 2
-                    state.sx[i] = state.sx2[i]
-            else:
-                if state.sx1[i] == 0:
-                    isave = 2
-                    state.sx[i] = state.sx2[i]
-                else:
-                    isave = 1
-                    state.sx[i] = state.sx1[i]
+        _backtrack_assigned_values(state)
 
     # proper assignments to array sx have been made, output the mess
     for idx in range(state.k8 + 1):
         j = int(state.indexj[idx])
         m = int(state.indexm[idx])
-        state.pdsi[j, m] = state.sx[idx]
-        state.phdi[j, m] = state.px3[j, m]
-
-        if state.px3[j, m] == 0:
-            state.phdi[j, m] = state.sx[idx]
-
-        state.wplm[j, m] = _case(
-            state.ppr[j, m],
-            state.px1[j, m],
-            state.px2[j, m],
-            state.px3[j, m],
-        )
+        _record_index_values(state, j, m, state.sx[idx])
     state.k8 = 0
-    # state.k8max = 0
+    # k8max is deliberately not reset here: it is the high-water mark
+    # _finish_up reads once the whole recursion ends, not per-spell state.
 
 
 def _statement_220(state: _PalmerRecursion) -> None:
@@ -643,7 +642,7 @@ def _statement_210(prepared: _PalmerPrepared, state: _PalmerRecursion) -> None:
     state.x[year, month] = state.px3[year, month]
 
     if state.k8 == 0:
-        _record_index_values(state, year, month)
+        _record_index_values(state, year, month, state.x[year, month])
     else:
         state.iass = 3
         _assign(state)
@@ -813,72 +812,98 @@ def _statement_170(prepared: _PalmerPrepared, state: _PalmerRecursion) -> None:
     _statement_190(prepared, state)
 
 
+def _step_established_spell(prepared: _PalmerPrepared, state: _PalmerRecursion, year: int, month: int) -> bool:
+    """
+    Handle a month where no abatement is underway (pro is 0 or 100)
+
+    :param prepared: the prepared Palmer inputs
+    :param state: the mutable recursion state
+    :param year: row index into the monthly arrays
+    :param month: month index, 0 = January
+    :returns: True if this month was dispatched to a statement here, False
+              to have the caller fall through to its own default
+    """
+    # End of drought or wet
+    if -0.5 <= state.x3 <= 0.5:
+        state.pv = 0.0
+        state.ppr[year, month] = 0.0
+        state.px3[year, month] = 0.0
+        # check for new wet or drought start
+        _statement_200(prepared, state)
+        return True
+    # We are in a wet spell
+    elif state.x3 > 0.5:
+        # The wet spell intensifies
+        if state.z[year, month] >= 0.15:
+            _statement_210(prepared, state)
+        # The wet spell starts to abate (and may end)
+        else:
+            _statement_170(prepared, state)
+        return True
+    # We are in a drought
+    elif state.x3 < -0.5:
+        # The drought intensifies
+        if state.z[year, month] <= -0.15:
+            _statement_210(prepared, state)
+        # The drought starts to abate (and may end)
+        else:
+            _statement_180(prepared, state)
+        return True
+    return False
+
+
+def _advance_month(prepared: _PalmerPrepared, state: _PalmerRecursion, year: int, month: int) -> None:
+    """
+    Advance the Z-index recursion by one month
+
+    Rereads monthly parameters for calculation of the 'K' monthly weighting
+    factors used in z-index calculation, then dispatches to the
+    established-spell logic (no abatement underway) or the
+    abatement-in-progress logic.
+
+    :param prepared: the prepared Palmer inputs
+    :param state: the mutable recursion state
+    :param year: row index into the monthly arrays
+    :param month: month index, 0 = January
+    """
+    state.year = year
+    state.month = month
+    k8 = int(state.k8)
+    state.indexj[k8] = year
+    state.indexm[k8] = month
+    state.ze = 0.0
+    state.ud = 0.0
+    state.uw = 0.0
+    _calc_cafec_zindex(prepared, state, year, month)
+
+    # No abatement underway, wet or drought will end if -.5 <= X3 <= .5
+    if (state.pro == 100) or (state.pro == 0):
+        if _step_established_spell(prepared, state, year, month):
+            return
+    # Abatement is underway
+    else:
+        # We are in a wet spell
+        if state.x3 > 0:
+            _statement_170(prepared, state)
+            return
+        # We are in a drought
+        elif state.x3 <= 0:
+            _statement_180(prepared, state)
+            return
+
+    _statement_170(prepared, state)
+
+
 def _calc_zindex(prepared: _PalmerPrepared, state: _PalmerRecursion) -> None:
     """
     Calculate Z Index
-
-    Reread monthly parameters for calculation of the 'K' monthly
-    weighting factors used in z-index calculation
 
     :param prepared: the prepared Palmer inputs
     :param state: the mutable recursion state
     """
     for year in range(prepared.n_years):
         for month in range(12):
-            state.year = year
-            state.month = month
-            k8 = int(state.k8)
-            state.indexj[k8] = year
-            state.indexm[k8] = month
-            state.ze = 0.0
-            state.ud = 0.0
-            state.uw = 0.0
-            _calc_cafec_zindex(prepared, state, year, month)
-
-            # No abatement underway, wet or drought will end if -.5 <= X3 <= .5
-            if (state.pro == 100) or (state.pro == 0):
-                # End of drought or wet
-                if -0.5 <= state.x3 <= 0.5:
-                    state.pv = 0.0
-                    state.ppr[year, month] = 0.0
-                    state.px3[year, month] = 0.0
-                    # check for new wet or drought start
-                    _statement_200(prepared, state)
-                    continue
-                # We are in a wet spell
-                elif state.x3 > 0.5:
-                    # The wet spell intensifies
-                    if state.z[year, month] >= 0.15:
-                        _statement_210(prepared, state)
-                        continue
-                    # The wet spell starts to abate (and may end)
-                    else:
-                        _statement_170(prepared, state)
-                        continue
-                # We are in a drought
-                elif state.x3 < -0.5:
-                    # The drought intensifies
-                    if state.z[year, month] <= -0.15:
-                        _statement_210(prepared, state)
-                        continue
-                    # The drought starts to abate (and may end)
-                    else:
-                        _statement_180(prepared, state)
-                        continue
-
-            # Abatement is underway
-            else:
-                # We are in a wet spell
-                if state.x3 > 0:
-                    _statement_170(prepared, state)
-                    continue
-                # We are in a drought
-                elif state.x3 <= 0:
-                    _statement_180(prepared, state)
-                    continue
-
-            _statement_170(prepared, state)
-            continue
+            _advance_month(prepared, state, year, month)
 
 
 def _finish_up(state: _PalmerRecursion) -> None:
