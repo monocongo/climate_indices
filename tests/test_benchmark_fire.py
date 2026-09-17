@@ -14,7 +14,7 @@ irreducible dimension:
 - Peak RSS as a function of the spatial chunk size and output selection.
   ``time`` must stay a single chunk (ADR-0003, ADR-0006), so peak RSS grows with
   the record length, and the retained-history model is a lower bound: measured
-  peak for the xarray path runs about twice the model because the path holds
+  peak for the xarray path runs about 2 to 2.6 times the model because the path holds
   copies of the inputs and outputs alongside the histories. ``outputs=`` reduces
   the modeled retained data, which did not show up as a peak-RSS reduction at the
   measured scales.
@@ -47,12 +47,19 @@ integers (CI-friendly defaults in parentheses):
 - BENCHMARK_FIRE_MEMORY_GRID_SIDE (32): grid side for the peak-memory benchmarks
 - BENCHMARK_FIRE_MEMORY_RECORD_DAYS (365): record length for those benchmarks
 
-The published sizing table in docs/wildfire_applications.md came from three runs:
-`BENCHMARK_FIRE_GRID_SIDES=256 BENCHMARK_FIRE_RECORD_DAYS=365`,
-`BENCHMARK_FIRE_GRID_SIDES=1000 BENCHMARK_FIRE_RECORD_DAYS=30`, and
-`BENCHMARK_FIRE_MEMORY_GRID_SIDE=128 BENCHMARK_FIRE_MEMORY_RECORD_DAYS=1825
-BENCHMARK_FIRE_CHUNK_SIDES=32,64,128`. The peak-memory guard is a coarse smoke
-test at the default scale and only becomes a real bound at settings like those.
+The published sizing tables in docs/wildfire_applications.md came from these
+runs: `BENCHMARK_FIRE_GRID_SIDES=256 BENCHMARK_FIRE_RECORD_DAYS=365` and
+`BENCHMARK_FIRE_GRID_SIDES=1000 BENCHMARK_FIRE_RECORD_DAYS=30` for the
+throughput rows; `BENCHMARK_FIRE_MEMORY_GRID_SIDE=128
+BENCHMARK_FIRE_MEMORY_RECORD_DAYS=1825 BENCHMARK_FIRE_CHUNK_SIDES=32,64,128` for
+the chunk-side memory rows; `BENCHMARK_FIRE_MEMORY_GRID_SIDE=128
+BENCHMARK_FIRE_MEMORY_RECORD_DAYS=1825 BENCHMARK_FIRE_CHUNK_SIDES=64` for the
+output-selection comparison; and `BENCHMARK_FIRE_MEMORY_GRID_SIDE=128
+BENCHMARK_FIRE_MEMORY_RECORD_DAYS=3650 BENCHMARK_FIRE_CHUNK_SIDES=64` for the
+3650-day row. The small-grid comparison in the docs comes from the default grid
+sides at the longest default record length. The peak-memory guard is a coarse
+smoke test at the default scale and only becomes a real bound at settings like
+those.
 """
 
 from __future__ import annotations
@@ -161,9 +168,9 @@ _REFERENCE_OPERATIONS = 12
 # slack on the modeled retained-history footprint in the peak-memory assertion.
 # Coarse by design: it catches an adapter that materializes several times over
 # the model, which is what losing the streaming path looks like at this scale.
-# The measured peak ran 1.9-2.5x the model at the published settings (the path
+# The measured peak ran 2.0-2.6x the model at the published settings (the path
 # holds copies of the inputs and outputs next to the histories), so 4.0 leaves
-# ~1.6x margin over the worst measurement.
+# ~1.5x margin over the worst measurement.
 _MEMORY_SLACK = 4.0
 
 # number of output histories the CFFWIS orchestrator retains by default, used by
@@ -280,12 +287,12 @@ def _assert_peak_within_model(peak_delta_mb: float, modeled_mb: float, slack: fl
 
 def _chunked_cffwis_inputs(n_days: int, n_side: int, chunk_side: int, seed: int = 42):
     """Return Dask-backed CFFWIS weather inputs chunked across space only."""
+    if n_side % chunk_side:
+        raise ValueError(f"chunk side {chunk_side} does not divide the {n_side}-cell grid side")
+
     import dask.array as da
     import pandas as pd
     import xarray as xr
-
-    if n_side % chunk_side:
-        raise ValueError(f"chunk side {chunk_side} does not divide the {n_side}-cell grid side")
 
     time_coord = pd.date_range("2015-01-01 12:00", periods=n_days, freq="D")
     lat_coord = np.linspace(30.0, 45.0, n_side)
@@ -306,6 +313,11 @@ def _chunked_cffwis_inputs(n_days: int, n_side: int, chunk_side: int, seed: int 
     return inputs
 
 
+# wall-clock ceiling for one peak-RSS probe process; the largest published row
+# takes minutes, so this only catches a child that hangs
+_PROBE_TIMEOUT_SECONDS = 900
+
+
 def _measure_peak_rss_mb(n_days: int, n_side: int, chunk_side: int, outputs=None, run_cffwis: bool = True) -> float:
     """Return the peak RSS of a fresh process that runs one chunked CFFWIS call.
 
@@ -319,14 +331,22 @@ def _measure_peak_rss_mb(n_days: int, n_side: int, chunk_side: int, outputs=None
         chunk_side=chunk_side,
         outputs=repr(outputs),
     )
-    completed = subprocess.run(
-        [sys.executable, "-c", probe],
-        cwd=_REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return json.loads(completed.stdout.strip().splitlines()[-1])["peak_rss_mb"]
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-c", probe],
+            cwd=_REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=_PROBE_TIMEOUT_SECONDS,
+        )
+        return json.loads(completed.stdout.strip().splitlines()[-1])["peak_rss_mb"]
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(f"peak-RSS probe failed (exit {exc.returncode}):\n{exc.stderr}") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"peak-RSS probe timed out after {exc.timeout:.0f}s") from exc
+    except (json.JSONDecodeError, IndexError, KeyError, TypeError) as exc:
+        raise RuntimeError(f"peak-RSS probe printed no usable result: {exc}") from exc
 
 
 @pytest.mark.benchmark(group="fire-scaling")
@@ -520,3 +540,34 @@ class TestFireBudgetPolicy:
             "the adapter materializes copies the chunked path should avoid"
         )
         assert str(exc_info.value).splitlines()[0] == expected_message
+
+    def test_probe_failure_surfaces_child_stderr(self) -> None:
+        """A failing peak-RSS probe reports the child traceback, not only its exit code."""
+        with pytest.raises(RuntimeError) as exc_info:
+            _measure_peak_rss_mb(365, 32, 3)
+
+        message = str(exc_info.value)
+        assert "peak-RSS probe failed" in message
+        assert "exit 1" in message
+        assert "chunk side 3 does not divide" in message
+
+    def test_probe_timeout_is_reported(self, monkeypatch) -> None:
+        """A probe child that never exits fails with a timeout rather than hanging the suite."""
+
+        def _timeout(*args, **kwargs):
+            raise subprocess.TimeoutExpired(cmd="probe", timeout=_PROBE_TIMEOUT_SECONDS)
+
+        monkeypatch.setattr(subprocess, "run", _timeout)
+        with pytest.raises(RuntimeError, match="timed out"):
+            _measure_peak_rss_mb(365, 32, 32)
+
+    @pytest.mark.parametrize("stdout", ["not json\n", "", '{"other": 1}\n', "123\n"])
+    def test_probe_unreadable_output_is_reported(self, monkeypatch, stdout: str) -> None:
+        """A probe child that exits cleanly without a result fails with context."""
+
+        def _garbage(*args, **kwargs):
+            return subprocess.CompletedProcess(["probe"], 0, stdout=stdout, stderr="")
+
+        monkeypatch.setattr(subprocess, "run", _garbage)
+        with pytest.raises(RuntimeError, match="no usable result"):
+            _measure_peak_rss_mb(365, 32, 32)

@@ -153,8 +153,9 @@ Measured throughput on a development machine (Apple silicon, macOS, CPython
 | KBDI | 1000 x 1000 cells | 30 days | 43 M cell-days/s |
 
 Small grids run slower per cell-day, from 1.2 M cell-days/s at 8 x 8 cells to
-5.7 M at 32 x 32 cells, because the per-day vectorized work drops toward NumPy's
-call overhead. The table above is the regime a gridded run lives in.
+5.7 M at 32 x 32 cells at the 730-day default record length, because the per-day
+vectorized work drops toward NumPy's call overhead. The table above is the regime
+a gridded run lives in.
 
 Reproduce the throughput rows with `pytest tests/test_benchmark_fire.py -m
 benchmark --benchmark-enable`, setting `BENCHMARK_FIRE_GRID_SIDES` and
@@ -163,7 +164,7 @@ benchmark --benchmark-enable`, setting `BENCHMARK_FIRE_GRID_SIDES` and
 At a CONUS extent on a 0.25 degree grid, roughly 25 to 50 degrees north by 125
 to 66 degrees west, about 100 x 237 cells, and 14,610 days of record over 40
 years, CFFWIS covers about 346 M cell-days. At the measured throughput that is
-**approximately one minute** of recurrence compute, with KBDI at about 8
+**approximately 47 seconds** of recurrence compute, with KBDI at about 8
 seconds. Those two figures are linear extrapolations from the table above, not
 measurements: throughput is close to flat between the two large grid sizes, so a
 linear model in cell-days is what the measurements support.
@@ -171,8 +172,8 @@ linear model in cell-days is what the measurements support.
 Memory, not time, is the binding constraint at that scale. Every retained output
 keeps a full daily history per cell, so 23,700 cells over 14,610 days is 2.7 GB
 per field, and the default seven outputs plus four inputs come to about 30 GB of
-retained data. Peak RSS for one CFFWIS xarray run in a fresh process, 128 x 128
-cells (29.9 M cell-days), same machine:
+retained data. Peak RSS for one CFFWIS xarray run in a fresh process at 128 x 128
+cells (29.9 M cell-days at 1825 days, 59.8 M at 3650 days), same machine:
 
 | Record | Spatial chunk | Peak RSS | Modeled retained history |
 | --- | --- | --- | --- |
@@ -185,22 +186,23 @@ The modeled column is cells x days x 8 bytes per field, counting the seven outpu
 histories and the four input histories. Reproduce the memory rows with the same
 command and `BENCHMARK_FIRE_MEMORY_GRID_SIDE`, `BENCHMARK_FIRE_MEMORY_RECORD_DAYS`,
 and `BENCHMARK_FIRE_CHUNK_SIDES` set to the row's grid, record, and chunk side;
-the output-selection comparison runs at the last configured chunk side. Measured
-peak runs about 2 to 2.5 times
-that model, because the path holds copies of the inputs and outputs alongside the
-histories, and peak RSS is not monotone in the spatial chunk size. Three durable
+the output-selection comparison runs at the last configured chunk side, so the
+published run used `BENCHMARK_FIRE_CHUNK_SIDES=64`. Measured
+peak runs about 2 to 2.6 times that model, because the path holds copies of the
+inputs and outputs alongside the histories, and peak RSS is not monotone in the
+spatial chunk size. Three durable
 facts follow. Peak memory grows with the record length, and no chunk size changes
 that. `outputs=` cuts the retained data without a matching cut in peak RSS at
 these scales: 6.8 GB with all seven outputs against 6.3 GB with `fwi` alone at
-1825 days, so treat it as a reduction in retained volume rather than a
-demonstrated peak-memory lever. And a multi-decade CONUS run should be sized from
-the modeled column times that factor, working one time-continuous spatial block
-at a time.
+1825 days and a 64 x 64 chunk, so treat it as a reduction in retained volume
+rather than a demonstrated peak-memory lever. And a multi-decade CONUS run
+should be sized from the modeled column times that factor, working one
+time-continuous spatial block at a time.
 
 `numba` is not an optional dependency of this package. ADR-0006 requires
 representative benchmark evidence before one is added, and the throughput table
-above is that evidence as measured today: no agreed runtime target is missed, so
-the pure NumPy recurrence remains the implementation.
+above is that evidence as measured today: no agreed runtime target exists for
+the pure NumPy recurrence to miss, so it remains the implementation.
 
 The budget guards behind these numbers live in `tests/test_benchmark_fire.py`,
 run by the benchmarks workflow on every pull request. They fail once the
