@@ -168,11 +168,14 @@ rerunning the identical command a few minutes later gave 0.770 s, so read the
 speedup column as ±15% rather than exact.
 
 Raw output: `benchmarks/results/serial_before.txt` (pre-conversion) and
-`benchmarks/results/parallel_scaling.txt` (post-conversion). Both are rewritten
-by the commands above, so re-measure rather than trusting them on another
-machine or dependency set; the pre-conversion artifact was recorded by the
-harness as shipped in #1000's first commit, so its header omits the dask and
-xarray versions the current script prints.
+`benchmarks/results/parallel_scaling.txt` (post-conversion). The harness only
+writes to standard output, so neither file is rewritten by the commands above:
+`parallel_scaling.txt` is the `tee` of the #928 full-sweep command, and
+`serial_before.txt` is the historical pre-conversion run on `d4e9ba0d` with the
+harness copied in, so `--serial-only` here re-measures the post-conversion path
+instead. Re-measure rather than trusting either file on another machine or
+dependency set; the pre-conversion artifact's header omits the dask and xarray
+versions the current script prints.
 
 ### The 10x criterion (#893)
 
@@ -189,8 +192,9 @@ pre-vectorization serial canonical path on the reference grid:
 The SPI/SPEI shortfall is Dask overhead, not a serial-vs-parallel gap in the
 kernels: after vectorization each finishes in ~0.2 s, while a fresh `processes`
 pool plus its start-up and the result transfer add 0.66-0.71 s at one worker and
-about 1.0-1.2 s at eight (SPI: 0.863 s pooled against 0.204 s in memory at one
-worker, 1.197 s at eight). Parallelism pays when the work per block exceeds that
+about 1.0 s at eight, on the same added-cost basis (SPI: 0.863 s pooled against
+0.204 s in memory at one worker, 1.197 s at eight, i.e. ~0.99 s of added cost).
+Parallelism pays when the work per block exceeds that
 cost, and the 3306-cell reference grid no longer does. The epic's ">11 minutes"
 reference measures the explicit lat/lon loops in
 `notebooks/muitprocess_spi_nclimgrid.ipynb`, which bypass the adapter: the
