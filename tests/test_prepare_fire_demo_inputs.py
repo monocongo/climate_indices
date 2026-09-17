@@ -55,7 +55,8 @@ def test_daily_surface_aggregation_and_midday_timestamps(monkeypatch):
                 "total_precipitation_6hr": _six_hourly(precipitation, times, latitude, longitude, "precip"),
                 "10m_wind_speed": _six_hourly(wind, times, latitude, longitude, "wind"),
             }
-        )
+        ),
+        2020,
     )
 
     assert list(daily.time.values) == [np.datetime64("2020-09-01T12:00"), np.datetime64("2020-09-02T12:00")]
@@ -70,6 +71,31 @@ def test_daily_surface_aggregation_and_midday_timestamps(monkeypatch):
     assert _value(daily.wind_speed_ms.isel(time=1, latitude=0, longitude=0)) == pytest.approx(
         (2.0 + 4.0 + 6.0 + 8.0) / 4
     )
+
+
+def test_daily_surface_completes_the_year_end_precipitation_bin(monkeypatch):
+    """The 31 December bin needs the 1 January 00:00 stamp of the next year."""
+    module = _prepare_module(monkeypatch)
+    times = pd.date_range("2020-12-31", periods=5, freq="6h")
+    latitude, longitude = [30.0], [-100.0]
+    shape = (len(times), 1, 1)
+    temperature = np.full(shape, 283.15)
+    precipitation = np.array([0.001, 0.002, 0.003, 0.004, 0.005]).reshape(-1, 1, 1)
+    wind = np.ones(shape)
+    daily = module._to_daily_surface(
+        xr.Dataset(
+            {
+                "2m_temperature": _six_hourly(temperature, times, latitude, longitude, "2m_temperature"),
+                "total_precipitation_6hr": _six_hourly(precipitation, times, latitude, longitude, "precip"),
+                "10m_wind_speed": _six_hourly(wind, times, latitude, longitude, "wind"),
+            }
+        ),
+        2020,
+    )
+
+    assert list(daily.time.values) == [np.datetime64("2020-12-31T12:00")]
+    # the four accumulations ending 12, 18, and 24 UTC on 31 December
+    assert _value(daily.precip_mm.isel(time=0, latitude=0, longitude=0)) == pytest.approx(14.0)
 
 
 def test_relative_humidity_matches_saturation_and_clips(monkeypatch):

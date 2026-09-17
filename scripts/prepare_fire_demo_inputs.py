@@ -119,8 +119,13 @@ def _select(dataset: xr.Dataset, name: str, start: str, end: str) -> xr.DataArra
     return selected.assign_coords(longitude=longitude)
 
 
-def _to_daily_surface(dataset: xr.Dataset) -> xr.Dataset:
-    """Aggregate the six-hourly surface variables of one year to a daily dataset."""
+def _to_daily_surface(dataset: xr.Dataset, year: int) -> xr.Dataset:
+    """Aggregate the six-hourly surface variables of one year to a daily dataset.
+
+    ``dataset`` carries one extra six-hourly stamp past the year's end so the
+    31 December precipitation bin is complete; the daily rows are trimmed back
+    to the requested year here.
+    """
     daily = xr.Dataset()
     temperature = dataset["2m_temperature"] - 273.15
     daily["tmean_c"] = temperature.resample(time="1D").mean()
@@ -138,6 +143,7 @@ def _to_daily_surface(dataset: xr.Dataset) -> xr.Dataset:
         .sum()
     )
     daily["wind_speed_ms"] = dataset["10m_wind_speed"].resample(time="1D").mean()
+    daily = daily.sel(time=slice(f"{year}-01-01", f"{year}-12-31"))
     # midday timestamps: the CFFWIS adapter warns when a daily coordinate
     # clearly does not sample noon, and these daily summaries stand in for the
     # noon observations the system is defined on.
@@ -242,19 +248,24 @@ def _cache(cache_dir: Path, key: str, variable: str, builder: Callable[[], xr.Da
 
 
 def _surface_inputs(dataset: xr.Dataset, cache_dir: Path) -> xr.Dataset:
-    """Build the long daily surface record, one cached year at a time."""
+    """Build the long daily surface record, one cached year at a time.
+
+    Each year's slice ends one six-hourly stamp into the next year so the 31
+    December precipitation bin is complete; the cache key spells the slice out
+    so a changed window can never reuse the old download.
+    """
     years = []
     for year in SURFACE_YEARS:
-        start, end = f"{year}-01-01", f"{year}-12-31"
+        start, end = f"{year}-01-01", f"{year + 1}-01-01"
         parts = {}
         for name in SURFACE_VARIABLES:
             parts[name] = _cache(
                 cache_dir,
-                f"{name}_{year}",
+                f"{name}_{start}_{end}",
                 name,
                 lambda name=name, start=start, end=end: _select(dataset, name, start, end),
             )
-        years.append(_to_daily_surface(xr.Dataset(parts)))
+        years.append(_to_daily_surface(xr.Dataset(parts), year))
     return xr.concat(years, dim="time")
 
 
