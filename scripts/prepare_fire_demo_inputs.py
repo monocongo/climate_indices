@@ -16,8 +16,9 @@ Source and provenance
 
 Pipeline
     1. Subset every variable to the CONUS box (25-50 N, 235-295 E) on the
-       store's 1.5 degree equiangular grid and convert longitude to
-       -125..-61 E.
+       store's 1.5 degree equiangular grid and convert the requested
+       235-295 E window to the -125..-65 E convention (the realized grid
+       coverage is 235.5-294.0 E, -124.5..-66.0 E).
     2. Aggregate the six-hourly surface variables to daily values over
        ``SURFACE_YEARS``: ``tmean_c`` (mean), ``tmax_c`` (maximum), ``tmin_c``
        (minimum), ``precip_mm`` (sum of the 6-hour accumulations) and
@@ -125,10 +126,17 @@ def _to_daily_surface(dataset: xr.Dataset) -> xr.Dataset:
     daily["tmean_c"] = temperature.resample(time="1D").mean()
     daily["tmax_c"] = temperature.resample(time="1D").max()
     daily["tmin_c"] = temperature.resample(time="1D").min()
-    # ERA5 accumulates precipitation over the preceding six hours; summing the
-    # four daily accumulations gives the daily total. Tiny negative values are
-    # numerical noise and would fail the fire recurrences' non-negativity check.
-    daily["precip_mm"] = (dataset["total_precipitation_6hr"] * 1000.0).clip(min=0.0).resample(time="1D").sum()
+    # ERA5 accumulates precipitation over the preceding six hours, so the
+    # accumulation stamped 06:00 covers 00:00-06:00. Binning with closed="right"
+    # groups the four accumulations that end 06, 12, 18, and 24 UTC: one
+    # calendar day. Tiny negative values are numerical noise and would fail the
+    # fire recurrences' non-negativity check.
+    daily["precip_mm"] = (
+        (dataset["total_precipitation_6hr"] * 1000.0)
+        .clip(min=0.0)
+        .resample(time="1D", closed="right", label="left")
+        .sum()
+    )
     daily["wind_speed_ms"] = dataset["10m_wind_speed"].resample(time="1D").mean()
     # midday timestamps: the CFFWIS adapter warns when a daily coordinate
     # clearly does not sample noon, and these daily summaries stand in for the
@@ -205,9 +213,25 @@ def _to_daily_levels(dataset: xr.Dataset) -> xr.Dataset:
     return levels
 
 
+def _cache_fingerprint() -> str:
+    """Short digest of the source and subset a cached download belongs to.
+
+    Folding this into the cache file name means a changed source URL, subset
+    window, or domain can never reuse a download made for the old settings.
+    """
+    settings = {
+        "source_url": SOURCE_URL,
+        "domain_latitude": DOMAIN_LATITUDE,
+        "domain_longitude": DOMAIN_LONGITUDE,
+        "surface_years": SURFACE_YEARS,
+        "season": [SEASON_START, SEASON_END],
+    }
+    return hashlib.sha256(json.dumps(settings, sort_keys=True).encode()).hexdigest()[:8]
+
+
 def _cache(cache_dir: Path, key: str, variable: str, builder: Callable[[], xr.DataArray]) -> xr.DataArray:
     """Return a cached variable selection, building it from the source on a miss."""
-    path = cache_dir / f"{key}.nc"
+    path = cache_dir / f"{_cache_fingerprint()}-{key}.nc"
     if not path.exists():
         cache_dir.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=cache_dir) as temporary:
@@ -267,9 +291,12 @@ def _add_units(dataset: xr.Dataset) -> xr.Dataset:
         "height_agl_m": ("m", "Geopotential height above ground"),
     }
     for name, (unit, long_name) in units.items():
-        if name in dataset:
-            dataset[name].attrs["units"] = unit
-            dataset[name].attrs["long_name"] = long_name
+        if name not in dataset:
+            continue
+        if name == "wind_speed_ms" and "level" in dataset[name].dims:
+            long_name = "Wind speed at the pressure level"
+        dataset[name].attrs["units"] = unit
+        dataset[name].attrs["long_name"] = long_name
     dataset["latitude"].attrs.update(units="degrees_north", long_name="latitude")
     dataset["longitude"].attrs.update(units="degrees_east", long_name="longitude")
     if "level" in dataset:
@@ -316,8 +343,10 @@ def prepare_inputs(output_dir: Path) -> dict[str, Any]:
         "source_description": SOURCE_DESCRIPTION,
         "source_access": "anonymous HTTPS, no credentials",
         "domain": {
-            "latitude": list(DOMAIN_LATITUDE),
-            "longitude": [DOMAIN_LONGITUDE[0] - 360.0, DOMAIN_LONGITUDE[1] - 360.0],
+            "requested_latitude": list(DOMAIN_LATITUDE),
+            "requested_longitude": [DOMAIN_LONGITUDE[0] - 360.0, DOMAIN_LONGITUDE[1] - 360.0],
+            "realized_latitude": [float(surface.latitude.min()), float(surface.latitude.max())],
+            "realized_longitude": [float(surface.longitude.min()), float(surface.longitude.max())],
         },
         "surface_years": list(SURFACE_YEARS),
         "season": [SEASON_START, SEASON_END],
@@ -325,9 +354,10 @@ def prepare_inputs(output_dir: Path) -> dict[str, Any]:
             "tmean_c": "daily mean of 6-hourly 2 m temperature",
             "tmax_c": "daily maximum of 6-hourly 2 m temperature",
             "tmin_c": "daily minimum of 6-hourly 2 m temperature",
-            "precip_mm": "sum of the four daily 6-hour accumulations",
+            "precip_mm": "sum of the four 6-hour accumulations ending 06, 12, 18, and 24 UTC",
             "wind_speed_ms": "daily mean of 6-hourly 10 m wind speed",
             "level_fields": "daily mean of the 6-hourly pressure-level fields",
+            "level_wind_speed_ms": "daily mean of 6-hourly wind speed on the 13 pressure levels",
         },
         "approximations": [
             "relative humidity is derived from specific humidity and temperature at the same level",
