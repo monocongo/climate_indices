@@ -217,10 +217,10 @@ def test_calc_cafec_zindex_writes_cafec_and_zindex():
     assert data.z[0, 0] == data.ak[0] * (data.precips[0, 0] - expected_cafec)
 
 
-def _run_zindex_pipeline(precips: np.ndarray, pet: np.ndarray, awc: float) -> dict:
+def _run_zindex_pipeline(precips: np.ndarray, pet: np.ndarray, awc: float) -> palmer._PalmerData:
     """Runs the same internal pipeline palmer.pdsi() runs, up through
-    _calc_kfactors (but not yet _calc_zindex), and returns the data dict.
-    Exists so this test can inject custom duration factors between
+    _calc_kfactors (but not yet _calc_zindex), and returns the initialized data
+    struct. Exists so this test can inject custom duration factors between
     initialization and the recursion, without touching palmer.pdsi()'s
     public signature."""
     data = palmer._initialize_data(

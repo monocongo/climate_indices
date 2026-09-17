@@ -908,14 +908,26 @@ def _validate_fitting_params(data: _PalmerData, fitting_params: dict[str, Any] |
         data.calibrate = True
         return
 
-    fitted = {name: fitting_params.get(name) for name in ("alpha", "beta", "gamma", "delta")}
-    valid = all(isinstance(values, list | tuple | np.ndarray) and len(values) == 12 for values in fitted.values())
-    data.calibrate = not valid
-    if valid:
-        data.alpha = np.array(fitted["alpha"])
-        data.beta = np.array(fitted["beta"])
-        data.gamma = np.array(fitted["gamma"])
-        data.delta = np.array(fitted["delta"])
+    # each coefficient must be a numeric one-dimensional vector with exactly one
+    # value per month; anything else (missing, non-numeric, or two-dimensional)
+    # leaves the calibration flag set so the coefficients are fitted from data
+    names = ("alpha", "beta", "gamma", "delta")
+    coefficients: list[np.ndarray] = []
+    for name in names:
+        try:
+            values = np.asarray(fitting_params.get(name), dtype=float)
+        except (TypeError, ValueError):
+            break
+        if values.shape != (12,):
+            break
+        coefficients.append(values)
+
+    data.calibrate = len(coefficients) != len(names)
+    if not data.calibrate:
+        data.alpha = coefficients[0]
+        data.beta = coefficients[1]
+        data.gamma = coefficients[2]
+        data.delta = coefficients[3]
 
 
 def _validate_calibration_period(
@@ -971,10 +983,11 @@ def _initialize_data(
         calibration_year_final,
     )
 
-    # duration factors default to Palmer's fixed national values; scPDSI (see
-    # palmer.scpdsi()) overrides them with per-location fitted values after this
-    # function returns. ``calibrate`` is settled by _validate_fitting_params, and
-    # the CAFEC coefficients, moisture-demand ratio, and Z-index factors are
+    # duration factors default to Palmer's fixed national values and are read by
+    # the standard PDSI recursion through _select_duration_factors. scPDSI does not
+    # override these fields: it passes its per-location fitted factors straight to
+    # _palmer_wells.calculate. ``calibrate`` is settled by _validate_fitting_params,
+    # and the CAFEC coefficients, moisture-demand ratio, and Z-index factors are
     # filled by the stage that owns them before anything reads them.
     duration_factors = DurationFactors.from_defaults()
     data = _PalmerData(

@@ -54,6 +54,8 @@ def test_incomplete_or_malformed_fitting_params_fall_back_to_calibration():
         "wrong length": {**_VALID_PARAMS, "gamma": [3.0] * 11},
         "wrong type": {**_VALID_PARAMS, "delta": "not-an-array"},
         "wrong container element": {**_VALID_PARAMS, "beta": np.zeros((2, 12))},
+        "two-dimensional": {**_VALID_PARAMS, "beta": np.zeros((12, 2))},
+        "non-numeric": {**_VALID_PARAMS, "gamma": ["a"] * 12},
     }
     for name, params in cases.items():
         data = _initialize(params)
