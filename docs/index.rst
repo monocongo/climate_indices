@@ -102,10 +102,9 @@ Next (optional) run the unit test suite to validate the installation::
 
 Finally, show the package installed into the environment::
 
-   uv list | grep climate-indices
+   uv pip list | grep climate-indices
 
-   # climate-indices vX.Y.Z (editable)
-   #     + climate-indices==X.Y.Z (from file:///path/to/climate_indices)
+   # climate-indices   X.Y.Z   /path/to/climate_indices
 
 
 

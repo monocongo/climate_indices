@@ -280,7 +280,7 @@ climate_indices/
 ```
 
 ### Critical Directories
-- **`src/climate_indices/`**: All production code (14 modules)
+- **`src/climate_indices/`**: Production code for the core indices and the fire subsystem
 - **`tests/`**: Test suite and fixture data
 - **`docs/`**: Sphinx RST + Markdown project documentation
 - **`.github/workflows/`**: CI/CD automation (3 workflows)
