@@ -30,67 +30,65 @@ pip install matplotlib
 First, let's create synthetic monthly precipitation and temperature data covering 30 years
 (360 months). Real-world usage would load data from NetCDF files using `xr.open_dataset()`.
 
-```{eval-rst}
-.. testsetup:: quickstart
+```{testsetup} quickstart
+import numpy as np
+import xarray as xr
+import pandas as pd
+from climate_indices import spi, spei, pet_thornthwaite
+from climate_indices.indices import Distribution
 
-   import numpy as np
-   import xarray as xr
-   import pandas as pd
-   from climate_indices import spi, spei, pet_thornthwaite
-   from climate_indices.indices import Distribution
+# seed RNG for reproducible synthetic data
+np.random.seed(42)
 
-   # seed RNG for reproducible synthetic data
-   np.random.seed(42)
+# create 30 years of synthetic monthly data with seasonal patterns
+n_years = 30
+n_months = n_years * 12
+months = np.tile(np.arange(1, 13), n_years)
 
-   # create 30 years of synthetic monthly data with seasonal patterns
-   n_years = 30
-   n_months = n_years * 12
-   months = np.tile(np.arange(1, 13), n_years)
+# precipitation: higher in winter (months 11-2), lower in summer (months 6-8)
+seasonal_precip = 80 + 40 * np.sin(2 * np.pi * (months - 3) / 12)
+precip_raw = seasonal_precip + np.random.normal(0, 20, n_months)
+precip_raw = np.clip(precip_raw, 0, None)
 
-   # precipitation: higher in winter (months 11-2), lower in summer (months 6-8)
-   seasonal_precip = 80 + 40 * np.sin(2 * np.pi * (months - 3) / 12)
-   precip_raw = seasonal_precip + np.random.normal(0, 20, n_months)
-   precip_raw = np.clip(precip_raw, 0, None)
-
-   # temperature: higher in summer, lower in winter
-   seasonal_temp = 15 + 10 * np.sin(2 * np.pi * (months - 3) / 12)
-   temp_raw = seasonal_temp + np.random.normal(0, 2, n_months)
+# temperature: higher in summer, lower in winter
+seasonal_temp = 15 + 10 * np.sin(2 * np.pi * (months - 3) / 12)
+temp_raw = seasonal_temp + np.random.normal(0, 2, n_months)
 ```
 
-```{eval-rst}
-.. doctest:: quickstart
-
-   >>> # wrap arrays in xarray DataArrays with time coordinates
-   >>> time = pd.date_range("1990-01-01", periods=360, freq="MS")
-   >>>
-   >>> precip_da = xr.DataArray(
-   ...     precip_raw,
-   ...     coords={"time": time},
-   ...     dims=("time",),
-   ...     name="precipitation",
-   ...     attrs={"units": "mm/month", "long_name": "Monthly precipitation"}
-   ... )
-   >>>
-   >>> temp_da = xr.DataArray(
-   ...     temp_raw,
-   ...     coords={"time": time},
-   ...     dims=("time",),
-   ...     name="temperature",
-   ...     attrs={"units": "degC", "long_name": "Monthly mean temperature"}
-   ... )
-   >>>
-   >>> # verify shapes
-   >>> precip_da.shape
-   (360,)
-   >>> temp_da.shape
-   (360,)
+```{doctest} quickstart
+>>> # wrap arrays in xarray DataArrays with time coordinates
+>>> time = pd.date_range("1990-01-01", periods=360, freq="MS")
+>>>
+>>> precip_da = xr.DataArray(
+...     precip_raw,
+...     coords={"time": time},
+...     dims=("time",),
+...     name="precipitation",
+...     attrs={"units": "mm/month", "long_name": "Monthly precipitation"}
+... )
+>>>
+>>> temp_da = xr.DataArray(
+...     temp_raw,
+...     coords={"time": time},
+...     dims=("time",),
+...     name="temperature",
+...     attrs={"units": "degC", "long_name": "Monthly mean temperature"}
+... )
+>>>
+>>> # verify shapes
+>>> precip_da.shape
+(360,)
+>>> temp_da.shape
+(360,)
 ```
 
 The **time coordinate** is essential for the xarray API — it enables automatic inference of the data
 start year and periodicity. The **units attributes** document the expected units: precipitation in
 mm/month and temperature in degrees Celsius.
 
-:::{warning} **Beta Feature**
+:::{warning}
+**Beta Feature**
+
 The xarray API shown below is **beta** and may change in future minor releases.
 Computation results are identical to the stable NumPy API shown later in this tutorial.
 :::
@@ -105,14 +103,12 @@ The xarray API is the recommended approach because it automatically infers param
 Potential evapotranspiration (PET) estimates atmospheric water demand. The Thornthwaite method
 requires only monthly temperature and latitude:
 
-```{eval-rst}
-.. doctest:: quickstart
-
-   >>> pet_result = pet_thornthwaite(temp_da, latitude=40.0)
-   >>> pet_result.shape
-   (360,)
-   >>> pet_result.attrs["long_name"]
-   'Potential Evapotranspiration (Thornthwaite method)'
+```{doctest} quickstart
+>>> pet_result = pet_thornthwaite(temp_da, latitude=40.0)
+>>> pet_result.shape
+(360,)
+>>> pet_result.attrs["long_name"]
+'Potential Evapotranspiration (Thornthwaite method)'
 ```
 
 The result is a `DataArray` with the same time coordinate and inherited metadata. Latitude is in
@@ -123,14 +119,12 @@ decimal degrees (positive for north, negative for south).
 SPI quantifies precipitation anomalies relative to a long-term calibration period. Negative values
 indicate drier-than-normal conditions:
 
-```{eval-rst}
-.. doctest:: quickstart
-
-   >>> spi_result = spi(precip_da, scale=3, distribution=Distribution.gamma)
-   >>> spi_result.shape
-   (360,)
-   >>> spi_result.attrs["long_name"]
-   'Standardized Precipitation Index'
+```{doctest} quickstart
+>>> spi_result = spi(precip_da, scale=3, distribution=Distribution.gamma)
+>>> spi_result.shape
+(360,)
+>>> spi_result.attrs["long_name"]
+'Standardized Precipitation Index'
 ```
 
 The `scale` parameter controls the accumulation window (3 months here). The `distribution`
@@ -142,14 +136,12 @@ period defaults to the full time range.
 SPEI is similar to SPI but accounts for both precipitation and evapotranspiration, making it
 sensitive to temperature-driven droughts:
 
-```{eval-rst}
-.. doctest:: quickstart
-
-   >>> spei_result = spei(precip_da, pet_result, scale=3, distribution=Distribution.gamma)
-   >>> spei_result.shape
-   (360,)
-   >>> spei_result.attrs["long_name"]
-   'Standardized Precipitation Evapotranspiration Index'
+```{doctest} quickstart
+>>> spei_result = spei(precip_da, pet_result, scale=3, distribution=Distribution.gamma)
+>>> spei_result.shape
+(360,)
+>>> spei_result.attrs["long_name"]
+'Standardized Precipitation Evapotranspiration Index'
 ```
 
 SPEI uses the precipitation minus PET (P - PET) as input, representing the water balance.
@@ -159,31 +151,27 @@ SPEI uses the precipitation minus PET (P - PET) as input, representing the water
 xarray makes it easy to persist results to disk in NetCDF format, the standard for gridded climate
 data:
 
-```{eval-rst}
-.. doctest:: quickstart
-
-   >>> import tempfile
-   >>> import os
-   >>>
-   >>> # save to temporary file
-   >>> temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".nc")
-   >>> temp_path = temp_file.name
-   >>> temp_file.close()
-   >>>
-   >>> spi_result.to_netcdf(temp_path)
-   >>>
-   >>> # load back
-   >>> spi_loaded = xr.open_dataarray(temp_path)
-   >>> spi_loaded.shape
-   (360,)
-   >>> spi_loaded.attrs["long_name"]
-   'Standardized Precipitation Index'
+```{doctest} quickstart
+>>> import tempfile
+>>> import os
+>>>
+>>> # save to temporary file
+>>> temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".nc")
+>>> temp_path = temp_file.name
+>>> temp_file.close()
+>>>
+>>> spi_result.to_netcdf(temp_path)
+>>>
+>>> # load back
+>>> spi_loaded = xr.open_dataarray(temp_path)
+>>> spi_loaded.shape
+(360,)
+>>> spi_loaded.attrs["long_name"]
+'Standardized Precipitation Index'
 ```
 
-```{eval-rst}
-.. testcleanup:: quickstart
-
-   os.unlink(temp_path)
+```{testcleanup} quickstart
+os.unlink(temp_path)
 ```
 
 For multi-variable datasets, use `xr.Dataset` instead:
@@ -207,53 +195,51 @@ ds_loaded = xr.open_dataset("results.nc")
 The NumPy API provides explicit control over all parameters but requires more boilerplate. All
 temporal parameters must be specified manually:
 
-```{eval-rst}
-.. doctest:: quickstart
-
-   >>> from climate_indices.indices import spi as spi_numpy
-   >>> from climate_indices.indices import spei as spei_numpy
-   >>> from climate_indices.indices import pet
-   >>> from climate_indices.compute import Periodicity
-   >>>
-   >>> # extract raw NumPy arrays
-   >>> precip_values = precip_da.values
-   >>> temp_values = temp_da.values
-   >>>
-   >>> # compute PET (Thornthwaite)
-   >>> pet_np = pet(
-   ...     temp_values,
-   ...     latitude_degrees=40.0,
-   ...     data_start_year=1990
-   ... )
-   >>> pet_np.shape
-   (360,)
-   >>>
-   >>> # compute SPI with explicit calibration period and periodicity
-   >>> spi_np = spi_numpy(
-   ...     precip_values,
-   ...     scale=3,
-   ...     distribution=Distribution.gamma,
-   ...     data_start_year=1990,
-   ...     calibration_year_initial=1990,
-   ...     calibration_year_final=2019,
-   ...     periodicity=Periodicity.monthly
-   ... )
-   >>> spi_np.shape
-   (360,)
-   >>>
-   >>> # compute SPEI using P - PET
-   >>> spei_np = spei_numpy(
-   ...     precip_values,
-   ...     pet_np,
-   ...     scale=3,
-   ...     distribution=Distribution.gamma,
-   ...     data_start_year=1990,
-   ...     calibration_year_initial=1990,
-   ...     calibration_year_final=2019,
-   ...     periodicity=Periodicity.monthly
-   ... )
-   >>> spei_np.shape
-   (360,)
+```{doctest} quickstart
+>>> from climate_indices.indices import spi as spi_numpy
+>>> from climate_indices.indices import spei as spei_numpy
+>>> from climate_indices.indices import pet
+>>> from climate_indices.compute import Periodicity
+>>>
+>>> # extract raw NumPy arrays
+>>> precip_values = precip_da.values
+>>> temp_values = temp_da.values
+>>>
+>>> # compute PET (Thornthwaite)
+>>> pet_np = pet(
+...     temp_values,
+...     latitude_degrees=40.0,
+...     data_start_year=1990
+... )
+>>> pet_np.shape
+(360,)
+>>>
+>>> # compute SPI with explicit calibration period and periodicity
+>>> spi_np = spi_numpy(
+...     precip_values,
+...     scale=3,
+...     distribution=Distribution.gamma,
+...     data_start_year=1990,
+...     calibration_year_initial=1990,
+...     calibration_year_final=2019,
+...     periodicity=Periodicity.monthly
+... )
+>>> spi_np.shape
+(360,)
+>>>
+>>> # compute SPEI using P - PET
+>>> spei_np = spei_numpy(
+...     precip_values,
+...     pet_np,
+...     scale=3,
+...     distribution=Distribution.gamma,
+...     data_start_year=1990,
+...     calibration_year_initial=1990,
+...     calibration_year_final=2019,
+...     periodicity=Periodicity.monthly
+... )
+>>> spei_np.shape
+(360,)
 ```
 
 The NumPy API is useful when working with legacy code or when xarray's overhead is undesirable for

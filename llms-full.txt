@@ -2267,7 +2267,9 @@ Thank you for contributing to `climate_indices`! Your efforts help advance open 
 
 Starting with version 2.3.0, the `climate_indices` library provides native support for xarray DataArrays alongside the traditional NumPy array API. This migration guide helps existing users understand the benefits of adopting the xarray API and provides practical examples for transitioning from NumPy-based workflows to xarray-based workflows.
 
-:::{warning} **Beta Feature**
+:::{warning}
+**Beta Feature**
+
 The xarray DataArray API described in this guide is **beta**. The interface
 (parameter inference, metadata attributes, coordinate handling) may change in
 future minor releases. The underlying computation results are intended to be
@@ -2275,7 +2277,9 @@ identical to the stable NumPy API; no interface breaking changes are planned
 within a minor version.
 :::
 
-:::{warning} **Calendar-alignment fix changes daily results (3.0.0)**
+:::{warning}
+**Calendar-alignment fix changes daily results (3.0.0)**
+
 Before 3.0.0, the xarray adapter passed daily Gregorian values straight into
 the NumPy core without accounting for its 366-day-per-year layout, silently
 shifting every value after February 28 in a non-leap year. This is now
