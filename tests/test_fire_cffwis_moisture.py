@@ -712,9 +712,10 @@ def test_missing_day_policy_routes_through_the_shared_helper(
 
     monkeypatch.setattr(fire._cffwis, "_apply_gap_policy", recording_helper)
 
-    runner(_with_missing(_series(5), 1, 3))
+    weather = _with_missing(_series(5), 1, 3)
+    runner(weather)
 
-    assert calls
+    assert len(calls) == weather.temperature.shape[0]
 
 
 # ------------------------------------------------------------------------------
