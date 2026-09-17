@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from climate_indices import palmer
+from climate_indices._palmer_duration import DurationFactors
 from climate_indices.exceptions import ConvergenceError
 
 ATOL = 5e-5
@@ -241,10 +242,14 @@ def test_fitted_duration_factor_coefficients_stay_contractions():
     worst = {"wetc": (0.0, ""), "dryc": (0.0, ""), "dry_spell_c": (0.0, "")}
     for division_dir in _DIVISION_DIRS:
         wetm, wetb, drym, dryb = (float(value) for value in np.load(division_dir / "scdurfact.npy"))
+        try:
+            factors = DurationFactors.from_fitted(wetm, wetb, drym, dryb)
+        except ConvergenceError as error:
+            pytest.fail(f"{division_dir.name}: {error}")
         coefficients = {
-            "wetc": 1.0 - wetm / (wetm + wetb),
-            "dryc": 1.0 - drym / (drym + wetb),
-            "dry_spell_c": 1.0 - drym / (drym + dryb),
+            "wetc": factors.wetc,
+            "dryc": factors.dryc,
+            "dry_spell_c": factors.dry_spell_c,
         }
         for name, value in coefficients.items():
             if abs(value) > worst[name][0]:
