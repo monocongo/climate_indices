@@ -219,7 +219,7 @@ jobs:
         "${RUNNER_TEMP}/wheel-check/bin/python" -c \
           "from climate_indices import eddi, pci, percentage_of_normal, pet_hargreaves, pet_thornthwaite, spei, spi; \
           assert all(map(callable, (eddi, pci, percentage_of_normal, pet_hargreaves, pet_thornthwaite, spei, spi)))"
-        for entry_point in climate_indices process_climate_indices spi; do
+        for entry_point in climate_indices process_climate_indices; do
           "${RUNNER_TEMP}/wheel-check/bin/${entry_point}" --help > /dev/null
         done
 

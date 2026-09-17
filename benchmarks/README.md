@@ -210,6 +210,8 @@ Static audit of the index-invocation sites in `src/climate_indices/`, as of
 `02c9cb38`, for Python-level loops that call an index function once per grid cell
 or per time series. Scope is the library and its xarray adapter layer; notebooks
 are excluded (see the #921 findings above for why the notebook figure differs).
+The three `__spi__.py` rows it listed were removed with that module in 3.0.0
+(#957) and are omitted here.
 
 Reference grid: 38 x 87 = 3306 cells, 40 years monthly = 480 time steps, so one
 per-cell pass is 3306 calls.
@@ -280,8 +282,8 @@ The remaining per-cell sites above are owned by follow-ups:
 
 ### Legacy CLI path (per-cell loop present, parallel across workers)
 
-`__main__.py` and `__spi__.py` validate `(lat, lon, time)` or `(time, lat, lon)
-(`__main__.py:61`, `__spi__.py:98`), while the shared-array path stores the
+`__main__.py` validates `(lat, lon, time)` or `(time, lat, lon)`
+(`__main__.py:61`), while the shared-array path stores the
 lat/lon-first order untransposed and the per-cell loops assume it; the
 mismatches that survive validation are tracked in #932. The counts below assume
 `(lat, lon, time)`, split along axis 0 (latitude) across a `multiprocessing.Pool`,
@@ -297,12 +299,8 @@ not reduce total per-cell Python cost.
 | `__main__.py:1289` (`_apply_along_axis`) | `_pnp` via `np.apply_along_axis(axis=2)` | same | 3306 per scale only (`:1609`, no distribution loop) |
 | `__main__.py:1347,1349` (`_apply_along_axis_double`, loop at `:1343,1345`) | `_spei`/`_pet` | `lat x lon` | 3306 |
 | `__main__.py:1412` (`_apply_along_axis_palmers`, loop at `:1409,1411`) | `_palmers` -> `palmer.pdsi` | `lat x lon` | 3306, four outputs each |
-| `__spi__.py:1021` (`_apply_to_subarray_spi`, loop at `:1004`) | `indices.spi` transform | `lat x lon` | 3306 per scale x distribution |
-| `__spi__.py:1105` (`_apply_to_subarray_gamma`, loop at `:1099`) | `compute.gamma_parameters` | `lat x lon` | 3306 per scale x distribution |
-| `__spi__.py:1192` (`_apply_to_subarray_pearson`, loop at `:1177`) | `compute.pearson_parameters` | `lat x lon` | 3306 per scale x distribution |
 
-`__spi__.py` is the legacy CLI whose fate is tracked in #919; its three sites
-vanish if it is retired rather than vectorized. The `__main__.py` sites duplicate
+The `__main__.py` sites duplicate
 the adapter path's work on the same kernels, so a baseline measured through the
 CLI and a baseline measured through the canonical path are not interchangeable.
 
@@ -323,8 +321,8 @@ CLI and a baseline measured through the canonical path are not interchangeable.
 
 ### Per-cell calendar transforms (not index kernels, cost not accounted for)
 
-The per-cell `np.apply_along_axis` sites (`__main__.py:569`, `__main__.py:1015`,
-`__spi__.py:250`, `__spi__.py:717`, `__spi__.py:768`) call
+The per-cell `np.apply_along_axis` sites (`__main__.py:569`, `__main__.py:1015`)
+call
 `utils.transform_to_366day` / `utils.transform_to_gregorian`, not an index
 function, so they are outside the #923 conversion. They are still per-cell Python
 calls: `np.apply_along_axis` loops the spatial dimensions in Python, and each

@@ -1,7 +1,7 @@
 # xarray Compatibility Matrix
 
 :::{warning}
-The xarray API is beta in v2.5. Numerical results are expected to match the
+The xarray API is beta in 3.0.0. Numerical results are expected to match the
 stable NumPy API, while parameter inference, metadata, and coordinate behavior
 may change in a future minor release.
 :::

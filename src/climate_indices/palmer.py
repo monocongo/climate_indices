@@ -1398,5 +1398,5 @@ def scpdsi(
     )
 
 
-# TODO(v2.5.0): implement palmer_xarray() wrapper using Pattern C
+# TODO(3.1.0): implement palmer_xarray() wrapper using Pattern C
 # (stack/unpack workaround for xarray Issue #1815, see architecture.md)
