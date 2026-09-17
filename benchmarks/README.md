@@ -165,7 +165,9 @@ SPI-1/gamma run.
 adapter's `spatial_kernel=True` forwards `vectorize=False` to `xr.apply_ufunc` and
 transposes the core dimension, so one `(time, *cells)` block reaches the NumPy core
 and the gamma fitting, transform, and goodness-of-fit check run once per block
-instead of once per cell. `tests/test_spatial_kernel.py` pins the call count, the
+instead of once per cell. The Pearson Type III L-moment fit and its
+goodness-of-fit check run once per block the same way (#940).
+`tests/test_spatial_kernel.py` pins the call count, the
 equivalence with the single-series path, and the NaN, partial-final-year, and daily
 calendar contracts.
 
@@ -191,7 +193,6 @@ The remaining per-cell sites above are owned by follow-ups:
 
 | remaining site | owner |
 | --- | --- |
-| `indices.spi`/`indices.spei` with `Distribution.pearson` (per-series L-moment fit) | #940 |
 | `palmer.pdsi`/`palmer.scpdsi` (no adapter layer at all) | #937 |
 
 ### Legacy CLI path (per-cell loop present, parallel across workers)
@@ -231,7 +232,7 @@ CLI and a baseline measured through the canonical path are not interchangeable.
 - The core kernels take one 1-D temporal series, not a cell axis: they are
   vectorized within that series, and their internal loops are over time steps
   rather than over grid cells (`compute.py:797`, `compute.py:869` check goodness
-  of fit per calibration time step; `indices.py:446` ranks EDDI per period).
+  of fit per calibration time step; `indices.py:396` ranks EDDI per period).
   Support for a spatial/cell axis comes only from the dispatch sites above.
   `indices.pci` is a single-year scalar with no loop at all.
 

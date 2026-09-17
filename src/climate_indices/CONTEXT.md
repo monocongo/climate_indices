@@ -136,7 +136,7 @@ _Avoid_: time-major block (the code spelling, not the prose term)
 An index whose NumPy core accepts a Spatial Block, declared per index with `spatial_kernel=True` at its adapter call site. Such an index runs one `xr.apply_ufunc` call per non-core block instead of one per grid cell; indices whose cores still loop over cells keep the Per-Cell Path.
 
 **Per-Cell Path**:
-The alternative dispatch, `xr.apply_ufunc(..., vectorize=True)`, which calls the kernel once per grid cell over 1-D time series. Still used for inputs with a single non-core dimension, and for the index families listed in [ADR-0008](../../docs/adr/0008-spatial-block-declaration.md) (#940, #937).
+The alternative dispatch, `xr.apply_ufunc(..., vectorize=True)`, which calls the kernel once per grid cell over 1-D time series. Still used for inputs with a single non-core dimension, and for the index families listed in [ADR-0008](../../docs/adr/0008-spatial-block-declaration.md) (#937).
 
 ### Metadata & provenance
 
