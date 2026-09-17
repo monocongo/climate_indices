@@ -12,7 +12,7 @@ precipitation, PET, and available water capacity:
 - Self-calibrated Palmer Drought Severity Index (scPDSI)
 
 The public NumPy APIs are `climate_indices.palmer.pdsi()` and
-`climate_indices.palmer.scpdsi()`. The v2.5 xarray notebook demonstrates how
+`climate_indices.palmer.scpdsi()`. The 3.0.0 xarray notebook demonstrates how
 to call the NumPy Palmer routine from labeled xarray inputs and rewrap the
 outputs with coordinates and metadata.
 
@@ -51,7 +51,7 @@ an authoritative external reference.
 
 ## Release Decision
 
-For v2.5, independent Palmer reference outputs remain a documented validation
+For 3.0.0, independent Palmer reference outputs remain a documented validation
 gap. The release checklist should either add an independently sourced Palmer
 fixture or explicitly defer that item before issue #627 is closed.
 

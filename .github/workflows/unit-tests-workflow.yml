@@ -228,7 +228,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --dev --no-build
 
-      - name: Execute v2.5 notebooks
+      - name: Execute 3.0.0 notebooks
         timeout-minutes: 10
         run: >
           uv run --no-sync --no-build jupyter nbconvert --execute --to notebook --inplace
