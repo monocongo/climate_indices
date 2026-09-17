@@ -85,12 +85,13 @@ def _variant_spec(variant: str) -> _Variant:
 def _score(delta: npt.NDArray[np.float64], cut_points: tuple[float, float]) -> npt.NDArray[np.float64]:
     """Score one term of the index as 1, 2, or 3 against its cut points.
 
-    A NaN delta scores NaN rather than falling through the comparisons to 3:
-    a level the profile does not reach, or a masked observation, must withhold
-    that cell's index instead of scoring it as the most severe.
+    A non-finite delta scores NaN rather than falling through the comparisons:
+    a level the profile does not reach, a masked observation, or an infinite
+    input must withhold that cell's index instead of scoring it as the most
+    severe.
     """
     score = np.where(delta < cut_points[0], 1.0, np.where(delta < cut_points[1], 2.0, 3.0))
-    result: npt.NDArray[np.float64] = np.asarray(np.where(np.isnan(delta), np.nan, score), dtype=np.float64)
+    result: npt.NDArray[np.float64] = np.asarray(np.where(np.isfinite(delta), score, np.nan), dtype=np.float64)
     return result
 
 
@@ -200,8 +201,8 @@ def _haines_from_profile(
     All three variants are scored and each cell takes the one its elevation
     selects, so a grid with an elevation field needs no per-cell branching.
     Cells whose selected variant needs a level the profile does not reach are
-    NaN, via the interpolation mask, and an unknown elevation withholds the
-    cell rather than defaulting to a variant.
+    NaN, via the interpolation mask, and an unknown or non-finite elevation
+    withholds the cell rather than defaulting to a variant.
     """
     temperature_levels = _interpolate_log_pressure(temperature, pressure_hpa, _HAINES_TEMPERATURE_LEVELS_HPA)
     dewpoint_levels = _interpolate_log_pressure(dewpoint, pressure_hpa, _HAINES_DEWPOINT_LEVELS_HPA)
@@ -226,7 +227,7 @@ def _haines_from_profile(
     )
     result: npt.NDArray[np.float64] = np.asarray(
         np.where(
-            np.isnan(elevation_meters),
+            ~np.isfinite(elevation_meters),
             np.nan,
             np.where(
                 elevation_meters < _HAINES_LOW_ELEVATION_MAX_METERS,
@@ -361,9 +362,9 @@ def haines_index(
 
     Returns:
         Haines Index, an integer-valued float in [2, 6], with the broadcast
-        shape of the inputs. NaN where any input is NaN or masked, and where
-        ``surface_pressure_hpa`` withholds the variant's level. For xarray
-        input, a ``DataArray`` carrying CF metadata from the
+        shape of the inputs. NaN where any input is NaN, masked, or infinite,
+        and where ``surface_pressure_hpa`` withholds the variant's level. For
+        xarray input, a ``DataArray`` carrying CF metadata from the
         ``haines_<variant>`` registry entry, including
         ``climate_indices_variant``.
 
@@ -505,8 +506,10 @@ def haines_index_from_profile(
         temperature_celsius: Temperature profile, degrees Celsius, with the
             pressure levels on ``pressure_axis``.
         dewpoint_celsius: Dewpoint profile, degrees Celsius, broadcast against
-            ``temperature_celsius``. It carries the same pressure levels, even
-            though only the 850 and 700 hPa values are scored.
+            ``temperature_celsius`` across its other axes. It carries one value
+            per pressure level, even though only the 850 and 700 hPa values are
+            scored: a single value broadcast down the column is not a profile
+            and raises.
         pressure_hpa: Pressure level of each profile entry, hPa, strictly
             decreasing and strictly positive. At least two levels, one value
             per level, matching the profile's ``pressure_axis``.
@@ -520,16 +523,17 @@ def haines_index_from_profile(
     Returns:
         Haines Index, an integer-valued float in [2, 6], with the broadcast
         shape of the temperature and dewpoint profiles minus
-        ``pressure_axis``. NaN where an input is NaN or masked, and where the
-        cell's elevation-selected variant needs a level the profile does not
-        cover.
+        ``pressure_axis``. NaN where an input is NaN, masked, or infinite, and
+        where the cell's elevation-selected variant needs a level the profile
+        does not cover.
 
     Raises:
         InputTypeError: If an input is not numeric (see ``_as_float_array``).
         DataShapeError: If ``pressure_hpa`` is not one-dimensional, has fewer
             than two levels, if ``temperature_celsius`` has no profile axis,
-            if ``pressure_axis`` is out of range, or if ``pressure_hpa`` does
-            not have one value per profile level.
+            if ``pressure_axis`` is out of range, if ``pressure_hpa`` does not
+            have one value per profile level, or if ``dewpoint_celsius`` does
+            not carry one value per pressure level.
         InvalidArgumentError: If ``pressure_hpa`` is not strictly decreasing
             or not strictly positive, if ``temperature_celsius`` and
             ``dewpoint_celsius`` cannot be broadcast together, or if
@@ -605,15 +609,31 @@ def haines_index_from_profile(
             valid_values="Strictly positive pressures in hPa",
         )
 
+    # broadcasting right-aligns the profiles, so the profile axis shifts right
+    # by whatever rank the temperature profile gains, and the same shift
+    # locates the dewpoint's own profile axis: it must carry a value at every
+    # pressure level rather than replaying one value down the column
+    temperature_ndim = temperature.ndim
+    dewpoint_shape = dewpoint.shape
+    dewpoint_ndim = dewpoint.ndim
     temperature, dewpoint = _broadcast_inputs(
         ("temperature_celsius", "dewpoint_celsius"),
         (temperature, dewpoint),
         "Haines Index profile",
     )
+    profile_axis = axis + temperature.ndim - temperature_ndim
+    dewpoint_axis = profile_axis + dewpoint_ndim - temperature.ndim
+    if dewpoint_axis < 0 or dewpoint_shape[dewpoint_axis] != pressure.shape[0]:
+        raise DataShapeError(
+            f"dewpoint_celsius must carry one value per pressure level: expected "
+            f"{pressure.shape[0]} values along its profile axis, got shape {dewpoint_shape}.",
+            expected_shape=f"(..., levels) with levels == {pressure.shape[0]}",
+            actual_shape=dewpoint_shape,
+        )
     # move the profile axis last, interpolate, and let it fall away: the
     # remaining axes keep their original order
-    temperature = np.moveaxis(temperature, axis, -1)
-    dewpoint = np.moveaxis(dewpoint, axis, -1)
+    temperature = np.moveaxis(temperature, profile_axis, -1)
+    dewpoint = np.moveaxis(dewpoint, profile_axis, -1)
 
     # bind context and emit calculation_started event
     log = _logger.bind(

@@ -169,6 +169,14 @@ def test_haines_index_nan_input_propagates() -> None:
     assert np.isnan(fire.haines_index(30.0, 20.0, np.nan, variant="low"))
 
 
+def test_haines_index_non_finite_input_is_nan() -> None:
+    """An infinite observation is not a value to score: withholding the cell
+    is the only outcome that does not fabricate an extreme term."""
+    assert np.isnan(float(fire.haines_index(np.inf, 20.0, 10.0, variant="low")))
+    assert np.isnan(float(fire.haines_index(30.0, np.inf, 10.0, variant="low")))
+    assert np.isnan(float(fire.haines_index(30.0, 20.0, -np.inf, variant="low")))
+
+
 def test_haines_index_masked_inputs_are_nan() -> None:
     dewpoint = np.ma.masked_array([10.0, 5.0], mask=[True, False])
     result = fire.haines_index([30.0, 30.0], [20.0, 20.0], dewpoint, variant="low")
@@ -312,6 +320,37 @@ def test_haines_index_from_profile_unknown_elevation_is_nan() -> None:
     assert np.isfinite(result[1])
 
 
+def test_haines_index_from_profile_non_finite_input_is_nan() -> None:
+    """Infinity interpolates to infinity and must withhold the score, not land
+    in the most severe bin."""
+    temperature = np.array([np.inf, 24.0, 12.0, -8.0])
+    assert np.isnan(float(fire.haines_index_from_profile(temperature, _PROFILE_DEWPOINT, _PROFILE_LEVELS, 100.0)))
+    dewpoint = np.array([26.0, -np.inf, 2.0, -20.0])
+    assert np.isnan(float(fire.haines_index_from_profile(_PROFILE_TEMPERATURE, dewpoint, _PROFILE_LEVELS, 100.0)))
+
+
+def test_haines_index_from_profile_dewpoint_must_span_the_levels() -> None:
+    """Broadcasting must not turn one dewpoint into a whole profile: the API
+    promises a value per pressure level."""
+    temperature = np.array([_PROFILE_TEMPERATURE, _PROFILE_TEMPERATURE])
+    dewpoint = np.array([[26.0], [26.0]])
+    with pytest.raises(DataShapeError, match="dewpoint_celsius") as exc_info:
+        fire.haines_index_from_profile(temperature, dewpoint, np.array(_PROFILE_LEVELS), 100.0)
+    assert exc_info.value.actual_shape == (2, 1)
+
+
+def test_haines_index_from_profile_broadcasts_a_temperature_profile() -> None:
+    """A (levels,) temperature against a (cell, levels) dewpoint keeps the
+    profile axis last: the cell axis is not pressure."""
+    dewpoint = np.array([_PROFILE_DEWPOINT, _PROFILE_DEWPOINT])
+    result = fire.haines_index_from_profile(
+        _PROFILE_TEMPERATURE, dewpoint, np.array(_PROFILE_LEVELS), np.array([100.0, 100.0])
+    )
+    assert result.shape == (2,)
+    expected = fire.haines_index_from_profile(_PROFILE_TEMPERATURE, _PROFILE_DEWPOINT, _PROFILE_LEVELS, 100.0)
+    np.testing.assert_allclose(result, expected)
+
+
 def test_haines_index_from_profile_single_level_profile_raises() -> None:
     with pytest.raises(DataShapeError, match="at least two") as exc_info:
         fire.haines_index_from_profile([30.0], [10.0], [950.0], 100.0)
@@ -437,6 +476,14 @@ def test_haines_xarray_matches_numpy() -> None:
     assert result.dims == ("time", "y", "x")
     np.testing.assert_allclose(result.values, expected)
     np.testing.assert_array_equal(result.coords["time"].values, temperature_lower.coords["time"].values)
+
+
+def test_haines_xarray_non_finite_input_is_nan() -> None:
+    temperature_lower, temperature_upper, dewpoint = _haines_dataarrays()
+    temperature_lower.values[0, 0, 0] = -np.inf
+    result = fire.haines_index(temperature_lower, temperature_upper, dewpoint, variant="low")
+    assert np.isnan(result.values[0, 0, 0])
+    assert np.isfinite(result.values[1:, :, :]).all()
 
 
 def test_haines_index_numpy_input_returns_ndarray_not_dataarray() -> None:
