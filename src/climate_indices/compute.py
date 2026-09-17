@@ -1556,6 +1556,13 @@ def prepare_scaled(
     if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
         return values
 
+    # a partially masked input must become explicit NaN before sum_to_scale, since its
+    # spatial branch concatenates through np.concatenate, which drops the mask and lets
+    # the underlying fill values leak into sliding sums, calibration normals, and
+    # percentages.
+    if np.ma.isMaskedArray(values):
+        values = np.ma.filled(values.astype(float), np.nan)
+
     # clip any negative values to zero. np.any(values < 0.0) is NaN-safe (NaN < 0
     # is False) and mask-safe (MaskedArray.any() ignores masked entries), unlike
     # np.amin/np.nanmin which either miss negatives behind a NaN or reach under a mask.

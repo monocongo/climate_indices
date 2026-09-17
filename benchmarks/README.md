@@ -179,11 +179,20 @@ monthly day-length term and Hargreaves' daily radiation are computed once per bl
 instead of once per grid cell. A 2-D input, or a latitude carrying a dimension the
 temperature does not, stays on the per-cell path.
 
+`indices.eddi` and `indices.percentage_of_normal` now take the same block (#942). EDDI
+ranks each calendar period's values against its own calibration climatology with a
+cell-chunked count, one pass over the whole grid rather than a per-year,
+per-period loop, and percentage of normal averages each cell's calendar-period normals
+and divides the block by them. Both keep the legacy 1-D and 2-D behaviour, and both
+require `spatial_time_major=True` for a 3-D input since their dimension errors are
+pinned to `DataShapeError`. The ranking count holds one chunk of the
+`(calibration years, years, *cells)` comparison at a time, bounded near 4 MB, so grid
+size no longer multiplies into it.
+
 The remaining per-cell sites above are owned by follow-ups:
 
 | remaining site | owner |
 | --- | --- |
-| `indices.eddi` (per-period, per-year ranking loop), `indices.percentage_of_normal` | #942 |
 | `palmer.pdsi`/`palmer.scpdsi` (no adapter layer at all) | #937 |
 
 ### Legacy CLI path (per-cell loop present, parallel across workers)
@@ -220,12 +229,14 @@ CLI and a baseline measured through the canonical path are not interchangeable.
   (`_hdw_xarray`) omits it: those kernels loop over time (or the level dimension)
   and operate on whole block arrays, so cells are handled by NumPy operations
   rather than a Python call per cell.
-- The core kernels take one 1-D temporal series, not a cell axis: they are
-  vectorized within that series, and their internal loops are over time steps
-  rather than over grid cells (`compute.py:797`, `compute.py:869` check goodness
-  of fit per calibration time step; `indices.py:352` ranks EDDI per period).
-  Support for a spatial/cell axis comes only from the dispatch sites above.
-  `indices.pci` is a single-year scalar with no loop at all.
+- `indices.spi`, `indices.spei`, `indices.eddi`, `indices.percentage_of_normal`,
+  `indices.pet`, and `eto.eto_hargreaves` each accept a declared `(time, *cells)`
+  spatial block directly via their own `spatial_time_major` parameter, not only
+  through the dispatch sites above. Their internal loops stay over time steps or
+  calendar periods rather than over grid cells once given a block
+  (`compute.py:797`, `compute.py:869` check goodness of fit per calibration time
+  step; `indices.py:396` ranks EDDI per period). `indices.pci` is a single-year
+  scalar with no loop at all.
 
 ### Per-cell calendar transforms (not index kernels, cost not accounted for)
 

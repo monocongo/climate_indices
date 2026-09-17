@@ -35,10 +35,11 @@ naming the ambiguity rather than a silently re-read result; reordering the cell 
 `spatial_time_major=True` both resolve it. `indices.spi`'s 2-D contract is unchanged, so the
 existing `(years, periods)` callers and their fixtures keep working.
 
-The spatial path is opt-in per index: `spatial_kernel=True` is declared at the adapter call site
-(`typed_public_api.py` for SPI and SPEI), and any index left on the per-cell path keeps
-`vectorize=True` with one kernel call per cell. Registering an index whose kernel does not accept the
-`spatial_time_major` keyword fails loudly at the call rather than misreading its input.
+The spatial path is opt-in per index: `spatial_kernel=True` is declared at each spatial-kernel
+index's adapter call site in `typed_public_api.py` (SPI, SPEI, EDDI, and percentage of normal as of
+this writing), and any index left on the per-cell path keeps `vectorize=True` with one kernel call
+per cell. Registering an index whose kernel does not accept the `spatial_time_major` keyword fails
+loudly at the call rather than misreading its input.
 
 Two layouts now meet in `compute.py`, distinguished by position in the pipeline rather than by any
 runtime marker: time-major `(time, *cells)` on the way in (`prepare_scaled`, `sum_to_scale`), and
@@ -61,8 +62,11 @@ The Pearson Type III branch fits its L-moment parameters across the cell axis as
 longer re-enters the single-series kernel once per cell. `indices.spi` enables
 `fallback_to_gamma=True`, so like gamma, a failed Pearson fit there falls back to gamma for the
 whole block rather than per cell; `indices.spei` passes `fallback_to_gamma=False`, so a failed
-Pearson fit propagates instead of falling back. EDDI and percentage-of-normal have no cell axis in
-their kernels yet (#942), and Palmer has no adapter layer at all (#937).
+Pearson fit propagates instead of falling back. EDDI and percentage of normal carry a cell axis as
+well (#942): EDDI counts each calendar period's climatology values below every cell's value, and
+percentage of normal averages each cell's calendar-period normals, so neither loops over the grid.
+Unlike the fitting-based kernels they reject an undeclared 3-D input, since their dimension errors
+are pinned to `DataShapeError` rather than `ValueError`. Palmer has no adapter layer at all (#937).
 
 The PET entry points do not use the adapter decorator, because latitude arrives as a broadcast
 input rather than a secondary time series. They forward `vectorize=False` themselves and hand
