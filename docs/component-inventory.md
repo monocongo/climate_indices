@@ -50,6 +50,9 @@ This document provides a comprehensive catalog of all modules in the `climate_in
 - **Precipitation**: inches → mm (1 inch = 25.4 mm)
 - **Temperature**: Fahrenheit → Celsius, Kelvin → Celsius
 - **PET**: inches → mm
+- **Palmers**: precipitation, PET, and AWC are converted to the inches `palmer.pdsi()` takes
+  (mm → inches; an AWC variable with no `units` attribute is assumed to be inches, and any other
+  unit is rejected)
 
 #### Example Usage
 ```bash
