@@ -30,50 +30,55 @@ import xarray as xr
 from climate_indices import spei, spi
 from climate_indices.indices import Distribution
 
-time = pd.date_range("1981-01-01", periods=40 * 12, freq="MS")
-lat = np.linspace(25.0, 49.0, 25)
-lon = np.linspace(-125.0, -101.0, 25)
-shape = (time.size, lat.size, lon.size)
-rng = np.random.default_rng(42)
+def main() -> None:
+    time = pd.date_range("1981-01-01", periods=40 * 12, freq="MS")
+    lat = np.linspace(25.0, 49.0, 25)
+    lon = np.linspace(-125.0, -101.0, 25)
+    shape = (time.size, lat.size, lon.size)
+    rng = np.random.default_rng(42)
 
-precip = xr.DataArray(
-    rng.gamma(shape=2.0, scale=15.0, size=shape),
-    coords={"time": time, "lat": lat, "lon": lon},
-    dims=["time", "lat", "lon"],
-    attrs={"units": "mm"},
-)
-pet = xr.DataArray(
-    np.full(shape, 60.0),
-    coords={"time": time, "lat": lat, "lon": lon},
-    dims=["time", "lat", "lon"],
-    attrs={"units": "mm"},
-)
+    precip = xr.DataArray(
+        rng.gamma(shape=2.0, scale=15.0, size=shape),
+        coords={"time": time, "lat": lat, "lon": lon},
+        dims=["time", "lat", "lon"],
+        attrs={"units": "mm"},
+    )
+    pet = xr.DataArray(
+        np.full(shape, 60.0),
+        coords={"time": time, "lat": lat, "lon": lon},
+        dims=["time", "lat", "lon"],
+        attrs={"units": "mm"},
+    )
 
-# Time in one chunk is required; spatial chunks are the parallelism and memory lever.
-chunks = {"time": -1, "lat": 5, "lon": 5}
-precip = precip.chunk(chunks)
-pet = pet.chunk(chunks)
+    # Time in one chunk is required; spatial chunks are the parallelism and memory lever.
+    chunks = {"time": -1, "lat": 5, "lon": 5}
+    precip = precip.chunk(chunks)
+    pet = pet.chunk(chunks)
 
-# No Python loop over cells: each index runs once per spatial block.
-spi_lazy = spi(
-    values=precip,
-    scale=3,
-    distribution=Distribution.gamma,
-    calibration_year_initial=1981,
-    calibration_year_final=2010,
-)
-spei_lazy = spei(
-    precips_mm=precip,
-    pet_mm=pet,
-    scale=3,
-    distribution=Distribution.gamma,
-    calibration_year_initial=1981,
-    calibration_year_final=2010,
-)
+    # No Python loop over cells: each index runs once per spatial block.
+    spi_lazy = spi(
+        values=precip,
+        scale=3,
+        distribution=Distribution.gamma,
+        calibration_year_initial=1981,
+        calibration_year_final=2010,
+    )
+    spei_lazy = spei(
+        precips_mm=precip,
+        pet_mm=pet,
+        scale=3,
+        distribution=Distribution.gamma,
+        calibration_year_initial=1981,
+        calibration_year_final=2010,
+    )
 
-# One process pool and one shared input graph for both indices. In a script,
-# put this under `if __name__ == "__main__":` -- workers re-import the module.
-spi_grid, spei_grid = dask.compute(spi_lazy, spei_lazy, scheduler="processes")
+    # One process pool and one shared input graph for both indices. The
+    # `__main__` guard keeps spawned workers from re-running this block.
+    spi_grid, spei_grid = dask.compute(spi_lazy, spei_lazy, scheduler="processes")
+
+
+if __name__ == "__main__":
+    main()
 ```
 
 `spi_grid` and `spei_grid` are `DataArray`s with the input coordinates, one
@@ -140,8 +145,12 @@ The full scheduler guidance, including Zarr and NetCDF write behavior, is in
 
 Keep `time` in a single chunk and size spatial blocks by cell count, not shape.
 The measured working set of a monthly gamma fit is about 60 KB per cell, so a
-100 MB per-block budget is roughly 1,600 cells; the reference grid measures well
-under that at `10 x 10` to `20 x 20`. Daily grids carry up to 366 steps per
+100 MB per-block budget is roughly 1,600 cells. That figure is a per-block
+measurement taken with `scheduler="synchronous"`, one block resident at a time;
+a threaded or distributed worker can hold several ready blocks plus their
+inputs and outputs, so budget from the memory a worker can spare per block it
+runs at once. The reference grid measures well under that at `10 x 10` to
+`20 x 20`. Daily grids carry up to 366 steps per
 cell-year instead of 12 and want blocks near `7 x 7`. Chunk both spatial
 dimensions rather than long rows, and leave at least a few blocks per worker.
 
