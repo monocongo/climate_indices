@@ -59,8 +59,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Notes
 
-- **Palmer xarray wrapper deferred**: `palmer_xarray()` is planned for v2.5.0 using Pattern C
-  (stack/unpack workaround for xarray Issue #1815, see `architecture.md`).
+- **Palmer xarray wrapper deferred**: `palmer_xarray()` is planned for v2.5.0
+  (shipped as 3.0.0) using Pattern C (stack/unpack workaround for xarray Issue #1815,
+  see `architecture.md`).
 - **NOAA EDDI reference fixtures**: Require manual download; see `tests/fixture/README.md`.
   The `test_noaa_eddi_reference.py` suite skips gracefully when fixtures are absent.
 
