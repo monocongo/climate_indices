@@ -11,6 +11,7 @@
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
+import logging
 import os
 import sys
 
@@ -204,6 +205,26 @@ intersphinx_mapping = {
     "xarray": ("https://docs.xarray.dev/en/stable/", None),
     "scipy": ("https://docs.scipy.org/doc/scipy/", None),
 }
+
+
+def _demote_intersphinx_outage(record: logging.LogRecord) -> bool:
+    """Keep a transient external-inventory outage out of the warnings-as-errors gate.
+
+    Intersphinx emits an untyped warning when no location for an inventory is
+    reachable, and offers no configuration to demote it. Typed ``intersphinx``
+    warnings (an unresolved reference) stay fatal, as does every warning from
+    this project's own documentation.
+    """
+    if "intersphinx" in record.name and not getattr(record, "type", ""):
+        record.levelno = logging.INFO
+        record.levelname = "INFO"
+    return True
+
+
+# Sphinx's getLogger() prepends its namespace, and intersphinx passes in a
+# name that already carries it, so cover both the doubled and the bare name.
+for _logger_name in ("sphinx.ext.intersphinx", "sphinx.sphinx.ext.intersphinx"):
+    logging.getLogger(_logger_name).addFilter(_demote_intersphinx_outage)
 
 # -- Options for doctest extension -------------------------------------------
 doctest_global_setup = """

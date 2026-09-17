@@ -1578,18 +1578,20 @@ def xarray_adapter(
         Decorator function that wraps index computation functions
 
     Example:
-        >>> @xarray_adapter(
-        ...     cf_metadata={'standard_name': 'spi', 'units': '1'},
-        ...     calculation_metadata_keys=['scale', 'distribution']
-        ... )
-        ... def spi(values, scale, distribution, data_start_year, ...):
-        ...     # existing NumPy implementation
-        ...     return numpy_result
-        ...
-        >>> # Works with both NumPy arrays and xarray DataArrays
-        >>> result_numpy = spi(np.array([...]), scale=3, ...)
-        >>> result_xarray = spi(precip_da, scale=3, distribution=Distribution.gamma)
-        >>> # result_xarray.attrs now includes: scale=3, distribution="gamma", climate_indices_version="x.y.z"
+        .. code-block:: python
+
+            @xarray_adapter(
+                cf_metadata={'standard_name': 'spi', 'units': '1'},
+                calculation_metadata_keys=['scale', 'distribution']
+            )
+            def spi(values, scale, distribution, data_start_year, ...):
+                # existing NumPy implementation
+                return numpy_result
+
+            # Works with both NumPy arrays and xarray DataArrays
+            result_numpy = spi(np.array([...]), scale=3, ...)
+            result_xarray = spi(precip_da, scale=3, distribution=Distribution.gamma)
+            # result_xarray.attrs now includes: scale=3, distribution="gamma", climate_indices_version="x.y.z"
 
     Notes:
         - NumPy inputs: Passed through unchanged to the wrapped function
@@ -2049,6 +2051,10 @@ def pet_thornthwaite(
         ValueError: If latitude is out of range [-90, 90]
 
     Examples:
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> import xarray as xr
+        >>> from climate_indices import pet_thornthwaite
         >>> # NumPy path: 40 years of monthly temps at single location
         >>> temps = np.random.uniform(10, 25, 480)
         >>> pet = pet_thornthwaite(temps, latitude=40.0, data_start_year=1980)
@@ -2082,7 +2088,7 @@ def pet_thornthwaite(
 
     Notes:
         - The underlying indices.pet() function expects 1-D temperature arrays and
-          scalar latitude. For gridded inputs, a (time, *cells) block reaches it with
+          scalar latitude. For gridded inputs, a (time, ``*cells``) block reaches it with
           the per-cell latitude array, so a 3-D or higher input costs one call per
           block rather than one xr.apply_ufunc call per grid cell.
         - Dask-backed DataArrays remain lazy (dask="parallelized")
@@ -2270,6 +2276,10 @@ def pet_hargreaves(
         ValueError: If latitude is out of range [-90, 90]
 
     Examples:
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> import xarray as xr
+        >>> from climate_indices import pet_hargreaves
         >>> # NumPy path: 5 years of daily temps at single location
         >>> tmin = np.random.uniform(5, 15, 1825)
         >>> tmax = np.random.uniform(15, 30, 1825)
@@ -2318,7 +2328,7 @@ def pet_hargreaves(
 
     Notes:
         - The underlying eto.eto_hargreaves() expects 1-D arrays and scalar latitude.
-          For gridded inputs, a (time, *cells) block reaches it with the per-cell
+          For gridded inputs, a (time, ``*cells``) block reaches it with the per-cell
           latitude array, so a 3-D or higher input costs one call per block rather
           than one xr.apply_ufunc call per grid cell.
         - For xarray inputs with misaligned time coordinates, xr.align(join='inner')
