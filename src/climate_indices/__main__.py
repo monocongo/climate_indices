@@ -491,7 +491,7 @@ def _validate_args(args: argparse.Namespace) -> InputType:
                     raise ValueError(msg)
 
     if args.index in ["spi", "spei", "scaled", "pnp", "all"]:
-        if args.scales is None:
+        if not args.scales:
             msg = (
                 "Scaled indices (SPI, SPEI, and/or PNP) specified without "
                 + "including one or more time scales (missing --scales argument)"

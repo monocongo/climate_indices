@@ -113,6 +113,41 @@ class TestScalesRequirement:
             "including one or more time scales (missing --scales argument)"
         )
 
+    def test_all_with_empty_scales_raises_value_error(self, monkeypatch):
+        """An explicitly empty `--scales` list must be rejected like a missing one.
+
+        Regression test: `--scales` uses `nargs="*"`, so `--scales` with no
+        values parses to `[]` rather than `None`. The prior `is None` check
+        let `[]` through, so SPI/SPEI/PNP scale loops ran zero iterations and
+        `--index all` silently wrote only its unscaled outputs.
+        """
+        coords = {"division": [_DIVISION_ID], "time": np.arange(12)}
+        datasets = {
+            "precip.nc": xr.Dataset({"precip": (("division", "time"), np.ones((1, 12)))}, coords=coords),
+            "pet.nc": xr.Dataset({"pet": (("division", "time"), np.ones((1, 12)))}, coords=coords),
+            "awc.nc": xr.Dataset({"awc": (("division",), np.ones(1))}, coords={"division": [_DIVISION_ID]}),
+        }
+        monkeypatch.setattr(cli_main.xr, "open_dataset", datasets.__getitem__)
+        arguments = argparse.Namespace(
+            index="all",
+            scales=[],
+            netcdf_precip="precip.nc",
+            var_name_precip="precip",
+            netcdf_temp=None,
+            netcdf_pet="pet.nc",
+            var_name_pet="pet",
+            netcdf_awc="awc.nc",
+            var_name_awc="awc",
+        )
+
+        with pytest.raises(ValueError) as error:
+            cli_main._validate_args(arguments)
+
+        assert str(error.value) == (
+            "Scaled indices (SPI, SPEI, and/or PNP) specified without "
+            "including one or more time scales (missing --scales argument)"
+        )
+
 
 class TestPalmersWorker:
     def test_writes_all_four_palmer_outputs(
