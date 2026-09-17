@@ -35,10 +35,11 @@ naming the ambiguity rather than a silently re-read result; reordering the cell 
 `spatial_time_major=True` both resolve it. `indices.spi`'s 2-D contract is unchanged, so the
 existing `(years, periods)` callers and their fixtures keep working.
 
-The spatial path is opt-in per index: `spatial_kernel=True` is declared at the adapter call site
-(`typed_public_api.py` for SPI and SPEI), and any index left on the per-cell path keeps
-`vectorize=True` with one kernel call per cell. Registering an index whose kernel does not accept the
-`spatial_time_major` keyword fails loudly at the call rather than misreading its input.
+The spatial path is opt-in per index: `spatial_kernel=True` is declared at each spatial-kernel
+index's adapter call site in `typed_public_api.py` (SPI, SPEI, EDDI, and percentage of normal as of
+this writing), and any index left on the per-cell path keeps `vectorize=True` with one kernel call
+per cell. Registering an index whose kernel does not accept the `spatial_time_major` keyword fails
+loudly at the call rather than misreading its input.
 
 Two layouts now meet in `compute.py`, distinguished by position in the pipeline rather than by any
 runtime marker: time-major `(time, *cells)` on the way in (`prepare_scaled`, `sum_to_scale`), and
