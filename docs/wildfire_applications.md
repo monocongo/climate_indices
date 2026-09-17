@@ -153,8 +153,9 @@ Measured throughput on a development machine (Apple silicon, macOS, CPython
 | KBDI | 1000 x 1000 cells | 30 days | 43 M cell-days/s |
 
 Small grids run slower per cell-day, from 1.2 M cell-days/s at 8 x 8 cells to
-5.7 M at 32 x 32 cells, because the per-day vectorized work drops toward NumPy's
-call overhead. The table above is the regime a gridded run lives in.
+5.7 M at 32 x 32 cells at the 730-day default record length, because the per-day
+vectorized work drops toward NumPy's call overhead. The table above is the regime
+a gridded run lives in.
 
 Reproduce the throughput rows with `pytest tests/test_benchmark_fire.py -m
 benchmark --benchmark-enable`, setting `BENCHMARK_FIRE_GRID_SIDES` and
