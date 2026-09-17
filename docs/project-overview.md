@@ -16,7 +16,7 @@
 - **Flexible Input Formats**: Supports numpy arrays, xarray DataArrays, and Dask arrays
 - **Multiple Temporal Scales**: Monthly and daily data, multiple time scales (1-72 months/days)
 - **Distribution Options**: Gamma and Pearson Type III distributions for SPI/SPEI
-- **CLI Tools**: Three command-line entry points for batch processing NetCDF data
+- **CLI Tools**: Two command-line entry points for batch processing NetCDF data
 - **Scientific Rigor**: Based on peer-reviewed methodologies with comprehensive validation
 
 ## Project Classification
@@ -32,7 +32,7 @@
 **Layered Library Architecture**:
 ```
 ┌─────────────────────────────────────┐
-│   CLI Layer                         │  ← __main__.py, __spi__.py
+│   CLI Layer                         │  ← __main__.py
 ├─────────────────────────────────────┤
 │   Public API Layer                  │  ← typed_public_api.py, xarray_adapter.py
 ├─────────────────────────────────────┤
@@ -45,9 +45,11 @@
 ```
 
 ### Entry Points
-The library provides three CLI entry points for processing NetCDF datasets:
+The library provides two CLI entry points for processing NetCDF datasets:
 - **`climate_indices`** / **`process_climate_indices`**: Full-featured CLI for all indices
-- **`spi`**: Specialized CLI for SPI computation with distribution fitting parameter save/load
+
+The retired `spi` entry point and its distribution fitting parameter save/load
+options are covered by [the API changes page](deprecations/api-changes.rst).
 
 ### Technology Stack Summary
 | Category | Technology |
@@ -128,18 +130,11 @@ climate_indices \
     --calibration_start_year 1981 \
     --calibration_end_year 2010 \
     --output_file_base results/spi
-
-# Specialized SPI computation with parameter caching
-spi \
-    --periodicity monthly \
-    --scales 1 3 6 12 \
-    --netcdf_precip precip.nc \
-    --var_name_precip prcp \
-    --calibration_start_year 1981 \
-    --calibration_end_year 2010 \
-    --save_params fitting_params.nc \
-    --output_file_base results/spi
 ```
+
+The specialized `spi` console script and its `--save_params` /
+`--load_params` distribution fitting cache were removed in 3.0.0; use
+`climate_indices --index spi` above.
 
 ### Development Commands
 ```bash
@@ -181,7 +176,7 @@ uv run pytest -m benchmark
 ### Recommended Starting Points for AI Agents
 1. **For understanding computation**: Start with `docs/reference.rst` (Sphinx API reference), then `src/climate_indices/compute.py`
 2. **For understanding API**: Read `src/climate_indices/typed_public_api.py` (strict mypy typing) and `src/climate_indices/xarray_adapter.py`
-3. **For understanding CLI**: Examine `src/climate_indices/__main__.py` (full-featured) and `src/climate_indices/__spi__.py` (specialized)
+3. **For understanding CLI**: Examine `src/climate_indices/__main__.py` (full-featured)
 4. **For testing patterns**: Review `tests/conftest.py` (fixtures), `tests/test_xarray_adapter.py` (modern API), `tests/test_property_based.py` (invariants)
 5. **For error handling**: Study `src/climate_indices/exceptions.py` (complete hierarchy with attributes)
 
@@ -218,7 +213,7 @@ uv run pytest -m benchmark
 |------|--------------|------------|
 | Add new index | `compute.py`, `indices.py`, `xarray_adapter.py` | `test_compute.py`, `test_indices.py`, `test_xarray_adapter.py` |
 | Add new distribution | `compute.py`, `indices.py` | `test_compute.py`, property tests |
-| Fix CLI bug | `__main__.py` or `__spi__.py` | Integration tests (manual) |
+| Fix CLI bug | `__main__.py` | Integration tests (manual) |
 | Add validation | `xarray_adapter.py`, `exceptions.py` | `test_input_validation.py`, `test_exceptions.py` |
 | Performance optimization | `compute.py`, chunking strategies | `test_benchmark_*.py` |
 
