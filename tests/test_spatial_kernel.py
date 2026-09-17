@@ -1181,8 +1181,8 @@ def _percentage_of_normal_grid(values: np.ndarray, scale: int) -> np.ndarray:
 class TestSpatialEDDI:
     """EDDI ranks every cell of a (time, *cells) block in one pass (#942)."""
 
-    def test_ranks_once_for_gridded_input(self, gridded_monthly_precip, monkeypatch):
-        """A 3 x 2 grid reaches the ranking pass once, over the packed block."""
+    def test_ranks_once_per_period_for_gridded_input(self, gridded_monthly_precip, monkeypatch):
+        """A 3 x 2 grid reaches the ranking pass once per calendar period, cell axis included."""
         shapes: list[tuple[int, ...]] = []
         original = indices._hastings_inverse_normal
 
@@ -1199,8 +1199,9 @@ class TestSpatialEDDI:
             calibration_year_final=_CALIBRATION_END,
         )
 
-        # the ranking pass sees the (years, periods, *cells) layout of the whole grid
-        assert shapes == [(40, 12, 3, 2)]
+        # one approximation call per calendar period, over every cell at once: the
+        # per-cell adapter path would make twelve calls per grid cell instead
+        assert shapes == [(40, 3, 2)] * 12
         assert result.shape == gridded_monthly_precip.shape
 
     def test_matches_the_single_series_path(self, gridded_monthly_precip):
@@ -1528,3 +1529,121 @@ class TestSpatialPercentageOfNormal:
                 _CALIBRATION_END,
                 compute.Periodicity.monthly,
             )
+
+
+class TestSpatialNonParametricBlockContracts:
+    """The declared-block contracts the two non-parametric kernels own (#942)."""
+
+    def test_eddi_rank_comparison_chunks_across_cells(self, gridded_monthly_precip, monkeypatch):
+        """A cell chunk smaller than the grid still ranks every cell against its full climatology."""
+        monkeypatch.setattr(indices, "_EDDI_RANK_COMPARISON_ELEMENT_BUDGET", 17)
+
+        chunked = indices.eddi(
+            gridded_monthly_precip.values,
+            scale=3,
+            data_start_year=1980,
+            calibration_year_initial=_CALIBRATION_START,
+            calibration_year_final=_CALIBRATION_END,
+            periodicity=compute.Periodicity.monthly,
+            spatial_time_major=True,
+        )
+
+        # the budget of 17 forces one cell per chunk, so the chunk boundaries are exercised
+        np.testing.assert_array_equal(chunked, _eddi_grid(gridded_monthly_precip.values, scale=3))
+
+    def test_eddi_masked_block_drops_the_mask(self, gridded_monthly_precip):
+        """A masked block ranks the underlying values, as the per-cell path does."""
+        values = gridded_monthly_precip.values
+        masked = np.ma.masked_array(values, mask=False)
+        masked.mask[5:15, 1, 0] = True
+
+        result = indices.eddi(
+            masked,
+            scale=3,
+            data_start_year=1980,
+            calibration_year_initial=_CALIBRATION_START,
+            calibration_year_final=_CALIBRATION_END,
+            periodicity=compute.Periodicity.monthly,
+            spatial_time_major=True,
+        )
+
+        np.testing.assert_array_equal(result, _eddi_grid(values, scale=3))
+        assert np.isfinite(result[6, 0, 0])
+
+    def test_percentage_of_normal_masked_block_drops_the_mask(self, gridded_monthly_precip):
+        """A masked block divides the underlying values, as the per-cell path does."""
+        values = gridded_monthly_precip.values
+        masked = np.ma.masked_array(values, mask=False)
+        masked.mask[5:15, 1, 0] = True
+
+        result = indices.percentage_of_normal(
+            masked,
+            3,
+            1980,
+            _CALIBRATION_START,
+            _CALIBRATION_END,
+            compute.Periodicity.monthly,
+            spatial_time_major=True,
+        )
+
+        np.testing.assert_allclose(
+            result,
+            _percentage_of_normal_grid(values, scale=3),
+            atol=1e-8,
+            rtol=1e-7,
+            equal_nan=True,
+        )
+        assert not np.any(np.isnan(result[5:15, 1, 0]))
+
+    def test_period_length_cell_axis_is_declared_by_the_adapter(self):
+        """A grid whose first cell axis is 12 is ambiguous, and the adapter declares the reading."""
+        time = pd.date_range("1980-01-01", periods=24, freq="MS")
+        values = np.abs(np.random.default_rng(29).gamma(2.0, 2.0, size=(time.size, 12, 2)))
+        ambiguous_grid = xr.DataArray(
+            values,
+            coords={"time": time, "lat": list(range(12)), "lon": [0.0, 5.0]},
+            dims=["time", "lat", "lon"],
+        )
+
+        eddi_result = typed_public_api.eddi(
+            ambiguous_grid,
+            scale=3,
+            calibration_year_initial=1980,
+            calibration_year_final=1981,
+        )
+        percentage_of_normal_result = typed_public_api.percentage_of_normal(
+            ambiguous_grid,
+            scale=3,
+            data_start_year=1980,
+            calibration_start_year=1980,
+            calibration_end_year=1981,
+        )
+
+        assert eddi_result.shape == ambiguous_grid.shape
+        assert percentage_of_normal_result.shape == ambiguous_grid.shape
+
+        # the NumPy API refuses that shape without the declaration
+        with pytest.raises(DataShapeError, match="spatial_time_major"):
+            indices.eddi(
+                values,
+                scale=3,
+                data_start_year=1980,
+                calibration_year_initial=1980,
+                calibration_year_final=1981,
+                periodicity=compute.Periodicity.monthly,
+            )
+
+    def test_unsupported_shape_error_documents_the_block_declaration(self, gridded_monthly_precip):
+        """The dimension error names every accepted shape, declared blocks included."""
+        with pytest.raises(DataShapeError) as error:
+            indices.eddi(
+                gridded_monthly_precip.values,
+                scale=3,
+                data_start_year=1980,
+                calibration_year_initial=_CALIBRATION_START,
+                calibration_year_final=_CALIBRATION_END,
+                periodicity=compute.Periodicity.monthly,
+            )
+
+        assert error.value.expected_shape == "(N,), (years, periods), or a declared (time, *cells) block"
+        assert error.value.actual_shape == gridded_monthly_precip.shape

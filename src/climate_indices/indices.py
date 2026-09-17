@@ -441,7 +441,7 @@ def eddi(
         cells_per_time_step = int(np.prod(cell_shape, dtype=np.int64)) or 1
         num_climatology_years = climatology.shape[0]
         cells_per_chunk = max(1, _EDDI_RANK_COMPARISON_ELEMENT_BUDGET // (num_climatology_years * num_years))
-        probabilities = np.full(pet_values.shape, np.nan)
+        eddi_values = np.empty(pet_values.shape, dtype=float)
 
         for period_index in range(num_periods):
             period_climatology = climatology[:, period_index].reshape(num_climatology_years, cells_per_time_step)
@@ -456,29 +456,34 @@ def eddi(
             # NOAA uses zero-based ranks and treats leading scale pads as lower than every
             # observed value; this is the Tukey plotting position of that rank
             period_pads = leading_pads_count[period_index]
-            probabilities[:, period_index] = (period_pads + below.reshape(num_years, *cell_shape) + 0.66) / (
+            probabilities = (period_pads + below.reshape(num_years, *cell_shape) + 0.66) / (
                 climatology_valid_counts[period_index] + period_pads + 0.33
             )
 
-        # a period whose climatology holds fewer than two valid values has no ranking at
-        # all, and a missing value stays missing
-        p = np.where(
-            np.isnan(pet_values) | (climatology_valid_counts < 2),
-            np.nan,
-            probabilities,
-        )
+            # a period whose climatology holds fewer than two valid values has no ranking
+            # at all, and a missing value stays missing
+            probabilities = np.where(
+                np.isnan(pet_values[:, period_index]) | (climatology_valid_counts[period_index] < 2),
+                np.nan,
+                probabilities,
+            )
 
-        # clip probability to valid range to avoid log(0), then apply the Hastings
-        # inverse normal approximation to every cell, year, and period at once
-        eddi_values = _hastings_inverse_normal(np.clip(p, 1e-10, 1.0 - 1e-10))
+            # clip the probability to its valid range to avoid log(0), then apply the
+            # Hastings inverse normal approximation. Both are elementwise and are held one
+            # calendar period at a time: the approximation allocates several temporaries,
+            # and over a whole wide block they would outweigh the input by an order of
+            # magnitude (a daily block would be the worst case, with 366 periods).
+            eddi_values[:, period_index] = _hastings_inverse_normal(
+                np.clip(probabilities, 1e-10, 1.0 - 1e-10),
+            )
 
         # clip values to within the valid range, and return an array of the input layout:
         # a spatial block keeps its cell dimensions and drops the padded final period
-        eddi_values = np.clip(eddi_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX)
+        np.clip(eddi_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX, out=eddi_values)
         if eddi_values.ndim > 2:
-            result = cast(np.ndarray, eddi_values.reshape(-1, *eddi_values.shape[2:])[: original_shape[0]])
+            result = eddi_values.reshape(-1, *eddi_values.shape[2:])[: original_shape[0]]
         else:
-            result = cast(np.ndarray, eddi_values.flatten()[0:original_length])
+            result = eddi_values.flatten()[0:original_length]
         _log_calculation_completed(log, t0, result.shape, memory_metrics)
         return result
 
@@ -927,7 +932,8 @@ def percentage_of_normal(
         has to declare it, since a block is not a shape this function reads
         without being told.
     :return: percent of normal precipitation values corresponding to the
-        scaled precipitation values array, in the input's layout
+        scaled precipitation values array: 1-D for a 1-D or 2-D input, or the
+        (time, *cells) layout of a declared block
     :rtype: numpy.ndarray of type float
     """
     # validate arguments

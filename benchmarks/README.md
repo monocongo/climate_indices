@@ -179,7 +179,7 @@ temperature does not, stays on the per-cell path.
 
 `indices.eddi` and `indices.percentage_of_normal` now take the same block (#942). EDDI
 ranks each calendar period's values against its own calibration climatology with a
-climatology-row chunked count, one pass over the whole grid rather than a per-year,
+cell-chunked count, one pass over the whole grid rather than a per-year,
 per-period loop, and percentage of normal averages each cell's calendar-period normals
 and divides the block by them. Both keep the legacy 1-D and 2-D behaviour, and both
 require `spatial_time_major=True` for a 3-D input since their dimension errors are
