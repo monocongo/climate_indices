@@ -229,6 +229,39 @@ class TestSpatialKernelSkipsPerCellLoop:
         # the fit sees the folded (years, periods, *cells) block, cells intact
         assert fits[0] == (40, 12, 3, 2)
 
+    def test_spei_pearson_fits_once_for_gridded_input(self, gridded_monthly_precip, spatial_spei, monkeypatch):
+        """The SPEI Pearson branch fits and transforms once for a 3 x 2 grid (#940)."""
+        pet = xr.full_like(gridded_monthly_precip, 0.5)
+        transforms: list[tuple[int, ...]] = []
+        fits: list[tuple[int, ...]] = []
+        original_transform = compute.transform_fitted_pearson
+        original_fit = compute.pearson_parameters
+
+        def counting_transform(values, *args, **kwargs):
+            transforms.append(np.shape(values))
+            return original_transform(values, *args, **kwargs)
+
+        def counting_fit(values, *args, **kwargs):
+            fits.append(np.shape(values))
+            return original_fit(values, *args, **kwargs)
+
+        monkeypatch.setattr(compute, "transform_fitted_pearson", counting_transform)
+        monkeypatch.setattr(compute, "pearson_parameters", counting_fit)
+
+        result = spatial_spei(
+            gridded_monthly_precip,
+            pet_mm=pet,
+            scale=3,
+            distribution=indices.Distribution.pearson,
+            calibration_year_initial=_CALIBRATION_START,
+            calibration_year_final=_CALIBRATION_END,
+        )
+
+        assert result.shape == gridded_monthly_precip.shape
+        assert len(transforms) == 1, f"expected one vectorized transform, saw {len(transforms)} calls"
+        assert len(fits) == 1, f"expected one vectorized fit, saw {len(fits)} calls"
+        assert fits[0] == (40, 12, 3, 2)
+
 
 class TestSpatialKernelEquivalence:
     """Gridded output must match the single-series path."""
@@ -526,6 +559,62 @@ class TestSpatialPearsonEquivalence:
 
         np.testing.assert_array_equal(np.isnan(result.values), np.isnan(expected))
         np.testing.assert_allclose(result.values, expected, atol=1e-8, rtol=1e-7, equal_nan=True)
+
+    def test_pearson_parameters_spatial_matches_pointwise_for_invalid_samples(self, gridded_monthly_precip):
+        """A cell whose L-moments are invalid zeroes the same parameters the per-cell fit does."""
+        data = np.array(gridded_monthly_precip.values, copy=True).reshape(40, 12, 3, 2)
+        # each calendar-period sample of this cell is five values with |L-skew| = 1,
+        # which the single-series fit rejects; the probability of zero must be zeroed
+        # with the location, scale, and skew rather than left as the sample's zero share
+        data[:, :, 0, 0] = np.nan
+        data[2:7, :, 0, 0] = np.array([0.0, 20.0, 20.0, 20.0, 20.0])[:, np.newaxis]
+
+        expected = [np.empty((12, 3, 2)) for _ in range(4)]
+        for latitude in range(3):
+            for longitude in range(2):
+                pointwise = compute.pearson_parameters(
+                    data[:, :, latitude, longitude],
+                    1980,
+                    _CALIBRATION_START,
+                    _CALIBRATION_END,
+                    compute.Periodicity.monthly,
+                )
+                for target, source in zip(expected, pointwise, strict=True):
+                    target[:, latitude, longitude] = source
+
+        spatial = compute.pearson_parameters(
+            data, 1980, _CALIBRATION_START, _CALIBRATION_END, compute.Periodicity.monthly
+        )
+
+        for computed, pointwise in zip(spatial, expected, strict=True):
+            np.testing.assert_allclose(computed, pointwise, atol=1e-8, rtol=1e-7, equal_nan=True)
+        assert spatial[0][:, 0, 0].tolist() == [0.0] * 12
+
+    def test_pearson_failure_falls_back_to_gamma_for_the_whole_block(
+        self, gridded_monthly_precip, spatial_spi, monkeypatch
+    ):
+        """A raised Pearson fit re-fits the whole block as gamma, not only the failing cell."""
+
+        def raising_transform(*args, **kwargs):
+            raise ValueError("forced pearson fit failure")
+
+        monkeypatch.setattr(compute, "transform_fitted_pearson", raising_transform)
+        pearson_result = spatial_spi(
+            gridded_monthly_precip,
+            scale=3,
+            distribution=indices.Distribution.pearson,
+            calibration_year_initial=_CALIBRATION_START,
+            calibration_year_final=_CALIBRATION_END,
+        )
+        gamma_result = spatial_spi(
+            gridded_monthly_precip,
+            scale=3,
+            distribution=indices.Distribution.gamma,
+            calibration_year_initial=_CALIBRATION_START,
+            calibration_year_final=_CALIBRATION_END,
+        )
+
+        np.testing.assert_array_equal(pearson_result.values, gamma_result.values)
 
 
 class TestSpatialGoodnessOfFitParity:

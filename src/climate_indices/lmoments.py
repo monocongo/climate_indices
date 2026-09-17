@@ -1,7 +1,7 @@
 """Computation of L-moments used for Pearson Type-III distribution fitting"""
 
 import logging
-from math import exp, lgamma, pi, sqrt
+from math import exp, pi, sqrt
 
 import numpy as np
 from scipy import special
@@ -103,7 +103,7 @@ def _estimate_pearson3_parameters(lmoments: np.ndarray) -> dict[str, float]:
             alpha = t * (d1 + (t * (d2 + (t * d3)))) / (1.0 + (t * (d4 + (t * (d5 + (t * d6))))))
 
         alpha_root = sqrt(alpha)
-        beta = sqrt(pi) * lmoments[1] * exp(lgamma(alpha) - lgamma(alpha + 0.5))
+        beta = sqrt(pi) * lmoments[1] * exp(special.gammaln(alpha) - special.gammaln(alpha + 0.5))
         scale = beta * alpha_root
 
         # the sign of the third L-moment determines
@@ -129,23 +129,26 @@ def fit_spatial(values: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray,
     :return: tuple of (loc, scale, skew, valid), each array shaped like values.shape[1:]
     """
     lmoments, valid = _estimate_lmoments_spatial(values)
-    locs, scales, skews = _estimate_pearson3_parameters_spatial(lmoments, valid)
+    locs, scales, skews, valid = _estimate_pearson3_parameters_spatial(lmoments, valid)
     return locs, scales, skews, valid
 
 
 def _estimate_pearson3_parameters_spatial(
     lmoments: np.ndarray,
     valid: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Cell-axis counterpart of :func:`_estimate_pearson3_parameters`.
 
     Every branch is evaluated for every cell with NumPy operations and the result is
-    masked by the validity of the cell's L-moments, rather than returning early.
+    masked by the validity of the cell's L-moments, rather than returning early. The
+    refined validity mask is returned so callers see the same cells the single-series
+    fit would reject.
 
     :param lmoments: array of the first three L-moments, shaped (3, *cells)
     :param valid: boolean array shaped (*cells) marking usable L-moments
-    :return: tuple of (loc, scale, skew) arrays shaped (*cells); invalid cells are zero
+    :return: tuple of (loc, scale, skew, valid) arrays shaped (*cells); invalid cells
+        are zero and marked invalid
     """
     c1, c2, c3, d1, d2, d3, d4, d5, d6 = _PEARSON3_COEFFICIENTS
     locs = lmoments[0]
@@ -172,6 +175,7 @@ def _estimate_pearson3_parameters_spatial(
         np.where(valid, locs, 0.0),
         np.where(valid, scales, 0.0),
         np.where(valid, skews, 0.0),
+        valid,
     )
 
 

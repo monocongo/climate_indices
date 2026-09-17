@@ -49,7 +49,10 @@ translation between them.
 Gridded execution changes the memory profile as well as the call count: one block is held whole
 inside the fit, with a few `O(years x periods x cells)` temporaries, so the chunk size is the memory
 lever and the documented guidance is to chunk spatially rather than hand the kernel a dense
-continental grid. Dask still requires the time dimension in a single chunk, for the reason recorded
+continental grid. The Pearson Type III path holds a few more block-sized temporaries than the gamma
+path, because SciPy's `pearson3.cdf` builds its mask and argument arrays before the CDF is
+evaluated; a Pearson block therefore peaks higher than the same block on gamma, and the chunk
+budget should account for it. Dask still requires the time dimension in a single chunk, for the reason recorded
 in [ADR-0003](./0003-dask-time-dimension-single-chunk.md) — the fit needs the whole calibration
 window.
 

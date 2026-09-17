@@ -263,16 +263,18 @@ def sum_to_scale(
     if scale == 1:
         return values
 
+    if np.ma.isMaskedArray(values):
+        # a masked value stands for a missing value: make it an explicit NaN so the
+        # convolution below and the window-wise spatial sum see the missing marker
+        # rather than the data under the mask (np.convolve reads under it)
+        values = np.ma.filled(values.astype(float), np.nan)
+
     if values.ndim > 2:
         # time-major spatial arrays are summed window-wise along the time axis: one
         # vectorized window per time step for every cell, no per-cell Python loop
         # (np.convolve is 1-D only). The NaN pad is float64, as the 1-D path's
         # np.hstack([np.nan, ...]) is, so single-precision input still accumulates in
         # double precision.
-        if np.ma.isMaskedArray(values):
-            # a masked sum stands for the missing value it represents; np.concatenate
-            # would otherwise read under the mask when the pad is joined on
-            values = np.ma.filled(values.astype(float), np.nan)
         pad_shape = (scale - 1, *values.shape[1:])
         padded = np.concatenate((np.full(pad_shape, np.nan, dtype=float), values))
         window_sums: np.ndarray = np.lib.stride_tricks.sliding_window_view(padded, scale, axis=0).sum(axis=-1)
@@ -477,7 +479,9 @@ def pearson_parameters(
         January of the initial year for an input array of monthly values or
         Jan. 1st of initial year for an input array daily values. A time-major
         spatial block already folded to (years, time_steps, *cells) is also
-        accepted, and then every cell is fitted in one pass.
+        accepted, and then every cell is fitted in one pass; any
+        three-or-more-dimensional input is read as that folded layout, so a
+        time-major block must already be folded (``prepare_scaled`` owns that).
     :param data_start_year:
     :param calibration_start_year:
     :param calibration_end_year:
@@ -767,7 +771,8 @@ def transform_fitted_pearson(
                    twelve columns representing the respective calendar months,
                    or 366 columns representing days as if all years were leap years.
                    A time-major spatial block already folded to
-                   (years, time_steps, *cells) is also accepted.
+                   (years, time_steps, *cells) is also accepted; any
+                   three-or-more-dimensional input is read as that folded layout.
     :param data_start_year: the initial year of the input values array
     :param calibration_start_year: the initial year to use for the calibration period
     :param calibration_end_year: the final year to use for the calibration period
@@ -1249,10 +1254,10 @@ def _check_goodness_of_fit_pearson_spatial(
     ranks = np.arange(1, num_years + 1).reshape((-1,) + (1,) * (calibration_values.ndim - 1))
     with np.errstate(divide="ignore", invalid="ignore"):
         cdf_values = scipy.stats.pearson3.cdf(
-            sorted_values.astype(float),
-            skews[np.newaxis].astype(float),
-            loc=locs[np.newaxis].astype(float),
-            scale=scales[np.newaxis].astype(float),
+            np.asarray(sorted_values, dtype=float),
+            np.asarray(skews, dtype=float)[np.newaxis],
+            loc=np.asarray(locs, dtype=float)[np.newaxis],
+            scale=np.asarray(scales, dtype=float)[np.newaxis],
         )
         valid_positions = (ranks <= valid_counts) & parameters_valid[np.newaxis]
         upper = np.where(valid_positions, ranks / valid_counts - cdf_values, -np.inf)
@@ -1278,12 +1283,7 @@ def _check_goodness_of_fit_pearson_spatial(
         try:
             p_value = _ks_poor_fit_p_value(
                 sorted_column,
-                scipy.stats.pearson3.cdf(
-                    sorted_column,
-                    float(skews[candidate]),
-                    loc=float(locs[candidate]),
-                    scale=float(scales[candidate]),
-                ),
+                cdf_values[(slice(0, valid_count), *candidate)],
             )
         except Exception:
             # ignore fitting errors during goodness-of-fit check, as the per-series path does
@@ -1829,7 +1829,8 @@ def fit_and_standardize(
             Deprecated aliases such as "alphas" and "probabilities_of_zero" are
             accepted, and an explicit None means "fit this parameter from the data".
         fallback_to_gamma: Whether to fall back to the gamma distribution when a
-            Pearson Type III fit fails or leaves too many missing values.
+            Pearson Type III fit fails or leaves too many missing values. The
+            decision is made once for the whole input block, not per grid cell.
         fallback_context: Context included in the fall-back warning log message.
 
     Returns:
