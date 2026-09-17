@@ -125,14 +125,28 @@ HDW was developed: where the two disagree, the difference is usually what the
 wind is doing. Both are computed from standard reanalysis fields, HDW from a
 vertical profile and Haines from the pressure levels its variant names.
 
-The [fire-family epic #793][fire-epic] tracks the rest of the family: an ERA5
-CONUS demonstration notebook (#811) and the scope decision on where the package
-stops relative to NFDRS and operational fire-behavior modeling (#813). The
-performance benchmarks for the recursive indices are published below.
+The [fire-family epic #793][fire-epic] tracks the rest of the family: the
+ERA5 CONUS demonstration notebook (#811) is the worked example below, and the
+scope decision on where the package stops relative to NFDRS and operational
+fire-behavior modeling is #813. The performance benchmarks for the recursive
+indices are published below.
 
 These remain meteorological and climatological indices. Epic #793
 explicitly excludes ignition probability, operational fire behavior, and fire
 occurrence modeling.
+
+## Worked example: CONUS fire-weather demonstration
+
+`notebooks/fire_weather_demo.ipynb` runs the family end to end on a public
+ERA5 subset: KBDI over three years, the seven CFFWIS components, Fosberg
+FFWI, and HDW over the 2020 fire season, on a 1.5 degree CONUS grid. It
+prepares its inputs with `scripts/prepare_fire_demo_inputs.py`, which reads
+the anonymously accessible ARCO-ERA5 store on Google Cloud Storage and caches
+daily NetCDF files under `data/fire-demo/` (git-ignored). The notebook states
+every approximation it makes -- derived relative humidity, daily summaries in
+place of noon observations, and a three-year precipitation baseline for KBDI
+-- so read it as a worked example of the API and its chunking constraints,
+not as a reference product.
 
 ## Performance and sizing
 
