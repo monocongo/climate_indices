@@ -886,8 +886,9 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
     # the Palmer routines take inches, whereas the conversions above normalize
     # precipitation and PET to millimeters for every other index
     if keyword_arguments["index"] == "palmers":
-        dataset[keyword_arguments["var_name_precip"]].values /= 25.4
-        dataset[keyword_arguments["var_name_pet"]].values /= 25.4
+        for var_name in (keyword_arguments["var_name_precip"], keyword_arguments["var_name_pet"]):
+            # out-of-place so integer-valued variables are promoted rather than rejected
+            dataset[var_name].values = dataset[var_name].values / 25.4
 
     if input_type == InputType.divisions:
         output_shape = _drop_data_into_shared_arrays_divisions(dataset, input_var_names)
@@ -920,7 +921,7 @@ def _compute_write_index(keyword_arguments: dict[str, Any]) -> tuple[str, str] |
         var_name = keyword_arguments["var_name_awc"]
         awc_units = str(awc_dataset[var_name].attrs.get("units", "")).strip().lower()
         if awc_units in ("mm", "millimeters", "millimeter"):
-            awc_dataset[var_name].values /= 25.4
+            awc_dataset[var_name].values = awc_dataset[var_name].values / 25.4
         elif awc_units and awc_units not in ("inch", "inches"):
             raise ValueError(f"Unsupported available water capacity units: {awc_units}")
 

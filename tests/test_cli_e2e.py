@@ -178,11 +178,11 @@ def test_spei_uses_provided_pet_file_and_matches_in_process_computation(
 
 def _length_in(values_inches, units):
     """Express values known in inches under the given length unit label."""
-    return values_inches if units == "inches" else values_inches * 25.4
+    return values_inches * 25.4 if units == "mm" else values_inches
 
 
 @pytest.mark.parametrize("precip_units", ["mm", "inches"])
-@pytest.mark.parametrize("awc_units", ["mm", "inches"])
+@pytest.mark.parametrize("awc_units", ["mm", "inches", None])
 def test_palmers_writes_all_four_outputs_matching_in_process_computation(
     tmp_path, precips_mm_monthly, pet_thornthwaite_mm, palmer_awcs, precip_units, awc_units
 ):
@@ -196,8 +196,9 @@ def test_palmers_writes_all_four_outputs_matching_in_process_computation(
     # must match the in-process computation on the inches palmer.pdsi() takes
     _write_divisions(precip_path, _length_in(precips / 25.4, precip_units), units=precip_units)
     _write_divisions(pet_path, _length_in(pet / 25.4, precip_units), var_name="pet", units=precip_units)
+    awc_attrs = {} if awc_units is None else {"units": awc_units}
     xr.Dataset(
-        {"awc": ("division", np.array([_length_in(awc, awc_units)]), {"units": awc_units})},
+        {"awc": ("division", np.array([_length_in(awc, awc_units)]), awc_attrs)},
         coords={"division": [_DIVISION]},
     ).to_netcdf(awc_path)
     output_base = tmp_path / "palmers"

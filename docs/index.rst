@@ -409,7 +409,8 @@ Jan. 1951 through Dec. 2010. The output files will be
    precipitation and PET to millimeters for the other indices, so these inputs
    may declare either unit: values labeled ``inches``/``inch`` or
    ``mm``/``millimeters`` are converted to inches before computing. An AWC
-   variable that declares any other unit is rejected.
+   variable without a ``units`` attribute is assumed to be inches, and one that
+   declares any other unit is rejected.
 
 .. note::
    Self-calibrated PDSI (scPDSI) is available through the NumPy API as
