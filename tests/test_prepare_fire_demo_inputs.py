@@ -17,7 +17,8 @@ def _prepare_module(monkeypatch):
     spec = importlib.util.spec_from_file_location(
         "prepare_fire_demo_inputs_test", SCRIPTS_DIR / "prepare_fire_demo_inputs.py"
     )
-    assert spec and spec.loader
+    assert spec is not None
+    assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
