@@ -19,6 +19,7 @@ from climate_indices.exceptions import (
     InvalidArgumentError,
 )
 from climate_indices.fire._common import (
+    _apply_gap_policy,
     _as_float_array,
     _static_spatial_array,
     _validate_recurrence_options,
@@ -483,27 +484,20 @@ def kbdi(
             precipitation_day = precipitation_array[day]
             temperature_day = temperature_array[day]
             weather_valid = np.isfinite(precipitation_day) & np.isfinite(temperature_day)
-            valid = weather_valid & static_valid
             # A cell whose static climatology is unavailable has no recurrence
-            # to gap-manage: its output is NaN and its carried state is left
-            # as it was, so a NaN climatology is never an elapsed missing day.
-            missing_started = ~weather_valid & static_valid & (started | poisoned)
-
-            if nan_policy == "propagate":
-                kbdi_value[missing_started] = np.nan
-                poisoned[missing_started] = True
-                trailing_gap_days[missing_started] = np.maximum(trailing_gap_days[missing_started], 0) + 1
-            else:
-                next_gap_days = np.maximum(trailing_gap_days, 0) + 1
-                over_gap_limit = missing_started & (next_gap_days > max_gap_days)
-                kbdi_value[over_gap_limit] = np.nan
-                poisoned[over_gap_limit] = True
-                trailing_gap_days[missing_started] = next_gap_days[missing_started]
-
-            active = valid & ~poisoned
-            started[active] = True
-            # a valid day is the return point's last day, so any earlier run is closed
-            trailing_gap_days[valid & (started | poisoned)] = 0
+            # to gap-manage: the shared ADR-0007 helper never marks it active
+            # and leaves its carried state as it was, so a NaN climatology is
+            # never an elapsed missing day.
+            active = _apply_gap_policy(
+                kbdi_value,
+                weather_valid,
+                static_valid,
+                started,
+                poisoned,
+                trailing_gap_days,
+                nan_policy=nan_policy,
+                max_gap_days=max_gap_days,
+            )
 
             rainy = active & (precipitation_day > 0.0)
             prior_wet_spell = wet_spell.copy()
