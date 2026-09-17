@@ -117,16 +117,18 @@ def _estimate_pearson3_parameters(lmoments: np.ndarray) -> dict[str, float]:
 
 
 def fit_spatial(values: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Returns the L-Moments fits (loc, scale, skew) for every cell of an array whose
+    """Returns the L-Moments fits (loc, scale, skew) for every cell of an array whose
     first axis is the sample axis.
 
     Cell-axis counterpart of :func:`fit`: instead of raising on the first cell whose
     sample is too short or whose L-moments are invalid, the invalid cells are marked
     in the returned validity mask so the caller can apply its own fallback.
 
-    :param values: array of samples with shape (samples, *cells)
-    :return: tuple of (loc, scale, skew, valid), each array shaped like values.shape[1:]
+    Args:
+        values: Array of samples with shape (samples, *cells).
+
+    Returns:
+        Tuple of (loc, scale, skew, valid), each array shaped like values.shape[1:].
     """
     lmoments, valid = _estimate_lmoments_spatial(values)
     locs, scales, skews, valid = _estimate_pearson3_parameters_spatial(lmoments, valid)
@@ -191,7 +193,10 @@ def _estimate_lmoments_spatial(values: np.ndarray) -> tuple[np.ndarray, np.ndarr
     :return: tuple of (lmoments, valid) with lmoments shaped (3, *cells) and valid
         shaped (*cells)
     """
-    values = np.asarray(values, dtype=float)
+    if np.ma.isMaskedArray(values):
+        values = np.ma.filled(values.astype(float), np.nan)
+    else:
+        values = np.asarray(values, dtype=float)
     number_of_values = np.count_nonzero(~np.isnan(values), axis=0)
     sorted_values = np.sort(values, axis=0)
 

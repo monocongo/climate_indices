@@ -58,8 +58,10 @@ window.
 
 The Pearson Type III branch fits its L-moment parameters across the cell axis as well
 ([#940](https://github.com/monocongo/climate_indices/issues/940)), so `Distribution.pearson` no
-longer re-enters the single-series kernel once per cell; like gamma, a failed fit falls back to
-gamma for the whole block rather than per cell. EDDI and percentage-of-normal have no cell axis in
+longer re-enters the single-series kernel once per cell. `indices.spi` enables
+`fallback_to_gamma=True`, so like gamma, a failed Pearson fit there falls back to gamma for the
+whole block rather than per cell; `indices.spei` passes `fallback_to_gamma=False`, so a failed
+Pearson fit propagates instead of falling back. EDDI and percentage-of-normal have no cell axis in
 their kernels yet (#942), and Palmer has no adapter layer at all (#937).
 
 The PET entry points do not use the adapter decorator, because latitude arrives as a broadcast
