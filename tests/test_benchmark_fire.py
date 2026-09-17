@@ -56,8 +56,10 @@ the chunk-side memory rows; `BENCHMARK_FIRE_MEMORY_GRID_SIDE=128
 BENCHMARK_FIRE_MEMORY_RECORD_DAYS=1825 BENCHMARK_FIRE_CHUNK_SIDES=64` for the
 output-selection comparison; and `BENCHMARK_FIRE_MEMORY_GRID_SIDE=128
 BENCHMARK_FIRE_MEMORY_RECORD_DAYS=3650 BENCHMARK_FIRE_CHUNK_SIDES=64` for the
-3650-day row. The peak-memory guard is a coarse smoke test at the default scale
-and only becomes a real bound at settings like those.
+3650-day row. The small-grid comparison in the docs comes from the default grid
+sides at the longest default record length. The peak-memory guard is a coarse
+smoke test at the default scale and only becomes a real bound at settings like
+those.
 """
 
 from __future__ import annotations
