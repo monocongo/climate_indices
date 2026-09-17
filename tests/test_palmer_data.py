@@ -59,3 +59,6 @@ def test_incomplete_or_malformed_fitting_params_fall_back_to_calibration():
         data = _initialize(params)
 
         assert data.calibrate is True, name
+        # no coefficient is adopted from a rejected parameter set
+        assert np.isnan(data.alpha).all() and np.isnan(data.beta).all(), name
+        assert np.isnan(data.gamma).all() and np.isnan(data.delta).all(), name

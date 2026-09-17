@@ -5,7 +5,7 @@ from climate_indices import palmer
 from climate_indices._palmer_duration import DurationFactors
 
 
-def _blank_data() -> dict:
+def _blank_data() -> palmer._PalmerData:
     """A minimal, structurally-valid `data` dict for exercising the recursion
     functions directly, without needing realistic precip/PET content."""
     return palmer._initialize_data(

@@ -22,6 +22,11 @@ AWCTOP = 1.0
 K8_SIZE = 40
 
 _PalmerResult = tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any] | None]
+"""Return of a prepared Palmer calculation: index, PHDI, PMDI, Z-index, params.
+
+The standard path derives the PMDI through the statement recursion (``wplm``);
+scPDSI takes it from the Wells recursion (``pmdi``).
+"""
 
 
 @dataclass
@@ -100,12 +105,14 @@ class _PalmerData:
     phdi: np.ndarray
     wplm: np.ndarray
 
-    # state a statement assigns before reading it; zero until the recursion runs
+    # loop control, assigned by the _calc_zindex driver before the recursion runs
     k8: int = 0
     k8max: int = 0
-    iass: int = 0
     year: int = 0
     month: int = 0
+
+    # month-carry state a statement assigns before reading it; zero until then
+    iass: int = 0
     v: float = 0.0
     pro: float = 0.0
     x1: float = 0.0
@@ -128,7 +135,7 @@ def _select_duration_factors(data: _PalmerData) -> tuple[float, float]:
     wet and dry defaults, but must remain explicit when scPDSI supplies distinct
     factors.
 
-    :param data: dictionary of parameters (intialized in pdsi)
+    :param data: the Palmer data struct (intialized in pdsi)
     :return a tuple of (m, b) - the duration-factor slope and intercept
     :rtype: tuple[float, float]
     """
@@ -280,7 +287,7 @@ def _calc_water_balances(data: _PalmerData) -> None:
     """
     Perform water balance calculations
 
-    :param data: dictionary of parameters (intialized in pdsi)
+    :param data: the Palmer data struct (intialized in pdsi)
     """
     ss = AWCTOP
     su = data.awc_bot
@@ -331,7 +338,7 @@ def _calc_cafec_coefficients(data: _PalmerData) -> None:
     """
     Calculate CAFEC Coefficients
 
-    :param data: dictionary of parameters (intialized in pdsi)
+    :param data: the Palmer data struct (intialized in pdsi)
     """
     data.alpha = _calc_cafec_ratio(data.etsum, data.petsum)
     data.beta = _calc_cafec_ratio(data.rsum, data.prsum)
@@ -346,7 +353,7 @@ def _calc_zindex_factors(data: _PalmerData) -> None:
     trat is the 'T' ratio of average moisture demand
     to average moisture supply in month M
 
-    :param data: dictionary of parameters (intialized in pdsi)
+    :param data: the Palmer data struct (intialized in pdsi)
     """
     data.trat = (data.petsum + data.rsum + data.rosum) / (data.psum + data.tlsum)
 
@@ -355,7 +362,7 @@ def _avg_calibration_sums(data: _PalmerData) -> None:
     """
     Average the sums over the calibration period
 
-    :param data: dictionary of parameters (intialized in pdsi)
+    :param data: the Palmer data struct (intialized in pdsi)
     """
     n_calb_years = data.n_calb_years
     data.psum = data.psum / n_calb_years
@@ -373,7 +380,7 @@ def _calc_k_prime_and_dbar(data: _PalmerData) -> tuple[np.ndarray, np.ndarray]:
     """
     Calculate monthly mean absolute departures (dbar) and raw K-prime factors
 
-    :param data: dictionary of parameters (intialized in pdsi)
+    :param data: the Palmer data struct (intialized in pdsi)
     """
     sabsd = np.zeros((12,))
     for year in range(data.calibration_year_initial_idx, data.calibration_year_final_idx + 1):
@@ -397,7 +404,7 @@ def _calc_kfactors(data: _PalmerData) -> None:
     Reread monthly parameters for calculation of the 'K' monthly
     weighting factors used in z-index calculation
 
-    :param data: dictionary of parameters (intialized in pdsi)
+    :param data: the Palmer data struct (intialized in pdsi)
     """
     dbar, akhat = _calc_k_prime_and_dbar(data)
     swtd = np.sum(dbar * akhat)
@@ -426,7 +433,7 @@ def _calc_cafec_zindex(data: _PalmerData, year: int, month: int) -> None:
     (_calc_scpdsi_raw_zindex) compute these identically; only the recurrences
     downstream of them differ.
 
-    :param data: dictionary of parameters (intialized in pdsi)
+    :param data: the Palmer data struct (intialized in pdsi)
     :param year: row index into the monthly arrays
     :param month: month index, 0 = January
     """
@@ -517,7 +524,7 @@ def _assign(data: _PalmerData) -> None:
     """
     Assign x values
 
-    :param data: dictionary of parameters (intialized in pdsi)
+    :param data: the Palmer data struct (intialized in pdsi)
     """
     year = data.year
     month = data.month
@@ -589,7 +596,7 @@ def _statement_220(data: _PalmerData) -> None:
 
     Translated from statement 220 in NCEI's pdi.f
 
-    :param data: dictionary of parameters (intialized in pdsi)
+    :param data: the Palmer data struct (intialized in pdsi)
     """
     year = data.year
     month = data.month
@@ -607,7 +614,7 @@ def _statement_210(data: _PalmerData) -> None:
 
     Translated from statement 210 in NCEI's pdi.f
 
-    :param data: dictionary of parameters (intialized in pdsi)
+    :param data: the Palmer data struct (intialized in pdsi)
     """
     year = data.year
     month = data.month
@@ -646,7 +653,7 @@ def _statement_200(data: _PalmerData) -> None:
 
     Translated from statement 200 in NCEI's pdi.f
 
-    :param data: dictionary of parameters (intialized in pdsi)
+    :param data: the Palmer data struct (intialized in pdsi)
     """
     year = data.year
     month = data.month
@@ -728,7 +735,7 @@ def _statement_190(data: _PalmerData) -> None:
 
     Translated from statement 190 in NCEI's pdi.f
 
-    :param data: dictionary of parameters (intialized in pdsi)
+    :param data: the Palmer data struct (intialized in pdsi)
     """
     year = data.year
     month = data.month
@@ -755,7 +762,7 @@ def _statement_180(data: _PalmerData) -> None:
 
     Translated from statement 180 in NCEI's pdi.f
 
-    :param data: dictionary of parameters (intialized in pdsi)
+    :param data: the Palmer data struct (intialized in pdsi)
     """
     year = data.year
     month = data.month
@@ -778,7 +785,7 @@ def _statement_170(data: _PalmerData) -> None:
 
     Translated from statement 170 in NCEI's pdi.f
 
-    :param data: dictionary of parameters (intialized in pdsi)
+    :param data: the Palmer data struct (intialized in pdsi)
     """
     year = data.year
     month = data.month
@@ -802,7 +809,7 @@ def _calc_zindex(data: _PalmerData) -> None:
     Reread monthly parameters for calculation of the 'K' monthly
     weighting factors used in z-index calculation
 
-    :param data: dictionary of parameters (intialized in pdsi)
+    :param data: the Palmer data struct (intialized in pdsi)
     """
     for year in range(data.n_years):
         for month in range(12):
@@ -866,7 +873,7 @@ def _finish_up(data: _PalmerData) -> None:
     """
     Wet spell abatement is possible
 
-    :param data: dictionary of parameters (intialized in pdsi)
+    :param data: the Palmer data struct (intialized in pdsi)
     """
     for k8 in range(data.k8max):
         i = int(data.indexj[k8])
@@ -890,7 +897,7 @@ def _validate_fitting_params(data: _PalmerData, fitting_params: dict[str, Any] |
     """
     Validate the fitting parameters
 
-    :param data: dictionary of parameters (intialized in pdsi)
+    :param data: the Palmer data struct (intialized in pdsi)
     :param fitting_params: dictionary of the fitted parameters
     """
     if fitting_params is None:
@@ -943,8 +950,8 @@ def _initialize_data(
     :param awc: available water capacity (soil constant), in inches
     :param data_start_year: initial year of the input precipitation and PET datasets,
                             both of which are assumed to start in January of this year
-    :param calibration_start_year: initial year of the calibration period
-    :param calibration_end_year: final year of the calibration period
+    :param calibration_year_initial: initial year of the calibration period
+    :param calibration_year_final: final year of the calibration period
     :param fitting_params: dictionary of the fitted parameters
     :return the initialized Palmer data struct
     :rtype: _PalmerData
