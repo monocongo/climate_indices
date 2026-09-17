@@ -3,7 +3,7 @@
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, NamedTuple
 
 import numpy as np
 from structlog.stdlib import BoundLogger
@@ -21,23 +21,29 @@ __all__ = ["pdsi", "scpdsi"]
 AWCTOP = 1.0
 K8_SIZE = 40
 
-_PalmerResult = tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any] | None]
-"""Return of a prepared Palmer calculation: index, PHDI, PMDI, Z-index, params.
 
-The standard path derives the PMDI through the statement recursion (``wplm``);
-scPDSI takes it from the Wells recursion (``pmdi``).
-"""
+class _PalmerResult(NamedTuple):
+    """Output of a prepared Palmer calculation: the four indices and their parameters.
+
+    ``pdsi`` is the index the calculation produced: PDSI for :func:`pdsi`,
+    scPDSI for :func:`scpdsi`. The standard path derives the PMDI through the
+    statement recursion (``wplm``); scPDSI takes it from the Wells recursion
+    (``pmdi``).
+    """
+
+    pdsi: np.ndarray
+    phdi: np.ndarray
+    pmdi: np.ndarray
+    zindex: np.ndarray
+    params: dict[str, Any] | None
 
 
 @dataclass
-class _PalmerData:
-    """Prepared inputs, water-balance intermediates, recursion state, and outputs.
+class _PalmerPrepared:
+    """The Palmer inputs, water balance, and calibration results shared by both indices.
 
-    Replaces the untyped dictionary the Palmer pipeline threaded through its
-    ``_calc_*`` and ``_statement_*`` helpers. Fields are grouped by the stage
-    that owns them; the recursion-state scalars that a statement assigns before
-    reading default to zero, so a struct can be constructed ahead of the
-    recursion that fills them.
+    Written by ``_prepare_palmer_data`` (plus the index-specific K-factor stage)
+    and read-only afterwards, so no recursion stage can overwrite an input.
     """
 
     # input record and calibration configuration
@@ -85,6 +91,16 @@ class _PalmerData:
     drym: float
     dryb: float
 
+
+@dataclass
+class _PalmerRecursion:
+    """Mutable per-location recursion state and the arrays the recursion fills.
+
+    Constructed from a prepared struct by ``_initialize_recursion``. The
+    month-carry scalars that a statement assigns before reading default to
+    zero, so the struct exists ahead of the recursion that fills them.
+    """
+
     # recursion state: the K8 window, per-month candidates, and the current severity
     indexj: np.ndarray
     indexm: np.ndarray
@@ -124,7 +140,7 @@ class _PalmerData:
     pv: float = 0.0
 
 
-def _select_duration_factors(data: _PalmerData) -> tuple[float, float]:
+def _select_duration_factors(prepared: _PalmerPrepared, state: _PalmerRecursion) -> tuple[float, float]:
     """
     Select the wet or dry duration factors based on the sign of the
     currently-established spell's severity (X3).
@@ -135,13 +151,14 @@ def _select_duration_factors(data: _PalmerData) -> tuple[float, float]:
     wet and dry defaults, but must remain explicit when scPDSI supplies distinct
     factors.
 
-    :param data: the Palmer data struct (intialized in pdsi)
+    :param prepared: the prepared Palmer inputs
+    :param state: the mutable recursion state
     :return a tuple of (m, b) - the duration-factor slope and intercept
     :rtype: tuple[float, float]
     """
-    if data.x3 >= 0:
-        return data.wetm, data.wetb
-    return data.drym, data.dryb
+    if state.x3 >= 0:
+        return prepared.wetm, prepared.wetb
+    return prepared.drym, prepared.dryb
 
 
 def _get_awc_bot(awc: float) -> float:
@@ -283,181 +300,164 @@ def _calc_cafec_ratio(
     return values
 
 
-def _calc_water_balances(data: _PalmerData) -> None:
+def _calc_water_balances(prepared: _PalmerPrepared) -> None:
     """
     Perform water balance calculations
 
-    :param data: the Palmer data struct (intialized in pdsi)
+    :param prepared: the prepared Palmer inputs
     """
     ss = AWCTOP
-    su = data.awc_bot
-    for year in range(data.n_years):
+    su = prepared.awc_bot
+    for year in range(prepared.n_years):
         for month in range(12):
-            p = data.precips[year, month]
-            pet = data.pet[year, month]
+            p = prepared.precips[year, month]
+            pet = prepared.pet[year, month]
             sp = ss + su
-            pr = data.awc_bot + AWCTOP - sp
+            pr = prepared.awc_bot + AWCTOP - sp
 
             # Get potential loss
-            pl = _calc_potential_loss(pet, ss, su, data.awc)
+            pl = _calc_potential_loss(pet, ss, su, prepared.awc)
 
             # Calculate recharge, runoff, residual moisture, loss to both
             # surface and under layers, depending on starting moisture
             # content and values of precipitation and evaporation
-            et, tl, r, ro, sss, ssu = _calc_recharge(p, pet, ss, su, data.awc)
+            et, tl, r, ro, sss, ssu = _calc_recharge(p, pet, ss, su, prepared.awc)
 
             # update sums
-            if data.calibration_year_initial_idx <= year <= data.calibration_year_final_idx:
-                data.psum[month] += p
-                data.spsum[month] += sp
-                data.petsum[month] += pet
-                data.plsum[month] += pl
-                data.prsum[month] += pr
-                data.rsum[month] += r
-                data.tlsum[month] += tl
-                data.etsum[month] += et
-                data.rosum[month] += ro
+            if prepared.calibration_year_initial_idx <= year <= prepared.calibration_year_final_idx:
+                prepared.psum[month] += p
+                prepared.spsum[month] += sp
+                prepared.petsum[month] += pet
+                prepared.plsum[month] += pl
+                prepared.prsum[month] += pr
+                prepared.rsum[month] += r
+                prepared.tlsum[month] += tl
+                prepared.etsum[month] += et
+                prepared.rosum[month] += ro
 
             # set data
-            data.spdat[year, month] = sp
-            data.pldat[year, month] = pl
-            data.prdat[year, month] = pr
-            data.rdat[year, month] = r
-            data.tldat[year, month] = tl
-            data.etdat[year, month] = et
-            data.rodat[year, month] = ro
-            data.sssdat[year, month] = sss
-            data.ssudat[year, month] = ssu
+            prepared.spdat[year, month] = sp
+            prepared.pldat[year, month] = pl
+            prepared.prdat[year, month] = pr
+            prepared.rdat[year, month] = r
+            prepared.tldat[year, month] = tl
+            prepared.etdat[year, month] = et
+            prepared.rodat[year, month] = ro
+            prepared.sssdat[year, month] = sss
+            prepared.ssudat[year, month] = ssu
 
             # update soil moisture
             ss = sss
             su = ssu
 
 
-def _calc_cafec_coefficients(data: _PalmerData) -> None:
+def _calc_cafec_coefficients(prepared: _PalmerPrepared) -> None:
     """
     Calculate CAFEC Coefficients
 
-    :param data: the Palmer data struct (intialized in pdsi)
+    :param prepared: the prepared Palmer inputs
     """
-    data.alpha = _calc_cafec_ratio(data.etsum, data.petsum)
-    data.beta = _calc_cafec_ratio(data.rsum, data.prsum)
-    data.gamma = _calc_cafec_ratio(data.rosum, data.spsum)
-    data.delta = _calc_cafec_ratio(data.tlsum, data.plsum, both_zero=0.0)
+    prepared.alpha = _calc_cafec_ratio(prepared.etsum, prepared.petsum)
+    prepared.beta = _calc_cafec_ratio(prepared.rsum, prepared.prsum)
+    prepared.gamma = _calc_cafec_ratio(prepared.rosum, prepared.spsum)
+    prepared.delta = _calc_cafec_ratio(prepared.tlsum, prepared.plsum, both_zero=0.0)
 
 
-def _calc_zindex_factors(data: _PalmerData) -> None:
+def _calc_zindex_factors(prepared: _PalmerPrepared) -> None:
     """
     Calculate Z-Index weighting factors (variable AK)
 
     trat is the 'T' ratio of average moisture demand
     to average moisture supply in month M
 
-    :param data: the Palmer data struct (intialized in pdsi)
+    :param prepared: the prepared Palmer inputs
     """
-    data.trat = (data.petsum + data.rsum + data.rosum) / (data.psum + data.tlsum)
+    prepared.trat = (prepared.petsum + prepared.rsum + prepared.rosum) / (prepared.psum + prepared.tlsum)
 
 
-def _avg_calibration_sums(data: _PalmerData) -> None:
-    """
-    Average the sums over the calibration period
-
-    :param data: the Palmer data struct (intialized in pdsi)
-    """
-    n_calb_years = data.n_calb_years
-    data.psum = data.psum / n_calb_years
-    data.spsum = data.spsum / n_calb_years
-    data.petsum = data.petsum / n_calb_years
-    data.plsum = data.plsum / n_calb_years
-    data.prsum = data.prsum / n_calb_years
-    data.rsum = data.rsum / n_calb_years
-    data.tlsum = data.tlsum / n_calb_years
-    data.etsum = data.etsum / n_calb_years
-    data.rosum = data.rosum / n_calb_years
-
-
-def _calc_k_prime_and_dbar(data: _PalmerData) -> tuple[np.ndarray, np.ndarray]:
+def _calc_k_prime_and_dbar(prepared: _PalmerPrepared) -> tuple[np.ndarray, np.ndarray]:
     """
     Calculate monthly mean absolute departures (dbar) and raw K-prime factors
 
-    :param data: the Palmer data struct (intialized in pdsi)
+    :param prepared: the prepared Palmer inputs
     """
     sabsd = np.zeros((12,))
-    for year in range(data.calibration_year_initial_idx, data.calibration_year_final_idx + 1):
+    for year in range(prepared.calibration_year_initial_idx, prepared.calibration_year_final_idx + 1):
         for month in range(12):
             phat = (
-                data.alpha[month] * data.pet[year, month]
-                + data.beta[month] * data.prdat[year, month]
-                + data.gamma[month] * data.spdat[year, month]
-                - data.delta[month] * data.pldat[year, month]
+                prepared.alpha[month] * prepared.pet[year, month]
+                + prepared.beta[month] * prepared.prdat[year, month]
+                + prepared.gamma[month] * prepared.spdat[year, month]
+                - prepared.delta[month] * prepared.pldat[year, month]
             )
-            sabsd[month] += abs(data.precips[year, month] - phat)
+            sabsd[month] += abs(prepared.precips[year, month] - phat)
 
-    dbar = sabsd / data.n_calb_years
-    return dbar, 1.5 * np.log10((data.trat + 2.8) / dbar) + 0.5
+    dbar = sabsd / prepared.n_calb_years
+    return dbar, 1.5 * np.log10((prepared.trat + 2.8) / dbar) + 0.5
 
 
-def _calc_kfactors(data: _PalmerData) -> None:
+def _calc_kfactors(prepared: _PalmerPrepared) -> None:
     """
     Calculate K Factors
 
     Reread monthly parameters for calculation of the 'K' monthly
     weighting factors used in z-index calculation
 
-    :param data: the Palmer data struct (intialized in pdsi)
+    :param prepared: the prepared Palmer inputs
     """
-    dbar, akhat = _calc_k_prime_and_dbar(data)
+    dbar, akhat = _calc_k_prime_and_dbar(prepared)
     swtd = np.sum(dbar * akhat)
-    data.ak = 17.67 * akhat / swtd
+    prepared.ak = 17.67 * akhat / swtd
 
 
-def _calc_scpdsi_k_factors(data: _PalmerData) -> None:
+def _calc_scpdsi_k_factors(prepared: _PalmerPrepared) -> None:
     """Calculate the unnormalized monthly K-prime factors for scPDSI."""
     with np.errstate(divide="ignore", invalid="ignore"):
-        _, k_prime = _calc_k_prime_and_dbar(data)
+        _, k_prime = _calc_k_prime_and_dbar(prepared)
     if not np.all(np.isfinite(k_prime)):
         raise ConvergenceError(
             "scPDSI K-prime calibration produced non-finite values",
             algorithm="scPDSI K-prime calibration",
         )
-    data.ak = k_prime
+    prepared.ak = k_prime
 
 
-def _calc_cafec_zindex(data: _PalmerData, year: int, month: int) -> None:
+def _calc_cafec_zindex(prepared: _PalmerPrepared, state: _PalmerRecursion, year: int, month: int) -> None:
     """
     Calculate one month's CAFEC (climatically appropriate for existing
-    conditions) precipitation and raw Z-index, writing both into the data
-    dictionary.
+    conditions) precipitation and raw Z-index, writing both into the recursion
+    state.
 
     The standard PDSI recursion (_calc_zindex) and the scPDSI recursion
     (_calc_scpdsi_raw_zindex) compute these identically; only the recurrences
     downstream of them differ.
 
-    :param data: the Palmer data struct (intialized in pdsi)
+    :param prepared: the prepared Palmer inputs
+    :param state: the mutable recursion state
     :param year: row index into the monthly arrays
     :param month: month index, 0 = January
     """
     cafec = (
-        data.alpha[month] * data.pet[year, month]
-        + data.beta[month] * data.prdat[year, month]
-        + data.gamma[month] * data.spdat[year, month]
-        - data.delta[month] * data.pldat[year, month]
+        prepared.alpha[month] * prepared.pet[year, month]
+        + prepared.beta[month] * prepared.prdat[year, month]
+        + prepared.gamma[month] * prepared.spdat[year, month]
+        - prepared.delta[month] * prepared.pldat[year, month]
     )
-    data.cp[year, month] = cafec
-    data.z[year, month] = data.ak[month] * (data.precips[year, month] - cafec)
+    state.cp[year, month] = cafec
+    state.z[year, month] = prepared.ak[month] * (prepared.precips[year, month] - cafec)
 
 
-def _calc_scpdsi_raw_zindex(data: _PalmerData) -> None:
+def _calc_scpdsi_raw_zindex(prepared: _PalmerPrepared, state: _PalmerRecursion) -> None:
     """Calculate raw Z-index values for the entire input record."""
-    for year in range(data.n_years):
+    for year in range(prepared.n_years):
         for month in range(12):
-            _calc_cafec_zindex(data, year, month)
+            _calc_cafec_zindex(prepared, state, year, month)
 
 
-def _calibration_values(data: _PalmerData, values: np.ndarray) -> np.ndarray:
+def _calibration_values(prepared: _PalmerPrepared, values: np.ndarray) -> np.ndarray:
     """Return the flattened inclusive calibration-period portion of an array."""
-    first = data.calibration_year_initial_idx * 12
-    final = (data.calibration_year_final_idx + 1) * 12
+    first = prepared.calibration_year_initial_idx * 12
+    final = (prepared.calibration_year_final_idx + 1) * 12
     return np.asarray(values).reshape(-1)[first:final]
 
 
@@ -520,135 +520,136 @@ def _case(prob: float, x1: float, x2: float, x3: float) -> float:
     return (1.0 - pro) * x3 + pro * x2
 
 
-def _record_index_values(data: _PalmerData, year: int, month: int) -> None:
+def _record_index_values(state: _PalmerRecursion, year: int, month: int) -> None:
     """
     Record the current month's PDSI, PHDI, and PMDI
 
     Used when no spell is open (k8 == 0), so the month's preliminary values
     are final without backtracking through the trail arrays.
 
-    :param data: the Palmer data struct (initialized in pdsi)
+    :param state: the mutable recursion state
     :param year: row index into the monthly arrays
     :param month: month index, 0 = January
     """
-    data.pdsi[year, month] = data.x[year, month]
-    data.phdi[year, month] = data.px3[year, month]
-    if data.px3[year, month] == 0:
-        data.phdi[year, month] = data.x[year, month]
-    data.wplm[year, month] = _case(
-        data.ppr[year, month],
-        data.px1[year, month],
-        data.px2[year, month],
-        data.px3[year, month],
+    state.pdsi[year, month] = state.x[year, month]
+    state.phdi[year, month] = state.px3[year, month]
+    if state.px3[year, month] == 0:
+        state.phdi[year, month] = state.x[year, month]
+    state.wplm[year, month] = _case(
+        state.ppr[year, month],
+        state.px1[year, month],
+        state.px2[year, month],
+        state.px3[year, month],
     )
 
 
-def _assign(data: _PalmerData) -> None:
+def _assign(state: _PalmerRecursion) -> None:
     """
     Assign x values
 
-    :param data: the Palmer data struct (intialized in pdsi)
+    :param state: the mutable recursion state
     """
-    year = data.year
-    month = data.month
-    data.sx[data.k8] = data.x[year, month]
-    isave = data.iass
-    if data.k8 == 0:
-        _record_index_values(data, year, month)
+    year = state.year
+    month = state.month
+    state.sx[state.k8] = state.x[year, month]
+    isave = state.iass
+    if state.k8 == 0:
+        _record_index_values(state, year, month)
         return
 
     # use all x3 values
-    if data.iass == 3:
-        for i in range(data.k8):
-            data.sx[i] = data.sx3[i]
+    if state.iass == 3:
+        for i in range(state.k8):
+            state.sx[i] = state.sx3[i]
 
     # backtrack through arrays, storing assigned x1 (or x2)
     # in sx until it is zero, then switching to the other until
     # it is zero, etc
     else:
-        for i in range(data.k8 - 1, -1, -1):
+        for i in range(state.k8 - 1, -1, -1):
             if isave == 2:
-                if data.sx2[i] == 0:
+                if state.sx2[i] == 0:
                     isave = 1
-                    data.sx[i] = data.sx1[i]
+                    state.sx[i] = state.sx1[i]
                 else:
                     isave = 2
-                    data.sx[i] = data.sx2[i]
+                    state.sx[i] = state.sx2[i]
             else:
-                if data.sx1[i] == 0:
+                if state.sx1[i] == 0:
                     isave = 2
-                    data.sx[i] = data.sx2[i]
+                    state.sx[i] = state.sx2[i]
                 else:
                     isave = 1
-                    data.sx[i] = data.sx1[i]
+                    state.sx[i] = state.sx1[i]
 
     # proper assignments to array sx have been made, output the mess
-    for idx in range(data.k8 + 1):
-        j = int(data.indexj[idx])
-        m = int(data.indexm[idx])
-        data.pdsi[j, m] = data.sx[idx]
-        data.phdi[j, m] = data.px3[j, m]
+    for idx in range(state.k8 + 1):
+        j = int(state.indexj[idx])
+        m = int(state.indexm[idx])
+        state.pdsi[j, m] = state.sx[idx]
+        state.phdi[j, m] = state.px3[j, m]
 
-        if data.px3[j, m] == 0:
-            data.phdi[j, m] = data.sx[idx]
+        if state.px3[j, m] == 0:
+            state.phdi[j, m] = state.sx[idx]
 
-        data.wplm[j, m] = _case(
-            data.ppr[j, m],
-            data.px1[j, m],
-            data.px2[j, m],
-            data.px3[j, m],
+        state.wplm[j, m] = _case(
+            state.ppr[j, m],
+            state.px1[j, m],
+            state.px2[j, m],
+            state.px3[j, m],
         )
-    data.k8 = 0
-    # data.k8max = 0
+    state.k8 = 0
+    # state.k8max = 0
 
 
-def _statement_220(data: _PalmerData) -> None:
+def _statement_220(state: _PalmerRecursion) -> None:
     """
     Save this month's calculated variables (v,pro,x1,x2,x3) for
     use with next month's data
 
     Translated from statement 220 in NCEI's pdi.f
 
-    :param data: the Palmer data struct (intialized in pdsi)
+    :param state: the mutable recursion state
     """
-    year = data.year
-    month = data.month
-    data.v = data.pv
-    data.pro = data.ppr[year, month]
-    data.x1 = data.px1[year, month]
-    data.x2 = data.px2[year, month]
-    data.x3 = data.px3[year, month]
+    year = state.year
+    month = state.month
+    state.v = state.pv
+    state.pro = state.ppr[year, month]
+    state.x1 = state.px1[year, month]
+    state.x2 = state.px2[year, month]
+    state.x3 = state.px3[year, month]
 
 
-def _statement_210(data: _PalmerData) -> None:
+def _statement_210(prepared: _PalmerPrepared, state: _PalmerRecursion) -> None:
     """
     prob(end) returns to 0. A possible abatement has fizzled out,
     so we accept all stored values of x3
 
     Translated from statement 210 in NCEI's pdi.f
 
-    :param data: the Palmer data struct (intialized in pdsi)
+    :param prepared: the prepared Palmer inputs
+    :param state: the mutable recursion state
     """
-    year = data.year
-    month = data.month
-    data.pv = 0.0
-    data.px1[year, month] = 0.0
-    data.px2[year, month] = 0.0
-    data.ppr[year, month] = 0.0
-    m, b = _select_duration_factors(data)
-    data.px3[year, month] = DurationFactors.weighting_fraction(m, b) * data.x3 + data.z[year, month] / (m + b)
-    data.x[year, month] = data.px3[year, month]
+    year = state.year
+    month = state.month
+    state.pv = 0.0
+    state.px1[year, month] = 0.0
+    state.px2[year, month] = 0.0
+    state.ppr[year, month] = 0.0
+    m, b = _select_duration_factors(prepared, state)
+    state.px3[year, month] = DurationFactors.weighting_fraction(m, b) * state.x3 + state.z[year, month] / (m + b)
+    state.x[year, month] = state.px3[year, month]
 
-    if data.k8 == 0:
-        _record_index_values(data, year, month)
+    if state.k8 == 0:
+        _record_index_values(state, year, month)
     else:
-        data.iass = 3
-        _assign(data)
+        state.iass = 3
+        _assign(state)
 
-    _statement_220(data)
+    _statement_220(state)
 
 
-def _statement_200(data: _PalmerData) -> None:
+def _statement_200(prepared: _PalmerPrepared, state: _PalmerRecursion) -> None:
     """
     Continue x1 and x2 calculations
     if either indicates the start of a new wet or drought,
@@ -657,56 +658,57 @@ def _statement_200(data: _PalmerData) -> None:
 
     Translated from statement 200 in NCEI's pdi.f
 
-    :param data: the Palmer data struct (intialized in pdsi)
+    :param prepared: the prepared Palmer inputs
+    :param state: the mutable recursion state
     """
-    year = data.year
-    month = data.month
-    wetm, wetb = data.wetm, data.wetb
-    data.px1[year, month] = max(
-        0, DurationFactors.weighting_fraction(wetm, wetb) * data.x1 + data.z[year, month] / (wetm + wetb)
+    year = state.year
+    month = state.month
+    wetm, wetb = prepared.wetm, prepared.wetb
+    state.px1[year, month] = max(
+        0, DurationFactors.weighting_fraction(wetm, wetb) * state.x1 + state.z[year, month] / (wetm + wetb)
     )
 
     # if no existing wet spell or drought
     # x1 becomes the new x3
-    if (data.px1[year, month] >= 1) and (data.px3[year, month] == 0):
-        data.x[year, month] = data.px1[year, month]
-        data.px3[year, month] = data.px1[year, month]
-        data.px1[year, month] = 0
-        data.iass = 1
-        _assign(data)
-        _statement_220(data)
+    if (state.px1[year, month] >= 1) and (state.px3[year, month] == 0):
+        state.x[year, month] = state.px1[year, month]
+        state.px3[year, month] = state.px1[year, month]
+        state.px1[year, month] = 0
+        state.iass = 1
+        _assign(state)
+        _statement_220(state)
         return
 
-    drym, dryb = data.drym, data.dryb
-    data.px2[year, month] = min(
-        0.0, DurationFactors.weighting_fraction(drym, dryb) * data.x2 + data.z[year, month] / (drym + dryb)
+    drym, dryb = prepared.drym, prepared.dryb
+    state.px2[year, month] = min(
+        0.0, DurationFactors.weighting_fraction(drym, dryb) * state.x2 + state.z[year, month] / (drym + dryb)
     )
 
     # if no existing wet spell or drought x2 becomes the new x3
-    if (data.px2[year, month] <= -1) and (data.px3[year, month] == 0):
-        data.x[year, month] = data.px2[year, month]
-        data.px3[year, month] = data.px2[year, month]
-        data.px2[year, month] = 0.0
-        data.iass = 2
-        _assign(data)
-        _statement_220(data)
+    if (state.px2[year, month] <= -1) and (state.px3[year, month] == 0):
+        state.x[year, month] = state.px2[year, month]
+        state.px3[year, month] = state.px2[year, month]
+        state.px2[year, month] = 0.0
+        state.iass = 2
+        _assign(state)
+        _statement_220(state)
         return
 
     # No established drought (wet spell), but x3 = 0
     # so either (nonzero) x1 or x2 must be used as x3
-    if data.px3[year, month] == 0:
-        if data.px1[year, month] == 0:
-            data.x[year, month] = data.px2[year, month]
-            data.iass = 2
-            _assign(data)
-            _statement_220(data)
+    if state.px3[year, month] == 0:
+        if state.px1[year, month] == 0:
+            state.x[year, month] = state.px2[year, month]
+            state.iass = 2
+            _assign(state)
+            _statement_220(state)
             return
 
-        if data.px2[year, month] == 0:
-            data.x[year, month] = data.px1[year, month]
-            data.iass = 1
-            _assign(data)
-            _statement_220(data)
+        if state.px2[year, month] == 0:
+            state.x[year, month] = state.px1[year, month]
+            state.iass = 1
+            _assign(state)
+            _statement_220(state)
             return
 
     # at this point there is no determed value to assign to x,
@@ -714,198 +716,203 @@ def _statement_200(data: _PalmerData) -> None:
     # time x3 will reach a value where it is the value of x (pdsi).
     # At that time, the assign method backtracs through choosing
     # the appropriate x1 or x2 to be that month's x.
-    if data.k8 >= data.sx.shape[0] + 1:
-        vals = [0] * (data.k8 - data.sx.shape[0] + 2)
-        data.sx = np.append(data.sx, vals)
-        data.sx1 = np.append(data.sx1, vals)
-        data.sx2 = np.append(data.sx2, vals)
-        data.sx3 = np.append(data.sx3, vals)
-        data.indexj = np.append(data.indexj, vals)
-        data.indexm = np.append(data.indexm, vals)
+    if state.k8 >= state.sx.shape[0] + 1:
+        vals = [0] * (state.k8 - state.sx.shape[0] + 2)
+        state.sx = np.append(state.sx, vals)
+        state.sx1 = np.append(state.sx1, vals)
+        state.sx2 = np.append(state.sx2, vals)
+        state.sx3 = np.append(state.sx3, vals)
+        state.indexj = np.append(state.indexj, vals)
+        state.indexm = np.append(state.indexm, vals)
 
-    data.sx1[data.k8] = data.px1[year, month]
-    data.sx2[data.k8] = data.px2[year, month]
-    data.sx3[data.k8] = data.px3[year, month]
-    data.x[year, month] = data.px3[year, month]
-    data.k8 += 1
-    data.k8max = data.k8
+    state.sx1[state.k8] = state.px1[year, month]
+    state.sx2[state.k8] = state.px2[year, month]
+    state.sx3[state.k8] = state.px3[year, month]
+    state.x[year, month] = state.px3[year, month]
+    state.k8 += 1
+    state.k8max = state.k8
 
-    _statement_220(data)
+    _statement_220(state)
 
 
-def _statement_190(data: _PalmerData) -> None:
+def _statement_190(prepared: _PalmerPrepared, state: _PalmerRecursion) -> None:
     """
     drought or wet continues, calculate prob(end) (variable ze)
 
     Translated from statement 190 in NCEI's pdi.f
 
-    :param data: the Palmer data struct (intialized in pdsi)
+    :param prepared: the prepared Palmer inputs
+    :param state: the mutable recursion state
     """
-    year = data.year
-    month = data.month
-    if data.pro == 100:
-        q = data.ze
+    year = state.year
+    month = state.month
+    if state.pro == 100:
+        q = state.ze
     else:
-        q = data.ze + data.v
+        q = state.ze + state.v
 
-    data.ppr[year, month] = (data.pv / q) * 100
+    state.ppr[year, month] = (state.pv / q) * 100
 
-    if data.ppr[year, month] >= 100:
-        data.ppr[year, month] = 100
-        data.px3[year, month] = 0
+    if state.ppr[year, month] >= 100:
+        state.ppr[year, month] = 100
+        state.px3[year, month] = 0
     else:
-        m, b = _select_duration_factors(data)
-        data.px3[year, month] = DurationFactors.weighting_fraction(m, b) * data.x3 + data.z[year, month] / (m + b)
+        m, b = _select_duration_factors(prepared, state)
+        state.px3[year, month] = DurationFactors.weighting_fraction(m, b) * state.x3 + state.z[year, month] / (m + b)
 
-    _statement_200(data)
+    _statement_200(prepared, state)
 
 
-def _statement_180(data: _PalmerData) -> None:
+def _statement_180(prepared: _PalmerPrepared, state: _PalmerRecursion) -> None:
     """
     drought abatement is possible
 
     Translated from statement 180 in NCEI's pdi.f
 
-    :param data: the Palmer data struct (intialized in pdsi)
+    :param prepared: the prepared Palmer inputs
+    :param state: the mutable recursion state
     """
-    year = data.year
-    month = data.month
-    data.uw = data.z[year, month] + 0.15
-    data.pv = data.uw + max(data.v, 0.0)
+    year = state.year
+    month = state.month
+    state.uw = state.z[year, month] + 0.15
+    state.pv = state.uw + max(state.v, 0.0)
 
     # During a drought, PV <= 0 implies prob(end) has returned to 0
-    if data.pv <= 0:
-        _statement_210(data)
+    if state.pv <= 0:
+        _statement_210(prepared, state)
         return
 
-    m, b = data.drym, data.dryb
-    data.ze = -b * data.x3 - 0.5 * (m + b)
-    _statement_190(data)
+    m, b = prepared.drym, prepared.dryb
+    state.ze = -b * state.x3 - 0.5 * (m + b)
+    _statement_190(prepared, state)
 
 
-def _statement_170(data: _PalmerData) -> None:
+def _statement_170(prepared: _PalmerPrepared, state: _PalmerRecursion) -> None:
     """
     Wet spell abatement is possible
 
     Translated from statement 170 in NCEI's pdi.f
 
-    :param data: the Palmer data struct (intialized in pdsi)
+    :param prepared: the prepared Palmer inputs
+    :param state: the mutable recursion state
     """
-    year = data.year
-    month = data.month
-    data.ud = data.z[year, month] - 0.15
-    data.pv = data.ud + min(data.v, 0.0)
+    year = state.year
+    month = state.month
+    state.ud = state.z[year, month] - 0.15
+    state.pv = state.ud + min(state.v, 0.0)
 
     # During a wet spell, PV >= 0 implies prob(end) has returned to 0
-    if data.pv >= 0:
-        _statement_210(data)
+    if state.pv >= 0:
+        _statement_210(prepared, state)
         return
 
-    m, b = data.wetm, data.wetb
-    data.ze = -b * data.x3 + 0.5 * (m + b)
-    _statement_190(data)
+    m, b = prepared.wetm, prepared.wetb
+    state.ze = -b * state.x3 + 0.5 * (m + b)
+    _statement_190(prepared, state)
 
 
-def _calc_zindex(data: _PalmerData) -> None:
+def _calc_zindex(prepared: _PalmerPrepared, state: _PalmerRecursion) -> None:
     """
     Calculate Z Index
 
     Reread monthly parameters for calculation of the 'K' monthly
     weighting factors used in z-index calculation
 
-    :param data: the Palmer data struct (intialized in pdsi)
+    :param prepared: the prepared Palmer inputs
+    :param state: the mutable recursion state
     """
-    for year in range(data.n_years):
+    for year in range(prepared.n_years):
         for month in range(12):
-            data.year = year
-            data.month = month
-            k8 = int(data.k8)
-            data.indexj[k8] = year
-            data.indexm[k8] = month
-            data.ze = 0.0
-            data.ud = 0.0
-            data.uw = 0.0
-            _calc_cafec_zindex(data, year, month)
+            state.year = year
+            state.month = month
+            k8 = int(state.k8)
+            state.indexj[k8] = year
+            state.indexm[k8] = month
+            state.ze = 0.0
+            state.ud = 0.0
+            state.uw = 0.0
+            _calc_cafec_zindex(prepared, state, year, month)
 
             # No abatement underway, wet or drought will end if -.5 <= X3 <= .5
-            if (data.pro == 100) or (data.pro == 0):
+            if (state.pro == 100) or (state.pro == 0):
                 # End of drought or wet
-                if -0.5 <= data.x3 <= 0.5:
-                    data.pv = 0.0
-                    data.ppr[year, month] = 0.0
-                    data.px3[year, month] = 0.0
+                if -0.5 <= state.x3 <= 0.5:
+                    state.pv = 0.0
+                    state.ppr[year, month] = 0.0
+                    state.px3[year, month] = 0.0
                     # check for new wet or drought start
-                    _statement_200(data)
+                    _statement_200(prepared, state)
                     continue
                 # We are in a wet spell
-                elif data.x3 > 0.5:
+                elif state.x3 > 0.5:
                     # The wet spell intensifies
-                    if data.z[year, month] >= 0.15:
-                        _statement_210(data)
+                    if state.z[year, month] >= 0.15:
+                        _statement_210(prepared, state)
                         continue
                     # The wet spell starts to abate (and may end)
                     else:
-                        _statement_170(data)
+                        _statement_170(prepared, state)
                         continue
                 # We are in a drought
-                elif data.x3 < -0.5:
+                elif state.x3 < -0.5:
                     # The drought intensifies
-                    if data.z[year, month] <= -0.15:
-                        _statement_210(data)
+                    if state.z[year, month] <= -0.15:
+                        _statement_210(prepared, state)
                         continue
                     # The drought starts to abate (and may end)
                     else:
-                        _statement_180(data)
+                        _statement_180(prepared, state)
                         continue
 
             # Abatement is underway
             else:
                 # We are in a wet spell
-                if data.x3 > 0:
-                    _statement_170(data)
+                if state.x3 > 0:
+                    _statement_170(prepared, state)
                     continue
                 # We are in a drought
-                elif data.x3 <= 0:
-                    _statement_180(data)
+                elif state.x3 <= 0:
+                    _statement_180(prepared, state)
                     continue
 
-            _statement_170(data)
+            _statement_170(prepared, state)
             continue
 
 
-def _finish_up(data: _PalmerData) -> None:
+def _finish_up(prepared: _PalmerPrepared, state: _PalmerRecursion) -> None:
     """
     Wet spell abatement is possible
 
-    :param data: the Palmer data struct (intialized in pdsi)
+    :param prepared: the prepared Palmer inputs
+    :param state: the mutable recursion state
     """
-    for k8 in range(data.k8max):
-        i = int(data.indexj[k8])
-        j = int(data.indexm[k8])
-        i_end = data.precips.shape[0] - 1
-        data.pdsi[i, j] = data.x[i, j]
-        data.phdi[i, j] = data.px3[i, j]
+    for k8 in range(state.k8max):
+        i = int(state.indexj[k8])
+        j = int(state.indexm[k8])
+        i_end = prepared.precips.shape[0] - 1
+        state.pdsi[i, j] = state.x[i, j]
+        state.phdi[i, j] = state.px3[i, j]
 
-        if data.px3[i, j] == 0:
-            data.phdi[i, j] = data.x[i, j]
+        if state.px3[i, j] == 0:
+            state.phdi[i, j] = state.x[i, j]
 
-        data.wplm[i, j] = _case(
-            data.ppr[i_end, 11],
-            data.px1[i_end, 11],
-            data.px2[i_end, 11],
-            data.px3[i_end, 11],
+        state.wplm[i, j] = _case(
+            state.ppr[i_end, 11],
+            state.px1[i_end, 11],
+            state.px2[i_end, 11],
+            state.px3[i_end, 11],
         )
 
 
-def _validate_fitting_params(data: _PalmerData, fitting_params: dict[str, Any] | None) -> None:
+def _validate_fitting_params(prepared: _PalmerPrepared, fitting_params: dict[str, Any] | None) -> None:
     """
     Validate the fitting parameters
 
-    :param data: the Palmer data struct (intialized in pdsi)
+    :param prepared: the prepared Palmer inputs
     :param fitting_params: dictionary of the fitted parameters
     """
     if fitting_params is None:
-        data.calibrate = True
+        prepared.calibrate = True
         return
 
     # each coefficient must be a numeric one-dimensional vector with exactly one
@@ -922,12 +929,12 @@ def _validate_fitting_params(data: _PalmerData, fitting_params: dict[str, Any] |
             break
         coefficients.append(values)
 
-    data.calibrate = len(coefficients) != len(names)
-    if not data.calibrate:
-        data.alpha = coefficients[0]
-        data.beta = coefficients[1]
-        data.gamma = coefficients[2]
-        data.delta = coefficients[3]
+    prepared.calibrate = len(coefficients) != len(names)
+    if not prepared.calibrate:
+        prepared.alpha = coefficients[0]
+        prepared.beta = coefficients[1]
+        prepared.gamma = coefficients[2]
+        prepared.delta = coefficients[3]
 
 
 def _validate_calibration_period(
@@ -949,7 +956,7 @@ def _validate_calibration_period(
         )
 
 
-def _initialize_data(
+def _initialize_prepared(
     precips: np.ndarray,
     pet: np.ndarray,
     awc: float,
@@ -957,9 +964,9 @@ def _initialize_data(
     calibration_year_initial: int,
     calibration_year_final: int,
     fitting_params: dict[str, Any] | None = None,
-) -> _PalmerData:
+) -> _PalmerPrepared:
     """
-    Initialize the data
+    Initialize the prepared inputs
 
     :param precips: time series of monthly precipitation values, in inches
     :param pet: time series of monthly PET values, in inches
@@ -969,8 +976,8 @@ def _initialize_data(
     :param calibration_year_initial: initial year of the calibration period
     :param calibration_year_final: final year of the calibration period
     :param fitting_params: dictionary of the fitted parameters
-    :return the initialized Palmer data struct
-    :rtype: _PalmerData
+    :return the initialized prepared inputs
+    :rtype: _PalmerPrepared
     """
     # reshape precipitation values to (years, 12)
     precips = utils.reshape_to_2d(precips, 12)
@@ -990,7 +997,7 @@ def _initialize_data(
     # and the CAFEC coefficients, moisture-demand ratio, and Z-index factors are
     # filled by the stage that owns them before anything reads them.
     duration_factors = DurationFactors.from_defaults()
-    data = _PalmerData(
+    prepared = _PalmerPrepared(
         precips=precips,
         pet=pet,
         awc=awc,
@@ -1028,6 +1035,23 @@ def _initialize_data(
         wetb=duration_factors.wetb,
         drym=duration_factors.drym,
         dryb=duration_factors.dryb,
+    )
+
+    _validate_fitting_params(prepared, fitting_params)
+
+    return prepared
+
+
+def _initialize_recursion(prepared: _PalmerPrepared) -> _PalmerRecursion:
+    """
+    Construct the zeroed recursion state for one calculation over the prepared record.
+
+    :param prepared: the prepared Palmer inputs
+    :return the initialized recursion state
+    :rtype: _PalmerRecursion
+    """
+    n_years = prepared.n_years
+    return _PalmerRecursion(
         indexj=np.full((K8_SIZE,), np.nan),
         indexm=np.full((K8_SIZE,), np.nan),
         sx=np.zeros((K8_SIZE,)),
@@ -1039,18 +1063,12 @@ def _initialize_data(
         px2=np.zeros((n_years, 12)),
         px3=np.zeros((n_years, 12)),
         x=np.zeros((n_years, 12)),
-        k8=0,
-        k8max=0,
         z=np.full((n_years, 12), np.nan),
         cp=np.full((n_years, 12), np.nan),
         pdsi=np.full((n_years, 12), np.nan),
         phdi=np.full((n_years, 12), np.nan),
         wplm=np.full((n_years, 12), np.nan),
     )
-
-    _validate_fitting_params(data, fitting_params)
-
-    return data
 
 
 def _bind_palmer_log(
@@ -1082,14 +1100,14 @@ def _prepare_palmer_data(
     calibration_year_final: int,
     fitting_params: dict[str, Any] | None,
     log: BoundLogger,
-) -> tuple[_PalmerData, int]:
+) -> tuple[_PalmerPrepared, int]:
     """Validate inputs and run the water-balance/CAFEC stages shared by Palmer indices."""
     if np.any(precips < 0.0):
         log.warning("negative_values_clipped", field="precips")
         precips = np.clip(precips, a_min=0.0, a_max=None)
 
     original_length = precips.size
-    data = _initialize_data(
+    prepared = _initialize_prepared(
         precips=precips,
         pet=pet,
         awc=awc,
@@ -1098,39 +1116,41 @@ def _prepare_palmer_data(
         calibration_year_final=calibration_year_final,
         fitting_params=fitting_params,
     )
-    _calc_water_balances(data)
-    if data.calibrate:
-        _calc_cafec_coefficients(data)
-    _calc_zindex_factors(data)
-    return data, original_length
+    _calc_water_balances(prepared)
+    if prepared.calibrate:
+        _calc_cafec_coefficients(prepared)
+    _calc_zindex_factors(prepared)
+    return prepared, original_length
 
 
-def _calculate_pdsi_prepared(data: _PalmerData, original_length: int) -> _PalmerResult:
+def _calculate_pdsi_prepared(prepared: _PalmerPrepared, original_length: int) -> _PalmerResult:
     """Complete standard PDSI after the shared Palmer preparation stages."""
-    _calc_kfactors(data)
-    _calc_zindex(data)
-    _finish_up(data)
+    _calc_kfactors(prepared)
+    state = _initialize_recursion(prepared)
+    _calc_zindex(prepared, state)
+    _finish_up(prepared, state)
 
-    pdsi_result = data.pdsi.flatten()[0:original_length]
-    phdi = data.phdi.flatten()[0:original_length]
-    wplm = data.wplm.flatten()[0:original_length]
-    z = data.z.flatten()[0:original_length]
+    pdsi_result = state.pdsi.flatten()[0:original_length]
+    phdi = state.phdi.flatten()[0:original_length]
+    wplm = state.wplm.flatten()[0:original_length]
+    z = state.z.flatten()[0:original_length]
     params = {
-        "alpha": data.alpha,
-        "beta": data.beta,
-        "gamma": data.gamma,
-        "delta": data.delta,
+        "alpha": prepared.alpha,
+        "beta": prepared.beta,
+        "gamma": prepared.gamma,
+        "delta": prepared.delta,
     }
-    return pdsi_result, phdi, wplm, z, params
+    return _PalmerResult(pdsi_result, phdi, wplm, z, params)
 
 
-def _calculate_scpdsi_prepared(data: _PalmerData, original_length: int) -> _PalmerResult:
+def _calculate_scpdsi_prepared(prepared: _PalmerPrepared, original_length: int) -> _PalmerResult:
     """Complete self-calibrating PDSI after shared Palmer preparation."""
-    _calc_scpdsi_k_factors(data)
-    _calc_scpdsi_raw_zindex(data)
+    _calc_scpdsi_k_factors(prepared)
+    state = _initialize_recursion(prepared)
+    _calc_scpdsi_raw_zindex(prepared, state)
 
-    z_values = data.z.reshape(-1)
-    calibration_z = _calibration_values(data, z_values)
+    z_values = state.z.reshape(-1)
+    calibration_z = _calibration_values(prepared, z_values)
     wetm, wetb = self_calibration.duration_factors(calibration_z, self_calibration.WET_SIGN)
     drym, dryb = self_calibration.duration_factors(calibration_z, self_calibration.DRY_SIGN)
 
@@ -1142,7 +1162,7 @@ def _calculate_scpdsi_prepared(data: _PalmerData, original_length: int) -> _Palm
         dryb=dryb,
     )
     for _ in range(3):
-        calibration_pdsi = _calibration_values(data, recursion.pdsi)
+        calibration_pdsi = _calibration_values(prepared, recursion.pdsi)
         dry_percentile = self_calibration.nan_safe_percentile(calibration_pdsi, 0.02)
         wet_percentile = self_calibration.nan_safe_percentile(calibration_pdsi, 0.98)
         z_values = _rescale_scpdsi_zindex(z_values, dry_percentile, wet_percentile)
@@ -1155,13 +1175,13 @@ def _calculate_scpdsi_prepared(data: _PalmerData, original_length: int) -> _Palm
         )
 
     params: dict[str, Any] = {
-        "alpha": data.alpha,
-        "beta": data.beta,
-        "gamma": data.gamma,
-        "delta": data.delta,
+        "alpha": prepared.alpha,
+        "beta": prepared.beta,
+        "gamma": prepared.gamma,
+        "delta": prepared.delta,
     }
     params.update(wetm=wetm, wetb=wetb, drym=drym, dryb=dryb)
-    return (
+    return _PalmerResult(
         recursion.pdsi[:original_length],
         recursion.phdi[:original_length],
         recursion.pmdi[:original_length],
@@ -1172,7 +1192,7 @@ def _calculate_scpdsi_prepared(data: _PalmerData, original_length: int) -> _Palm
 
 def _palmer_calculation(
     index_type: str,
-    calculate_prepared: Callable[[_PalmerData, int], _PalmerResult],
+    calculate_prepared: Callable[[_PalmerPrepared, int], _PalmerResult],
     precips: np.ndarray,
     pet: np.ndarray,
     awc: float,
@@ -1218,9 +1238,9 @@ def _palmer_calculation(
                 duration_ms=round(duration_ms, 2),
                 result="all_missing",
             )
-            return precips, precips, precips, precips, None
+            return _PalmerResult(precips, precips, precips, precips, None)
 
-        data, original_length = _prepare_palmer_data(
+        prepared, original_length = _prepare_palmer_data(
             precips,
             pet,
             awc,
@@ -1230,12 +1250,12 @@ def _palmer_calculation(
             fitting_params,
             log,
         )
-        result = calculate_prepared(data, original_length)
+        result = calculate_prepared(prepared, original_length)
         duration_ms = (time.perf_counter() - t0) * 1000.0
         log.info(
             "calculation_completed",
             duration_ms=round(duration_ms, 2),
-            output_elements=result[0].size,
+            output_elements=result.pdsi.size,
         )
         return result
     except Exception:
