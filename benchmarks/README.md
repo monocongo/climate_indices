@@ -101,7 +101,7 @@ Interpretation:
 uv run benchmarks/parallel_scaling.py                                 # spi,spei on 1, 2, 4, ... workers up to the CPU count
 uv run benchmarks/parallel_scaling.py --cores 1,2,4,8 --indices spi,spei,pet,eddi --repeat 5
 uv run benchmarks/parallel_scaling.py --indices spi,spei,pet,eddi --serial-only --repeat 3
-uv run benchmarks/parallel_scaling.py | tee benchmarks/results/parallel_scaling.txt
+uv run benchmarks/parallel_scaling.py --indices spi,spei,pet,eddi | tee benchmarks/results/parallel_scaling.txt
 ```
 
 The script runs the same reference grid through the public xarray API on a
@@ -114,7 +114,9 @@ the parallel efficiency. Speedup is relative to the first `--cores` entry. Every
 `compute()` call creates a fresh process pool, so pool start-up is inside every
 timing, not only the baseline: the harness measures the out-of-the-box
 `processes` scheduler. The serial in-memory number to compare against is printed
-by the same run, and `--serial-only` prints just that reference.
+by the same run, and `--serial-only` prints just that reference; it filters
+goodness-of-fit warnings, so it sits just below a warning-visible default call
+such as the #921 baseline above.
 
 The compute call passes `chunksize=1`: Dask's default batches up to six ready
 tasks per submission, which runs a whole six-block batch sequentially on one
@@ -142,15 +144,17 @@ into that checkout; both sides ran the same Python 3.14.7 environment on a
 
 Reference grid: 38x87 cells, 40 years monthly, scale 3, calibration 1981-2010;
 fastest of three runs after a warm-up. "Quiet" pins per-cell logging and
-goodness-of-fit warnings off, which isolates the fitting path; INFO is what an
-unconfigured caller pays.
+goodness-of-fit warnings off, which isolates the fitting path. Both columns
+filter goodness-of-fit warnings, as the Dask runs do, so the INFO/quiet delta
+isolates log rendering; INFO is the library's default log level, not the full
+cost of a warning-visible default call.
 
 | index | serial before, INFO | serial before, quiet | serial after, INFO | serial after, quiet | vectorization speedup | best parallel after |
 | --- | --- | --- | --- | --- | --- | --- |
-| SPI | 1.120 s | 0.898 s | 0.205 s | 0.204 s | 4.4x | 0.895 s (2 workers) |
-| SPEI | 1.193 s | 0.783 s | 0.221 s | 0.221 s | 3.5x | 0.911 s (2 workers) |
-| Thornthwaite PET | 1.429 s | 1.063 s | 0.020 s | 0.020 s | 53x | 0.694 s (1 worker) |
-| EDDI | 14.960 s | 14.717 s | 0.043 s | 0.043 s | 342x | 0.710 s (1 worker) |
+| SPI | 1.120 s | 0.898 s | 0.204 s | 0.204 s | 4.4x | 0.837 s (2 workers) |
+| SPEI | 1.193 s | 0.783 s | 0.221 s | 0.220 s | 3.6x | 0.877 s (2 workers) |
+| Thornthwaite PET | 1.429 s | 1.063 s | 0.020 s | 0.020 s | 53x | 0.685 s (1 worker) |
+| EDDI | 14.960 s | 14.717 s | 0.043 s | 0.043 s | 342x | 0.699 s (1 worker) |
 
 "Vectorization speedup" is serial-before-quiet over serial-after-quiet: the
 spatial block replaced the per-cell Python loop, so one kernel call per non-core

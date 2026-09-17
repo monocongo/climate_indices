@@ -3,20 +3,22 @@
 Runs the #893 reference grid (38x87 cells, 40 years of monthly precipitation)
 through the public xarray API on a Dask-backed input, once per requested worker
 count with the ``processes`` scheduler, and prints the wall clock, the speedup
-against the first worker count, and the parallel efficiency. Before each worker
-count it also times the in-memory, single-process call on the same grid, at the
-default INFO log level and with logging quiet, which is the serial reference the
-parallel numbers and the epic's speedup criterion are measured against.
+against the first worker count, and the parallel efficiency. Before the worker
+counts it times the in-memory, single-process call once per index on the same
+grid, at the default INFO log level and again with logging quiet, which is the
+serial reference the parallel numbers and the epic's speedup criterion are
+measured against.
 
 Spatial chunking follows the worker count so every worker gets blocks of
 similar size, while ``time`` stays a single chunk (ADR-0003). The grid size is
 fixed across worker counts, so the numbers are strong scaling at the reference
 size.
 
-PET for SPEI is synthetic (a fixed fraction of the precipitation), so the run
-measures the fitting path rather than the PET kernels. Per-cell logging and
-goodness-of-fit warnings are pinned off, because at this grid size they cost
-more than the computation itself.
+PET is synthetic: a fixed fraction of the precipitation for SPEI, and a
+latitude-gradient seasonal cycle for the Thornthwaite index. Goodness-of-fit
+warnings are filtered for every run, and the Dask sweep additionally runs with
+logging quiet, because per-cell log volume costs more than the computation at
+this grid size.
 
 Run from the repository root::
 
@@ -37,6 +39,7 @@ import warnings
 from collections.abc import Callable
 from typing import NamedTuple
 
+import dask
 import numpy as np
 import xarray as xr
 from profile_gridded_spi import (
@@ -140,9 +143,8 @@ def run_spei(grid: _Grid) -> xr.DataArray:
 def run_pet(grid: _Grid) -> xr.DataArray:
     """Run Thornthwaite PET on the reference grid.
 
-    Latitude is a ``(lat,)`` coordinate rather than a scalar so the spatial
-    kernel receives it as a broadcast input (the scalar form stays on the
-    per-cell path).
+    Latitude is a ``(lat,)`` coordinate so each cell gets its own latitude for
+    the day-length term; a scalar would apply one latitude to the whole grid.
     """
     return pet_thornthwaite(
         grid.temperature,
@@ -168,7 +170,19 @@ def _run_spi(grid: _Grid) -> xr.DataArray:
     return run_spi(grid.precip)
 
 
-_RUNNERS: dict[str, _Runner] = {"spi": _run_spi, "spei": run_spei, "pet": run_pet, "eddi": run_eddi}
+class _Index(NamedTuple):
+    """A benchmarkable index, and how many leading time steps it pads with NaN."""
+
+    run: _Runner
+    leading_pad: int
+
+
+_RUNNERS: dict[str, _Index] = {
+    "spi": _Index(_run_spi, SCALE - 1),
+    "spei": _Index(run_spei, SCALE - 1),
+    "pet": _Index(run_pet, 0),
+    "eddi": _Index(run_eddi, SCALE - 1),
+}
 
 
 def _split_cells(cells: int, parts: int) -> tuple[int, ...]:
@@ -198,48 +212,55 @@ def _chunk_for_workers(array: xr.DataArray, workers: int) -> xr.DataArray:
     )
 
 
-def _require_finite_tail(values: np.ndarray) -> None:
-    """Reject output that degenerated past the leading scale-1 padding.
+def _require_finite_tail(values: np.ndarray, leading_pad: int) -> None:
+    """Reject output that degenerated past the index's leading NaN padding.
 
-    Every benchmarked index pads the first ``scale - 1`` time steps with NaN;
-    anything else non-finite means the fit degenerated and the timing above
+    SPI, SPEI and EDDI pad the first ``scale - 1`` time steps with NaN, so the
+    check starts there; PET has no padding and is checked from the first step.
+    Anything else non-finite means the fit degenerated and the timing above
     measures nothing useful.
+
+    Args:
+        values: index output on the reference grid
+        leading_pad: number of leading time steps allowed to be NaN
     """
-    if not np.isfinite(values[SCALE - 1 :]).all():
-        raise RuntimeError(f"non-finite output beyond the leading {SCALE - 1} padded time steps")
+    if not np.isfinite(values[leading_pad:]).all():
+        raise RuntimeError(f"non-finite output beyond the leading {leading_pad} padded time steps")
 
 
-def _time_serial(grid: _Grid, runner: _Runner) -> float:
-    """Run ``runner`` on the in-memory grid once and return the elapsed seconds."""
+def _time_serial(grid: _Grid, index: _Index) -> float:
+    """Run ``index`` on the in-memory grid once and return the elapsed seconds."""
     start = time.perf_counter()
-    values = runner(grid).values
+    values = index.run(grid).values
     elapsed = time.perf_counter() - start
-    _require_finite_tail(values)
+    _require_finite_tail(values, index.leading_pad)
     return elapsed
 
 
-def _serial_timings(grid: _Grid, runner: _Runner, repeat: int) -> tuple[float, float]:
+def _serial_timings(grid: _Grid, index: _Index, repeat: int) -> tuple[float, float]:
     """Time the serial in-memory call at the default INFO level, then quiet.
 
-    INFO is what an unconfigured caller pays; the WARNING run isolates the
-    fitting path from the per-cell log volume the INFO run includes.
+    Both samples filter goodness-of-fit warnings, as the Dask runs do, so the
+    INFO/quiet delta isolates per-cell log rendering. INFO therefore measures the
+    library's default log level, not the full cost an unconfigured,
+    warning-visible caller pays.
 
     Args:
         grid: reference-grid inputs
-        runner: index to benchmark
+        index: index to benchmark
         repeat: timed runs per level, the fastest of each is reported
 
     Returns:
         Fastest INFO seconds and fastest WARNING seconds
     """
     logging.getLogger().setLevel(logging.INFO)
-    info = min(_time_serial(grid, runner) for _ in range(repeat))
+    info = min(_time_serial(grid, index) for _ in range(repeat))
     logging.getLogger().setLevel(logging.WARNING)
-    quiet = min(_time_serial(grid, runner) for _ in range(repeat))
+    quiet = min(_time_serial(grid, index) for _ in range(repeat))
     return info, quiet
 
 
-def _measure(runner: _Runner, grid: _Grid, workers: int, repeat: int) -> float:
+def _measure(index: _Index, grid: _Grid, workers: int, repeat: int) -> float:
     """Return the fastest of ``repeat`` runs on ``workers`` Dask processors.
 
     One extra warm-up run keeps parent-side first-call imports out of the timed
@@ -258,14 +279,14 @@ def _measure(runner: _Runner, grid: _Grid, workers: int, repeat: int) -> float:
         start = time.perf_counter()
         # chunksize=1: the default batches up to six ready tasks per submission, which
         # runs a whole six-block batch sequentially on one worker
-        result = runner(inputs).compute(
+        result = index.run(inputs).compute(
             scheduler="processes",
             num_workers=workers,
             chunksize=1,
             initializer=_quiet_worker,
         )
         timings.append(time.perf_counter() - start)
-    _require_finite_tail(result.values)
+    _require_finite_tail(result.values, index.leading_pad)
     return min(timings[1:])
 
 
@@ -327,13 +348,8 @@ def _parse_args() -> argparse.Namespace:
     return args
 
 
-def _quiet_gof_warnings() -> None:
-    """Silence goodness-of-fit warnings, which cost more than the computation."""
-    warnings.filterwarnings("ignore", category=GoodnessOfFitWarning)
-
-
 def _quiet_logging() -> None:
-    """Pin logging off for the parallel runs.
+    """Pin logging off for the Dask runs.
 
     Workers inherit the log level from the environment, and the pool
     initializer installs the goodness-of-fit filter in each worker, so
@@ -344,14 +360,14 @@ def _quiet_logging() -> None:
 
 
 def _quiet_worker() -> None:
-    """Silence goodness-of-fit warnings inside a Dask worker process."""
+    """Silence goodness-of-fit warnings, in the parent process and in Dask workers."""
     warnings.filterwarnings("ignore", category=GoodnessOfFitWarning)
 
 
 def main() -> None:
     """Benchmark every requested index: serial in-memory, then across Dask workers."""
     args = _parse_args()
-    _quiet_gof_warnings()
+    _quiet_worker()
     workers = args.cores or _default_workers()
     print(
         f"reference grid: {REFERENCE_LAT}x{REFERENCE_LON} cells, {REFERENCE_YEARS} years monthly; scale={SCALE}; "
@@ -359,28 +375,28 @@ def main() -> None:
     )
     print(
         f"environment: python {platform.python_version()}; {platform.platform()}; {os.cpu_count()} CPUs; "
-        f"fastest of {args.repeat} runs after a warm-up"
+        f"dask {dask.__version__}; xarray {xr.__version__}; fastest of {args.repeat} runs after a warm-up"
     )
 
     grid = build_inputs()
     names = args.indices.split(",")
     for name in names:
-        runner = _RUNNERS[name]
+        index = _RUNNERS[name]
         # one untimed run keeps first-call imports and caches out of the samples
-        runner(grid)
-        info, quiet = _serial_timings(grid, runner, args.repeat)
-        print(f"\n{name}\nserial in-memory: {info:.3f} s (INFO) | {quiet:.3f} s (quiet log)")
+        index.run(grid)
+        info, quiet = _serial_timings(grid, index, args.repeat)
+        print(f"\n{name}\nserial in-memory: {info:.3f} s (INFO, GoF warnings filtered) | {quiet:.3f} s (quiet log)")
     if args.serial_only:
         return
 
     _quiet_logging()
     print(f"\nDask worker counts: {','.join(str(count) for count in workers)}; scheduler=processes")
     for name in names:
-        runner = _RUNNERS[name]
+        index = _RUNNERS[name]
         print(f"\n{name}\n{'workers':>8} {'blocks':>7} {'seconds':>9} {'speedup':>8} {'efficiency':>11}")
         baseline = None
         for worker_count in workers:
-            seconds = _measure(runner, grid, worker_count, args.repeat)
+            seconds = _measure(index, grid, worker_count, args.repeat)
             if baseline is None:
                 baseline = seconds
             speedup = baseline / seconds
