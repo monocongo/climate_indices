@@ -66,6 +66,7 @@ _wrapped_eddi = xarray_adapter(
     cf_metadata=CF_METADATA["eddi"],  # type: ignore[arg-type]
     index_display_name="EDDI",
     calculation_metadata_keys=["scale", "calibration_year_initial", "calibration_year_final"],
+    spatial_kernel=True,
 )(indices.eddi)
 
 
@@ -252,6 +253,7 @@ _wrapped_percentage_of_normal = xarray_adapter(
     cf_metadata=CF_METADATA["percentage_of_normal"],  # type: ignore[arg-type]
     index_display_name="PNP",
     calculation_metadata_keys=["scale", "calibration_start_year", "calibration_end_year"],
+    spatial_kernel=True,
 )(indices.percentage_of_normal)
 
 

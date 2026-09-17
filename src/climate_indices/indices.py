@@ -48,6 +48,12 @@ _HASTINGS_D1 = 1.432788
 _HASTINGS_D2 = 0.189269
 _HASTINGS_D3 = 0.001308
 
+# ceiling on the elements of EDDI's rank comparison, i.e. one chunk of the
+# (climatology years x years x cells) count that ranks every calendar period; the
+# boolean intermediate is held one byte per element, so this bounds it near 4 MB
+# for any grid rather than growing with the number of calibration years
+_EDDI_RANK_COMPARISON_ELEMENT_BUDGET = 4_000_000
+
 # day-of-year start index of each calendar month, keyed by the number of days in
 # the year; used as the np.add.reduceat boundaries when computing PCI
 _PCI_MONTH_STARTS: dict[int, np.ndarray] = {
@@ -126,19 +132,22 @@ def _validate_periodicity(periodicity: compute.Periodicity) -> None:
         )
 
 
-def _raise_if_unsupported_shape(values: np.ndarray) -> None:
+def _raise_if_unsupported_shape(values: np.ndarray, spatial_time_major: bool = False) -> None:
     """Raise the DataShapeError this module has always raised for unsupported input shapes.
 
     Args:
         values: The input array to validate
+        spatial_time_major: Whether a three-or-more-dimensional input is a declared
+            time-major block, shaped (time, *cells), which is then a supported shape
 
     Raises:
-        DataShapeError: If the array is not 1-D or 2-D
+        DataShapeError: If the array is not 1-D, 2-D, or a declared time-major block
     """
-    if values.ndim not in (1, 2):
+    if values.ndim not in (1, 2) and not (spatial_time_major and values.ndim > 2):
         raise DataShapeError(
-            f"Invalid shape of input array: {values.shape} -- only 1-D and 2-D arrays are supported",
-            expected_shape="(N,) or (years, periods)",
+            f"Invalid shape of input array: {values.shape} -- only 1-D and 2-D arrays are supported, "
+            "or a three-or-more-dimensional time-major block declared with spatial_time_major=True",
+            expected_shape="(N,), (years, periods), or a declared (time, *cells) block",
             actual_shape=values.shape,
         )
 
@@ -227,6 +236,8 @@ def eddi(
     calibration_year_initial: int,
     calibration_year_final: int,
     periodicity: compute.Periodicity,
+    *,
+    spatial_time_major: bool = False,
 ) -> np.ndarray:
     """Compute the Evaporative Demand Drought Index (EDDI).
 
@@ -241,7 +252,9 @@ def eddi(
         pet_values: 1-D numpy array of PET (potential evapotranspiration) values.
             The first value corresponds to January of ``data_start_year`` for
             monthly data or January 1st for daily data. 2-D arrays are accepted
-            and will be flattened automatically.
+            and will be flattened automatically. A time-major spatial block,
+            shaped (time, *cells), ranks every cell in one pass when it is
+            declared with ``spatial_time_major``.
         scale: Number of time steps over which PET values are accumulated
             before ranking. Must be in [1, 72].
         data_start_year: First year of the input PET dataset.
@@ -251,13 +264,21 @@ def eddi(
         periodicity: Temporal resolution of the input data. Use
             ``compute.Periodicity.monthly`` (12 values/year) or
             ``compute.Periodicity.daily`` (366 values/year).
+        spatial_time_major: Read a three-or-more-dimensional ``pet_values`` as a
+            time-major block of independent time series, shaped (time, *cells),
+            and rank every cell against its own climatology in one pass. The
+            xarray adapter sets this for every block it packs; a direct NumPy
+            caller has to declare it, since a block is not a shape EDDI reads
+            without being told.
 
     Returns:
         1-D numpy array of EDDI values (unitless z-scores), same length as
-        the input. Values are clipped to [-3.09, 3.09].
+        the input, or the same (time, *cells) shape as a declared block. Values
+        are clipped to [-3.09, 3.09].
 
     Raises:
-        DataShapeError: If the input array has more than 2 dimensions.
+        DataShapeError: If the input array has more than 2 dimensions and is not
+            a declared time-major block.
         InvalidArgumentError: If scale, periodicity, or calibration years
             are invalid.
     """
@@ -277,14 +298,31 @@ def eddi(
     memory_metrics = check_large_array_memory(pet_values)
 
     try:
-        # remember the original length of the array
+        # remember the original length and shape of the array, in order to facilitate
+        # returning an array of the same size and layout
         original_length = pet_values.size
+        original_shape = pet_values.shape
 
-        # input shapes other than 1-D/2-D keep this index's legacy DataShapeError
-        _raise_if_unsupported_shape(pet_values)
+        # input shapes other than 1-D/2-D keep this index's legacy DataShapeError,
+        # and a declared block is the only way a 3-D or higher input is accepted
+        _raise_if_unsupported_shape(pet_values, spatial_time_major)
+
+        # an all-missing block is returned as it arrived, as the preparation seam
+        # does for the 1-D and 2-D layouts
+        if pet_values.ndim > 2 and (
+            (isinstance(pet_values, np.ma.MaskedArray) and pet_values.mask.all()) or np.all(np.isnan(pet_values))
+        ):
+            duration_ms = (time.perf_counter() - t0) * 1000.0
+            log.info(
+                "calculation_completed",
+                duration_ms=round(duration_ms, 2),
+                output_shape=pet_values.shape,
+                **(memory_metrics or {}),
+            )
+            return pet_values
 
         # flatten, clip negatives to zero, and scale/reshape in the shared preparation seam
-        pet_values = compute.prepare_scaled(pet_values, scale, periodicity)
+        pet_values = compute.prepare_scaled(pet_values, scale, periodicity, spatial_time_major=spatial_time_major)
         num_periods = periodicity.period_length
 
         # an all-missing input comes back un-reshaped, so there's nothing to compute
@@ -298,9 +336,12 @@ def eddi(
             )
             return pet_values
 
-        # NOAA ranks left-padded scale values below valid observations.
+        # NOAA ranks left-padded scale values below valid observations. The pads are
+        # the first (scale - 1) time steps, which for a spatial block is a slice of
+        # whole rows rather than the first (scale - 1) elements of the flat array.
         leading_scale_pads = np.zeros(pet_values.shape, dtype=bool)
-        leading_scale_pads.flat[: min(scale - 1, original_length)] = True
+        pad_rows = leading_scale_pads.reshape(-1, *pet_values.shape[2:])
+        pad_rows[: min(scale - 1, pad_rows.shape[0])] = True
 
         # compute data dimensions for validation
         num_years = pet_values.shape[0]
@@ -347,55 +388,57 @@ def eddi(
         calibration_start_year_index = calibration_year_initial - data_start_year
         calibration_end_year_index = calibration_year_final - data_start_year
 
-        # initialize output array
-        eddi_values = np.full((num_years, num_periods), np.nan)
+        # Rank every calendar period against its own climatology. The rank is a count
+        # of climatology values below the current value, so each period is walked as a
+        # (climatology years, years, *cells) comparison: one pass over the periods, not
+        # over the grid cells, and the climatology rows are summed in chunks that keep
+        # that intermediate bounded for a large grid, where the whole comparison would
+        # multiply the block by the number of calibration years. Missing climatology
+        # values never compare below a value, so they stay out of the count.
+        climatology = pet_values[calibration_start_year_index : calibration_end_year_index + 1]
+        climatology_valid_counts = np.count_nonzero(~np.isnan(climatology), axis=0)
+        leading_pads_count = np.count_nonzero(
+            leading_scale_pads[calibration_start_year_index : calibration_end_year_index + 1],
+            axis=0,
+        )
+        cells_per_time_step = int(np.prod(pet_values.shape[2:], dtype=np.int64)) or 1
+        rows_per_chunk = max(1, _EDDI_RANK_COMPARISON_ELEMENT_BUDGET // (num_years * cells_per_time_step))
+        probabilities = np.full(pet_values.shape, np.nan)
 
-        # for each period (month or day of year)
         for period_index in range(num_periods):
-            # extract all values for this period across all years
+            period_climatology = climatology[:, period_index]
             period_values = pet_values[:, period_index]
+            below = np.zeros(period_values.shape, dtype=np.int64)
+            for chunk_start in range(0, period_climatology.shape[0], rows_per_chunk):
+                climate_chunk = period_climatology[chunk_start : chunk_start + rows_per_chunk]
+                below += np.count_nonzero(climate_chunk[:, None] < period_values, axis=0)
 
-            # extract climatology values (calibration period only)
-            climatology = period_values[calibration_start_year_index : calibration_end_year_index + 1]
-
-            # Remove missing observations, but preserve the rank positions of
-            # the NaNs added by the scale accumulation at the series start.
-            climatology_valid = climatology[~np.isnan(climatology)]
-            leading_pads_count = np.count_nonzero(
-                leading_scale_pads[calibration_start_year_index : calibration_end_year_index + 1, period_index]
+            # NOAA uses zero-based ranks and treats leading scale pads as lower than every
+            # observed value; this is the Tukey plotting position of that rank
+            period_pads = leading_pads_count[period_index]
+            probabilities[:, period_index] = (period_pads + below + 0.66) / (
+                climatology_valid_counts[period_index] + period_pads + 0.33
             )
 
-            # skip if insufficient climatology data
-            if len(climatology_valid) < 2:
-                continue
+        # a period whose climatology holds fewer than two valid values has no ranking at
+        # all, and a missing value stays missing
+        p = np.where(
+            np.isnan(pet_values) | (climatology_valid_counts < 2),
+            np.nan,
+            probabilities,
+        )
 
-            # for each year, rank against climatology
-            for year_index in range(num_years):
-                current_value = period_values[year_index]
+        # clip probability to valid range to avoid log(0), then apply the Hastings
+        # inverse normal approximation to every cell, year, and period at once
+        eddi_values = _hastings_inverse_normal(np.clip(p, 1e-10, 1.0 - 1e-10))
 
-                # skip NaN values
-                if np.isnan(current_value):
-                    continue
-
-                # NOAA uses zero-based ranks and treats leading scale pads as
-                # lower than every observed value.
-                rank = leading_pads_count + np.sum(current_value > climatology_valid)
-
-                # Tukey plotting position
-                n = len(climatology_valid) + leading_pads_count
-                p = (rank + 0.66) / (n + 0.33)
-
-                # clip probability to valid range to avoid log(0)
-                p = np.clip(p, 1e-10, 1.0 - 1e-10)
-
-                # apply Hastings inverse normal approximation
-                eddi_values[year_index, period_index] = _hastings_inverse_normal(np.array([p]))[0]
-
-        # clip values to within the valid range, reshape the array back to 1-D
-        eddi_values = np.clip(eddi_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX).flatten()
-
-        # return the original size array
-        result = cast(np.ndarray, eddi_values[0:original_length])
+        # clip values to within the valid range, and return an array of the input layout:
+        # a spatial block keeps its cell dimensions and drops the padded final period
+        eddi_values = np.clip(eddi_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX)
+        if eddi_values.ndim > 2:
+            result = cast(np.ndarray, eddi_values.reshape(-1, *eddi_values.shape[2:])[: original_shape[0]])
+        else:
+            result = cast(np.ndarray, eddi_values.flatten()[0:original_length])
         duration_ms = (time.perf_counter() - t0) * 1000.0
         log.info(
             "calculation_completed",
@@ -816,6 +859,8 @@ def percentage_of_normal(
     calibration_start_year: int,
     calibration_end_year: int,
     periodicity: compute.Periodicity,
+    *,
+    spatial_time_major: bool = False,
 ) -> np.ndarray:
     """
     This function finds the percent of normal values (average of each calendar
@@ -841,8 +886,14 @@ def percentage_of_normal(
     :param periodicity: periodicity of the input time series; use
         ``compute.Periodicity.monthly`` for monthly data (12 values/year) or
         ``compute.Periodicity.daily`` for daily data (366 values/year).
+    :param spatial_time_major: read a three-or-more-dimensional ``values`` as a
+        time-major block of independent time series, shaped (time, *cells), and
+        divide every cell by its own calendar-period normals in one pass. The
+        xarray adapter sets this for every block it packs; a direct NumPy caller
+        has to declare it, since a block is not a shape this function reads
+        without being told.
     :return: percent of normal precipitation values corresponding to the
-        scaled precipitation values array
+        scaled precipitation values array, in the input's layout
     :rtype: numpy.ndarray of type float
     """
     # validate arguments
@@ -862,17 +913,21 @@ def percentage_of_normal(
 
     try:
         # we expect to operate upon a 1-D array, so if we've been passed a 2-D array
-        # then we flatten it, otherwise raise an error. Input shapes other than 1-D/2-D
-        # keep this index's legacy DataShapeError.
-        _raise_if_unsupported_shape(values)
+        # then we flatten it. Input shapes other than 1-D/2-D keep this index's legacy
+        # DataShapeError, and a declared block is the only way a 3-D or higher input
+        # is accepted.
+        _raise_if_unsupported_shape(values, spatial_time_major)
         if values.ndim == 2:
             values = values.flatten()
 
         # calendar months for monthly data (12 periods), or days for daily data (366)
         period_length = periodicity.period_length
 
-        # bypass processing if all values are masked
-        if isinstance(values, np.ma.MaskedArray) and values.mask.all():
+        # bypass processing if all values are masked, or when a spatial block is all
+        # missing, in which case it is returned as it arrived
+        if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or (
+            values.ndim > 2 and np.all(np.isnan(values))
+        ):
             duration_ms = (time.perf_counter() - t0) * 1000.0
             log.info(
                 "calculation_completed",
@@ -895,15 +950,17 @@ def percentage_of_normal(
         # note: this check counts 12 time steps per year regardless of periodicity,
         # as it always has. Tightening it to period_length would reject Gregorian
         # daily input (365/366 days per year), which is a separate behavior change.
-        if ((calibration_end_year - calibration_start_year + 1) * 12) > values.size:
+        # A spatial block is measured on its time axis, since every cell shares it and
+        # the element count would let any block pass on cell count alone.
+        if ((calibration_end_year - calibration_start_year + 1) * 12) > values.shape[0]:
             raise InvalidArgumentError(
                 "Invalid calibration period: total calibration years exceeds the "
                 "actual number of years of data. "
                 f"Calibration period: {calibration_start_year}-{calibration_end_year}, "
-                f"data size: {values.size} values.",
+                f"data size: {values.shape[0]} time steps.",
                 argument_name="calibration_end_year",
                 argument_value=str(calibration_end_year),
-                valid_values=f"calibration period must fit within {values.size} data values",
+                valid_values=f"calibration period must fit within {values.shape[0]} data values",
             )
 
         # get an array containing a sliding sum on the specified time step
@@ -919,6 +976,7 @@ def percentage_of_normal(
             periodicity,
             clip_negatives=False,
             reshape=False,
+            spatial_time_major=spatial_time_major,
         )
 
         # extract the timesteps over which we'll compute the normal
@@ -932,19 +990,29 @@ def percentage_of_normal(
             # pad a trailing partial period with NaN (ignored by the average) so that the
             # calibration period reshapes into whole calendar periods, e.g. when the
             # calibration period extends past the end of the data
-            if calibration_period_sums.size % period_length:
+            if calibration_period_sums.shape[0] % period_length:
                 calibration_period_sums = np.concatenate(
-                    [calibration_period_sums, np.full(-calibration_period_sums.size % period_length, np.nan)],
+                    [
+                        calibration_period_sums,
+                        np.full(
+                            (-calibration_period_sums.shape[0] % period_length, *calibration_period_sums.shape[1:]),
+                            np.nan,
+                        ),
+                    ],
                 )
 
             # for each time step in the calibration period, get the average of
             # the scale sum for that calendar time step (i.e. average all January sums,
-            # then all February sums, etc.)
-            averages = np.nanmean(calibration_period_sums.reshape(-1, period_length), axis=0)
+            # then all February sums, etc.); a spatial block keeps its cell axes and
+            # averages each cell's calibration years for every calendar time step
+            averages = np.nanmean(
+                calibration_period_sums.reshape(-1, period_length, *calibration_period_sums.shape[1:]),
+                axis=0,
+            )
         else:
             # the calibration window lies beyond the end of the data, so no normal
             # values are available -- every percentage is missing
-            averages = np.full((period_length,), np.nan)
+            averages = np.full((period_length, *scale_sums.shape[1:]), np.nan)
 
         # for each time step of the scale_sums array find its corresponding percentage
         # of the time steps scale average for its respective calendar time step, leaving
@@ -954,20 +1022,24 @@ def percentage_of_normal(
 
         # divide whole calendar periods at a time so that the repeating normals broadcast
         # from the (small) averages array rather than an input-sized divisor array
-        whole_periods = scale_sums.size // period_length
+        whole_periods = scale_sums.shape[0] // period_length
         if whole_periods:
             np.divide(
-                scale_sums[: whole_periods * period_length].reshape(whole_periods, period_length),
+                scale_sums[: whole_periods * period_length].reshape(
+                    whole_periods, period_length, *scale_sums.shape[1:]
+                ),
                 averages,
-                out=percentages_of_normal[: whole_periods * period_length].reshape(whole_periods, period_length),
+                out=percentages_of_normal[: whole_periods * period_length].reshape(
+                    whole_periods, period_length, *scale_sums.shape[1:]
+                ),
             )
 
         # a trailing partial period uses the normals of the calendar time steps it covers
         remainder_start = whole_periods * period_length
-        if remainder_start < scale_sums.size:
+        if remainder_start < scale_sums.shape[0]:
             np.divide(
                 scale_sums[remainder_start:],
-                averages[: scale_sums.size - remainder_start],
+                averages[: scale_sums.shape[0] - remainder_start],
                 out=percentages_of_normal[remainder_start:],
             )
 

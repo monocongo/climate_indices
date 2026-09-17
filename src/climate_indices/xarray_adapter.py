@@ -1572,7 +1572,7 @@ def xarray_adapter(
             dimension are packed this way; a 2-D input keeps the per-cell path. The
             kernel is told the block is time-major through a ``spatial_time_major``
             keyword, which it must accept. Indices whose kernels still loop over cells
-            leave this False (see #941, #942).
+            leave this False (see #940).
 
     Returns:
         Decorator function that wraps index computation functions

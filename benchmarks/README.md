@@ -177,12 +177,21 @@ monthly day-length term and Hargreaves' daily radiation are computed once per bl
 instead of once per grid cell. A 2-D input, or a latitude carrying a dimension the
 temperature does not, stays on the per-cell path.
 
+`indices.eddi` and `indices.percentage_of_normal` now take the same block (#942). EDDI
+ranks each calendar period's values against its own calibration climatology with a
+climatology-row chunked count, one pass over the whole grid rather than a per-year,
+per-period loop, and percentage of normal averages each cell's calendar-period normals
+and divides the block by them. Both keep the legacy 1-D and 2-D behaviour, and both
+require `spatial_time_major=True` for a 3-D input since their dimension errors are
+pinned to `DataShapeError`. The ranking count holds one chunk of the
+`(calibration years, years, *cells)` comparison at a time, bounded near 4 MB, so grid
+size no longer multiplies into it.
+
 The remaining per-cell sites above are owned by follow-ups:
 
 | remaining site | owner |
 | --- | --- |
 | `indices.spi`/`indices.spei` with `Distribution.pearson` (per-series L-moment fit) | #940 |
-| `indices.eddi` (per-period, per-year ranking loop), `indices.percentage_of_normal` | #942 |
 | `palmer.pdsi`/`palmer.scpdsi` (no adapter layer at all) | #937 |
 
 ### Legacy CLI path (per-cell loop present, parallel across workers)
