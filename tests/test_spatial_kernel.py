@@ -1616,7 +1616,7 @@ class TestSpatialNonParametricBlockContracts:
         np.testing.assert_array_equal(chunked, _eddi_grid(gridded_monthly_precip.values, scale=3))
 
     def test_eddi_masked_block_drops_the_mask(self, gridded_monthly_precip):
-        """A masked block ranks the underlying values, as the per-cell path does."""
+        """A masked window becomes missing, matching what the per-cell path does with the same mask."""
         values = gridded_monthly_precip.values
         masked = np.ma.masked_array(values, mask=False)
         masked.mask[5:15, 1, 0] = True
@@ -1631,11 +1631,15 @@ class TestSpatialNonParametricBlockContracts:
             spatial_time_major=True,
         )
 
-        np.testing.assert_array_equal(result, _eddi_grid(values, scale=3))
+        np.testing.assert_array_equal(result, _eddi_grid(masked, scale=3))
         assert np.isfinite(result[6, 0, 0])
+        # scale=3 windows overlapping the masked span [5, 15) are missing rather than
+        # silently scaled from the underlying (masked-out) values
+        assert np.all(np.isnan(result[5:17, 1, 0]))
+        assert not np.any(np.isnan(result[17:, 1, 0]))
 
     def test_percentage_of_normal_masked_block_drops_the_mask(self, gridded_monthly_precip):
-        """A masked block divides the underlying values, as the per-cell path does."""
+        """A masked window becomes missing, matching what the per-cell path does with the same mask."""
         values = gridded_monthly_precip.values
         masked = np.ma.masked_array(values, mask=False)
         masked.mask[5:15, 1, 0] = True
@@ -1652,12 +1656,15 @@ class TestSpatialNonParametricBlockContracts:
 
         np.testing.assert_allclose(
             result,
-            _percentage_of_normal_grid(values, scale=3),
+            _percentage_of_normal_grid(masked, scale=3),
             atol=1e-8,
             rtol=1e-7,
             equal_nan=True,
         )
-        assert not np.any(np.isnan(result[5:15, 1, 0]))
+        # scale=3 windows overlapping the masked span [5, 15) are missing rather than
+        # silently scaled from the underlying (masked-out) values
+        assert np.all(np.isnan(result[5:17, 1, 0]))
+        assert not np.any(np.isnan(result[17:, 1, 0]))
 
     def test_period_length_cell_axis_is_declared_by_the_adapter(self):
         """A grid whose first cell axis is 12 is ambiguous, and the adapter declares the reading."""
