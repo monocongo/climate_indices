@@ -2,6 +2,7 @@
 
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -23,7 +24,100 @@ K8_SIZE = 40
 _PalmerResult = tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any] | None]
 
 
-def _select_duration_factors(data: dict[str, Any]) -> tuple[float, float]:
+@dataclass
+class _PalmerData:
+    """Prepared inputs, water-balance intermediates, recursion state, and outputs.
+
+    Replaces the untyped dictionary the Palmer pipeline threaded through its
+    ``_calc_*`` and ``_statement_*`` helpers. Fields are grouped by the stage
+    that owns them; the recursion-state scalars that a statement assigns before
+    reading default to zero, so a struct can be constructed ahead of the
+    recursion that fills them.
+    """
+
+    # input record and calibration configuration
+    precips: np.ndarray
+    pet: np.ndarray
+    awc: float
+    awc_bot: float
+    n_years: int
+    n_calb_years: int
+    calibration_year_initial_idx: int
+    calibration_year_final_idx: int
+    calibrate: bool
+
+    # water balance: monthly arrays and calibration-period monthly sums
+    spdat: np.ndarray
+    pldat: np.ndarray
+    prdat: np.ndarray
+    rdat: np.ndarray
+    tldat: np.ndarray
+    etdat: np.ndarray
+    rodat: np.ndarray
+    sssdat: np.ndarray
+    ssudat: np.ndarray
+    psum: np.ndarray
+    spsum: np.ndarray
+    petsum: np.ndarray
+    plsum: np.ndarray
+    prsum: np.ndarray
+    rsum: np.ndarray
+    tlsum: np.ndarray
+    etsum: np.ndarray
+    rosum: np.ndarray
+
+    # CAFEC coefficients, moisture-demand ratio, and Z-index weighting factors
+    alpha: np.ndarray
+    beta: np.ndarray
+    gamma: np.ndarray
+    delta: np.ndarray
+    trat: np.ndarray
+    ak: np.ndarray
+
+    # duration factors
+    wetm: float
+    wetb: float
+    drym: float
+    dryb: float
+
+    # recursion state: the K8 window, per-month candidates, and the current severity
+    indexj: np.ndarray
+    indexm: np.ndarray
+    sx: np.ndarray
+    sx1: np.ndarray
+    sx2: np.ndarray
+    sx3: np.ndarray
+    ppr: np.ndarray
+    px1: np.ndarray
+    px2: np.ndarray
+    px3: np.ndarray
+    x: np.ndarray
+
+    # arrays the recursion and the CAFEC stage write, and the results built from them
+    z: np.ndarray
+    cp: np.ndarray
+    pdsi: np.ndarray
+    phdi: np.ndarray
+    wplm: np.ndarray
+
+    # state a statement assigns before reading it; zero until the recursion runs
+    k8: int = 0
+    k8max: int = 0
+    iass: int = 0
+    year: int = 0
+    month: int = 0
+    v: float = 0.0
+    pro: float = 0.0
+    x1: float = 0.0
+    x2: float = 0.0
+    x3: float = 0.0
+    ze: float = 0.0
+    ud: float = 0.0
+    uw: float = 0.0
+    pv: float = 0.0
+
+
+def _select_duration_factors(data: _PalmerData) -> tuple[float, float]:
     """
     Select the wet or dry duration factors based on the sign of the
     currently-established spell's severity (X3).
@@ -38,9 +132,9 @@ def _select_duration_factors(data: dict[str, Any]) -> tuple[float, float]:
     :return a tuple of (m, b) - the duration-factor slope and intercept
     :rtype: tuple[float, float]
     """
-    if data["x3"] >= 0:
-        return data["wetm"], data["wetb"]
-    return data["drym"], data["dryb"]
+    if data.x3 >= 0:
+        return data.wetm, data.wetb
+    return data.drym, data.dryb
 
 
 def _get_awc_bot(awc: float) -> float:
@@ -160,96 +254,92 @@ def _calc_recharge(
 
 
 def _calc_cafec_ratio(
-    data: dict[str, Any],
-    name: str,
-    numerator_key: str,
-    denominator_key: str,
+    numerator: np.ndarray,
+    denominator: np.ndarray,
     both_zero: float = 1.0,
-) -> None:
+) -> np.ndarray:
     """
     Calculate a CAFEC coefficient as the ratio of two summed water balance terms
 
-    :param data: dictionary of parameters (intialized in pdsi)
-    :param name: key of the coefficient to calculate
-    :param numerator_key: key of the numerator sums
-    :param denominator_key: key of the denominator sums
+    :param numerator: the numerator sums
+    :param denominator: the denominator sums
     :param both_zero: value to use when the numerator and denominator are both zero
+    :return the per-month ratios
+    :rtype: np.ndarray
     """
-    numerator = data[numerator_key]
-    denominator = data[denominator_key]
     values = np.zeros(denominator.shape)
     for idx, den in enumerate(denominator):
         if den != 0:
             values[idx] = numerator[idx] / den
         elif numerator[idx] == 0:
             values[idx] = both_zero
-    data[name] = values
+    return values
 
 
-def _calc_water_balances(data: dict[str, Any]) -> None:
+def _calc_water_balances(data: _PalmerData) -> None:
     """
     Perform water balance calculations
 
     :param data: dictionary of parameters (intialized in pdsi)
     """
     ss = AWCTOP
-    su = data["awc_bot"]
-    for year in range(data["n_years"]):
+    su = data.awc_bot
+    for year in range(data.n_years):
         for month in range(12):
-            p = data["precips"][year, month]
-            pet = data["pet"][year, month]
+            p = data.precips[year, month]
+            pet = data.pet[year, month]
             sp = ss + su
-            pr = data["awc_bot"] + AWCTOP - sp
+            pr = data.awc_bot + AWCTOP - sp
 
             # Get potential loss
-            pl = _calc_potential_loss(pet, ss, su, data["awc"])
+            pl = _calc_potential_loss(pet, ss, su, data.awc)
 
             # Calculate recharge, runoff, residual moisture, loss to both
             # surface and under layers, depending on starting moisture
             # content and values of precipitation and evaporation
-            et, tl, r, ro, sss, ssu = _calc_recharge(p, pet, ss, su, data["awc"])
+            et, tl, r, ro, sss, ssu = _calc_recharge(p, pet, ss, su, data.awc)
 
             # update sums
-            if data["calibration_year_initial_idx"] <= year <= data["calibration_year_final_idx"]:
-                data["psum"][month] += p
-                data["spsum"][month] += sp
-                data["petsum"][month] += pet
-                data["plsum"][month] += pl
-                data["prsum"][month] += pr
-                data["rsum"][month] += r
-                data["tlsum"][month] += tl
-                data["etsum"][month] += et
-                data["rosum"][month] += ro
+            if data.calibration_year_initial_idx <= year <= data.calibration_year_final_idx:
+                data.psum[month] += p
+                data.spsum[month] += sp
+                data.petsum[month] += pet
+                data.plsum[month] += pl
+                data.prsum[month] += pr
+                data.rsum[month] += r
+                data.tlsum[month] += tl
+                data.etsum[month] += et
+                data.rosum[month] += ro
 
             # set data
-            data["spdat"][year, month] = sp
-            data["pldat"][year, month] = pl
-            data["prdat"][year, month] = pr
-            data["rdat"][year, month] = r
-            data["tldat"][year, month] = tl
-            data["etdat"][year, month] = et
-            data["rodat"][year, month] = ro
-            data["sssdat"][year, month] = sss
-            data["ssudat"][year, month] = ssu
+            data.spdat[year, month] = sp
+            data.pldat[year, month] = pl
+            data.prdat[year, month] = pr
+            data.rdat[year, month] = r
+            data.tldat[year, month] = tl
+            data.etdat[year, month] = et
+            data.rodat[year, month] = ro
+            data.sssdat[year, month] = sss
+            data.ssudat[year, month] = ssu
 
             # update soil moisture
             ss = sss
             su = ssu
 
 
-def _calc_cafec_coefficients(data: dict[str, Any]) -> None:
+def _calc_cafec_coefficients(data: _PalmerData) -> None:
     """
     Calculate CAFEC Coefficients
 
     :param data: dictionary of parameters (intialized in pdsi)
     """
-    _calc_cafec_ratio(data, "alpha", "etsum", "petsum")
-    _calc_cafec_ratio(data, "beta", "rsum", "prsum")
-    _calc_cafec_ratio(data, "gamma", "rosum", "spsum")
-    _calc_cafec_ratio(data, "delta", "tlsum", "plsum", both_zero=0.0)
+    data.alpha = _calc_cafec_ratio(data.etsum, data.petsum)
+    data.beta = _calc_cafec_ratio(data.rsum, data.prsum)
+    data.gamma = _calc_cafec_ratio(data.rosum, data.spsum)
+    data.delta = _calc_cafec_ratio(data.tlsum, data.plsum, both_zero=0.0)
 
 
-def _calc_zindex_factors(data: dict[str, Any]) -> None:
+def _calc_zindex_factors(data: _PalmerData) -> None:
     """
     Calculate Z-Index weighting factors (variable AK)
 
@@ -258,49 +348,49 @@ def _calc_zindex_factors(data: dict[str, Any]) -> None:
 
     :param data: dictionary of parameters (intialized in pdsi)
     """
-    data["trat"] = (data["petsum"] + data["rsum"] + data["rosum"]) / (data["psum"] + data["tlsum"])
+    data.trat = (data.petsum + data.rsum + data.rosum) / (data.psum + data.tlsum)
 
 
-def _avg_calibration_sums(data: dict[str, Any]) -> None:
+def _avg_calibration_sums(data: _PalmerData) -> None:
     """
     Average the sums over the calibration period
 
     :param data: dictionary of parameters (intialized in pdsi)
     """
-    n_calb_years = data["n_calb_years"]
-    data["psum"] = data["psum"] / n_calb_years
-    data["spsum"] = data["spsum"] / n_calb_years
-    data["petsum"] = data["petsum"] / n_calb_years
-    data["plsum"] = data["plsum"] / n_calb_years
-    data["prsum"] = data["prsum"] / n_calb_years
-    data["rsum"] = data["rsum"] / n_calb_years
-    data["tlsum"] = data["tlsum"] / n_calb_years
-    data["etsum"] = data["etsum"] / n_calb_years
-    data["rosum"] = data["rosum"] / n_calb_years
+    n_calb_years = data.n_calb_years
+    data.psum = data.psum / n_calb_years
+    data.spsum = data.spsum / n_calb_years
+    data.petsum = data.petsum / n_calb_years
+    data.plsum = data.plsum / n_calb_years
+    data.prsum = data.prsum / n_calb_years
+    data.rsum = data.rsum / n_calb_years
+    data.tlsum = data.tlsum / n_calb_years
+    data.etsum = data.etsum / n_calb_years
+    data.rosum = data.rosum / n_calb_years
 
 
-def _calc_k_prime_and_dbar(data: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
+def _calc_k_prime_and_dbar(data: _PalmerData) -> tuple[np.ndarray, np.ndarray]:
     """
     Calculate monthly mean absolute departures (dbar) and raw K-prime factors
 
     :param data: dictionary of parameters (intialized in pdsi)
     """
     sabsd = np.zeros((12,))
-    for year in range(data["calibration_year_initial_idx"], data["calibration_year_final_idx"] + 1):
+    for year in range(data.calibration_year_initial_idx, data.calibration_year_final_idx + 1):
         for month in range(12):
             phat = (
-                data["alpha"][month] * data["pet"][year, month]
-                + data["beta"][month] * data["prdat"][year, month]
-                + data["gamma"][month] * data["spdat"][year, month]
-                - data["delta"][month] * data["pldat"][year, month]
+                data.alpha[month] * data.pet[year, month]
+                + data.beta[month] * data.prdat[year, month]
+                + data.gamma[month] * data.spdat[year, month]
+                - data.delta[month] * data.pldat[year, month]
             )
-            sabsd[month] += abs(data["precips"][year, month] - phat)
+            sabsd[month] += abs(data.precips[year, month] - phat)
 
-    dbar = sabsd / data["n_calb_years"]
-    return dbar, 1.5 * np.log10((data["trat"] + 2.8) / dbar) + 0.5
+    dbar = sabsd / data.n_calb_years
+    return dbar, 1.5 * np.log10((data.trat + 2.8) / dbar) + 0.5
 
 
-def _calc_kfactors(data: dict[str, Any]) -> None:
+def _calc_kfactors(data: _PalmerData) -> None:
     """
     Calculate K Factors
 
@@ -311,10 +401,10 @@ def _calc_kfactors(data: dict[str, Any]) -> None:
     """
     dbar, akhat = _calc_k_prime_and_dbar(data)
     swtd = np.sum(dbar * akhat)
-    data["ak"] = 17.67 * akhat / swtd
+    data.ak = 17.67 * akhat / swtd
 
 
-def _calc_scpdsi_k_factors(data: dict[str, Any]) -> None:
+def _calc_scpdsi_k_factors(data: _PalmerData) -> None:
     """Calculate the unnormalized monthly K-prime factors for scPDSI."""
     with np.errstate(divide="ignore", invalid="ignore"):
         _, k_prime = _calc_k_prime_and_dbar(data)
@@ -323,10 +413,10 @@ def _calc_scpdsi_k_factors(data: dict[str, Any]) -> None:
             "scPDSI K-prime calibration produced non-finite values",
             algorithm="scPDSI K-prime calibration",
         )
-    data["ak"] = k_prime
+    data.ak = k_prime
 
 
-def _calc_cafec_zindex(data: dict[str, Any], year: int, month: int) -> None:
+def _calc_cafec_zindex(data: _PalmerData, year: int, month: int) -> None:
     """
     Calculate one month's CAFEC (climatically appropriate for existing
     conditions) precipitation and raw Z-index, writing both into the data
@@ -341,26 +431,26 @@ def _calc_cafec_zindex(data: dict[str, Any], year: int, month: int) -> None:
     :param month: month index, 0 = January
     """
     cafec = (
-        data["alpha"][month] * data["pet"][year, month]
-        + data["beta"][month] * data["prdat"][year, month]
-        + data["gamma"][month] * data["spdat"][year, month]
-        - data["delta"][month] * data["pldat"][year, month]
+        data.alpha[month] * data.pet[year, month]
+        + data.beta[month] * data.prdat[year, month]
+        + data.gamma[month] * data.spdat[year, month]
+        - data.delta[month] * data.pldat[year, month]
     )
-    data["cp"][year, month] = cafec
-    data["z"][year, month] = data["ak"][month] * (data["precips"][year, month] - cafec)
+    data.cp[year, month] = cafec
+    data.z[year, month] = data.ak[month] * (data.precips[year, month] - cafec)
 
 
-def _calc_scpdsi_raw_zindex(data: dict[str, Any]) -> None:
+def _calc_scpdsi_raw_zindex(data: _PalmerData) -> None:
     """Calculate raw Z-index values for the entire input record."""
-    for year in range(data["n_years"]):
+    for year in range(data.n_years):
         for month in range(12):
             _calc_cafec_zindex(data, year, month)
 
 
-def _calibration_values(data: dict[str, Any], values: np.ndarray) -> np.ndarray:
+def _calibration_values(data: _PalmerData, values: np.ndarray) -> np.ndarray:
     """Return the flattened inclusive calibration-period portion of an array."""
-    first = data["calibration_year_initial_idx"] * 12
-    final = (data["calibration_year_final_idx"] + 1) * 12
+    first = data.calibration_year_initial_idx * 12
+    final = (data.calibration_year_final_idx + 1) * 12
     return np.asarray(values).reshape(-1)[first:final]
 
 
@@ -423,76 +513,76 @@ def _case(prob: float, x1: float, x2: float, x3: float) -> float:
     return (1.0 - pro) * x3 + pro * x2
 
 
-def _assign(data: dict[str, Any]) -> None:
+def _assign(data: _PalmerData) -> None:
     """
     Assign x values
 
     :param data: dictionary of parameters (intialized in pdsi)
     """
-    year = data["year"]
-    month = data["month"]
-    data["sx"][data["k8"]] = data["x"][year, month]
-    isave = data["iass"]
-    if data["k8"] == 0:
-        data["pdsi"][year, month] = data["x"][year, month]
-        data["phdi"][year, month] = data["px3"][year, month]
-        if data["px3"][year, month] == 0:
-            data["phdi"][year, month] = data["x"][year, month]
+    year = data.year
+    month = data.month
+    data.sx[data.k8] = data.x[year, month]
+    isave = data.iass
+    if data.k8 == 0:
+        data.pdsi[year, month] = data.x[year, month]
+        data.phdi[year, month] = data.px3[year, month]
+        if data.px3[year, month] == 0:
+            data.phdi[year, month] = data.x[year, month]
 
-        data["wplm"][year, month] = _case(
-            data["ppr"][year, month],
-            data["px1"][year, month],
-            data["px2"][year, month],
-            data["px3"][year, month],
+        data.wplm[year, month] = _case(
+            data.ppr[year, month],
+            data.px1[year, month],
+            data.px2[year, month],
+            data.px3[year, month],
         )
         return
 
     # use all x3 values
-    if data["iass"] == 3:
-        for i in range(data["k8"]):
-            data["sx"][i] = data["sx3"][i]
+    if data.iass == 3:
+        for i in range(data.k8):
+            data.sx[i] = data.sx3[i]
 
     # backtrack through arrays, storing assigned x1 (or x2)
     # in sx until it is zero, then switching to the other until
     # it is zero, etc
     else:
-        for i in range(data["k8"] - 1, -1, -1):
+        for i in range(data.k8 - 1, -1, -1):
             if isave == 2:
-                if data["sx2"][i] == 0:
+                if data.sx2[i] == 0:
                     isave = 1
-                    data["sx"][i] = data["sx1"][i]
+                    data.sx[i] = data.sx1[i]
                 else:
                     isave = 2
-                    data["sx"][i] = data["sx2"][i]
+                    data.sx[i] = data.sx2[i]
             else:
-                if data["sx1"][i] == 0:
+                if data.sx1[i] == 0:
                     isave = 2
-                    data["sx"][i] = data["sx2"][i]
+                    data.sx[i] = data.sx2[i]
                 else:
                     isave = 1
-                    data["sx"][i] = data["sx1"][i]
+                    data.sx[i] = data.sx1[i]
 
     # proper assignments to array sx have been made, output the mess
-    for idx in range(data["k8"] + 1):
-        j = int(data["indexj"][idx])
-        m = int(data["indexm"][idx])
-        data["pdsi"][j, m] = data["sx"][idx]
-        data["phdi"][j, m] = data["px3"][j, m]
+    for idx in range(data.k8 + 1):
+        j = int(data.indexj[idx])
+        m = int(data.indexm[idx])
+        data.pdsi[j, m] = data.sx[idx]
+        data.phdi[j, m] = data.px3[j, m]
 
-        if data["px3"][j, m] == 0:
-            data["phdi"][j, m] = data["sx"][idx]
+        if data.px3[j, m] == 0:
+            data.phdi[j, m] = data.sx[idx]
 
-        data["wplm"][j, m] = _case(
-            data["ppr"][j, m],
-            data["px1"][j, m],
-            data["px2"][j, m],
-            data["px3"][j, m],
+        data.wplm[j, m] = _case(
+            data.ppr[j, m],
+            data.px1[j, m],
+            data.px2[j, m],
+            data.px3[j, m],
         )
-    data["k8"] = 0
-    # data["k8max"] = 0
+    data.k8 = 0
+    # data.k8max = 0
 
 
-def _statement_220(data: dict[str, Any]) -> None:
+def _statement_220(data: _PalmerData) -> None:
     """
     Save this month's calculated variables (v,pro,x1,x2,x3) for
     use with next month's data
@@ -501,16 +591,16 @@ def _statement_220(data: dict[str, Any]) -> None:
 
     :param data: dictionary of parameters (intialized in pdsi)
     """
-    year = data["year"]
-    month = data["month"]
-    data["v"] = data["pv"]
-    data["pro"] = data["ppr"][year, month]
-    data["x1"] = data["px1"][year, month]
-    data["x2"] = data["px2"][year, month]
-    data["x3"] = data["px3"][year, month]
+    year = data.year
+    month = data.month
+    data.v = data.pv
+    data.pro = data.ppr[year, month]
+    data.x1 = data.px1[year, month]
+    data.x2 = data.px2[year, month]
+    data.x3 = data.px3[year, month]
 
 
-def _statement_210(data: dict[str, Any]) -> None:
+def _statement_210(data: _PalmerData) -> None:
     """
     prob(end) returns to 0. A possible abatement has fizzled out,
     so we accept all stored values of x3
@@ -519,35 +609,35 @@ def _statement_210(data: dict[str, Any]) -> None:
 
     :param data: dictionary of parameters (intialized in pdsi)
     """
-    year = data["year"]
-    month = data["month"]
-    data["pv"] = 0.0
-    data["px1"][year, month] = 0.0
-    data["px2"][year, month] = 0.0
-    data["ppr"][year, month] = 0.0
+    year = data.year
+    month = data.month
+    data.pv = 0.0
+    data.px1[year, month] = 0.0
+    data.px2[year, month] = 0.0
+    data.ppr[year, month] = 0.0
     m, b = _select_duration_factors(data)
-    data["px3"][year, month] = DurationFactors.weighting_fraction(m, b) * data["x3"] + data["z"][year, month] / (m + b)
-    data["x"][year, month] = data["px3"][year, month]
+    data.px3[year, month] = DurationFactors.weighting_fraction(m, b) * data.x3 + data.z[year, month] / (m + b)
+    data.x[year, month] = data.px3[year, month]
 
-    if data["k8"] == 0:
-        data["pdsi"][year, month] = data["x"][year, month]
-        data["phdi"][year, month] = data["px3"][year, month]
-        if data["px3"][year, month] == 0:
-            data["phdi"][year, month] = data["x"][year, month]
-        data["wplm"][year, month] = _case(
-            data["ppr"][year, month],
-            data["px1"][year, month],
-            data["px2"][year, month],
-            data["px3"][year, month],
+    if data.k8 == 0:
+        data.pdsi[year, month] = data.x[year, month]
+        data.phdi[year, month] = data.px3[year, month]
+        if data.px3[year, month] == 0:
+            data.phdi[year, month] = data.x[year, month]
+        data.wplm[year, month] = _case(
+            data.ppr[year, month],
+            data.px1[year, month],
+            data.px2[year, month],
+            data.px3[year, month],
         )
     else:
-        data["iass"] = 3
+        data.iass = 3
         _assign(data)
 
     _statement_220(data)
 
 
-def _statement_200(data: dict[str, Any]) -> None:
+def _statement_200(data: _PalmerData) -> None:
     """
     Continue x1 and x2 calculations
     if either indicates the start of a new wet or drought,
@@ -558,52 +648,52 @@ def _statement_200(data: dict[str, Any]) -> None:
 
     :param data: dictionary of parameters (intialized in pdsi)
     """
-    year = data["year"]
-    month = data["month"]
-    wetm, wetb = data["wetm"], data["wetb"]
-    data["px1"][year, month] = max(
-        0, DurationFactors.weighting_fraction(wetm, wetb) * data["x1"] + data["z"][year, month] / (wetm + wetb)
+    year = data.year
+    month = data.month
+    wetm, wetb = data.wetm, data.wetb
+    data.px1[year, month] = max(
+        0, DurationFactors.weighting_fraction(wetm, wetb) * data.x1 + data.z[year, month] / (wetm + wetb)
     )
 
     # if no existing wet spell or drought
     # x1 becomes the new x3
-    if (data["px1"][year, month] >= 1) and (data["px3"][year, month] == 0):
-        data["x"][year, month] = data["px1"][year, month]
-        data["px3"][year, month] = data["px1"][year, month]
-        data["px1"][year, month] = 0
-        data["iass"] = 1
+    if (data.px1[year, month] >= 1) and (data.px3[year, month] == 0):
+        data.x[year, month] = data.px1[year, month]
+        data.px3[year, month] = data.px1[year, month]
+        data.px1[year, month] = 0
+        data.iass = 1
         _assign(data)
         _statement_220(data)
         return
 
-    drym, dryb = data["drym"], data["dryb"]
-    data["px2"][year, month] = min(
-        0.0, DurationFactors.weighting_fraction(drym, dryb) * data["x2"] + data["z"][year, month] / (drym + dryb)
+    drym, dryb = data.drym, data.dryb
+    data.px2[year, month] = min(
+        0.0, DurationFactors.weighting_fraction(drym, dryb) * data.x2 + data.z[year, month] / (drym + dryb)
     )
 
     # if no existing wet spell or drought x2 becomes the new x3
-    if (data["px2"][year, month] <= -1) and (data["px3"][year, month] == 0):
-        data["x"][year, month] = data["px2"][year, month]
-        data["px3"][year, month] = data["px2"][year, month]
-        data["px2"][year, month] = 0.0
-        data["iass"] = 2
+    if (data.px2[year, month] <= -1) and (data.px3[year, month] == 0):
+        data.x[year, month] = data.px2[year, month]
+        data.px3[year, month] = data.px2[year, month]
+        data.px2[year, month] = 0.0
+        data.iass = 2
         _assign(data)
         _statement_220(data)
         return
 
     # No established drought (wet spell), but x3 = 0
     # so either (nonzero) x1 or x2 must be used as x3
-    if data["px3"][year, month] == 0:
-        if data["px1"][year, month] == 0:
-            data["x"][year, month] = data["px2"][year, month]
-            data["iass"] = 2
+    if data.px3[year, month] == 0:
+        if data.px1[year, month] == 0:
+            data.x[year, month] = data.px2[year, month]
+            data.iass = 2
             _assign(data)
             _statement_220(data)
             return
 
-        if data["px2"][year, month] == 0:
-            data["x"][year, month] = data["px1"][year, month]
-            data["iass"] = 1
+        if data.px2[year, month] == 0:
+            data.x[year, month] = data.px1[year, month]
+            data.iass = 1
             _assign(data)
             _statement_220(data)
             return
@@ -613,26 +703,26 @@ def _statement_200(data: dict[str, Any]) -> None:
     # time x3 will reach a value where it is the value of x (pdsi).
     # At that time, the assign method backtracs through choosing
     # the appropriate x1 or x2 to be that month's x.
-    if data["k8"] >= data["sx"].shape[0] + 1:
-        vals = [0] * (data["k8"] - data["sx"].shape[0] + 2)
-        data["sx"] = np.append(data["sx"], vals)
-        data["sx1"] = np.append(data["sx1"], vals)
-        data["sx2"] = np.append(data["sx2"], vals)
-        data["sx3"] = np.append(data["sx3"], vals)
-        data["indexj"] = np.append(data["indexj"], vals)
-        data["indexm"] = np.append(data["indexm"], vals)
+    if data.k8 >= data.sx.shape[0] + 1:
+        vals = [0] * (data.k8 - data.sx.shape[0] + 2)
+        data.sx = np.append(data.sx, vals)
+        data.sx1 = np.append(data.sx1, vals)
+        data.sx2 = np.append(data.sx2, vals)
+        data.sx3 = np.append(data.sx3, vals)
+        data.indexj = np.append(data.indexj, vals)
+        data.indexm = np.append(data.indexm, vals)
 
-    data["sx1"][data["k8"]] = data["px1"][year, month]
-    data["sx2"][data["k8"]] = data["px2"][year, month]
-    data["sx3"][data["k8"]] = data["px3"][year, month]
-    data["x"][year, month] = data["px3"][year, month]
-    data["k8"] += 1
-    data["k8max"] = data["k8"]
+    data.sx1[data.k8] = data.px1[year, month]
+    data.sx2[data.k8] = data.px2[year, month]
+    data.sx3[data.k8] = data.px3[year, month]
+    data.x[year, month] = data.px3[year, month]
+    data.k8 += 1
+    data.k8max = data.k8
 
     _statement_220(data)
 
 
-def _statement_190(data: dict[str, Any]) -> None:
+def _statement_190(data: _PalmerData) -> None:
     """
     drought or wet continues, calculate prob(end) (variable ze)
 
@@ -640,28 +730,26 @@ def _statement_190(data: dict[str, Any]) -> None:
 
     :param data: dictionary of parameters (intialized in pdsi)
     """
-    year = data["year"]
-    month = data["month"]
-    if data["pro"] == 100:
-        q = data["ze"]
+    year = data.year
+    month = data.month
+    if data.pro == 100:
+        q = data.ze
     else:
-        q = data["ze"] + data["v"]
+        q = data.ze + data.v
 
-    data["ppr"][year, month] = (data["pv"] / q) * 100
+    data.ppr[year, month] = (data.pv / q) * 100
 
-    if data["ppr"][year, month] >= 100:
-        data["ppr"][year, month] = 100
-        data["px3"][year, month] = 0
+    if data.ppr[year, month] >= 100:
+        data.ppr[year, month] = 100
+        data.px3[year, month] = 0
     else:
         m, b = _select_duration_factors(data)
-        data["px3"][year, month] = DurationFactors.weighting_fraction(m, b) * data["x3"] + data["z"][year, month] / (
-            m + b
-        )
+        data.px3[year, month] = DurationFactors.weighting_fraction(m, b) * data.x3 + data.z[year, month] / (m + b)
 
     _statement_200(data)
 
 
-def _statement_180(data: dict[str, Any]) -> None:
+def _statement_180(data: _PalmerData) -> None:
     """
     drought abatement is possible
 
@@ -669,22 +757,22 @@ def _statement_180(data: dict[str, Any]) -> None:
 
     :param data: dictionary of parameters (intialized in pdsi)
     """
-    year = data["year"]
-    month = data["month"]
-    data["uw"] = data["z"][year, month] + 0.15
-    data["pv"] = data["uw"] + max(data["v"], 0.0)
+    year = data.year
+    month = data.month
+    data.uw = data.z[year, month] + 0.15
+    data.pv = data.uw + max(data.v, 0.0)
 
     # During a drought, PV <= 0 implies prob(end) has returned to 0
-    if data["pv"] <= 0:
+    if data.pv <= 0:
         _statement_210(data)
         return
 
-    m, b = data["drym"], data["dryb"]
-    data["ze"] = -b * data["x3"] - 0.5 * (m + b)
+    m, b = data.drym, data.dryb
+    data.ze = -b * data.x3 - 0.5 * (m + b)
     _statement_190(data)
 
 
-def _statement_170(data: dict[str, Any]) -> None:
+def _statement_170(data: _PalmerData) -> None:
     """
     Wet spell abatement is possible
 
@@ -692,22 +780,22 @@ def _statement_170(data: dict[str, Any]) -> None:
 
     :param data: dictionary of parameters (intialized in pdsi)
     """
-    year = data["year"]
-    month = data["month"]
-    data["ud"] = data["z"][year, month] - 0.15
-    data["pv"] = data["ud"] + min(data["v"], 0.0)
+    year = data.year
+    month = data.month
+    data.ud = data.z[year, month] - 0.15
+    data.pv = data.ud + min(data.v, 0.0)
 
     # During a wet spell, PV >= 0 implies prob(end) has returned to 0
-    if data["pv"] >= 0:
+    if data.pv >= 0:
         _statement_210(data)
         return
 
-    m, b = data["wetm"], data["wetb"]
-    data["ze"] = -b * data["x3"] + 0.5 * (m + b)
+    m, b = data.wetm, data.wetb
+    data.ze = -b * data.x3 + 0.5 * (m + b)
     _statement_190(data)
 
 
-def _calc_zindex(data: dict[str, Any]) -> None:
+def _calc_zindex(data: _PalmerData) -> None:
     """
     Calculate Z Index
 
@@ -716,32 +804,32 @@ def _calc_zindex(data: dict[str, Any]) -> None:
 
     :param data: dictionary of parameters (intialized in pdsi)
     """
-    for year in range(data["n_years"]):
+    for year in range(data.n_years):
         for month in range(12):
-            data["year"] = year
-            data["month"] = month
-            k8 = int(data["k8"])
-            data["indexj"][k8] = year
-            data["indexm"][k8] = month
-            data["ze"] = 0.0
-            data["ud"] = 0.0
-            data["uw"] = 0.0
+            data.year = year
+            data.month = month
+            k8 = int(data.k8)
+            data.indexj[k8] = year
+            data.indexm[k8] = month
+            data.ze = 0.0
+            data.ud = 0.0
+            data.uw = 0.0
             _calc_cafec_zindex(data, year, month)
 
             # No abatement underway, wet or drought will end if -.5 <= X3 <= .5
-            if (data["pro"] == 100) or (data["pro"] == 0):
+            if (data.pro == 100) or (data.pro == 0):
                 # End of drought or wet
-                if -0.5 <= data["x3"] <= 0.5:
-                    data["pv"] = 0.0
-                    data["ppr"][year, month] = 0.0
-                    data["px3"][year, month] = 0.0
+                if -0.5 <= data.x3 <= 0.5:
+                    data.pv = 0.0
+                    data.ppr[year, month] = 0.0
+                    data.px3[year, month] = 0.0
                     # check for new wet or drought start
                     _statement_200(data)
                     continue
                 # We are in a wet spell
-                elif data["x3"] > 0.5:
+                elif data.x3 > 0.5:
                     # The wet spell intensifies
-                    if data["z"][year, month] >= 0.15:
+                    if data.z[year, month] >= 0.15:
                         _statement_210(data)
                         continue
                     # The wet spell starts to abate (and may end)
@@ -749,9 +837,9 @@ def _calc_zindex(data: dict[str, Any]) -> None:
                         _statement_170(data)
                         continue
                 # We are in a drought
-                elif data["x3"] < -0.5:
+                elif data.x3 < -0.5:
                     # The drought intensifies
-                    if data["z"][year, month] <= -0.15:
+                    if data.z[year, month] <= -0.15:
                         _statement_210(data)
                         continue
                     # The drought starts to abate (and may end)
@@ -762,11 +850,11 @@ def _calc_zindex(data: dict[str, Any]) -> None:
             # Abatement is underway
             else:
                 # We are in a wet spell
-                if data["x3"] > 0:
+                if data.x3 > 0:
                     _statement_170(data)
                     continue
                 # We are in a drought
-                elif data["x3"] <= 0:
+                elif data.x3 <= 0:
                     _statement_180(data)
                     continue
 
@@ -774,31 +862,31 @@ def _calc_zindex(data: dict[str, Any]) -> None:
             continue
 
 
-def _finish_up(data: dict[str, Any]) -> None:
+def _finish_up(data: _PalmerData) -> None:
     """
     Wet spell abatement is possible
 
     :param data: dictionary of parameters (intialized in pdsi)
     """
-    for k8 in range(data["k8max"]):
-        i = int(data["indexj"][k8])
-        j = int(data["indexm"][k8])
-        i_end = data["precips"].shape[0] - 1
-        data["pdsi"][i, j] = data["x"][i, j]
-        data["phdi"][i, j] = data["px3"][i, j]
+    for k8 in range(data.k8max):
+        i = int(data.indexj[k8])
+        j = int(data.indexm[k8])
+        i_end = data.precips.shape[0] - 1
+        data.pdsi[i, j] = data.x[i, j]
+        data.phdi[i, j] = data.px3[i, j]
 
-        if data["px3"][i, j] == 0:
-            data["phdi"][i, j] = data["x"][i, j]
+        if data.px3[i, j] == 0:
+            data.phdi[i, j] = data.x[i, j]
 
-        data["wplm"][i, j] = _case(
-            data["ppr"][i_end, 11],
-            data["px1"][i_end, 11],
-            data["px2"][i_end, 11],
-            data["px3"][i_end, 11],
+        data.wplm[i, j] = _case(
+            data.ppr[i_end, 11],
+            data.px1[i_end, 11],
+            data.px2[i_end, 11],
+            data.px3[i_end, 11],
         )
 
 
-def _validate_fitting_params(data: dict[str, Any], fitting_params: dict[str, Any] | None) -> None:
+def _validate_fitting_params(data: _PalmerData, fitting_params: dict[str, Any] | None) -> None:
     """
     Validate the fitting parameters
 
@@ -806,19 +894,17 @@ def _validate_fitting_params(data: dict[str, Any], fitting_params: dict[str, Any
     :param fitting_params: dictionary of the fitted parameters
     """
     if fitting_params is None:
-        data["calibrate"] = True
-    else:
-        data["calibrate"] = False
-        for param in ["alpha", "beta", "gamma", "delta"]:
-            if (
-                param in fitting_params
-                and isinstance(fitting_params[param], list | tuple | np.ndarray)
-                and len(fitting_params[param]) == 12
-            ):
-                data[param] = np.array(fitting_params[param])
-            else:
-                data["calibrate"] = True
-                break
+        data.calibrate = True
+        return
+
+    fitted = {name: fitting_params.get(name) for name in ("alpha", "beta", "gamma", "delta")}
+    valid = all(isinstance(values, list | tuple | np.ndarray) and len(values) == 12 for values in fitted.values())
+    data.calibrate = not valid
+    if valid:
+        data.alpha = np.array(fitted["alpha"])
+        data.beta = np.array(fitted["beta"])
+        data.gamma = np.array(fitted["gamma"])
+        data.delta = np.array(fitted["delta"])
 
 
 def _validate_calibration_period(
@@ -848,7 +934,7 @@ def _initialize_data(
     calibration_year_initial: int,
     calibration_year_final: int,
     fitting_params: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+) -> _PalmerData:
     """
     Initialize the data
 
@@ -860,76 +946,83 @@ def _initialize_data(
     :param calibration_start_year: initial year of the calibration period
     :param calibration_end_year: final year of the calibration period
     :param fitting_params: dictionary of the fitted parameters
-    :return dictionary of intialized parameters
-    :rtype: dict
+    :return the initialized Palmer data struct
+    :rtype: _PalmerData
     """
-    data: dict[str, Any] = {}
     # reshape precipitation values to (years, 12)
-    data["precips"] = utils.reshape_to_2d(precips, 12)
-    data["pet"] = utils.reshape_to_2d(pet, 12)
-    n_years = int(data["precips"].shape[0])
-    data["awc"] = awc
-    data["awc_bot"] = _get_awc_bot(awc)
-    data["n_years"] = n_years
+    precips = utils.reshape_to_2d(precips, 12)
+    pet = utils.reshape_to_2d(pet, 12)
+    n_years = int(precips.shape[0])
     _validate_calibration_period(
         data_start_year,
         n_years,
         calibration_year_initial,
         calibration_year_final,
     )
-    data["n_calb_years"] = calibration_year_final - calibration_year_initial + 1
-    data["calibration_year_initial_idx"] = calibration_year_initial - data_start_year
-    data["calibration_year_final_idx"] = calibration_year_final - data_start_year
 
-    data["psum"] = np.zeros((12,))
-    data["spsum"] = np.zeros((12,))
-    data["petsum"] = np.zeros((12,))
-    data["plsum"] = np.zeros((12,))
-    data["prsum"] = np.zeros((12,))
-    data["rsum"] = np.zeros((12,))
-    data["tlsum"] = np.zeros((12,))
-    data["etsum"] = np.zeros((12,))
-    data["rosum"] = np.zeros((12,))
-    data["spdat"] = np.full((n_years, 12), np.nan)
-    data["pldat"] = np.full((n_years, 12), np.nan)
-    data["prdat"] = np.full((n_years, 12), np.nan)
-    data["rdat"] = np.full((n_years, 12), np.nan)
-    data["tldat"] = np.full((n_years, 12), np.nan)
-    data["etdat"] = np.full((n_years, 12), np.nan)
-    data["rodat"] = np.full((n_years, 12), np.nan)
-    data["sssdat"] = np.full((n_years, 12), np.nan)
-    data["ssudat"] = np.full((n_years, 12), np.nan)
-
-    data["v"] = 0.0
-    data["pro"] = 0.0
-    data["x1"] = 0.0
-    data["x2"] = 0.0
-    data["x3"] = 0.0
-    data["k8"] = 0
-    data["k8max"] = 0
-    data["indexj"] = np.full((K8_SIZE,), np.nan)
-    data["indexm"] = np.full((K8_SIZE,), np.nan)
-    data["pdsi"] = np.full((n_years, 12), np.nan)
-    data["phdi"] = np.full((n_years, 12), np.nan)
-    data["z"] = np.full((n_years, 12), np.nan)
-    data["wplm"] = np.full((n_years, 12), np.nan)
-    data["cp"] = np.full((n_years, 12), np.nan)
-    data["ppr"] = np.zeros((n_years, 12))
-    data["px1"] = np.zeros((n_years, 12))
-    data["px2"] = np.zeros((n_years, 12))
-    data["px3"] = np.zeros((n_years, 12))
-    data["sx"] = np.zeros((K8_SIZE,))
-    data["sx1"] = np.zeros((K8_SIZE,))
-    data["sx2"] = np.zeros((K8_SIZE,))
-    data["sx3"] = np.zeros((K8_SIZE,))
-    data["x"] = np.zeros((n_years, 12))
-
-    # duration factors: default to Palmer's fixed national values. scPDSI
-    # (see palmer.scpdsi()) overrides these four keys with per-location
-    # fitted values after calling this function.
+    # duration factors default to Palmer's fixed national values; scPDSI (see
+    # palmer.scpdsi()) overrides them with per-location fitted values after this
+    # function returns. ``calibrate`` is settled by _validate_fitting_params, and
+    # the CAFEC coefficients, moisture-demand ratio, and Z-index factors are
+    # filled by the stage that owns them before anything reads them.
     duration_factors = DurationFactors.from_defaults()
-    data["wetm"], data["wetb"] = duration_factors.wetm, duration_factors.wetb
-    data["drym"], data["dryb"] = duration_factors.drym, duration_factors.dryb
+    data = _PalmerData(
+        precips=precips,
+        pet=pet,
+        awc=awc,
+        awc_bot=_get_awc_bot(awc),
+        n_years=n_years,
+        n_calb_years=calibration_year_final - calibration_year_initial + 1,
+        calibration_year_initial_idx=calibration_year_initial - data_start_year,
+        calibration_year_final_idx=calibration_year_final - data_start_year,
+        calibrate=True,
+        spdat=np.full((n_years, 12), np.nan),
+        pldat=np.full((n_years, 12), np.nan),
+        prdat=np.full((n_years, 12), np.nan),
+        rdat=np.full((n_years, 12), np.nan),
+        tldat=np.full((n_years, 12), np.nan),
+        etdat=np.full((n_years, 12), np.nan),
+        rodat=np.full((n_years, 12), np.nan),
+        sssdat=np.full((n_years, 12), np.nan),
+        ssudat=np.full((n_years, 12), np.nan),
+        psum=np.zeros((12,)),
+        spsum=np.zeros((12,)),
+        petsum=np.zeros((12,)),
+        plsum=np.zeros((12,)),
+        prsum=np.zeros((12,)),
+        rsum=np.zeros((12,)),
+        tlsum=np.zeros((12,)),
+        etsum=np.zeros((12,)),
+        rosum=np.zeros((12,)),
+        alpha=np.full((12,), np.nan),
+        beta=np.full((12,), np.nan),
+        gamma=np.full((12,), np.nan),
+        delta=np.full((12,), np.nan),
+        trat=np.full((12,), np.nan),
+        ak=np.full((12,), np.nan),
+        wetm=duration_factors.wetm,
+        wetb=duration_factors.wetb,
+        drym=duration_factors.drym,
+        dryb=duration_factors.dryb,
+        indexj=np.full((K8_SIZE,), np.nan),
+        indexm=np.full((K8_SIZE,), np.nan),
+        sx=np.zeros((K8_SIZE,)),
+        sx1=np.zeros((K8_SIZE,)),
+        sx2=np.zeros((K8_SIZE,)),
+        sx3=np.zeros((K8_SIZE,)),
+        ppr=np.zeros((n_years, 12)),
+        px1=np.zeros((n_years, 12)),
+        px2=np.zeros((n_years, 12)),
+        px3=np.zeros((n_years, 12)),
+        x=np.zeros((n_years, 12)),
+        k8=0,
+        k8max=0,
+        z=np.full((n_years, 12), np.nan),
+        cp=np.full((n_years, 12), np.nan),
+        pdsi=np.full((n_years, 12), np.nan),
+        phdi=np.full((n_years, 12), np.nan),
+        wplm=np.full((n_years, 12), np.nan),
+    )
 
     _validate_fitting_params(data, fitting_params)
 
@@ -965,7 +1058,7 @@ def _prepare_palmer_data(
     calibration_year_final: int,
     fitting_params: dict[str, Any] | None,
     log: BoundLogger,
-) -> tuple[dict[str, Any], int]:
+) -> tuple[_PalmerData, int]:
     """Validate inputs and run the water-balance/CAFEC stages shared by Palmer indices."""
     if np.any(precips < 0.0):
         log.warning("negative_values_clipped", field="precips")
@@ -982,32 +1075,37 @@ def _prepare_palmer_data(
         fitting_params=fitting_params,
     )
     _calc_water_balances(data)
-    if data["calibrate"]:
+    if data.calibrate:
         _calc_cafec_coefficients(data)
     _calc_zindex_factors(data)
     return data, original_length
 
 
-def _calculate_pdsi_prepared(data: dict[str, Any], original_length: int) -> _PalmerResult:
+def _calculate_pdsi_prepared(data: _PalmerData, original_length: int) -> _PalmerResult:
     """Complete standard PDSI after the shared Palmer preparation stages."""
     _calc_kfactors(data)
     _calc_zindex(data)
     _finish_up(data)
 
-    pdsi_result = data["pdsi"].flatten()[0:original_length]
-    phdi = data["phdi"].flatten()[0:original_length]
-    wplm = data["wplm"].flatten()[0:original_length]
-    z = data["z"].flatten()[0:original_length]
-    params = {key: data[key] for key in ["alpha", "beta", "gamma", "delta"]}
+    pdsi_result = data.pdsi.flatten()[0:original_length]
+    phdi = data.phdi.flatten()[0:original_length]
+    wplm = data.wplm.flatten()[0:original_length]
+    z = data.z.flatten()[0:original_length]
+    params = {
+        "alpha": data.alpha,
+        "beta": data.beta,
+        "gamma": data.gamma,
+        "delta": data.delta,
+    }
     return pdsi_result, phdi, wplm, z, params
 
 
-def _calculate_scpdsi_prepared(data: dict[str, Any], original_length: int) -> _PalmerResult:
+def _calculate_scpdsi_prepared(data: _PalmerData, original_length: int) -> _PalmerResult:
     """Complete self-calibrating PDSI after shared Palmer preparation."""
     _calc_scpdsi_k_factors(data)
     _calc_scpdsi_raw_zindex(data)
 
-    z_values = data["z"].reshape(-1)
+    z_values = data.z.reshape(-1)
     calibration_z = _calibration_values(data, z_values)
     wetm, wetb = self_calibration.duration_factors(calibration_z, self_calibration.WET_SIGN)
     drym, dryb = self_calibration.duration_factors(calibration_z, self_calibration.DRY_SIGN)
@@ -1032,7 +1130,12 @@ def _calculate_scpdsi_prepared(data: dict[str, Any], original_length: int) -> _P
             dryb=dryb,
         )
 
-    params = {key: data[key] for key in ["alpha", "beta", "gamma", "delta"]}
+    params: dict[str, Any] = {
+        "alpha": data.alpha,
+        "beta": data.beta,
+        "gamma": data.gamma,
+        "delta": data.delta,
+    }
     params.update(wetm=wetm, wetb=wetb, drym=drym, dryb=dryb)
     return (
         recursion.pdsi[:original_length],
@@ -1045,7 +1148,7 @@ def _calculate_scpdsi_prepared(data: dict[str, Any], original_length: int) -> _P
 
 def _palmer_calculation(
     index_type: str,
-    calculate_prepared: Callable[[dict[str, Any], int], _PalmerResult],
+    calculate_prepared: Callable[[_PalmerData, int], _PalmerResult],
     precips: np.ndarray,
     pet: np.ndarray,
     awc: float,
