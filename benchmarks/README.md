@@ -228,9 +228,12 @@ Reference grid: 3306 cells x 480 months.
 
 | measurement | time |
 |---|---|
-| per-cell loop (pre-#937) | 135.2 s |
+| per-cell loop (pre-#937) | 135.4 s |
 | spatial block (#937) | 1.2 s |
-| speedup | 113.5x |
+| speedup | 111.3x |
+
+Raw output: `benchmarks/results/profile_gridded_palmer.txt` (the same run; the
+speedup is computed from unrounded times).
 
 The per-cell figure is consistent with the #921 SPI profile's per-cell
 overhead (structlog volume, one Python call per cell) plus Palmer's own

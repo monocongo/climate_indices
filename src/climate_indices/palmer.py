@@ -1048,7 +1048,7 @@ def _reshape_palmer_input(values: np.ndarray, spatial_time_major: bool) -> tuple
     before and given a trailing cell axis of length 1, so the recursion has
     one code path for a single location and a spatial block. Three or more
     dimensions are read as a time-major ``(time, *cells)`` block per
-    ADR-0008 -- ``compute._prepare_input_shape`` raises for an undeclared
+    ADR-0009 -- ``compute._prepare_input_shape`` raises for an undeclared
     ambiguous shape -- with its trailing cell dimensions flattened to
     ``n_cells`` and folded onto a (years, 12) axis by
     ``compute._reshape_time_major``, the same helper ``eto.py`` reuses for
@@ -1167,7 +1167,7 @@ def _initialize_prepared(
     :param calibration_year_final: final year of the calibration period
     :param fitting_params: dictionary of the fitted parameters
     :param spatial_time_major: declares an ambiguous 3+-D precips/pet as a
-        time-major spatial block per ADR-0008
+        time-major spatial block per ADR-0009
     :return the initialized prepared inputs
     :rtype: _PalmerPrepared
     """
@@ -1592,7 +1592,7 @@ def pdsi(
     Args:
         precips: Time series of monthly precipitation values, in inches, or
             a time-major spatial block with shape (time, *cells) and three or
-            more dimensions, per ADR-0008 and ADR-0009. A block whose first
+            more dimensions, per ADR-0009 and ADR-0011. A block whose first
             cell axis is a calendar period length (12 or 366) is ambiguous
             with a (years, periods, *cells) array and requires
             ``spatial_time_major=True``.
@@ -1609,7 +1609,7 @@ def pdsi(
         fitting_params: Dictionary of the fitted parameters. For a spatial
             block, each coefficient is still (12,), shared across every cell.
         spatial_time_major: Declares a three-or-more-dimensional precips/pet
-            as a time-major spatial block, per ADR-0008.
+            as a time-major spatial block, per ADR-0009.
 
     Returns:
         tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any] | None]:
@@ -1679,7 +1679,7 @@ def scpdsi(
             precips/pet is a spatial block (three or more dimensions).
             scPDSI runs the Wells backtracking recursion once per cell plus
             per-location duration-factor fits, so it stays on the
-            per-location path -- see ADR-0009 -- while :func:`pdsi` vectorizes
+            per-location path -- see ADR-0011 -- while :func:`pdsi` vectorizes
             across a block's cells.
         InsufficientDataError: If the calibration period cannot supply a
             complete duration-factor fitting window.
@@ -1693,7 +1693,7 @@ def scpdsi(
     if np.ndim(precips) > 2 or np.ndim(pet) > 2:
         raise ValueError(
             "scpdsi() does not support a spatial block (three or more dimensions); "
-            "self-calibrating PDSI runs per location -- see ADR-0009. Use pdsi() "
+            "self-calibrating PDSI runs per location -- see ADR-0011. Use pdsi() "
             "with spatial_time_major=True for vectorized gridded PDSI."
         )
     return _palmer_calculation(

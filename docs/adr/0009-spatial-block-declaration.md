@@ -68,7 +68,7 @@ percentage of normal averages each cell's calendar-period normals, so neither lo
 Unlike the fitting-based kernels they reject an undeclared 3-D input, since their dimension errors
 are pinned to `DataShapeError` rather than `ValueError`. `palmer.pdsi()` adopts this same
 time-major block contract at the NumPy layer (#937); see
-[ADR-0009](./0009-palmer-spatial-block-and-per-location-scpdsi.md) for why its recursion needed a
+[ADR-0011](./0011-palmer-spatial-block-and-per-location-scpdsi.md) for why its recursion needed a
 masked rewrite rather than a broadcast, why scPDSI stays per-location, and why one K-factor
 reduction has to run along a specific axis to stay bit-for-bit with the per-location path. Palmer
 still has no xarray adapter layer; that registration is a separate follow-up ticket.
