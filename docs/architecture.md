@@ -111,11 +111,15 @@ process_climate_indices = "climate_indices.__main__:main"
   - Full mypy --strict compliance
 
 - **`xarray_adapter.py`**: CF-compliant xarray interface
-  - Input type detection (`DataArray`, `Dataset`, `ndarray`)
   - Coordinate validation and alignment
   - CF metadata preservation and generation
   - Dask array support with chunking validation
   - PET computation (Thornthwaite, Hargreaves)
+
+- **`validation.py`**: Public validation facade shared by the xarray and fire
+  adapters
+  - Input type detection (`DataArray`, `Dataset`, `ndarray`)
+  - Time-dimension, monotonicity, and Dask single-chunk validation
 
 - **`indices.py`**: Legacy numpy API
   - Backward-compatible function signatures
@@ -228,6 +232,7 @@ climate_indices/
 │   ├── __main__.py               # Full-featured CLI entry point
 │   ├── typed_public_api.py       # Strict mypy-compliant API
 │   ├── xarray_adapter.py         # Modern xarray interface
+│   ├── validation.py             # Shared input validation facade
 │   ├── indices.py                # Legacy numpy API (STABLE)
 │   ├── compute.py                # Core computation algorithms
 │   ├── palmer.py                 # Palmer drought indices

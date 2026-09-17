@@ -290,7 +290,7 @@ replace.
 
 Stateful xarray fire adapters -- KBDI (#801) and CFFWIS (#807) today --
 validate every time-varying input with
-`xarray_adapter._validate_dask_chunks()`. A Dask `time` dimension must be one
+`climate_indices.validation.validate_dask_chunks()`. A Dask `time` dimension must be one
 chunk, while spatial dimensions may remain chunked. The adapter raises
 `CoordinateValidationError` with a rechunk command rather than silently
 rechunking and materializing a large history.
@@ -372,7 +372,7 @@ output. Do not add fire-specific exception classes.
 Fire outputs have no CF `standard_name`. Xarray metadata comes exclusively from
 `CF_METADATA`: each adapter's `long_name`, units, description, and references
 come from its registry entry, never hand-written in an adapter.
-`xarray_adapter._build_output_attrs` drops a `standard_name` inherited from
+`xarray_adapter.build_output_attrs` drops a `standard_name` inherited from
 the input attributes when the registry entry defines none, so a source
 variable's name (for example `air_temperature`) never misdescribes a computed
 fire output.

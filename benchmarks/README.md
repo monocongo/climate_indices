@@ -267,7 +267,7 @@ cell: 3306 for the 38 x 87 reference grid, and extra non-core dimensions
 multiply that count. On a Dask-backed input `dask="parallelized"` schedules
 those calls as per-block tasks: chunking the spatial dimensions changes task
 count and wall time, not the per-cell total. The core dimension (`time`) must be
-a single chunk on the generic adapter path (`_validate_dask_chunks` at `:1659`
+a single chunk on the generic adapter path (`validation.validate_dask_chunks`
 raises before `apply_ufunc` runs); the two PET paths pass
 `dask_gufunc_kwargs={"allow_rechunk": True}` (`:2086`, `:2355`) so they can
 rechunk a split time dimension. Counts multiply per invocation: each adapter
