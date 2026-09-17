@@ -1518,6 +1518,32 @@ class TestSpatialPercentageOfNormal:
         assert result.shape == block.shape
         assert np.all(np.isnan(result))
 
+    def test_permanently_missing_cell_does_not_warn(self, gridded_monthly_precip):
+        """A cell missing for the whole record, in an otherwise valid block, stays NaN
+
+        without a "Mean of empty slice" warning -- only the whole-block short-circuit
+        is exempt from averaging outright; this cell still reaches np.nanmean.
+        """
+        values = gridded_monthly_precip.values.copy()
+        values[:, 1, 0] = np.nan
+        missing_cell = gridded_monthly_precip.copy(data=values)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+
+            result = indices.percentage_of_normal(
+                missing_cell.values,
+                6,
+                1980,
+                _CALIBRATION_START,
+                _CALIBRATION_END,
+                compute.Periodicity.monthly,
+                spatial_time_major=True,
+            )
+
+        assert np.all(np.isnan(result[:, 1, 0]))
+        assert np.any(~np.isnan(result[:, 0, 0]))
+
     def test_undeclared_block_raises_from_the_numpy_api(self, gridded_monthly_precip):
         """A 3-D array has to be declared as a time-major block, and PNP says so."""
         with pytest.raises(DataShapeError, match="spatial_time_major"):

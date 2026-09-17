@@ -231,7 +231,7 @@ CLI and a baseline measured through the canonical path are not interchangeable.
 - The core kernels take one 1-D temporal series, not a cell axis: they are
   vectorized within that series, and their internal loops are over time steps
   rather than over grid cells (`compute.py:797`, `compute.py:869` check goodness
-  of fit per calibration time step; `indices.py:352` ranks EDDI per period).
+  of fit per calibration time step; `indices.py:445` ranks EDDI per period).
   Support for a spatial/cell axis comes only from the dispatch sites above.
   `indices.pci` is a single-year scalar with no loop at all.
 
