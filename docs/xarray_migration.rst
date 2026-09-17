@@ -18,9 +18,9 @@ Starting with version 2.3.0, the ``climate_indices`` library provides native sup
    identical to the stable NumPy API; no interface breaking changes are planned
    within a minor version.
 
-.. warning:: **Calendar-alignment fix changes daily results (v2.5.0)**
+.. warning:: **Calendar-alignment fix changes daily results (3.0.0)**
 
-   Before v2.5.0, the xarray adapter passed daily Gregorian values straight into
+   Before 3.0.0, the xarray adapter passed daily Gregorian values straight into
    the NumPy core without accounting for its 366-day-per-year layout, silently
    shifting every value after February 28 in a non-leap year. This is now
    corrected: :func:`climate_indices.spi`, :func:`climate_indices.spei`,
