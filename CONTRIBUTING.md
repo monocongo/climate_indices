@@ -67,6 +67,13 @@ uv run mypy src/ tests/test_type_checking.py
 uv run pytest
 ```
 
+For documentation changes, run the published-docs gate locally:
+
+```bash
+uv run --extra docs sphinx-build -E -b html -W --keep-going docs docs/_build/html
+uv run --extra docs sphinx-build -E -b doctest docs docs/_build/doctest
+```
+
 If your change touches release automation or packaging, also run:
 
 ```bash
