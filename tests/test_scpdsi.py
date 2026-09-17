@@ -242,7 +242,10 @@ def test_fitted_duration_factor_coefficients_stay_contractions():
     worst = {"wetc": (0.0, ""), "dryc": (0.0, ""), "dry_spell_c": (0.0, "")}
     for division_dir in _DIVISION_DIRS:
         wetm, wetb, drym, dryb = (float(value) for value in np.load(division_dir / "scdurfact.npy"))
-        factors = DurationFactors.from_fitted(wetm, wetb, drym, dryb)
+        try:
+            factors = DurationFactors.from_fitted(wetm, wetb, drym, dryb)
+        except ConvergenceError as error:
+            pytest.fail(f"{division_dir.name}: {error}")
         coefficients = {
             "wetc": factors.wetc,
             "dryc": factors.dryc,
