@@ -122,9 +122,9 @@ def _select(dataset: xr.Dataset, name: str, start: str, end: str) -> xr.DataArra
 def _to_daily_surface(dataset: xr.Dataset, year: int) -> xr.Dataset:
     """Aggregate the six-hourly surface variables of one year to a daily dataset.
 
-    ``dataset`` carries one extra six-hourly stamp past the year's end so the
-    31 December precipitation bin is complete; the daily rows are trimmed back
-    to the requested year here.
+    ``dataset`` carries the whole first day of the next year, so the 31
+    December precipitation bin is complete; the daily rows are trimmed back to
+    the requested year here.
     """
     daily = xr.Dataset()
     temperature = dataset["2m_temperature"] - 273.15
