@@ -1,19 +1,21 @@
 cff-version: 1.2.0
 message: >-
   If you use this software in your research, please cite it using
-  the metadata in this file. A Zenodo DOI will be registered at the
-  v2.5.0 release and added here — check the repository for the
-  current persistent identifier.
+  the metadata in this file. A Zenodo DOI will be registered and
+  added here when available — check the repository for the current
+  persistent identifier.
 title: climate_indices
-version: 2.5.0
-date-released: 2026-04-11
+version: 3.0.0
 abstract: >-
   Reference implementations of climate drought indices commonly used
   in drought monitoring and climate research, including the
   Standardized Precipitation Index (SPI), Standardized
   Precipitation-Evapotranspiration Index (SPEI), Evaporative Demand
-  Drought Index (EDDI), and the Palmer family of indices (PDSI,
-  PHDI, PMDI, Palmer Z-Index, scPDSI). Originally developed and
+  Drought Index (EDDI), the Palmer family of indices (PDSI,
+  PHDI, PMDI, Palmer Z-Index, scPDSI), and a wildfire index
+  family (Keetch-Byram Drought Index, the Canadian Forest Fire
+  Weather Index System, Fosberg Fire Weather Index, Hot-Dry-Windy,
+  and the Haines Index). Originally developed and
   deployed at NOAA/NCEI for operational drought monitoring.
   Algorithms are literature-faithful: every major implementation
   choice is traceable to a primary source citation, and known
@@ -41,6 +43,10 @@ keywords:
   - precipitation
   - xarray
   - drought-monitoring
+  - wildfire
+  - fire-weather
+  - KBDI
+  - CFFWIS
   - NOAA
   - climate-indices
 references:
