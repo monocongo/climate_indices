@@ -20,6 +20,11 @@ def _blank_state() -> tuple[palmer._PalmerPrepared, palmer._PalmerRecursion]:
     return prepared, palmer._initialize_recursion(prepared)
 
 
+# every recursion state field carries an internal n_cells == 1 cell axis (see
+# ADR-0011); this is the "every cell" mask for a single-cell _blank_state()
+_ACTIVE = np.array([True])
+
+
 def test_initialize_prepared_sets_default_duration_factors():
     prepared, _ = _blank_state()
 
@@ -79,7 +84,7 @@ def test_statement_180_ze_uses_custom_dry_duration_factors():
     x3_original = state.x3
     expected_ze = -b * x3_original - 0.5 * (m + b)
 
-    palmer._statement_180(prepared, state)
+    palmer._statement_180(prepared, state, _ACTIVE)
 
     assert state.ze == pytest.approx(expected_ze)
 
@@ -100,7 +105,7 @@ def test_statement_170_ze_uses_custom_wet_duration_factors():
     x3_original = state.x3
     expected_ze = -b * x3_original + 0.5 * (m + b)
 
-    palmer._statement_170(prepared, state)
+    palmer._statement_170(prepared, state, _ACTIVE)
 
     assert state.ze == pytest.approx(expected_ze)
 
@@ -121,7 +126,7 @@ def test_statement_210_px3_selects_dry_factors_when_x3_negative():
     c = DurationFactors.weighting_fraction(m, b)
     expected_px3 = c * state.x3 + state.z[0, 0] / (m + b)
 
-    palmer._statement_210(prepared, state)
+    palmer._statement_210(prepared, state, _ACTIVE)
 
     assert state.px3[0, 0] == pytest.approx(expected_px3)
 
@@ -146,7 +151,7 @@ def test_statement_190_px3_selects_wet_factors_when_x3_positive():
     c = DurationFactors.weighting_fraction(m, b)
     expected_px3 = c * state.x3 + state.z[0, 0] / (m + b)
 
-    palmer._statement_190(prepared, state)
+    palmer._statement_190(prepared, state, _ACTIVE)
 
     assert state.px3[0, 0] == pytest.approx(expected_px3)
 
@@ -181,7 +186,7 @@ def test_statement_200_px1_always_uses_wet_factors_px2_always_dry():
     c_dry = DurationFactors.weighting_fraction(drym, dryb)
     expected_px2 = min(0.0, c_dry * x2_original + z / (drym + dryb))
 
-    palmer._statement_200(prepared, state)
+    palmer._statement_200(prepared, state, _ACTIVE)
 
     assert state.px1[0, 0] == pytest.approx(expected_px1)
     assert state.px2[0, 0] == pytest.approx(expected_px2)
