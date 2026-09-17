@@ -4,12 +4,12 @@
 
 ### Building the Container
 ```bash
-docker build -t climate_indices:2.2.0 .
+docker build -t climate_indices:X.Y.Z .
 ```
 
 ### Running the Container
 ```bash
-docker run -v $(pwd)/data:/data climate_indices:2.2.0 \
+docker run -v $(pwd)/data:/data climate_indices:X.Y.Z \
     --index spi \
     --periodicity monthly \
     --scales 6 \
@@ -131,7 +131,7 @@ pip install climate_indices
 uv pip install climate_indices
 
 # Specific version
-pip install climate_indices==2.2.0
+pip install "climate_indices==X.Y.Z"
 ```
 
 ### Package Contents
@@ -170,8 +170,7 @@ exclude = ["tests/", "docs/", "notebooks/", ...]
 ```python
 # docs/conf.py
 project = "climate_indices"
-version = "2.2"  # Major.minor
-release = "2.2.0"  # Full version
+# version and release are read from pyproject.toml
 
 extensions = [
     'sphinx.ext.autodoc',

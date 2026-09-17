@@ -55,6 +55,19 @@ See [drought.gov](https://www.drought.gov/drought/python-climate-indices).
 - [__License__](https://github.com/monocongo/climate_indices/blob/main/LICENSE)
 - [__Disclaimer__](https://github.com/monocongo/climate_indices/blob/main/DISCLAIMER)
 
+## Installation
+
+Install the released package from PyPI:
+
+```bash
+pip install "climate-indices>=2.3"
+```
+
+`uv` users can run `uv pip install "climate-indices>=2.3"`. The 2.3.0 floor matches the
+[quickstart](https://github.com/monocongo/climate_indices/blob/main/docs/quickstart.rst),
+which documents the latest release and uses the xarray API added in 2.3.0; see
+[Supported Python Versions](#supported-python-versions) for interpreter support.
+
 ## Developer Workflow
 
 This project uses trunk-based development. `main` is the trunk and should always
@@ -162,13 +175,13 @@ to the stable NumPy API — only the interface surface (parameter names, metadat
 coordinate handling) may evolve. Beta features are tagged with ``BetaFeatureWarning`` and
 marked in docstrings.
 
-See `docs/xarray_compatibility.md` for the v2.5 compatibility matrix, including
+See `docs/xarray_compatibility.md` for the 3.0.0 compatibility matrix, including
 Dask chunking constraints, metadata behavior, and the current Palmer xarray
 workflow.
 
 ### Validation Notes
 
-The v2.5 validation status is tracked in `VALIDATION.md`. EDDI is validated
+The 3.0.0 validation status is tracked in `VALIDATION.md`. EDDI is validated
 against committed paired NOAA PSL monthly reference ET/EDDI fixtures for 1-, 3-,
 and 6-month Timescales (1979–2023); the maximum observed error is `2.43e-6`.
 Palmer tests cover the committed regression fixtures for PDSI, PHDI, PMDI, and

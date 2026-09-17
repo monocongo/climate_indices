@@ -100,16 +100,11 @@ Next (optional) run the unit test suite to validate the installation::
 
     uv run pytest
 
-the above should display output similar to this::
-
-   ======================= 38 passed, 18 warnings in 12.19s =======================
-
 Finally, show the package installed into the environment::
 
-   uv list | grep climate-indices
+   uv pip list | grep climate-indices
 
-   # climate-indices v2.1.0 (editable)
-   #     + climate-indices==2.1.0 (from file:///path/to/climate_indices)
+   # climate-indices   X.Y.Z   /path/to/climate_indices
 
 
 
@@ -526,7 +521,6 @@ User Guides
    quickstart
    algorithms
    wildfire_applications
-   pypi_release
    xarray_migration
    deprecations/index
    troubleshooting
@@ -538,6 +532,27 @@ API Reference
    :maxdepth: 2
 
    reference
+   xarray_compatibility
+
+.. Hidden until DOCS-8 wires the architecture decision record into the
+   four-section navigation; the pages must build now because the xarray
+   compatibility matrix links to them as documents. Listed explicitly rather
+   than globbed so adding a file under docs/adr/ cannot publish it by
+   accident.
+.. toctree::
+   :hidden:
+
+   adr/0001-dual-numpy-xarray-api
+   adr/0002-multiprocessing-cli-dask-xarray
+   adr/0003-dask-time-dimension-single-chunk
+   adr/0004-xarray-calendar-semantics
+   adr/0005-fire-module-api
+   adr/0006-fire-recursive-state-and-execution
+   adr/0007-fire-missing-data-policy
+   adr/0008-pattern-compliance-by-behavior-not-source-greps
+   adr/0009-spatial-block-declaration
+   adr/0010-seasonal-carry-is-an-explicit-mask
+   adr/0011-palmer-spatial-block-and-per-location-scpdsi
 
 Get involved
 -------------

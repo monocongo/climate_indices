@@ -1,14 +1,14 @@
-"""Equivalence tests for palmer.pdsi()'s spatial block path (#937, ADR-0009).
+"""Equivalence tests for palmer.pdsi()'s spatial block path (#937, ADR-0011).
 
 Palmer's spell recursion has genuine per-cell control flow (unlike SPI/SPEI's
 fitting-based kernels, which are pure arithmetic per calendar period), so the
 spatial path is a masked vectorization of the recursion itself rather than a
 broadcast. Equivalence here is bit-for-bit (`assert_array_equal`), matching
-the decision recorded on #937 and in ADR-0009: the vectorized form keeps the
+the decision recorded on #937 and in ADR-0011: the vectorized form keeps the
 same operation order as the per-location path, so identical float results are
 achievable and any divergence is a real bug, not expected rounding drift.
 
-scPDSI is out of scope for the spatial path (see ADR-0009) and is asserted to
+scPDSI is out of scope for the spatial path (see ADR-0011) and is asserted to
 reject a spatial block explicitly.
 """
 
@@ -111,7 +111,7 @@ class TestSpatialBlockMatchesPerLocation:
 
 def test_undeclared_ambiguous_block_raises():
     """A (time, 12, *cells) block whose first cell axis is a calendar period
-    length is ambiguous with (years, periods, *cells) per ADR-0008, and must
+    length is ambiguous with (years, periods, *cells) per ADR-0009, and must
     be rejected unless declared."""
     precips_block = np.zeros((10, 12, 3))
     pet_block = np.zeros((10, 12, 3))

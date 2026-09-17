@@ -236,7 +236,7 @@ def sum_to_scale(
     (missing) value is part of the group of values to be summed then the sum
     will be np.nan
 
-    A time-major spatial array with shape (time, *cells) is summed window-wise along
+    A time-major spatial array with shape (time, ``*cells``) is summed window-wise along
     its time axis, so every cell's sliding sums are computed by one vectorized pass.
 
     For example if the first array is [3, 4, 6, 2, 1, 3, 5, 8, 5] and
@@ -773,7 +773,7 @@ def transform_fitted_pearson(
                    twelve columns representing the respective calendar months,
                    or 366 columns representing days as if all years were leap years.
                    A time-major spatial block already folded to
-                   (years, time_steps, *cells) is also accepted; any
+                   (years, time_steps, ``*cells``) is also accepted; any
                    three-or-more-dimensional input is read as that folded layout.
     :param data_start_year: the initial year of the input values array
     :param calibration_start_year: the initial year to use for the calibration period
@@ -1513,31 +1513,31 @@ def prepare_scaled(
     in every index at once. An all-missing 1-D or 2-D input is returned as a flattened
     array without computing anything, which callers can detect with
     ``prepared.ndim == 1`` in order to short-circuit; an all-missing time-major spatial
-    input is returned with its (time, *cells) shape. Shape errors are raised as
+    input is returned with its (time, ``*cells``) shape. Shape errors are raised as
     ``ValueError``, the convention established by ``_validate_array`` and
     ``utils.reshape_to_2d``.
 
     Args:
         values: The array of values, either 1-D, 2-D (years, periods), or a time-major
-            spatial array with shape (time, *cells) and three or more dimensions,
+            spatial array with shape (time, ``*cells``) and three or more dimensions,
             whose trailing cell dimensions are preserved.
         scale: The number of values for which each sliding summation will encompass.
         periodicity: Specifies whether data is monthly (12 time steps per year) or daily.
         clip_negatives: Whether negative values are clipped to zero, defaults to True.
         reshape: Whether the scaled values are reshaped to (years, period_length),
             defaults to True. For a time-major spatial input the result is
-            (years, period_length, *cells). ``indices.percentage_of_normal`` passes
+            (years, period_length, ``*cells``). ``indices.percentage_of_normal`` passes
             False, since it averages the un-reshaped 1-D sums over each calendar period.
         spatial_time_major: Declares that a three-or-more-dimensional ``values`` is a
-            time-major block of independent time series, shaped (time, *cells). That is
+            time-major block of independent time series, shaped (time, ``*cells``). That is
             how a block is read anyway, except when the first cell axis is a calendar
             period length (12 or 366), which makes the shape equally readable as a
-            (years, periods, *cells) array; there the caller has to say which it means.
+            (years, periods, ``*cells``) array; there the caller has to say which it means.
             ``xarray_adapter`` sets this for every block it packs.
 
     Returns:
         The scaled values, either 2-D with shape (years, periodicity.period_length),
-        three or more dimensions with shape (years, periodicity.period_length, *cells)
+        three or more dimensions with shape (years, periodicity.period_length, ``*cells``)
         for a time-major spatial input, or 1-D when an all-missing input or
         ``reshape=False``.
     """

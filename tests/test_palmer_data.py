@@ -30,7 +30,7 @@ def test_initialize_recursion_defaults_the_recursion_state():
     """The recursion assigns these before reading them, and zero before it runs.
 
     A single location carries an internal n_cells == 1 cell axis (see
-    ADR-0009), so every "scalar" field below is a length-1 array.
+    ADR-0011), so every "scalar" field below is a length-1 array.
     """
     prepared = _initialize()
     state = palmer._initialize_recursion(prepared)

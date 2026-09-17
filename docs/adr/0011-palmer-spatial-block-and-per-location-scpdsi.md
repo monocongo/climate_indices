@@ -10,7 +10,7 @@ ADR grants the permission without yet spending it.
 
 ## Decision
 
-`palmer.pdsi()` adopts ADR-0008's time-major block contract: a three-or-more-dimensional
+`palmer.pdsi()` adopts ADR-0009's time-major block contract: a three-or-more-dimensional
 `precips`/`pet` is read as `(time, *cells)`, ambiguous shapes (a first cell axis of 12 or
 366) must declare `spatial_time_major=True`, and `awc` accepts a scalar or an array
 broadcastable to the cell shape. Internally every input -- a single location included --
@@ -18,7 +18,7 @@ carries a trailing cell axis (`n_cells == 1` for the legacy 1-D/2-D contract), s
 whole recursion has one code path rather than a duplicated scalar and vectorized pair.
 
 `palmer.scpdsi()` does **not** grow this contract and explicitly rejects a 3+-D
-`precips`/`pet` (`ValueError`, naming ADR-0009). scPDSI stays on the per-location path:
+`precips`/`pet` (`ValueError`, naming ADR-0011). scPDSI stays on the per-location path:
 
 - `_calculate_scpdsi_prepared` runs a full Wells backtracking recursion
   (`_palmer_wells.calculate`) **four times** per location -- once raw, three more after
@@ -86,7 +86,7 @@ preallocated to the record length for every cell, and the prepared, recursion, a
 arrays all carry `(years, 12, cells)`. Peak memory is therefore a function of
 `record_months x cells` -- a few tens of float64 buffers, not one -- so a large enough
 legal block can exhaust memory before producing output. As with the fitting-based kernels
-(ADR-0008), the block size is the memory lever: a direct caller chunks spatially rather
+(ADR-0009), the block size is the memory lever: a direct caller chunks spatially rather
 than handing `pdsi()` a dense continental grid, and the CLI splits the grid along latitude
 across one process per worker, so per-worker memory is the chunk's share of the grid (the
 sum across workers stays proportional to the grid).
@@ -108,12 +108,12 @@ backing value under a mask is never read or published.
 
 ## Consequences
 
-- `docs/adr/0008-spatial-block-declaration.md`'s closing sentence, "Palmer has no
+- `docs/adr/0009-spatial-block-declaration.md`'s closing sentence, "Palmer has no
   adapter layer at all (#937)", is now stale for the NumPy layer; an xarray adapter
   registration is still open, tracked by the follow-up ticket this ADR references.
 - The stale `# TODO(v2.5.0): implement palmer_xarray() wrapper using Pattern C` at the
   end of `palmer.py` is removed: "Pattern C" was defined nowhere in the repository and
-  is superseded by the ADR-0008 contract this ADR adopts.
+  is superseded by the ADR-0009 contract this ADR adopts.
 - `scpdsi()`'s signature intentionally diverges from `pdsi()` by exactly one parameter
   (`spatial_time_major`); `tests/test_scpdsi.py::test_public_signature_matches_pdsi_and_is_exported`
   pins that as the only allowed difference.

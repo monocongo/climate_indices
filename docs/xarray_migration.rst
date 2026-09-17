@@ -8,7 +8,7 @@ xarray Migration Guide
 Introduction
 ------------
 
-Starting with version 2.2.0, the ``climate_indices`` library provides native support for xarray DataArrays alongside the traditional NumPy array API. This migration guide helps existing users understand the benefits of adopting the xarray API and provides practical examples for transitioning from NumPy-based workflows to xarray-based workflows.
+Starting with version 2.3.0, the ``climate_indices`` library provides native support for xarray DataArrays alongside the traditional NumPy array API. This migration guide helps existing users understand the benefits of adopting the xarray API and provides practical examples for transitioning from NumPy-based workflows to xarray-based workflows.
 
 .. warning:: **Beta Feature**
 
@@ -18,9 +18,9 @@ Starting with version 2.2.0, the ``climate_indices`` library provides native sup
    identical to the stable NumPy API; no interface breaking changes are planned
    within a minor version.
 
-.. warning:: **Calendar-alignment fix changes daily results (v2.5.0)**
+.. warning:: **Calendar-alignment fix changes daily results (3.0.0)**
 
-   Before v2.5.0, the xarray adapter passed daily Gregorian values straight into
+   Before 3.0.0, the xarray adapter passed daily Gregorian values straight into
    the NumPy core without accounting for its 366-day-per-year layout, silently
    shifting every value after February 28 in a non-leap year. This is now
    corrected: :func:`climate_indices.spi`, :func:`climate_indices.spei`,
@@ -360,8 +360,8 @@ When you use the xarray API, outputs include rich metadata that improves reprodu
    #     'distribution': 'gamma',
    #     'calibration_year_initial': 1980,
    #     'calibration_year_final': 2019,
-   #     'climate_indices_version': '2.2.0',
-   #     'history': '2026-02-09T14:23:45Z: SPI-6 calculated using gamma distribution (climate_indices v2.2.0)',
+   #     'climate_indices_version': '2.3.0',
+   #     'history': '2026-02-09T14:23:45Z: SPI-6 calculated using gamma distribution (climate_indices v2.3.0)',
    # }
 
 
@@ -393,7 +393,7 @@ The library follows CF (Climate and Forecast) Convention standards for metadata:
       # history is appended, not replaced
       print(result.attrs["history"])
       # 2026-02-08T10:00:00Z: Data downloaded from NCAR
-      # 2026-02-09T14:23:45Z: SPI-3 calculated using gamma distribution (climate_indices v2.2.0)
+      # 2026-02-09T14:23:45Z: SPI-3 calculated using gamma distribution (climate_indices v2.3.0)
 
 
 Coordinate Preservation

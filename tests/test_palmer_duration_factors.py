@@ -21,7 +21,7 @@ def _blank_state() -> tuple[palmer._PalmerPrepared, palmer._PalmerRecursion]:
 
 
 # every recursion state field carries an internal n_cells == 1 cell axis (see
-# ADR-0009); this is the "every cell" mask for a single-cell _blank_state()
+# ADR-0011); this is the "every cell" mask for a single-cell _blank_state()
 _ACTIVE = np.array([True])
 
 

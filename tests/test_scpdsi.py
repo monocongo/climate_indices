@@ -39,7 +39,7 @@ def test_public_signature_matches_pdsi_and_is_exported():
 
     scpdsi() runs the Wells backtracking recursion and per-location
     duration-factor fits per cell, so it stays on the per-location path
-    (ADR-0009) while pdsi() vectorizes across a spatial block's cells --
+    (ADR-0011) while pdsi() vectorizes across a spatial block's cells --
     including AWC, which pdsi() accepts as a scalar or a per-cell array and
     scpdsi() keeps scalar-only. Every parameter name, position, and default
     must still match exactly; only these two annotations may differ.

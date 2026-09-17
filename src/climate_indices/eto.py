@@ -286,7 +286,7 @@ def eto_thornthwaite(
         steps) of mean daily air temperatures in degrees Celsius. This input
         dataset is assumed to start at January of the initial year, and can have
         any length. Both 1-D (months) and 2-D (years, 12) input datasets
-        are supported. A time-major spatial block of shape (time, *cells), as
+        are supported. A time-major spatial block of shape (time, ``*cells``), as
         declared with ``spatial_time_major``, is also supported.
     :param latitude_degrees: latitude of the location, in degrees north (-90..90),
         as a scalar or as an array of per-cell latitudes broadcastable to the trailing
@@ -297,7 +297,7 @@ def eto_thornthwaite(
         the trailing dimensions, so the calculation runs once per cell set
     :return: estimated potential evapotranspiration, in millimeters/month
     :rtype: 1-D numpy.ndarray of floats with shape: (total # of months), or a
-        time-major block of shape (time, *cells)
+        time-major block of shape (time, ``*cells``)
     """
     original_size = monthly_temps_celsius.size
     original_time_length = monthly_temps_celsius.shape[0]
@@ -394,7 +394,7 @@ def eto_hargreaves(
 
     Input arrays are assumed to be 1-D (an arbitrary number of days) or 2-D
     (years x 366 days per year). A time-major spatial block of shape
-    (time, *cells), as declared with ``spatial_time_major``, is also supported,
+    (time, ``*cells``), as declared with ``spatial_time_major``, is also supported,
     in which case the per-day extraterrestrial radiation is computed once per
     block. A block's time axis is read as year-major 366-day years beginning on
     January 1, as the folded 1-D/2-D input is; a trailing partial year is
@@ -416,7 +416,7 @@ def eto_hargreaves(
         normalized; the xarray adapter performs that conversion before calling
         this function
     :return: 1-D array of potential evapotranspiration over grass (ETo),
-        in millimeters per day, or a time-major block of shape (time, *cells)
+        in millimeters per day, or a time-major block of shape (time, ``*cells``)
     """
 
     # validate the input data arrays
