@@ -72,7 +72,7 @@ pip install "climate-indices>=2.3"
 ```
 
 `uv` users can run `uv pip install "climate-indices>=2.3"`. The 2.3.0 floor matches the
-[quickstart](https://github.com/monocongo/climate_indices/blob/main/docs/quickstart.rst),
+[quickstart](https://github.com/monocongo/climate_indices/blob/main/docs/quickstart.md),
 which documents the latest release and uses the xarray API added in 2.3.0; see
 [Supported Python Versions](#supported-python-versions) for interpreter support.
 

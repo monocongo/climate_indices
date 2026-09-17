@@ -49,7 +49,7 @@ The library provides two CLI entry points for processing NetCDF datasets:
 - **`climate_indices`** / **`process_climate_indices`**: Full-featured CLI for all indices
 
 The retired `spi` entry point and its distribution fitting parameter save/load
-options are covered by [the API changes page](deprecations/api-changes.rst).
+options are covered by [the API changes page](deprecations/api-changes.md).
 
 ### Technology Stack Summary
 | Category | Technology |
@@ -174,7 +174,7 @@ uv run pytest -m benchmark
 ## AI-Assisted Development Guidance
 
 ### Recommended Starting Points for AI Agents
-1. **For understanding computation**: Start with `docs/reference.rst` (Sphinx API reference), then `src/climate_indices/compute.py`
+1. **For understanding computation**: Start with `docs/reference.md` (Sphinx API reference), then `src/climate_indices/compute.py`
 2. **For understanding API**: Read `src/climate_indices/typed_public_api.py` (strict mypy typing) and `src/climate_indices/xarray_adapter.py`
 3. **For understanding CLI**: Examine `src/climate_indices/__main__.py` (full-featured)
 4. **For testing patterns**: Review `tests/conftest.py` (fixtures), `tests/test_xarray_adapter.py` (modern API), `tests/test_property_based.py` (invariants)
@@ -219,4 +219,4 @@ uv run pytest -m benchmark
 
 ---
 
-**Next Steps**: See [architecture.md](./architecture.md) for detailed technical architecture, [development-guide.md](./development-guide.md) for setup instructions, and [reference.rst](./reference.rst) for API reference details.
+**Next Steps**: See [architecture.md](./architecture.md) for detailed technical architecture, [development-guide.md](./development-guide.md) for setup instructions, and [reference.md](./reference.md) for API reference details.
