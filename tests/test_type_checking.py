@@ -146,3 +146,27 @@ def test_hdw_xarray_return_type() -> None:
     height = xr.DataArray([10.0, 400.0], dims=dims)
     result = fire.hot_dry_windy(temperature, humidity, wind, height)
     assert_type(result, xr.DataArray)
+
+
+def test_haines_index_numpy_return_type() -> None:
+    """Verify mypy infers np.ndarray for NumPy input (see test_kbdi_numpy_return_type)."""
+    result = fire.haines_index([32.0, 20.0], [24.0, 5.0], [13.0, 0.0], variant="low")
+    assert_type(result, npt.NDArray[np.float64])
+
+
+def test_haines_index_xarray_return_type() -> None:
+    """Verify mypy infers xr.DataArray for xarray input (see test_kbdi_numpy_return_type)."""
+    dims = ["level"]
+    temperature_lower = xr.DataArray([32.0, 20.0], dims=dims)
+    temperature_upper = xr.DataArray([24.0, 5.0], dims=dims)
+    dewpoint = xr.DataArray([13.0, 0.0], dims=dims)
+    result = fire.haines_index(temperature_lower, temperature_upper, dewpoint, variant="low")
+    assert_type(result, xr.DataArray)
+
+
+def test_haines_index_from_profile_numpy_return_type() -> None:
+    """The profile entry point is NumPy-only and always returns an ndarray."""
+    result = fire.haines_index_from_profile(
+        [32.0, 24.0, 12.0, -8.0], [26.0, 13.0, 2.0, -20.0], [950.0, 850.0, 700.0, 500.0], 100.0
+    )
+    assert_type(result, npt.NDArray[np.float64])
