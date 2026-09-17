@@ -617,6 +617,25 @@ class TestSpatialPearsonEquivalence:
         np.testing.assert_array_equal(pearson_result.values, gamma_result.values)
 
 
+def _goodness_of_fit_warnings(
+    adapter,
+    per_cell_adapter,
+    grid: xr.DataArray,
+    kwargs: dict[str, object],
+) -> tuple[list[warnings.WarningMessage], list[warnings.WarningMessage]]:
+    """Run both adapters and return the goodness-of-fit warnings each one raised."""
+    with warnings.catch_warnings(record=True) as spatial_warnings:
+        warnings.simplefilter("always")
+        adapter(grid, **kwargs)
+    with warnings.catch_warnings(record=True) as cell_warnings:
+        warnings.simplefilter("always")
+        per_cell_adapter(grid, **kwargs)
+    return (
+        [w for w in spatial_warnings if issubclass(w.category, GoodnessOfFitWarning)],
+        [w for w in cell_warnings if issubclass(w.category, GoodnessOfFitWarning)],
+    )
+
+
 class TestSpatialGoodnessOfFitParity:
     """The vectorized goodness-of-fit prefilter flags the same cells as the per-series check."""
 
@@ -637,15 +656,7 @@ class TestSpatialGoodnessOfFitParity:
             "calibration_year_final": _CALIBRATION_END,
         }
 
-        with warnings.catch_warnings(record=True) as spatial_warnings:
-            warnings.simplefilter("always")
-            spatial_spi(grid, **kwargs)
-        with warnings.catch_warnings(record=True) as cell_warnings:
-            warnings.simplefilter("always")
-            per_cell_spi(grid, **kwargs)
-
-        spatial_fits = [w for w in spatial_warnings if issubclass(w.category, GoodnessOfFitWarning)]
-        cell_fits = [w for w in cell_warnings if issubclass(w.category, GoodnessOfFitWarning)]
+        spatial_fits, cell_fits = _goodness_of_fit_warnings(spatial_spi, per_cell_spi, grid, kwargs)
         assert len(spatial_fits) == 1, "the spatial check aggregates one warning per call"
         # the same (time step, cell) pairs are flagged on both paths; the spatial warning
         # counts comparisons, while each per-cell warning counts its own time steps
@@ -670,15 +681,7 @@ class TestSpatialGoodnessOfFitParity:
             "calibration_year_final": _CALIBRATION_END,
         }
 
-        with warnings.catch_warnings(record=True) as spatial_warnings:
-            warnings.simplefilter("always")
-            spatial_spi(grid, **kwargs)
-        with warnings.catch_warnings(record=True) as cell_warnings:
-            warnings.simplefilter("always")
-            per_cell_spi(grid, **kwargs)
-
-        spatial_fits = [w for w in spatial_warnings if issubclass(w.category, GoodnessOfFitWarning)]
-        cell_fits = [w for w in cell_warnings if issubclass(w.category, GoodnessOfFitWarning)]
+        spatial_fits, cell_fits = _goodness_of_fit_warnings(spatial_spi, per_cell_spi, grid, kwargs)
         assert len(spatial_fits) == 1, "the spatial check aggregates one warning per call"
         assert spatial_fits[0].message.poor_fit_count > 0, "the fixture must produce poor fits"
         assert spatial_fits[0].message.poor_fit_count == sum(w.message.poor_fit_count for w in cell_fits)
