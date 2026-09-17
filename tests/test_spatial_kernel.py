@@ -1325,6 +1325,26 @@ class TestSpatialEDDI:
                 periodicity=compute.Periodicity.monthly,
             )
 
+    def test_all_missing_block_short_circuits(self):
+        """An entirely missing block is returned as it arrived, without ranking."""
+        block = np.full((24, 2, 2), np.nan)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+
+            result = indices.eddi(
+                block,
+                3,
+                1980,
+                1980,
+                1981,
+                compute.Periodicity.monthly,
+                spatial_time_major=True,
+            )
+
+        assert result.shape == block.shape
+        assert np.all(np.isnan(result))
+
 
 class TestSpatialPercentageOfNormal:
     """Percentage of normal divides every cell of a block by its own normals (#942)."""
@@ -1575,6 +1595,24 @@ class TestSpatialNonParametricBlockContracts:
         )
 
         # the budget of 17 forces one cell per chunk, so the chunk boundaries are exercised
+        np.testing.assert_array_equal(chunked, _eddi_grid(gridded_monthly_precip.values, scale=3))
+
+    def test_eddi_rank_comparison_handles_a_ragged_final_chunk(self, gridded_monthly_precip, monkeypatch):
+        """A cell count that doesn't divide evenly into chunks still ranks every cell."""
+        # gridded_monthly_precip has 6 cells (3 x 2) and 30 calibration years x 40 years;
+        # this budget divides to a chunk of 4 cells, leaving a ragged final chunk of 2
+        monkeypatch.setattr(indices, "_EDDI_RANK_COMPARISON_ELEMENT_BUDGET", 5_000)
+
+        chunked = indices.eddi(
+            gridded_monthly_precip.values,
+            scale=3,
+            data_start_year=1980,
+            calibration_year_initial=_CALIBRATION_START,
+            calibration_year_final=_CALIBRATION_END,
+            periodicity=compute.Periodicity.monthly,
+            spatial_time_major=True,
+        )
+
         np.testing.assert_array_equal(chunked, _eddi_grid(gridded_monthly_precip.values, scale=3))
 
     def test_eddi_masked_block_drops_the_mask(self, gridded_monthly_precip):
