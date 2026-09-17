@@ -607,7 +607,8 @@ raise DistributionFittingError(
 2. **Shared memory**: CLI uses multiprocessing.Array for zero-copy
 3. **Lazy evaluation**: Dask defers computation until .compute()
 4. **Chunking**: Spatial chunks in Dask, single time chunk
-5. **Caching**: Distribution fitting parameters can be saved/loaded (\_\_spi\_\_.py)
+5. **Caching**: Distribution fitting parameters can be fitted once and passed
+   back in through the `fitting_params` argument of `indices.spi()`
 
 ### Benchmark Results (Typical)
 | Operation | Input Size | Execution Time | Memory |

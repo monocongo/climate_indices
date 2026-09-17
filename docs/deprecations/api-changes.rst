@@ -4,7 +4,7 @@ API Changes
 This page records feature-level deprecation and migration notes.
 
 ``spi`` console script (removed in 3.0.0)
-----------------------------------------
+-----------------------------------------
 
 The ``spi`` console script (``climate_indices.__spi__:main``) was deprecated
 in 2.4.0 and removed in 3.0.0. The ``climate_indices.__spi__`` module is gone,

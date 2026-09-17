@@ -892,7 +892,7 @@ fixture or explicitly defer that item before issue #627 is closed.
 - **Flexible Input Formats**: Supports numpy arrays, xarray DataArrays, and Dask arrays
 - **Multiple Temporal Scales**: Monthly and daily data, multiple time scales (1-72 months/days)
 - **Distribution Options**: Gamma and Pearson Type III distributions for SPI/SPEI
-- **CLI Tools**: Three command-line entry points for batch processing NetCDF data
+- **CLI Tools**: Two command-line entry points for batch processing NetCDF data
 - **Scientific Rigor**: Based on peer-reviewed methodologies with comprehensive validation
 
 ## Project Classification
@@ -921,9 +921,11 @@ fixture or explicitly defer that item before issue #627 is closed.
 ```
 
 ### Entry Points
-The library provides three CLI entry points for processing NetCDF datasets:
+The library provides two CLI entry points for processing NetCDF datasets:
 - **`climate_indices`** / **`process_climate_indices`**: Full-featured CLI for all indices
-- **`spi`**: Specialized CLI for SPI computation with distribution fitting parameter save/load
+
+The retired `spi` entry point and its distribution fitting parameter save/load
+options are covered by [the API changes page](docs/deprecations/api-changes.rst).
 
 ### Technology Stack Summary
 | Category | Technology |
@@ -1706,7 +1708,8 @@ raise DistributionFittingError(
 2. **Shared memory**: CLI uses multiprocessing.Array for zero-copy
 3. **Lazy evaluation**: Dask defers computation until .compute()
 4. **Chunking**: Spatial chunks in Dask, single time chunk
-5. **Caching**: Distribution fitting parameters can be saved/loaded (\_\_spi\_\_.py)
+5. **Caching**: Distribution fitting parameters can be fitted once and passed
+   back in through the `fitting_params` argument of `indices.spi()`
 
 ### Benchmark Results (Typical)
 | Operation | Input Size | Execution Time | Memory |

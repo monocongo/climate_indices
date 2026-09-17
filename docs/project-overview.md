@@ -16,7 +16,7 @@
 - **Flexible Input Formats**: Supports numpy arrays, xarray DataArrays, and Dask arrays
 - **Multiple Temporal Scales**: Monthly and daily data, multiple time scales (1-72 months/days)
 - **Distribution Options**: Gamma and Pearson Type III distributions for SPI/SPEI
-- **CLI Tools**: Three command-line entry points for batch processing NetCDF data
+- **CLI Tools**: Two command-line entry points for batch processing NetCDF data
 - **Scientific Rigor**: Based on peer-reviewed methodologies with comprehensive validation
 
 ## Project Classification
@@ -45,9 +45,11 @@
 ```
 
 ### Entry Points
-The library provides three CLI entry points for processing NetCDF datasets:
+The library provides two CLI entry points for processing NetCDF datasets:
 - **`climate_indices`** / **`process_climate_indices`**: Full-featured CLI for all indices
-- **`spi`**: Specialized CLI for SPI computation with distribution fitting parameter save/load
+
+The retired `spi` entry point and its distribution fitting parameter save/load
+options are covered by [the API changes page](deprecations/api-changes.rst).
 
 ### Technology Stack Summary
 | Category | Technology |

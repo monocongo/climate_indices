@@ -210,6 +210,8 @@ Static audit of the index-invocation sites in `src/climate_indices/`, as of
 `02c9cb38`, for Python-level loops that call an index function once per grid cell
 or per time series. Scope is the library and its xarray adapter layer; notebooks
 are excluded (see the #921 findings above for why the notebook figure differs).
+The three `__spi__.py` rows it listed were removed with that module in 3.0.0
+(#957) and are omitted here.
 
 Reference grid: 38 x 87 = 3306 cells, 40 years monthly = 480 time steps, so one
 per-cell pass is 3306 calls.
@@ -298,10 +300,7 @@ not reduce total per-cell Python cost.
 | `__main__.py:1347,1349` (`_apply_along_axis_double`, loop at `:1343,1345`) | `_spei`/`_pet` | `lat x lon` | 3306 |
 | `__main__.py:1412` (`_apply_along_axis_palmers`, loop at `:1409,1411`) | `_palmers` -> `palmer.pdsi` | `lat x lon` | 3306, four outputs each |
 
-The legacy `spi` console script and its `__spi__.py` module were removed in 3.0.0
-(#957), so the three per-cell sites this inventory listed there
-(`_apply_to_subarray_spi`, `_apply_to_subarray_gamma`, `_apply_to_subarray_pearson`)
-no longer exist. The `__main__.py` sites duplicate
+The `__main__.py` sites duplicate
 the adapter path's work on the same kernels, so a baseline measured through the
 CLI and a baseline measured through the canonical path are not interchangeable.
 
