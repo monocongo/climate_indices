@@ -85,8 +85,8 @@ applies per cell along the time axis.
   `chunks` when opening your own dataset, with the `DASK_ARRAY__CHUNK_SIZE`
   environment variable, or with `dask.config.set({"array.chunk-size": ...})` — a
   configured budget is honored rather than overwritten.
-- Choose the scheduler at the materialization call: the library never imports or
-  configures Dask ([ADR-0002](adr/0002-multiprocessing-cli-dask-xarray.md)). The
+- Choose the scheduler at the materialization call: the xarray API never imports
+  or configures Dask ([ADR-0002](adr/0002-multiprocessing-cli-dask-xarray.md)). The
   gridded kernels are CPU-bound Python/scipy work, and their Python-level portion
   does not run in parallel under the default threaded scheduler, so materialize a
   lazy result on worker processes — given `precip`, whose `time` dimension is a
@@ -105,13 +105,15 @@ applies per cell along the time axis.
   ```
 
   In a script rather than a notebook, that call belongs under
-  `if __name__ == "__main__":` when the `spawn` start method is in effect (macOS
-  and Windows), because each worker re-imports the entry module. A Zarr write
-  takes the same scheduler through the delayed write:
+  `if __name__ == "__main__":` while Dask spawns its workers — the `processes`
+  scheduler's default start method on every platform — because each worker
+  re-imports the entry module. A Zarr write takes the same scheduler through the
+  delayed write:
   `spi_lazy.to_zarr(path, compute=False).compute(scheduler="processes")`.
-  NetCDF writes do not — the backend store holds an unpicklable lock — so load
-  the result first and write it in memory when the full result fits in memory,
-  or let a distributed client stream the write for larger results.
+  NetCDF writes do not: their backend lock is built for the scheduler that is
+  active when the write graph is built, and the default one cannot be pickled to
+  worker processes, so load the result first and write it in memory when the full
+  result fits, or let a distributed client stream the write for larger results.
 - Every `.compute(scheduler="processes")` call builds and tears down its own
   process pool, so a computation short relative to that start-up spends most of
   its wall clock there: on the 38 x 87 reference grid the SPI pass measured 1.37 s
