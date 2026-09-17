@@ -73,3 +73,30 @@ def test_quiet_worker_silences_only_goodness_of_fit() -> None:
         warnings.warn("fit", GoodnessOfFitWarning, stacklevel=2)
         warnings.warn("other", RuntimeWarning, stacklevel=2)
     assert [type(warning.message) for warning in caught] == [RuntimeWarning]
+
+
+def test_require_finite_tail_honors_the_declared_padding() -> None:
+    """Non-finite output is rejected past the index's own leading NaN pad."""
+    padded = np.concatenate([np.full(parallel_scaling.SCALE - 1, np.nan), np.ones(4)])
+    parallel_scaling._require_finite_tail(padded, parallel_scaling.SCALE - 1)
+    unpadded = np.ones(6)
+    parallel_scaling._require_finite_tail(unpadded, 0)
+
+    # a NaN beyond the declared pad is a degenerated fit, and PET declares no pad
+    beyond_pad = np.concatenate([np.full(parallel_scaling.SCALE - 1, np.nan), [np.nan], np.ones(3)])
+    with pytest.raises(RuntimeError, match="padded time steps"):
+        parallel_scaling._require_finite_tail(beyond_pad, parallel_scaling.SCALE - 1)
+    with pytest.raises(RuntimeError, match="padded time steps"):
+        parallel_scaling._require_finite_tail(np.concatenate([[np.nan], np.ones(5)]), 0)
+
+
+def test_every_benchmarked_index_declares_its_padding() -> None:
+    """The README before/after table names these four indices; pads match the kernels."""
+    assert set(parallel_scaling._RUNNERS) == {"spi", "spei", "pet", "eddi"}
+    pads = {name: index.leading_pad for name, index in parallel_scaling._RUNNERS.items()}
+    assert pads == {
+        "spi": parallel_scaling.SCALE - 1,
+        "spei": parallel_scaling.SCALE - 1,
+        "pet": 0,
+        "eddi": parallel_scaling.SCALE - 1,
+    }
