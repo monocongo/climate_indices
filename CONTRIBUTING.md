@@ -56,6 +56,57 @@ repository, and concrete in-scope and out-of-scope examples are in
 Point an out-of-scope proposal there rather than dismissing it: it is a
 candidate for that sibling, not a rejection on merit.
 
+## Documentation audience
+
+Everything on the published site is for users and contributors of the shipped
+library, and every page under `docs/` is either published or internal:
+
+- **Published** pages serve exactly one reader need: tutorial (learning),
+  how-to guide (doing a job), reference (looking something up), or
+  explanation (understanding). The Markdown pages below join the site when
+  Markdown sources are enabled; until then the site builds the `.rst`
+  sources only.
+- **Internal** pages are working notes — agent guidance, design and planning
+  scratch, research — that stay in the repository without being published.
+
+The split exists so the site teaches one version of the truth. Working notes
+move with the code, are addressed to maintainers, and would otherwise reach
+readers as competing instructions. Because a Markdown suffix publishes every
+page it can find, internal pages are excluded by path in
+`docs/conf.py` (`exclude_patterns`), not by convention: enabling Markdown
+sources cannot leak them. When an internal page is added or moves between
+audiences, update that exclusion list and this section in the same change.
+
+Current assignments (the context map and validation status live at the
+repository root — `CONTEXT-MAP.md`, `VALIDATION.md` — and the core-library
+vocabulary at `src/climate_indices/CONTEXT.md`):
+
+- Tutorial: `docs/quickstart.rst`, `docs/index.rst`
+- How-to guide: `docs/troubleshooting.rst`, `docs/xarray_migration.rst`,
+  `docs/development-guide.md`, `docs/contribution-guide.md`,
+  `docs/deployment-guide.md`, `docs/release-process.md`
+- Reference: `docs/reference.rst`, `docs/algorithms.rst`,
+  `docs/deprecations/`, `docs/xarray_compatibility.md`,
+  `docs/research/nclimgrid-acquisition-and-redistribution.md` (the
+  troubleshooting guide sends readers there for source provenance and
+  attribution),
+  `src/climate_indices/CONTEXT.md`, `VALIDATION.md`
+- Explanation: `docs/wildfire_applications.md` with its
+  `docs/wildfire_applications.rst` include, `docs/adr/`,
+  `docs/algorithm_refs/`, `docs/architecture.md`,
+  `docs/project-overview.md`, `docs/floating_point_best_practices.md`
+- Internal: `docs/agent/`, `docs/design/`,
+  `docs/research/fire-indices-cli-approach.md`,
+  `docs/research/interactive-climate-explorer-landscape.md`,
+  `docs/explorer/`, `docs/architecture-deepening-review-*.md`,
+  `docs/test_fixture_management.md`, `CONTEXT-MAP.md`
+- Published URL-retention orphan: `docs/pypi_release.rst` (`:orphan:`; kept
+  only so the previously published `pypi_release.html` URL resolves)
+
+Build infrastructure (`docs/conf.py`, `docs/Makefile`, `docs/make.bat`,
+`docs/_static/`, `docs/_templates/`) and assets referenced by no page
+(`docs/gallery/*.png`) are not pages and are outside this split.
+
 ## Local validation
 
 Run the checks that CI expects before opening a PR:

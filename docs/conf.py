@@ -79,7 +79,24 @@ language = "en"
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path .
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+# Internal working notes are excluded by path, not by convention: agent
+# guidance, design/planning scratch, and research are addressed to
+# maintainers and drift, so the site must never build them. Excluding them
+# here also keeps them out once Markdown sources are enabled. See the
+# "Documentation audience" section of CONTRIBUTING.md for the
+# published/internal split and each published page's reader-need quadrant.
+exclude_patterns = [
+    "_build",
+    "Thumbs.db",
+    ".DS_Store",
+    "agent/**",
+    "design/**",
+    "research/fire-indices-cli-approach.md",
+    "research/interactive-climate-explorer-landscape.md",
+    "explorer/**",
+    "architecture-deepening-review-*.md",
+    "test_fixture_management.md",
+]
 
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = "sphinx"
