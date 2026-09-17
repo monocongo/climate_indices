@@ -35,6 +35,11 @@ climate_indices.validation
 
 .. automodule:: climate_indices.validation
    :members:
+   :exclude-members: InputType
+
+.. autoclass:: climate_indices.validation.InputType
+   :members:
+   :exclude-members: NUMPY, XARRAY
 
 
 climate_indices.xarray_adapter
