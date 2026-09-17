@@ -58,6 +58,13 @@ _EXPECTED_DIMENSIONS_TIMESERIES = [("time",)]
 _EXPECTED_DIMENSIONS_GRID_AWC = [("lat", "lon")]
 _EXPECTED_DIMENSIONS_DIVISIONS_AWC = [("division",)]
 
+# the dimensions each input type expects, for checking a companion input
+_EXPECTED_DIMENSIONS_BY_INPUT_TYPE: dict[InputType, list[Any]] = {
+    InputType.grid: _EXPECTED_DIMENSIONS_GRID,
+    InputType.divisions: _EXPECTED_DIMENSIONS_DIVISIONS,
+    InputType.timeseries: _EXPECTED_DIMENSIONS_TIMESERIES,
+}
+
 
 @dataclass(frozen=True)
 class _InputContext:
@@ -318,14 +325,9 @@ def _validate_matching_input_file(
     raise ValueError: if the companion input is invalid or does not match
     """
 
-    if context.input_type == InputType.grid:
-        expected_dimensions: list[Any] = _EXPECTED_DIMENSIONS_GRID
-    elif context.input_type == InputType.divisions:
-        expected_dimensions = _EXPECTED_DIMENSIONS_DIVISIONS
-    elif context.input_type == InputType.timeseries:
-        expected_dimensions = _EXPECTED_DIMENSIONS_TIMESERIES
-    else:
-        msg = "Failed to determine the input type " + "(gridded, timeseries, or US climate division)"  # type: ignore[unreachable]
+    expected_dimensions = _EXPECTED_DIMENSIONS_BY_INPUT_TYPE.get(context.input_type)
+    if expected_dimensions is None:
+        msg = "Failed to determine the input type (gridded, timeseries, or US climate division)"
         _logger.error(msg)
         raise ValueError(msg)
 
@@ -704,6 +706,173 @@ def _drop_data_into_shared_arrays_divisions(
     return output_shape
 
 
+# the chunking xr.open_mfdataset() uses per input type, collapsing the whole
+# dimension so index kernels always see complete series/grids/divisions
+_CHUNKS_BY_INPUT_TYPE: dict[InputType, dict[str, int]] = {
+    InputType.grid: {"lat": -1, "lon": -1},
+    InputType.divisions: {"division": -1},
+    InputType.timeseries: {"time": -1},
+}
+
+
+def _input_chunksizes(dataset: xr.Dataset) -> tuple[tuple[int, ...], tuple[Any, ...]]:
+    """
+    Find the first input variable's chunk sizes, for copying onto the output.
+
+    Note that the netcdf spec doesn't require that all data variables have the
+    same chunk sizes.
+
+    param dataset: the opened inputs
+    return: the chunk sizes found and the dimensions they correspond to, or a
+        pair of empty tuples if no variable is chunked
+    """
+    for da in dataset.data_vars.values():
+        if not da.encoding.get("contiguous", True):
+            # tuple of chunksizes, respectively by dimension
+            chunksizes = da.encoding.get("chunksizes", ())
+            if chunksizes:
+                return chunksizes, da.dims
+    return (), ()
+
+
+def _trim_to_input_variables(request: _IndexRequest, dataset: xr.Dataset) -> tuple[xr.Dataset, list[str]]:
+    """
+    Keep only the data variables an index's request actually uses.
+
+    param request: the index request being computed
+    param dataset: the opened inputs
+    return: the trimmed dataset and the kept variable names
+    """
+    input_var_names = [name for name in (request.var_name_precip, request.var_name_temp, request.var_name_pet) if name]
+    # keep the latitude variable if we're dealing with divisions
+    if request.input_type == InputType.divisions:
+        input_var_names.append("lat")
+    for var in dataset.data_vars:
+        if var not in input_var_names:
+            dataset = dataset.drop_vars(names=[var])
+    return dataset, input_var_names
+
+
+def _output_dims(request: _IndexRequest, dataset: xr.Dataset) -> tuple[Hashable, ...]:
+    """
+    The output variable's dimensions, matching whichever input carries them.
+
+    The shape of output variables is assumed to match that of the input, so
+    use either the precipitation or temperature variable's dimensions.
+
+    param request: the index request being computed
+    param dataset: the opened, trimmed inputs
+    return: the output variable's dimensions
+    raise ValueError: if neither a precipitation nor temperature variable name
+        was specified
+    """
+    if request.var_name_precip is not None:
+        return dataset[request.var_name_precip].dims
+    if request.var_name_temp is not None:
+        return dataset[request.var_name_temp].dims
+    raise ValueError(
+        "Unable to determine output dimensions, no precipitation or temperature variable name was specified."
+    )
+
+
+def _reordered_chunksizes(
+    chunksizes: tuple[int, ...],
+    source_dims: tuple[Any, ...],
+    output_dims: tuple[Hashable, ...],
+) -> tuple[int, ...]:
+    """
+    Reorder a copied chunk-size tuple from the source variable's dimension
+    order to the output variable's.
+
+    The copied chunksizes follow the source variable's dimension order, which
+    can differ from the output variable's -- reorder by dimension name so that
+    each chunk length corresponds to the correct output dimension.
+
+    param chunksizes: chunk sizes found on the source variable
+    param source_dims: the source variable's dimensions, in the same order
+    param output_dims: the output variable's dimensions
+    return: chunksizes reordered to match output_dims, or an empty tuple if
+        the source and output dimensions don't match
+    """
+    if not chunksizes or source_dims == tuple(output_dims):
+        return chunksizes
+    chunksizes_by_dim = dict(zip(source_dims, chunksizes, strict=False))
+    if set(chunksizes_by_dim) == set(output_dims):
+        return tuple(chunksizes_by_dim[dim] for dim in output_dims)
+    _logger.warning(
+        "Ignoring '--chunksizes input': chunked variable dimensions %s do not match output dimensions %s",
+        source_dims,
+        output_dims,
+    )
+    return ()
+
+
+def _normalize_precipitation_units(dataset: xr.Dataset, var_name: str | None) -> None:
+    """
+    Convert a precipitation variable's values to millimeters, in place.
+
+    param dataset: the dataset holding the variable
+    param var_name: name of the precipitation variable, or None when the
+        index takes no precipitation input
+    raise ValueError: if the variable's units are not millimeters, a daily
+        rate, or inches
+    """
+    if var_name is None:
+        return
+    precip_unit = dataset[var_name].units.lower()
+    if precip_unit in ("mm", "millimeters", "millimeter", "mm/dy"):
+        return
+    if precip_unit in ("inches", "inch"):
+        # inches to mm conversion (1 inch == 25.4 mm)
+        dataset[var_name].values *= 25.4
+    else:
+        raise ValueError(f"Unsupported precipitation units: {precip_unit}")
+
+
+def _normalize_temperature_units(dataset: xr.Dataset, var_name: str | None) -> None:
+    """
+    Convert a temperature variable's values to degrees Celsius, in place.
+
+    param dataset: the dataset holding the variable
+    param var_name: name of the temperature variable, or None when the index
+        takes no temperature input
+    raise ValueError: if the variable's units are not Celsius, Fahrenheit, or
+        Kelvin
+    """
+    if var_name is None:
+        return
+    temp_unit = dataset[var_name].units.lower()
+    if temp_unit in ("degree_celsius", "degrees_celsius", "celsius", "c"):
+        return
+    if temp_unit in ("f", "fahrenheit", "degree_fahrenheit", "degrees_fahrenheit"):
+        dataset[var_name].values = scipy.constants.convert_temperature(dataset[var_name].values, "f", "c")
+    elif temp_unit in ("k", "kelvin"):
+        dataset[var_name].values = scipy.constants.convert_temperature(dataset[var_name].values, "k", "c")
+    else:
+        raise ValueError(f"Unsupported temperature units: {temp_unit}")
+
+
+def _normalize_pet_units(dataset: xr.Dataset, var_name: str | None) -> None:
+    """
+    Convert a PET variable's values to millimeters, in place.
+
+    param dataset: the dataset holding the variable
+    param var_name: name of the PET variable, or None when the index takes no
+        PET input
+    raise ValueError: if the variable's units are not millimeters or inches
+    """
+    if var_name is None:
+        return
+    pet_unit = dataset[var_name].units.lower()
+    if pet_unit in ("mm", "millimeters", "millimeter"):
+        return
+    if pet_unit in ("inches", "inch"):
+        # inches to mm conversion (1 inch == 25.4 mm)
+        dataset[var_name].values *= 25.4
+    else:
+        raise ValueError(f"Unsupported PET units: {dataset[var_name].units}")
+
+
 def _compute_write_index(request: _IndexRequest) -> tuple[str, str] | None:
     """
     Computes a climate index and writes the result into a corresponding NetCDF.
@@ -719,112 +888,32 @@ def _compute_write_index(request: _IndexRequest) -> tuple[str, str] | None:
 
     # open the NetCDF files as an xarray DataSet object
     files = [path for path in (request.netcdf_precip, request.netcdf_temp, request.netcdf_pet) if path is not None]
-    if request.input_type == InputType.grid:
-        chunks = {"lat": -1, "lon": -1}
-    elif request.input_type == InputType.divisions:
-        chunks = {"division": -1}
-    elif request.input_type == InputType.timeseries:
-        chunks = {"time": -1}
-    else:
+    chunks = _CHUNKS_BY_INPUT_TYPE.get(request.input_type)
+    if chunks is None:
         raise ValueError(f"Unsupported input type: {request.input_type}")
 
     # Since multiple variables can be in the same file, de-duplicate the filelist.
     dataset = xr.open_mfdataset(list(set(files)), chunks=chunks)
+
     output_chunksizes: tuple[int, ...] = ()
     chunksizes_dims: tuple[Any, ...] = ()
     if request.chunksizes == "input":
-        # Find the first variable with chunksizes set and use that
-        # Note that the netcdf spec doesn't require that all data variables
-        # have the same chunk sizes.
-        for da in dataset.data_vars.values():
-            if not da.encoding.get("contiguous", True):
-                # tuple of chunksizes, respectively by dimension
-                output_chunksizes = da.encoding.get("chunksizes", ())
-                chunksizes_dims = da.dims
-            if output_chunksizes:
-                break
+        output_chunksizes, chunksizes_dims = _input_chunksizes(dataset)
 
     # trim out all data variables from the dataset except the ones we'll need
-    input_var_names = [name for name in (request.var_name_precip, request.var_name_temp, request.var_name_pet) if name]
-    # keep the latitude variable if we're dealing with divisions
-    if request.input_type == InputType.divisions:
-        input_var_names.append("lat")
-    for var in dataset.data_vars:
-        if var not in input_var_names:
-            dataset = dataset.drop_vars(names=[var])
+    dataset, input_var_names = _trim_to_input_variables(request, dataset)
 
     # get the initial year of the data
     request.data_start_year = int(str(dataset["time"].values[0])[0:4])
 
-    # the shape of output variables is assumed to match that of the input,
-    # so use either precipitation or temperature variable's shape
-    if request.var_name_precip is not None:
-        output_dims = dataset[request.var_name_precip].dims
-    elif request.var_name_temp is not None:
-        output_dims = dataset[request.var_name_temp].dims
-    else:
-        raise ValueError(
-            "Unable to determine output dimensions, no precipitation or temperature variable name was specified."
-        )
-
-    # the copied chunksizes follow the source variable's dimension order, which
-    # can differ from the output variable's -- reorder by dimension name so that
-    # each chunk length corresponds to the correct output dimension
-    if output_chunksizes and chunksizes_dims != tuple(output_dims):
-        chunksizes_by_dim = dict(zip(chunksizes_dims, output_chunksizes, strict=False))
-        if set(chunksizes_by_dim) == set(output_dims):
-            output_chunksizes = tuple(chunksizes_by_dim[dim] for dim in output_dims)
-        else:
-            _logger.warning(
-                "Ignoring '--chunksizes input': chunked variable dimensions %s do not match output dimensions %s",
-                chunksizes_dims,
-                output_dims,
-            )
-            output_chunksizes = ()
+    output_dims = _output_dims(request, dataset)
+    output_chunksizes = _reordered_chunksizes(output_chunksizes, chunksizes_dims, output_dims)
 
     # convert data into the appropriate units, if necessary
-    # precipitation and PET should be in millimeters
-    if request.var_name_precip is not None:
-        precip_var_name = request.var_name_precip
-        precip_unit = dataset[precip_var_name].units.lower()
-        if precip_unit not in ("mm", "millimeters", "millimeter", "mm/dy"):
-            if precip_unit in ("inches", "inch"):
-                # inches to mm conversion (1 inch == 25.4 mm)
-                dataset[precip_var_name].values *= 25.4
-            else:
-                raise ValueError(f"Unsupported precipitation units: {precip_unit}")
-
-    # convert data into the appropriate units, if necessary
-    # temperature should be in degrees Celsius
-    if request.var_name_temp is not None:
-        temp_var_name = request.var_name_temp
-        temp_unit = dataset[temp_var_name].units.lower()
-        if temp_unit not in ("degree_celsius", "degrees_celsius", "celsius", "c"):
-            if temp_unit in (
-                "f",
-                "fahrenheit",
-                "degree_fahrenheit",
-                "degrees_fahrenheit",
-            ):
-                dataset[temp_var_name].values = scipy.constants.convert_temperature(
-                    dataset[temp_var_name].values, "f", "c"
-                )
-            elif temp_unit in ("k", "kelvin"):
-                dataset[temp_var_name].values = scipy.constants.convert_temperature(
-                    dataset[temp_var_name].values, "k", "c"
-                )
-            else:
-                raise ValueError(f"Unsupported temperature units: {temp_unit}")
-
-    if request.var_name_pet is not None:
-        pet_var_name = request.var_name_pet
-        pet_unit = dataset[pet_var_name].units.lower()
-        if pet_unit not in ("mm", "millimeters", "millimeter"):
-            if pet_unit in ("inches", "inch"):
-                # inches to mm conversion (1 inch == 25.4 mm)
-                dataset[pet_var_name].values *= 25.4
-            else:
-                raise ValueError(f"Unsupported PET units: {dataset[pet_var_name].units}")
+    # precipitation and PET should be in millimeters, temperature in Celsius
+    _normalize_precipitation_units(dataset, request.var_name_precip)
+    _normalize_temperature_units(dataset, request.var_name_temp)
+    _normalize_pet_units(dataset, request.var_name_pet)
 
     # the Palmer routines take inches, whereas the conversions above normalize
     # precipitation and PET to millimeters for every other index; this runs
