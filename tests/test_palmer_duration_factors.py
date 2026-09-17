@@ -25,7 +25,7 @@ def test_initialize_data_sets_default_duration_factors():
     assert data["wetm"] == pytest.approx(data["drym"])
     assert data["wetb"] == pytest.approx(data["dryb"])
 
-    # the implied CAFEC-weighting fraction c = b / (m + b) must reproduce
+    # the implied duration-factor weighting fraction c = b / (m + b) must reproduce
     # Palmer's published constant (0.897), regardless of how m/b are derived
     c = data["wetb"] / (data["wetm"] + data["wetb"])
     assert c == pytest.approx(0.897)

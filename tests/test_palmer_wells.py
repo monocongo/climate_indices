@@ -152,8 +152,8 @@ def test_duration_factor_magnitude_at_or_above_one_raises_convergence_error(wetm
 def test_fitted_coefficients_keep_the_wells_complement_form():
     """The Wells coefficients are derived as ``1 - m / (m + b)``, not as ``b / (m + b)``.
 
-    The two forms agree in exact arithmetic but can differ in the last bit of the
-    float, and the recurrence branches on exact comparisons, so the derivation form
+    The two forms agree in exact arithmetic but can differ bitwise, and the
+    recurrence branches on exact comparisons, so the derivation form
     is load-bearing (see the ``_palmer_duration`` module docstring). These constants
     make all three forms differ bitwise, and ``wetb != dryb`` additionally pins the
     cross denominator ``drym + wetb`` behind ``dryc``.
