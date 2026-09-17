@@ -1499,8 +1499,15 @@ def _apply_along_axis_double(
 
 def _apply_along_axis_palmers(params: dict[str, Any]) -> None:
     """
-    Applies the Palmer computation function across subarrays of
-    the Palmer-specific input (shared-memory) arrays.
+    Applies the Palmer computation across subarrays of the Palmer-specific
+    input (shared-memory) arrays.
+
+    A grid chunk is computed in one vectorized call over the whole
+    (lat_chunk, lon, time) block via ``palmer.pdsi()``'s
+    ``spatial_time_major`` contract (ADR-0008/ADR-0009), rather than a
+    Python loop over grid cells; multiprocessing still parallelizes across
+    chunks (ADR-0002). A divisions chunk has no cell-adjacency structure to
+    batch, so it stays on the per-location loop.
 
     This function is useful with multiprocessing.Pool().map(): (1) map() only
     handles functions that take a single argument, and (2) this function can
@@ -1550,11 +1557,26 @@ def _apply_along_axis_palmers(params: dict[str, Any]) -> None:
     zindex_output_array = _global_shared_arrays[_KEY_RESULT_ZINDEX][_KEY_ARRAY]
     zindex = np.frombuffer(zindex_output_array.get_obj()).reshape(shape)[start_index:end_index]
 
-    for i, (precip, pet, awc) in enumerate(zip(sub_array_precip, sub_array_pet, sub_array_awc, strict=False)):
-        if params["input_type"] == InputType.grid:
-            for j in range(precip.shape[0]):
-                pdsi[i, j], phdi[i, j], pmdi[i, j], zindex[i, j] = func1d(precip[j], pet[j], awc[j], parameters=args)
-        else:  # divisions
+    if params["input_type"] == InputType.grid:
+        # sub_array_precip/pet are (lat_chunk, lon, time); pdsi() wants a
+        # time-major (time, *cells) block
+        precip_block = np.moveaxis(sub_array_precip, -1, 0)
+        pet_block = np.moveaxis(sub_array_pet, -1, 0)
+        block_pdsi, block_phdi, block_pmdi, block_zindex, _fitting_params = palmer.pdsi(
+            precip_block,
+            pet_block,
+            sub_array_awc,
+            args["data_start_year"],
+            args["calibration_start_year"],
+            args["calibration_end_year"],
+            spatial_time_major=True,
+        )
+        np.copyto(pdsi, np.moveaxis(block_pdsi, 0, -1))
+        np.copyto(phdi, np.moveaxis(block_phdi, 0, -1))
+        np.copyto(pmdi, np.moveaxis(block_pmdi, 0, -1))
+        np.copyto(zindex, np.moveaxis(block_zindex, 0, -1))
+    else:  # divisions
+        for i, (precip, pet, awc) in enumerate(zip(sub_array_precip, sub_array_pet, sub_array_awc, strict=False)):
             pdsi[i], phdi[i], pmdi[i], zindex[i] = func1d(precip, pet, awc, parameters=args)
 
 

@@ -121,6 +121,39 @@ logging and goodness-of-fit warnings are disabled, so the timings measure the
 fitting path rather than the log renderer. #929 publishes the before/after table
 built from this script.
 
+## Before/after timings for the gridded Palmer PDSI kernel (#937)
+
+```bash
+uv run benchmarks/profile_gridded_palmer.py
+```
+
+The script builds the same #893 reference grid as synthetic precipitation, PET,
+and per-cell AWC (38x87 cells, 40 years monthly, seed 42), warms up on a small
+grid, then times `palmer.pdsi()` two ways on the reference grid: the per-cell
+loop `__main__._apply_along_axis_palmers` used before #937 (one call per grid
+cell, 3306 calls), and the spatial block path #937 added
+(`spatial_time_major=True`, one call for the whole grid). Each measurement is
+the minimum of two runs. #929, which would otherwise own the general
+before/after table format for this epic, is unmerged with no branch as of
+#937, so this script defines its own rather than waiting on it; #929 may fold
+this into a shared format later. Always rewrites
+`benchmarks/results/profile_gridded_palmer.txt`.
+
+### Findings (macOS arm64, Python 3.14, 2026-09)
+
+Reference grid: 3306 cells x 480 months.
+
+| measurement | time |
+|---|---|
+| per-cell loop (pre-#937) | 135.2 s |
+| spatial block (#937) | 1.2 s |
+| speedup | 113.5x |
+
+The per-cell figure is consistent with the #921 SPI profile's per-cell
+overhead (structlog volume, one Python call per cell) plus Palmer's own
+per-location water-balance and spell-recursion cost; #937's vectorized
+recursion pays that cost once for the whole grid instead of once per cell.
+
 ## Per-cell invocation inventory (#922)
 
 Static audit of the index-invocation sites in `src/climate_indices/`, as of
@@ -189,11 +222,10 @@ pinned to `DataShapeError`. The ranking count holds one chunk of the
 `(calibration years, years, *cells)` comparison at a time, bounded near 4 MB, so grid
 size no longer multiplies into it.
 
-The remaining per-cell sites above are owned by follow-ups:
-
-| remaining site | owner |
-| --- | --- |
-| `palmer.pdsi`/`palmer.scpdsi` (no adapter layer at all) | #937 |
+`palmer.pdsi` gained a spatial block path at the NumPy layer in #937 (see
+`### Conversion status (#937)` below); it has no xarray adapter yet, so it
+does not appear in the canonical adapter table above. `palmer.scpdsi` stays
+per-location (ADR-0009) and is not part of this conversion.
 
 ### Legacy CLI path (per-cell loop present, parallel across workers)
 
@@ -213,7 +245,6 @@ not reduce total per-cell Python cost.
 | `__main__.py:1289` (`_apply_along_axis`) | `_spi` via `np.apply_along_axis(axis=2)` | `lat x lon`, looped by `np.apply_along_axis` in Python | 3306 per scale x distribution (`:1519-1520`) |
 | `__main__.py:1289` (`_apply_along_axis`) | `_pnp` via `np.apply_along_axis(axis=2)` | same | 3306 per scale only (`:1609`, no distribution loop) |
 | `__main__.py:1347,1349` (`_apply_along_axis_double`, loop at `:1343,1345`) | `_spei`/`_pet` | `lat x lon` | 3306 |
-| `__main__.py:1412` (`_apply_along_axis_palmers`, loop at `:1409,1411`) | `_palmers` -> `palmer.pdsi` | `lat x lon` | 3306, four outputs each |
 | `__spi__.py:1021` (`_apply_to_subarray_spi`, loop at `:1004`) | `indices.spi` transform | `lat x lon` | 3306 per scale x distribution |
 | `__spi__.py:1105` (`_apply_to_subarray_gamma`, loop at `:1099`) | `compute.gamma_parameters` | `lat x lon` | 3306 per scale x distribution |
 | `__spi__.py:1192` (`_apply_to_subarray_pearson`, loop at `:1177`) | `compute.pearson_parameters` | `lat x lon` | 3306 per scale x distribution |
@@ -222,6 +253,30 @@ not reduce total per-cell Python cost.
 vanish if it is retired rather than vectorized. The `__main__.py` sites duplicate
 the adapter path's work on the same kernels, so a baseline measured through the
 CLI and a baseline measured through the canonical path are not interchangeable.
+`_apply_along_axis_palmers` (previously a per-cell loop at this table's `:1409,1411`)
+is converted for grid input; see `### Conversion status (#937)` below.
+
+### Conversion status (#937)
+
+`palmer.pdsi()` accepts a time-major spatial block the same way `spi`/`spei` do
+(`spatial_time_major=True`, ADR-0008/ADR-0009). Palmer's recursion has genuine
+per-cell control flow, unlike the fitting-based kernels' pure arithmetic, so the
+spatial path is a masked vectorization of the spell recursion itself rather than
+a broadcast: every recursion stage takes an `active` cell mask and writes only
+where it holds, and the K8 backtracking window is preallocated to the record
+length instead of the historical `K8_SIZE = 40` bound. `__main__._apply_along_axis_palmers`
+now passes a whole `(lat_chunk, lon, time)` grid chunk to one `palmer.pdsi()` call
+for `InputType.grid`, instead of the nested `for i / for j` loop the table above
+described; `InputType.divisions` has no cell-adjacency structure to batch and stays
+on the per-location loop. `tests/test_palmer_spatial.py` pins the equivalence with
+the per-location path (bit-for-bit, not a tolerance — see ADR-0009 for why), the
+ADR-0008 ambiguous-shape rejection, and the all-missing-cell and per-cell-AWC
+contracts; `tests/test_main_palmers.py` pins the CLI worker's grid path the same way
+`TestPalmersWorker` already pinned the division path. `palmer.scpdsi()` explicitly
+rejects a spatial block (ADR-0009) and is unaffected.
+
+There is still no xarray adapter for either Palmer entry point; that registration
+is a separate follow-up ticket referenced from #937.
 
 ### Already vectorized (no per-cell index invocation)
 
@@ -268,5 +323,15 @@ inside the same per-location call; the CLI never invokes `scpdsi`, so those fits
 are only reachable through the per-series API, and standard `pdsi` does not
 self-calibrate. #899
 refactors these internals with unchanged output, not into an n-D kernel. The #923
-tasks name SPI, SPEI, and PET (its acceptance criteria name SPI), so Palmer is a
-follow-up rather than part of the conversion; the n-D kernel is tracked in #937.
+tasks name SPI, SPEI, and PET (its acceptance criteria name SPI), so Palmer was a
+follow-up rather than part of that conversion.
+
+Standard PDSI's structural blocker above is resolved (#937): the water balance and
+CAFEC stages above are now shared elementwise arithmetic over a cell axis (the
+"per-location `data` dict" is additionally gone as of #899, replaced by the
+`_PalmerPrepared`/`_PalmerRecursion` dataclasses this paragraph's line references
+predate), and the spell recursion is a masked n-D kernel -- see
+`### Conversion status (#937)` above and ADR-0009 for the design and why `scpdsi`
+stays blocked here: its four Wells recursions and per-location duration-factor fits
+per cell, plus a `ConvergenceError` path a blocked kernel has nowhere to put, make
+it a second version of this same effort rather than an extension of it.

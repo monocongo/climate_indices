@@ -27,7 +27,7 @@ The 42-point NFR list is preserved here for audit. Seven indices, six patterns:
 | PET Hargreaves | `eto.eto_hargreaves` | `pet_hargreaves` | `pet_hargreaves` |
 | PNP | `indices.percentage_of_normal` | `percentage_of_normal` | `percentage_of_normal` |
 | PCI | `indices.pci` | `pci` | `pci` |
-| Palmer | `palmer.pdsi` | per-output keys (`pdsi`, `phdi`, `pmdi`, `z_index`) | none — no xarray adapter; `palmer_xarray()` is a v2.5.0 TODO at `palmer.py:1249` |
+| Palmer | `palmer.pdsi` | per-output keys (`pdsi`, `phdi`, `pmdi`, `z_index`) | none — the NumPy layer gained a spatial block contract in ADR-0009, but there is still no xarray adapter |
 
 Patterns: xarray adapter, `typed_public_api` overloads, CF metadata registry
 entry, structlog lifecycle logging, structured exceptions, property-based tests.

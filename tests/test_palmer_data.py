@@ -27,16 +27,23 @@ def _initialize(fitting_params: dict[str, Any] | None = None) -> palmer._PalmerP
 
 
 def test_initialize_recursion_defaults_the_recursion_state():
-    """The recursion assigns these before reading them, and zero before it runs."""
+    """The recursion assigns these before reading them, and zero before it runs.
+
+    A single location carries an internal n_cells == 1 cell axis (see
+    ADR-0009), so every "scalar" field below is a length-1 array.
+    """
     prepared = _initialize()
     state = palmer._initialize_recursion(prepared)
 
     assert prepared.calibrate is True
-    assert (state.x1, state.x2, state.x3, state.v, state.pro) == (0.0, 0.0, 0.0, 0.0, 0.0)
-    assert (state.pv, state.ze, state.ud, state.uw) == (0.0, 0.0, 0.0, 0.0)
-    assert (state.k8, state.k8max, state.iass, state.year, state.month) == (0, 0, 0, 0, 0)
-    assert state.pdsi.shape == (2, 12)
-    assert state.indexj.shape == (palmer.K8_SIZE,)
+    assert prepared.n_cells == 1
+    assert prepared.cell_shape == ()
+    np.testing.assert_array_equal((state.x1, state.x2, state.x3, state.v, state.pro), [[0.0]] * 5)
+    np.testing.assert_array_equal((state.pv, state.ze, state.ud, state.uw), [[0.0]] * 4)
+    np.testing.assert_array_equal((state.k8, state.k8max, state.iass), [[0]] * 3)
+    assert (state.year, state.month) == (0, 0)
+    assert state.pdsi.shape == (2, 12, 1)
+    assert state.indexj.shape == (prepared.n_years * 12, prepared.n_cells)
 
 
 def test_complete_fitting_params_skip_calibration():
