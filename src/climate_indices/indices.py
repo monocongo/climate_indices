@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import functools
 import time
-import warnings
 from collections.abc import Callable
 from enum import Enum
 from typing import Any, cast
@@ -1044,14 +1043,15 @@ def percentage_of_normal(
             # averages each cell's calibration years for every calendar time step. A
             # cell that is missing for the whole calibration period (not just the whole
             # block, which is short-circuited above) is an expected all-NaN slice, not
-            # an error, so its "Mean of empty slice" warning is suppressed rather than
-            # left to propagate under a warnings-as-errors configuration.
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", message="Mean of empty slice", category=RuntimeWarning)
-                averages = np.nanmean(
-                    calibration_period_sums.reshape(-1, period_length, *calibration_period_sums.shape[1:]),
-                    axis=0,
-                )
+            # an error, so it's handled with an explicit count/sum rather than
+            # np.nanmean's "Mean of empty slice" warning: xarray_adapter's Dask kernel
+            # runs one task per spatial block, and warnings.catch_warnings() mutates
+            # process-global filter state, so one block's context can suppress or
+            # restore filters while a concurrent block is still inside np.nanmean.
+            reshaped_sums = calibration_period_sums.reshape(-1, period_length, *calibration_period_sums.shape[1:])
+            valid_counts = np.sum(~np.isnan(reshaped_sums), axis=0)
+            averages = np.nansum(reshaped_sums, axis=0) / np.maximum(valid_counts, 1)
+            averages = np.where(valid_counts > 0, averages, np.nan)
         else:
             # the calibration window lies beyond the end of the data, so no normal
             # values are available -- every percentage is missing
