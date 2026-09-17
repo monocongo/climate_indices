@@ -78,7 +78,6 @@ performance = [
 [project.scripts]
 climate_indices = "climate_indices.__main__:main"
 process_climate_indices = "climate_indices.__main__:main"
-spi = "climate_indices.__spi__:main"
 
 [project.urls]
 'Homepage' = 'https://github.com/monocongo/climate_indices'
@@ -147,10 +146,6 @@ module = [
     "climate_indices.typed_public_api",
 ]
 strict = true
-
-[[tool.mypy.overrides]]
-module = ["climate_indices.__spi__"]
-ignore_errors = true
 
 [tool.pytest.ini_options]
 filterwarnings = [
