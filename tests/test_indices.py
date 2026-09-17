@@ -819,3 +819,270 @@ def test_fitting_indices_share_one_preparation_seam(
     ]
     assert prep_kwargs.count({}) == 2
     assert [call for call in prep_kwargs if call] == [{"clip_negatives": False, "reshape": False}] * 2
+
+
+def test_fitting_indices_share_one_fit_seam(
+    precips_mm_monthly,
+    pet_thornthwaite_mm,
+    data_year_start_monthly,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+):
+    """SPI and SPEI both fit and standardize through one seam, stating the fall-back policy."""
+    precips = precips_mm_monthly.flatten()
+    pet = pet_thornthwaite_mm.flatten()
+
+    with mock.patch.object(compute, "fit_and_standardize", wraps=compute.fit_and_standardize) as fit_and_standardize:
+        indices.spi(
+            precips,
+            3,
+            indices.Distribution.gamma,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            compute.Periodicity.monthly,
+        )
+        indices.spei(
+            precips,
+            pet,
+            3,
+            indices.Distribution.gamma,
+            compute.Periodicity.monthly,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+        )
+
+    assert fit_and_standardize.call_count == 2
+    # SPI falls back from a failed Pearson Type III fit to gamma, SPEI does not
+    assert [call.kwargs["fallback_to_gamma"] for call in fit_and_standardize.call_args_list] == [
+        True,
+        False,
+    ]
+
+
+def test_spi_accepts_deprecated_fitting_parameter_keys(
+    precips_mm_monthly,
+    data_year_start_monthly,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+):
+    """SPI normalizes its fitting parameters through the shared seam, so the deprecated
+    aliases that SPEI accepts work here too, and the parameters given are the ones used."""
+    precips = precips_mm_monthly.flatten()
+    parameters = (
+        (
+            indices.Distribution.gamma,
+            {"alpha": np.full(12, 4.0), "beta": np.full(12, 8.0)},
+            {"alphas": np.full(12, 4.0), "betas": np.full(12, 8.0)},
+        ),
+        (
+            indices.Distribution.pearson,
+            {
+                "prob_zero": np.full(12, 0.1),
+                "loc": np.full(12, 1.0),
+                "scale": np.full(12, 2.0),
+                "skew": np.full(12, 0.5),
+            },
+            {
+                "probabilities_of_zero": np.full(12, 0.1),
+                "locs": np.full(12, 1.0),
+                "scales": np.full(12, 2.0),
+                "skews": np.full(12, 0.5),
+            },
+        ),
+    )
+
+    for distribution, canonical, deprecated in parameters:
+        computed = [
+            indices.spi(
+                precips,
+                6,
+                distribution,
+                data_year_start_monthly,
+                calibration_year_start_monthly,
+                calibration_year_end_monthly,
+                compute.Periodicity.monthly,
+                fitting_params,
+            )
+            for fitting_params in (canonical, deprecated)
+        ]
+        np.testing.assert_array_equal(computed[0], computed[1])
+
+        # the supplied parameters are the ones used, rather than refitted from the data
+        refitted = indices.spi(
+            precips,
+            6,
+            distribution,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            compute.Periodicity.monthly,
+        )
+        assert not np.array_equal(computed[0], refitted, equal_nan=True)
+
+
+def test_spei_accepts_explicit_none_fitting_parameters(
+    precips_mm_monthly,
+    pet_thornthwaite_mm,
+    data_year_start_monthly,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+):
+    """An explicit None for a canonical fitting-parameter key means "fit it from the
+    data" rather than dropping the key, which used to raise KeyError."""
+    precips = precips_mm_monthly.flatten()
+    pet = pet_thornthwaite_mm.flatten()
+    with_explicit_none = indices.spei(
+        precips,
+        pet,
+        6,
+        indices.Distribution.gamma,
+        compute.Periodicity.monthly,
+        data_year_start_monthly,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
+        {"alpha": None, "beta": None},
+    )
+    without_parameters = indices.spei(
+        precips,
+        pet,
+        6,
+        indices.Distribution.gamma,
+        compute.Periodicity.monthly,
+        data_year_start_monthly,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
+    )
+    np.testing.assert_array_equal(with_explicit_none, without_parameters)
+
+
+def test_spatial_pearson_deprecated_fitting_keys_warn_once(
+    precips_mm_monthly,
+    data_year_start_monthly,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+):
+    """A deprecated fitting-parameter key warns once per top-level spatial operation,
+    not once for every cell the Pearson Type III dispatch fits."""
+    block = np.asarray(precips_mm_monthly).reshape(-1, 1, 1) * np.ones((1, 3, 2))
+    deprecated = {"probabilities_of_zero": None, "locs": None, "scales": None, "skews": None}
+
+    with mock.patch.object(compute, "_logger") as warning_logger:
+        indices.spi(
+            block,
+            6,
+            indices.Distribution.pearson,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            compute.Periodicity.monthly,
+            deprecated,
+            spatial_time_major=True,
+        )
+    assert warning_logger.warning.call_count == len(deprecated)
+
+    with mock.patch.object(compute, "_logger") as warning_logger:
+        indices.spei(
+            block,
+            np.full_like(block, 10.0),
+            6,
+            indices.Distribution.pearson,
+            compute.Periodicity.monthly,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            deprecated,
+            spatial_time_major=True,
+        )
+    assert warning_logger.warning.call_count == len(deprecated)
+
+
+@pytest.mark.usefixtures(
+    "data_year_start_monthly",
+    "calibration_year_start_monthly",
+    "calibration_year_end_monthly",
+)
+def test_supplied_fitting_params_reproduce_the_inline_fit(
+    precips_mm_monthly,
+    data_year_start_monthly,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+):
+    """
+    Supplying fitting parameters gives the same values as fitting inline.
+
+    Computing the scaled values' fitting parameters once and handing them back to
+    indices.spi() is the supported replacement for the legacy spi script's
+    --save_params / --load_params distribution fitting cache (#957).
+    """
+    scale = 3
+    periodicity = compute.Periodicity.monthly
+    values = precips_mm_monthly.flatten()
+    kwargs = {
+        "scale": scale,
+        "data_start_year": data_year_start_monthly,
+        "calibration_year_initial": calibration_year_start_monthly,
+        "calibration_year_final": calibration_year_end_monthly,
+        "periodicity": periodicity,
+    }
+
+    def gamma_parameters(scaled_values):
+        alphas, betas = compute.gamma_parameters(
+            scaled_values,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            periodicity,
+        )
+        return {"alpha": alphas, "beta": betas}
+
+    scaled = compute.prepare_scaled(values, scale, periodicity)
+    prob_zero, locs, scales, skews = compute.pearson_parameters(
+        scaled,
+        data_year_start_monthly,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
+        periodicity,
+    )
+    for distribution, fitting_params, fitter in (
+        (indices.Distribution.gamma, gamma_parameters(scaled), "gamma_parameters"),
+        (
+            indices.Distribution.pearson,
+            {"prob_zero": prob_zero, "loc": locs, "scale": scales, "skew": skews},
+            "pearson_parameters",
+        ),
+    ):
+        inline = indices.spi(values, distribution=distribution, **kwargs)
+
+        # the supplied parameters are used as given, rather than refitted, so a call
+        # that quietly ignored them cannot make this comparison hold by construction
+        with mock.patch.object(compute, fitter, side_effect=AssertionError(f"unexpected {fitter} call")):
+            supplied = indices.spi(values, distribution=distribution, fitting_params=fitting_params, **kwargs)
+
+        np.testing.assert_allclose(supplied, inline, equal_nan=True)
+
+    # a time-major grid carries one period-by-cell parameter array per cell, and the
+    # cells carry distinct series so that a parameter array sliced to the wrong cell
+    # shows up as a mismatch rather than cancelling out
+    cells = (values, np.roll(values, 7) * 1.2, np.roll(values, 13) * 0.8, values[::-1])
+    grid = np.stack(cells, axis=-1).reshape(len(values), 2, 2)
+    grid_kwargs = dict(kwargs, spatial_time_major=True)
+    scaled_grid = compute.prepare_scaled(grid, scale, periodicity, spatial_time_major=True)
+    grid_params = gamma_parameters(scaled_grid)
+    assert grid_params["alpha"].shape == grid_params["beta"].shape == (12, 2, 2)
+    inline_grid = indices.spi(grid, distribution=indices.Distribution.gamma, **grid_kwargs)
+    np.testing.assert_allclose(
+        indices.spi(grid, distribution=indices.Distribution.gamma, fitting_params=grid_params, **grid_kwargs),
+        inline_grid,
+        equal_nan=True,
+    )
+
+    # the comparison above is only meaningful if a misaligned parameter array changes
+    # the result, which requires the grid's cells to have distinct fits
+    misaligned = {key: value[:, :, ::-1].copy() for key, value in grid_params.items()}
+    assert not np.allclose(
+        indices.spi(grid, distribution=indices.Distribution.gamma, fitting_params=misaligned, **grid_kwargs),
+        inline_grid,
+        equal_nan=True,
+    )

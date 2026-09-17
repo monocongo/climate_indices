@@ -57,6 +57,16 @@ _VAN_WAGNER_1987 = (
     "Canadian Forestry Service, Forestry Technical Report 35."
 )
 
+# The three Haines elevation variants score different pressure layers of the
+# same 1988 publication; keep the rendered `long_name` and `references` text
+# identical across the three entries that cite it.
+_HAINES_INDEX_LONG_NAME = "Haines Index"
+_HAINES_1988 = (
+    "Haines, D. A. (1988). "
+    "A lower atmospheric severity index for wildland fires. "
+    "National Weather Digest, 13(2), 23-27."
+)
+
 
 CF_METADATA: dict[str, CFAttributes] = {
     "spi": {
@@ -180,11 +190,10 @@ CF_METADATA: dict[str, CFAttributes] = {
         ),
     },
     # Fire-weather indices (#793). Only entries for indices implemented in
-    # `climate_indices.fire` are added here; the Haines Index (#810) is
-    # deferred to its own ticket, where the elevation-variant decision can be
-    # validated against real output rather than guessed ahead of
-    # implementation. None of the fire indices has an official CF
-    # standard_name.
+    # `climate_indices.fire` are added here. One entry per output convention:
+    # the Haines Index gets one per elevation variant (#810), because the
+    # variant is chosen per call and decides which pressure levels the output
+    # describes. None of the fire indices has an official CF standard_name.
     "kbdi": {
         "long_name": "Keetch-Byram Drought Index",
         "units": "mm",
@@ -307,5 +316,35 @@ CF_METADATA: dict[str, CFAttributes] = {
         ),
         "climate_indices_variant": "cffwis_classic",
         "references": _VAN_WAGNER_1987,
+    },
+    "haines_low": {
+        "long_name": _HAINES_INDEX_LONG_NAME,
+        "units": "dimensionless",
+        "description": (
+            "Lower-atmosphere severity index, low elevation variant: stability from the "
+            "950-850 hPa lapse rate, moisture from the 850 hPa dewpoint depression; integer in [2, 6]."
+        ),
+        "climate_indices_variant": "low",
+        "references": _HAINES_1988,
+    },
+    "haines_mid": {
+        "long_name": _HAINES_INDEX_LONG_NAME,
+        "units": "dimensionless",
+        "description": (
+            "Lower-atmosphere severity index, mid elevation variant: stability from the "
+            "850-700 hPa lapse rate, moisture from the 850 hPa dewpoint depression; integer in [2, 6]."
+        ),
+        "climate_indices_variant": "mid",
+        "references": _HAINES_1988,
+    },
+    "haines_high": {
+        "long_name": _HAINES_INDEX_LONG_NAME,
+        "units": "dimensionless",
+        "description": (
+            "Lower-atmosphere severity index, high elevation variant: stability from the "
+            "700-500 hPa lapse rate, moisture from the 700 hPa dewpoint depression; integer in [2, 6]."
+        ),
+        "climate_indices_variant": "high",
+        "references": _HAINES_1988,
     },
 }

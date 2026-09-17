@@ -39,9 +39,19 @@ jobs:
       - name: Check ruff formatting
         run: uv run --no-sync --no-build ruff format --check src/ tests/
 
+      # Also checks tests/test_type_checking.py, whose assert_type() calls are
+      # invisible to pytest; see that module's docstring.
       - name: Run mypy type checker
-        run: uv run --no-sync --no-build mypy src/
+        run: uv run --no-sync --no-build mypy src/ tests/test_type_checking.py
 
+  # Compatibility policy: expensive or environment-independent suites run once
+  # (`validation` on 3.12, repo/meta checks on 3.10, minimum dependencies on
+  # 3.10). The full behavior suite runs on every supported interpreter here
+  # because each leg also resolves a different dependency stack from uv.lock
+  # (e.g. zarr 2.x on 3.10, zarr 3.1 on 3.11, zarr 3.3 on 3.12+), and the suite
+  # costs about a minute per leg. Do not replace these legs with a smoke-only
+  # subset: that trades real dependency/interpreter coverage for no wall-clock
+  # gain, since the matrix runs in parallel.
   test:
     runs-on: ${{ matrix.os }}
     permissions:
@@ -191,9 +201,8 @@ jobs:
           notebooks/palmer_indices_xarray.ipynb
           notebooks/eddi_xarray.ipynb
 
-      - name: Smoke-execute the Zarr/Dask SPI/SPEI tutorial
-        timeout-minutes: 15
-        run: bash scripts/smoke_e2e_notebook.sh
+      # The Zarr/Dask tutorial is owned by tests/test_e2e_with_dask.py in the
+      # core suite; do not re-add a notebook-execution step here (#917).
 
   security-audit:
     permissions:

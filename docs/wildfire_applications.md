@@ -110,20 +110,27 @@ fire records rather than treating temporal overlap as predictive skill
 index; HDW, which combines vapor-pressure deficit and wind in the lowest
 500 m above ground ([NCEP][ncep-fire]; [Srock et al. (2018)][srock-2018]);
 KBDI, the cumulative moisture-deficit index for forest-fire control
-([Keetch and Byram, 1968][kbdi]); and the CFFWIS moisture codes FFMC, DMC, and
-DC ([Natural Resources Canada][nrcan-fwi]). KBDI is also exposed through the
-existing command line as `process_climate_indices --index kbdi`, from daily
-precipitation and maximum temperature inputs (see :doc:`index`).
+([Keetch and Byram, 1968][kbdi]); the Haines Index, a lower-atmosphere
+stability and moisture diagnostic for potential large-fire growth
+([National Weather Service][nws-haines]); and the CFFWIS moisture codes and
+behavior indices FFMC, DMC, DC, ISI, BUI, FWI, and DSR, the latter available
+together through the `fire.cffwis()` orchestrator ([Natural Resources
+Canada][nrcan-fwi]). KBDI is also exposed through the existing command line as
+`process_climate_indices --index kbdi`, from daily precipitation and maximum
+temperature inputs (see :doc:`index`).
 
-The [fire-family epic #793][fire-epic] tracks planned additions:
+Haines and HDW are both lower-atmosphere diagnostics rather than
+fuel-moisture or drought measures, but only HDW includes wind, which is why
+HDW was developed: where the two disagree, the difference is usually what the
+wind is doing. Both are computed from standard reanalysis fields, HDW from a
+vertical profile and Haines from the pressure levels its variant names.
 
-- **CFFWIS behavior indices**: ISI, BUI, FWI, and DSR, plus the `fire.cffwis()`
-  orchestrator that returns the moisture codes and behavior indices together
-  ([Natural Resources Canada][nrcan-fwi]).
-- **Haines Index**: lower-atmosphere stability and moisture diagnostic for
-  potential large-fire growth ([National Weather Service][nws-haines]).
+The [fire-family epic #793][fire-epic] tracks the rest of the family: an ERA5
+CONUS demonstration notebook, performance benchmarks for the recursive
+indices, and the scope decision on where the package stops relative to NFDRS
+and operational fire-behavior modeling.
 
-These additions remain meteorological and climatological indices. Epic #793
+These remain meteorological and climatological indices. Epic #793
 explicitly excludes ignition probability, operational fire behavior, and fire
 occurrence modeling.
 

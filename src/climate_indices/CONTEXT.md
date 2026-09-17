@@ -67,6 +67,9 @@ A location's total soil moisture-holding capacity, in inches, split into a fixed
 **K-Factor (Climate Characteristic)**:
 Monthly weighting factors that convert the raw CAFEC moisture departure into the Z-Index, calibrated to make Z-Index values comparable in severity across different climates.
 
+**Duration Factors (m, b)** and the **duration-factor weighting fraction (c)**:
+The slope and intercept of the line that maps a spell's accumulated Z-Index onto PDSI severity: fixed at Palmer's (1965) national defaults for standard PDSI, fitted per location by scPDSI. The same pair implies the duration-factor weighting fraction `c`, the share of previously accumulated severity each recursion carries forward (`c = b / (m + b)`, equivalently `1 - m / (m + b)`), while the current period's Z-Index enters divided by `m + b`. The pdi.f and Wells recursions derive `c` with those two different expressions and neither is guaranteed bit-identical to the other, so each keeps its own. Distinct from the K-Factor weighting factors above, which weight the Z-Index rather than the accumulated severity.
+
 ### PET (Potential Evapotranspiration)
 
 **PET (Potential Evapotranspiration)**:
@@ -87,6 +90,9 @@ A dimensionless, weather-only, elementwise fire-weather index from temperature, 
 
 **HDW (Hot-Dry-Windy Index)**:
 The vapor pressure deficit times wind speed, maximized over the lowest 500 m above ground level of a vertical profile; computed by `fire.hot_dry_windy()` in hPa m s⁻¹.
+
+**Haines Index (Lower Atmosphere Severity Index)**:
+A dimensionless, state-free score in [2, 6] of one lower-atmosphere layer's stability and moisture — its lapse rate plus its dewpoint depression — computed by `fire.haines_index()` from the pressure levels its `variant` (`"low"`, `"mid"`, or `"high"`) names, or by `fire.haines_index_from_profile()`, which interpolates profiles to those levels and selects the variant from a terrain elevation field. Carries no wind term; HDW was developed in part to supply it.
 
 **KBDI (Keetch-Byram Drought Index)**:
 A daily recursive measure of cumulative moisture deficiency in deep duff and upper soil layers, on a 0–800 scale of hundredths of an inch (0–203.2 mm metric), from precipitation, daily maximum temperature, and mean annual precipitation; computed by `fire.kbdi()`. Moisture loss reverses only through net rain: consecutive rainy days form one wet spell, and only rain above its first 5.08 mm (0.20 in) reduces the index. A fire-danger index, not a standardized drought index like SPI or SPEI.
@@ -114,8 +120,6 @@ A dimensionless, state-free CFFWIS behavior index combining ISI and BUI; compute
 
 **DSR (Daily Severity Rating)**:
 The `0.0272 * FWI ** 1.77` transform of the Canadian FWI that makes seasonal averaging meaningful; computed by `fire.daily_severity_rating()`.
-
-The Haines Index is a planned contract in the design doc.
 
 ### Statistics
 

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Hashable
 from typing import Literal
 
 import numpy as np
 import numpy.typing as npt
+import xarray as xr
 
 from climate_indices.exceptions import InputTypeError, InvalidArgumentError
 
@@ -72,6 +74,29 @@ def _validate_recurrence_options(
             argument_value="both supplied",
             valid_values="Supply at most one initial condition",
         )
+
+
+def _wrap_spatial(
+    value: npt.ArrayLike | xr.DataArray,
+    spatial_shape: tuple[int, ...],
+    spatial_dims: tuple[Hashable, ...],
+    *,
+    chunks: dict[str, tuple[int, ...]] | None = None,
+) -> xr.DataArray:
+    """Broadcast a scalar/array/DataArray to a DataArray on ``spatial_dims``.
+
+    Giving Dask/apply_ufunc real dimension names is what lets it slice this
+    secondary input per spatial chunk instead of broadcasting the whole
+    un-chunked array into every chunk's call. A DataArray is passed through
+    unchanged so its own coordinates and chunking survive. ``chunks``
+    partitions a wrapped array to a Dask-backed caller's spatial blocks, so a
+    worker receives only its own tile instead of the whole grid.
+    """
+    if isinstance(value, xr.DataArray):
+        return value
+    array = np.asarray(value)
+    data = xr.DataArray(np.broadcast_to(array, spatial_shape), dims=spatial_dims)
+    return data.chunk(chunks) if chunks else data
 
 
 def _apply_gap_policy(

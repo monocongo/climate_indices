@@ -239,13 +239,19 @@ The options for the entry point script are described below:
 +------------------------+-------------------------------------------------+
 | save_params            | Save distribution fitting variables to this file|
 |                        | path. The fittings NetCDF is to be used as input|
-|                        | when using the `load_params` option. [NOTE:     |
-|                        | only for use with the `spi` entrypoint for SPI.]|
+|                        | when using the `load_params` option.            |
+|                        | [NOTE: only via the `spi` entrypoint, which is  |
+|                        | deprecated in 2.4.0 and removed in 3.0.0. In    |
+|                        | the library use the `fitting_params` argument   |
+|                        | of `climate_indices.spi`, see the SPI section.] |
 +------------------------+-------------------------------------------------+
 | load_params            | Load distribution fitting variables from this   |
 |                        | filepath. The fittings NetCDF file is one that  |
-|                        | was created by the `save_params` option. [NOTE: |
-|                        | only for use with the `spi` entrypoint for SPI.]|
+|                        | was created by the `save_params` option.        |
+|                        | [NOTE: only via the `spi` entrypoint, which is  |
+|                        | deprecated in 2.4.0 and removed in 3.0.0. In    |
+|                        | the library use the `fitting_params` argument   |
+|                        | of `climate_indices.spi`, see the SPI section.] |
 +------------------------+-------------------------------------------------+
 
 Example Input and Output Datasets
@@ -407,30 +413,78 @@ Parallelization will occur utilizing all CPUs.
 
 Pre-compute SPI distribution fitting variables
 """""""""""""""""""""""""""""""""""""""""""""""
-In order to pre-compute fitting parameters for later use as inputs to subsequent
-SPI calculations we can save both gamma and Pearson distribution fitting parameters
-to NetCDF, and later use this file as input for SPI calculations over the same
-calibration period.
+The distribution fitting parameters of a calibration period can be computed once
+and then supplied to subsequent SPI calculations, so that later values are
+standardized against the same fitted climatology.
 
-``$ spi --periodicity monthly --scales 1 2 3 6 9 12 24 36 48 60 72
---calibration_start_year 1998 --calibration_end_year 2016
---netcdf_precip /data/nclimgrid/nclimgrid_prcp.nc --var_name_precip prcp
---output_file_base /data/nclimgrid/nclimgrid --multiprocessing all
---save_params /data/nclimgrid/nclimgrid_fitting.nc --overwrite``
+The fitting cache is a library-level feature. The legacy ``spi`` script's
+``--save_params`` and ``--load_params`` options, which cached the same parameters
+in a NetCDF file, are retired along with the script in 3.0.0 -- see
+:doc:`deprecations/api-changes`.
 
-``$ spi --periodicity monthly --scales 1 2 3 6 9 12 24 36 48 60 72
---calibration_start_year 1998 --calibration_end_year 2016
---netcdf_precip /data/nclimgrid/nclimgrid_prcp.nc --var_name_precip prcp
---output_file_base /data/nclimgrid/nclimgrid --multiprocessing all
---load_params /data/nclimgrid/nclimgrid_fitting.nc``
+.. code-block:: python
 
-In the above example we demonstrate how distribution fitting parameters can be saved as NetCDF.
-This fittings NetCDF can then be used as pre-computed variables in subsequent SPI computations.
-Inital command computes both distribution fitting values and SPI for various month scales.
-The distribution fitting variables are written to the file specified by the `--save_params` option.
-The second command also computes SPI but instead of computing the distribution fitting values
-it loads the pre-computed fitting values from the NetCDF file specified by the `--load_params`
-option.
+   import xarray as xr
+
+   from climate_indices import compute, indices
+
+   periodicity = compute.Periodicity.monthly
+   precipitation = xr.open_dataset("nclimgrid_prcp.nc")["prcp"].transpose("time", "lat", "lon")
+   values = precipitation.values
+
+   # fit the 3-month scaled precipitation once, over the calibration period
+   scaled = compute.prepare_scaled(values, scale=3, periodicity=periodicity, spatial_time_major=True)
+   alphas, betas = compute.gamma_parameters(
+       scaled,
+       data_start_year=1975,
+       calibration_start_year=1998,
+       calibration_end_year=2016,
+       periodicity=periodicity,
+   )
+
+   # standardize against that fitted climatology
+   spi = indices.spi(
+       values,
+       scale=3,
+       distribution=indices.Distribution.gamma,
+       data_start_year=1975,
+       calibration_year_initial=1998,
+       calibration_year_final=2016,
+       periodicity=periodicity,
+       fitting_params={"alpha": alphas, "beta": betas},
+       spatial_time_major=True,
+   )
+
+Perform the fitting over the calibration period only, and keep the parameters for
+as long as that climatology is the one to standardize against -- for example with
+``np.savez("nclimgrid_fitting.npz", alpha=alphas, beta=betas)`` and ``np.load()`` in
+later runs. The parameters are then used exactly as supplied: the calibration years
+still passed to ``indices.spi()`` no longer take part in any fit, so they have to
+match the period the parameters were fitted over.
+
+They also have to come from the same fitting scale and the same series the
+consuming call standardizes. The parameter arrays record neither, and
+``indices.spi()`` does not validate them, so parameters fitted from 3-month scaled
+precipitation are accepted by a 6-month call and silently standardize against the
+wrong distribution. Keep a cached fit next to the scale it was fitted at, and reuse
+it only for that same scale.
+
+Pearson Type III parameters are computed per series from the scaled values with
+``compute.pearson_parameters()`` and supplied as ``prob_zero``, ``loc``, ``scale``,
+and ``skew``. The parameters of a single series are period-only arrays, shape (12,)
+for monthly or (366,) for daily input. For the gamma fit, the parameters of a
+time-major grid carry the cell dimensions after the period axis, shape
+(12, lat, lon) for monthly gridded input, as in the example above; a grid has to be
+time-major with three or more dimensions, since two-dimensional input is still read
+as the legacy (years, periods) layout of one series. Note that the command line reads
+gridded input in the opposite dimension order, (lat, lon, time).
+
+The example above is a whole-grid NumPy path: ``.values`` materializes the entire
+input, and the scaling, fit, and transform then add full-grid arrays of their own, so
+the grid has to fit in memory alongside them. For a grid that does not, pass the
+xarray data instead -- :func:`climate_indices.spi` and
+:func:`climate_indices.spei` accept a Dask-backed DataArray chunked over the spatial
+dimensions with time as a single chunk -- see :doc:`xarray_migration`.
 
 
 Tutorials

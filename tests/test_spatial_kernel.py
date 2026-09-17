@@ -16,7 +16,7 @@ import xarray as xr
 
 from climate_indices import compute, indices
 from climate_indices.cf_metadata_registry import CF_METADATA
-from climate_indices.exceptions import GoodnessOfFitWarning
+from climate_indices.exceptions import GoodnessOfFitWarning, InvalidArgumentError
 from climate_indices.xarray_adapter import xarray_adapter
 
 _CALIBRATION_START = 1981
@@ -784,3 +784,298 @@ class TestSpatialBlockContracts:
                 calibration_year_initial=_CALIBRATION_START,
                 calibration_year_final=_CALIBRATION_END,
             )
+
+
+@pytest.fixture
+def gridded_monthly_temps() -> xr.DataArray:
+    """40 years of monthly mean temperatures over a 3 x 2 grid (time, lat, lon)."""
+    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+    rng = np.random.default_rng(11)
+    values = rng.uniform(-5.0, 28.0, size=(time.size, 3, 2))
+    # a few missing months in one cell, to pin NaN propagation through the block
+    values[10:13, 1, 1] = np.nan
+    return xr.DataArray(
+        values,
+        coords={"time": time, "lat": [10.0, 20.0, 30.0], "lon": [0.0, 5.0]},
+        dims=["time", "lat", "lon"],
+    )
+
+
+@pytest.fixture
+def gridded_daily_temps() -> tuple[xr.DataArray, xr.DataArray]:
+    """Three calendar years of daily tmin/tmax over a 2 x 2 grid (time, lat, lon)."""
+    time = pd.date_range("2019-01-01", periods=1096, freq="D")
+    rng = np.random.default_rng(12)
+    tmin_values = rng.uniform(-5.0, 15.0, size=(time.size, 2, 2))
+    # a missing stretch in one cell, to pin NaN propagation through the block path
+    tmin_values[100:110, 1, 1] = np.nan
+    tmax_values = tmin_values + rng.uniform(5.0, 15.0, size=(time.size, 2, 2))
+    coords = {"time": time, "lat": [30.0, 45.0], "lon": [0.0, 10.0]}
+    return (
+        xr.DataArray(tmin_values, coords=coords, dims=["time", "lat", "lon"]),
+        xr.DataArray(tmax_values, coords=coords, dims=["time", "lat", "lon"]),
+    )
+
+
+class TestSpatialPETKernels:
+    """The PET adapters reach their NumPy kernels once per block (#941)."""
+
+    def test_thornthwaite_runs_once_for_gridded_input(self, gridded_monthly_temps, monkeypatch):
+        """A 3 x 2 grid reaches indices.pet once, as a (time, *cells) block."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        blocks: list[tuple[int, ...]] = []
+        original = indices.pet
+
+        def counting_pet(values, *args, **kwargs):
+            blocks.append(np.shape(values))
+            return original(values, *args, **kwargs)
+
+        monkeypatch.setattr(indices, "pet", counting_pet)
+
+        result = pet_thornthwaite(gridded_monthly_temps, xr.DataArray([10.0, 20.0, 30.0], dims=["lat"]))
+
+        assert result.shape == gridded_monthly_temps.shape
+        assert blocks == [gridded_monthly_temps.shape]
+
+    def test_hargreaves_runs_once_for_gridded_input(self, gridded_daily_temps, monkeypatch):
+        """A 2 x 2 grid reaches eto.eto_hargreaves once, as a (time, *cells) block."""
+        from climate_indices import eto
+        from climate_indices.xarray_adapter import pet_hargreaves
+
+        tmin, tmax = gridded_daily_temps
+        blocks: list[tuple[int, ...]] = []
+        original = eto.eto_hargreaves
+
+        def counting_hargreaves(tmin_values, tmax_values, tmean_values, latitude_degrees, **kwargs):
+            blocks.append(np.shape(tmean_values))
+            return original(tmin_values, tmax_values, tmean_values, latitude_degrees, **kwargs)
+
+        monkeypatch.setattr(eto, "eto_hargreaves", counting_hargreaves)
+
+        result = pet_hargreaves(tmin, tmax, xr.DataArray([30.0, 45.0], dims=["lat"]))
+
+        assert result.shape == tmin.shape
+        # the kernel sees the all-leap (years, 366, *cells) block, every cell at once
+        assert blocks == [(3 * 366, 2, 2)]
+
+    def test_two_dimensional_input_keeps_per_cell_path(self, gridded_monthly_temps, monkeypatch):
+        """A (time, cell) input has one dimension to broadcast over and stays per cell."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        calls: list[tuple[int, ...]] = []
+        original = indices.pet
+
+        def counting_pet(values, *args, **kwargs):
+            calls.append(np.shape(values))
+            return original(values, *args, **kwargs)
+
+        monkeypatch.setattr(indices, "pet", counting_pet)
+
+        transect = gridded_monthly_temps.isel(lon=0)
+        result = pet_thornthwaite(transect, 20.0)
+
+        assert result.shape == transect.shape
+        assert calls == [(transect.sizes["time"],)] * transect.sizes["lat"]
+
+    def test_gridded_thornthwaite_matches_pointwise(self, gridded_monthly_temps):
+        """Every cell matches the single-series result for that cell's latitude."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        latitudes = gridded_monthly_temps.coords["lat"].values
+        expected = np.full(gridded_monthly_temps.shape, np.nan)
+        for latitude_index, latitude in enumerate(latitudes):
+            for longitude_index in range(gridded_monthly_temps.sizes["lon"]):
+                point = pet_thornthwaite(
+                    gridded_monthly_temps.isel(lat=latitude_index, lon=longitude_index),
+                    float(latitude),
+                )
+                expected[:, latitude_index, longitude_index] = point.values
+
+        result = pet_thornthwaite(gridded_monthly_temps, xr.DataArray(latitudes, dims=["lat"]))
+
+        assert result.dims == gridded_monthly_temps.dims
+        np.testing.assert_array_equal(np.isnan(result.values), np.isnan(expected))
+        np.testing.assert_allclose(result.values, expected, atol=1e-8, rtol=1e-7, equal_nan=True)
+
+    def test_gridded_hargreaves_matches_pointwise(self, gridded_daily_temps):
+        """Every cell matches the single-series result for that cell's latitude."""
+        from climate_indices.xarray_adapter import pet_hargreaves
+
+        tmin, tmax = gridded_daily_temps
+        latitudes = tmin.coords["lat"].values
+        expected = np.full(tmin.shape, np.nan)
+        for latitude_index, latitude in enumerate(latitudes):
+            for longitude_index in range(tmin.sizes["lon"]):
+                point = pet_hargreaves(
+                    tmin.isel(lat=latitude_index, lon=longitude_index),
+                    tmax.isel(lat=latitude_index, lon=longitude_index),
+                    float(latitude),
+                )
+                expected[:, latitude_index, longitude_index] = point.values
+
+        result = pet_hargreaves(tmin, tmax, xr.DataArray(latitudes, dims=["lat"]))
+
+        assert result.dims == tmin.dims
+        np.testing.assert_array_equal(np.isnan(result.values), np.isnan(expected))
+        np.testing.assert_allclose(result.values, expected, atol=1e-8, rtol=1e-7, equal_nan=True)
+
+    def test_partial_year_hargreaves_block_is_not_padded(self, monkeypatch):
+        """A block ending mid-year indexes its inputs in place instead of padding them."""
+        from climate_indices import eto
+
+        def no_padding(*args, **kwargs):
+            raise AssertionError("Hargreaves padded a temperature input to a whole year")
+
+        monkeypatch.setattr(np, "pad", no_padding)
+
+        time_length = 2 * 366 + 100
+        rng = np.random.default_rng(31)
+        tmin = rng.uniform(-5.0, 15.0, size=(time_length, 2, 2))
+        tmax = tmin + rng.uniform(5.0, 15.0, size=(time_length, 2, 2))
+        tmean = (tmin + tmax) / 2.0
+
+        block = eto.eto_hargreaves(tmin, tmax, tmean, np.full((2, 2), 30.0), spatial_time_major=True)
+        scalar = eto.eto_hargreaves(tmin, tmax, tmean, 30.0, spatial_time_major=True)
+
+        assert block.shape == tmin.shape
+        np.testing.assert_array_equal(block, scalar)
+
+    def test_gridded_thornthwaite_scalar_latitude_matches_pointwise(self, gridded_monthly_temps):
+        """A scalar latitude reaches every cell of a gridded run."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        expected = np.full(gridded_monthly_temps.shape, np.nan)
+        for latitude_index in range(gridded_monthly_temps.sizes["lat"]):
+            for longitude_index in range(gridded_monthly_temps.sizes["lon"]):
+                point = pet_thornthwaite(
+                    gridded_monthly_temps.isel(lat=latitude_index, lon=longitude_index),
+                    25.0,
+                )
+                expected[:, latitude_index, longitude_index] = point.values
+
+        result = pet_thornthwaite(gridded_monthly_temps, 25.0)
+
+        np.testing.assert_array_equal(np.isnan(result.values), np.isnan(expected))
+        np.testing.assert_allclose(result.values, expected, atol=1e-8, rtol=1e-7, equal_nan=True)
+
+    def test_gridded_pet_dask_blocks_match_in_memory(self, gridded_monthly_temps, gridded_daily_temps):
+        """Dask-backed gridded PET returns the same values as the in-memory block path."""
+        from climate_indices.xarray_adapter import pet_hargreaves, pet_thornthwaite
+
+        latitudes = xr.DataArray(gridded_monthly_temps.coords["lat"].values, dims=["lat"])
+        expected_thornthwaite = pet_thornthwaite(gridded_monthly_temps, latitudes)
+        chunked_thornthwaite = pet_thornthwaite(gridded_monthly_temps.chunk({"lat": 1}), latitudes)
+
+        assert chunked_thornthwaite.chunks is not None
+        np.testing.assert_allclose(
+            chunked_thornthwaite.values,
+            expected_thornthwaite.values,
+            atol=1e-8,
+            rtol=1e-7,
+            equal_nan=True,
+        )
+
+        tmin, tmax = gridded_daily_temps
+        daily_latitudes = xr.DataArray(tmin.coords["lat"].values, dims=["lat"])
+        expected_hargreaves = pet_hargreaves(tmin, tmax, daily_latitudes)
+        # a split time dimension exercises the rechunk the daily calendar needs
+        chunked_hargreaves = pet_hargreaves(tmin.chunk({"time": 400}), tmax.chunk({"time": 400}), daily_latitudes)
+
+        assert chunked_hargreaves.chunks is not None
+        np.testing.assert_allclose(
+            chunked_hargreaves.values,
+            expected_hargreaves.values,
+            atol=1e-8,
+            rtol=1e-7,
+            equal_nan=True,
+        )
+
+    def test_thornthwaite_transposed_cell_dims_match_pointwise(self):
+        """A (time, lon, lat) grid gets each cell's own latitude, not a transposed reading."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+        rng = np.random.default_rng(22)
+        temperatures = xr.DataArray(
+            rng.uniform(-5.0, 28.0, size=(time.size, 2, 3)),
+            coords={"time": time, "lon": [0.0, 10.0], "lat": [10.0, 20.0, 30.0]},
+            dims=["time", "lon", "lat"],
+        )
+        latitudes = xr.DataArray([10.0, 20.0, 30.0], dims=["lat"])
+        expected = np.full(temperatures.shape, np.nan)
+        for latitude_index, latitude in enumerate([10.0, 20.0, 30.0]):
+            for longitude_index in range(2):
+                point = pet_thornthwaite(temperatures.isel(lon=longitude_index, lat=latitude_index), latitude)
+                expected[:, longitude_index, latitude_index] = point.values
+
+        result = pet_thornthwaite(temperatures, latitudes)
+
+        assert result.dims == temperatures.dims
+        np.testing.assert_allclose(result.values, expected, atol=1e-8, rtol=1e-7, equal_nan=True)
+
+    def test_thornthwaite_partial_final_year_matches_pointwise(self):
+        """A block ending mid-year matches the per-cell path without leaking padded months."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        time = pd.date_range("1980-01-01", periods=24 + 5, freq="MS")
+        rng = np.random.default_rng(23)
+        temperatures = xr.DataArray(
+            rng.uniform(-5.0, 28.0, size=(time.size, 2, 2)),
+            coords={"time": time, "lat": [15.0, 35.0], "lon": [0.0, 10.0]},
+            dims=["time", "lat", "lon"],
+        )
+        latitudes = xr.DataArray([15.0, 35.0], dims=["lat"])
+        expected = np.full(temperatures.shape, np.nan)
+        for latitude_index, latitude in enumerate([15.0, 35.0]):
+            for longitude_index in range(2):
+                point = pet_thornthwaite(temperatures.isel(lat=latitude_index, lon=longitude_index), latitude)
+                expected[:, latitude_index, longitude_index] = point.values
+
+        result = pet_thornthwaite(temperatures, latitudes)
+
+        np.testing.assert_array_equal(np.isnan(result.values), np.isnan(expected))
+        np.testing.assert_allclose(result.values, expected, atol=1e-8, rtol=1e-7, equal_nan=True)
+
+    def test_dask_blocks_reach_the_kernel_once_per_block(self, gridded_monthly_temps, monkeypatch):
+        """The Dask path hands each block over once, not once per grid cell."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        calls: list[tuple[int, ...]] = []
+        original = indices.pet
+
+        def counting_pet(values, *args, **kwargs):
+            calls.append(np.shape(values))
+            return original(values, *args, **kwargs)
+
+        monkeypatch.setattr(indices, "pet", counting_pet)
+
+        chunked = gridded_monthly_temps.chunk({"lat": 1, "lon": 1})
+        result = pet_thornthwaite(chunked, xr.DataArray([10.0, 20.0, 30.0], dims=["lat"])).compute()
+
+        assert result.shape == gridded_monthly_temps.shape
+        cell_count = gridded_monthly_temps.sizes["lat"] * gridded_monthly_temps.sizes["lon"]
+        assert len(calls) == cell_count, f"expected one call per Dask block, saw {len(calls)}"
+        assert all(shape[0] == gridded_monthly_temps.sizes["time"] for shape in calls)
+
+    def test_block_latitude_that_cannot_broadcast_raises(self):
+        """A block latitude that does not fit the cell dimensions is rejected, not read askew."""
+        temperatures = np.full((24, 2, 3), 15.0)
+
+        with pytest.raises(InvalidArgumentError, match="does not broadcast"):
+            indices.pet(temperatures, np.array([10.0, 20.0]), 2000, spatial_time_major=True)
+
+        # a per-latitude column does broadcast, and matches the per-cell path
+        latitudes = np.full((2, 1), 20.0)
+        result = indices.pet(temperatures, latitudes, 2000, spatial_time_major=True)
+
+        assert result.shape == temperatures.shape
+        for latitude_index in range(2):
+            for longitude_index in range(3):
+                np.testing.assert_allclose(
+                    result[:, latitude_index, longitude_index],
+                    indices.pet(temperatures[:, latitude_index, longitude_index], 20.0, 2000),
+                    atol=1e-8,
+                    rtol=1e-7,
+                    equal_nan=True,
+                )
