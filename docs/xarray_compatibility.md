@@ -85,6 +85,50 @@ applies per cell along the time axis.
   `chunks` when opening your own dataset, with the `DASK_ARRAY__CHUNK_SIZE`
   environment variable, or with `dask.config.set({"array.chunk-size": ...})` — a
   configured budget is honored rather than overwritten.
+- Choose the scheduler at the materialization call: the xarray API never imports
+  or configures Dask ([ADR-0002](adr/0002-multiprocessing-cli-dask-xarray.md)). The
+  gridded kernels are CPU-bound Python/scipy work, and their Python-level portion
+  does not run in parallel under the default threaded scheduler, so materialize a
+  lazy result on worker processes — given `precip`, whose `time` dimension is a
+  single chunk:
+
+  ```python
+  from climate_indices import spi
+  from climate_indices.indices import Distribution
+
+  spi_lazy = spi(
+      values=precip.chunk({"time": -1, "lat": 20, "lon": 20}),
+      scale=3,
+      distribution=Distribution.gamma,
+  )
+  spi_grid = spi_lazy.compute(scheduler="processes")
+  ```
+
+  In a script rather than a notebook, that call belongs under
+  `if __name__ == "__main__":` while Dask spawns its workers — the `processes`
+  scheduler's default start method on every platform — because each worker
+  re-imports the entry module. A Zarr write takes the same scheduler through the
+  delayed write:
+  `spi_lazy.to_zarr(path, compute=False).compute(scheduler="processes")`.
+  NetCDF writes do not: their backend lock is built for the scheduler that is
+  active when the write graph is built, and the default one cannot be pickled to
+  worker processes, so load the result first and write it in memory when the full
+  result fits, or let a distributed client stream the write for larger results.
+- Every `.compute(scheduler="processes")` call builds and tears down its own
+  process pool, so a computation short relative to that start-up spends most of
+  its wall clock there: on the 38 x 87 reference grid the SPI pass measured 1.37 s
+  with the fresh one-worker pool against 0.76 s with a pre-created, warmed pool,
+  and 1.26 s against 0.23 s at eight workers
+  ([#928](https://github.com/monocongo/climate_indices/issues/928) harness,
+  recorded on [#927](https://github.com/monocongo/climate_indices/issues/927)).
+  Keep a `dask.distributed.Client` alive across calls — the [tutorial's client
+  cell](https://github.com/monocongo/climate_indices/blob/main/notebooks/zarr_dask_spi_spei.ipynb)
+  does, and `distributed` ships with the `dev` extra — or pass a pre-created pool
+  when the work is short or repeated.
+- The threaded scheduler remains the right choice for I/O-bound or small
+  in-memory work — opening a store, a reduction such as `.mean("time")`, or a grid
+  small enough that serializing each block to a worker process costs more than
+  the parallelism saves.
 - The canonical lazy xarray/Dask SPI/SPEI workflow is the teaching notebook
   `notebooks/zarr_dask_spi_spei.ipynb`: the public typed API on Dask-backed DataArrays
   (`xr.apply_ufunc(..., dask="parallelized")`), one full time chunk with spatial
