@@ -2,7 +2,8 @@
 
 This module is the NumPy layer of the fire-weather family tracked in #793. It
 provides the Fosberg Fire Weather Index and the Hot-Dry-Windy Index, both
-weather-only and elementwise, the Keetch-Byram Drought Index, and the three
+weather-only and elementwise, the Haines Index, which scores an atmospheric
+layer's stability and moisture, the Keetch-Byram Drought Index, and the three
 Canadian Forest Fire Weather Index System (CFFWIS) moisture codes: the Fine
 Fuel Moisture Code, the Duff Moisture Code, and the Drought Code. Stateful
 functions follow the execution, state-ownership, and append/resume contract
@@ -42,6 +43,9 @@ Index - programmers beware! Fire Management Notes, 51(4), 23-25.
 Van Wagner, C.E. and Pickett, T.L. (1985) Equations and FORTRAN program for
 the Canadian Forest Fire Weather Index System. Canadian Forestry Service,
 Forestry Technical Report 33.
+
+Haines, D.A. (1988) A lower atmospheric severity index for wildland fires.
+National Weather Digest, 13(2), 23-27.
 """
 
 from __future__ import annotations
@@ -66,6 +70,7 @@ from climate_indices.fire._cffwis import (
     overwinter_drought_code,
 )
 from climate_indices.fire._fosberg import fosberg_ffwi
+from climate_indices.fire._haines import haines_index, haines_index_from_profile
 from climate_indices.fire._hdw import hot_dry_windy
 from climate_indices.fire._kbdi import KBDIResult, KBDIState, kbdi
 
@@ -89,6 +94,8 @@ __all__ = [
     "duff_moisture_code",
     "ffmc",
     "fosberg_ffwi",
+    "haines_index",
+    "haines_index_from_profile",
     "hot_dry_windy",
     "initial_spread_index",
     "kbdi",
