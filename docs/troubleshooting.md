@@ -1149,9 +1149,18 @@ da_chunked = da.chunk({"time": -1, "lat": 50, "lon": 50})
 
 **Chunk size guidelines:**
 
-- Each chunk should be 10-100 MB for optimal performance
-- For a 480-timestep, float64 array: `480 * 8 bytes * lat * lon = chunk_size`
-- Example: `480 * 8 * 50 * 50 = 9.6 MB` per chunk (good)
+- Budget the fit's peak working set, not just the raw input block: for a
+  480-step monthly gamma/Pearson fit the working set is roughly 16x the
+  block's own float64 bytes, since the fitting path holds block-sized
+  temporaries alongside the input.
+- Keep a block's working set under roughly 100 MB: about 1,600 cells on a
+  480-step monthly grid, or a ~7x7 block on daily grids (up to 366 steps per
+  cell-year).
+- Example: `480 * 8 * 20 * 20 = 1.5 MB` raw per block, about 24 MB of
+  working set (good); the same grid in 50x50 blocks costs ~150 MB of working
+  set, which exceeds the guidance above.
+
+See {doc}`xarray_compatibility` for the measured working-set figures.
 
 ### Memory management
 
@@ -1201,25 +1210,27 @@ spi_6 = indices.spi(da_persisted, scale=6, distribution=indices.Distribution.gam
 
 ### CLI --chunksizes option
 
-The `process_climate_indices` CLI supports custom chunking via the `--chunksizes` option:
+The `process_climate_indices` CLI's `--chunksizes` option controls how the
+**output file** is chunked; it does not change the compute chunking. It accepts
+exactly two values:
+
+- `none` (default): the writer chooses the output layout
+- `input`: copy the precipitation variable's on-disk chunks to the output
 
 ```bash
-# default chunking (automatic)
+# default: writer-chosen output chunking
 process_climate_indices --index spi --periodicity monthly --netcdf_precip precip.nc \
     --var_name_precip precipitation --output_file_base spi
 
-# custom chunking: single time chunk, 100x100 spatial chunks
+# match the input file's on-disk chunking
 process_climate_indices --index spi --periodicity monthly --netcdf_precip precip.nc \
     --var_name_precip precipitation --output_file_base spi \
-    --chunksizes time:-1 lat:100 lon:100
-
-# for small grids, disable chunking entirely
-process_climate_indices --index spi --periodicity monthly --netcdf_precip precip.nc \
-    --var_name_precip precipitation --output_file_base spi \
-    --chunksizes time:-1 lat:-1 lon:-1
+    --chunksizes input
 ```
 
-**Chunking format:** `dimension:size` where `size=-1` means "single chunk" and `size=N` means "chunks of size N".
+To change how the computation is chunked, rechunk the input before the call
+(e.g. `ds.chunk({"time": -1, "lat": 20, "lon": 20})`) per the chunk size
+guidelines above.
 
 ### When NOT to use Dask
 

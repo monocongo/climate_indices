@@ -677,7 +677,7 @@ input data preprocessing (missing value handling, time alignment).
 **Palmer Drought Indices:**
 
 - Palmer, W. C. (1965). *Meteorological Drought*. U.S. Weather Bureau Research Paper No. 45. Washington, D.C.
-- Wells, N., Goddard, S., & Hayes, M. J. (2004). A Self-Calibrating Palmer Drought Severity Index. *Journal of Climate*, 17(12), 2335-2351. <https://doi.org/10.1175/1520-0442(2004>)017\<2335:ASPDSI>2.0.CO;2
+- Wells, N., Goddard, S., & Hayes, M. J. (2004). A Self-Calibrating Palmer Drought Severity Index. *Journal of Climate*, 17(12), 2335-2351. <https://doi.org/10.1175/1520-0442(2004)017%3C2335:ASPDSI%3E2.0.CO;2>
 
 **Precipitation Concentration Index:**
 
