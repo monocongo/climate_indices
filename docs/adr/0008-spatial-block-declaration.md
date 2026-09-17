@@ -53,10 +53,11 @@ continental grid. Dask still requires the time dimension in a single chunk, for 
 in [ADR-0003](./0003-dask-time-dimension-single-chunk.md) — the fit needs the whole calibration
 window.
 
-The Pearson Type III branch keeps [the per-cell path](../xarray_compatibility.md); its L-moment fit
-is per series, so `Distribution.pearson` still re-enters the single-series kernel once per cell
-(issue #940). EDDI and percentage-of-normal have no cell axis in their kernels yet (#942), and
-Palmer has no adapter layer at all (#937).
+The Pearson Type III branch fits its L-moment parameters across the cell axis as well
+([#940](https://github.com/monocongo/climate_indices/issues/940)), so `Distribution.pearson` no
+longer re-enters the single-series kernel once per cell; like gamma, a failed fit falls back to
+gamma for the whole block rather than per cell. EDDI and percentage-of-normal have no cell axis in
+their kernels yet (#942), and Palmer has no adapter layer at all (#937).
 
 The PET entry points do not use the adapter decorator, because latitude arrives as a broadcast
 input rather than a secondary time series. They forward `vectorize=False` themselves and hand

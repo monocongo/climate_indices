@@ -197,18 +197,25 @@ class TestSpatialKernelSkipsPerCellLoop:
         cell_count = gridded_monthly_precip.shape[1] * gridded_monthly_precip.shape[2]
         assert len(calls) == cell_count
 
-    def test_pearson_keeps_per_cell_loop(self, gridded_monthly_precip, spatial_spi, monkeypatch):
-        """Pearson Type III's per-series L-moment fit still runs once per cell (#940)."""
-        calls: list[tuple[int, ...]] = []
-        original = compute.transform_fitted_pearson
+    def test_pearson_fits_once_for_gridded_input(self, gridded_monthly_precip, spatial_spi, monkeypatch):
+        """The Pearson Type III fit and transform run once for a 3 x 2 grid (#940)."""
+        transforms: list[tuple[int, ...]] = []
+        fits: list[tuple[int, ...]] = []
+        original_transform = compute.transform_fitted_pearson
+        original_fit = compute.pearson_parameters
 
         def counting_transform(values, *args, **kwargs):
-            calls.append(np.shape(values))
-            return original(values, *args, **kwargs)
+            transforms.append(np.shape(values))
+            return original_transform(values, *args, **kwargs)
+
+        def counting_fit(values, *args, **kwargs):
+            fits.append(np.shape(values))
+            return original_fit(values, *args, **kwargs)
 
         monkeypatch.setattr(compute, "transform_fitted_pearson", counting_transform)
+        monkeypatch.setattr(compute, "pearson_parameters", counting_fit)
 
-        spatial_spi(
+        result = spatial_spi(
             gridded_monthly_precip,
             scale=3,
             distribution=indices.Distribution.pearson,
@@ -216,8 +223,11 @@ class TestSpatialKernelSkipsPerCellLoop:
             calibration_year_final=_CALIBRATION_END,
         )
 
-        cell_count = gridded_monthly_precip.shape[1] * gridded_monthly_precip.shape[2]
-        assert len(calls) == cell_count
+        assert result.shape == gridded_monthly_precip.shape
+        assert len(transforms) == 1, f"expected one vectorized transform, saw {len(transforms)} calls"
+        assert len(fits) == 1, f"expected one vectorized fit, saw {len(fits)} calls"
+        # the fit sees the folded (years, periods, *cells) block, cells intact
+        assert fits[0] == (40, 12, 3, 2)
 
 
 class TestSpatialKernelEquivalence:
@@ -240,7 +250,7 @@ class TestSpatialKernelEquivalence:
         np.testing.assert_allclose(result.values, expected, atol=1e-8, rtol=1e-7, equal_nan=True)
 
     def test_spi_pearson_matches_pointwise(self, gridded_monthly_precip, spatial_spi):
-        """The deferred Pearson path still produces per-cell-identical output."""
+        """The vectorized Pearson path produces per-cell-identical output."""
         result = spatial_spi(
             gridded_monthly_precip,
             scale=3,
@@ -485,11 +495,11 @@ class TestSpatialKernelEquivalence:
         )
 
 
-class TestSpatialPearsonDeferral:
-    """The Pearson Type III path still fits one series per cell (#940)."""
+class TestSpatialPearsonEquivalence:
+    """The vectorized Pearson Type III path must match the single-series fits."""
 
     def test_spei_pearson_matches_pointwise(self, gridded_monthly_precip, spatial_spei):
-        """Gridded SPEI with the deferred pearson fit matches the NumPy API per cell."""
+        """Gridded SPEI with the vectorized pearson fit matches the NumPy API per cell."""
         pet = xr.full_like(gridded_monthly_precip, 0.5)
         result = spatial_spei(
             gridded_monthly_precip,
@@ -550,6 +560,38 @@ class TestSpatialGoodnessOfFitParity:
         assert len(spatial_fits) == 1, "the spatial check aggregates one warning per call"
         # the same (time step, cell) pairs are flagged on both paths; the spatial warning
         # counts comparisons, while each per-cell warning counts its own time steps
+        assert spatial_fits[0].message.poor_fit_count == sum(w.message.poor_fit_count for w in cell_fits)
+        assert spatial_fits[0].message.total_steps == 12 * 2 * 3
+
+    def test_pearson_poor_fit_counts_match_per_cell_path(self, spatial_spi, per_cell_spi):
+        """The Pearson vectorized D statistic flags the same (time step, cell) pairs."""
+        time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+        rng = np.random.default_rng(5)
+        # a bimodal sample is a poor Pearson Type III fit, so both paths flag it
+        values = np.where(rng.random((time.size, 2, 3)) < 0.5, 1.0, 10.0) + rng.normal(0, 0.01, (time.size, 2, 3))
+        grid = xr.DataArray(
+            values,
+            coords={"time": time, "lat": [10.0, 20.0], "lon": [0.0, 5.0, 10.0]},
+            dims=["time", "lat", "lon"],
+        )
+        kwargs = {
+            "scale": 1,
+            "distribution": indices.Distribution.pearson,
+            "calibration_year_initial": _CALIBRATION_START,
+            "calibration_year_final": _CALIBRATION_END,
+        }
+
+        with warnings.catch_warnings(record=True) as spatial_warnings:
+            warnings.simplefilter("always")
+            spatial_spi(grid, **kwargs)
+        with warnings.catch_warnings(record=True) as cell_warnings:
+            warnings.simplefilter("always")
+            per_cell_spi(grid, **kwargs)
+
+        spatial_fits = [w for w in spatial_warnings if issubclass(w.category, GoodnessOfFitWarning)]
+        cell_fits = [w for w in cell_warnings if issubclass(w.category, GoodnessOfFitWarning)]
+        assert len(spatial_fits) == 1, "the spatial check aggregates one warning per call"
+        assert spatial_fits[0].message.poor_fit_count > 0, "the fixture must produce poor fits"
         assert spatial_fits[0].message.poor_fit_count == sum(w.message.poor_fit_count for w in cell_fits)
         assert spatial_fits[0].message.total_steps == 12 * 2 * 3
 
@@ -675,6 +717,15 @@ class TestSpatialFittingParameters:
             indices.Distribution.pearson,
             lambda latitude, longitude: {key: value[:, latitude, longitude] for key, value in params.items()},
         )
+
+    def test_pearson_period_params_are_shared_by_every_cell(self, gridded_monthly_precip):
+        """Legacy (period,) Pearson parameters broadcast over all cells, not the last cell axis."""
+        data = gridded_monthly_precip.values
+        probabilities_of_zero, locs, scales, skews = compute.pearson_parameters(
+            data[:, 0, 0], 1980, _CALIBRATION_START, _CALIBRATION_END, compute.Periodicity.monthly
+        )
+        params = {"prob_zero": probabilities_of_zero, "loc": locs, "scale": scales, "skew": skews}
+        self._assert_matches_pointwise(data, params, indices.Distribution.pearson, lambda *_: params)
 
 
 class TestSpatialBlockContracts:

@@ -165,7 +165,9 @@ SPI-1/gamma run.
 adapter's `spatial_kernel=True` forwards `vectorize=False` to `xr.apply_ufunc` and
 transposes the core dimension, so one `(time, *cells)` block reaches the NumPy core
 and the gamma fitting, transform, and goodness-of-fit check run once per block
-instead of once per cell. `tests/test_spatial_kernel.py` pins the call count, the
+instead of once per cell. The Pearson Type III L-moment fit and its
+goodness-of-fit check run once per block the same way (#940).
+`tests/test_spatial_kernel.py` pins the call count, the
 equivalence with the single-series path, and the NaN, partial-final-year, and daily
 calendar contracts.
 
@@ -181,7 +183,6 @@ The remaining per-cell sites above are owned by follow-ups:
 
 | remaining site | owner |
 | --- | --- |
-| `indices.spi`/`indices.spei` with `Distribution.pearson` (per-series L-moment fit) | #940 |
 | `indices.eddi` (per-period, per-year ranking loop), `indices.percentage_of_normal` | #942 |
 | `palmer.pdsi`/`palmer.scpdsi` (no adapter layer at all) | #937 |
 
