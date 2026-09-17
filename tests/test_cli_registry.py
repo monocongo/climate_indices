@@ -14,7 +14,7 @@ import pytest
 import xarray as xr
 
 from climate_indices import __main__ as cli_main
-from climate_indices import compute
+from climate_indices import compute, indices
 from climate_indices.__main__ import InputType
 
 # the --index values the CLI accepts, in the order they are offered
@@ -35,8 +35,21 @@ def test_registry_covers_every_pipeline_member():
             assert cli_main._INDEX_REGISTRY[name].index == name
 
 
-def test_all_runs_pet_before_the_indices_that_consume_it():
+def test_consumers_of_computed_pet_run_it_first():
+    # each pipeline that accepts a temperature input in place of a PET file
+    # computes PET before the index that consumes it
+    assert cli_main._INDEX_PIPELINES["spei"] == ("pet", "spei")
+    assert cli_main._INDEX_PIPELINES["scaled"] == ("spi", "pet", "spei", "pnp")
+    assert cli_main._INDEX_PIPELINES["palmers"] == ("pet", "palmers")
     assert cli_main._INDEX_PIPELINES["all"] == ("spi", "pet", "spei", "pnp", "palmers")
+
+
+@pytest.mark.parametrize("index", ("spi", "spei", "pnp", "pet", "palmers", "kbdi"))
+def test_each_registration_declares_its_runner(index):
+    registration = cli_main._registry_for(index)
+
+    assert registration.run.__name__ == f"_run_{index}"
+    assert registration.input_paths
 
 
 @pytest.mark.parametrize("index", _SHARED_ARRAY_INDICES)
@@ -63,7 +76,7 @@ def test_kbdi_computes_through_xarray_only():
 def test_handlers_for_index_returns_registrations_in_pipeline_order():
     handlers = cli_main._handlers_for_index("scaled")
 
-    assert [handler.index for handler in handlers] == ["spi", "spei", "pnp"]
+    assert [handler.index for handler in handlers] == ["spi", "pet", "spei", "pnp"]
     assert handlers[0] is cli_main._registry_for("spi")
 
 
@@ -94,6 +107,68 @@ def test_process_climate_indices_runs_the_pipeline_in_order(monkeypatch):
     cli_main.process_climate_indices(argparse.Namespace(index="all", multiprocessing="single"))
 
     assert calls == [(name, InputType.timeseries) for name in ("spi", "pet", "spei", "pnp", "palmers")]
+
+
+def test_requests_carry_only_the_inputs_their_index_declares():
+    """An index's request never carries companion inputs it does not read."""
+    arguments = argparse.Namespace(
+        output_file_base="out",
+        periodicity=compute.Periodicity.monthly,
+        chunksizes="input",
+        calibration_start_year=1980,
+        calibration_end_year=2010,
+        netcdf_precip="precip.nc",
+        var_name_precip="precip",
+        netcdf_temp="temp.nc",
+        var_name_temp="temp",
+        netcdf_pet="pet.nc",
+        var_name_pet="pet",
+        netcdf_awc="awc.nc",
+        var_name_awc="awc",
+    )
+
+    request = cli_main._IndexRequest.from_arguments(arguments, index="spi", input_type=InputType.divisions)
+
+    assert (request.netcdf_precip, request.var_name_precip) == ("precip.nc", "precip")
+    assert (request.netcdf_temp, request.var_name_temp) == (None, None)
+    assert (request.netcdf_pet, request.var_name_pet) == (None, None)
+    assert (request.netcdf_awc, request.var_name_awc) == (None, None)
+
+
+def test_temperature_only_spei_computes_and_consumes_pet(monkeypatch):
+    """A temperature-only SPEI run computes PET and feeds its output to SPEI."""
+    requests: list[cli_main._IndexRequest] = []
+
+    def _record(request: cli_main._IndexRequest) -> tuple[str, str]:
+        requests.append(request)
+        return ("out_pet.nc", "pet")
+
+    monkeypatch.setattr(cli_main, "_compute_write_index", _record)
+    monkeypatch.setattr(cli_main, "_prepare_file", lambda path, _name: path)
+    monkeypatch.setattr(cli_main, "_validate_args", lambda _arguments: InputType.timeseries)
+    arguments = argparse.Namespace(
+        index="spei",
+        multiprocessing="single",
+        periodicity=compute.Periodicity.monthly,
+        chunksizes="input",
+        scales=[1],
+        calibration_start_year=None,
+        calibration_end_year=None,
+        netcdf_precip="precip.nc",
+        var_name_precip="precip",
+        netcdf_temp="temp.nc",
+        var_name_temp="temp",
+        netcdf_pet=None,
+        var_name_pet=None,
+        output_file_base="out",
+    )
+
+    cli_main.process_climate_indices(arguments)
+
+    assert [request.index for request in requests] == ["pet"] + ["spei"] * len(indices.Distribution)
+    assert requests[0].var_name_precip is None
+    assert all(request.netcdf_pet == "out_pet.nc" for request in requests[1:])
+    assert arguments.netcdf_pet == "out_pet.nc"
 
 
 def test_aggregate_index_requires_the_scales_its_members_need(monkeypatch):

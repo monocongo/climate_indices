@@ -125,20 +125,21 @@ class _IndexRequest:
         param distribution: the distribution to fit, for a fitted index
         return: the request those arguments describe
         """
+        inputs = {name: getattr(arguments, name) for name in _registry_for(index).input_paths}
         return cls(
             index=index,
             output_file_base=arguments.output_file_base,
             input_type=input_type,
             periodicity=arguments.periodicity,
             chunksizes=arguments.chunksizes,
-            netcdf_precip=arguments.netcdf_precip,
-            var_name_precip=arguments.var_name_precip,
-            netcdf_temp=arguments.netcdf_temp,
-            var_name_temp=arguments.var_name_temp,
-            netcdf_pet=arguments.netcdf_pet,
-            var_name_pet=arguments.var_name_pet,
-            netcdf_awc=arguments.netcdf_awc,
-            var_name_awc=arguments.var_name_awc,
+            netcdf_precip=inputs.get("netcdf_precip"),
+            var_name_precip=inputs.get("var_name_precip"),
+            netcdf_temp=inputs.get("netcdf_temp"),
+            var_name_temp=inputs.get("var_name_temp"),
+            netcdf_pet=inputs.get("netcdf_pet"),
+            var_name_pet=inputs.get("var_name_pet"),
+            netcdf_awc=inputs.get("netcdf_awc"),
+            var_name_awc=inputs.get("var_name_awc"),
             calibration_start_year=arguments.calibration_start_year,
             calibration_end_year=arguments.calibration_end_year,
             scale=scale,
@@ -1124,6 +1125,9 @@ class _IndexRegistration:
 
     index: str
     run: Callable[[argparse.Namespace, InputType], None]
+    # names of the request's input fields this index reads, declared so that
+    # from_arguments() copies only the inputs the index actually consumes
+    input_paths: tuple[str, ...] = ()
     requires_precip: bool = False
     requires_pet_or_temp: bool = False
     requires_awc: bool = False
@@ -1150,13 +1154,6 @@ _PALMER_OUTPUTS = (
     (_KEY_RESULT_PMDI, "pmdi", "Palmer Modified Drought Index"),
     (_KEY_RESULT_ZINDEX, "zindex", "Palmer Z-Index"),
 )
-
-# the dask chunk shape each input type is opened with
-_CHUNKS_BY_INPUT_TYPE: dict[InputType, dict[str, int]] = {
-    InputType.grid: {"lat": -1, "lon": -1},
-    InputType.divisions: {"division": -1},
-    InputType.timeseries: {"time": -1},
-}
 
 # the axis each input type's time dimension lies along
 _TIME_AXIS_INDEX: dict[InputType, int] = {
@@ -1734,6 +1731,7 @@ _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
     "spi": _IndexRegistration(
         index="spi",
         run=_run_spi,
+        input_paths=("netcdf_precip", "var_name_precip"),
         requires_precip=True,
         requires_scales=True,
         build_arguments=_spi_arguments,
@@ -1747,6 +1745,7 @@ _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
     "spei": _IndexRegistration(
         index="spei",
         run=_run_spei,
+        input_paths=("netcdf_precip", "var_name_precip", "netcdf_pet", "var_name_pet"),
         requires_precip=True,
         requires_pet_or_temp=True,
         requires_scales=True,
@@ -1761,6 +1760,7 @@ _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
     "pnp": _IndexRegistration(
         index="pnp",
         run=_run_pnp,
+        input_paths=("netcdf_precip", "var_name_precip"),
         requires_precip=True,
         requires_scales=True,
         build_arguments=_pnp_arguments,
@@ -1774,6 +1774,7 @@ _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
     "pet": _IndexRegistration(
         index="pet",
         run=_run_pet,
+        input_paths=("netcdf_temp", "var_name_temp"),
         build_arguments=_pet_arguments,
         variable_attributes=_pet_variable_attributes,
         prepare_arrays=_prepare_latitude_array,
@@ -1787,6 +1788,14 @@ _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
     "palmers": _IndexRegistration(
         index="palmers",
         run=_run_palmers,
+        input_paths=(
+            "netcdf_precip",
+            "var_name_precip",
+            "netcdf_pet",
+            "var_name_pet",
+            "netcdf_awc",
+            "var_name_awc",
+        ),
         requires_precip=True,
         requires_pet_or_temp=True,
         requires_awc=True,
@@ -1802,6 +1811,7 @@ _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
     "kbdi": _IndexRegistration(
         index="kbdi",
         run=_run_kbdi,
+        input_paths=("netcdf_precip", "var_name_precip", "netcdf_temp", "var_name_temp"),
         requires_precip=True,
         validate_arguments=_validate_kbdi_arguments,
         validate_inputs=_validate_kbdi_inputs,
@@ -1812,11 +1822,11 @@ _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
 # before the indices that consume its output when no PET input was provided
 _INDEX_PIPELINES: dict[str, tuple[str, ...]] = {
     "spi": ("spi",),
-    "spei": ("spei",),
+    "spei": ("pet", "spei"),
     "pnp": ("pnp",),
-    "scaled": ("spi", "spei", "pnp"),
+    "scaled": ("spi", "pet", "spei", "pnp"),
     "pet": ("pet",),
-    "palmers": ("palmers",),
+    "palmers": ("pet", "palmers"),
     "kbdi": ("kbdi",),
     "all": ("spi", "pet", "spei", "pnp", "palmers"),
 }
@@ -1949,7 +1959,7 @@ def process_climate_indices(
     """
     Process climate indices based on the provided arguments.
 
-    :param arguments: A dictionary or argparse.Namespace containing the arguments
+    :param arguments: the parsed command line arguments
     :return: The results of the climate indices processing
     """
 

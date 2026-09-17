@@ -176,6 +176,47 @@ def test_spei_uses_provided_pet_file_and_matches_in_process_computation(
         np.testing.assert_allclose(dataset["spei_gamma_06"].values[0], expected, equal_nan=True)
 
 
+def test_spei_with_temperature_input_computes_and_consumes_pet(tmp_path, precips_mm_monthly, temps_celsius):
+    """A temperature-only SPEI run writes PET as a side effect and consumes it."""
+    precips = precips_mm_monthly.reshape(-1)
+    temps = temps_celsius.reshape(-1)
+    precip_path = tmp_path / "precip.nc"
+    temp_path = tmp_path / "temp.nc"
+    output_base = tmp_path / "spei_temp_only"
+
+    _write_divisions(precip_path, precips)
+    _write_divisions(temp_path, temps, var_name="temp", units="degrees_celsius")
+    main(
+        [
+            *_common_arguments("spei", precip_path, output_base),
+            "--scales",
+            "6",
+            "--netcdf_temp",
+            str(temp_path),
+            "--var_name_temp",
+            "temp",
+        ]
+    )
+
+    pet_path = tmp_path / "spei_temp_only_pet_thornthwaite.nc"
+    assert pet_path.exists()
+    with xr.open_dataset(pet_path) as dataset:
+        pet = dataset["pet_thornthwaite"].values[0]
+
+    expected = indices.spei(
+        precips_mm=precips,
+        pet_mm=pet,
+        scale=6,
+        distribution=indices.Distribution.gamma,
+        data_start_year=_DATA_START_YEAR,
+        calibration_year_initial=_CALIBRATION_START_YEAR,
+        calibration_year_final=_CALIBRATION_END_YEAR,
+        periodicity=compute.Periodicity.monthly,
+    )
+    with xr.open_dataset(tmp_path / "spei_temp_only_spei_gamma_06.nc") as dataset:
+        np.testing.assert_allclose(dataset["spei_gamma_06"].values[0], expected, equal_nan=True)
+
+
 def _length_in(values_inches, units):
     """Express values known in inches under the given length unit label."""
     return values_inches if units in ("inches", None) else values_inches * 25.4
