@@ -163,10 +163,9 @@ def _select_duration_factors(prepared: _PalmerPrepared, state: _PalmerRecursion)
 
     X3 equal to zero means that no wet or dry spell is established. It is
     assigned the wet factors to preserve the recursion's historical
-    non-negative tie-break. This choice is immaterial with Palmer's identical
-    wet and dry defaults (``pdsi()`` always calibrates both from
-    ``DurationFactors.from_defaults()``), but must remain explicit since a
-    single ``prepared`` can still be tested with distinct pairs.
+    non-negative tie-break. With Palmer's identical wet and dry defaults the
+    choice is unobservable; a distinct duration-factor override makes it
+    observable, and the tie-break is kept deliberately.
 
     :param prepared: the prepared Palmer inputs
     :param state: the mutable recursion state
@@ -1365,12 +1364,21 @@ def _duration_factor_override(fitting_params: dict[str, Any] | None) -> Duration
     for name in _DURATION_FACTOR_PARAM_NAMES:
         try:
             value = np.asarray(fitting_params[name], dtype=float)
-        except (TypeError, ValueError) as error:
+        except (TypeError, ValueError, OverflowError) as error:
             raise ValueError(f"duration-factor override {name} must be a finite scalar") from error
         if value.ndim != 0 or not np.isfinite(value):
             raise ValueError(f"duration-factor override {name} must be a finite scalar")
         values.append(float(value))
-    return DurationFactors.from_fitted(*values)
+    try:
+        return DurationFactors.from_fitted(*values)
+    except ConvergenceError as error:
+        # the shared validation names the Wells lineage and the scPDSI
+        # calibration; attribute the failure to this pdsi-only override
+        raise ConvergenceError(
+            f"invalid duration-factor override for the standard PDSI recursion: {error}",
+            algorithm="PDSI duration-factor override",
+            underlying_error=error,
+        ) from error
 
 
 def _prepare_palmer_data(
@@ -1403,9 +1411,10 @@ def _prepare_palmer_data(
         fitting_params=fitting_params,
         spatial_time_major=spatial_time_major,
     )
-    # _initialize_prepared can only set Palmer's fixed defaults (the duration
-    # factors are shared with scPDSI, which always self-calibrates), so a
-    # pdsi()-only override lands here, before any recursion stage reads them.
+    # _initialize_prepared can only set Palmer's fixed defaults, and scPDSI
+    # bypasses these fields entirely (it passes its fitted factors straight to
+    # _palmer_wells.calculate), so a pdsi()-only override lands here, before any
+    # recursion stage reads them.
     if duration_factors is not None:
         prepared.wetm = duration_factors.wetm
         prepared.wetb = duration_factors.wetb
@@ -1462,7 +1471,9 @@ def _calculate_pdsi_prepared(prepared: _PalmerPrepared, original_length: int) ->
         phdi = phdi[:, 0]
         wplm = wplm[:, 0]
         z = z[:, 0]
-    return _PalmerResult(pdsi_result, phdi, wplm, z, _palmer_cafec_params(prepared))
+    params = _palmer_cafec_params(prepared)
+    params.update(wetm=prepared.wetm, wetb=prepared.wetb, drym=prepared.drym, dryb=prepared.dryb)
+    return _PalmerResult(pdsi_result, phdi, wplm, z, params)
 
 
 def _calculate_scpdsi_prepared(prepared: _PalmerPrepared, original_length: int) -> _PalmerResult:
@@ -1571,7 +1582,7 @@ def _palmer_calculation(
     calibration_year_final: int,
     fitting_params: dict[str, Any] | None,
     spatial_time_major: bool = False,
-    duration_factors: DurationFactors | None = None,
+    use_fitting_duration_factors: bool = False,
 ) -> _PalmerResult:
     """Run validation, shared setup, logging, and one Palmer calculation."""
     log = _bind_palmer_log(
@@ -1586,6 +1597,9 @@ def _palmer_calculation(
     t0 = time.perf_counter()
 
     try:
+        # resolved inside the try so a malformed override emits the same
+        # calculation_started/calculation_failed lifecycle as other input errors
+        duration_factors = _duration_factor_override(fitting_params) if use_fitting_duration_factors else None
         # equal element counts are not enough to pair a spatial block: (time, 2, 3)
         # and (time, 3, 2) have the same size but flatten their cells in different
         # spatial order, and a block's time axis is not recoverable from size alone.
@@ -1697,16 +1711,21 @@ def pdsi(
         tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any] | None]:
             A five-item tuple containing NumPy arrays of PDSI, PHDI, PMDI, and
             Z-Index values, respectively, and a dictionary containing the
-            fitted ``alpha``, ``beta``, ``gamma``, and ``delta`` parameters.
+            fitted ``alpha``, ``beta``, ``gamma``, and ``delta`` parameters
+            plus the effective ``wetm``, ``wetb``, ``drym``, and ``dryb``
+            duration factors (Palmer's defaults unless overridden). Passing
+            that dictionary back as ``fitting_params`` reproduces the run.
             For all-missing input, the parameter dictionary is ``None``. A
             spatial block's outputs keep precips' cell shape, and the
             parameter arrays gain the same trailing shape unless
             ``fitting_params`` was supplied.
 
     Raises:
-        ValueError: If only some of the ``wetm``/``wetb``/``drym``/``dryb``
-            override keys were supplied, or a supplied value is not a finite
-            scalar.
+        ValueError: If precipitation and PET have incompatible shapes, if
+            precips/pet contains infinite values, if the calibration period
+            is not contained in the data years, or if only some of the
+            ``wetm``/``wetb``/``drym``/``dryb`` override keys were supplied
+            or a supplied value is not a finite scalar.
         ConvergenceError: If a supplied duration-factor override does not
             yield contracting recurrence coefficients.
     """
@@ -1724,7 +1743,7 @@ def pdsi(
         calibration_year_final,
         fitting_params,
         spatial_time_major=spatial_time_major,
-        duration_factors=_duration_factor_override(fitting_params),
+        use_fitting_duration_factors=True,
     )
 
 

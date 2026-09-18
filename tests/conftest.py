@@ -249,25 +249,6 @@ def palmer_division_dir(request: pytest.FixtureRequest) -> Path:
     return request.param
 
 
-@pytest.fixture(scope="session")
-def palmer_division_inputs(palmer_awcs) -> dict[str, tuple[np.ndarray, np.ndarray, float]]:
-    """Division-keyed ``(precips, pet, awc)``, the one loader for the division fixtures.
-
-    The Palmer sweeps, the scPDSI contract tests, and the nClimDiv comparisons all
-    read the same committed inputs, so the paths and the AWC lookup live here rather
-    than in each test module. Loading every division costs single-digit MiB, and the
-    session scope keeps it to one load per pytest session.
-    """
-    return {
-        os.path.basename(directory): (
-            np.load(os.path.join(directory, "precips.npy")),
-            np.load(os.path.join(directory, "pet.npy")),
-            palmer_awcs[os.path.basename(directory)],
-        )
-        for directory in _palmer_division_dirs()
-    }
-
-
 class _PalmerSweep(dict[str, tuple | Exception]):
     """Division-keyed sweep results, re-raising a stored division failure on read.
 
@@ -281,6 +262,36 @@ class _PalmerSweep(dict[str, tuple | Exception]):
         if isinstance(result, Exception):
             raise result
         return result
+
+
+@pytest.fixture(scope="session")
+def palmer_division_inputs(palmer_awcs) -> _PalmerSweep:
+    """Division-keyed ``(precips, pet, awc)``, the one loader for the division fixtures.
+
+    The Palmer sweeps, the scPDSI contract tests, and the nClimDiv comparisons all
+    read the same committed inputs, so the paths and the AWC lookup live here rather
+    than in each test module. Loading every division costs single-digit MiB, and the
+    session scope keeps it to one load per pytest session. Arrays are read-only so an
+    in-place test mutation cannot leak into the next consumer.
+
+    A division whose files or ``palmer_awc.json`` entry cannot be read is recorded as
+    that division's failure rather than aborting the session fixture, preserving the
+    sweeps' per-division isolation (PR #935 review).
+    """
+    inputs: _PalmerSweep = _PalmerSweep()
+    for directory in _palmer_division_dirs():
+        division = os.path.basename(directory)
+        try:
+            precips = np.load(os.path.join(directory, "precips.npy"))
+            pet = np.load(os.path.join(directory, "pet.npy"))
+            precips.setflags(write=False)
+            pet.setflags(write=False)
+            inputs[division] = (precips, pet, palmer_awcs[division])
+        except Exception as error:
+            failure = RuntimeError(f"failed to load Palmer fixture inputs for division {division}")
+            failure.__cause__ = error
+            inputs[division] = failure
+    return inputs
 
 
 def _palmer_sweep(entry_point: str, inputs: dict[str, tuple[np.ndarray, np.ndarray, float]]) -> _PalmerSweep:
@@ -304,8 +315,10 @@ def _palmer_sweep(entry_point: str, inputs: dict[str, tuple[np.ndarray, np.ndarr
     from climate_indices import palmer
 
     results: _PalmerSweep = _PalmerSweep()
-    for division, (precips, pet, awc) in inputs.items():
+    for division in inputs:
         try:
+            # indexing re-raises a stored fixture-load failure for this division
+            precips, pet, awc = inputs[division]
             results[division] = getattr(palmer, entry_point)(
                 precips,
                 pet,

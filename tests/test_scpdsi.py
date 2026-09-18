@@ -160,7 +160,7 @@ def test_scpdsi_reports_its_fixed_three_rescaling_passes(palmer_division_inputs)
     """The Z-index rescaling loop count is part of the returned diagnostics.
 
     The loop is a fixed three passes rather than an iteration to a fixed point
-    (see ``test_scpdsi_calibration_anchor_lands_on_target`` for the cumulative
+    (see ``test_scpdsi_rescales_zindex_cumulatively`` for the cumulative
     behavior those passes produce), so the count is reported instead of being
     pinned by monkeypatching the recursion.
     """
@@ -168,6 +168,34 @@ def test_scpdsi_reports_its_fixed_three_rescaling_passes(palmer_division_inputs)
 
     assert params is not None
     assert params["rescale_passes"] == 3
+
+
+def test_scpdsi_rescales_zindex_cumulatively(monkeypatch, palmer_division_inputs):
+    """Each of the three rescaling passes multiplies the working Z, not the raw Z.
+
+    Percentiles are pinned to constant anchors so each pass applies a known
+    ratio: a no-op anchor pair returns the raw Z, and the 2.0-ratio pair must
+    return raw * 2**3. A single pass, a shorter loop, or rescaling from the raw
+    Z every pass fails the exact equality here.
+    """
+    precips, pet, awc = palmer_division_inputs["0101"]
+    # duration factors must be pinned too: the real fit itself calls
+    # nan_safe_percentile, so patching percentiles alone leaves an
+    # inconsistent calibration (and can trip ConvergenceError)
+    monkeypatch.setattr(palmer.self_calibration, "duration_factors", lambda _z, _sign: (1.0, 1.0))
+
+    def sczindex(dry: float, wet: float) -> np.ndarray:
+        monkeypatch.setattr(
+            palmer.self_calibration,
+            "nan_safe_percentile",
+            lambda _values, fraction: dry if fraction == 0.02 else wet,
+        )
+        return palmer.scpdsi(precips, pet, awc, 1895, 1931, 1990)[3]
+
+    raw_z = sczindex(-4.0, 4.0)  # ratio 1.0: three no-op passes
+    rescaled = sczindex(-2.0, 2.0)  # ratio 2.0 per pass
+
+    np.testing.assert_allclose(rescaled, raw_z * 8.0, rtol=0, atol=0, equal_nan=True)
 
 
 def test_invalid_fitted_duration_factors_raise_convergence_error(monkeypatch, palmer_division_inputs):
@@ -191,7 +219,7 @@ def test_invalid_calibration_percentiles_raise_convergence_error(monkeypatch, dr
     )
     monkeypatch.setattr(palmer._palmer_wells, "calculate", fake_calculate)
 
-    with pytest.raises(ConvergenceError, match="percentile"):
+    with pytest.raises(ConvergenceError, match="percentile anchors"):
         _call(palmer_division_inputs)
 
 

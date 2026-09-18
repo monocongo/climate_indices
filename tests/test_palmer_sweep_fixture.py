@@ -33,3 +33,35 @@ def test_failing_division_does_not_abort_the_sweep(monkeypatch):
     with pytest.raises(RuntimeError, match="palmer.pdsi\\(\\) failed for division 001") as failure:
         results["001"]
     assert isinstance(failure.value.__cause__, ValueError)
+
+
+def test_division_input_load_failure_is_recorded_not_raised(tmp_path, monkeypatch):
+    """A fixture load failure stays per-division instead of poisoning the session fixture."""
+    directory = tmp_path / "001"
+    directory.mkdir()  # no precips.npy/pet.npy
+    monkeypatch.setattr(conftest, "_palmer_division_dirs", lambda: (str(directory),))
+
+    inputs = conftest.palmer_division_inputs.__wrapped__({"001": 1.0})
+
+    with pytest.raises(RuntimeError, match="failed to load Palmer fixture inputs for division 001") as failure:
+        inputs["001"]
+    assert isinstance(failure.value.__cause__, OSError)
+
+
+def test_stored_input_failure_does_not_abort_the_sweep(monkeypatch):
+    """A stored fixture-load failure is isolated by the sweep, like a calculation failure."""
+
+    def fake_pdsi(precips, pet, awc, *args):
+        return ("result",)
+
+    monkeypatch.setattr("climate_indices.palmer.pdsi", fake_pdsi)
+
+    inputs = conftest._PalmerSweep()
+    inputs["001"] = RuntimeError("failed to load Palmer fixture inputs for division 001")
+    inputs["002"] = (np.zeros(2), np.zeros(2), "good")
+
+    results = conftest._palmer_sweep("pdsi", inputs)
+
+    assert results["002"] == ("result",)
+    with pytest.raises(RuntimeError, match="palmer.pdsi\\(\\) failed for division 001"):
+        results["001"]

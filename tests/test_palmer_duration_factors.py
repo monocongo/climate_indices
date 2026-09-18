@@ -3,6 +3,7 @@ import pytest
 
 from climate_indices import palmer
 from climate_indices._palmer_duration import DurationFactors
+from climate_indices.exceptions import ConvergenceError
 
 
 def _blank_state() -> tuple[palmer._PalmerPrepared, palmer._PalmerRecursion]:
@@ -234,23 +235,53 @@ def test_custom_duration_factors_change_pdsi_output():
     default_pdsi, *_ = palmer.pdsi(precips, pet, 5.0, 2000, 2000, 2003)
     custom_pdsi, *_ = palmer.pdsi(precips, pet, 5.0, 2000, 2000, 2003, fitting_params=custom)
 
+    assert np.isfinite(custom_pdsi).any()
+    assert np.array_equal(np.isnan(default_pdsi), np.isnan(custom_pdsi))
     assert not np.allclose(default_pdsi, custom_pdsi, equal_nan=True)
 
 
+def test_pdsi_returned_params_reproduce_a_duration_factor_override():
+    """The returned parameters echo the effective duration factors, so reuse is lossless."""
+    rng = np.random.default_rng(42)
+    precips = rng.uniform(0.0, 6.0, size=12 * 4)
+    pet = rng.uniform(0.0, 4.0, size=12 * 4)
+    custom = {"wetm": 1.0, "wetb": 1.0, "drym": 1.0, "dryb": 1.0}
+
+    custom_pdsi, *_, params = palmer.pdsi(precips, pet, 5.0, 2000, 2000, 2003, fitting_params=custom)
+    assert params is not None
+
+    rerun_pdsi, *_ = palmer.pdsi(precips, pet, 5.0, 2000, 2000, 2003, fitting_params=params)
+
+    np.testing.assert_array_equal(custom_pdsi, rerun_pdsi)
+
+
 @pytest.mark.parametrize(
-    "override",
+    ("override", "message"),
     [
-        {"wetm": 1.0},
-        {"wetm": 1.0, "wetb": 1.0, "drym": 1.0, "dryb": [1.0]},
+        pytest.param({"wetm": 1.0}, r"missing: wetb, drym, dryb", id="partial"),
+        pytest.param(
+            {"wetm": 1.0, "wetb": 1.0, "drym": 1.0, "dryb": [1.0]}, "dryb must be a finite scalar", id="non-scalar"
+        ),
+        pytest.param(
+            {"wetm": 1.0, "wetb": 1.0, "drym": 1.0, "dryb": np.inf}, "dryb must be a finite scalar", id="non-finite"
+        ),
+        pytest.param(
+            {"wetm": 1.0, "wetb": 1.0, "drym": 1.0, "dryb": "x"}, "dryb must be a finite scalar", id="non-numeric"
+        ),
+        pytest.param(
+            {"wetm": 1.0, "wetb": 1.0, "drym": 1.0, "dryb": 10**1000},
+            "dryb must be a finite scalar",
+            id="overflow",
+        ),
     ],
 )
-def test_invalid_duration_factor_override_is_rejected(override):
-    """A partial or non-scalar override is a caller error, not a silent default."""
+def test_invalid_duration_factor_override_is_rejected(override, message):
+    """A malformed override is a caller error, not a silent default."""
     rng = np.random.default_rng(42)
     precips = rng.uniform(0.0, 6.0, size=12 * 4)
     pet = rng.uniform(0.0, 4.0, size=12 * 4)
 
-    with pytest.raises(ValueError, match="duration-factor override"):
+    with pytest.raises(ValueError, match=message):
         palmer.pdsi(precips, pet, 5.0, 2000, 2000, 2003, fitting_params=override)
 
 
@@ -327,3 +358,17 @@ def test_finish_up_falls_back_to_pdsi_when_no_spell_is_established():
     # a sub-epsilon px3 is still an established spell, so PHDI keeps it rather
     # than falling back to the PDSI value
     assert state.phdi[0, 1, 0] == -np.finfo(float).tiny
+
+
+def test_non_contracting_duration_factor_override_is_attributed_to_pdsi():
+    """The override's ConvergenceError names the pdsi path, not the scPDSI calibration."""
+    rng = np.random.default_rng(42)
+    precips = rng.uniform(0.0, 6.0, size=12 * 4)
+    pet = rng.uniform(0.0, 4.0, size=12 * 4)
+    non_contracting = {"wetm": 1.0, "wetb": -0.5, "drym": 1.0, "dryb": 1.0}
+
+    with pytest.raises(ConvergenceError, match="duration-factor override") as error:
+        palmer.pdsi(precips, pet, 5.0, 2000, 2000, 2003, fitting_params=non_contracting)
+
+    assert error.value.algorithm == "PDSI duration-factor override"
+
