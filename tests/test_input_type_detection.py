@@ -13,7 +13,7 @@ import pytest
 import xarray as xr
 
 from climate_indices.exceptions import ClimateIndicesError, InputTypeError
-from climate_indices.xarray_adapter import InputType, detect_input_type
+from climate_indices.validation import InputType, detect_input_type
 
 
 class FakePolarsDataFrame:

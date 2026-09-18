@@ -34,7 +34,7 @@
 ┌─────────────────────────────────────┐
 │   CLI Layer                         │  ← __main__.py
 ├─────────────────────────────────────┤
-│   Public API Layer                  │  ← typed_public_api.py, xarray_adapter.py
+│   Public API Layer                  │  ← typed_public_api.py, xarray_adapter.py, validation.py
 ├─────────────────────────────────────┤
 │   Computation Layer                 │  ← indices.py, compute.py
 ├─────────────────────────────────────┤
@@ -214,7 +214,7 @@ uv run pytest -m benchmark
 | Add new index | `compute.py`, `indices.py`, `xarray_adapter.py` | `test_compute.py`, `test_indices.py`, `test_xarray_adapter.py` |
 | Add new distribution | `compute.py`, `indices.py` | `test_compute.py`, property tests |
 | Fix CLI bug | `__main__.py` | Integration tests (manual) |
-| Add validation | `xarray_adapter.py`, `exceptions.py` | `test_input_validation.py`, `test_exceptions.py` |
+| Add validation | `xarray_adapter.py`, `validation.py`, `exceptions.py` | `test_validation.py`, `test_input_validation.py`, `test_exceptions.py` |
 | Performance optimization | `compute.py`, chunking strategies | `test_benchmark_*.py` |
 
 ---

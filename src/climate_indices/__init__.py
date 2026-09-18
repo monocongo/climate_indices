@@ -22,9 +22,11 @@ from climate_indices.typed_public_api import (
     spei,
     spi,
 )
-from climate_indices.xarray_adapter import (
+from climate_indices.validation import (
     InputType,
     detect_input_type,
+)
+from climate_indices.xarray_adapter import (
     xarray_adapter,
 )
 
@@ -54,5 +56,6 @@ __all__ = [
     "pet_thornthwaite",
     "spei",
     "spi",
+    "validation",
     "xarray_adapter",
 ]
