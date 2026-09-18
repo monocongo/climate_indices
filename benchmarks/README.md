@@ -311,9 +311,11 @@ pinned to `DataShapeError`. The ranking count holds one chunk of the
 size no longer multiplies into it.
 
 `palmer.pdsi` gained a spatial block path at the NumPy layer in #937 (see
-`### Conversion status (#937)` below); it has no xarray adapter yet, so it
-does not appear in the canonical adapter table above. `palmer.scpdsi` stays
-per-location (ADR-0011) and is not part of this conversion.
+`### Conversion status (#937)` below), and its xarray adapter landed in #1016:
+`climate_indices.pdsi()` takes DataArrays and returns a Dataset of the four
+indices, reaching the kernel once per block with AWC broadcast like PET's
+latitude. `palmer.scpdsi` stays per-location (ADR-0011) and has no xarray entry
+point.
 
 ### Legacy CLI path (per-cell loop present, parallel across workers)
 
@@ -359,8 +361,10 @@ contracts; `tests/test_main_palmers.py` pins the CLI worker's grid path the same
 `TestPalmersWorker` already pinned the division path. `palmer.scpdsi()` explicitly
 rejects a spatial block (ADR-0011) and is unaffected.
 
-There is still no xarray adapter for either Palmer entry point; that registration
-is a separate follow-up ticket referenced from #937.
+`climate_indices.pdsi()` registers `palmer.pdsi` with the xarray adapter (#1016):
+it forwards `vectorize=False`, hands the kernel a `(time, *cells)` block with the
+per-cell AWC, and rewraps the four outputs as a Dataset. `palmer.scpdsi()` still
+has no xarray entry point (ADR-0011).
 
 ### Already vectorized (no per-cell index invocation)
 
@@ -392,13 +396,15 @@ above. Unmeasured overhead on both paths; no ticket owns it.
 
 ### Structural blockers
 
-`palmer.pdsi` and `palmer.scpdsi` take two 1-D series (precipitation and PET)
-plus a scalar available water capacity, allocate a per-location `data` dict of
-`(n_years, 12)` arrays, and loop over years and months (`palmer.py:231`,
-`palmer.py:323`, `palmer.py:365`, `palmer.py:733`). There is no adapter-layer
-Palmer call, so today the only per-cell Palmer path is the legacy CLI's
-`_apply_along_axis_palmers` (`__main__.py:1409,1411`); converting it needs an n-D
-kernel, not an `apply_ufunc` flag. `scpdsi` additionally runs
+`palmer.pdsi` and `palmer.scpdsi` take two monthly series (precipitation and PET)
+plus an available water capacity -- a per-cell field for `pdsi` blocks -- and loop
+over years and months (`palmer.py:231`, `palmer.py:323`, `palmer.py:365`,
+`palmer.py:733`); before #899 they also allocated a per-location `data` dict of
+`(n_years, 12)` arrays. `palmer.pdsi` gained the n-D
+kernel in #937 and the adapter-layer entry point in #1016, and
+`_apply_along_axis_palmers` (`__main__.py:1165`) is converted for grid input.
+The remaining per-cell Palmer index path is `scpdsi` (the CLI's divisions input
+stays per-location by design). `scpdsi` additionally runs
 `_palmer_wells.calculate` per location (`palmer.py:1035`, `palmer.py:1047`), a
 per-month backtracking state machine, and duration-factor fits
 (`self_calibration.py:342`, `self_calibration.py:394`, `self_calibration.py:449`)

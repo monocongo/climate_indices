@@ -38,7 +38,8 @@ existing `(years, periods)` callers and their fixtures keep working.
 The spatial path is opt-in per index: `spatial_kernel=True` is declared at each spatial-kernel
 index's adapter call site in `typed_public_api.py` (SPI, SPEI, EDDI, and percentage of normal as of
 this writing), and any index left on the per-cell path keeps `vectorize=True` with one kernel call
-per cell. Registering an index whose kernel does not accept the `spatial_time_major` keyword fails
+per cell. The PET and Palmer entry points declare the same layout by owning their `xr.apply_ufunc`
+calls instead of using the decorator (#941, #1016). Registering an index whose kernel does not accept the `spatial_time_major` keyword fails
 loudly at the call rather than misreading its input.
 
 Two layouts now meet in `compute.py`, distinguished by position in the pipeline rather than by any
@@ -70,8 +71,9 @@ are pinned to `DataShapeError` rather than `ValueError`. `palmer.pdsi()` adopts 
 time-major block contract at the NumPy layer (#937); see
 [ADR-0011](./0011-palmer-spatial-block-and-per-location-scpdsi.md) for why its recursion needed a
 masked rewrite rather than a broadcast, why scPDSI stays per-location, and why one K-factor
-reduction has to run along a specific axis to stay bit-for-bit with the per-location path. Palmer
-still has no xarray adapter layer; that registration is a separate follow-up ticket.
+reduction has to run along a specific axis to stay bit-for-bit with the per-location path. Palmer's
+xarray adapter landed in #1016: `climate_indices.pdsi()` reaches `palmer.pdsi()` once per block
+with AWC broadcast like PET's latitude, and scPDSI stays without an adapter entry point.
 
 The PET entry points do not use the adapter decorator, because latitude arrives as a broadcast
 input rather than a secondary time series. They forward `vectorize=False` themselves and hand

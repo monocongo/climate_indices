@@ -181,8 +181,8 @@ coordinate handling) may evolve. Beta features are tagged with ``BetaFeatureWarn
 marked in docstrings.
 
 See `docs/xarray_compatibility.md` for the 3.0.0 compatibility matrix, including
-Dask chunking constraints, metadata behavior, and the current Palmer xarray
-workflow. See `docs/performance.md` for a runnable parallel SPI/SPEI example and
+Dask chunking constraints, metadata behavior, and the Palmer xarray adapter.
+See `docs/performance.md` for a runnable parallel SPI/SPEI example and
 the measured speedups behind the chunk and scheduler guidance.
 
 ### Validation Notes

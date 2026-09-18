@@ -14,9 +14,14 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from climate_indices import compute, indices, typed_public_api
+from climate_indices import compute, indices, palmer, typed_public_api
 from climate_indices.cf_metadata_registry import CF_METADATA
-from climate_indices.exceptions import DataShapeError, GoodnessOfFitWarning, InvalidArgumentError
+from climate_indices.exceptions import (
+    CoordinateValidationError,
+    DataShapeError,
+    GoodnessOfFitWarning,
+    InvalidArgumentError,
+)
 from climate_indices.xarray_adapter import xarray_adapter
 
 _CALIBRATION_START = 1981
@@ -1879,3 +1884,300 @@ class TestSpatialNonParametricBlockContracts:
 
         assert error.value.expected_shape == "(N,), (years, periods), or a declared (time, *cells) block"
         assert error.value.actual_shape == gridded_monthly_precip.shape
+
+
+class TestSpatialPalmerKernel:
+    """The standard Palmer adapter reaches ``palmer.pdsi`` once per block (#1016)."""
+
+    @pytest.fixture
+    def gridded_palmer_inputs(self, gridded_monthly_precip) -> tuple[xr.DataArray, xr.DataArray, xr.DataArray]:
+        """Precipitation, PET, and a per-cell AWC over the shared 3 x 2 grid."""
+        pet = xr.full_like(gridded_monthly_precip, 1.5)
+        # distinct AWCs per cell, so a cell-pairing or broadcast regression cannot pass
+        awc = xr.DataArray(
+            np.array([[4.0, 5.0], [6.0, 7.0], [8.0, 9.0]]),
+            coords={
+                "lat": gridded_monthly_precip.coords["lat"],
+                "lon": gridded_monthly_precip.coords["lon"],
+            },
+            dims=["lat", "lon"],
+        )
+        return gridded_monthly_precip, pet, awc
+
+    def _pdsi_kwargs(self) -> dict[str, int]:
+        return {
+            "data_start_year": 1980,
+            "calibration_year_initial": _CALIBRATION_START,
+            "calibration_year_final": _CALIBRATION_END,
+        }
+
+    def test_pdsi_runs_once_for_gridded_input(self, gridded_palmer_inputs, monkeypatch):
+        """A 3 x 2 grid runs the recursion once, for all six cells at once."""
+        precips, pet, awc = gridded_palmer_inputs
+        cell_counts: list[int] = []
+        original = palmer._calculate_pdsi_prepared
+
+        def counting_prepared(prepared, original_length):
+            cell_counts.append(prepared.n_cells)
+            return original(prepared, original_length)
+
+        monkeypatch.setattr(palmer, "_calculate_pdsi_prepared", counting_prepared)
+
+        result = typed_public_api.pdsi(precips, pet, awc, **self._pdsi_kwargs())
+
+        assert set(result.data_vars) == {"pdsi", "phdi", "pmdi", "z_index"}
+        assert result["pdsi"].dims == ("time", "lat", "lon")
+        assert cell_counts == [6]
+
+    def test_pdsi_two_dimensional_input_keeps_per_cell_path(self, gridded_palmer_inputs, monkeypatch):
+        """A (time, cell) input has one dimension to broadcast over and stays per cell."""
+        precips, pet, awc = gridded_palmer_inputs
+        cell_counts: list[int] = []
+        original = palmer._calculate_pdsi_prepared
+
+        def counting_prepared(prepared, original_length):
+            cell_counts.append(prepared.n_cells)
+            return original(prepared, original_length)
+
+        monkeypatch.setattr(palmer, "_calculate_pdsi_prepared", counting_prepared)
+
+        transect = precips.isel(lon=0)
+        result = typed_public_api.pdsi(transect, pet.isel(lon=0), awc.isel(lon=0), **self._pdsi_kwargs())
+
+        assert result["pdsi"].shape == transect.shape
+        assert cell_counts == [1] * transect.sizes["lat"]
+        # each latitude keeps its own AWC on the per-cell path, not the first cell's
+        for latitude_index in range(transect.sizes["lat"]):
+            expected = palmer.pdsi(
+                transect.isel(lat=latitude_index).values,
+                pet.isel(lon=0, lat=latitude_index).values,
+                float(awc.isel(lon=0, lat=latitude_index).values),
+                1980,
+                _CALIBRATION_START,
+                _CALIBRATION_END,
+            )
+            np.testing.assert_array_equal(result["pdsi"].isel(lat=latitude_index).values, expected[0])
+
+    def test_pdsi_block_matches_pointwise(self, gridded_palmer_inputs):
+        """Every cell of a gridded run matches the single-series result for that cell."""
+        precips, pet, awc = gridded_palmer_inputs
+        result = typed_public_api.pdsi(precips, pet, awc, **self._pdsi_kwargs())
+
+        for latitude_index in range(precips.sizes["lat"]):
+            for longitude_index in range(precips.sizes["lon"]):
+                expected = palmer.pdsi(
+                    precips.isel(lat=latitude_index, lon=longitude_index).values,
+                    pet.isel(lat=latitude_index, lon=longitude_index).values,
+                    float(awc.isel(lat=latitude_index, lon=longitude_index).values),
+                    1980,
+                    _CALIBRATION_START,
+                    _CALIBRATION_END,
+                )
+                for name, expected_values in zip(("pdsi", "phdi", "pmdi", "z_index"), expected[:4], strict=True):
+                    np.testing.assert_array_equal(
+                        result[name].isel(lat=latitude_index, lon=longitude_index).values,
+                        expected_values,
+                    )
+
+    def test_pdsi_all_missing_cell_is_missing(self, gridded_palmer_inputs):
+        """A cell with no precipitation stays missing inside a block that has data."""
+        precips, pet, awc = gridded_palmer_inputs
+        precips = precips.copy()
+        precips.values[:, 1, 1] = np.nan
+
+        result = typed_public_api.pdsi(precips, pet, awc, **self._pdsi_kwargs())
+
+        assert np.all(np.isnan(result["pdsi"].isel(lat=1, lon=1).values))
+        assert np.all(np.isnan(result["z_index"].isel(lat=1, lon=1).values))
+        assert np.isfinite(result["pdsi"].isel(lat=0, lon=0).values).all()
+
+    def test_pdsi_all_missing_dtype_is_float64(self, gridded_palmer_inputs):
+        """The all-missing early return still emits the declared float64 outputs."""
+        precips, pet, awc = gridded_palmer_inputs
+        missing = xr.full_like(precips, np.nan, dtype=np.float32)
+
+        result = typed_public_api.pdsi(missing, pet, awc, **self._pdsi_kwargs())
+
+        assert result["pdsi"].dtype == np.float64
+        assert np.all(np.isnan(result["pdsi"].values))
+
+    def test_pdsi_dask_block_matches_in_memory(self, gridded_palmer_inputs):
+        """The Dask spatial-block path is bit-for-bit with the in-memory result."""
+        precips, pet, awc = gridded_palmer_inputs
+        in_memory = typed_public_api.pdsi(precips, pet, awc, **self._pdsi_kwargs())
+        chunked = typed_public_api.pdsi(
+            precips.chunk({"time": -1, "lat": 1}),
+            pet.chunk({"time": -1, "lat": 1}),
+            awc,
+            **self._pdsi_kwargs(),
+        )
+
+        for name in ("pdsi", "phdi", "pmdi", "z_index"):
+            assert chunked[name].chunks is not None
+            np.testing.assert_array_equal(chunked[name].values, in_memory[name].values)
+
+    def test_pdsi_rejects_contract_violations(self, gridded_palmer_inputs):
+        """The adapter's calendar, chunk, and input-type guards fire through the public entry point."""
+        precips, pet, awc = gridded_palmer_inputs
+        month_count = precips.sizes["time"]
+        kwargs = self._pdsi_kwargs()
+        chunked_precips = precips.chunk({"time": 12})
+
+        march_start = precips.assign_coords(time=pd.date_range("1980-03-01", periods=month_count, freq="MS"))
+        with pytest.raises(CoordinateValidationError, match="begin in January"):
+            typed_public_api.pdsi(march_start, pet, awc, **kwargs)
+
+        daily = precips.assign_coords(time=pd.date_range("1980-01-01", periods=month_count, freq="D"))
+        with pytest.raises(CoordinateValidationError, match="periodicity"):
+            typed_public_api.pdsi(daily, pet, awc, **kwargs)
+
+        with pytest.raises(CoordinateValidationError, match="chunk"):
+            typed_public_api.pdsi(chunked_precips, pet, awc, **kwargs)
+
+        with pytest.raises(TypeError, match="precips and pet must both be"):
+            typed_public_api.pdsi(precips, pet.values, awc, **kwargs)
+
+        time_awc = xr.DataArray(
+            np.full(month_count, 5.0),
+            coords={"time": precips.coords["time"]},
+            dims=["time"],
+        )
+        with pytest.raises(TypeError, match="must not carry the time dimension"):
+            typed_public_api.pdsi(precips, pet, time_awc, **kwargs)
+
+        with pytest.raises(TypeError, match="awc must be a scalar"):
+            typed_public_api.pdsi(precips.values, pet.values, awc, **kwargs)
+
+    def test_pdsi_partial_final_year_matches_pointwise(self):
+        """A block that ends mid-year keeps the partial year's shape and values."""
+        time = pd.date_range("1980-01-01", periods=33 * 12 + 6, freq="MS")
+        rng = np.random.default_rng(41)
+        shape = (time.size, 2, 2)
+        precips = xr.DataArray(
+            rng.gamma(shape=2.0, scale=2.0, size=shape),
+            coords={"time": time, "lat": [10.0, 20.0], "lon": [0.0, 5.0]},
+            dims=["time", "lat", "lon"],
+        )
+        pet = xr.full_like(precips, 1.5)
+
+        result = typed_public_api.pdsi(
+            precips,
+            pet,
+            5.0,
+            data_start_year=1980,
+            calibration_year_initial=_CALIBRATION_START,
+            calibration_year_final=_CALIBRATION_END,
+        )
+
+        assert result["pdsi"].shape == precips.shape
+        for latitude_index in range(precips.sizes["lat"]):
+            expected = palmer.pdsi(
+                precips.isel(lat=latitude_index, lon=0).values,
+                pet.isel(lat=latitude_index, lon=0).values,
+                5.0,
+                1980,
+                _CALIBRATION_START,
+                _CALIBRATION_END,
+            )
+            np.testing.assert_array_equal(
+                result["pdsi"].isel(lat=latitude_index, lon=0).values,
+                expected[0],
+            )
+
+    def test_pdsi_numpy_passthrough_matches_palmer(self, gridded_palmer_inputs):
+        """The typed NumPy overload returns palmer.pdsi's five-item tuple unchanged."""
+        precips, pet, awc = gridded_palmer_inputs
+        typed = typed_public_api.pdsi(
+            precips.values,
+            pet.values,
+            awc.values,
+            1980,
+            _CALIBRATION_START,
+            _CALIBRATION_END,
+        )
+        direct = palmer.pdsi(
+            precips.values,
+            pet.values,
+            awc.values,
+            1980,
+            _CALIBRATION_START,
+            _CALIBRATION_END,
+        )
+
+        for typed_result, direct_result in zip(typed[:4], direct[:4], strict=True):
+            np.testing.assert_array_equal(typed_result, direct_result)
+        assert typed[4] is not None
+        assert direct[4] is not None
+        assert typed[4].keys() == direct[4].keys()
+        for key in typed[4]:
+            np.testing.assert_array_equal(typed[4][key], direct[4][key])
+
+    def test_pdsi_numpy_list_input_coerced(self, gridded_palmer_inputs):
+        """NumPy-coercible list input reaches the kernel instead of failing an assert."""
+        precips, pet, awc = gridded_palmer_inputs
+        from_lists = typed_public_api.pdsi(
+            precips.values.tolist(),
+            pet.values.tolist(),
+            awc.values,
+            1980,
+            _CALIBRATION_START,
+            _CALIBRATION_END,
+        )
+        from_arrays = typed_public_api.pdsi(
+            precips.values,
+            pet.values,
+            awc.values,
+            1980,
+            _CALIBRATION_START,
+            _CALIBRATION_END,
+        )
+
+        for list_result, array_result in zip(from_lists[:4], from_arrays[:4], strict=True):
+            np.testing.assert_array_equal(list_result, array_result)
+
+    def test_pdsi_numpy_ambiguous_block_needs_declaration(self):
+        """A (time, 12, *cells) NumPy block is read as declared time-major, per cell."""
+        time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+        rng = np.random.default_rng(97)
+        shape = (time.size, 12, 2)
+        precips = rng.gamma(shape=2.0, scale=2.0, size=shape) / 25.4
+        pet = np.full(shape, 1.5)
+
+        with pytest.raises(ValueError, match="spatial_time_major"):
+            typed_public_api.pdsi(precips, pet, 5.0, 1980, _CALIBRATION_START, _CALIBRATION_END)
+
+        declared = typed_public_api.pdsi(
+            precips,
+            pet,
+            5.0,
+            1980,
+            _CALIBRATION_START,
+            _CALIBRATION_END,
+            spatial_time_major=True,
+        )
+
+        assert declared[0].shape == shape
+        for first_cell in range(shape[1]):
+            for second_cell in range(shape[2]):
+                expected = palmer.pdsi(
+                    precips[:, first_cell, second_cell],
+                    pet[:, first_cell, second_cell],
+                    5.0,
+                    1980,
+                    _CALIBRATION_START,
+                    _CALIBRATION_END,
+                )
+                for output, expected_values in enumerate(expected[:4]):
+                    np.testing.assert_array_equal(declared[output][:, first_cell, second_cell], expected_values)
+
+    def test_pdsi_partially_overlapping_grid_rejected(self, gridded_palmer_inputs):
+        """A PET grid that overlaps but does not match raises instead of dropping cells."""
+        precips, pet, awc = gridded_palmer_inputs
+        kwargs = self._pdsi_kwargs()
+        shifted_pet = pet.assign_coords(lat=[20.0, 30.0, 40.0])
+
+        with pytest.raises(CoordinateValidationError) as exc_info:
+            typed_public_api.pdsi(precips, shifted_pet, awc, **kwargs)
+
+        assert exc_info.value.coordinate_name == "lat"
+        assert exc_info.value.reason == "mismatched_non_time_coordinates"
