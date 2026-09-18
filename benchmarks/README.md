@@ -319,16 +319,16 @@ point.
 
 ### Legacy CLI path (per-cell loop present, parallel across workers)
 
-`__main__.py` validates `(lat, lon, time)` or `(time, lat, lon)`
-(`__main__.py:61`), while the shared-array path stores the
-lat/lon-first order untransposed and the per-cell loops assume it; the
-mismatches that survive validation are tracked in #932. The counts below assume
-`(lat, lon, time)`, split along axis 0 (latitude) across a `multiprocessing.Pool`,
-with the per-cell loop inside each worker. The loops run in parallel across
-processes but are not eliminated, and each worker's per-cell call carries the
-same per-cell overhead the #921 profile measured (per-cell `structlog` records
-and the per-kernel goodness-of-fit check): the Pool divides wall clock, it does
-not reduce total per-cell Python cost.
+`__main__.py`'s layout classifier accepts `(lat, lon, time)` or
+`(time, lat, lon)`, but the shared-array path this section measures stores a grid
+time-last and rejects a time-major grid, which only the xarray-backed KBDI path
+accepts; the mismatches that still survive validation are tracked in #932. The
+counts below assume `(lat, lon, time)`, split along axis 0 (latitude) across a
+`multiprocessing.Pool`, with the per-cell loop inside each worker. The loops run
+in parallel across processes but are not eliminated, and each worker's per-cell
+call carries the same per-cell overhead the #921 profile measured (per-cell
+`structlog` records and the per-kernel goodness-of-fit check): the Pool divides
+wall clock, it does not reduce total per-cell Python cost.
 
 | site | invocation | loop dimensions | calls |
 |---|---|---|---|
