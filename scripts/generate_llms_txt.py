@@ -28,6 +28,7 @@ FULL_FILES = [
     "docs/xarray_migration.md",
     "docs/performance.md",
     "docs/algorithms.md",
+    "docs/algorithm-reference.md",
 ]
 
 

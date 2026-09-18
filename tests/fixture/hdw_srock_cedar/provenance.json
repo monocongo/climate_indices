@@ -1,0 +1,21 @@
+{
+  "source": "NCEP Climate Forecast System Reanalysis (CFSR), 6-hourly pressure-level and time-series analyses via the NOAA NCEI object store; published HDW series digitized from Srock et al. (2018) Figure 4a",
+  "url": "https://research.fs.usda.gov/download/treesearch/56562.pdf",
+  "download_date": "2026-09-18",
+  "subset_description": "CFSR vertical profiles at the Figure 4a grid point (33.0 N, -116.5 W) for 2003-10-12 through 2003-11-09, at the paper's 0000/1200/1800 UTC analyses: 2 m temperature and specific humidity, 10 m wind, surface pressure, and temperature, relative humidity, wind speed, and geopotential height at 925, 900, 875, 850, 825, 800 hPa. Heights are meters above the grid point's surface, recovered with the hypsometric equation from the lowest fetched level above the surface. The digitized Figure 4a series has one row per UTC date. The NCEI store has no pressure-level analysis for 2003-10-29 12:00 UTC, so those daily maxima use the remaining analyses.",
+  "checksum_sha256": "58b971ffe278690fe722d8318b902704481d8bb46ab0a89e01335dbc3e376394",
+  "fixture_version": "1.0.0",
+  "validation_tolerance": {
+    "digitized_series_uncertainty_hpa_m_s": 5.0
+  },
+  "measured_stats": {
+    "digitized_series": {
+      "event_day_hdw": 401.5,
+      "max_non_event_day_hdw": 282.2
+    }
+  },
+  "citation": "Srock, A.F., Charney, J.J., Potter, B.E. and Goodrick, S.L. (2018) The Hot-Dry-Windy Index: A New Fire Weather Index. Atmosphere 9(7):279. https://doi.org/10.3390/atmos9070279",
+  "doi": "10.3390/atmos9070279",
+  "license": "CFSR is a U.S. Government product (public domain). The Srock et al. (2018) article is CC-BY 4.0 (MDPI); only a digitized derivative of Figure 4a is committed here, with attribution.",
+  "notes": "Figure 4a's published series is figure-only; values were digitized from the CC-BY PDF (https://research.fs.usda.gov/download/treesearch/56562.pdf) on 2026-09-18 by calibrating the y axis on the figure's 0-500 gridline ticks and the x axis on the 29 daily tick marks, then reading the marker centers. One pixel is about 0.94 HDW units, so the committed values carry roughly +/-5 hPa m s-1 of uncertainty. The library implements the per-level VPD x wind product, while Srock et al. adiabatically adjust VPD to the surface and take the VPD and wind maxima independently over a layer ending at the first level above surface + 50 hPa. That formulation upper-bounds the library's in theory, but the digitized series still cannot be reproduced magnitude-for-magnitude from public metadata: the library's daily maximum exceeds the digitized value on five of 29 days, always driven by the 0000 UTC analyses, and the library's 1800 UTC values alone correlate with the published series at 0.945 with no exceedances. The reference test therefore asserts event timing and series shape, not a one-sided bound or a numerical match (issue #985)."
+}

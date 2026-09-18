@@ -12,11 +12,12 @@ Starting with version 2.3.0, the `climate_indices` library provides native suppo
 :::{warning}
 **Beta Feature**
 
-The xarray DataArray API described in this guide is **beta**. The interface
-(parameter inference, metadata attributes, coordinate handling) may change in
-future minor releases. The underlying computation results are intended to be
-identical to the stable NumPy API; no interface breaking changes are planned
-within a minor version.
+The xarray DataArray API described in this guide is **beta** in 3.0.0 and is
+promoted no earlier than 3.1.0
+([ADR-0012](adr/0012-xarray-api-stays-beta-through-3.0.0.md)). The interface
+(parameter inference, metadata attributes, coordinate handling) may change with a
+minor version, never in a patch release. The underlying computation results are
+intended to be identical to the stable NumPy API.
 :::
 
 :::{warning}
