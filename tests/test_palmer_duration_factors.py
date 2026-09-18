@@ -371,4 +371,3 @@ def test_non_contracting_duration_factor_override_is_attributed_to_pdsi():
         palmer.pdsi(precips, pet, 5.0, 2000, 2000, 2003, fitting_params=non_contracting)
 
     assert error.value.algorithm == "PDSI duration-factor override"
-
