@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from climate_indices import compute, indices
+from climate_indices.exceptions import PeriodicityError
 
 # disable logging messages
 logging.disable(logging.CRITICAL)
@@ -124,7 +125,7 @@ def test_transform_fitted_gamma(
     # time series type, confirm we can't use an invalid type
     flat_array = precips_mm_monthly.flatten()
     np.testing.assert_raises(
-        ValueError,
+        PeriodicityError,
         compute.transform_fitted_gamma,
         flat_array,
         data_year_start_monthly,
@@ -133,7 +134,7 @@ def test_transform_fitted_gamma(
         "invalid_value",
     )
     np.testing.assert_raises(
-        ValueError,
+        PeriodicityError,
         compute.transform_fitted_gamma,
         flat_array,
         data_year_start_monthly,
@@ -143,15 +144,14 @@ def test_transform_fitted_gamma(
     )
 
     # confirm that an input array which is not 1-D or 2-D will raise an error
-    pytest.raises(
-        ValueError,
-        compute.transform_fitted_gamma,
-        np.zeros((9, 8, 7, 6), dtype=float),
-        data_year_start_daily,
-        calibration_year_start_daily,
-        calibration_year_end_daily,
-        compute.Periodicity.monthly,
-    )
+    with pytest.raises(ValueError):
+        compute.transform_fitted_gamma(
+            np.zeros((9, 8, 7, 6), dtype=float),
+            data_year_start_daily,
+            calibration_year_start_daily,
+            calibration_year_end_daily,
+            compute.Periodicity.monthly,
+        )
 
 
 def test_transform_fitted_gamma_all_zeros_produces_finite_spi():
@@ -363,35 +363,36 @@ def test_transform_fitted_pearson(
 
     # confirm that we get expected errors when
     # using invalid time series type arguments
-    pytest.raises(
-        ValueError,
-        compute.transform_fitted_pearson,
-        precips_mm_monthly.flatten(),
-        data_year_start_monthly,
-        calibration_year_start_monthly,
-        calibration_year_end_monthly,
-        None,
-    )
-    pytest.raises(
-        ValueError,
-        compute.transform_fitted_pearson,
-        precips_mm_monthly.flatten(),
-        data_year_start_monthly,
-        calibration_year_start_monthly,
-        calibration_year_end_monthly,
-        "unsupported_type",
-    )
+    flattened_precips = precips_mm_monthly.flatten()
+    with pytest.raises(PeriodicityError, match="requires a corresponding periodicity") as missing_periodicity:
+        compute.transform_fitted_pearson(
+            flattened_precips,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            None,
+        )
+    assert missing_periodicity.value.periodicity_value == "None"
+
+    with pytest.raises(PeriodicityError, match="Unsupported periodicity argument") as unsupported_periodicity:
+        compute.transform_fitted_pearson(
+            flattened_precips,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            "unsupported_type",
+        )
+    assert unsupported_periodicity.value.periodicity_value == "unsupported_type"
 
     # confirm that an input array which is not 1-D or 2-D will raise an error
-    pytest.raises(
-        ValueError,
-        compute.transform_fitted_pearson,
-        np.zeros((9, 8, 7, 6), dtype=float),
-        data_year_start_daily,
-        calibration_year_start_daily,
-        calibration_year_end_daily,
-        compute.Periodicity.monthly,
-    )
+    with pytest.raises(ValueError):
+        compute.transform_fitted_pearson(
+            np.zeros((9, 8, 7, 6), dtype=float),
+            data_year_start_daily,
+            calibration_year_start_daily,
+            calibration_year_end_daily,
+            compute.Periodicity.monthly,
+        )
 
 
 @pytest.mark.usefixtures(
@@ -421,7 +422,7 @@ def test_pearson_parameters(
         compute.Periodicity.monthly,
     )
     np.testing.assert_raises(
-        ValueError,
+        PeriodicityError,
         compute.pearson_parameters,
         None,
         data_year_start_monthly,
@@ -748,8 +749,29 @@ def test_prepare_scaled_rejects_unsupported_periodicity_when_unreshaped():
     An invalid periodicity must be rejected even with reshape=False, since
     reshape_values() -- the only other periodicity check -- is skipped in that case.
     """
-    with pytest.raises(ValueError, match="Invalid periodicity argument"):
+    with pytest.raises(PeriodicityError, match="Invalid periodicity argument") as error:
         compute.prepare_scaled(np.arange(12, dtype=float), 3, "monthly", reshape=False)
+
+    assert error.value.periodicity_value == "monthly"
+
+
+def test_gamma_parameters_all_missing_rejects_invalid_periodicity():
+    """
+    The all-missing early return must not skip periodicity validation, which is
+    the only check standing between the caller and a silently reshape-free result.
+    """
+    with pytest.raises(PeriodicityError, match="Unsupported periodicity") as error:
+        compute.gamma_parameters(np.full((2, 12), np.nan), 2000, 2000, 2001, None)
+
+    assert error.value.periodicity_value == "None"
+
+
+def test_reshape_values_rejects_unsupported_periodicity():
+    """The shared reshape helper rejects a periodicity it cannot reshape to."""
+    with pytest.raises(PeriodicityError, match="Invalid periodicity argument") as error:
+        compute.reshape_values(np.arange(24, dtype=float), "monthly")
+
+    assert error.value.periodicity_value == "monthly"
 
 
 def test_prepare_scaled_clips_negatives_alongside_missing_values():

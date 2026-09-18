@@ -75,34 +75,33 @@ class TestZeroPrecipitationFix:
                     calibration_year_final=calibration_end_year,
                     periodicity=compute.Periodicity.monthly,
                 )
-
-                # Verify that computation completed without errors
-                assert len(spi_values) == total_months, (
-                    f"SPI output length should match input length for {distribution.value} distribution"
-                )
-
-                # After the initial scale-1 months, we should have some SPI values
-                # This is the key requirement: the computation should not fail completely
-                valid_spi = spi_values[scale - 1 :]
-                non_nan_count = np.count_nonzero(~np.isnan(valid_spi))
-
-                # We should get at least some valid values, even if not all
-                assert non_nan_count > 0, (
-                    f"SPI computation should produce some valid values even with extensive zeros "
-                    f"for {distribution.value} distribution"
-                )
-
-                # Verify SPI values are within expected range [-3.09, 3.09]
-                valid_values = valid_spi[~np.isnan(valid_spi)]
-                if len(valid_values) > 0:
-                    assert np.all(valid_values >= -3.09), f"SPI values should be >= -3.09 for {distribution.value}"
-                    assert np.all(valid_values <= 3.09), f"SPI values should be <= 3.09 for {distribution.value}"
-
             except Exception as e:
                 pytest.fail(
                     f"SPI computation failed with extensive zeros for {distribution.value} distribution: {e}. "
                     f"This indicates the GitHub issue #582 fix is not working properly."
                 )
+
+            # Verify that computation completed without errors
+            assert len(spi_values) == total_months, (
+                f"SPI output length should match input length for {distribution.value} distribution"
+            )
+
+            # After the initial scale-1 months, we should have some SPI values
+            # This is the key requirement: the computation should not fail completely
+            valid_spi = spi_values[scale - 1 :]
+            non_nan_count = np.count_nonzero(~np.isnan(valid_spi))
+
+            # We should get at least some valid values, even if not all
+            assert non_nan_count > 0, (
+                f"SPI computation should produce some valid values even with extensive zeros "
+                f"for {distribution.value} distribution"
+            )
+
+            # Verify SPI values are within expected range [-3.09, 3.09]
+            valid_values = valid_spi[~np.isnan(valid_spi)]
+            if len(valid_values) > 0:
+                assert np.all(valid_values >= -3.09), f"SPI values should be >= -3.09 for {distribution.value}"
+                assert np.all(valid_values <= 3.09), f"SPI values should be <= 3.09 for {distribution.value}"
 
     def test_spi_all_zeros_single_month(self):
         """
@@ -425,21 +424,20 @@ class TestZeroPrecipitationFix:
                         calibration_year_final=calibration_end_year,
                         periodicity=compute.Periodicity.monthly,
                     )
-
-                    # Verify basic properties
-                    assert len(spi_values) == total_months, (
-                        f"SPI output length mismatch for {pattern_name} with {distribution.value}"
-                    )
-
-                    # Check that we get some valid values
-                    valid_spi = spi_values[~np.isnan(spi_values)]
-                    if len(valid_spi) > 0:
-                        assert np.all(valid_spi >= -3.09) and np.all(valid_spi <= 3.09), (
-                            f"SPI values out of range for {pattern_name} with {distribution.value}"
-                        )
-
                 except Exception as e:
                     pytest.fail(f"SPI computation failed for {pattern_name} with {distribution.value}: {e}")
+
+                # Verify basic properties
+                assert len(spi_values) == total_months, (
+                    f"SPI output length mismatch for {pattern_name} with {distribution.value}"
+                )
+
+                # Check that we get some valid values
+                valid_spi = spi_values[~np.isnan(spi_values)]
+                if len(valid_spi) > 0:
+                    assert np.all(valid_spi >= -3.09) and np.all(valid_spi <= 3.09), (
+                        f"SPI values out of range for {pattern_name} with {distribution.value}"
+                    )
 
     def _create_seasonal_zero_pattern(self, years, months_per_year):
         """Create precipitation data with seasonal zero patterns."""

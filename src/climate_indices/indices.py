@@ -10,8 +10,8 @@ import numpy as np
 import structlog.stdlib
 
 from climate_indices import compute, eto
-from climate_indices.exceptions import DataShapeError, InvalidArgumentError
-from climate_indices.logging_config import get_logger
+from climate_indices.exceptions import DataShapeError, InvalidArgumentError, PeriodicityError
+from climate_indices.logging_config import get_logger, log_calculation_failure
 from climate_indices.performance import check_large_array_memory
 
 # declare the function names that should be included in the public API for this module
@@ -114,7 +114,7 @@ def _validate_periodicity(periodicity: compute.Periodicity) -> None:
         periodicity: The periodicity parameter to validate
 
     Raises:
-        InvalidArgumentError: If periodicity is not a Periodicity enum member
+        PeriodicityError: If periodicity is not a Periodicity enum member
     """
     if not isinstance(periodicity, compute.Periodicity):
         message = (  # type: ignore[unreachable]
@@ -123,12 +123,7 @@ def _validate_periodicity(periodicity: compute.Periodicity) -> None:
             f"Supported values: monthly, daily. "
             f"Use compute.Periodicity.monthly or compute.Periodicity.daily."
         )
-        raise InvalidArgumentError(
-            message,
-            argument_name="periodicity",
-            argument_value=str(periodicity),
-            valid_values="monthly, daily",
-        )
+        raise PeriodicityError(message, periodicity_value=str(periodicity))
 
 
 def _raise_if_unsupported_shape(values: np.ndarray, spatial_time_major: bool = False) -> None:
@@ -441,13 +436,7 @@ def eddi(
         return result
 
     except Exception as exc:
-        log.error(
-            "calculation_failed",
-            exc_info=True,
-            error_type=type(exc).__name__,
-            error_message=str(exc),
-            calibration_period=f"{calibration_year_initial}-{calibration_year_final}",
-        )
+        log_calculation_failure(log, exc, calibration_period=f"{calibration_year_initial}-{calibration_year_final}")
         raise
 
 
@@ -601,13 +590,7 @@ def spi(
         result_values: np.ndarray = result
         return result_values
     except Exception as exc:
-        log.error(
-            "calculation_failed",
-            exc_info=True,
-            error_type=type(exc).__name__,
-            error_message=str(exc),
-            calibration_period=f"{calibration_year_initial}-{calibration_year_final}",
-        )
+        log_calculation_failure(log, exc, calibration_period=f"{calibration_year_initial}-{calibration_year_final}")
         raise
 
 
@@ -801,13 +784,7 @@ def spei(
         result_values: np.ndarray = result
         return result_values
     except Exception as exc:
-        log.error(
-            "calculation_failed",
-            exc_info=True,
-            error_type=type(exc).__name__,
-            error_message=str(exc),
-            calibration_period=f"{calibration_year_initial}-{calibration_year_final}",
-        )
+        log_calculation_failure(log, exc, calibration_period=f"{calibration_year_initial}-{calibration_year_final}")
         raise
 
 
@@ -1014,13 +991,7 @@ def percentage_of_normal(
         _log_calculation_completed(log, t0, percentages_of_normal.shape, memory_metrics)
         return percentages_of_normal
     except Exception as exc:
-        log.error(
-            "calculation_failed",
-            exc_info=True,
-            error_type=type(exc).__name__,
-            error_message=str(exc),
-            calibration_period=f"{calibration_start_year}-{calibration_end_year}",
-        )
+        log_calculation_failure(log, exc, calibration_period=f"{calibration_start_year}-{calibration_end_year}")
         raise
 
 
@@ -1159,12 +1130,7 @@ def pet(
         )
         return result
     except Exception as exc:
-        log.error(
-            "calculation_failed",
-            exc_info=True,
-            error_type=type(exc).__name__,
-            error_message=str(exc),
-        )
+        log_calculation_failure(log, exc)
         raise
 
 
@@ -1244,10 +1210,5 @@ def pci(
             valid_values="array length must be 365 or 366",
         )
     except Exception as exc:
-        log.error(
-            "calculation_failed",
-            exc_info=True,
-            error_type=type(exc).__name__,
-            error_message=str(exc),
-        )
+        log_calculation_failure(log, exc)
         raise

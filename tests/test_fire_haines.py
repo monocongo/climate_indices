@@ -364,11 +364,17 @@ def test_haines_index_from_profile_non_positive_pressure_raises() -> None:
 
 
 def test_haines_index_from_profile_elevation_broadcast_failure_raises() -> None:
+    from unittest import mock
+
     temperature = np.zeros((2, 4))
     dewpoint = np.zeros((2, 4))
-    with pytest.raises(InvalidArgumentError, match="elevation") as exc_info:
-        fire.haines_index_from_profile(temperature, dewpoint, np.array(_PROFILE_LEVELS), np.zeros(3))
+    mock_logger = mock.MagicMock()
+    mock_logger.bind.return_value = mock_logger
+    with mock.patch.object(fire._haines, "_logger", mock_logger):
+        with pytest.raises(InvalidArgumentError, match="elevation") as exc_info:
+            fire.haines_index_from_profile(temperature, dewpoint, np.array(_PROFILE_LEVELS), np.zeros(3))
     assert exc_info.value.argument_name == "elevation_meters"
+    assert [call.args[0] for call in mock_logger.error.call_args_list] == ["calculation_failed"]
 
 
 def test_haines_index_from_profile_emits_lifecycle_events() -> None:

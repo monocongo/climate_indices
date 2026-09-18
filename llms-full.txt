@@ -296,7 +296,7 @@ guarded only by internal fixtures.
 | Scope | Command | Expected result |
 | --- | --- | --- |
 | Core suite | `uv run pytest -m "not benchmark and not validation"` | Unit, property, xarray, release guardrail, and regression tests pass. |
-| Validation marker suite | `uv run pytest -m validation` | External validation tests, including committed NOAA EDDI fixtures and the standard-Palmer nClimDiv comparison, pass; scPDSI oracle cross-validation and all regression coverage pass. |
+| Validation marker suite | `uv run pytest -m validation` | External validation tests, including committed NOAA EDDI fixtures, the SPEIbase v2.11 SPEI plausibility floors, and the standard-Palmer nClimDiv comparison, pass; scPDSI oracle cross-validation and all regression coverage pass. |
 | Lint | `uv run ruff check src/ tests/` | No lint findings. |
 | Format | `uv run ruff format --check src/ tests/` | No formatting changes needed. |
 | Notebooks | `uv run jupyter nbconvert --execute --to notebook --inplace notebooks/xarray_getting_started.ipynb notebooks/palmer_indices_xarray.ipynb notebooks/eddi_xarray.ipynb` | All 3.0.0 notebooks execute from a clean checkout. |
@@ -307,7 +307,7 @@ guarded only by internal fixtures.
 | Index | Status | Tolerance | Evidence | Known gap |
 | --- | --- | --- | --- | --- |
 | SPI | Validated (internal) + qualified external comparison (Pearson III) | Gamma `atol=1e-8`, Pearson `atol=1e-5` in xarray equivalence tests; NOAA NCEI climdiv characterization ceilings documented in `tests/test_ncei_spi_reference.py` | Legacy NumPy fixtures and xarray equivalence tests compare gamma and Pearson outputs across scales. `tests/test_ncei_spi_reference.py` characterizes `indices.spi()` (Pearson III, full-period-of-record calibration) against NOAA NCEI's operational climdiv SPI product for all 344 climate divisions and all 7 published timescales; marked `validation`. | `tests/fixture/ncei_spi/provenance.json` records that NCEI's climate-divisional SPI product's independence from this codebase's lineage could not be confirmed as airtight from public documentation alone (see `docs/research/spi-dataset-survey.md`), and that NCEI's actual calibration behavior is a full/expanding period-of-record window rather than its documented fixed 1931-1990 baseline (Baldwin & Chen 2020). WMO SPI User Guide worked-example extraction remains outstanding (issue #778). |
-| SPEI | Validated | Gamma `atol=1e-8`, Pearson `atol=1e-5` in xarray equivalence tests | Legacy NumPy fixtures and xarray equivalence tests compare gamma and Pearson outputs across scales. | Existing fixtures are historical project references rather than newly extracted literature tables. |
+| SPEI | Validated (internal) + external plausibility check (gamma) | Gamma `atol=1e-8`, Pearson `atol=1e-5` in xarray equivalence tests; SPEIbase v2.11 agreement floors documented in `tests/test_speibase_reference.py` | Legacy NumPy fixtures and xarray equivalence tests compare gamma and Pearson outputs across scales. `tests/test_speibase_reference.py` compares `indices.spei()` (gamma distribution, Thornthwaite PET, full-period-of-record calibration 1901-2022) against grid-cell-mean CSIC SPEIbase v2.11 series for three CONUS climate divisions and timescales 1/3/6/12; marked `validation`. | Plausibility only, not numerical validation: SPEIbase uses FAO-56 Penman-Monteith PET and the log-logistic distribution while the compared series uses Thornthwaite PET and gamma, and the two series use different precipitation inputs and spatial support. See "SPEI Plausibility Classification" below. |
 | PET Thornthwaite | Validated | Synthetic-fixture `atol=0.001`; literature worked example `atol=4.0` mm/month | `tests/test_eto.py::test_eto_thornthwaite` covers synthetic regression fixtures; `test_eto_thornthwaite_literature_watson` compares against a Thornthwaite (1948) worked example (Watson & Burnett, 1995) in `tests/fixture/pet_literature/`. See `docs/algorithm_refs/pet.md`. | The source supplies daylight hours, not latitude; coordinate reconstruction is not independently validated. |
 | PET Hargreaves | Validated | Synthetic-input sanity checks; literature worked example `atol=0.05` mm/day | `tests/test_eto.py::test_eto_hargreaves_with_fixtures` checks synthetic daily-input output shape and bounds; `test_eto_hargreaves_literature_mehta` compares against a Hargreaves-Samani (1985) worked example (Mehta, 2006) in `tests/fixture/pet_literature/`. See `docs/algorithm_refs/pet.md`. | The source supplies extraterrestrial radiation, not latitude/day of year; coordinate reconstruction is not independently validated. |
 | PNP | Validated | Existing fixture tolerances in `tests/test_indices.py` and xarray PNP tests | Percent-of-normal fixture and xarray wrapper tests cover output shape and metadata. | None blocking 3.0.0. |
@@ -344,6 +344,53 @@ NOAA PSL EDDI time-series source, records checksums, and states the calibration
 period. The validation tests compare non-NaN reference values and separately
 verify NaN placement. `scripts/prepare_noaa_eddi_fixtures.py` refuses an
 unexpected table baseline so fixture refreshes are intentional.
+
+## SPEI Plausibility Classification
+
+`indices.spei()` (gamma distribution, Thornthwaite PET) is compared against
+grid-cell-mean CSIC SPEIbase v2.11 series in `tests/test_speibase_reference.py`,
+for three CONUS climate divisions spanning an aridity gradient (humid Alabama
+0101, subhumid Oklahoma 3405, arid southwest Arizona 0205) and timescales 1,
+3, 6 and 12 months. The stored reference is the mean of the per-cell SPEI
+values, not an index computed from averaged inputs.
+
+This comparison is a **plausibility check, not external numerical
+validation**, and is deliberately not enforced with `atol`/`rtol`. Three
+confounds separate the two products:
+
+- SPEIbase v2.11 uses FAO-56 Penman-Monteith PET from CRU TS 4.09, while the
+  compared series uses Thornthwaite PET computed from the committed nClimDiv
+  temperatures; the two PET families diverge with climate aridity (van der
+  Schrier et al. 2011).
+- SPEIbase standardizes with the log-logistic distribution; climate_indices
+  has no log-logistic implementation (issue #106), so the compared series uses
+  gamma.
+- The reference is a 0.5-degree grid average inside a climate division polygon
+  while the compared series is the division's station-derived areal average,
+  from different precipitation inputs (CRU TS vs. nClimDiv).
+
+The tests therefore assert per-division, per-timescale floors on correlation,
+sign agreement, and drought-category agreement, derived from the measurements
+recorded in `tests/fixture/speibase/provenance.json`;
+`scripts/prepare_speibase_fixtures.py` re-measures those values from the arrays
+it just built, refusing to publish a refresh that drifts beyond `0.001` of the
+recorded expectations, and regenerates the floors from the new measurements;
+`test_floors_keep_documented_slack` pins every floor to within a documented
+band below its measurement so a floor cannot be widened to hide a regression.
+Measured correlation is weakest in the arid Arizona division (0.82-0.86 across
+timescales) -- the direction the PET-family mismatch predicts -- and strongest
+in subhumid Oklahoma (0.95-0.97), with humid Alabama (0.92-0.94) between them.
+With only three divisions the ordering cannot isolate the PET-family confound
+from the distribution and precipitation-support confounds, which is precisely
+why no tight numerical gate is defensible: it would either fail on that
+legitimate climate-dependent bias or have to be widened until it no longer
+tested anything.
+
+The compared climate_indices series is calibrated against the full 1901-2022
+period of record, matching the committed inputs, while SPEIbase v2.11 is
+standardized on its own 1901-2024 record; the fixtures retain the 1901-2022
+overlap. The dataset survey behind this comparison lives at
+`docs/research/spei-dataset-survey.md` on branch `research/spei-dataset-survey`.
 
 ## Palmer Validation Classification
 
@@ -417,6 +464,11 @@ See "Palmer Validation Classification" above for the latter.
 
 ## References
 
+- Beguería, S., Vicente-Serrano, S. M., Reig, F., and Latorre, B. (2014).
+  Standardized precipitation evapotranspiration index (SPEI) revisited:
+  parameter fitting, evapotranspiration models, tools, datasets and drought
+  monitoring. International Journal of Climatology, 34(10), 3001-3023.
+  https://doi.org/10.1002/joc.3887
 - Hobbins, M. T., Wood, A., McEvoy, D. J., Huntington, J. L., Morton, C.,
   Anderson, M., and Hain, C. (2016). The Evaporative Demand Drought Index.
   Part I. Journal of Hydrometeorology, 17, 1745-1761.
@@ -425,6 +477,14 @@ See "Palmer Validation Classification" above for the latter.
   Paper No. 45. https://www.droughtmanagement.info/literature/USWB_Meteorological_Drought_1965.pdf
 - NOAA Physical Sciences Laboratory EDDI archive:
   https://downloads.psl.noaa.gov/Projects/EDDI/
+- van der Schrier, G., Jones, P. D., and Briffa, K. R. (2011). The sensitivity
+  of the PDSI to the Thornthwaite and Penman-Monteith parameterizations for
+  potential evapotranspiration. Journal of Geophysical Research: Atmospheres,
+  116, D03106. https://doi.org/10.1029/2010JD015001
+- Vicente-Serrano, S. M., Beguería, S., and López-Moreno, J. I. (2010). A
+  multiscalar drought index sensitive to global warming: the Standardized
+  Precipitation Evapotranspiration Index. Journal of Climate, 23(7),
+  1696-1718. https://doi.org/10.1175/2009JCLI2909.1
 - Van Wagner, C. E., and Pickett, T. L. (1985). Equations and FORTRAN
   program for the Canadian Forest Fire Weather Index System. Canadian
   Forestry Service, Forest Technical Report 33.
@@ -870,6 +930,31 @@ self-calibrating K-prime factors, fits location-specific duration factors,
 uses the Wells recursion, and performs three cumulative Z-index rescaling
 passes over the requested calibration period.
 
+### Exact-zero comparisons
+
+Both recursions branch on exact comparisons against zero, and every float
+equality comparison site in `src/climate_indices/palmer.py` carries a rationale
+comment plus a `# NOSONAR` marker. Those zeros are state sentinels, not
+near-equality: the statements that clear a spell, a candidate, or a calibration
+sum assign `0.0` exactly. A tolerance would change the spell state machine and
+the committed reference fixtures, so no tolerance is applied to these
+comparisons.
+
+| Compared value | Exact zero means | Assigned exact `0.0` by |
+| --- | --- | --- |
+| `px3`, read as `x3` inside `_case` | no established spell: `_case` selects the near-normal (larger-magnitude incipient) value, PHDI falls back to the PDSI value, and an incipient index may be promoted | the spell-end assignments, `_statement_190`'s `ppr >= 100` clamp, and the initial `0.0` |
+| `px1` / `px2` | no incipient wet/dry index exists to promote | the `px1_computed > 0` / `px2_computed < 0` clamps, the post-promotion and `_statement_210` resets, and the initial `0.0` |
+| `sx1` / `sx2` | the backtrack trail has no candidate from that index at this step | `_statement_200`'s deferral copy of the clamped-to-zero `px1`/`px2`; the initial zeros only fill rows the `i < k8` guard masks out |
+| `pro` / `ppr`, at 100 and 0 | the spell certainly ends, or no abatement is underway | `ppr` clamped to `100.0` when `>= 100`, reset to `0.0` when a spell ends, reset by `_statement_210` when a spell intensifies or an abatement fizzles, and the initial `0.0` |
+| CAFEC `numerator` / `denominator` | the month accumulated no water-balance term, so the ratio is undefined | the water-balance accumulators' initial `0.0`: `both_zero` when both sums vanish (`1.0` for alpha/beta/gamma, `0.0` for delta), `0.0` when only the denominator does |
+| `k8` | no months are pending a spell flush (integer counter, not a float) | the recursion's own counter |
+
+Exact-zero tests outside these sentinels are guards on a computed divisor, not
+sentinels, and raise rather than dividing: `DurationFactors.from_fitted`'s
+cross-denominator check and `_palmer_wells._abatement_transition`'s `q` guard
+(both `ConvergenceError`), and `DurationFactors.weighting_fraction`'s divisor
+check (`ValueError`).
+
 ## Validation
 
 `tests/test_palmer.py` compares PDSI, PHDI, PMDI, Z-Index, and CAFEC
@@ -1002,6 +1087,7 @@ uv sync --group dev
 ```python
 import climate_indices as ci
 import xarray as xr
+from climate_indices.indices import Distribution
 
 # Load precipitation data
 precip = xr.open_dataarray("precip.nc")
@@ -1010,9 +1096,9 @@ precip = xr.open_dataarray("precip.nc")
 spi_6 = ci.spi(
     precip,
     scale=6,
-    distribution="gamma",
-    calibration_start_year=1981,
-    calibration_end_year=2010
+    distribution=Distribution.gamma,
+    calibration_year_initial=1981,
+    calibration_year_final=2010,
 )
 ```
 
@@ -2885,7 +2971,7 @@ print(spi_loaded.attrs["references"])  # citation preserved
 ### 1. Time dimension must be named "time"
 
 :::{warning}
-**Error:** `CoordinateValidationError: Time dimension 'time' not found in input. Available dimensions: ['date']. Use time_dim parameter to specify custom name.`
+**Error:** `DimensionMismatchError: Time dimension 'time' not found in input. Available dimensions: ['date']. Use time_dim parameter to specify custom name.`
 
 **Cause:** Your DataArray uses a different dimension name (e.g., `date`, `timestamp`, `t`).
 

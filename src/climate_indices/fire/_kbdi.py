@@ -17,6 +17,7 @@ from climate_indices.exceptions import (
     DataShapeError,
     InputAlignmentWarning,
     InvalidArgumentError,
+    wrap_value_error,
 )
 from climate_indices.fire._common import (
     _apply_gap_policy,
@@ -30,7 +31,7 @@ from climate_indices.fire._units import (
     _convert_temperature_units,
     _validate_daily_time_coordinate,
 )
-from climate_indices.logging_config import get_logger
+from climate_indices.logging_config import get_logger, log_calculation_failure
 from climate_indices.performance import check_large_array_memory
 from climate_indices.validation import (
     InputType,
@@ -367,12 +368,13 @@ def kbdi(
     try:
         precipitation_array, temperature_array = np.broadcast_arrays(precipitation_array, temperature_array)
     except ValueError as exc:
-        raise InvalidArgumentError(
-            "precipitation and maximum_temperature must broadcast to a common time-first shape.",
+        wrap_value_error(
+            exc,
+            message="precipitation and maximum_temperature must broadcast to a common time-first shape.",
             argument_name="precipitation/maximum_temperature",
             argument_value=f"shapes {precipitation_array.shape}, {temperature_array.shape}",
             valid_values="Arrays broadcastable to a common time-first shape",
-        ) from exc
+        )
     if precipitation_array.ndim == 0:
         raise DataShapeError(
             "KBDI weather inputs must include a time dimension.",
@@ -561,12 +563,7 @@ def kbdi(
             ),
         )
     except Exception as exc:
-        log.error(
-            "calculation_failed",
-            exc_info=True,
-            error_type=type(exc).__name__,
-            error_message=str(exc),
-        )
+        log_calculation_failure(log, exc)
         raise
 
 

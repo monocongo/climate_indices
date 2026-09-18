@@ -18,7 +18,7 @@ import pandas as pd
 import structlog.stdlib
 import xarray as xr
 
-from climate_indices.exceptions import CoordinateValidationError, InputTypeError
+from climate_indices.exceptions import CoordinateValidationError, DimensionMismatchError, InputTypeError
 from climate_indices.logging_config import get_logger
 
 __all__ = [
@@ -140,7 +140,7 @@ def validate_time_dimension(data: xr.DataArray, time_dim: str) -> None:
         time_dim: Name of the expected time dimension
 
     Raises:
-        CoordinateValidationError: If the time dimension is not found
+        DimensionMismatchError: If the time dimension is not found
     """
     if time_dim not in data.dims:
         available_dims = list(data.dims)
@@ -155,8 +155,10 @@ def validate_time_dimension(data: xr.DataArray, time_dim: str) -> None:
             available_dims=available_dims,
             data_shape=data.shape,
         )
-        raise CoordinateValidationError(
+        raise DimensionMismatchError(
             message=error_msg,
+            expected_dims=time_dim,
+            actual_dims=tuple(data.dims),
             coordinate_name=time_dim,
             reason="missing_dimension",
         )
