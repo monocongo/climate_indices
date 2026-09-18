@@ -9,7 +9,7 @@ import numpy as np
 import numpy.typing as npt
 import xarray as xr
 
-from climate_indices.exceptions import InputTypeError, InvalidArgumentError
+from climate_indices.exceptions import InputTypeError, InvalidArgumentError, wrap_value_error
 
 
 def _static_spatial_array(
@@ -22,12 +22,13 @@ def _static_spatial_array(
     try:
         return np.broadcast_to(array, spatial_shape).astype(np.float64, copy=True)
     except ValueError as exc:
-        raise InvalidArgumentError(
-            f"{name} with shape {array.shape} cannot broadcast to spatial shape {spatial_shape}.",
+        wrap_value_error(
+            exc,
+            message=f"{name} with shape {array.shape} cannot broadcast to spatial shape {spatial_shape}.",
             argument_name=name,
             argument_value=f"shape {array.shape}",
             valid_values=f"A scalar or an array broadcastable to {spatial_shape}",
-        ) from exc
+        )
 
 
 def _validate_recurrence_options(

@@ -10,10 +10,10 @@ import numpy.typing as npt
 import xarray as xr
 
 from climate_indices.cf_metadata_registry import CF_METADATA
-from climate_indices.exceptions import DataShapeError, InputTypeError, InvalidArgumentError
+from climate_indices.exceptions import DataShapeError, InputTypeError, InvalidArgumentError, wrap_value_error
 from climate_indices.fire._common import _as_float_array
 from climate_indices.fire._units import _convert_temperature_units
-from climate_indices.logging_config import get_logger
+from climate_indices.logging_config import get_logger, log_calculation_failure
 from climate_indices.performance import check_large_array_memory
 from climate_indices.xarray_adapter import build_output_attrs
 
@@ -74,12 +74,13 @@ def _variant_spec(variant: str) -> _Variant:
     except (KeyError, TypeError) as exc:
         message = f"Unknown Haines Index elevation variant: {variant!r}."
         _logger.error(message)
-        raise InvalidArgumentError(
-            message,
+        wrap_value_error(
+            exc,
+            message=message,
             argument_name="variant",
             argument_value=repr(variant),
             valid_values=", ".join(repr(name) for name in _VARIANT_NAMES),
-        ) from exc
+        )
 
 
 def _score(delta: npt.NDArray[np.float64], cut_points: tuple[float, float]) -> npt.NDArray[np.float64]:
@@ -256,12 +257,13 @@ def _broadcast_inputs(
         shapes = ", ".join(f"{name}={array.shape}" for name, array in zip(names, arrays, strict=True))
         message = f"Incompatible array shapes for {index_name}: {shapes}. The inputs must broadcast together."
         _logger.error(message)
-        raise InvalidArgumentError(
-            message,
+        wrap_value_error(
+            exc,
+            message=message,
             argument_name="/".join(names),
             argument_value=f"shapes {', '.join(str(array.shape) for array in arrays)}",
             valid_values="Arrays broadcastable to a common shape",
-        ) from exc
+        )
 
 
 @overload
@@ -470,12 +472,7 @@ def haines_index(
         )
         return result
     except Exception as exc:
-        log.error(
-            "calculation_failed",
-            exc_info=True,
-            error_type=type(exc).__name__,
-            error_message=str(exc),
-        )
+        log_calculation_failure(log, exc)
         raise
 
 
@@ -655,18 +652,14 @@ def haines_index_from_profile(
             f"pressure={pressure.shape}, elevation={elevation.shape}. "
             "The elevation must broadcast against the profile with its pressure axis removed."
         )
-        log.error(
-            "calculation_failed",
-            exc_info=True,
-            error_type=type(exc).__name__,
-            error_message=str(exc),
-        )
-        raise InvalidArgumentError(
-            message,
+        log_calculation_failure(log, exc)
+        wrap_value_error(
+            exc,
+            message=message,
             argument_name="elevation_meters",
             argument_value=str(elevation.shape),
             valid_values=f"A scalar or an array broadcastable to {temperature.shape[:-1]}",
-        ) from exc
+        )
 
     unavailable = int(np.count_nonzero(np.isnan(index)))
     if unavailable > 0:
