@@ -839,10 +839,11 @@ def test_spi_all_zeros_does_not_crash(length: int, scale: int) -> None:
                 calibration_year_initial=1950,
                 calibration_year_final=1950 + length // 12 - 1,
             )
-            # if we get here, no exception was raised - good!
-            assert result is not None, "SPI returned None for all-zero input"
         except Exception as e:
             pytest.fail(f"SPI crashed on all-zero input: {e}")
+
+        # if we get here, no exception was raised - good!
+        assert result is not None, "SPI returned None for all-zero input"
 
 
 # ============================================================================
