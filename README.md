@@ -27,7 +27,7 @@ The following indices are provided:
 - [PCI](https://www.tandfonline.com/doi/abs/10.1111/J.0033-0124.1980.00300.X), Precipitation Concentration Index
 - [EDDI](https://psl.noaa.gov/eddi/), Evaporative Demand Drought Index
 - [Palmer indices](https://www.droughtmanagement.info/literature/USWB_Meteorological_Drought_1965.pdf),
-  including PDSI, PHDI, PMDI, and Z-Index
+  including PDSI, PHDI, PMDI, Z-Index, and scPDSI
 
 This Python implementation of the above climate index algorithms is being developed
 with the following goals in mind:

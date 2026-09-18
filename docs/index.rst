@@ -131,8 +131,8 @@ The options for the entry point script are described below:
 |                        | 'pet', 'palmers', and 'kbdi'. 'scaled'          |
 |                        | indicates all three scaled indices (SPI, SPEI,  |
 |                        | and PNP) and 'palmers' indicates all Palmer     |
-|                        | indices (PDSI, PHDI, PMDI, and Z-Index). KBDI   |
-|                        | is only available via 'kbdi', not 'all'.        |
+|                        | indices (PDSI, PHDI, PMDI, Z-Index, scPDSI).    |
+|                        | KBDI is only available via 'kbdi', not 'all'.   |
 +------------------------+-------------------------------------------------+
 | periodicity            | The periodicity of the input dataset files.     |
 |                        | Valid values are 'monthly' and 'daily'.         |
@@ -395,9 +395,9 @@ Jan. 1951 through Dec. 2010. The output files will be
 
 .. note::
    Self-calibrated PDSI (scPDSI) is available through the NumPy API as
-   :func:`climate_indices.palmer.scpdsi`. It is not yet exposed by the
-   ``process_climate_indices --index palmers`` command; see `issue #721
-   <https://github.com/monocongo/climate_indices/issues/721>`_.
+   :func:`climate_indices.palmer.scpdsi` and through
+   ``process_climate_indices --index palmers``, which writes it as
+   ``palmers_scpdsi.nc`` alongside PDSI, PHDI, PMDI, and Z-Index.
 
 Parallelization will occur utilizing all CPUs.
 
