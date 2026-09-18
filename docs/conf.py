@@ -114,6 +114,7 @@ exclude_patterns = [
     # Published Markdown pages not yet wired into navigation. Later tickets
     # publish them and delete their paths from this list: DOCS-7 (navigation)
     # and DOCS-8 (explanation and reference corpus).
+    "ai-assisted-development.md",
     "algorithm_refs/**",
     "architecture.md",
     "contribution-guide.md",
