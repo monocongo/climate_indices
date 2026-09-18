@@ -123,20 +123,24 @@ MyST-Parser (`docs/conf.py` sets `source_suffix = ".md"`, so an RST file left in
 the tree is silently absent from the site). The conventions a page has to
 follow to build:
 
-- **Directives** use the colon-fence form: `:::{note}`, `:::{warning}`,
-  `{list-table}`, `{toctree}`. reStructuredText directives and roles
-  (`.. note::`, `:doc:`) do not render in Markdown — they stay as literal
-  text — so a page that still carries one is an unfinished conversion.
+- **Directives** use the fenced form: admonitions as `:::{note}` / `:::{warning}`,
+  block directives as ```` ```{list-table} ```` / ```` ```{toctree} ````.
+  reStructuredText directives and roles (`.. note::`, `:doc:`) do not render in
+  Markdown — they stay as literal text — so a page that still carries one is an
+  unfinished conversion.
 - **Autodoc** stays inside `{eval-rst}` blocks, because autodoc emits
   reStructuredText and MyST would otherwise render the generated markup
   literally.
 - **Cross-links**: `` {doc}`troubleshooting` `` links another published page by
-  its source path (no suffix), `` {func}`climate_indices.spi` `` and the other
-  domain roles resolve through autodoc, and section links use heading anchors
-  (`#some-heading`, provided by `myst_heading_anchors`). Link repository-root
-  files by absolute GitHub URL: they are not Sphinx source documents.
+  its source path (no suffix); domain roles such as
+  `` {func}`climate_indices.palmer.pdsi` `` resolve through autodoc, so they
+  have to name a module path the reference page documents — an unresolved role
+  renders as plain code and does not fail the gate. Section links use heading
+  anchors (`#some-heading`, provided by `myst_heading_anchors`), and a page
+  that is published to the site links repository-root files by absolute GitHub
+  URL, since they are not Sphinx source documents.
 - **Runnable examples**: examples the docs gate executes are `testsetup`,
-  `doctest`, and `testcleanup` blocks; the build runs
+  `testcode`, `doctest`, and `testcleanup` blocks; the build runs
   `sphinx-build -b doctest` and fails on a failing example. Shell commands go
   in fenced ```` ```bash ```` blocks, which are not executed.
 

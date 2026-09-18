@@ -120,6 +120,7 @@ The options for the entry point script are described below:
   - Which of the climate indices to compute. Valid values are 'spi', 'spei', 'pnp', 'scaled', 'pet', 'palmers', and 'kbdi'. 'scaled' indicates all three scaled indices (SPI, SPEI, and PNP) and 'palmers' indicates all Palmer indices (PDSI, PHDI, PMDI, and Z-Index). KBDI is only available via 'kbdi', not 'all'.
 * - periodicity
   - The periodicity of the input dataset files. Valid values are 'monthly' and 'daily'.
+
     **NOTE**: Only SPI, PNP, and KBDI accept daily inputs; KBDI requires daily inputs.
 * - netcdf_precip
   - Input NetCDF file containing a precipitation dataset, required for all indices except for PET. Requires the use of **var_name_precip** in conjunction so as to identify the NetCDF's precipitation variable.
@@ -142,9 +143,12 @@ The options for the entry point script are described below:
 * - kbdi_initial
   - Initial KBDI value. Default value is 0.0. Applicable only when **index** is 'kbdi'.
 * - output_file_base
-  - Base file name for all output files. Each computed index will have a corresponding output file whose name will begin with this base name plus the index's abbreviation plus a month scale (if applicable), connected with underscores, plus the '.nc' extension. For example for SPI at 3-month scale the resulting output files will be named **<output_file_base>_spi_gamma_03.nc** and **<output_file_base>_spi_pearson_03.nc**.
+  - Base file name for all output files.
+
+    Each computed index will have a corresponding output file whose name will begin with this base name plus the index's abbreviation plus a month scale (if applicable), connected with underscores, plus the '.nc' extension. For example for SPI at 3-month scale the resulting output files will be named **<output_file_base>_spi_gamma_03.nc** and **<output_file_base>_spi_pearson_03.nc**.
 * - scales
   - Time step scales over which the PNP, SPI, and SPEI values are to be computed. Required when the **index** argument is 'spi', 'spei', 'pnp', or 'scaled'. The **periodicity** option will infer whether the scales used are month or day scales.
+
     **NOTE**: When used for US climate divisions processing this option specifies month scales
 * - calibration_start_year
   - Initial year of the calibration period.

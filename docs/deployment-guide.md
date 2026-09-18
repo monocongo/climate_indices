@@ -176,7 +176,11 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.viewcode',
     'sphinx.ext.githubpages',
+    'myst_parser',
 ]
+
+# Markdown is the only page source format (RST retired in 3.0.0)
+source_suffix = ".md"
 ```
 
 ## Dependency Management
