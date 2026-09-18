@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-# /// pyproject
-# [context]
+# /// script
 # dependencies = [
 #   "numpy",
 #   "xarray",
@@ -12,8 +11,8 @@
 
 Downloads the CSIC SPEIbase v2.11 global 0.5-degree monthly SPEI grids, selects
 the 0.5-degree cell centers falling inside three CONUS climate divisions that
-span an aridity gradient (humid Alabama, semi-arid Oklahoma, arid southwest
-Arizona), and prepares the areal-average series as pytest fixtures for a
+span an aridity gradient (humid Alabama, subhumid Oklahoma, arid southwest
+Arizona), and prepares the per-cell SPEI mean as pytest fixtures for a
 plausibility/agreement comparison against climate_indices' SPEI (gamma
 distribution, Thornthwaite PET). This script must be run manually when
 refreshing the reference data.
@@ -25,8 +24,9 @@ The script will:
     1. Download the NCEI CONUS climate division shapefile and the four
        SPEIbase v2.11 NetCDF files (SPEI-1/3/6/12, ~380 MB each)
     2. Select the grid cells whose centers fall inside each target division
-       polygon, and average them per month (the same style of areal
-       aggregation nClimDiv itself performs)
+       polygon, and average the per-cell SPEI values per month (a mean of
+       standardized indices, not an index computed from averaged inputs --
+       nClimDiv averages its inputs before computing its index)
     3. Truncate to January 1901 - December 2022, the period shared with the
        committed tests/fixture/palmer/<division>/{precips,temps}.npy inputs
     4. Save one (3, 1464) float32 array per timescale under
@@ -46,6 +46,16 @@ both differences are known, climate-dependent confounds (see
 docs/research/spei-dataset-survey.md on branch research/spei-dataset-survey).
 The test therefore asserts loose per-division agreement floors (correlation,
 sign agreement, drought-category agreement) rather than an atol/rtol gate.
+
+REFRESHING: ``_MEASURED_STATS`` records the result of the last agreement
+comparison; this script does not recompute it (the same pattern as
+scripts/prepare_ncei_spi_fixtures.py). After refreshing the downloads,
+re-measure the per-division correlation, sign-agreement, and
+drought-category-agreement statistics with the reproduction in
+tests/test_speibase_reference.py, update ``_MEASURED_STATS``, and rerun this
+script so provenance.json's measured_stats and floors stay truthful. The
+validation tests fail if a refresh drops agreement below the stale floors, but
+improved agreement would otherwise leave misleadingly loose floors.
 """
 
 from __future__ import annotations
@@ -55,13 +65,12 @@ import hashlib
 import json
 import math
 import os
-import shutil
 import sys
 import tempfile
 import urllib.request
 import warnings
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import numpy as np
 
@@ -80,7 +89,6 @@ _SCALES = (1, 3, 6, 12)
 # NCEI climate division codes (old alphabetical state codes) and the CONUS
 # aridity gradient they sample.
 _DIVISIONS = ("0101", "3405", "0205")
-
 _DATA_START_YEAR = 1901  # SPEIbase v2.11 starts January 1901
 _DATA_END_YEAR = 2022  # matches tests/fixture/palmer/<division>/precips.npy length
 _N_MONTHS = (_DATA_END_YEAR - _DATA_START_YEAR + 1) * 12
@@ -190,8 +198,16 @@ def _download(url: str, destination: Path, approved_origin: str) -> Path:
     with urllib.request.urlopen(url, timeout=120) as response:  # noqa: S310 -- host validated above
         if not response.url.startswith(approved_origin):
             raise ValueError(f"download redirected off the approved origin: {response.url}")
+        declared_length = response.headers.get("Content-Length")
+        if declared_length is not None and int(declared_length) > _MAX_DOWNLOAD_BYTES:
+            raise ValueError(f"download declares {declared_length} bytes, over the {_MAX_DOWNLOAD_BYTES}-byte cap")
+        total = 0
         with destination.open("wb") as handle:
-            shutil.copyfileobj(response, handle, length=1024 * 1024)
+            while chunk := response.read(1024 * 1024):
+                total += len(chunk)
+                if total > _MAX_DOWNLOAD_BYTES:
+                    raise ValueError(f"download exceeded the {_MAX_DOWNLOAD_BYTES}-byte cap: {url}")
+                handle.write(chunk)
     size = destination.stat().st_size
     if size == 0 or size > _MAX_DOWNLOAD_BYTES:
         raise ValueError(f"download has implausible size ({size} bytes): {url}")
@@ -210,6 +226,11 @@ def _download_shapefile(directory: Path) -> Path:
     extract_dir = directory / "divisions"
     extract_dir.mkdir()
     with zipfile.ZipFile(archive) as zipped:
+        for member in zipped.infolist():
+            path = PurePosixPath(member.filename)
+            is_symlink = (member.external_attr >> 16) & 0o170000 == 0o120000
+            if path.is_absolute() or ".." in path.parts or is_symlink:
+                raise RuntimeError(f"refusing unsafe zip member: {member.filename}")
         zipped.extractall(extract_dir)
     shapes = sorted(extract_dir.glob("*.shp"))
     if len(shapes) != 1:
@@ -326,10 +347,12 @@ def _write_provenance(directory: Path, checksum: str) -> None:
         "url": f"{_SPEIBASE_BASE_URL}/",
         "download_date": dt.date.today().isoformat(),
         "subset_description": (
-            "SPEIbase v2.11 global 0.5-degree monthly SPEI, areal-averaged over the 0.5-degree "
-            "cell centers falling inside three CONUS climate divisions spanning an aridity "
-            "gradient: 0101 (Northern Valley, Alabama; humid), 3405 (Central, Oklahoma; "
-            "semi-arid), and 0205 (Southwest, Arizona; arid). Timescales 1, 3, 6 and 12 months, "
+            "SPEIbase v2.11 global 0.5-degree monthly SPEI, averaged per month across the "
+            "0.5-degree grid cells whose centers fall inside three CONUS climate divisions "
+            "spanning an aridity gradient: 0101 (Northern Valley, Alabama; humid), 3405 "
+            "(Central, Oklahoma; subhumid), and 0205 (Southwest, Arizona; arid). The stored "
+            "series is the mean of the per-cell SPEI values, not an index computed from "
+            "averaged inputs. Timescales 1, 3, 6 and 12 months, "
             "January 1901 through December 2022 (1464 months), truncated to the period shared "
             "with the committed tests/fixture/palmer/<division>/{precips,temps}.npy inputs. "
             "Each <scale>.npy is a (3, 1464) float32 array whose row order matches "
@@ -356,7 +379,12 @@ def _write_provenance(directory: Path, checksum: str) -> None:
             "Beguería, S. et al. (2014), International Journal of Climatology 34(10), 3001-3023."
         ),
         "doi": "10.20350/digitalCSIC/16497",
-        "license": "CC-BY 4.0 (Open Database License on the main site); attribution required.",
+        "license": (
+            "CC-BY 4.0 per the Google Earth Engine catalog entry; the spei.csic.es download "
+            "site states the Open Database License (ODbL 1.0), which adds a share-alike "
+            "condition. Attribution required either way; confirm the governing terms when "
+            "refreshing."
+        ),
         "notes": (
             "PLAUSIBILITY CHECK ONLY, NOT EXTERNAL NUMERICAL VALIDATION. Three known confounds "
             "separate these series: (1) SPEIbase v2.11 uses FAO-56 Penman-Monteith PET from CRU "
@@ -368,9 +396,13 @@ def _write_provenance(directory: Path, checksum: str) -> None:
             "log-logistic implementation, see issue #106); (3) the reference is a 0.5-degree "
             "grid average inside a climate division polygon while the compared series is the "
             "division's station-derived areal average, and their precipitation inputs (CRU TS, "
-            "nClimDiv) differ. The measured agreement is highest in the semi-arid Oklahoma "
-            "division and lowest in the arid Arizona division, consistent with the PET-method "
-            "divergence being climate-dependent. Tests assert per-division, per-timescale "
+            "nClimDiv) differ. Cell-center selection makes the reference a sparse sample (3 to 8 "
+            "cells per division), not a full areal mean. The measured agreement is lowest in the "
+            "arid Arizona division -- "
+            "the direction the PET-family mismatch predicts -- and highest in subhumid Oklahoma; "
+            "with only three divisions the ordering cannot isolate the PET-family confound from "
+            "the distribution and precipitation-support confounds, which is why no tight "
+            "numerical gate is defensible. Tests assert per-division, per-timescale "
             "correlation, sign-agreement, and drought-category-agreement floors derived from "
             "measured_stats with the slack recorded in validation_tolerance; they must not be "
             "tightened into an atol/rtol gate or described as independent validation. "
@@ -386,9 +418,12 @@ def main() -> None:
     """Download the dataset, build the fixtures, and write them to tests/fixture/speibase/."""
     import xarray as xr
 
-    staging = Path(tempfile.mkdtemp(prefix=".speibase-staging-", dir=FIXTURE_DIR))
-    downloads = Path(tempfile.mkdtemp(prefix="speibase-downloads-"))
-    try:
+    with (
+        tempfile.TemporaryDirectory(prefix=".speibase-staging-", dir=FIXTURE_DIR) as staging_name,
+        tempfile.TemporaryDirectory(prefix="speibase-downloads-") as downloads_name,
+    ):
+        staging = Path(staging_name)
+        downloads = Path(downloads_name)
         print("Downloading NCEI climate division shapefile ...", file=sys.stderr)
         shapefile_path = _download_shapefile(downloads)
         division_shapes = _load_division_shapes(shapefile_path)
@@ -438,11 +473,17 @@ def main() -> None:
         for scale in _SCALES:
             dataset = xr.open_dataset(netcdf_paths[scale], engine="h5netcdf")
             try:
+                if tuple(dataset.spei.dims) != ("time", "lat", "lon"):
+                    raise RuntimeError(f"SPEI-{scale} has unexpected dims {tuple(dataset.spei.dims)}")
                 if dataset.sizes["time"] < _N_MONTHS:
                     raise RuntimeError(f"SPEI-{scale} has only {dataset.sizes['time']} months, need {_N_MONTHS}")
                 time_first = str(dataset.time.values[0])[:7]
                 if time_first != f"{_DATA_START_YEAR}-01":
                     raise RuntimeError(f"SPEI-{scale} starts at {time_first}, expected {_DATA_START_YEAR}-01")
+                file_latitudes = dataset.lat.sel(lat=slice(*_LATITUDE_BAND)).values
+                file_longitudes = dataset.lon.sel(lon=slice(*_LONGITUDE_BAND)).values
+                if not np.array_equal(file_latitudes, latitudes) or not np.array_equal(file_longitudes, longitudes):
+                    raise RuntimeError(f"SPEI-{scale} grid does not match SPEI-{_SCALES[0]}")
                 values = dataset.spei.sel(lat=slice(*_LATITUDE_BAND), lon=slice(*_LONGITUDE_BAND)).values[:_N_MONTHS]
             finally:
                 dataset.close()
@@ -450,8 +491,10 @@ def main() -> None:
             array = np.full((len(_DIVISIONS), _N_MONTHS), np.nan, dtype=np.float32)
             for row_index, division in enumerate(_DIVISIONS):
                 selected = values[:, masks[division]]
-                if np.isnan(selected).all():
-                    raise RuntimeError(f"SPEI-{scale} division {division}: all selected cells are NaN")
+                # leading scale-1 rows are all-NaN by construction (rolling-sum warmup),
+                # so only the non-warmup rows are required to report values
+                if np.isnan(selected).all() or np.isnan(selected[scale - 1 :]).all(axis=1).any():
+                    raise RuntimeError(f"SPEI-{scale} division {division}: selected cells are all-NaN")
                 with warnings.catch_warnings():
                     # leading scale-1 months are all-NaN by construction (rolling-sum warmup)
                     warnings.simplefilter("ignore", RuntimeWarning)
@@ -468,9 +511,6 @@ def main() -> None:
         staged_names = [f"spei{scale:02d}.npy" for scale in _SCALES] + ["divisions.json", "provenance.json"]
         for name in staged_names:
             os.replace(staging / name, OUTPUT_DIR / name)
-    finally:
-        shutil.rmtree(staging, ignore_errors=True)
-        shutil.rmtree(downloads, ignore_errors=True)
 
     print(f"Done. checksum_sha256={checksum}", file=sys.stderr)
 

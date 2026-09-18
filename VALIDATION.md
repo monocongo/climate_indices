@@ -21,7 +21,7 @@ guarded only by internal fixtures.
 | Index | Status | Tolerance | Evidence | Known gap |
 | --- | --- | --- | --- | --- |
 | SPI | Validated (internal) + qualified external comparison (Pearson III) | Gamma `atol=1e-8`, Pearson `atol=1e-5` in xarray equivalence tests; NOAA NCEI climdiv characterization ceilings documented in `tests/test_ncei_spi_reference.py` | Legacy NumPy fixtures and xarray equivalence tests compare gamma and Pearson outputs across scales. `tests/test_ncei_spi_reference.py` characterizes `indices.spi()` (Pearson III, full-period-of-record calibration) against NOAA NCEI's operational climdiv SPI product for all 344 climate divisions and all 7 published timescales; marked `validation`. | `tests/fixture/ncei_spi/provenance.json` records that NCEI's climate-divisional SPI product's independence from this codebase's lineage could not be confirmed as airtight from public documentation alone (see `docs/research/spi-dataset-survey.md`), and that NCEI's actual calibration behavior is a full/expanding period-of-record window rather than its documented fixed 1931-1990 baseline (Baldwin & Chen 2020). WMO SPI User Guide worked-example extraction remains outstanding (issue #778). |
-| SPEI | Validated (internal) + external plausibility check (gamma) | Gamma `atol=1e-8`, Pearson `atol=1e-5` in xarray equivalence tests; SPEIbase v2.11 agreement floors documented in `tests/test_speibase_reference.py` | Legacy NumPy fixtures and xarray equivalence tests compare gamma and Pearson outputs across scales. `tests/test_speibase_reference.py` compares `indices.spei()` (gamma distribution, Thornthwaite PET, full-period-of-record calibration 1901-2022) against areal-average CSIC SPEIbase v2.11 series for three CONUS climate divisions and timescales 1/3/6/12; marked `validation`. | Plausibility only, not numerical validation: SPEIbase uses FAO-56 Penman-Monteith PET and the log-logistic distribution while the compared series uses Thornthwaite PET and gamma, and the two series use different precipitation inputs and spatial support. See "SPEI Plausibility Classification" below. |
+| SPEI | Validated (internal) + external plausibility check (gamma) | Gamma `atol=1e-8`, Pearson `atol=1e-5` in xarray equivalence tests; SPEIbase v2.11 agreement floors documented in `tests/test_speibase_reference.py` | Legacy NumPy fixtures and xarray equivalence tests compare gamma and Pearson outputs across scales. `tests/test_speibase_reference.py` compares `indices.spei()` (gamma distribution, Thornthwaite PET, full-period-of-record calibration 1901-2022) against grid-cell-mean CSIC SPEIbase v2.11 series for three CONUS climate divisions and timescales 1/3/6/12; marked `validation`. | Plausibility only, not numerical validation: SPEIbase uses FAO-56 Penman-Monteith PET and the log-logistic distribution while the compared series uses Thornthwaite PET and gamma, and the two series use different precipitation inputs and spatial support. See "SPEI Plausibility Classification" below. |
 | PET Thornthwaite | Validated | Synthetic-fixture `atol=0.001`; literature worked example `atol=4.0` mm/month | `tests/test_eto.py::test_eto_thornthwaite` covers synthetic regression fixtures; `test_eto_thornthwaite_literature_watson` compares against a Thornthwaite (1948) worked example (Watson & Burnett, 1995) in `tests/fixture/pet_literature/`. See `docs/algorithm_refs/pet.md`. | The source supplies daylight hours, not latitude; coordinate reconstruction is not independently validated. |
 | PET Hargreaves | Validated | Synthetic-input sanity checks; literature worked example `atol=0.05` mm/day | `tests/test_eto.py::test_eto_hargreaves_with_fixtures` checks synthetic daily-input output shape and bounds; `test_eto_hargreaves_literature_mehta` compares against a Hargreaves-Samani (1985) worked example (Mehta, 2006) in `tests/fixture/pet_literature/`. See `docs/algorithm_refs/pet.md`. | The source supplies extraterrestrial radiation, not latitude/day of year; coordinate reconstruction is not independently validated. |
 | PNP | Validated | Existing fixture tolerances in `tests/test_indices.py` and xarray PNP tests | Percent-of-normal fixture and xarray wrapper tests cover output shape and metadata. | None blocking 3.0.0. |
@@ -62,10 +62,11 @@ unexpected table baseline so fixture refreshes are intentional.
 ## SPEI Plausibility Classification
 
 `indices.spei()` (gamma distribution, Thornthwaite PET) is compared against
-areal-average CSIC SPEIbase v2.11 series in `tests/test_speibase_reference.py`,
+grid-cell-mean CSIC SPEIbase v2.11 series in `tests/test_speibase_reference.py`,
 for three CONUS climate divisions spanning an aridity gradient (humid Alabama
-0101, semi-arid Oklahoma 3405, arid southwest Arizona 0205) and timescales 1,
-3, 6 and 12 months.
+0101, subhumid Oklahoma 3405, arid southwest Arizona 0205) and timescales 1,
+3, 6 and 12 months. The stored reference is the mean of the per-cell SPEI
+values, not an index computed from averaged inputs.
 
 This comparison is a **plausibility check, not external numerical
 validation**, and is deliberately not enforced with `atol`/`rtol`. Three
@@ -88,11 +89,15 @@ recorded in `tests/fixture/speibase/provenance.json`;
 `scripts/prepare_speibase_fixtures.py` regenerates the fixtures and those
 constants, and `test_floors_keep_documented_slack` pins every floor to within a
 documented band below its measurement so a floor cannot be widened to hide a
-regression. Measured correlation is strongest in the semi-arid Oklahoma
-division (0.95-0.97 across timescales) and weakest in the arid Arizona
-division (0.82-0.86), the pattern the PET-method divergence predicts; a tight
-numerical gate would either fail on that legitimate climate-dependent bias or
-have to be widened until it no longer tested anything.
+regression. Measured correlation is weakest in the arid Arizona division
+(0.82-0.86 across timescales) -- the direction the PET-family mismatch
+predicts -- and strongest in subhumid Oklahoma (0.95-0.97), with humid Alabama
+(0.92-0.94) between them. With only three divisions the ordering cannot
+isolate the PET-family confound from the distribution and
+precipitation-support confounds, which is precisely why no tight numerical
+gate is defensible: it would either fail on that legitimate
+climate-dependent bias or have to be widened until it no longer tested
+anything.
 
 The compared climate_indices series is calibrated against the full 1901-2022
 period of record, matching the committed inputs, while SPEIbase v2.11 is
