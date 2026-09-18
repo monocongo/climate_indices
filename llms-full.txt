@@ -3219,6 +3219,21 @@ same chunking on the dimensions they share with the other input: each input's
 `time` chunking is validated independently, and a mismatch on `lat`/`lon`
 survives into the compute as a Dask `rechunk-merge` copy.
 
+## Numerical equivalence
+
+The block kernel runs the same NumPy core as the serial API, so a gridded result is
+the serial result: SPI, SPEI, EDDI, and percentage of normal are bit-for-bit
+identical to calling the NumPy API once per cell. Thornthwaite PET is the one
+exception — its block form reorders the same arithmetic and differs by a few float64
+ULP (5.7e-14 measured on the reference grid), asserted at `atol=1e-12`.
+
+Chunk layout does not change the numbers either: the same grid computed from a
+different chunk shape matches the in-memory result bit for bit, within the same
+Thornthwaite tolerance. The bounds are enforced by
+`tests/test_numerical_equivalence.py` for SPI, SPEI, EDDI, percentage of normal, and
+Thornthwaite PET, so divergence fails `pytest` instead of silently changing an
+index value.
+
 ## Measured speedup
 
 Vectorization is what removes the per-cell Python loop, so its effect is
