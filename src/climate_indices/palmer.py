@@ -42,7 +42,8 @@ class _PalmerPrepared:
     """The Palmer inputs, water balance, and calibration results shared by both indices.
 
     Written by ``_prepare_palmer_data`` (plus the index-specific K-factor stage)
-    and read-only afterwards, so no recursion stage can overwrite an input.
+    and read-only afterwards except for ``pdsi()``'s duration-factor override, so
+    no recursion stage can overwrite an input.
     """
 
     # input record and calibration configuration
@@ -1129,8 +1130,14 @@ def _validate_fitting_params(prepared: _PalmerPrepared, fitting_params: dict[str
     names = ("alpha", "beta", "gamma", "delta")
     coefficients: list[np.ndarray] = []
     for name in names:
+        supplied = fitting_params.get(name)
+        # np.asarray drops a mask and exposes the backing values underneath, so a
+        # masked coefficient is missing data, not a number (see _fill_masked_with_nan);
+        # reject it like any other malformed set rather than adopt the backing values
+        if np.ma.isMaskedArray(supplied) and np.ma.is_masked(supplied):
+            break
         try:
-            values = np.asarray(fitting_params.get(name), dtype=float)
+            values = np.asarray(supplied, dtype=float)
         except (TypeError, ValueError):
             break
         if values.shape != (12,):
@@ -1340,8 +1347,9 @@ def _duration_factor_override(fitting_params: dict[str, Any] | None) -> Duration
     ``pdsi()`` accepts the same ``wetm``/``wetb``/``drym``/``dryb`` keys scPDSI returns,
     so a caller can run the standard recursion with custom duration factors instead of
     Palmer's fixed national constants. Supplying only some of the four is a caller
-    error rather than a silent partial default. scPDSI never calls this: its duration
-    factors are always self-calibrated, and it ignores these keys.
+    error rather than a silent partial default. Only the standard-PDSI path resolves
+    an override: scPDSI's duration factors are always self-calibrated, and it ignores
+    these keys.
 
     :param fitting_params: the caller's fitting parameters, if any
     :return: the validated override, or None when no duration factors were supplied
@@ -1362,8 +1370,15 @@ def _duration_factor_override(fitting_params: dict[str, Any] | None) -> Duration
         )
     values = []
     for name in _DURATION_FACTOR_PARAM_NAMES:
+        supplied = fitting_params[name]
+        # np.asarray drops a mask and exposes the backing values underneath, so a
+        # masked factor is missing data, not a number (see _fill_masked_with_nan).
+        # isMaskedArray first: is_masked reads a bare ``_mask`` attribute off any
+        # object and would raise AttributeError on a non-masked one.
+        if np.ma.isMaskedArray(supplied) and np.ma.is_masked(supplied):
+            raise ValueError(f"duration-factor override {name} must be a finite scalar")
         try:
-            value = np.asarray(fitting_params[name], dtype=float)
+            value = np.asarray(supplied, dtype=float)
         except (TypeError, ValueError, OverflowError) as error:
             raise ValueError(f"duration-factor override {name} must be a finite scalar") from error
         if value.ndim != 0 or not np.isfinite(value):
@@ -1391,7 +1406,6 @@ def _prepare_palmer_data(
     fitting_params: dict[str, Any] | None,
     log: BoundLogger,
     spatial_time_major: bool = False,
-    duration_factors: DurationFactors | None = None,
 ) -> tuple[_PalmerPrepared, int]:
     """Validate inputs and run the water-balance/CAFEC stages shared by Palmer indices."""
     if np.any(precips < 0.0):
@@ -1413,13 +1427,8 @@ def _prepare_palmer_data(
     )
     # _initialize_prepared can only set Palmer's fixed defaults, and scPDSI
     # bypasses these fields entirely (it passes its fitted factors straight to
-    # _palmer_wells.calculate), so a pdsi()-only override lands here, before any
-    # recursion stage reads them.
-    if duration_factors is not None:
-        prepared.wetm = duration_factors.wetm
-        prepared.wetb = duration_factors.wetb
-        prepared.drym = duration_factors.drym
-        prepared.dryb = duration_factors.dryb
+    # _palmer_wells.calculate), so a pdsi()-only override is applied by
+    # _palmer_calculation once this stage has finished validating its inputs.
     _calc_water_balances(prepared)
     if prepared.calibrate:
         _calc_cafec_coefficients(prepared)
@@ -1431,9 +1440,10 @@ def _palmer_cafec_params(prepared: _PalmerPrepared) -> dict[str, Any]:
     """
     The alpha/beta/gamma/delta CAFEC parameters, in the caller's shape.
 
-    ``prepared.alpha`` etc. are always 1-D ``(12,)`` when ``fitting_params``
-    was supplied (they are the caller's own arrays, shared across every
-    cell) and otherwise ``(12, n_cells)``, which is reshaped to
+    ``prepared.alpha`` etc. are always 1-D ``(12,)`` when the caller supplied
+    a complete, valid set of ``alpha``/``beta``/``gamma``/``delta`` coefficients
+    (they are the caller's own arrays, shared across every cell) and otherwise
+    ``(12, n_cells)``, which is reshaped to
     ``(12, *cell_shape)`` for a spatial block or squeezed back to ``(12,)``
     for a single location, matching :func:`pdsi`'s pre-existing contract.
     """
@@ -1597,9 +1607,6 @@ def _palmer_calculation(
     t0 = time.perf_counter()
 
     try:
-        # resolved inside the try so a malformed override emits the same
-        # calculation_started/calculation_failed lifecycle as other input errors
-        duration_factors = _duration_factor_override(fitting_params) if use_fitting_duration_factors else None
         # equal element counts are not enough to pair a spatial block: (time, 2, 3)
         # and (time, 3, 2) have the same size but flatten their cells in different
         # spatial order, and a block's time axis is not recoverable from size alone.
@@ -1647,8 +1654,20 @@ def _palmer_calculation(
             fitting_params,
             log,
             spatial_time_major=spatial_time_major,
-            duration_factors=duration_factors,
         )
+        duration_factors = None
+        if use_fitting_duration_factors:
+            # resolved inside the try (so a malformed override emits the same
+            # calculation_started/calculation_failed lifecycle as other input errors)
+            # and after _prepare_palmer_data (so it cannot mask an input error or turn
+            # the all-missing return below into a raise), but before the recursion,
+            # the only reader of these fields.
+            duration_factors = _duration_factor_override(fitting_params)
+            if duration_factors is not None:
+                prepared.wetm = duration_factors.wetm
+                prepared.wetb = duration_factors.wetb
+                prepared.drym = duration_factors.drym
+                prepared.dryb = duration_factors.dryb
         result = calculate_prepared(prepared, original_length)
         if precips.ndim > 2:
             result = _mask_fully_missing_cells(precips, result)
@@ -1703,7 +1722,18 @@ def pdsi(
             Supplying all four of ``wetm``, ``wetb``, ``drym``, and ``dryb``
             overrides Palmer's fixed national duration factors with those
             scalars (validated like scPDSI's calibrated factors); supplying
-            only some of the four raises :class:`ValueError`.
+            only some of the four raises :class:`ValueError`. An override
+            produces PDSI with caller-supplied duration factors, not Palmer's
+            (1965) standard index and not scPDSI: the CAFEC
+            ``alpha``/``beta``/``gamma``/``delta`` coefficients stay fitted
+            from the record unless a complete, valid set is supplied alongside
+            (a partial set is discarded and all four are re-fitted), and this
+            repository's external validation covers the default-factor runs.
+            :func:`scpdsi` returns the four keys in its parameter dictionary
+            and ignores them on input; it calibrates them against its own
+            K-prime Z series and then rescales that series around the fitted
+            factors, so feeding that dictionary back here applies factors
+            fitted for that recursion rather than the national defaults.
         spatial_time_major: Declares a three-or-more-dimensional precips/pet
             as a time-major spatial block, per ADR-0009.
 
@@ -1719,17 +1749,23 @@ def pdsi(
             than reused, which is numerically equivalent.
             For all-missing input, the parameter dictionary is ``None``. A
             spatial block's outputs keep precips' cell shape, and the
-            parameter arrays gain the same trailing shape unless
-            ``fitting_params`` was supplied.
+            parameter arrays gain the same trailing shape unless a complete,
+            valid set of ``alpha``/``beta``/``gamma``/``delta`` coefficients was
+            supplied in ``fitting_params``.
 
     Raises:
-        ValueError: If precipitation and PET have incompatible shapes, if
-            precips/pet contains infinite values, if the calibration period
-            is not contained in the data years, or if only some of the
-            ``wetm``/``wetb``/``drym``/``dryb`` override keys were supplied
-            or a supplied value is not a finite scalar.
+        ValueError: If ``precips`` and ``pet`` have incompatible shapes, if a
+            2-D array's second dimension is not 12, if a spatial block's shape
+            is ambiguous, if ``awc`` is not broadcastable to a block's cell
+            shape, if either data array contains infinite values, or if the
+            calibration period is not an inclusive interval
+            within the input data years; and, for input that is not all-missing,
+            if only some of the ``wetm``/``wetb``/``drym``/``dryb`` override keys
+            were supplied or a supplied value is not a finite scalar.
         ConvergenceError: If a supplied duration-factor override does not
-            yield contracting recurrence coefficients.
+            yield contracting recurrence coefficients (never raised for
+            all-missing input, which returns the NaN arrays and ``None``
+            parameters described above).
     """
 
     # _palmer_calculation emits calculation_started, calculation_completed,
@@ -1789,8 +1825,11 @@ def scpdsi(
         missing arrays and ``None``.
 
     Raises:
-        ValueError: If precipitation and PET have different lengths, or if
-            precips/pet is a spatial block (three or more dimensions).
+        ValueError: If precipitation and PET have different numbers of
+            elements, if a 2-D array's second dimension is not 12, if either
+            contains infinite values, if the calibration period is not an
+            inclusive interval within the input data years, or if precips/pet
+            is a spatial block (three or more dimensions).
             scPDSI runs the Wells backtracking recursion once per cell plus
             per-location duration-factor fits, so it stays on the
             per-location path -- see ADR-0011 -- while :func:`pdsi` vectorizes
