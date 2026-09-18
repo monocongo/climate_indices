@@ -252,7 +252,7 @@ Before submitting:
 2. Add high-level function to `indices.py` (numpy API)
 3. Add wrapper to `xarray_adapter.py` (xarray API)
 4. Add tests in `tests/test_compute.py`, `test_indices.py`, `test_xarray_adapter.py`
-5. Update documentation in `docs/reference.rst` and any relevant `docs/*.md` guides
+5. Update documentation in `docs/reference.md` and any relevant `docs/*.md` guides
 
 ### Fixing a Bug
 1. Write a failing test that reproduces the bug
@@ -261,7 +261,7 @@ Before submitting:
 4. Add regression test to prevent recurrence
 
 ### Improving Documentation
-1. Update RST files in `docs/` for Sphinx docs
+1. Update the relevant Markdown page in `docs/` for Sphinx docs (`docs/index.rst` is the Sphinx root document whose toctrees include them)
 2. Update docstrings in source code
 3. Build docs locally: `cd docs && make html`
 4. Check for broken links and formatting issues

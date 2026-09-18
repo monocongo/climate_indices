@@ -16,12 +16,12 @@ from climate_indices.fire._common import _as_float_array
 from climate_indices.fire._units import _convert_temperature_units
 from climate_indices.logging_config import get_logger
 from climate_indices.performance import check_large_array_memory
-from climate_indices.xarray_adapter import (
+from climate_indices.validation import (
     InputType,
-    _build_output_attrs,
-    _validate_dask_chunks,
     detect_input_type,
+    validate_dask_chunks,
 )
+from climate_indices.xarray_adapter import build_output_attrs
 
 # retrieve structlog logger for this module
 _logger = get_logger(__name__)
@@ -158,7 +158,7 @@ def _hdw_xarray(
                 coordinate_name=level_dim,
                 reason="missing_dimension",
             )
-        _validate_dask_chunks(data, level_dim)
+        validate_dask_chunks(data, level_dim)
 
     # one warning per invalid Dask block would swamp the logs; the eager path
     # still reports invalid columns through the shared kernel's warnings
@@ -186,7 +186,7 @@ def _hdw_xarray(
             if dim != level_dim and dim not in output_dims:
                 output_dims.append(dim)
     result = result.transpose(*output_dims)
-    result.attrs = _build_output_attrs(
+    result.attrs = build_output_attrs(
         temperature_celsius,
         cf_metadata=CF_METADATA["hdw"],  # type: ignore[arg-type]
         index_name="HDW",

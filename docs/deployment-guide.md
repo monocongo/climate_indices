@@ -162,7 +162,7 @@ exclude = ["tests/", "docs/", "notebooks/", ...]
 
 ### Documentation Hosting
 - **URL**: [https://climate-indices.readthedocs.io/](https://climate-indices.readthedocs.io/)
-- **Source**: `docs/*.rst` (Sphinx)
+- **Source**: `docs/*.md` and `docs/index.rst` (Sphinx)
 - **Build**: Automatic on push to `main`
 - **Versions**: Tracks git tags
 

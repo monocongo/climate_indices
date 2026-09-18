@@ -64,7 +64,7 @@ pip install "climate-indices>=2.3"
 ```
 
 `uv` users can run `uv pip install "climate-indices>=2.3"`. The 2.3.0 floor matches the
-[quickstart](https://github.com/monocongo/climate_indices/blob/main/docs/quickstart.rst),
+[quickstart](https://github.com/monocongo/climate_indices/blob/main/docs/quickstart.md),
 which documents the latest release and uses the xarray API added in 2.3.0; see
 [Supported Python Versions](#supported-python-versions) for interpreter support.
 
@@ -86,9 +86,14 @@ be releasable.
 5. Open a PR into `main`.
 6. The maintainer merges the PR after review and passing CI; agents never merge.
 
-Use `feature/<topic>`, `fix/<topic>`, `docs/<topic>`, `chore/<topic>`, or
+Use `feature/<topic>`, `fix/<topic>`, `docs/<topic>`, `chore/<topic>`,
+`perf/<topic>`, `refactor/<topic>`, `test/<topic>`, `ci/<topic>`, or
 `hotfix/<topic>` branch names. Release branches are avoided; use maintenance
 branches only for approved older-version support.
+
+The methodology behind this workflow — parallel agent sessions, worktree
+isolation, and the evidence each change must carry — is documented in
+[AI-assisted development](docs/ai-assisted-development.md).
 
 ## Release Recipe
 
@@ -177,7 +182,8 @@ marked in docstrings.
 
 See `docs/xarray_compatibility.md` for the 3.0.0 compatibility matrix, including
 Dask chunking constraints, metadata behavior, and the current Palmer xarray
-workflow.
+workflow. See `docs/performance.md` for a runnable parallel SPI/SPEI example and
+the measured speedups behind the chunk and scheduler guidance.
 
 ### Validation Notes
 

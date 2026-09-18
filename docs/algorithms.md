@@ -1,30 +1,25 @@
-====================================================
-Algorithm Documentation and Scientific References
-====================================================
+# Algorithm Documentation and Scientific References
 
 This page provides comprehensive documentation of the climate index algorithms implemented in this library, including scientific references, parameter selection guidance, and implementation details.
 
-.. contents:: Table of Contents
-   :local:
-   :backlinks: none
+```{contents} Table of Contents
+:backlinks: none
+:local: true
+```
 
-Overview
-========
+## Overview
 
-The ``climate_indices`` library implements scientifically validated algorithms for computing drought and climate variability indices. All implementations follow peer-reviewed methodologies and have been validated against reference datasets. The algorithms are designed for operational climate monitoring, research applications, and climate impact assessments.
+The `climate_indices` library implements scientifically validated algorithms for computing drought and climate variability indices. All implementations follow peer-reviewed methodologies and have been validated against reference datasets. The algorithms are designed for operational climate monitoring, research applications, and climate impact assessments.
 
-Standardized Precipitation Index (SPI)
-======================================
+## Standardized Precipitation Index (SPI)
 
-Overview
---------
+### Overview
 
 The Standardized Precipitation Index (SPI) is a widely used indicator for characterizing meteorological drought on multiple timescales. Developed by McKee, Doesken, and Kleist (1993), SPI transforms precipitation data into standardized units that represent the probability of occurrence relative to the long-term climatological distribution.
 
 SPI values are dimensionless and follow a normal distribution with mean 0 and standard deviation 1, making them comparable across different locations and climate regimes.
 
-Algorithm Description
----------------------
+### Algorithm Description
 
 The SPI computation follows these steps:
 
@@ -74,8 +69,7 @@ The SPI computation follows these steps:
    - Constrain final SPI values to [-3.09, 3.09]
    - This range represents probabilities from 0.001 to 0.999
 
-When to Use SPI
----------------
+### When to Use SPI
 
 **Ideal applications:**
 
@@ -93,11 +87,9 @@ When to Use SPI
 - Not suitable for studying temperature-driven drought
 - Limited applicability in arid regions with many zero-precipitation months
 
-Parameter Selection
--------------------
+### Parameter Selection
 
-Scale (Timescale)
-~~~~~~~~~~~~~~~~~
+#### Scale (Timescale)
 
 The scale parameter determines the temporal aggregation period (1-72 months supported).
 
@@ -116,8 +108,7 @@ The scale parameter determines the temporal aggregation period (1-72 months supp
 - Hydrological applications: 6-24 months
 - Water resource management: 12-48 months
 
-Distribution Choice
-~~~~~~~~~~~~~~~~~~~
+#### Distribution Choice
 
 **Gamma distribution** (recommended default):
 
@@ -133,15 +124,14 @@ Distribution Choice
 - Requires more data for stable estimation
 - Recommended when gamma fit is poor (Kolmogorov-Smirnov test p < 0.05)
 
-Calibration Period
-~~~~~~~~~~~~~~~~~~
+#### Calibration Period
 
 The calibration period defines the climatological baseline for "normal" precipitation.
 
 **Requirements:**
 
 - **Minimum length**: 30 years (≥30 years strongly recommended)
-- **Maximum missing data**: <20% of calibration period values
+- **Maximum missing data**: \<20% of calibration period values
 - **Goodness-of-fit validation**: Kolmogorov-Smirnov test at p = 0.05 significance level
 
 **Selection guidance:**
@@ -151,18 +141,15 @@ The calibration period defines the climatological baseline for "normal" precipit
 - Avoid periods with major data gaps or quality issues
 - Consider updating calibration period periodically for climate change studies
 
-Standardized Precipitation Evapotranspiration Index (SPEI)
-===========================================================
+## Standardized Precipitation Evapotranspiration Index (SPEI)
 
-Overview
---------
+### Overview
 
 The Standardized Precipitation Evapotranspiration Index (SPEI) is an extension of SPI that incorporates the effect of temperature on drought through potential evapotranspiration (PET). Developed by Vicente-Serrano, Begueria, and Lopez-Moreno (2010), SPEI provides a more complete picture of water balance by accounting for both water supply (precipitation) and atmospheric water demand (PET).
 
 SPEI is particularly valuable in warming climates where increased temperatures amplify drought severity through enhanced evaporative demand.
 
-Algorithm Description
----------------------
+### Algorithm Description
 
 The SPEI computation follows these steps:
 
@@ -190,8 +177,7 @@ The SPEI computation follows these steps:
 - More sensitive to warming trends
 - Better represents agricultural drought (crop water stress)
 
-When to Use SPEI
-----------------
+### When to Use SPEI
 
 **Ideal applications:**
 
@@ -215,8 +201,7 @@ When to Use SPEI
 - More complex computation than SPI
 - PET methods may not be equally valid in all climates
 
-SPI vs SPEI Decision Guide
----------------------------
+### SPI vs SPEI Decision Guide
 
 **Choose SPI when:**
 
@@ -236,35 +221,30 @@ SPI vs SPEI Decision Guide
 
 **Performance comparison:**
 
-==================  ====================  =====================
-Characteristic      SPI                   SPEI
-==================  ====================  =====================
-Data requirements   Precipitation only    Precipitation + temp
-Drought type        Meteorological        Agricultural/ecological
-Climate change      Less sensitive        More sensitive
-Computation         Simpler               More complex
-Agricultural use    Good                  Better
-Historical studies  Good                  Better for recent decades
-==================  ====================  =====================
+| Characteristic     | SPI                | SPEI                      |
+| ------------------ | ------------------ | ------------------------- |
+| Data requirements  | Precipitation only | Precipitation + temp      |
+| Drought type       | Meteorological     | Agricultural/ecological   |
+| Climate change     | Less sensitive     | More sensitive            |
+| Computation        | Simpler            | More complex              |
+| Agricultural use   | Good               | Better                    |
+| Historical studies | Good               | Better for recent decades |
 
-Parameter Selection
--------------------
+### Parameter Selection
 
 SPEI uses the same parameter selection guidelines as SPI:
 
 - **Scale**: Same timescale considerations (1-72 months)
 - **Distribution**: Gamma (default) or Pearson Type III
-- **Calibration period**: ≥30 years, <20% missing data, K-S test p=0.05
+- **Calibration period**: ≥30 years, \<20% missing data, K-S test p=0.05
 
 **Additional consideration - PET method:**
 
 See the Potential Evapotranspiration section below for guidance on choosing between Thornthwaite and Hargreaves methods.
 
-Potential Evapotranspiration (PET)
-==================================
+## Potential Evapotranspiration (PET)
 
-Overview
---------
+### Overview
 
 Potential evapotranspiration (PET) represents the atmospheric water demand—the amount of water that would evaporate and transpire from a reference surface if sufficient water were available. PET is a key input for SPEI and water balance calculations.
 
@@ -273,25 +253,24 @@ This library implements two temperature-based PET methods:
 1. **Thornthwaite (1948)**: Monthly timestep, temperature-only
 2. **Hargreaves (1985)**: Daily timestep, temperature and radiation
 
-Thornthwaite Method
--------------------
+### Thornthwaite Method
 
 The Thornthwaite method estimates monthly PET using mean temperature and latitude.
 
 **Equation:**
 
-.. math::
-
-   PET = 1.6 \left( \frac{L}{12} \right) \left( \frac{N}{30} \right) \left( \frac{10 T_a}{I} \right)^a
+$$
+PET = 1.6 \left( \frac{L}{12} \right) \left( \frac{N}{30} \right) \left( \frac{10 T_a}{I} \right)^a
+$$
 
 Where:
 
 - *PET* = potential evapotranspiration (mm/month)
 - *L* = mean day length for the month (hours)
 - *N* = number of days in the month
-- *T*\ :sub:`a` = mean daily air temperature (°C, clipped to ≥0)
-- *I* = annual heat index = Σ(*T*\ :sub:`ai`/5)\ :sup:`1.514` for all 12 months
-- *a* = (6.75×10\ :sup:`-7`)*I*\ :sup:`3` - (7.71×10\ :sup:`-5`)*I*\ :sup:`2` + (1.792×10\ :sup:`-2`)*I* + 0.49239
+- *T*{sub}`a` = mean daily air temperature (°C, clipped to ≥0)
+- *I* = annual heat index = Σ(*T*{sub}`ai`/5){sup}`1.514` for all 12 months
+- *a* = (6.75×10{sup}`-7`)\*I\*{sup}`3` - (7.71×10{sup}`-5`)\*I\*{sup}`2` + (1.792×10{sup}`-2`)\*I\* + 0.49239
 
 **Implementation details:**
 
@@ -314,31 +293,30 @@ Where:
 - Does not account for wind speed, humidity, or solar radiation
 - Monthly timestep only (not suitable for daily analysis)
 
-Hargreaves Method
------------------
+### Hargreaves Method
 
 The Hargreaves method estimates daily PET using temperature range as a proxy for solar radiation.
 
 **Equation (based on FAO-56 equation 52):**
 
-.. math::
-
-   ET_o = 0.0023 (T_{mean} + 17.8) (T_{max} - T_{min})^{0.5} \times 0.408 \times R_a
+$$
+ET_o = 0.0023 (T_{mean} + 17.8) (T_{max} - T_{min})^{0.5} \times 0.408 \times R_a
+$$
 
 Where:
 
-- *ET*\ :sub:`o` = reference evapotranspiration over grass (mm/day)
-- *T*\ :sub:`mean` = mean daily temperature (°C)
-- *T*\ :sub:`max` = maximum daily temperature (°C)
-- *T*\ :sub:`min` = minimum daily temperature (°C)
-- *R*\ :sub:`a` = extraterrestrial radiation (MJ m\ :sup:`-2` day\ :sup:`-1`)
+- *ET*{sub}`o` = reference evapotranspiration over grass (mm/day)
+- *T*{sub}`mean` = mean daily temperature (°C)
+- *T*{sub}`max` = maximum daily temperature (°C)
+- *T*{sub}`min` = minimum daily temperature (°C)
+- *R*{sub}`a` = extraterrestrial radiation (MJ m{sup}`-2` day{sup}`-1`)
 
 **Implementation details:**
 
 - Computes extraterrestrial radiation from day of year and latitude
 - Accounts for Earth-Sun distance variation
 - Returns daily PET values in mm/day
-- Validates temperature relationships (T\ :sub:`min` ≤ T\ :sub:`mean` ≤ T\ :sub:`max`)
+- Validates temperature relationships (T{sub}`min` ≤ T{sub}`mean` ≤ T{sub}`max`)
 
 **Strengths:**
 
@@ -354,8 +332,7 @@ Where:
 - May be less accurate in cloudy/humid climates
 - Not suitable when only mean temperature is available
 
-Thornthwaite vs Hargreaves Decision Guide
-------------------------------------------
+### Thornthwaite vs Hargreaves Decision Guide
 
 **Choose Thornthwaite when:**
 
@@ -375,31 +352,28 @@ Thornthwaite vs Hargreaves Decision Guide
 
 **Performance comparison:**
 
-======================  =======================  =====================
-Characteristic          Thornthwaite             Hargreaves
-======================  =======================  =====================
-Temporal resolution     Monthly                  Daily
-Temperature inputs      Mean only                Min, max, mean
-Additional inputs       Latitude                 Latitude
-Accuracy (general)      Moderate                 Good
-Accuracy (arid)         Poor (overestimates)     Good
-Accuracy (humid)        Poor (underestimates)    Moderate
-Data requirements       Minimal                  Moderate
-Computational cost      Low                      Low
-Climate suitability     Temperate                Semi-arid to arid
-======================  =======================  =====================
+| Characteristic      | Thornthwaite          | Hargreaves        |
+| ------------------- | --------------------- | ----------------- |
+| Temporal resolution | Monthly               | Daily             |
+| Temperature inputs  | Mean only             | Min, max, mean    |
+| Additional inputs   | Latitude              | Latitude          |
+| Accuracy (general)  | Moderate              | Good              |
+| Accuracy (arid)     | Poor (overestimates)  | Good              |
+| Accuracy (humid)    | Poor (underestimates) | Moderate          |
+| Data requirements   | Minimal               | Moderate          |
+| Computational cost  | Low                   | Low               |
+| Climate suitability | Temperate             | Semi-arid to arid |
 
-.. note::
-   For the most accurate PET estimates, consider using more sophisticated methods
-   like Penman-Monteith (FAO-56) if wind speed, humidity, and solar radiation data
-   are available. However, temperature-based methods remain the most practical choice
-   for large-scale or historical analyses.
+:::{note}
+For the most accurate PET estimates, consider using more sophisticated methods
+like Penman-Monteith (FAO-56) if wind speed, humidity, and solar radiation data
+are available. However, temperature-based methods remain the most practical choice
+for large-scale or historical analyses.
+:::
 
-Palmer Drought Indices
-======================
+## Palmer Drought Indices
 
-Overview
---------
+### Overview
 
 The Palmer Drought Severity Index (PDSI) and related indices were developed by Wayne Palmer (1965) for the U.S. National Weather Service. The Palmer system includes five related indices:
 
@@ -408,13 +382,12 @@ The Palmer Drought Severity Index (PDSI) and related indices were developed by W
 - **PMDI**: Palmer Modified Drought Index (short-term agricultural drought)
 - **Z-Index**: Palmer Z-Index (monthly moisture anomaly)
 - **scPDSI**: Self-Calibrated PDSI (Wells et al., 2004), available through
-  :func:`climate_indices.palmer.scpdsi`, improves spatial comparability by
+  {func}`climate_indices.palmer.scpdsi`, improves spatial comparability by
   calibrating to each location's climate.
 
 These indices are based on a water balance model that accounts for precipitation, evapotranspiration, soil moisture, and runoff.
 
-When to Use Palmer Indices
----------------------------
+### When to Use Palmer Indices
 
 **Ideal applications:**
 
@@ -437,8 +410,7 @@ When to Use Palmer Indices
 - Original PDSI not directly comparable across climates
 - Designed for U.S. climates (may need adjustment elsewhere)
 
-Algorithm Overview
-------------------
+### Algorithm Overview
 
 The Palmer drought indices use a two-layer soil moisture accounting model:
 
@@ -460,27 +432,26 @@ The Palmer drought indices use a two-layer soil moisture accounting model:
    - PHDI: Emphasizes long-term moisture deficits
    - PMDI: Responds quickly to short-term changes
 
-.. note::
-   The Palmer indices require significant calibration data including soil water holding
-   capacity, which may not be available for all locations. SPI and SPEI are often
-   preferred for global applications due to their simpler data requirements and
-   multi-scalar nature.
+:::{note}
+The Palmer indices require significant calibration data including soil water holding
+capacity, which may not be available for all locations. SPI and SPEI are often
+preferred for global applications due to their simpler data requirements and
+multi-scalar nature.
+:::
 
-Additional Indices
-==================
+## Additional Indices
 
-Precipitation Concentration Index (PCI)
-----------------------------------------
+### Precipitation Concentration Index (PCI)
 
 The Precipitation Concentration Index (PCI) quantifies the temporal distribution of precipitation throughout the year (Oliver, 1980).
 
 **Equation:**
 
-.. math::
+$$
+PCI = \frac{\sum_{i=1}^{12} P_i^2}{\left(\sum_{i=1}^{12} P_i\right)^2} \times 100
+$$
 
-   PCI = \frac{\sum_{i=1}^{12} P_i^2}{\left(\sum_{i=1}^{12} P_i\right)^2} \times 100
-
-Where *P*\ :sub:`i` is the precipitation in month *i*.
+Where *P*{sub}`i` is the precipitation in month *i*.
 
 **Interpretation:**
 
@@ -502,21 +473,20 @@ Where *P*\ :sub:`i` is the precipitation in month *i*.
 - Rejects incomplete years or years with missing data
 - Returns single PCI value per year
 
-Percentage of Normal Precipitation (PNP)
------------------------------------------
+### Percentage of Normal Precipitation (PNP)
 
 The Percentage of Normal Precipitation (PNP) expresses precipitation as a percentage of the long-term average for a given location and time period.
 
 **Equation:**
 
-.. math::
-
-   PNP = \frac{P_{observed}}{P_{normal}} \times 100
+$$
+PNP = \frac{P_{observed}}{P_{normal}} \times 100
+$$
 
 Where:
 
-- *P*\ :sub:`observed` = observed precipitation for the period
-- *P*\ :sub:`normal` = long-term average precipitation for the same calendar period
+- *P*{sub}`observed` = observed precipitation for the period
+- *P*{sub}`normal` = long-term average precipitation for the same calendar period
 
 **Implementation details:**
 
@@ -546,19 +516,17 @@ Where:
 - Less sophisticated than SPI/SPEI
 - Sensitive to calibration period selection
 
-Statistical Methods
-===================
+## Statistical Methods
 
-Distribution Fitting
---------------------
+### Distribution Fitting
 
 **Gamma distribution**:
 
 The two-parameter gamma distribution is the default for SPI and SPEI:
 
-.. math::
-
-   f(x; \alpha, \beta) = \frac{1}{\beta^\alpha \Gamma(\alpha)} x^{\alpha-1} e^{-x/\beta}
+$$
+f(x; \alpha, \beta) = \frac{1}{\beta^\alpha \Gamma(\alpha)} x^{\alpha-1} e^{-x/\beta}
+$$
 
 Where:
 
@@ -572,9 +540,9 @@ Parameters are estimated using maximum likelihood estimation (MLE) on the calibr
 
 The three-parameter Pearson Type III distribution is an alternative for skewed data:
 
-.. math::
-
-   f(x; \mu, \sigma, \gamma) = \frac{1}{\sigma \Gamma(\alpha) \beta^\alpha} (x - \xi)^{\alpha-1} e^{-(x-\xi)/\beta}
+$$
+f(x; \mu, \sigma, \gamma) = \frac{1}{\sigma \Gamma(\alpha) \beta^\alpha} (x - \xi)^{\alpha-1} e^{-(x-\xi)/\beta}
+$$
 
 Where:
 
@@ -584,8 +552,7 @@ Where:
 
 Parameters are estimated using L-moments method (see below) on the calibration period data.
 
-L-moments Estimation
---------------------
+### L-moments Estimation
 
 L-moments (Linear moments) are used to estimate Pearson Type III distribution parameters. L-moments have advantages over conventional moments:
 
@@ -606,8 +573,7 @@ This library implements the L-moments estimation procedures from Hosking (1997):
 
 **Minimum data requirement**: At least 4 non-zero values per calendar month for stable L-moments estimation.
 
-Goodness-of-Fit Validation
----------------------------
+### Goodness-of-Fit Validation
 
 The library performs goodness-of-fit testing to validate that the fitted distribution adequately represents the observed data.
 
@@ -622,25 +588,23 @@ The library performs goodness-of-fit testing to validate that the fitted distrib
 
 1. **Calibration period length**: Warning if < 30 years
 
-   - Constant: ``MIN_CALIBRATION_YEARS = 30``
+   - Constant: `MIN_CALIBRATION_YEARS = 30`
 
 2. **Missing data threshold**: Warning if > 20% missing
 
-   - Constant: ``MISSING_DATA_THRESHOLD = 0.20``
+   - Constant: `MISSING_DATA_THRESHOLD = 0.20`
 
 3. **Goodness-of-fit threshold**: Warning if p-value < 0.05
 
-   - Constant: ``GOODNESS_OF_FIT_P_VALUE_THRESHOLD = 0.05``
+   - Constant: `GOODNESS_OF_FIT_P_VALUE_THRESHOLD = 0.05`
 
 **Fallback strategy**:
 
 If Pearson Type III fitting fails (due to insufficient data or numerical issues), the library automatically falls back to gamma distribution with warning messages in the log.
 
-Validation Datasets and Methods
-================================
+## Validation Datasets and Methods
 
-Reference Datasets
-------------------
+### Reference Datasets
 
 The climate_indices library has been validated against several authoritative sources:
 
@@ -648,22 +612,21 @@ The climate_indices library has been validated against several authoritative sou
 
 - SPI reference implementations
 - Multi-scale validation datasets
-- URL: https://climatedataguide.ucar.edu/climate-data/standardized-precipitation-index-spi
+- URL: <https://climatedataguide.ucar.edu/climate-data/standardized-precipitation-index-spi>
 
 **NOAA/NCEI Climate Monitoring**:
 
 - Operational SPI, SPEI, PDSI values for U.S. climate divisions
 - Monthly updates for verification
-- URL: https://www.ncdc.noaa.gov/temp-and-precip/drought/
+- URL: <https://www.ncdc.noaa.gov/temp-and-precip/drought/>
 
 **Global SPEI Database**:
 
 - Vicente-Serrano et al. global SPEI dataset
 - 0.5° resolution, 1901-present
-- URL: https://spei.csic.es/database.html
+- URL: <https://spei.csic.es/database.html>
 
-Validation Approach
--------------------
+### Validation Approach
 
 **Test methodology**:
 
@@ -680,57 +643,51 @@ Validation Approach
 - Maximum absolute error
 - Computation time and memory usage
 
-External Validation Resources
-------------------------------
+### External Validation Resources
 
 **NCAR Command Language (NCL)**:
 
 - Mature SPI/SPEI implementations
-- URL: https://www.ncl.ucar.edu/
+- URL: <https://www.ncl.ucar.edu/>
 
 **Climate Indices in Python (other libraries)**:
 
-- ``climate-indices`` (NCAR/UCAR)
-- ``spei`` (CRAN R package, Python wrapper)
+- `climate-indices` (NCAR/UCAR)
+- `spei` (CRAN R package, Python wrapper)
 
-.. tip::
-   When validating this library's output against other implementations, ensure
-   consistent parameter choices (distribution, calibration period, scale) and
-   input data preprocessing (missing value handling, time alignment).
+:::{tip}
+When validating this library's output against other implementations, ensure
+consistent parameter choices (distribution, calibration period, scale) and
+input data preprocessing (missing value handling, time alignment).
+:::
 
-Complete Bibliography
-=====================
+## Complete Bibliography
 
 **SPI and Drought Indices:**
 
 - McKee, T. B., Doesken, N. J., & Kleist, J. (1993). The relationship of drought frequency and duration to time scales. *Proceedings of the 8th Conference on Applied Climatology*, 17-22 January, Anaheim, CA. American Meteorological Society, Boston, MA, 179-184.
-
-- Vicente-Serrano, S. M., Begueria, S., & Lopez-Moreno, J. I. (2010). A Multiscalar Drought Index Sensitive to Global Warming: The Standardized Precipitation Evapotranspiration Index. *Journal of Climate*, 23(7), 1696-1718. https://doi.org/10.1175/2009JCLI2909.1
+- Vicente-Serrano, S. M., Begueria, S., & Lopez-Moreno, J. I. (2010). A Multiscalar Drought Index Sensitive to Global Warming: The Standardized Precipitation Evapotranspiration Index. *Journal of Climate*, 23(7), 1696-1718. <https://doi.org/10.1175/2009JCLI2909.1>
 
 **Potential Evapotranspiration:**
 
-- Thornthwaite, C. W. (1948). An approach toward a rational classification of climate. *Geographical Review*, 38(1), 55-94. https://doi.org/10.2307/210739
-
-- Hargreaves, G. H., & Samani, Z. A. (1985). Reference crop evapotranspiration from temperature. *Applied Engineering in Agriculture*, 1(2), 96-99. https://doi.org/10.13031/2013.26773
-
-- Allen, R. G., Pereira, L. S., Raes, D., & Smith, M. (1998). *Crop evapotranspiration: Guidelines for computing crop water requirements*. FAO Irrigation and Drainage Paper 56. Food and Agriculture Organization of the United Nations, Rome. ISBN 92-5-104219-5. Available at: http://www.fao.org/3/x0490e/x0490e00.htm
+- Thornthwaite, C. W. (1948). An approach toward a rational classification of climate. *Geographical Review*, 38(1), 55-94. <https://doi.org/10.2307/210739>
+- Hargreaves, G. H., & Samani, Z. A. (1985). Reference crop evapotranspiration from temperature. *Applied Engineering in Agriculture*, 1(2), 96-99. <https://doi.org/10.13031/2013.26773>
+- Allen, R. G., Pereira, L. S., Raes, D., & Smith, M. (1998). *Crop evapotranspiration: Guidelines for computing crop water requirements*. FAO Irrigation and Drainage Paper 56. Food and Agriculture Organization of the United Nations, Rome. ISBN 92-5-104219-5. Available at: <http://www.fao.org/3/x0490e/x0490e00.htm>
 
 **Palmer Drought Indices:**
 
 - Palmer, W. C. (1965). *Meteorological Drought*. U.S. Weather Bureau Research Paper No. 45. Washington, D.C.
-
-- Wells, N., Goddard, S., & Hayes, M. J. (2004). A Self-Calibrating Palmer Drought Severity Index. *Journal of Climate*, 17(12), 2335-2351. https://doi.org/10.1175/1520-0442(2004)017<2335:ASPDSI>2.0.CO;2
+- Wells, N., Goddard, S., & Hayes, M. J. (2004). A Self-Calibrating Palmer Drought Severity Index. *Journal of Climate*, 17(12), 2335-2351. <https://doi.org/10.1175/1520-0442(2004)017%3C2335:ASPDSI%3E2.0.CO;2>
 
 **Precipitation Concentration Index:**
 
-- Oliver, J. E. (1980). Monthly precipitation distribution: A comparative index. *The Professional Geographer*, 32(3), 300-309. https://doi.org/10.1111/j.0033-0124.1980.00300.x
+- Oliver, J. E. (1980). Monthly precipitation distribution: A comparative index. *The Professional Geographer*, 32(3), 300-309. <https://doi.org/10.1111/j.0033-0124.1980.00300.x>
 
 **Statistical Methods:**
 
-- Hosking, J. R. M. (1997). *FORTRAN Routines for Use with the Method of L-Moments, Version 3*. IBM Research Report RC20525. IBM Research Division, T. J. Watson Research Center, Yorktown Heights, NY. (Note: Available through various online archives and the R package ``lmomco``)
+- Hosking, J. R. M. (1997). *FORTRAN Routines for Use with the Method of L-Moments, Version 3*. IBM Research Report RC20525. IBM Research Division, T. J. Watson Research Center, Yorktown Heights, NY. (Note: Available through various online archives and the R package `lmomco`)
 
 **Additional Resources:**
 
-- World Meteorological Organization (WMO). (2012). *Standardized Precipitation Index User Guide* (WMO-No. 1090). Geneva, Switzerland. Available at: https://library.wmo.int/doc_num.php?explnum_id=7768
-
-- American Meteorological Society. (2020). Drought. *Glossary of Meteorology*. https://glossary.ametsoc.org/wiki/Drought
+- World Meteorological Organization (WMO). (2012). *Standardized Precipitation Index User Guide* (WMO-No. 1090). Geneva, Switzerland. Available at: <https://library.wmo.int/doc_num.php?explnum_id=7768>
+- American Meteorological Society. (2020). Drought. *Glossary of Meteorology*. <https://glossary.ametsoc.org/wiki/Drought>
