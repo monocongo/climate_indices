@@ -7,6 +7,10 @@ correctness by narrowing return types based on input types:
 - spi(np.ndarray, ...) -> np.ndarray      (and likewise for spei, eddi, pnp, pci)
 - spi(xr.DataArray, ...) -> xr.DataArray  (and pet_thornthwaite, pet_hargreaves)
 
+The Palmer family follows the same dispatch: pdsi(np.ndarray, ...) returns the
+five-item tuple palmer.pdsi() produces, and pdsi(xr.DataArray, ...) returns an
+xr.Dataset of the four indices.
+
 Design: Pre-build decorated functions at module level for performance. The public
 functions filter None kwargs and delegate to the pre-built wrapped functions.
 
@@ -35,6 +39,9 @@ from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.compute import Periodicity
 from climate_indices.indices import Distribution
 from climate_indices.validation import InputType, detect_input_type
+from climate_indices.xarray_adapter import (
+    palmer_pdsi as _palmer_pdsi_impl,
+)
 from climate_indices.xarray_adapter import (
     pet_hargreaves as _pet_hargreaves_impl,
 )
@@ -575,4 +582,104 @@ def eddi(
             calibration_year_final=calibration_year_final,
             periodicity=periodicity,
         ),
+    )
+
+
+# PDSI (Palmer Drought Severity Index family) overloads
+@overload
+def pdsi(
+    precips: npt.NDArray[np.float64],
+    pet: npt.NDArray[np.float64],
+    awc: float | npt.NDArray[np.float64],
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    fitting_params: dict[str, Any] | None = None,
+    time_dim: str = "time",
+) -> tuple[
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    dict[str, Any] | None,
+]: ...
+
+
+@overload
+def pdsi(
+    precips: xr.DataArray,
+    pet: xr.DataArray,
+    awc: float | npt.NDArray[np.float64] | xr.DataArray,
+    data_start_year: int | None = None,
+    calibration_year_initial: int | None = None,
+    calibration_year_final: int | None = None,
+    fitting_params: dict[str, Any] | None = None,
+    time_dim: str = "time",
+) -> xr.Dataset: ...
+
+
+def pdsi(
+    precips: npt.NDArray[np.float64] | xr.DataArray,
+    pet: npt.NDArray[np.float64] | xr.DataArray,
+    awc: float | npt.NDArray[np.float64] | xr.DataArray,
+    data_start_year: int | None = None,
+    calibration_year_initial: int | None = None,
+    calibration_year_final: int | None = None,
+    fitting_params: dict[str, Any] | None = None,
+    time_dim: str = "time",
+) -> (
+    tuple[
+        npt.NDArray[np.float64],
+        npt.NDArray[np.float64],
+        npt.NDArray[np.float64],
+        npt.NDArray[np.float64],
+        dict[str, Any] | None,
+    ]
+    | xr.Dataset
+):
+    """Compute the standard Palmer drought indices (PDSI, PHDI, PMDI, Z-Index).
+
+    This function accepts both NumPy arrays and xarray DataArrays. Type checkers
+    will narrow the return type based on the input type.
+
+    For NumPy inputs, all temporal parameters are required and the return is the
+    five-item tuple :func:`climate_indices.palmer.pdsi` produces. For xarray
+    inputs, temporal parameters are optional and inferred from the time
+    coordinate, and the return is an ``xr.Dataset`` with one variable per index
+    (``pdsi``, ``phdi``, ``pmdi``, ``z_index``), each carrying its own CF metadata.
+
+    .. warning:: **Beta Feature (xarray path only)** — When called with an
+       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
+       The xarray interface (parameter inference, metadata handling, coordinate
+       preservation) may change in future minor releases. The NumPy array interface
+       is stable.
+
+    Args:
+        precips: Monthly precipitation values in inches.
+        pet: Monthly potential evapotranspiration values in inches, matching
+            ``precips``.
+        awc: Available water capacity (soil constant) in inches. A scalar, or a
+            DataArray broadcastable to the precipitation's cell dimensions.
+        data_start_year: Initial year of the input dataset (required for NumPy,
+            optional for xarray).
+        calibration_year_initial: Initial year of the calibration period (required
+            for NumPy, optional for xarray).
+        calibration_year_final: Final year of the calibration period (required for
+            NumPy, optional for xarray).
+        fitting_params: Optional dict of pre-computed Palmer fitting parameters.
+        time_dim: Name of the time dimension for xarray inputs (default: ``"time"``).
+
+    Returns:
+        The five-item PDSI-family tuple for numpy.ndarray input, or an
+        ``xr.Dataset`` of the four indices for xarray.DataArray input.
+    """
+    return _palmer_pdsi_impl(
+        precips,
+        pet,
+        awc,
+        data_start_year=data_start_year,
+        calibration_year_initial=calibration_year_initial,
+        calibration_year_final=calibration_year_final,
+        fitting_params=fitting_params,
+        time_dim=time_dim,
     )

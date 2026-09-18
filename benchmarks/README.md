@@ -311,9 +311,11 @@ pinned to `DataShapeError`. The ranking count holds one chunk of the
 size no longer multiplies into it.
 
 `palmer.pdsi` gained a spatial block path at the NumPy layer in #937 (see
-`### Conversion status (#937)` below); it has no xarray adapter yet, so it
-does not appear in the canonical adapter table above. `palmer.scpdsi` stays
-per-location (ADR-0011) and is not part of this conversion.
+`### Conversion status (#937)` below), and its xarray adapter landed in #1016:
+`climate_indices.pdsi()` takes DataArrays and returns a Dataset of the four
+indices, reaching the kernel once per block with AWC broadcast like PET's
+latitude. `palmer.scpdsi` stays per-location (ADR-0011) and has no xarray entry
+point.
 
 ### Legacy CLI path (per-cell loop present, parallel across workers)
 
@@ -359,8 +361,10 @@ contracts; `tests/test_main_palmers.py` pins the CLI worker's grid path the same
 `TestPalmersWorker` already pinned the division path. `palmer.scpdsi()` explicitly
 rejects a spatial block (ADR-0011) and is unaffected.
 
-There is still no xarray adapter for either Palmer entry point; that registration
-is a separate follow-up ticket referenced from #937.
+`climate_indices.pdsi()` registers `palmer.pdsi` with the xarray adapter (#1016):
+it forwards `vectorize=False`, hands the kernel a `(time, *cells)` block with the
+per-cell AWC, and rewraps the four outputs as a Dataset. `palmer.scpdsi()` still
+has no xarray entry point (ADR-0011).
 
 ### Already vectorized (no per-cell index invocation)
 

@@ -16,6 +16,7 @@ from climate_indices.logging_config import configure_logging
 from climate_indices.typed_public_api import (
     eddi,
     pci,
+    pdsi,
     percentage_of_normal,
     pet_hargreaves,
     pet_thornthwaite,
@@ -51,6 +52,7 @@ __all__ = [
     "emit_deprecation_warning",
     "fire",
     "pci",
+    "pdsi",
     "percentage_of_normal",
     "pet_hargreaves",
     "pet_thornthwaite",

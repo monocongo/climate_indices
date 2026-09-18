@@ -70,8 +70,9 @@ are pinned to `DataShapeError` rather than `ValueError`. `palmer.pdsi()` adopts 
 time-major block contract at the NumPy layer (#937); see
 [ADR-0011](./0011-palmer-spatial-block-and-per-location-scpdsi.md) for why its recursion needed a
 masked rewrite rather than a broadcast, why scPDSI stays per-location, and why one K-factor
-reduction has to run along a specific axis to stay bit-for-bit with the per-location path. Palmer
-still has no xarray adapter layer; that registration is a separate follow-up ticket.
+reduction has to run along a specific axis to stay bit-for-bit with the per-location path. Palmer's
+xarray adapter landed in #1016: `climate_indices.pdsi()` reaches `palmer.pdsi()` once per block
+with AWC broadcast like PET's latitude, and scPDSI stays without an adapter entry point.
 
 The PET entry points do not use the adapter decorator, because latitude arrives as a broadcast
 input rather than a secondary time series. They forward `vectorize=False` themselves and hand

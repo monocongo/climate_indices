@@ -133,10 +133,10 @@ A gridded input array shaped `(time, *cells)` — the time axis first, every tra
 _Avoid_: time-major block (the code spelling, not the prose term)
 
 **Spatial Kernel**:
-An index whose NumPy core accepts a Spatial Block, declared per index with `spatial_kernel=True` at its adapter call site. Such an index runs one `xr.apply_ufunc` call per non-core block instead of one per grid cell; indices whose cores still loop over cells keep the Per-Cell Path.
+An index whose NumPy core accepts a Spatial Block, declared per index with `spatial_kernel=True` at its adapter call site, or by an entry point that owns its `xr.apply_ufunc` call (`pet_thornthwaite`/`pet_hargreaves`, `pdsi`). Such an index runs one `xr.apply_ufunc` call per non-core block instead of one per grid cell; indices whose cores still loop over cells keep the Per-Cell Path.
 
 **Per-Cell Path**:
-The alternative dispatch, `xr.apply_ufunc(..., vectorize=True)`, which calls the kernel once per grid cell over 1-D time series. Still used for inputs with a single non-core dimension, and for the index families listed in [ADR-0009](../../docs/adr/0009-spatial-block-declaration.md) (#937).
+The alternative dispatch, `xr.apply_ufunc(..., vectorize=True)`, which calls the kernel once per grid cell over 1-D time series. Still used for inputs with a single non-core dimension. scPDSI has no adapter entry point at all and stays on the per-location NumPy path ([ADR-0011](../../docs/adr/0011-palmer-spatial-block-and-per-location-scpdsi.md)).
 
 ### Metadata & provenance
 
