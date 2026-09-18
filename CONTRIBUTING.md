@@ -90,18 +90,22 @@ Current assignments (the context map and validation status live at the
 repository root — `CONTEXT-MAP.md`, `VALIDATION.md` — and the core-library
 vocabulary at `src/climate_indices/CONTEXT.md`):
 
-- Tutorial: `docs/quickstart.md`, `docs/index.md`
-- How-to guide: `docs/troubleshooting.md`, `docs/xarray_migration.md`,
+- Router: `docs/index.md` (the homepage routes into the four sections below)
+- Tutorial: `docs/tutorials.md`, `docs/quickstart.md`
+- How-to guide: `docs/how-to.md`, `docs/workflow-examples.md`,
+  `docs/troubleshooting.md`, `docs/xarray_migration.md`, `docs/performance.md`,
   `docs/development-guide.md`, `docs/contribution-guide.md`,
   `docs/deployment-guide.md`, `docs/release-process.md`
-- Reference: `docs/reference.md`, `docs/algorithms.md`,
-  `docs/deprecations/`, `docs/xarray_compatibility.md`,
+- Reference: `docs/reference.md`, `docs/algorithm-reference.md`,
+  `docs/error-reference.md`, `docs/deprecations/`,
+  `docs/xarray_compatibility.md`,
   `docs/research/nclimgrid-acquisition-and-redistribution.md` (the
   troubleshooting guide sends readers there for source provenance and
   attribution),
   `src/climate_indices/CONTEXT.md`, `VALIDATION.md`
-- Explanation: `docs/ai-assisted-development.md`,
+- Explanation: `docs/explanation.md`, `docs/algorithms.md`,
   `docs/wildfire_applications.md`, `docs/adr/`,
+  `docs/ai-assisted-development.md`,
   `docs/algorithm_refs/`, `docs/architecture.md`,
   `docs/project-overview.md`, `docs/floating_point_best_practices.md`
 - Internal: `docs/agent/`, `docs/design/`,
@@ -109,6 +113,7 @@ vocabulary at `src/climate_indices/CONTEXT.md`):
   `docs/research/interactive-climate-explorer-landscape.md`,
   `docs/research/dri-wrcc-scpdsi-assessment.md`,
   `docs/explorer/`, `docs/architecture-deepening-review-*.md`,
+  `docs/ai-assisted-development-report-*.md`,
   `docs/test_fixture_management.md`, `CONTEXT-MAP.md`
 - Published URL-retention orphan: `docs/pypi_release.md` (`orphan: true`; kept
   only so the previously published `pypi_release.html` URL resolves)

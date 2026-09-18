@@ -21,6 +21,7 @@ Two tiers of tests:
 
 from __future__ import annotations
 
+import fnmatch
 import re
 import subprocess
 import sys
@@ -248,6 +249,66 @@ def test_wildfire_applications_cross_links_use_myst_roles() -> None:
     assert ":doc:" not in page, (
         "docs/wildfire_applications.md must use MyST {doc} roles; an RST :doc: role renders as literal text"
     )
+
+
+def test_every_published_docs_page_has_one_visible_section() -> None:
+    """Published pages must be reachable from the four visible section toctrees.
+
+    Sphinx's warnings-as-errors build only catches a page that is in no toctree at
+    all; a page parked in a hidden toctree, or one misassigned to a section, still
+    builds green. This keeps the four-section navigation and the exclusion list in
+    `docs/conf.py` honest without parsing built HTML.
+    """
+    docs = ROOT / "docs"
+    conf = (docs / "conf.py").read_text(encoding="utf-8")
+    exclude_block = re.search(r"^exclude_patterns = \[(.*?)^\]", conf, re.MULTILINE | re.DOTALL)
+    assert exclude_block is not None, "docs/conf.py must define exclude_patterns"
+    excluded = re.findall(r'"([^"]+)"', exclude_block.group(1))
+
+    def is_excluded(relative: str) -> bool:
+        return any(
+            fnmatch.fnmatch(relative, pattern) or any(fnmatch.fnmatch(part, pattern) for part in Path(relative).parts)
+            for pattern in excluded
+        )
+
+    sources = {
+        path.relative_to(docs).with_suffix("").as_posix()
+        for path in docs.rglob("*.md")
+        if not is_excluded(path.relative_to(docs).as_posix())
+    }
+
+    toctree = re.compile(r"^```\{toctree\}(.*?)^```", re.MULTILINE | re.DOTALL)
+    visible: set[str] = set()
+    hidden: set[str] = set()
+    for page in sorted(sources):
+        text = (docs / f"{page}.md").read_text(encoding="utf-8")
+        for block in toctree.findall(text):
+            entries = {
+                (Path(page).parent / line.strip()).as_posix()
+                for line in block.splitlines()
+                if line.strip() and not line.strip().startswith(":")
+            }
+            (hidden if ":hidden:" in block else visible).update(entries)
+
+    orphans = {
+        page
+        for page in sources
+        if re.search(r"^orphan:\s*true\s*$", (docs / f"{page}.md").read_text(encoding="utf-8"), re.MULTILINE)
+    }
+
+    required = sources - orphans - hidden - {"index"}
+    assert required == visible, "every published page must appear in exactly one visible section toctree"
+    assert not visible & hidden, "a page cannot be both a visible section member and hidden"
+    assert hidden <= {page for page in sources if page.startswith("adr/")}, (
+        "only the staged architecture decision records may sit in a hidden toctree"
+    )
+    assert orphans == {"pypi_release"}, "pypi_release is the only documented orphan"
+
+    homepage = toctree.search((docs / "index.md").read_text(encoding="utf-8"))
+    assert homepage is not None, "docs/index.md must route into the four sections"
+    assert {
+        line.strip() for line in homepage.group(1).splitlines() if line.strip() and not line.strip().startswith(":")
+    } == {"tutorials", "how-to", "reference", "explanation"}
 
 
 def test_release_process_documents_pypi_metadata_verification() -> None:

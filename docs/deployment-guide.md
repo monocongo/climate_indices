@@ -155,7 +155,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-exclude = ["tests/", "docs/", "notebooks/", ...]
+exclude = ["tests/", "docs/", "notebooks/"]
 ```
 
 ## ReadTheDocs Deployment
@@ -192,19 +192,20 @@ source_suffix = ".md"
 
 ### Dependency Groups
 ```toml
-[project.dependencies]
+[project]
 # Core runtime dependencies
-scipy>=1.15.3
-xarray>=2025.6.1
-dask>=2025.7.0
-structlog>=24.1.0
+dependencies = [
+    "scipy>=1.15.3",
+    "xarray>=2025.6.1",
+    "dask>=2025.7.0",
+    "structlog>=24.1.0",
+]
 
 [dependency-groups]
 dev = [
     "pytest>=8.4.1",
     "ruff>=0.12.7",
     "mypy",
-    ...
 ]
 ```
 
@@ -234,4 +235,4 @@ configure_logging(
 
 ---
 
-See [architecture.md](./architecture.md) for system design and [development-guide.md](./development-guide.md) for local development setup.
+See [architecture.md](https://github.com/monocongo/climate_indices/blob/main/docs/architecture.md) for system design and [development-guide.md](./development-guide.md) for local development setup.

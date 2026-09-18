@@ -1,3 +1,5 @@
+import types
+
 import numpy as np
 import pytest
 
@@ -288,16 +290,99 @@ def test_pdsi_returned_params_reproduce_a_duration_factor_override():
             "dryb must be a finite scalar",
             id="overflow",
         ),
+        pytest.param(
+            {"wetm": np.ma.masked, "wetb": 1.0, "drym": 1.0, "dryb": 1.0},
+            "wetm must be a finite scalar",
+            id="masked",
+        ),
+        pytest.param(
+            {"wetm": np.ma.array(1.0, mask=True), "wetb": 1.0, "drym": 1.0, "dryb": 1.0},
+            "wetm must be a finite scalar",
+            id="masked-array",
+        ),
+        pytest.param(
+            # np.ma.is_masked reads a bare ``_mask`` attribute and raises
+            # AttributeError on a non-masked object; the gate checks the type first
+            {"wetm": types.SimpleNamespace(_mask="x"), "wetb": 1.0, "drym": 1.0, "dryb": 1.0},
+            "wetm must be a finite scalar",
+            id="bare-mask-attribute",
+        ),
     ],
 )
 def test_invalid_duration_factor_override_is_rejected(override, message):
-    """A malformed override is a caller error, not a silent default."""
+    """A malformed override is a caller error, not a silent default.
+
+    A masked factor is missing data, not a number: ``np.asarray`` would drop the
+    mask and hand the backing value to the recursion.
+    """
     rng = np.random.default_rng(42)
     precips = rng.uniform(0.0, 6.0, size=12 * 4)
     pet = rng.uniform(0.0, 4.0, size=12 * 4)
 
     with pytest.raises(ValueError, match=message):
         palmer.pdsi(precips, pet, 5.0, 2000, 2000, 2003, fitting_params=override)
+
+
+def test_palmer_default_factors_as_override_reproduce_the_default_run():
+    """Palmer's own factors, supplied as an override, must reproduce the default run.
+
+    Pins that a run given Palmer's constants through the override is bit-identical
+    to the run that never saw them. Slot routing is pinned with distinct values by
+    ``test_pdsi_returned_params_reproduce_a_duration_factor_override``; the default
+    pair values are equal across wet and dry, so they cannot pin routing here.
+    """
+    rng = np.random.default_rng(42)
+    precips = rng.uniform(0.0, 6.0, size=12 * 4)
+    pet = rng.uniform(0.0, 4.0, size=12 * 4)
+    defaults = DurationFactors.from_defaults()
+    as_override = {
+        "wetm": defaults.wetm,
+        "wetb": defaults.wetb,
+        "drym": defaults.drym,
+        "dryb": defaults.dryb,
+    }
+
+    default_pdsi, *_ = palmer.pdsi(precips, pet, 5.0, 2000, 2000, 2003)
+    overridden_pdsi, *_ = palmer.pdsi(precips, pet, 5.0, 2000, 2000, 2003, fitting_params=as_override)
+
+    np.testing.assert_array_equal(default_pdsi, overridden_pdsi)
+
+
+def test_duration_factor_override_does_not_preempt_input_validation():
+    """An invalid override must not mask a data error the caller can act on."""
+    rng = np.random.default_rng(42)
+    precips = rng.uniform(0.0, 6.0, size=12 * 4)
+    pet = rng.uniform(0.0, 4.0, size=12 * 4)
+    override = {"wetm": 1.0}
+
+    with pytest.raises(ValueError, match="Incompatible precipitation and PET arrays"):
+        palmer.pdsi(precips, pet[:-1], 5.0, 2000, 2000, 2003, fitting_params=override)
+
+    infinite = precips.copy()
+    infinite[0] = np.inf
+    with pytest.raises(ValueError, match="infinite"):
+        palmer.pdsi(infinite, pet, 5.0, 2000, 2000, 2003, fitting_params=override)
+
+    # the calibration period is validated by the preparation stage that runs before
+    # the override is resolved
+    with pytest.raises(ValueError, match="calibration period"):
+        palmer.pdsi(precips, pet, 5.0, 2000, 1990, 2003, fitting_params=override)
+
+
+def test_duration_factor_override_is_not_validated_for_all_missing_input():
+    """All-missing input keeps its documented NaN arrays and ``None`` parameters.
+
+    The override is resolved after the all-missing fast path, as the CAFEC fitting
+    parameters already are, so a partial override cannot turn that return into a raise.
+    """
+    all_missing = np.full(12 * 4, np.nan)
+
+    pdsi_values, _, _, _, params = palmer.pdsi(
+        all_missing, all_missing, 5.0, 2000, 2000, 2003, fitting_params={"wetm": 1.0}
+    )
+
+    assert params is None
+    assert np.all(np.isnan(pdsi_values))
 
 
 def test_cafec_ratio_substitutes_exact_zero_and_leaves_a_zero_denominator():

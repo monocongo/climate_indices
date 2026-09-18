@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-This guide helps you resolve common errors, warnings, and performance issues when using `climate_indices`. If you encounter a specific error message, use the Quick Reference table below to jump directly to the solution.
+This guide helps you resolve common errors, warnings, and performance issues when using `climate_indices`. If you encounter a specific error message, look it up in {doc}`error-reference` to find its category and then the recipe below.
 
 ```{contents} On this page
 :backlinks: none
@@ -23,68 +23,7 @@ This guide organizes errors by category (input types, coordinates, distribution 
 
 - {doc}`xarray_migration` — Migration guide with additional xarray-specific pitfalls
 - {doc}`algorithms` — Algorithm documentation with calibration guidance
-- {doc}`reference` — Complete API reference with exception hierarchy
-
-______________________________________________________________________
-
-## Quick Reference: Error Lookup Table
-
-Use this table to quickly find the section for your error message:
-
-```{list-table}
-:header-rows: 1
-:widths: 60 40
-* - Error Message Fragment
-  - Section
-* - `Unsupported input type` / `pandas` / `DataFrame`
-  - [Input Type Errors](#input-type-errors)
-* - `xr.Dataset detected`
-  - [Input Type Errors](#input-type-errors)
-* - `Time dimension 'time' not found`
-  - [Coordinate and Dimension Errors](#coordinate-and-dimension-errors)
-* - `Time coordinate is not monotonically increasing`
-  - [Coordinate and Dimension Errors](#coordinate-and-dimension-errors)
-* - `NaT (Not-a-Time) or NaN values`
-  - [Coordinate and Dimension Errors](#coordinate-and-dimension-errors)
-* - `Time coordinate is empty`
-  - [Coordinate and Dimension Errors](#coordinate-and-dimension-errors)
-* - `Unsupported frequency` / `'W'` / `'H'`
-  - [Coordinate and Dimension Errors](#coordinate-and-dimension-errors)
-* - `latitude must be within [-90, 90]`
-  - [Coordinate and Dimension Errors](#coordinate-and-dimension-errors)
-* - `Insufficient data for scale`
-  - [Data Sufficiency Errors](#data-sufficiency-errors)
-* - `Calibration period contains no data points`
-  - [Data Sufficiency Errors](#data-sufficiency-errors)
-* - `Insufficient non-NaN data in calibration period`
-  - [Data Sufficiency Errors](#data-sufficiency-errors)
-* - `Gamma CDF failed` / `DistributionFittingError`
-  - [Distribution Fitting Failures](#distribution-fitting-failures)
-* - `Pearson CDF failed` / `PearsonFittingError`
-  - [Distribution Fitting Failures](#distribution-fitting-failures)
-* - `Invalid scale argument`
-  - [Argument Validation Errors](#argument-validation-errors)
-* - `Unsupported distribution`
-  - [Argument Validation Errors](#argument-validation-errors)
-* - `Invalid periodicity argument`
-  - [Argument Validation Errors](#argument-validation-errors)
-* - `Dimension 'time' is split across` / `chunks`
-  - [Dask and Chunking Issues](#dask-and-chunking-issues)
-* - `No overlapping time steps after alignment`
-  - [Dask and Chunking Issues](#dask-and-chunking-issues)
-* - `Prepared inputs not found` / `Input manifest not found`
-  - [Notebook and Prepared-Input Workflow](#notebook-and-prepared-input-workflow)
-* - `must keep time as a single chunk`
-  - [Notebook and Prepared-Input Workflow](#notebook-and-prepared-input-workflow)
-* - `ShortCalibrationWarning`
-  - [Warnings (Non-Fatal)](#warnings-non-fatal)
-* - `MissingDataWarning`
-  - [Warnings (Non-Fatal)](#warnings-non-fatal)
-* - `GoodnessOfFitWarning`
-  - [Warnings (Non-Fatal)](#warnings-non-fatal)
-* - `InputAlignmentWarning`
-  - [Warnings (Non-Fatal)](#warnings-non-fatal)
-```
+- {doc}`error-reference` — Error and exception lookup, including the exception hierarchy
 
 ______________________________________________________________________
 
@@ -1335,78 +1274,6 @@ The library emits structured log events for important operations:
 2026-02-10T15:30:45.234Z event='nan_detected_in_input' function_name='spi' nan_count=45 nan_ratio=0.0938 total_values=480
 2026-02-10T15:30:48.567Z event='xarray_adapter_completed' function_name='spi' input_shape=(480,) output_shape=(480,) inferred_params=True
 ```
-
-______________________________________________________________________
-
-## Exception Hierarchy Reference
-
-Understanding the exception hierarchy helps you catch errors at the appropriate level:
-
-```text
-ClimateIndicesError (base exception)
-├── DistributionFittingError
-│   ├── InsufficientDataError
-│   └── PearsonFittingError
-├── CoordinateValidationError
-│   └── DimensionMismatchError
-├── InputTypeError
-└── InvalidArgumentError
-    └── PeriodicityError
-
-ClimateIndicesWarning (base warning)
-├── MissingDataWarning
-├── ShortCalibrationWarning
-├── GoodnessOfFitWarning
-└── InputAlignmentWarning
-```
-
-### Catching all library errors
-
-```python
-from climate_indices import indices
-from climate_indices.exceptions import ClimateIndicesError
-
-try:
-    result = indices.spi(precip_da, scale=6, distribution=indices.Distribution.gamma)
-except ClimateIndicesError as e:
-    # catches all library-specific errors
-    print(f"Climate indices error: {e}")
-    # handle or re-raise
-```
-
-### Catching specific error categories
-
-```python
-from climate_indices.exceptions import (
-    DistributionFittingError,
-    CoordinateValidationError,
-    InputTypeError,
-)
-
-try:
-    result = indices.spi(precip_da, scale=6, distribution=indices.Distribution.gamma)
-except DistributionFittingError as e:
-    # retry with different distribution
-    result = indices.spi(precip_da, scale=6, distribution=indices.Distribution.pearson)
-except CoordinateValidationError as e:
-    # fix coordinate issues
-    precip_fixed = precip_da.sortby("time")
-    result = indices.spi(precip_fixed, scale=6, distribution=indices.Distribution.gamma)
-except InputTypeError as e:
-    # convert input type
-    precip_array = precip_da.values
-    result = indices.spi(
-        precip_array,
-        scale=6,
-        distribution=indices.Distribution.gamma,
-        data_start_year=1980,
-        calibration_year_initial=1980,
-        calibration_year_final=2010,
-        periodicity=compute.Periodicity.monthly,
-    )
-```
-
-**Cross-reference:** See {doc}`reference` for complete exception API documentation.
 
 ______________________________________________________________________
 
