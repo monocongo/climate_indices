@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -234,6 +235,39 @@ def _palmer_division_dirs() -> tuple[str, ...]:
     return tuple(os.path.join(root, name) for name in sorted(os.listdir(root)) if name.isdigit())
 
 
+@pytest.fixture(scope="session")
+def palmer_division_dirs() -> tuple[Path, ...]:
+    """Every committed climate-division fixture directory, from the one shared scan."""
+    return tuple(Path(directory) for directory in _palmer_division_dirs())
+
+
+@pytest.fixture(
+    scope="session", params=[Path(directory) for directory in _palmer_division_dirs()], ids=lambda path: path.name
+)
+def palmer_division_dir(request: pytest.FixtureRequest) -> Path:
+    """One parametrized climate-division fixture directory, for per-division tests."""
+    return request.param
+
+
+@pytest.fixture(scope="session")
+def palmer_division_inputs(palmer_awcs) -> dict[str, tuple[np.ndarray, np.ndarray, float]]:
+    """Division-keyed ``(precips, pet, awc)``, the one loader for the division fixtures.
+
+    The Palmer sweeps, the scPDSI contract tests, and the nClimDiv comparisons all
+    read the same committed inputs, so the paths and the AWC lookup live here rather
+    than in each test module. Loading every division costs single-digit MiB, and the
+    session scope keeps it to one load per pytest session.
+    """
+    return {
+        os.path.basename(directory): (
+            np.load(os.path.join(directory, "precips.npy")),
+            np.load(os.path.join(directory, "pet.npy")),
+            palmer_awcs[os.path.basename(directory)],
+        )
+        for directory in _palmer_division_dirs()
+    }
+
+
 class _PalmerSweep(dict[str, tuple | Exception]):
     """Division-keyed sweep results, re-raising a stored division failure on read.
 
@@ -249,7 +283,7 @@ class _PalmerSweep(dict[str, tuple | Exception]):
         return result
 
 
-def _palmer_sweep(entry_point: str, awcs: dict) -> _PalmerSweep:
+def _palmer_sweep(entry_point: str, inputs: dict[str, tuple[np.ndarray, np.ndarray, float]]) -> _PalmerSweep:
     """Run one Palmer entry point across every fixture climate division.
 
     The session-scoped fixtures below cache the result so the 344-division
@@ -263,17 +297,19 @@ def _palmer_sweep(entry_point: str, awcs: dict) -> _PalmerSweep:
     305.9 -> 289.8 MiB in #909). A division failure ends only that division:
     the sweep keeps going and the failure resurfaces where its division is
     read, so one bad division cannot turn every consumer into a setup error.
+
+    :param entry_point: the ``palmer`` function name to run
+    :param inputs: division-keyed ``(precips, pet, awc)`` fixture inputs
     """
     from climate_indices import palmer
 
     results: _PalmerSweep = _PalmerSweep()
-    for division_dir in _palmer_division_dirs():
-        division = os.path.basename(division_dir)
+    for division, (precips, pet, awc) in inputs.items():
         try:
             results[division] = getattr(palmer, entry_point)(
-                np.load(os.path.join(division_dir, "precips.npy")),
-                np.load(os.path.join(division_dir, "pet.npy")),
-                awcs[division],
+                precips,
+                pet,
+                awc,
                 _DATA_YEAR_START_MONTHLY,
                 _CALIBRATION_YEAR_START_PALMER,
                 _CALIBRATION_YEAR_END_PALMER,
@@ -286,13 +322,13 @@ def _palmer_sweep(entry_point: str, awcs: dict) -> _PalmerSweep:
 
 
 @pytest.fixture(scope="session")
-def palmer_pdsi_results(palmer_awcs) -> _PalmerSweep:
-    return _palmer_sweep("pdsi", palmer_awcs)
+def palmer_pdsi_results(palmer_division_inputs) -> _PalmerSweep:
+    return _palmer_sweep("pdsi", palmer_division_inputs)
 
 
 @pytest.fixture(scope="session")
-def palmer_scpdsi_results(palmer_awcs) -> _PalmerSweep:
-    return _palmer_sweep("scpdsi", palmer_awcs)
+def palmer_scpdsi_results(palmer_division_inputs) -> _PalmerSweep:
+    return _palmer_sweep("scpdsi", palmer_division_inputs)
 
 
 # Hargreaves fixtures for daily evapotranspiration calculations

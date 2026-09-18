@@ -44,7 +44,6 @@ import pytest
 from climate_indices import self_calibration
 
 _FIXTURE_ROOT = Path(__file__).parent / "fixture"
-_PALMER_ROOT = _FIXTURE_ROOT / "palmer"
 _NCLIMDIV_ROOT = _FIXTURE_ROOT / "nclimdiv"
 
 _DATA_START_YEAR = 1895
@@ -91,11 +90,6 @@ _HEADROOM_BOUNDS = {"max": (1.5, 1.7), "other": (1.65, 2.7)}
 
 
 @pytest.fixture(scope="module")
-def division_dirs() -> tuple[Path, ...]:
-    return tuple(sorted(path for path in _PALMER_ROOT.iterdir() if path.name.isdigit()))
-
-
-@pytest.fixture(scope="module")
 def row_by_division() -> dict[str, int]:
     divisions = json.loads((_NCLIMDIV_ROOT / "divisions.json").read_text(encoding="utf-8"))
     return {division: row for row, division in enumerate(divisions)}
@@ -132,9 +126,11 @@ def _summarize(all_diffs: dict[str, list[np.ndarray]]) -> dict[str, dict[str, fl
     return summary
 
 
-def _summarize_diffs(entry_point, results, division_dirs, row_by_division, nclimdiv) -> dict[str, dict[str, float]]:
+def _summarize_diffs(
+    entry_point, results, palmer_division_dirs, row_by_division, nclimdiv
+) -> dict[str, dict[str, float]]:
     all_diffs: dict[str, list[np.ndarray]] = {name: [] for name in _SERIES}
-    for division_dir in division_dirs:
+    for division_dir in palmer_division_dirs:
         division = division_dir.name
         values = results[division]
         assert values[4] is not None, f"{division}: {entry_point}() returned no fitted parameters"
@@ -144,9 +140,9 @@ def _summarize_diffs(entry_point, results, division_dirs, row_by_division, nclim
     return _summarize(all_diffs)
 
 
-def test_division_directories_match_nclimdiv_index(division_dirs, row_by_division):
+def test_division_directories_match_nclimdiv_index(palmer_division_dirs, row_by_division):
     """Every fixture division must have a reference row, and vice versa."""
-    assert {path.name for path in division_dirs} == set(row_by_division)
+    assert {path.name for path in palmer_division_dirs} == set(row_by_division)
 
 
 def test_ceilings_keep_documented_headroom():
@@ -176,7 +172,7 @@ def _assert_ceilings(summary: dict[str, dict[str, float]], ceilings: dict[str, d
 
 @pytest.mark.validation
 def test_pdsi_vs_noaa_nclimdiv_qualified_external_validation(
-    palmer_pdsi_results, division_dirs, row_by_division, nclimdiv
+    palmer_pdsi_results, palmer_division_dirs, row_by_division, nclimdiv
 ):
     """Qualified independent external-product validation for standard Palmer.
 
@@ -190,12 +186,14 @@ def test_pdsi_vs_noaa_nclimdiv_qualified_external_validation(
     agreement floor near 0.013; see VALIDATION.md's "Palmer Validation
     Classification" section.
     """
-    summary = _summarize_diffs("pdsi", palmer_pdsi_results, division_dirs, row_by_division, nclimdiv)
+    summary = _summarize_diffs("pdsi", palmer_pdsi_results, palmer_division_dirs, row_by_division, nclimdiv)
     _assert_ceilings(summary, _PDSI_CEILINGS)
 
 
 @pytest.mark.validation
-def test_scpdsi_vs_noaa_nclimdiv_characterization(palmer_scpdsi_results, division_dirs, row_by_division, nclimdiv):
+def test_scpdsi_vs_noaa_nclimdiv_characterization(
+    palmer_scpdsi_results, palmer_division_dirs, row_by_division, nclimdiv
+):
     """Characterization only: nClimDiv applies standard Palmer's fixed national
     K-factors while ``scpdsi()`` self-calibrates duration and K-prime factors
     per division (Wells, Goddard, and Hayes 2004), so the two diverge by design
@@ -203,12 +201,12 @@ def test_scpdsi_vs_noaa_nclimdiv_characterization(palmer_scpdsi_results, divisio
     is the Wells-lineage oracle cross-validation in ``tests/test_scpdsi.py``,
     not this comparison.
     """
-    summary = _summarize_diffs("scpdsi", palmer_scpdsi_results, division_dirs, row_by_division, nclimdiv)
+    summary = _summarize_diffs("scpdsi", palmer_scpdsi_results, palmer_division_dirs, row_by_division, nclimdiv)
     _assert_ceilings(summary, _SCPDSI_CEILINGS)
 
 
 @pytest.mark.validation
-def test_scpdsi_calibration_anchor_lands_on_target(division_dirs, palmer_scpdsi_results):
+def test_scpdsi_calibration_anchor_lands_on_target(palmer_division_dirs, palmer_scpdsi_results):
     """Calibration-period 2nd/98th percentiles of scPDSI should land on -/+4.
 
     This is the defining property of Wells self-calibration, and the source of
@@ -222,7 +220,7 @@ def test_scpdsi_calibration_anchor_lands_on_target(division_dirs, palmer_scpdsi_
 
     low_deviations = []
     high_deviations = []
-    for division_dir in division_dirs:
+    for division_dir in palmer_division_dirs:
         division = division_dir.name
         scpdsi_values = palmer_scpdsi_results[division][0]
         window = scpdsi_values[start:end]
@@ -231,7 +229,7 @@ def test_scpdsi_calibration_anchor_lands_on_target(division_dirs, palmer_scpdsi_
 
     low = np.asarray(low_deviations)
     high = np.asarray(high_deviations)
-    assert low.size == high.size == len(division_dirs)
+    assert low.size == high.size == len(palmer_division_dirs)
 
     # Measured: 2nd median deviation 0.0102, max 0.9730, 74% within 0.05, 93%
     # within 0.25; 98th median deviation 0.0130, max 1.5421, 70% and 91%.

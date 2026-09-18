@@ -224,42 +224,31 @@ def test_calc_cafec_zindex_writes_the_zindex():
     assert state.z[0, 0] == prepared.ak[0] * (prepared.precips[0, 0] - expected_cafec)
 
 
-def _run_zindex_pipeline(
-    precips: np.ndarray, pet: np.ndarray, awc: float
-) -> tuple[palmer._PalmerPrepared, palmer._PalmerRecursion]:
-    """Runs the same internal pipeline palmer.pdsi() runs, up through
-    _calc_kfactors (but not yet _calc_zindex), and returns the prepared inputs
-    and recursion state. Exists so this test can inject custom duration factors
-    between initialization and the recursion, without touching palmer.pdsi()'s
-    public signature."""
-    prepared = palmer._initialize_prepared(
-        precips=precips,
-        pet=pet,
-        awc=awc,
-        data_start_year=2000,
-        calibration_year_initial=2000,
-        calibration_year_final=2003,
-    )
-    palmer._calc_water_balances(prepared)
-    palmer._calc_cafec_coefficients(prepared)
-    palmer._calc_zindex_factors(prepared)
-    palmer._calc_kfactors(prepared)
-    return prepared, palmer._initialize_recursion(prepared)
-
-
 def test_custom_duration_factors_change_pdsi_output():
+    """pdsi() accepts duration-factor overrides through its fitting parameters."""
+    rng = np.random.default_rng(42)
+    precips = rng.uniform(0.0, 6.0, size=12 * 4)
+    pet = rng.uniform(0.0, 4.0, size=12 * 4)
+    custom = {"wetm": 1.0, "wetb": 1.0, "drym": 1.0, "dryb": 1.0}
+
+    default_pdsi, *_ = palmer.pdsi(precips, pet, 5.0, 2000, 2000, 2003)
+    custom_pdsi, *_ = palmer.pdsi(precips, pet, 5.0, 2000, 2000, 2003, fitting_params=custom)
+
+    assert not np.allclose(default_pdsi, custom_pdsi, equal_nan=True)
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"wetm": 1.0},
+        {"wetm": 1.0, "wetb": 1.0, "drym": 1.0, "dryb": [1.0]},
+    ],
+)
+def test_invalid_duration_factor_override_is_rejected(override):
+    """A partial or non-scalar override is a caller error, not a silent default."""
     rng = np.random.default_rng(42)
     precips = rng.uniform(0.0, 6.0, size=12 * 4)
     pet = rng.uniform(0.0, 4.0, size=12 * 4)
 
-    prepared_default, state_default = _run_zindex_pipeline(precips, pet, awc=5.0)
-    palmer._calc_zindex(prepared_default, state_default)
-    palmer._finish_up(state_default)
-
-    prepared_custom, state_custom = _run_zindex_pipeline(precips, pet, awc=5.0)
-    prepared_custom.wetm, prepared_custom.wetb = 1.0, 1.0
-    prepared_custom.drym, prepared_custom.dryb = 1.0, 1.0
-    palmer._calc_zindex(prepared_custom, state_custom)
-    palmer._finish_up(state_custom)
-
-    assert not np.allclose(state_default.pdsi, state_custom.pdsi, equal_nan=True)
+    with pytest.raises(ValueError, match="duration-factor override"):
+        palmer.pdsi(precips, pet, 5.0, 2000, 2000, 2003, fitting_params=override)
