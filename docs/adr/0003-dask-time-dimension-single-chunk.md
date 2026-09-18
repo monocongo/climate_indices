@@ -6,4 +6,4 @@
 
 Callers building Dask arrays for use with this library must chunk only along spatial dimensions (e.g. `{"lat": 50, "lon": 50, "time": -1}`), not time.
 
-[notebooks/zarr_dask_spi_spei.ipynb](https://github.com/monocongo/climate_indices/blob/main/notebooks/zarr_dask_spi_spei.ipynb) is the worked example: it keeps one time chunk from the prepared store through the calculation. [docs/troubleshooting.rst](https://github.com/monocongo/climate_indices/blob/main/docs/troubleshooting.rst) lists the failure modes, including the `Prepared store must keep time as a single chunk.` error.
+[notebooks/zarr_dask_spi_spei.ipynb](https://github.com/monocongo/climate_indices/blob/main/notebooks/zarr_dask_spi_spei.ipynb) is the worked example: it keeps one time chunk from the prepared store through the calculation. [docs/troubleshooting.md](https://github.com/monocongo/climate_indices/blob/main/docs/troubleshooting.md) lists the failure modes, including the `Prepared store must keep time as a single chunk.` error.
