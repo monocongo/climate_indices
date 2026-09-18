@@ -1825,11 +1825,11 @@ def scpdsi(
         missing arrays and ``None``.
 
     Raises:
-        ValueError: If precipitation and PET have different lengths or shapes,
-            if a 2-D array's second dimension is not 12, if either contains
-            infinite values, if the calibration period is not an inclusive
-            interval within the input data years, or if precips/pet is a spatial
-            block (three or more dimensions).
+        ValueError: If precipitation and PET have different numbers of
+            elements, if a 2-D array's second dimension is not 12, if either
+            contains infinite values, if the calibration period is not an
+            inclusive interval within the input data years, or if precips/pet
+            is a spatial block (three or more dimensions).
             scPDSI runs the Wells backtracking recursion once per cell plus
             per-location duration-factor fits, so it stays on the
             per-location path -- see ADR-0011 -- while :func:`pdsi` vectorizes

@@ -1,3 +1,5 @@
+import types
+
 import numpy as np
 import pytest
 
@@ -297,6 +299,13 @@ def test_pdsi_returned_params_reproduce_a_duration_factor_override():
             {"wetm": np.ma.array(1.0, mask=True), "wetb": 1.0, "drym": 1.0, "dryb": 1.0},
             "wetm must be a finite scalar",
             id="masked-array",
+        ),
+        pytest.param(
+            # np.ma.is_masked reads a bare ``_mask`` attribute and raises
+            # AttributeError on a non-masked object; the gate checks the type first
+            {"wetm": types.SimpleNamespace(_mask="x"), "wetb": 1.0, "drym": 1.0, "dryb": 1.0},
+            "wetm must be a finite scalar",
+            id="bare-mask-attribute",
         ),
     ],
 )
