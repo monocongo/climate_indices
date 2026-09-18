@@ -352,8 +352,8 @@ a broadcast: every recursion stage takes an `active` cell mask and writes only
 where it holds, and the K8 backtracking window is preallocated to the record
 length instead of the historical `K8_SIZE = 40` bound. `__main__._apply_along_axis_palmers`
 now passes a whole `(lat_chunk, lon, time)` grid chunk to one `palmer.pdsi()` call
-for `InputType.grid`, instead of the nested `for i / for j` loop the table above
-described; `InputType.divisions` has no cell-adjacency structure to batch and stays
+for `DatasetLayout.GRID`, instead of the nested `for i / for j` loop the table above
+described; `DatasetLayout.DIVISIONS` has no cell-adjacency structure to batch and stays
 on the per-location loop. `tests/test_palmer_spatial.py` pins the equivalence with
 the per-location path (bit-for-bit, not a tolerance — see ADR-0011 for why), the
 ADR-0009 ambiguous-shape rejection, and the all-missing-cell and per-cell-AWC

@@ -20,7 +20,7 @@ import xarray as xr
 
 from climate_indices import __main__ as cli_main
 from climate_indices import palmer
-from climate_indices.__main__ import InputType
+from climate_indices.__main__ import DatasetLayout
 
 _DIVISION_ID = "0101"
 _FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "fixture", "palmer", _DIVISION_ID)
@@ -182,7 +182,7 @@ class TestPalmersWorker:
             "input_var_names": ["precip", "pet", "awc"],
             "output_var_names": list(palmers.output_keys),
             "coordinate_input": False,
-            "input_type": InputType.divisions,
+            "input_type": DatasetLayout.DIVISIONS,
             "args": {
                 "data_start_year": data_year_start_monthly,
                 "calibration_start_year": calibration_year_start_palmer,
@@ -254,7 +254,7 @@ class TestPalmersWorker:
             "sub_array_end": None,
             "input_var_names": ("precip", "pet", "awc"),
             "output_var_names": cli_main._registry_for("palmers").output_keys,
-            "input_type": InputType.grid,
+            "input_type": DatasetLayout.GRID,
             "args": {"data_start_year": 1980, "calibration_start_year": 1980, "calibration_end_year": 1981},
         }
 
@@ -311,7 +311,7 @@ class TestPalmersWorker:
             "sub_array_end": None,
             "input_var_names": ("precip", "pet", "awc"),
             "output_var_names": palmers.output_keys,
-            "input_type": InputType.grid,
+            "input_type": DatasetLayout.GRID,
             "args": {
                 "data_start_year": data_year_start_monthly,
                 "calibration_start_year": calibration_year_start_palmer,
