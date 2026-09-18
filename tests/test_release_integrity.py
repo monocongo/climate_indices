@@ -239,6 +239,16 @@ def test_front_page_python_support_matches_classifiers() -> None:
     assert badge_url in release_process
 
 
+def test_wildfire_applications_cross_links_use_myst_roles() -> None:
+    """Cross-page links must be MyST `{doc}` roles, not literal RST `:doc:` text."""
+    page = (ROOT / "docs" / "wildfire_applications.md").read_text(encoding="utf-8")
+    assert "{doc}`xarray_migration`" in page
+    assert "{doc}`index`" in page
+    assert ":doc:" not in page, (
+        "docs/wildfire_applications.md must use MyST {doc} roles; an RST :doc: role renders as literal text"
+    )
+
+
 def test_release_process_documents_pypi_metadata_verification() -> None:
     """Post-release checklist must direct maintainers to verify PyPI Requires-Python
     and classifiers, and to cross-check the badge against them.
