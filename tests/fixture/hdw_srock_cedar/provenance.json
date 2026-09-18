@@ -3,7 +3,7 @@
   "url": "https://research.fs.usda.gov/download/treesearch/56562.pdf",
   "download_date": "2026-09-18",
   "subset_description": "CFSR vertical profiles at the Figure 4a grid point (33.0 N, -116.5 W) for 2003-10-12 through 2003-11-09, at the paper's 0000/1200/1800 UTC analyses: 2 m temperature and specific humidity, 10 m wind, surface pressure, and temperature, relative humidity, wind speed, and geopotential height at 925, 900, 875, 850, 825, 800 hPa. Heights are meters above the grid point's surface, recovered with the hypsometric equation from the lowest fetched level above the surface. The digitized Figure 4a series has one row per UTC date. The NCEI store has no pressure-level analysis for 2003-10-29 12:00 UTC, so those daily maxima use the remaining analyses.",
-  "checksum_sha256": "121a4ae6b3619c2e81501b7309f12084f220a83bc942eee460e1d3f49c63b153",
+  "checksum_sha256": "e67588ad7c4c6ef818d2bfd969e81b43c6b9e8d44f56edadfc7174abd90faad1",
   "fixture_version": "1.0.0",
   "validation_tolerance": {
     "digitized_series_uncertainty_hpa_m_s": 5.0

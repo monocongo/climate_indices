@@ -81,20 +81,24 @@ def _load_published_daily() -> dict[str, float]:
     return published
 
 
-def _checksum_of_arrays() -> str:
+def _checksum_of_fixture() -> str:
     hasher = hashlib.sha256()
-    for path in sorted(FIXTURE_DIR.glob("*.npy")):
+    for path in sorted(FIXTURE_DIR.glob("*.npy")) + sorted(FIXTURE_DIR.glob("*.csv")):
         hasher.update(path.read_bytes())
     return hasher.hexdigest()
 
 
-def _hdw_daily_maxima() -> dict[str, float]:
+def _hdw_profiles() -> np.ndarray:
     temperature = np.load(FIXTURE_DIR / "temperature_celsius.npy")
     humidity = np.load(FIXTURE_DIR / "relative_humidity_percent.npy")
     wind = np.load(FIXTURE_DIR / "wind_speed_meters_per_second.npy")
     height = np.load(FIXTURE_DIR / "height_agl_meters.npy")
+    return np.asarray(fire.hot_dry_windy(temperature, humidity, wind, height, level_axis=-1))
+
+
+def _hdw_daily_maxima() -> dict[str, float]:
+    hdw = _hdw_profiles()
     times = np.load(FIXTURE_DIR / "valid_time.npy")
-    hdw = fire.hot_dry_windy(temperature, humidity, wind, height, level_axis=-1)
 
     daily: dict[str, float] = {}
     for date, value in zip(times.astype("datetime64[D]"), np.asarray(hdw), strict=True):
@@ -105,7 +109,7 @@ def _hdw_daily_maxima() -> dict[str, float]:
 
 def test_fixture_checksum_matches_provenance() -> None:
     """The committed arrays must be the exact artifact the provenance records."""
-    assert _checksum_of_arrays() == _load_provenance()["checksum_sha256"]
+    assert _checksum_of_fixture() == _load_provenance()["checksum_sha256"]
 
 
 def test_hdw_daily_maximum_falls_on_the_documented_fire_day() -> None:
@@ -166,5 +170,4 @@ def test_hdw_profiles_produce_finite_values() -> None:
     here means the extraction or the layer filter broke, not that the data is
     legitimately missing.
     """
-    daily = _hdw_daily_maxima()
-    assert all(np.isfinite(value) for value in daily.values())
+    assert np.all(np.isfinite(_hdw_profiles()))
